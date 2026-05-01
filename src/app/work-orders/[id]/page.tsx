@@ -10,6 +10,7 @@ import { BatchEditWrapper } from "@/components/BatchEditWrapper";
 import { TemplateImportWrapper } from "@/components/TemplateImportWrapper";
 import { PartWorkflowActions } from "@/components/PartWorkflowActions";
 import { ConstructionControls } from "@/components/ConstructionControls";
+import { AdvancePaymentCard } from "@/components/AdvancePaymentCard";
 
 export default async function WorkOrderDetailPage({
   params,
@@ -115,6 +116,12 @@ export default async function WorkOrderDetailPage({
     .select("*")
     .eq("work_order_id", id)
     .order("paid_at", { ascending: true });
+
+  const { data: followUps } = await supabase
+    .from("follow_ups")
+    .select("*")
+    .eq("work_order_id", id)
+    .order("scheduled_at", { ascending: true });
 
   const { data: history } = await supabase
     .from("work_order_history")
@@ -804,6 +811,27 @@ export default async function WorkOrderDetailPage({
         <div className="space-y-6">
           <WorkOrderActions orderId={id} status={order.status} />
 
+          {/* 打印单据 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h2 className="text-base font-semibold text-gray-900 mb-3">打印单据</h2>
+            <div className="grid grid-cols-2 gap-2">
+              <Link href={`/work-orders/${id}/print?type=reception`} className="text-sm px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-center">接车单</Link>
+              <Link href={`/work-orders/${id}/print?type=dispatch`} className="text-sm px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-center">派工单</Link>
+              <Link href={`/work-orders/${id}/print?type=picking`} className="text-sm px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-center">领料单</Link>
+              <Link href={`/work-orders/${id}/print?type=return`} className="text-sm px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-center">退料单</Link>
+              <Link href={`/work-orders/${id}/print?type=settlement`} className="text-sm px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-center">结算单</Link>
+              <Link href={`/work-orders/${id}/print?type=reimbursement`} className="text-sm px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-center">报销单</Link>
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <Link
+                href={`/work-orders/${id}/reimbursement`}
+                className="text-sm text-blue-600 hover:text-blue-700"
+              >
+                编辑报销单 →
+              </Link>
+            </div>
+          </div>
+
           {/* 待入库配件 */}
           {pendingInboundParts.length > 0 && (
             <div className="bg-white rounded-xl border border-orange-200 p-5">
@@ -834,6 +862,9 @@ export default async function WorkOrderDetailPage({
             </div>
           )}
 
+          {/* 预收款 */}
+          <AdvancePaymentCard orderId={id} advancePayment={order.advance_payment || 0} totalCost={order.total_cost} />
+
           {/* 费用汇总 */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">费用合计</h2>
@@ -841,7 +872,16 @@ export default async function WorkOrderDetailPage({
               <div className="flex justify-between text-gray-600"><span>配件费用</span><span>{formatCurrency(order.parts_cost)}</span></div>
               <div className="flex justify-between text-gray-600"><span>工时费用</span><span>{formatCurrency(order.labor_cost)}</span></div>
               <div className="flex justify-between text-gray-600"><span>其他费用</span><span>{formatCurrency(order.other_cost)}</span></div>
-              <div className="border-t border-gray-100 pt-2 flex justify-between text-base font-bold text-gray-900"><span>总计</span><span>{formatCurrency(order.total_cost)}</span></div>
+              {(order.discount_amount || 0) > 0 && (
+                <div className="flex justify-between text-orange-600"><span>整单优惠</span><span>-{formatCurrency(order.discount_amount)}</span></div>
+              )}
+              {(order.advance_payment || 0) > 0 && (
+                <div className="flex justify-between text-green-600"><span>已预收</span><span>-{formatCurrency(order.advance_payment)}</span></div>
+              )}
+              <div className="border-t border-gray-100 pt-2 flex justify-between text-base font-bold text-gray-900">
+                <span>应收合计</span>
+                <span>{formatCurrency(order.total_cost - (order.advance_payment || 0))}</span>
+              </div>
             </div>
           </div>
 
@@ -858,6 +898,45 @@ export default async function WorkOrderDetailPage({
                 </div>
               ))}
               {(!payments || payments.length === 0) && <p className="text-sm text-gray-400">暂无支付记录</p>}
+            </div>
+          </div>
+
+          {/* 回访记录 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-4">回访记录</h2>
+            <div className="space-y-3">
+              {followUps?.map((fu: any) => {
+                const isCompleted = !!fu.completed_at;
+                const isOverdue = !isCompleted && fu.scheduled_at <= new Date().toISOString();
+                return (
+                  <div key={fu.id} className="flex items-start gap-3 text-sm">
+                    <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${isCompleted ? 'bg-green-500' : isOverdue ? 'bg-red-500' : 'bg-blue-500'}`} />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">
+                          {isCompleted ? '已完成' : isOverdue ? '已逾期' : '待回访'}
+                        </span>
+                        <span className="text-gray-500">· {formatDate(fu.scheduled_at)}</span>
+                        {fu.method && (
+                          <span className="text-gray-400">
+                            · {fu.method === 'phone' ? '电话' : fu.method === 'sms' ? '短信' : fu.method === 'wechat' ? '微信' : fu.method}
+                          </span>
+                        )}
+                      </div>
+                      {fu.result && <p className="text-gray-600 mt-0.5">{fu.result}</p>}
+                      {fu.notes && <p className="text-gray-400 text-xs mt-0.5">{fu.notes}</p>}
+                      {!isCompleted && (
+                        <Link href={`/follow-ups/${fu.id}`} className="text-xs text-blue-600 hover:text-blue-700 mt-1 inline-block">
+                          去回访 →
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {(!followUps || followUps.length === 0) && (
+                <p className="text-sm text-gray-400">暂无回访记录</p>
+              )}
             </div>
           </div>
 

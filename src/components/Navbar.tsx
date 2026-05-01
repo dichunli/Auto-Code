@@ -10,10 +10,19 @@ const navItems = [
   { href: "/", label: "仪表盘" },
   { href: "/work-orders", label: "工单管理" },
   { href: "/customers", label: "客户车辆" },
+  { href: "/appointments", label: "客户预约" },
   { href: "/inventory", label: "配件库存" },
   { href: "/procurement", label: "采购管理" },
+  { href: "/logistics", label: "物流运单" },
   { href: "/service-items", label: "维修项目" },
   { href: "/knowledge", label: "知识库" },
+  { href: "/employees", label: "员工管理" },
+  { href: "/members", label: "会员管理" },
+  { href: "/finance", label: "财务管理" },
+  { href: "/reports", label: "报表统计" },
+  { href: "/follow-ups", label: "售后回访" },
+  { href: "/reminders", label: "保养提醒" },
+  { href: "/notifications", label: "客户通知" },
 ];
 
 export function Navbar() {
@@ -22,7 +31,11 @@ export function Navbar() {
   const supabase = createClient();
 
   async function handleLogout() {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // 忽略登出错误，强制跳转
+    }
     router.push("/login");
     router.refresh();
   }

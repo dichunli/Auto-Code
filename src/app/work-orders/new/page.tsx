@@ -63,74 +63,40 @@ export default function NewWorkOrderPage() {
     setLoading(true);
 
     try {
-      // 1. 创建客户
-      const { data: customer, error: customerError } = await supabase
-        .from("customers")
-        .insert({
-          name: form.customer_name,
-          phone: form.customer_phone,
-          company: form.customer_company || null,
-        })
-        .select("id")
-        .single();
-
-      if (customerError || !customer) throw customerError || new Error("创建客户失败");
-
-      // 2. 创建车辆
-      const { data: vehicle, error: vehicleError } = await supabase
-        .from("vehicles")
-        .insert({
-          customer_id: customer.id,
-          plate_number: form.plate_number,
-          brand: form.brand,
-          model: form.model,
-          vin: form.vin || null,
-          mileage: parseInt(form.mileage_in) || 0,
-        })
-        .select("id")
-        .single();
-
-      if (vehicleError || !vehicle) throw vehicleError || new Error("创建车辆失败");
-
-      // 3. 创建工单
-      const { data: order, error: orderError } = await supabase
-        .from("work_orders")
-        .insert({
-          vehicle_id: vehicle.id,
-          customer_id: customer.id,
-          mileage_in: parseInt(form.mileage_in) || 0,
-          fuel_level: parseInt(form.fuel_level) || 50,
-          customer_complaint: requirements.map((r) => r.description).join("; "),
-          inspection_notes: form.inspection_notes,
-        })
-        .select("id")
-        .single();
-
-      if (orderError || !order) throw orderError || new Error("创建工单失败");
-
-      // 4. 创建需求逐条记录
-      const reqs = requirements
+      const reqPayload = requirements
         .filter((r) => r.description.trim())
-        .map((r, i) => ({
-          work_order_id: order.id,
-          seq: i + 1,
-          description: r.description,
-          submitted_by: currentUserId || null,
-          assigned_to: r.assigned_to || null,
-          assignment_type: r.assigned_to ? "assigned" : null,
+        .map((r) => ({
+          description: r.description.trim(),
+          assigned_to: r.assigned_to || "",
         }));
 
-      if (reqs.length > 0) {
-        const { error: reqError } = await supabase
-          .from("work_order_requirements")
-          .insert(reqs);
-        if (reqError) throw reqError;
+      const { data: result, error: rpcErr } = await supabase.rpc("create_work_order", {
+        p_customer_name: form.customer_name,
+        p_customer_phone: form.customer_phone,
+        p_customer_company: form.customer_company,
+        p_plate_number: form.plate_number,
+        p_brand: form.brand,
+        p_model: form.model,
+        p_vin: form.vin,
+        p_mileage_in: parseInt(form.mileage_in) || 0,
+        p_fuel_level: parseInt(form.fuel_level) || 50,
+        p_customer_complaint: requirements.map((r) => r.description).join("; "),
+        p_inspection_notes: form.inspection_notes,
+        p_receptionist_id: currentUserId || null,
+        p_requirements: reqPayload,
+      });
+
+      if (rpcErr) throw new Error(rpcErr.message);
+
+      const rpcResult = result as { success: boolean; error?: string; order_id?: string };
+      if (!rpcResult?.success || !rpcResult.order_id) {
+        throw new Error(rpcResult?.error || "创建工单失败");
       }
 
-      router.push(`/work-orders/${order.id}`);
+      router.push(`/work-orders/${rpcResult.order_id}`);
       router.refresh();
     } catch (err: any) {
-      alert("保存失败: " + err.message);
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
     }
   }

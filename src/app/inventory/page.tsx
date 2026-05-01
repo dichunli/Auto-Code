@@ -63,6 +63,7 @@ export default async function InventoryPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">配件编号</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">条形码</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">名称</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">分类</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">品牌</th>
@@ -76,6 +77,7 @@ export default async function InventoryPage() {
               {items?.map((item: any) => (
                 <tr key={item.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{item.part_number}</td>
+                  <td className="px-6 py-4 text-gray-600">{item.barcode || "-"}</td>
                   <td className="px-6 py-4 text-gray-900">{item.name}</td>
                   <td className="px-6 py-4 text-gray-600">{item.part_names?.part_categories?.name || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{item.part_brands?.name || "-"}</td>
@@ -94,7 +96,7 @@ export default async function InventoryPage() {
               ))}
               {(!items || items.length === 0) && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-gray-400">暂无配件数据</td>
+                  <td colSpan={9} className="px-6 py-12 text-center text-gray-400">暂无配件数据</td>
                 </tr>
               )}
             </tbody>

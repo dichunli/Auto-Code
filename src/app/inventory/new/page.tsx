@@ -15,6 +15,7 @@ export default function NewPartPage() {
 
   const [form, setForm] = useState({
     part_number: "",
+    barcode: "",
     part_name_id: "",
     brand_id: "",
     specification_id: "",
@@ -81,6 +82,7 @@ export default function NewPartPage() {
 
     const { error } = await supabase.from("parts").insert({
       part_number: form.part_number,
+      barcode: form.barcode || null,
       part_name_id: form.part_name_id,
       brand_id: form.brand_id || null,
       specification_id: form.specification_id || null,
@@ -161,6 +163,10 @@ export default function NewPartPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">配件编号 *</label>
               <input required className="w-full px-3 py-2 border border-gray-300 rounded-lg" value={form.part_number} onChange={(e) => setForm({ ...form, part_number: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">条形码</label>
+              <input className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="扫码或手动输入" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">初始库存</label>

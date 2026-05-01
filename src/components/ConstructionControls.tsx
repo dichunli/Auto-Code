@@ -101,69 +101,25 @@ export function ConstructionControls({ itemId, workOrderId, onStatusChange }: Pr
   async function addLog(action: "start" | "pause" | "resume" | "complete") {
     setLoading(true);
     try {
-      const { error } = await supabase.from("work_order_item_construction_logs").insert({
-        work_order_item_id: itemId,
-        mechanic_id: currentUserId || null,
-        action,
+      const { data: result, error: rpcErr } = await supabase.rpc("add_construction_log", {
+        p_work_order_item_id: itemId,
+        p_mechanic_id: currentUserId || null,
+        p_action: action,
       });
-      if (error) throw error;
 
-      // 同步更新维修项目状态
-      let itemStatus = "pending";
-      if (action === "start" || action === "resume") itemStatus = "in_progress";
-      if (action === "pause") itemStatus = "paused";
-      if (action === "complete") itemStatus = "completed";
+      if (rpcErr) throw new Error(rpcErr.message);
 
-      await supabase.from("work_order_items").update({ status: itemStatus }).eq("id", itemId);
-
-      // 尝试推进工单状态
-      await advanceWorkOrderStatus(workOrderId, action);
+      const rpcResult = result as { success: boolean; error?: string; item_status?: string };
+      if (!rpcResult?.success) {
+        throw new Error(rpcResult?.error || "操作失败");
+      }
 
       await fetchLogs();
       onStatusChange?.();
     } catch (err: any) {
-      alert("操作失败: " + err.message);
+      alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function advanceWorkOrderStatus(orderId: string, action: string) {
-    const { data: order } = await supabase
-      .from("work_orders")
-      .select("status")
-      .eq("id", orderId)
-      .single();
-
-    if (!order) return;
-
-    // 开始施工：pending_repair → repairing
-    if ((action === "start" || action === "resume") && order.status === "pending_repair") {
-      await supabase
-        .from("work_orders")
-        .update({ status: "repairing", started_at: new Date().toISOString() })
-        .eq("id", orderId);
-      return;
-    }
-
-    // 完工：检查所有项目是否都已完成
-    if (action === "complete") {
-      const { data: items } = await supabase
-        .from("work_order_items")
-        .select("status")
-        .eq("work_order_id", orderId);
-
-      if (!items || items.length === 0) return;
-
-      const allCompleted = items.every((i: any) => i.status === "completed");
-      if (!allCompleted) return;
-
-      if (order.status === "repairing" || order.status === "pending_repair") {
-        await supabase
-          .from("work_orders")
-          .update({ status: "pending_quality_check", completed_at: new Date().toISOString() })
-          .eq("id", orderId);
-      }
     }
   }
 

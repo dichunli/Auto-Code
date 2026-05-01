@@ -5,22 +5,30 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
   const supabase = createClient();
 
+  function isPhone(value: string) {
+    return /^1[3-9]\d{9}$/.test(value);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const credentials: any = { password };
+    if (isPhone(account)) {
+      credentials.phone = account;
+    } else {
+      credentials.email = account;
+    }
+
+    const { error } = await supabase.auth.signInWithPassword(credentials);
 
     if (error) {
       setError(error.message);
@@ -45,15 +53,15 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              邮箱
+              手机号 / 邮箱
             </label>
             <input
-              type="email"
+              type="text"
               required
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@example.com"
+              value={account}
+              onChange={(e) => setAccount(e.target.value)}
+              placeholder="请输入手机号或邮箱"
             />
           </div>
           <div>

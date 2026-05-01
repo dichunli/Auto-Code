@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
-import { formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 
 export default async function CustomersPage() {
@@ -10,6 +10,16 @@ export default async function CustomersPage() {
     .from("customers")
     .select("id, name, phone, created_at, vehicles(id, plate_number, brand, model)")
     .order("created_at", { ascending: false });
+
+  const customerIds = customers?.map((c: any) => c.id) || [];
+  const { data: memberMap } = customerIds.length > 0
+    ? await supabase.from("members").select("customer_id, card_no, balance").in("customer_id", customerIds)
+    : { data: [] };
+
+  const membersByCustomer: Record<string, any> = {};
+  memberMap?.forEach((m: any) => {
+    membersByCustomer[m.customer_id] = m;
+  });
 
   return (
     <div>
@@ -27,6 +37,7 @@ export default async function CustomersPage() {
                 <th className="px-6 py-3 text-left font-medium text-gray-500">客户姓名</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">电话</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">车辆</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">会员</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">注册时间</th>
               </tr>
             </thead>
@@ -51,12 +62,30 @@ export default async function CustomersPage() {
                       <span className="text-gray-400 text-sm">暂无车辆</span>
                     )}
                   </td>
+                  <td className="px-6 py-4">
+                    {membersByCustomer[customer.id] ? (
+                      <Link
+                        href={`/members/${membersByCustomer[customer.id].id}`}
+                        className="text-sm text-green-600 hover:text-green-700"
+                      >
+                        {membersByCustomer[customer.id].card_no}
+                        <span className="text-gray-400 ml-1">({formatCurrency(membersByCustomer[customer.id].balance)})</span>
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/members/new?customer_id=${customer.id}`}
+                        className="text-sm text-blue-600 hover:text-blue-700"
+                      >
+                        + 办理会员
+                      </Link>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-gray-500">{formatDate(customer.created_at)}</td>
                 </tr>
               ))}
               {(!customers || customers.length === 0) && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
                     暂无客户数据
                   </td>
                 </tr>

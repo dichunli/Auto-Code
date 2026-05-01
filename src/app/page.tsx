@@ -24,6 +24,20 @@ export default async function DashboardPage() {
   const { data: todayRevenue } = await supabase.from("payments").select("amount").gte("paid_at", `${today}T00:00:00`);
   const todayTotal = todayRevenue?.reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
 
+  const { count: memberCount } = await supabase.from("members").select("*", { count: "exact", head: true }).eq("status", "active");
+  const { data: todayRecharges } = await supabase.from("member_transactions").select("amount").eq("type", "recharge").gte("created_at", `${today}T00:00:00`);
+  const todayRechargeTotal = todayRecharges?.reduce((sum: number, t: any) => sum + (t.amount || 0), 0) || 0;
+
+  const { count: todayAppointments } = await supabase.from("appointments").select("*", { count: "exact", head: true }).eq("appointment_date", today).eq("status", "pending");
+
+  const { count: pendingReminders } = await supabase.from("maintenance_reminders").select("*", { count: "exact", head: true }).eq("status", "pending");
+
+  const { data: birthdayCustomers } = await supabase
+    .from("customers")
+    .select("id, name, phone")
+    .not("birthday", "is", null)
+    .ilike("birthday", `%${today.slice(5)}`);
+
   const { data: topMechanics } = await supabase
     .from("mechanic_scores")
     .select("mechanic_id, points, profiles(full_name)")
@@ -45,13 +59,17 @@ export default async function DashboardPage() {
     { label: "待质检", value: pendingQuality || 0, color: "bg-purple-500" },
     { label: "待结算", value: pendingSettle || 0, color: "bg-orange-500" },
     { label: "库存预警", value: lowStock || 0, color: "bg-red-500" },
+    { label: "活跃会员", value: memberCount || 0, color: "bg-cyan-500" },
+    { label: "今日充值", value: `¥${todayRechargeTotal.toFixed(0)}`, color: "bg-indigo-500", isText: true },
+    { label: "今日预约", value: todayAppointments || 0, color: "bg-pink-500" },
+    { label: "保养到期", value: pendingReminders || 0, color: "bg-rose-500" },
   ];
 
   return (
     <div>
       <PageHeader title="仪表盘" description="维修厂运营概览" />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {stats.map((stat) => (
           <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-4">
             <div className={`w-10 h-10 ${stat.color} rounded-lg flex items-center justify-center mb-3`}>
@@ -114,6 +132,27 @@ export default async function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* 生日提醒 */}
+      {birthdayCustomers && birthdayCustomers.length > 0 && (
+        <div className="mt-6 bg-white rounded-xl border border-gray-200 p-6"
+        >
+          <h2 className="text-lg font-semibold text-gray-900 mb-4"
+          >今日生日客户 🎂</h2>
+          <div className="flex flex-wrap gap-3"
+          >
+            {birthdayCustomers.map((c: any) => (
+              <div key={c.id} className="flex items-center gap-2 px-4 py-2 bg-pink-50 text-pink-700 rounded-lg text-sm"
+              >
+                <span className="font-medium"
+                >{c.name}</span>
+                {c.phone && <span className="text-pink-500"
+                >({c.phone})</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
