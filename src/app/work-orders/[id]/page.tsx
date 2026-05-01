@@ -2,11 +2,14 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { WorkOrderActions } from "@/components/WorkOrderActions";
 import { BatchEditWrapper } from "@/components/BatchEditWrapper";
 import { TemplateImportWrapper } from "@/components/TemplateImportWrapper";
+import { PartWorkflowActions } from "@/components/PartWorkflowActions";
+import { ConstructionControls } from "@/components/ConstructionControls";
 
 export default async function WorkOrderDetailPage({
   params,
@@ -80,6 +83,27 @@ export default async function WorkOrderDetailPage({
     .select("*")
     .in("work_order_item_part_id", itemParts?.map((p: any) => p.id) || []);
 
+  const { data: pickingRecords } = await supabase
+    .from("part_picking_records")
+    .select("*")
+    .in("work_order_item_part_id", itemParts?.map((p: any) => p.id) || []);
+
+  const { data: returnRecords } = await supabase
+    .from("part_return_records")
+    .select("*")
+    .in("work_order_item_part_id", itemParts?.map((p: any) => p.id) || []);
+
+  const { data: supplierReturnRecords } = await supabase
+    .from("supplier_return_records")
+    .select("*")
+    .in("work_order_item_part_id", itemParts?.map((p: any) => p.id) || []);
+
+  // 查询相关配件库存
+  const partIds = itemParts?.map((p: any) => p.part_id).filter(Boolean) || [];
+  const { data: partBatches } = partIds.length > 0
+    ? await supabase.from("part_batches").select("part_id, quantity").in("part_id", partIds)
+    : { data: [] };
+
   const { data: qualityChecks } = await supabase
     .from("quality_checks")
     .select("*, profiles(full_name)")
@@ -147,6 +171,28 @@ export default async function WorkOrderDetailPage({
     mediaByInspection[m.inspection_id].push(m);
   });
 
+  // 配件库存聚合
+  const inventoryByPart: Record<string, number> = {};
+  partBatches?.forEach((b: any) => {
+    inventoryByPart[b.part_id] = (inventoryByPart[b.part_id] || 0) + b.quantity;
+  });
+
+  // 领料 / 退库 / 退货聚合
+  const pickingByPart: Record<string, number> = {};
+  pickingRecords?.forEach((r: any) => {
+    pickingByPart[r.work_order_item_part_id] = (pickingByPart[r.work_order_item_part_id] || 0) + r.quantity;
+  });
+
+  const returnByPart: Record<string, number> = {};
+  returnRecords?.forEach((r: any) => {
+    returnByPart[r.work_order_item_part_id] = (returnByPart[r.work_order_item_part_id] || 0) + r.quantity;
+  });
+
+  const pendingSupplierReturnByPart: Record<string, boolean> = {};
+  supplierReturnRecords?.forEach((r: any) => {
+    if (r.status === "pending") pendingSupplierReturnByPart[r.work_order_item_part_id] = true;
+  });
+
   // 按项目分组知识库文章
   const knowledgeByItem: Record<string, any[]> = {};
   knowledgeLinks?.forEach((link: any) => {
@@ -162,6 +208,8 @@ export default async function WorkOrderDetailPage({
       }
     });
   });
+
+  const isLocked = ["pending_settlement", "settled", "delivered"].includes(order.status);
 
   return (
     <div>
@@ -191,17 +239,21 @@ export default async function WorkOrderDetailPage({
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-base font-semibold text-gray-900">客户需求与诊断</h2>
               <div className="flex items-center gap-3">
-                <BatchEditWrapper
-                  orderId={id}
-                  items={items || []}
-                  itemParts={itemParts || []}
-                  suppliers={suppliers || []}
-                  logisticsCompanies={logisticsCompanies || []}
-                />
-                {order.vehicle_id && (
-                  <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />
+                {!isLocked && (
+                  <>
+                    <BatchEditWrapper
+                      orderId={id}
+                      items={items || []}
+                      itemParts={itemParts || []}
+                      suppliers={suppliers || []}
+                      logisticsCompanies={logisticsCompanies || []}
+                    />
+                    {order.vehicle_id && (
+                      <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />
+                    )}
+                    <Link href={`/work-orders/${id}/requirements/new`} className="text-sm text-blue-600 hover:text-blue-700">+ 添加诊断/项目</Link>
+                  </>
                 )}
-                <Link href={`/work-orders/${id}/requirements/new`} className="text-sm text-blue-600 hover:text-blue-700">+ 添加诊断/项目</Link>
                 <Link href={`/work-orders/${id}/reception/new`} className="text-sm text-orange-600 hover:text-orange-700">+ 接车检查</Link>
                 <Link href={`/work-orders/${id}/inspection/new`} className="text-sm text-green-600 hover:text-green-700">+ 车况检查</Link>
               </div>
@@ -306,6 +358,16 @@ export default async function WorkOrderDetailPage({
                               <span>技师: {(item.profiles as any)?.full_name || '未分配'}</span>
                               <span className="font-medium text-gray-900">{formatCurrency(item.total_price)}</span>
                             </div>
+                            {/* 施工状态控制 */}
+                            {item.item_type === 'labor' && !isLocked && (
+                              <div className="mt-2">
+                                <ConstructionControls
+                                  itemId={item.id}
+                                  workOrderId={id}
+                                  onStatusChange={() => {}}
+                                />
+                              </div>
+                            )}
                             {/* 项目图片 */}
                             {imagesByItem[item.id]?.length > 0 && (
                               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -318,7 +380,26 @@ export default async function WorkOrderDetailPage({
                             {partsByItem[item.id]?.length > 0 && (
                               <div className="mt-2 pt-2 border-t border-gray-200 text-xs space-y-2">
                                 <div className="text-gray-400 mb-1">所用配件:</div>
-                                {partsByItem[item.id].map((p: any, idx: number) => (
+                                {partsByItem[item.id].map((p: any, idx: number) => {
+                                  const pPickedQty = pickingByPart[p.id] || 0;
+                                  const pReturnQty = returnByPart[p.id] || 0;
+                                  const pNetPicked = pPickedQty - pReturnQty;
+                                  const pInventory = inventoryByPart[p.part_id] || 0;
+                                  const pHasPendingSupplierReturn = pendingSupplierReturnByPart[p.id] || false;
+                                  const pStatus = getPartWorkflowStatus({
+                                    unit_cost: p.unit_cost,
+                                    unit_price: p.unit_price,
+                                    customer_opinion: p.customer_opinion,
+                                    is_purchased: p.is_purchased,
+                                    is_arrived: p.is_arrived,
+                                    part_id: p.part_id,
+                                    quantity: p.quantity,
+                                    inventoryQty: pInventory,
+                                    pickedQty: pNetPicked,
+                                    hasReturnRecords: pReturnQty > 0,
+                                    hasPendingSupplierReturn: pHasPendingSupplierReturn,
+                                  });
+                                  return (
                                   <div key={idx} className="bg-white rounded border border-gray-100 p-2">
                                     <div className="flex items-center flex-wrap gap-1.5">
                                       {/* 配件名称 */}
@@ -355,13 +436,6 @@ export default async function WorkOrderDetailPage({
                                         {p.customer_opinion === 'agree' ? '客户同意' :
                                          p.customer_opinion === 'reject' ? '客户拒绝' : '待确认'}
                                       </span>
-                                      {/* 采购/到货状态 */}
-                                      {p.is_purchased && (
-                                        <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded text-[10px]">已采购</span>
-                                      )}
-                                      {p.is_arrived && (
-                                        <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded text-[10px]">已到货</span>
-                                      )}
                                       {/* 空分支已到货 → 入库登记 */}
                                       {p.is_arrived && !p.part_id && (
                                         <Link
@@ -371,6 +445,18 @@ export default async function WorkOrderDetailPage({
                                           入库登记
                                         </Link>
                                       )}
+                                      <PartWorkflowActions
+                                        status={pStatus}
+                                        partName={p.alias_name || p.parts?.name || p.name || p.part_names?.name || "未命名配件"}
+                                        workOrderItemPartId={p.id}
+                                        partId={p.part_id}
+                                        quantity={p.quantity}
+                                        pickedQty={pNetPicked}
+                                        returnQty={pReturnQty}
+                                        suppliers={suppliers || []}
+                                        logisticsCompanies={logisticsCompanies || []}
+                                        locked={isLocked}
+                                      />
                                     </div>
                                     {/* 供应商/物流 */}
                                     {(p.supplier_name || p.logistics_agreement) && (
@@ -392,7 +478,7 @@ export default async function WorkOrderDetailPage({
                                       </div>
                                     )}
                                   </div>
-                                ))}
+                                )})}
                               </div>
                             )}
                           </div>

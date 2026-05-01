@@ -25,10 +25,12 @@ export default async function WorkOrdersPage({
 
   const statusFilters = [
     { value: "", label: "全部" },
-    { value: "received", label: "已接车" },
+    { value: "pending_diagnosis", label: "待诊断" },
+    { value: "pending_repair", label: "待维修" },
     { value: "repairing", label: "维修中" },
-    { value: "quality_check", label: "质检中" },
-    { value: "completed", label: "待结算" },
+    { value: "pending_quality_check", label: "待质检" },
+    { value: "pending_close", label: "待结单" },
+    { value: "pending_settlement", label: "待结算" },
     { value: "settled", label: "已结算" },
   ];
 
@@ -40,20 +42,28 @@ export default async function WorkOrdersPage({
         action={{ href: "/work-orders/new", label: "新建工单" }}
       />
 
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
-        {statusFilters.map((filter) => (
-          <Link
-            key={filter.value}
-            href={filter.value ? `?status=${filter.value}` : "/work-orders"}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-              (status || "") === filter.value
-                ? "bg-blue-600 text-white"
-                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-            }`}
-          >
-            {filter.label}
-          </Link>
-        ))}
+      <div className="flex items-center gap-3 mb-6 overflow-x-auto pb-1">
+        <div className="flex gap-2">
+          {statusFilters.map((filter) => (
+            <Link
+              key={filter.value}
+              href={filter.value ? `?status=${filter.value}` : "/work-orders"}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                (status || "") === filter.value
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              {filter.label}
+            </Link>
+          ))}
+        </div>
+        <Link
+          href="/work-orders/board"
+          className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 whitespace-nowrap"
+        >
+          维修看板
+        </Link>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

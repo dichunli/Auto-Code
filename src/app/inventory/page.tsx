@@ -28,6 +28,12 @@ export default async function InventoryPage() {
         <Link href="/inventory/in" className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
           入库登记
         </Link>
+        <Link href="/procurement" className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+          采购订单
+        </Link>
+        <Link href="/suppliers" className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+          供应商
+        </Link>
         <Link href="/part-categories" className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
           配件分类
         </Link>

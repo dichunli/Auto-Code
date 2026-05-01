@@ -437,6 +437,38 @@ CREATE TABLE purchase_returns (
 );
 
 -- ============================================================
+-- 6.5 采购订单管理
+-- ============================================================
+CREATE TABLE purchase_orders (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  order_no TEXT,
+  supplier_id UUID REFERENCES suppliers(id),
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'approved', 'partial_received', 'fully_received', 'cancelled')),
+  total_amount DECIMAL(12,2),
+  notes TEXT,
+  created_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE purchase_order_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  order_id UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  part_id UUID REFERENCES parts(id),
+  part_name_id UUID REFERENCES part_names(id),
+  part_number TEXT,
+  name TEXT,
+  brand TEXT,
+  specification TEXT,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  unit_cost DECIMAL(10,2),
+  received_qty INTEGER DEFAULT 0,
+  work_order_item_part_id UUID,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
 -- 知识库
 -- ============================================================
 CREATE TABLE knowledge_categories (
@@ -473,7 +505,7 @@ CREATE TABLE knowledge_service_links (
 -- 7. 工单体系（四级嵌套）
 -- ============================================================
 CREATE TYPE work_order_status AS ENUM (
-  'received','diagnosing','quoted','repairing','quality_check','completed','settled','delivered'
+  'received','pending_diagnosis','pending_repair','repairing','pending_quality_check','pending_close','pending_settlement','settled','delivered'
 );
 
 CREATE TABLE work_orders (
@@ -493,7 +525,7 @@ CREATE TABLE work_orders (
   other_cost DECIMAL(10,2) DEFAULT 0,
   total_cost DECIMAL(10,2) GENERATED ALWAYS AS (parts_cost + labor_cost + other_cost) STORED,
 
-  status work_order_status DEFAULT 'received',
+  status work_order_status DEFAULT 'pending_diagnosis',
   received_at TIMESTAMPTZ DEFAULT NOW(),
   started_at TIMESTAMPTZ,
   estimated_completion_at TIMESTAMPTZ,
@@ -534,7 +566,7 @@ CREATE TABLE work_order_items (
   unit_price DECIMAL(10,2) NOT NULL,
   total_price DECIMAL(10,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
   mechanic_id UUID REFERENCES profiles(id),
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','in_progress','completed')),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','in_progress','paused','completed')),
   customer_opinion TEXT DEFAULT 'pending' CHECK (customer_opinion IN ('agree', 'reject', 'pending')),
   is_outsourced BOOLEAN DEFAULT FALSE,
   outsourced_supplier_id UUID REFERENCES suppliers(id),
@@ -577,6 +609,11 @@ CREATE TABLE work_order_item_parts (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 采购订单明细表的外键（work_order_item_parts 后定义，在此补充）
+ALTER TABLE purchase_order_items DROP CONSTRAINT IF EXISTS purchase_order_items_work_order_item_part_id_fkey;
+ALTER TABLE purchase_order_items ADD CONSTRAINT purchase_order_items_work_order_item_part_id_fkey
+  FOREIGN KEY (work_order_item_part_id) REFERENCES work_order_item_parts(id);
+
 -- 维修项目多媒体（图片）
 CREATE TABLE work_order_item_media (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -602,6 +639,19 @@ CREATE TABLE work_order_item_mechanics (
   mechanic_id UUID NOT NULL REFERENCES profiles(id),
   share_pct DECIMAL(5,2) DEFAULT 100,
   commission_amount DECIMAL(10,2),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 维修项目施工记录（计时）
+CREATE TABLE work_order_item_construction_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  work_order_item_id UUID NOT NULL REFERENCES work_order_items(id) ON DELETE CASCADE,
+  mechanic_id UUID REFERENCES profiles(id),
+  action TEXT NOT NULL CHECK (action IN ('start','pause','resume','complete')),
+  started_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
+  duration_seconds INTEGER,
+  notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -672,6 +722,44 @@ CREATE TABLE vehicle_maintenance_template_parts (
   name TEXT,
   brand TEXT,
   specification TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- 7.7 配件领料 / 退库 / 退货
+-- ============================================================
+CREATE TABLE part_picking_records (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  work_order_item_part_id UUID NOT NULL REFERENCES work_order_item_parts(id) ON DELETE CASCADE,
+  batch_id UUID REFERENCES part_batches(id),
+  quantity INTEGER NOT NULL DEFAULT 1,
+  picked_by UUID REFERENCES profiles(id),
+  picked_at TIMESTAMPTZ DEFAULT NOW(),
+  notes TEXT
+);
+
+CREATE TABLE part_return_records (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  work_order_item_part_id UUID NOT NULL REFERENCES work_order_item_parts(id) ON DELETE CASCADE,
+  picking_record_id UUID REFERENCES part_picking_records(id),
+  return_type TEXT NOT NULL CHECK (return_type IN ('excess', 'wrong_pick', 'wrong_ship', 'damaged')),
+  quantity INTEGER NOT NULL DEFAULT 1,
+  returned_by UUID REFERENCES profiles(id),
+  returned_at TIMESTAMPTZ DEFAULT NOW(),
+  notes TEXT
+);
+
+CREATE TABLE supplier_return_records (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  work_order_item_part_id UUID NOT NULL REFERENCES work_order_item_parts(id) ON DELETE CASCADE,
+  return_reason TEXT NOT NULL CHECK (return_reason IN ('wrong_ship', 'excess', 'damaged', 'cancel')),
+  quantity INTEGER NOT NULL DEFAULT 1,
+  supplier_name TEXT,
+  logistics_company TEXT,
+  tracking_no TEXT,
+  photos TEXT[] DEFAULT '{}',
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed')),
+  created_by UUID REFERENCES profiles(id),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -1023,6 +1111,45 @@ $$ LANGUAGE 'plpgsql';
 CREATE TRIGGER part_return_to_batch BEFORE UPDATE ON work_order_item_parts
   FOR EACH ROW EXECUTE FUNCTION return_part_to_batch();
 
+-- 领料扣减批次库存
+CREATE OR REPLACE FUNCTION fn_deduct_batch_on_picking()
+RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE part_batches
+  SET quantity = quantity - NEW.quantity
+  WHERE id = NEW.batch_id;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_deduct_batch_on_picking
+AFTER INSERT ON part_picking_records
+FOR EACH ROW
+EXECUTE FUNCTION fn_deduct_batch_on_picking();
+
+-- 退库恢复批次库存
+CREATE OR REPLACE FUNCTION fn_restore_batch_on_return()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_batch_id UUID;
+BEGIN
+  IF NEW.picking_record_id IS NOT NULL THEN
+    SELECT batch_id INTO v_batch_id FROM part_picking_records WHERE id = NEW.picking_record_id;
+    IF v_batch_id IS NOT NULL THEN
+      UPDATE part_batches
+      SET quantity = quantity + NEW.quantity
+      WHERE id = v_batch_id;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_restore_batch_on_return
+AFTER INSERT ON part_return_records
+FOR EACH ROW
+EXECUTE FUNCTION fn_restore_batch_on_return();
+
 -- ============================================================
 -- 15. 索引
 -- ============================================================
@@ -1062,12 +1189,27 @@ CREATE INDEX idx_part_batches_part ON part_batches(part_id);
 CREATE INDEX idx_inventory_checks_status ON inventory_checks(status);
 CREATE INDEX idx_inventory_check_items_check ON inventory_check_items(check_id);
 CREATE INDEX idx_purchase_returns_part ON purchase_returns(part_id);
+CREATE INDEX idx_purchase_orders_supplier ON purchase_orders(supplier_id);
+CREATE INDEX idx_purchase_orders_status ON purchase_orders(status);
+CREATE INDEX idx_purchase_order_items_order ON purchase_order_items(order_id);
+CREATE INDEX idx_purchase_order_items_part ON purchase_order_items(part_id);
+CREATE INDEX idx_purchase_order_items_work_order_part ON purchase_order_items(work_order_item_part_id);
 CREATE INDEX idx_work_order_item_mechanics ON work_order_item_mechanics(work_order_item_id);
+CREATE INDEX idx_work_order_item_construction_logs_item ON work_order_item_construction_logs(work_order_item_id);
+CREATE INDEX idx_part_picking_records_part ON part_picking_records(work_order_item_part_id);
+CREATE INDEX idx_part_return_records_part ON part_return_records(work_order_item_part_id);
+CREATE INDEX idx_supplier_return_records_part ON supplier_return_records(work_order_item_part_id);
 CREATE INDEX idx_knowledge_articles_category ON knowledge_articles(category_id);
 CREATE INDEX idx_knowledge_articles_type ON knowledge_articles(type);
 CREATE INDEX idx_knowledge_service_links_article ON knowledge_service_links(article_id);
 CREATE INDEX idx_knowledge_service_links_name ON knowledge_service_links(service_name_id);
 CREATE INDEX idx_knowledge_service_links_item ON knowledge_service_links(service_item_id);
+CREATE INDEX idx_training_courses_category ON training_courses(category);
+CREATE INDEX idx_training_assignments_employee ON training_assignments(employee_id);
+CREATE INDEX idx_training_assignments_course ON training_assignments(course_id);
+CREATE INDEX idx_training_progress_assignment ON training_progress(assignment_id);
+CREATE INDEX idx_behavior_checks_employee ON behavior_checks(employee_id);
+CREATE INDEX idx_behavior_tasks_assignee ON behavior_tasks(assignee_id);
 
 -- ============================================================
 -- 16. RLS（简化版：所有登录用户可读写，后续按权限细化）
@@ -1110,8 +1252,11 @@ ALTER TABLE part_batches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_checks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_check_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_returns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE purchase_order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mechanic_levels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE work_order_item_mechanics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE work_order_item_construction_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE part_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE part_names ENABLE ROW LEVEL SECURITY;
 ALTER TABLE part_brands ENABLE ROW LEVEL SECURITY;
@@ -1127,6 +1272,14 @@ ALTER TABLE work_order_inspection_media ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vehicle_maintenance_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vehicle_maintenance_template_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vehicle_maintenance_template_parts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE part_picking_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE part_return_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplier_return_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training_courses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE behavior_checks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE behavior_tasks ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "auth_full_access" ON customers FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON vehicles FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -1165,8 +1318,11 @@ CREATE POLICY "auth_full_access" ON part_batches FOR ALL TO authenticated USING 
 CREATE POLICY "auth_full_access" ON inventory_checks FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON inventory_check_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON purchase_returns FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_full_access" ON purchase_orders FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_full_access" ON purchase_order_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON mechanic_levels FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON work_order_item_mechanics FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_full_access" ON work_order_item_construction_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON part_categories FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON part_names FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON part_brands FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -1183,8 +1339,87 @@ CREATE POLICY "auth_full_access" ON work_order_inspection_media FOR ALL TO authe
 CREATE POLICY "auth_full_access" ON vehicle_maintenance_templates FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON vehicle_maintenance_template_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON vehicle_maintenance_template_parts FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_full_access" ON part_picking_records FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_full_access" ON part_return_records FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_full_access" ON supplier_return_records FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_full_access" ON training_courses FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_full_access" ON training_assignments FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_full_access" ON training_progress FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_full_access" ON behavior_checks FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_full_access" ON behavior_tasks FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- 18. 员工培训学习系统
+-- ============================================================
+CREATE TABLE training_courses (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  description TEXT,
+  category TEXT CHECK (category IN ('safety','technical','service','management')),
+  content_type TEXT CHECK (content_type IN ('video','document','quiz')),
+  content_url TEXT,
+  content_text TEXT,
+  duration_minutes INTEGER,
+  passing_score INTEGER DEFAULT 60,
+  is_required BOOLEAN DEFAULT FALSE,
+  created_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE training_assignments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  course_id UUID NOT NULL REFERENCES training_courses(id) ON DELETE CASCADE,
+  employee_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  assigned_by UUID REFERENCES profiles(id),
+  due_date DATE,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','in_progress','completed')),
+  score INTEGER,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE training_progress (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  assignment_id UUID NOT NULL REFERENCES training_assignments(id) ON DELETE CASCADE,
+  progress_pct INTEGER DEFAULT 0 CHECK (progress_pct BETWEEN 0 AND 100),
+  last_accessed_at TIMESTAMPTZ,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- 19. 员工日常行为管理
+-- ============================================================
+CREATE TABLE behavior_checks (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  check_type TEXT NOT NULL CHECK (check_type IN ('appearance','venue','tools','other')),
+  employee_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  checker_id UUID REFERENCES profiles(id),
+  score INTEGER NOT NULL DEFAULT 0,
+  notes TEXT,
+  photos TEXT[] DEFAULT '{}',
+  checked_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE behavior_tasks (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  description TEXT,
+  assignee_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  assigned_by UUID REFERENCES profiles(id),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','completed')),
+  score_reward INTEGER DEFAULT 0,
+  completed_at TIMESTAMPTZ,
+  photos TEXT[] DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- 17. Storage Buckets
 -- ============================================================
 INSERT INTO storage.buckets (id, name, public) VALUES ('work-order-media', 'work-order-media', true)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('training-media', 'training-media', true)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('behavior-media', 'behavior-media', true)
 ON CONFLICT (id) DO NOTHING;

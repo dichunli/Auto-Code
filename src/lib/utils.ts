@@ -21,11 +21,12 @@ export function formatCurrency(amount: number | null) {
 export function getStatusLabel(status: string) {
   const map: Record<string, string> = {
     received: "已接车",
-    diagnosing: "诊断中",
-    quoted: "待确认",
+    pending_diagnosis: "待诊断",
+    pending_repair: "待维修",
     repairing: "维修中",
-    quality_check: "质检中",
-    completed: "待结算",
+    pending_quality_check: "待质检",
+    pending_close: "待结单",
+    pending_settlement: "待结算",
     settled: "已结算",
     delivered: "已交车",
   };
@@ -35,11 +36,12 @@ export function getStatusLabel(status: string) {
 export function getStatusColor(status: string) {
   const map: Record<string, string> = {
     received: "bg-gray-100 text-gray-800",
-    diagnosing: "bg-yellow-100 text-yellow-800",
-    quoted: "bg-orange-100 text-orange-800",
+    pending_diagnosis: "bg-yellow-100 text-yellow-800",
+    pending_repair: "bg-orange-100 text-orange-800",
     repairing: "bg-blue-100 text-blue-800",
-    quality_check: "bg-purple-100 text-purple-800",
-    completed: "bg-emerald-100 text-emerald-800",
+    pending_quality_check: "bg-purple-100 text-purple-800",
+    pending_close: "bg-indigo-100 text-indigo-800",
+    pending_settlement: "bg-emerald-100 text-emerald-800",
     settled: "bg-green-100 text-green-800",
     delivered: "bg-slate-100 text-slate-800",
   };

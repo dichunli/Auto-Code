@@ -11,6 +11,7 @@ const navItems = [
   { href: "/work-orders", label: "工单管理" },
   { href: "/customers", label: "客户车辆" },
   { href: "/inventory", label: "配件库存" },
+  { href: "/procurement", label: "采购管理" },
   { href: "/service-items", label: "维修项目" },
   { href: "/knowledge", label: "知识库" },
 ];
