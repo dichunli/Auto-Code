@@ -99,7 +99,7 @@ export default function NewEmployeePage() {
       const { data: { session: oldSession } } = await supabase.auth.getSession();
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        phone: accountPhone,
+        email: accountPhone + "@auto.local",
         password,
         options: {
           data: { full_name: fullName },

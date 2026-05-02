@@ -42,7 +42,7 @@ export default async function WorkOrdersPage({
         action={{ href: "/work-orders/new", label: "新建工单" }}
       />
 
-      <div className="flex items-center gap-3 mb-6 overflow-x-auto pb-1">
+      <div className="flex items-center gap-3 mb-4 overflow-x-auto pb-1">
         <div className="flex gap-2">
           {statusFilters.map((filter) => (
             <Link
@@ -58,9 +58,18 @@ export default async function WorkOrdersPage({
             </Link>
           ))}
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-6">
+        <Link
+          href="/work-orders"
+          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200"
+        >
+          列表视图
+        </Link>
         <Link
           href="/work-orders/board"
-          className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 whitespace-nowrap"
+          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
         >
           维修看板
         </Link>
@@ -77,6 +86,7 @@ export default async function WorkOrdersPage({
                 <th className="px-6 py-3 text-left font-medium text-gray-500">状态</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">金额</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">创建时间</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -100,11 +110,19 @@ export default async function WorkOrdersPage({
                   </td>
                   <td className="px-6 py-4 text-gray-900">{formatCurrency(order.total_cost)}</td>
                   <td className="px-6 py-4 text-gray-500">{formatDate(order.created_at)}</td>
+                  <td className="px-6 py-4">
+                    <Link
+                      href={`/work-orders/${order.id}`}
+                      className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      查看
+                    </Link>
+                  </td>
                 </tr>
               ))}
               {(!orders || orders.length === 0) && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
                     暂无工单数据
                   </td>
                 </tr>

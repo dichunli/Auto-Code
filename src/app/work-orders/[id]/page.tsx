@@ -222,6 +222,15 @@ export default async function WorkOrderDetailPage({
     <div>
       <PageHeader title={`工单详情: ${order.order_no}`} />
 
+      <div className="flex items-center gap-2 mb-6">
+        <Link
+          href="/work-orders"
+          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+        >
+          ← 返回列表
+        </Link>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 左侧主内容 */}
         <div className="lg:col-span-2 space-y-6">

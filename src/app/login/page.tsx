@@ -23,15 +23,21 @@ export default function LoginPage() {
 
     const credentials: any = { password };
     if (isPhone(account)) {
-      credentials.phone = account;
+      credentials.email = account + "@auto.local";
     } else {
       credentials.email = account;
     }
 
-    const { error } = await supabase.auth.signInWithPassword(credentials);
+    const { data, error } = await supabase.auth.signInWithPassword(credentials);
 
     if (error) {
       setError(error.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!data.session) {
+      setError("登录成功但未获取到会话，请检查网络或 Supabase 配置");
       setLoading(false);
       return;
     }

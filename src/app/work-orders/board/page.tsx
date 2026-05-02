@@ -31,6 +31,21 @@ export default async function WorkOrderBoardPage() {
         description="实时查看所有维修项目的施工状态"
       />
 
+      <div className="flex items-center gap-2 mb-6">
+        <Link
+          href="/work-orders"
+          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+        >
+          列表视图
+        </Link>
+        <Link
+          href="/work-orders/board"
+          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200"
+        >
+          维修看板
+        </Link>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {columns.map((col) => {
           const colItems = items?.filter((i: any) => i.status === col.key) || [];
