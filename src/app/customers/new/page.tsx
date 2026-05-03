@@ -4,6 +4,26 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { VehicleModelSearch } from "@/components/VehicleModelSearch";
+import { ImageUploader } from "@/components/ImageUploader";
+
+interface VehicleForm {
+  id: string;
+  plate_number: string;
+  vin: string;
+  brand: string;
+  model: string;
+  engine_no: string;
+  chassis_code: string;
+  transmission_type: string;
+  transmission_code: string;
+  color: string;
+  year: string;
+  mileage: string;
+  notes: string;
+}
+
+let vehicleIdCounter = 0;
 
 export default function NewCustomerPage() {
   const router = useRouter();
@@ -13,6 +33,7 @@ export default function NewCustomerPage() {
   const [customer, setCustomer] = useState({
     name: "",
     phone: "",
+    gender: "",
     email: "",
     address: "",
     company: "",
@@ -20,21 +41,61 @@ export default function NewCustomerPage() {
     notes: "",
   });
 
-  const [vehicle, setVehicle] = useState({
-    plate_number: "",
-    brand: "",
-    model: "",
-    vin: "",
-    engine_no: "",
-    color: "",
-    year: "",
-    mileage: "",
-    notes: "",
-  });
+  const [customerPhotos, setCustomerPhotos] = useState<string[]>([]);
+
+  const [vehicles, setVehicles] = useState<VehicleForm[]>([]);
+
+  function addVehicle() {
+    vehicleIdCounter++;
+    setVehicles((prev) => [
+      ...prev,
+      {
+        id: `v-${vehicleIdCounter}`,
+        plate_number: "黑",
+        vin: "",
+        brand: "",
+        model: "",
+        engine_no: "",
+        chassis_code: "",
+        transmission_type: "",
+        transmission_code: "",
+        color: "",
+        year: "",
+        mileage: "",
+        notes: "",
+      },
+    ]);
+  }
+
+  function removeVehicle(id: string) {
+    setVehicles((prev) => prev.filter((v) => v.id !== id));
+  }
+
+  function updateVehicle(id: string, field: keyof VehicleForm, value: string) {
+    setVehicles((prev) =>
+      prev.map((v) => (v.id === id ? { ...v, [field]: value } : v))
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!customer.name.trim() || !customer.phone.trim()) {
+      alert("请填写客户姓名和电话");
+      return;
+    }
     setLoading(true);
+
+    // 手机号唯一性校验
+    const { data: existingPhone } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("phone", customer.phone.trim())
+      .maybeSingle();
+    if (existingPhone) {
+      alert("该手机号已存在，请更换");
+      setLoading(false);
+      return;
+    }
 
     try {
       const { data: customerData, error: customerError } = await supabase
@@ -42,6 +103,7 @@ export default function NewCustomerPage() {
         .insert({
           name: customer.name.trim(),
           phone: customer.phone.trim(),
+          gender: customer.gender || null,
           email: customer.email.trim() || null,
           address: customer.address.trim() || null,
           company: customer.company.trim() || null,
@@ -51,32 +113,47 @@ export default function NewCustomerPage() {
         .select("id")
         .single();
 
-      if (customerError) throw new Error(customerError.message);
-      if (!customerData?.id) throw new Error("创建客户失败");
+      if (customerError) throw new Error("客户保存失败: " + customerError.message);
+      if (!customerData?.id) throw new Error("创建客户后未返回 ID");
 
       const customerId = customerData.id;
 
-      if (vehicle.plate_number.trim()) {
-        const { error: vehicleError } = await supabase.from("vehicles").insert({
-          customer_id: customerId,
-          plate_number: vehicle.plate_number.trim(),
-          brand: vehicle.brand.trim() || null,
-          model: vehicle.model.trim() || null,
-          vin: vehicle.vin.trim() || null,
-          engine_no: vehicle.engine_no.trim() || null,
-          color: vehicle.color.trim() || null,
-          year: vehicle.year ? parseInt(vehicle.year) : null,
-          mileage: vehicle.mileage ? parseInt(vehicle.mileage) : null,
-          notes: vehicle.notes.trim() || null,
-        });
+      // 保存客户照片
+      const photoInserts: { customer_id: string; category: string; url: string }[] = [];
+      customerPhotos.forEach((url) =>
+        photoInserts.push({ customer_id: customerId, category: "photo", url })
+      );
+      if (photoInserts.length > 0) {
+        await supabase.from("customer_photos").insert(photoInserts);
+      }
 
-        if (vehicleError) throw new Error(vehicleError.message);
+      // 批量创建车辆
+      const validVehicles = vehicles.filter((v) => v.plate_number.trim());
+      if (validVehicles.length > 0) {
+        const inserts = validVehicles.map((v) => ({
+          customer_id: customerId,
+          plate_number: v.plate_number.trim(),
+          vin: v.vin.trim() || null,
+          brand: v.brand.trim() || null,
+          model: v.model.trim() || null,
+          engine_no: v.engine_no.trim() || null,
+          chassis_code: v.chassis_code.trim() || null,
+          transmission_type: v.transmission_type.trim() || null,
+          transmission_code: v.transmission_code.trim() || null,
+          color: v.color.trim() || null,
+          year: v.year ? parseInt(v.year) : null,
+          mileage: v.mileage ? parseInt(v.mileage) : null,
+          notes: v.notes.trim() || null,
+        }));
+
+        const { error: vehicleError } = await supabase.from("vehicles").insert(inserts);
+        if (vehicleError) throw new Error("车辆保存失败: " + vehicleError.message);
       }
 
       router.push("/customers");
       router.refresh();
     } catch (err: any) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      alert(err instanceof Error ? err.message : String(err));
       setLoading(false);
     }
   }
@@ -110,6 +187,33 @@ export default function NewCustomerPage() {
                   value={customer.phone}
                   onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">性别</label>
+                <div className="flex gap-4 mt-2">
+                  <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="gender"
+                      value="男"
+                      checked={customer.gender === "男"}
+                      onChange={(e) => setCustomer({ ...customer, gender: e.target.value })}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    男
+                  </label>
+                  <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="gender"
+                      value="女"
+                      checked={customer.gender === "女"}
+                      onChange={(e) => setCustomer({ ...customer, gender: e.target.value })}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    女
+                  </label>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
@@ -157,96 +261,177 @@ export default function NewCustomerPage() {
                 onChange={(e) => setCustomer({ ...customer, notes: e.target.value })}
               />
             </div>
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">客户照片</label>
+              <ImageUploader
+                bucket="customer-media"
+                folder="customer-media"
+                maxImages={20}
+                existingImages={customerPhotos}
+                onUpload={setCustomerPhotos}
+              />
+            </div>
           </div>
 
           {/* 车辆信息 */}
           <div className="border-t border-gray-100 pt-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">车辆信息（可选）</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">车牌号</label>
-                <input
-                  type="text"
-                  placeholder="如：京A12345"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={vehicle.plate_number}
-                  onChange={(e) => setVehicle({ ...vehicle, plate_number: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">品牌</label>
-                <input
-                  type="text"
-                  placeholder="如：大众"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={vehicle.brand}
-                  onChange={(e) => setVehicle({ ...vehicle, brand: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">型号</label>
-                <input
-                  type="text"
-                  placeholder="如：迈腾"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={vehicle.model}
-                  onChange={(e) => setVehicle({ ...vehicle, model: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">VIN 码</label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={vehicle.vin}
-                  onChange={(e) => setVehicle({ ...vehicle, vin: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">发动机号</label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={vehicle.engine_no}
-                  onChange={(e) => setVehicle({ ...vehicle, engine_no: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">颜色</label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={vehicle.color}
-                  onChange={(e) => setVehicle({ ...vehicle, color: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">年份</label>
-                <input
-                  type="number"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={vehicle.year}
-                  onChange={(e) => setVehicle({ ...vehicle, year: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">当前里程</label>
-                <input
-                  type="number"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={vehicle.mileage}
-                  onChange={(e) => setVehicle({ ...vehicle, mileage: e.target.value })}
-                />
-              </div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-gray-900">车辆信息（可选）</h2>
+              <button
+                type="button"
+                onClick={addVehicle}
+                className="px-3 py-1.5 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+              >
+                + 添加车辆
+              </button>
             </div>
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">车辆备注</label>
-              <textarea
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={vehicle.notes}
-                onChange={(e) => setVehicle({ ...vehicle, notes: e.target.value })}
-              />
+
+            {vehicles.length === 0 && (
+              <p className="text-sm text-gray-400">点击"添加车辆"按钮为客户添加车辆</p>
+            )}
+
+            <div className="space-y-4">
+              {vehicles.map((v, idx) => (
+                <div key={v.id} className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-gray-700">车辆 #{idx + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeVehicle(v.id)}
+                      className="text-xs text-red-600 hover:text-red-700"
+                    >
+                      删除
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">车牌号</label>
+                      <input
+                        type="text"
+                        placeholder="如：京A12345"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.plate_number}
+                        onChange={(e) => updateVehicle(v.id, "plate_number", e.target.value.toUpperCase())}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">VIN 码</label>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.vin}
+                        onChange={(e) => updateVehicle(v.id, "vin", e.target.value.toUpperCase())}
+                      />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className="block text-xs text-gray-500 mb-1">车型信息（从车型库选择）</label>
+                      <VehicleModelSearch
+                        placeholder="智能模糊搜索：品牌、车系、车型、厂商、发动机、底盘代号..."
+                        onSelect={(m) => {
+                          updateVehicle(v.id, "brand", m.brand);
+                          updateVehicle(v.id, "model", m.model);
+                          updateVehicle(v.id, "engine_no", m.engine_no);
+                          updateVehicle(v.id, "chassis_code", m.chassis_code);
+                          updateVehicle(v.id, "transmission_type", m.transmission_type);
+                          updateVehicle(v.id, "transmission_code", m.transmission_code);
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">品牌</label>
+                      <input
+                        type="text"
+                        placeholder="如：大众"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.brand}
+                        onChange={(e) => updateVehicle(v.id, "brand", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">型号</label>
+                      <input
+                        type="text"
+                        placeholder="如：迈腾"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.model}
+                        onChange={(e) => updateVehicle(v.id, "model", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">发动机型号</label>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.engine_no}
+                        onChange={(e) => updateVehicle(v.id, "engine_no", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">底盘型号</label>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.chassis_code}
+                        onChange={(e) => updateVehicle(v.id, "chassis_code", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">变速箱形式</label>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.transmission_type}
+                        onChange={(e) => updateVehicle(v.id, "transmission_type", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">变速箱型号</label>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.transmission_code}
+                        onChange={(e) => updateVehicle(v.id, "transmission_code", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">颜色</label>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.color}
+                        onChange={(e) => updateVehicle(v.id, "color", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">年份</label>
+                      <input
+                        type="number"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.year}
+                        onChange={(e) => updateVehicle(v.id, "year", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">当前里程</label>
+                      <input
+                        type="number"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.mileage}
+                        onChange={(e) => updateVehicle(v.id, "mileage", e.target.value)}
+                      />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className="block text-xs text-gray-500 mb-1">备注</label>
+                      <textarea
+                        rows={1}
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={v.notes}
+                        onChange={(e) => updateVehicle(v.id, "notes", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

@@ -59,7 +59,7 @@ export default function EditPartSpecificationPage() {
       const { data } = await supabase
         .from("part_names")
         .select("id, name, part_categories(name)")
-        .ilike("name", `%${pnQuery.trim()}%`)
+        .or(`name.ilike.%${pnQuery.trim()}%,search_keywords.ilike.%${pnQuery.trim()}%`)
         .order("name")
         .limit(10);
       setPnResults(data || []);

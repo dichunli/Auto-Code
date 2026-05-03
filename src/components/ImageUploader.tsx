@@ -8,9 +8,11 @@ interface Props {
   onUpload: (paths: string[]) => void;
   existingImages?: string[];
   maxImages?: number;
+  bucket?: string;
+  folder?: string;
 }
 
-export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: Props) {
+export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, bucket = "work-order-media", folder = "work-order-media" }: Props) {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -33,16 +35,16 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
         const compressed = await compressImage(file, 150);
         const ext = file.name.split(".").pop() || "jpg";
         const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-        const filePath = `work-order-media/${fileName}`;
+        const filePath = `${folder}/${fileName}`;
 
-        const { error } = await supabase.storage.from("work-order-media").upload(fileName, compressed, {
+        const { error } = await supabase.storage.from(bucket).upload(fileName, compressed, {
           contentType: "image/jpeg",
           upsert: false,
         });
 
         if (error) throw error;
 
-        const { data: urlData } = supabase.storage.from("work-order-media").getPublicUrl(fileName);
+        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
         const path = urlData?.publicUrl || filePath;
 
         const next = [...images, path];
@@ -54,7 +56,7 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
         setUploading(false);
       }
     },
-    [images, maxImages, onUpload, supabase]
+    [images, maxImages, onUpload, supabase, bucket, folder]
   );
 
   // 粘贴上传

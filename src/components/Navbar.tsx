@@ -10,6 +10,7 @@ const navItems = [
   { href: "/", label: "仪表盘" },
   { href: "/work-orders", label: "工单管理" },
   { href: "/customers", label: "客户车辆" },
+  { href: "/vehicle-models", label: "车型库" },
   { href: "/appointments", label: "客户预约" },
   { href: "/inventory", label: "配件库存" },
   { href: "/procurement", label: "采购管理" },
