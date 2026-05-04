@@ -5,8 +5,9 @@ interface PageHeaderProps {
   title: string;
   description?: string;
   action?: {
-    href: string;
+    href?: string;
     label: string;
+    onClick?: () => void;
   };
   className?: string;
 }
@@ -21,12 +22,22 @@ export function PageHeader({ title, description, action, className }: PageHeader
         )}
       </div>
       {action && (
-        <Link
-          href={action.href}
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          {action.label}
-        </Link>
+        action.onClick ? (
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            {action.label}
+          </button>
+        ) : (
+          <Link
+            href={action.href || "#"}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            {action.label}
+          </Link>
+        )
       )}
     </div>
   );

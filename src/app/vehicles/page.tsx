@@ -8,6 +8,25 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
   const searchParams = (await Promise.resolve(props.searchParams || {})) as Record<string, string | undefined>;
   const supabase = await createClient();
 
+  // 先按车主/单位名称查关联 ID，再过滤车辆
+  let customerIds: string[] | null = null;
+  if (searchParams.customer) {
+    const { data } = await supabase
+      .from("customers")
+      .select("id")
+      .or(`name.ilike.%${searchParams.customer}%,phone.ilike.%${searchParams.customer}%`);
+    customerIds = data?.map((c) => c.id) || [];
+  }
+
+  let companyIds: string[] | null = null;
+  if (searchParams.company) {
+    const { data } = await supabase
+      .from("companies")
+      .select("id")
+      .ilike("name", `%${searchParams.company}%`);
+    companyIds = data?.map((c) => c.id) || [];
+  }
+
   let query = supabase
     .from("vehicles")
     .select("id, plate_number, brand, model, vin, engine_no, color, year, mileage, notes, customer_id, customers(id, name, phone), companies(id, name)")
@@ -17,6 +36,14 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
   if (searchParams.brand) query = query.ilike("brand", `%${searchParams.brand}%`);
   if (searchParams.model) query = query.ilike("model", `%${searchParams.model}%`);
   if (searchParams.vin) query = query.ilike("vin", `%${searchParams.vin}%`);
+  if (customerIds !== null) {
+    if (customerIds.length > 0) query = query.in("customer_id", customerIds);
+    else query = query.eq("customer_id", "no-match");
+  }
+  if (companyIds !== null) {
+    if (companyIds.length > 0) query = query.in("company_id", companyIds);
+    else query = query.eq("company_id", "no-match");
+  }
 
   const { data: vehicles } = await query;
 
@@ -32,7 +59,7 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
 
       {/* 搜索栏 */}
       <form method="GET" className="mb-4 bg-white rounded-xl border border-gray-200 p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <input
             name="plate"
             type="text"
@@ -59,6 +86,20 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
             type="text"
             defaultValue={searchParams.vin}
             placeholder="VIN 码"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          />
+          <input
+            name="customer"
+            type="text"
+            defaultValue={searchParams.customer}
+            placeholder="车主（姓名/电话）"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          />
+          <input
+            name="company"
+            type="text"
+            defaultValue={searchParams.company}
+            placeholder="所属单位"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
           />
         </div>

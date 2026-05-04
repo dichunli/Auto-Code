@@ -25,6 +25,7 @@ export default function EditPartNamePage() {
     category_id: "",
     unit: "件",
     search_keywords: "",
+    default_quantity: "",
     auto_link_vehicle_model: false,
     is_consumable: false,
     sales_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
@@ -70,6 +71,7 @@ export default function EditPartNamePage() {
         category_id: part.category_id || "",
         unit: part.unit || "件",
         search_keywords: part.search_keywords || "",
+        default_quantity: part.default_quantity?.toString() || "",
         auto_link_vehicle_model: part.auto_link_vehicle_model || false,
         is_consumable: part.is_consumable || false,
         sales_type: part.sales_commission_type || "",
@@ -178,6 +180,7 @@ export default function EditPartNamePage() {
     const { error } = await supabase.from("part_names").update({
       name: form.name.trim(), category_id: form.category_id, unit: form.unit,
       search_keywords: form.search_keywords || null,
+      default_quantity: form.default_quantity ? parseInt(form.default_quantity) : null,
       auto_link_vehicle_model: form.auto_link_vehicle_model, is_consumable: form.is_consumable,
       sales_commission_type: form.sales_type || null, sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
       diagnosis_commission_type: form.diagnosis_type || null, diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
@@ -251,6 +254,10 @@ export default function EditPartNamePage() {
           <label className="block text-sm font-medium text-gray-700 mb-1">搜索关键词</label>
           <input className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.search_keywords} onChange={(e) => setForm({ ...form, search_keywords: e.target.value })} />
           <p className="text-xs text-gray-400 mt-1">用于模糊搜索，多个词用空格分隔</p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">默认数量</label>
+          <input type="number" min={1} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="关联到维修项目时的默认使用数量，留空则为1" value={form.default_quantity} onChange={(e) => setForm({ ...form, default_quantity: e.target.value })} />
         </div>
 
         <SearchLinkSection

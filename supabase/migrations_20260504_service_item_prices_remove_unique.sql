@@ -1,0 +1,2 @@
+-- 允许同一个维修项目对同一个车型有多条定价记录
+ALTER TABLE service_item_prices DROP CONSTRAINT IF EXISTS service_item_prices_service_item_id_vehicle_model_id_key;

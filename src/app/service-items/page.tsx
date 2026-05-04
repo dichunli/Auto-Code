@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
+import { DeleteButton } from "./DeleteButton";
 
 export default async function ServiceItemsPage() {
   const supabase = await createClient();
@@ -25,6 +26,7 @@ export default async function ServiceItemsPage() {
                 <th className="px-6 py-3 text-left font-medium text-gray-500">标准工时</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">默认价格</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">车型定价</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -40,10 +42,16 @@ export default async function ServiceItemsPage() {
                       {item.is_vehicle_specific ? "按车型定价" : "通用价格"}
                     </span>
                   </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <Link href={`/service-items/${item.id}/edit`} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">编辑</Link>
+                      <DeleteButton id={item.id} name={item.name} />
+                    </div>
+                  </td>
                 </tr>
               ))}
               {(!items || items.length === 0) && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">暂无维修项目</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400">暂无维修项目</td></tr>
               )}
             </tbody>
           </table>

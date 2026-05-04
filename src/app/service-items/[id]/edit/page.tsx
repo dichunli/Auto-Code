@@ -1,11 +1,17 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import VehiclePriceModal from "@/components/VehiclePriceModal";
 import VehiclePriceEditModal from "@/components/VehiclePriceEditModal";
+
+interface LinkedPart {
+  id: string;
+  name: string;
+  quantity: number | null;
+}
 
 interface VehiclePrice {
   id?: string;
@@ -18,12 +24,6 @@ interface VehiclePrice {
   发动机型号: string | null;
   底盘型号: string | null;
   变速箱型号: string | null;
-}
-
-interface LinkedPart {
-  id: string;
-  name: string;
-  quantity: number | null;
 }
 
 interface ServiceNameResult {
@@ -47,10 +47,13 @@ function makeGroupKey(p: { price: number; vip_price: number | null; customer_par
   return `${p.price.toFixed(2)}_${fmt(p.vip_price)}_${fmt(p.customer_parts_price)}_${fmt(p.company_price)}`;
 }
 
-export default function NewServiceItemPage() {
+export default function EditServiceItemPage() {
   const router = useRouter();
+  const params = useParams();
+  const id = params.id as string;
   const supabase = createClient();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
 
   // 项目名称搜索
@@ -61,6 +64,7 @@ export default function NewServiceItemPage() {
   const [showDirectCreate, setShowDirectCreate] = useState(false);
 
   const [form, setForm] = useState({
+    code: "",
     category_id: "",
     service_name_id: "",
     name: "",
@@ -156,7 +160,7 @@ export default function NewServiceItemPage() {
     const t = setTimeout(async () => {
       if (!spVehicleQuery.trim()) { setSpVehicleResults([]); return; }
       const q = spVehicleQuery.trim();
-      const { data } = await supabase.from("vehicles").select("id, plate_number, brand, model, customers(name)").ilike("plate_number", `%${q}%`).limit(10);
+      const { data } = await supabase.from("vehicles").select("id, plate_number, brand, model, customer_id, customers(name)").ilike("plate_number", `%${q}%`).limit(10);
       setSpVehicleResults((data as any) || []);
     }, 300);
     return () => clearTimeout(t);
@@ -196,6 +200,95 @@ export default function NewServiceItemPage() {
       .order("name")
       .then(({ data }) => setCategories(data || []));
   }, [supabase]);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const { data: item } = await supabase.from("service_items").select("*").eq("id", id).single();
+        if (!item) { alert("维修项目不存在"); router.push("/service-items"); return; }
+        const { data: vehicleData } = await supabase
+          .from("service_item_prices")
+          .select("id, vehicle_model_id, price, vip_price, customer_parts_price, company_price, vehicle_models(品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号)")
+          .eq("service_item_id", id);
+        setForm({
+          code: item.code || "",
+          category_id: item.category_id || "",
+          service_name_id: item.service_name_id || "",
+          name: item.name || "",
+          standard_hours: item.standard_hours?.toString() || "",
+          description: item.description || "",
+          default_price: item.default_price?.toString() || "",
+          vip_price: item.vip_price?.toString() || "",
+          customer_parts_price: item.customer_parts_price?.toString() || "",
+          company_price: item.company_price?.toString() || "",
+          sales_type: item.sales_commission_type || "",
+          sales_value: item.sales_commission_value?.toString() || "",
+          diagnosis_type: item.diagnosis_commission_type || "",
+          diagnosis_value: item.diagnosis_commission_value?.toString() || "",
+          repair_type: item.repair_commission_type || "",
+          repair_value: item.repair_commission_value?.toString() || "",
+          qc_type: item.qc_commission_type || "",
+          qc_value: item.qc_commission_value?.toString() || "",
+        });
+        if (item.service_name_id) {
+          setSelectedNameId(item.service_name_id);
+          const { data: partLinks } = await supabase
+            .from("service_name_part_names")
+            .select("part_name_id, quantity")
+            .eq("service_name_id", item.service_name_id)
+            .order("sort_order", { ascending: true });
+          if (partLinks && partLinks.length > 0) {
+            const partIds = partLinks.map((l: any) => l.part_name_id);
+            const { data: partNamesData } = await supabase.from("part_names").select("id, name").in("id", partIds);
+            const nameMap = new Map((partNamesData || []).map((p: any) => [p.id, p.name]));
+            const parts = partLinks
+              .map((l: any) => ({ id: l.part_name_id, name: nameMap.get(l.part_name_id), quantity: l.quantity ?? null }))
+              .filter((x: any) => x.name) as LinkedPart[];
+            setLinkedParts(parts);
+          } else {
+            setLinkedParts([]);
+          }
+        } else {
+          setLinkedParts([]);
+        }
+        setVehiclePrices((vehicleData || []).map((v: any) => {
+          const m = v.vehicle_models;
+          const parts = [m?.品牌, m?.车系, m?.车型].filter(Boolean);
+          if (m?.年款) parts.push(m.年款 + "款");
+          if (m?.排量) parts.push(m.排量);
+          return {
+            id: v.id,
+            vehicle_model_id: v.vehicle_model_id,
+            vehicle_name: parts.join(" ") || "车型#" + v.vehicle_model_id,
+            price: v.price,
+            vip_price: v.vip_price ?? null,
+            customer_parts_price: v.customer_parts_price ?? null,
+            company_price: v.company_price ?? null,
+            发动机型号: m?.发动机型号 || null,
+            底盘型号: m?.底盘型号 || null,
+            变速箱型号: m?.变速箱型号 || null,
+          };
+        }));
+
+        // 加载指定用户价格
+        const { data: specialData } = await supabase
+          .from("service_item_special_prices")
+          .select("company_id, customer_id, vehicle_id, price, companies(name), customers(name), vehicles(plate_number, brand, model)")
+          .eq("service_item_id", id);
+        setSpecialPrices((specialData || []).map((s: any) => ({
+          company_id: s.company_id || undefined,
+          company_name: s.companies?.name || undefined,
+          customer_id: s.customer_id || undefined,
+          customer_name: s.customers?.name || undefined,
+          vehicle_id: s.vehicle_id || undefined,
+          vehicle_info: s.vehicles ? `${s.vehicles.plate_number}${s.vehicles.brand ? ` · ${s.vehicles.brand}` : ""}${s.vehicles.model ? ` ${s.vehicles.model}` : ""}` : undefined,
+          price: s.price,
+        })));
+      } catch (err: any) { console.error("加载失败:", err); alert("加载数据失败: " + (err.message || "未知错误")); }
+      finally { setLoading(false); }
+    }
+    load();
+  }, [id, supabase, router]);
 
   const searchServiceNames = useCallback(
     async (q: string) => {
@@ -419,15 +512,11 @@ export default function NewServiceItemPage() {
       alert("请填写项目名称和所属分类");
       return;
     }
-    setLoading(true);
+    setSaving(true);
 
-    // 自动生成编码
-    const autoCode = `XM-${Date.now().toString(36).toUpperCase().slice(-6)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
-
-    const { data: inserted, error } = await supabase
+    const { error } = await supabase
       .from("service_items")
-      .insert({
-        code: autoCode,
+      .update({
         category_id: form.category_id,
         service_name_id: form.service_name_id || null,
         name: form.name.trim(),
@@ -446,22 +535,24 @@ export default function NewServiceItemPage() {
         qc_commission_type: form.qc_type || null,
         qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
       })
-      .select("id")
-      .single();
+      .eq("id", id);
 
-    if (error || !inserted) {
-      alert("保存失败: " + (error?.message || "未知错误"));
-      setLoading(false);
+    if (error) {
+      alert("保存失败: " + error.message);
+      setSaving(false);
       return;
     }
 
-    const itemId = inserted.id;
-
-    // 保存车型定价
+    const { error: delVpError } = await supabase.from("service_item_prices").delete().eq("service_item_id", id);
+    if (delVpError) {
+      alert("删除旧车型定价失败: " + delVpError.message);
+      setSaving(false);
+      return;
+    }
     if (vehiclePrices.length > 0) {
       const { error: vpError } = await supabase.from("service_item_prices").insert(
         vehiclePrices.map((p) => ({
-          service_item_id: itemId,
+          service_item_id: id,
           vehicle_model_id: p.vehicle_model_id,
           price: p.price,
           vip_price: p.vip_price,
@@ -471,16 +562,21 @@ export default function NewServiceItemPage() {
       );
       if (vpError) {
         alert("车型定价保存失败: " + vpError.message);
-        setLoading(false);
+        setSaving(false);
         return;
       }
     }
 
-    // 保存指定用户价格
+    const { error: delSpError } = await supabase.from("service_item_special_prices").delete().eq("service_item_id", id);
+    if (delSpError) {
+      alert("删除旧指定用户价格失败: " + delSpError.message);
+      setSaving(false);
+      return;
+    }
     if (specialPrices.length > 0) {
       const { error: spError } = await supabase.from("service_item_special_prices").insert(
         specialPrices.map((p) => ({
-          service_item_id: itemId,
+          service_item_id: id,
           company_id: p.company_id || null,
           customer_id: p.customer_id || null,
           vehicle_id: p.vehicle_id || null,
@@ -489,7 +585,7 @@ export default function NewServiceItemPage() {
       );
       if (spError) {
         alert("指定用户价格保存失败: " + spError.message);
-        setLoading(false);
+        setSaving(false);
         return;
       }
     }
@@ -540,13 +636,27 @@ export default function NewServiceItemPage() {
     );
   }
 
+  if (loading) {
+    return (
+      <div>
+        <PageHeader title="编辑维修项目" />
+        <div className="text-sm text-gray-500 py-8">加载中...</div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <PageHeader title="新建维修项目" />
+      <PageHeader title="编辑维修项目" />
       <form onSubmit={handleSubmit}>
         <div className="flex gap-6 items-start">
           {/* 左侧主表单 */}
           <div className="flex-1 min-w-0 max-w-3xl bg-white rounded-xl border border-gray-200 p-6 space-y-6">
+            {/* 项目编码 */}
+            {form.code && (
+              <div className="text-xs text-gray-400">编码：{form.code}</div>
+            )}
+
             {/* 项目名称搜索 */}
             <div className="space-y-3">
               <label className="block text-sm font-medium text-gray-700">维修项目名称 *</label>
@@ -920,10 +1030,10 @@ export default function NewServiceItemPage() {
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={saving}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
-                {loading ? "保存中..." : "保存"}
+                {saving ? "保存中..." : "保存"}
               </button>
             </div>
           </div>

@@ -124,6 +124,20 @@ export default function NewVehiclePage() {
       return;
     }
 
+    // VIN 唯一性校验
+    if (form.vin.trim()) {
+      const { data: existingVin } = await supabase
+        .from("vehicles")
+        .select("id")
+        .eq("vin", form.vin.trim().toUpperCase())
+        .maybeSingle();
+      if (existingVin) {
+        alert("该 VIN 码已被使用，请更换");
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
     const { data: vehicleData, error } = await supabase.from("vehicles").insert({
       customer_id: customerId,

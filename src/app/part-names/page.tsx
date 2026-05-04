@@ -32,6 +32,7 @@ export default function PartNamesPage() {
     category_id: "",
     unit: "件",
     search_keywords: "",
+    default_quantity: "",
     auto_link_vehicle_model: false,
     is_consumable: false,
     sales_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
@@ -213,6 +214,7 @@ export default function PartNamesPage() {
       category_id: form.category_id,
       unit: form.unit,
       search_keywords: form.search_keywords || null,
+      default_quantity: form.default_quantity ? parseInt(form.default_quantity) : null,
       auto_link_vehicle_model: form.auto_link_vehicle_model,
       is_consumable: form.is_consumable,
       sales_commission_type: form.sales_type || null,
@@ -248,6 +250,7 @@ export default function PartNamesPage() {
       category_id: "",
       unit: "件",
       search_keywords: "",
+      default_quantity: "",
       auto_link_vehicle_model: false,
       is_consumable: false,
       sales_type: "",
@@ -394,6 +397,7 @@ export default function PartNamesPage() {
                 <th className="px-6 py-3 text-left font-medium text-gray-500">关联品牌</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">关联规格</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">单位</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">默认数量</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">操作</th>
               </tr>
             </thead>
@@ -413,6 +417,7 @@ export default function PartNamesPage() {
                   <td className="px-6 py-4 text-gray-600 max-w-[140px] truncate">{formatLinkedBrands(n)}</td>
                   <td className="px-6 py-4 text-gray-600 max-w-[140px] truncate">{formatLinkedSpecs(n)}</td>
                   <td className="px-6 py-4 text-gray-600">{n.unit || "-"}</td>
+                  <td className="px-6 py-4 text-gray-600">{n.default_quantity ?? "-"}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <Link href={`/part-names/${n.id}/edit`} className="text-sm text-blue-600 hover:text-blue-700 font-medium">编辑</Link>
@@ -423,7 +428,7 @@ export default function PartNamesPage() {
               ))}
               {(!names || names.length === 0) && !showForm && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center">
+                  <td colSpan={8} className="px-6 py-12 text-center">
                     <div className="text-gray-400 mb-4">
                       {searching ? "搜索中..." : query.trim() ? "未找到匹配的名称" : "暂无名称"}
                     </div>
@@ -502,6 +507,17 @@ export default function PartNamesPage() {
                 onChange={(e) => setForm({ ...form, search_keywords: e.target.value })}
               />
               <p className="text-xs text-gray-400 mt-1">用于模糊搜索，多个词用空格分隔</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">默认数量</label>
+              <input
+                type="number"
+                min={1}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="关联到维修项目时的默认使用数量，留空则为1"
+                value={form.default_quantity}
+                onChange={(e) => setForm({ ...form, default_quantity: e.target.value })}
+              />
             </div>
 
             <SearchLinkSection

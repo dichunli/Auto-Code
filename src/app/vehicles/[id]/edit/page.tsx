@@ -41,6 +41,7 @@ export default function EditVehiclePage() {
   const [changingOwner, setChangingOwner] = useState(false);
   const [changingPlate, setChangingPlate] = useState(false);
   const [originalPlateNumber, setOriginalPlateNumber] = useState("");
+  const [originalVin, setOriginalVin] = useState("");
 
   const [companyQuery, setCompanyQuery] = useState("");
   const [companyResults, setCompanyResults] = useState<any[]>([]);
@@ -63,6 +64,7 @@ export default function EditVehiclePage() {
       if (data) {
         const plate = data.plate_number || "";
         setOriginalPlateNumber(plate);
+        setOriginalVin(data.vin || "");
         setForm({
           plate_number: plate,
           vin: data.vin || "",
@@ -140,6 +142,7 @@ export default function EditVehiclePage() {
     e.preventDefault();
     if (!form.plate_number.trim()) { alert("请填写车牌号"); return; }
 
+    const supabase = createClient();
     let finalCustomerId = customerId;
 
     if (ownerMode === "new") {
@@ -180,8 +183,24 @@ export default function EditVehiclePage() {
       }
     }
 
+    // VIN 唯一性校验（变更时才检查）
+    const trimmedVin = form.vin.trim().toUpperCase();
+    if (trimmedVin && trimmedVin !== originalVin.toUpperCase()) {
+      const supabaseCheck = createClient();
+      const { data: existingVin } = await supabaseCheck
+        .from("vehicles")
+        .select("id")
+        .eq("vin", trimmedVin)
+        .neq("id", id)
+        .maybeSingle();
+      if (existingVin) {
+        alert("该 VIN 码已被其他车辆使用，请更换");
+        setSaving(false);
+        return;
+      }
+    }
+
     setSaving(true);
-    const supabase = createClient();
     const { error } = await supabase.from("vehicles").update({
       customer_id: finalCustomerId,
       company_id: companyId || null,
