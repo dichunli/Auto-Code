@@ -11,7 +11,7 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
 
   let query = supabase
     .from("customers")
-    .select("id, name, phone, email, company, address, star_level, total_spent, created_at, vehicles(id, plate_number)")
+    .select("id, name, phone, company, address, star_level, total_spent, created_at, vehicles(id, plate_number), customer_contacts(id, name, phone, relationship)")
     .order("created_at", { ascending: false });
 
   if (searchParams.name) query = query.ilike("name", `%${searchParams.name}%`);
@@ -96,7 +96,7 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
               <tr>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">客户姓名</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">电话</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">邮箱</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">联系人</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">所属单位</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">地址</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">星级</th>
@@ -115,7 +115,22 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
                     {customer.gender && <span className="ml-1 text-xs text-gray-400">{customer.gender}</span>}
                   </td>
                   <td className="px-6 py-4 text-gray-600">{customer.phone}</td>
-                  <td className="px-6 py-4 text-gray-600">{customer.email || "-"}</td>
+                  <td className="px-6 py-4 text-gray-600">
+                    {customer.customer_contacts?.length > 0 ? (
+                      <div className="space-y-1">
+                        {customer.customer_contacts.map((c: any) => (
+                          <div key={c.id} className="text-xs">
+                            <span className="font-medium">{c.name}</span>
+                            <span className="text-gray-400 mx-1">·</span>
+                            {c.phone}
+                            {c.relationship && <span className="text-gray-400 ml-1">({c.relationship})</span>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-gray-600">{customer.company || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{customer.address || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{"★".repeat(customer.star_level || 1)}{"☆".repeat(5 - (customer.star_level || 1))}</td>

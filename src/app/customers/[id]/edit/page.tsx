@@ -14,11 +14,19 @@ export default function EditCustomerPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  interface ContactForm {
+    id: string;
+    name: string;
+    phone: string;
+    relationship: string;
+    notes: string;
+    isExisting?: boolean;
+  }
+
   const [form, setForm] = useState({
     name: "",
     phone: "",
     gender: "",
-    email: "",
     address: "",
     company: "",
     id_card: "",
@@ -28,6 +36,8 @@ export default function EditCustomerPage() {
   const [customerPhotos, setCustomerPhotos] = useState<string[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [originalPhone, setOriginalPhone] = useState("");
+  const [contacts, setContacts] = useState<ContactForm[]>([]);
+  let contactIdCounter = 0;
 
   useEffect(() => {
     async function load() {
@@ -39,12 +49,19 @@ export default function EditCustomerPage() {
           name: data.name || "",
           phone: data.phone || "",
           gender: data.gender || "",
-          email: data.email || "",
           address: data.address || "",
           company: data.company || "",
           id_card: data.id_card || "",
           notes: data.notes || "",
         });
+        const { data: contactData } = await supabase
+          .from("customer_contacts")
+          .select("id, name, phone, relationship, notes")
+          .eq("customer_id", id)
+          .order("created_at", { ascending: true });
+        setContacts(
+          (contactData || []).map((c: any) => ({ ...c, isExisting: true }))
+        );
       }
       const { data: photoData } = await supabase
         .from("customer_photos")
@@ -89,7 +106,6 @@ export default function EditCustomerPage() {
       name: form.name.trim(),
       phone: form.phone.trim(),
       gender: form.gender || null,
-      email: form.email.trim() || null,
       address: form.address.trim() || null,
       company: form.company.trim() || null,
       id_card: form.id_card.trim() || null,
@@ -97,6 +113,23 @@ export default function EditCustomerPage() {
     }).eq("id", id);
 
     if (error) { alert("保存失败: " + error.message); setSaving(false); return; }
+
+    // 保存联系人：删除旧记录，插入新记录
+    const { error: delContactError } = await supabase.from("customer_contacts").delete().eq("customer_id", id);
+    if (delContactError) { alert("删除旧联系人失败: " + delContactError.message); setSaving(false); return; }
+    const validContacts = contacts.filter((c) => c.name.trim() && c.phone.trim());
+    if (validContacts.length > 0) {
+      const { error: insContactError } = await supabase.from("customer_contacts").insert(
+        validContacts.map((c) => ({
+          customer_id: id,
+          name: c.name.trim(),
+          phone: c.phone.trim(),
+          relationship: c.relationship.trim() || null,
+          notes: c.notes.trim() || null,
+        }))
+      );
+      if (insContactError) { alert("联系人保存失败: " + insContactError.message); setSaving(false); return; }
+    }
 
     await supabase.from("customer_photos").delete().eq("customer_id", id);
     const photoInserts: { customer_id: string; category: string; url: string }[] = [];
@@ -109,6 +142,22 @@ export default function EditCustomerPage() {
 
     router.push("/customers");
     router.refresh();
+  }
+
+  function addContact() {
+    contactIdCounter++;
+    setContacts((prev) => [
+      ...prev,
+      { id: `c-${Date.now()}-${contactIdCounter}`, name: "", phone: "", relationship: "", notes: "" },
+    ]);
+  }
+
+  function removeContact(contactId: string) {
+    setContacts((prev) => prev.filter((c) => c.id !== contactId));
+  }
+
+  function updateContact(contactId: string, field: keyof ContactForm, value: string) {
+    setContacts((prev) => prev.map((c) => (c.id === contactId ? { ...c, [field]: value } : c)));
   }
 
   if (loading) return <div className="py-8 text-sm text-gray-500">加载中...</div>;
@@ -154,10 +203,6 @@ export default function EditCustomerPage() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
-            <input type="email" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          </div>
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">所属单位</label>
             <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
           </div>
@@ -184,6 +229,76 @@ export default function EditCustomerPage() {
             onUpload={setCustomerPhotos}
           />
         </div>
+        {/* 联系人 */}
+        <div className="mt-6 border-t border-gray-100 pt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-gray-900">联系人</h2>
+            <button
+              type="button"
+              onClick={addContact}
+              className="px-3 py-1.5 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+            >
+              + 添加联系人
+            </button>
+          </div>
+          {contacts.length === 0 && <p className="text-sm text-gray-400">暂无联系人，点击上方按钮添加</p>}
+          <div className="space-y-4">
+            {contacts.map((c, idx) => (
+              <div key={c.id} className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-gray-700">联系人 #{idx + 1}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeContact(c.id)}
+                    className="text-xs text-red-600 hover:text-red-700"
+                  >
+                    删除
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">姓名 *</label>
+                    <input
+                      type="text"
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      value={c.name}
+                      onChange={(e) => updateContact(c.id, "name", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">电话 *</label>
+                    <input
+                      type="tel"
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      value={c.phone}
+                      onChange={(e) => updateContact(c.id, "phone", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">与客户关系</label>
+                    <input
+                      type="text"
+                      placeholder="如：配偶、朋友"
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      value={c.relationship}
+                      onChange={(e) => updateContact(c.id, "relationship", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">备注</label>
+                    <input
+                      type="text"
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      value={c.notes}
+                      onChange={(e) => updateContact(c.id, "notes", e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="mt-6 flex gap-3 justify-end">
           <button type="button" onClick={() => router.push("/customers")} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
           <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">{saving ? "保存中..." : "保存"}</button>

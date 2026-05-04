@@ -30,16 +30,25 @@ export default function NewCustomerPage() {
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
 
+  interface ContactForm {
+    id: string;
+    name: string;
+    phone: string;
+    relationship: string;
+    notes: string;
+  }
+
   const [customer, setCustomer] = useState({
     name: "",
     phone: "",
     gender: "",
-    email: "",
     address: "",
     company: "",
     id_card: "",
     notes: "",
   });
+
+  const [contacts, setContacts] = useState<ContactForm[]>([]);
 
   const [customerPhotos, setCustomerPhotos] = useState<string[]>([]);
 
@@ -69,6 +78,23 @@ export default function NewCustomerPage() {
 
   function removeVehicle(id: string) {
     setVehicles((prev) => prev.filter((v) => v.id !== id));
+  }
+
+  let contactIdCounter = 0;
+  function addContact() {
+    contactIdCounter++;
+    setContacts((prev) => [
+      ...prev,
+      { id: `c-${contactIdCounter}`, name: "", phone: "", relationship: "", notes: "" },
+    ]);
+  }
+
+  function removeContact(id: string) {
+    setContacts((prev) => prev.filter((c) => c.id !== id));
+  }
+
+  function updateContact(id: string, field: keyof ContactForm, value: string) {
+    setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
   }
 
   function updateVehicle(id: string, field: keyof VehicleForm, value: string) {
@@ -104,7 +130,6 @@ export default function NewCustomerPage() {
           name: customer.name.trim(),
           phone: customer.phone.trim(),
           gender: customer.gender || null,
-          email: customer.email.trim() || null,
           address: customer.address.trim() || null,
           company: customer.company.trim() || null,
           id_card: customer.id_card.trim() || null,
@@ -125,6 +150,20 @@ export default function NewCustomerPage() {
       );
       if (photoInserts.length > 0) {
         await supabase.from("customer_photos").insert(photoInserts);
+      }
+
+      // 保存联系人
+      const validContacts = contacts.filter((c) => c.name.trim() && c.phone.trim());
+      if (validContacts.length > 0) {
+        const contactInserts = validContacts.map((c) => ({
+          customer_id: customerId,
+          name: c.name.trim(),
+          phone: c.phone.trim(),
+          relationship: c.relationship.trim() || null,
+          notes: c.notes.trim() || null,
+        }));
+        const { error: contactError } = await supabase.from("customer_contacts").insert(contactInserts);
+        if (contactError) throw new Error("联系人保存失败: " + contactError.message);
       }
 
       // 批量创建车辆
@@ -216,15 +255,6 @@ export default function NewCustomerPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
-                <input
-                  type="email"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={customer.email}
-                  onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
-                />
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">所属单位</label>
                 <input
                   type="text"
@@ -270,6 +300,76 @@ export default function NewCustomerPage() {
                 existingImages={customerPhotos}
                 onUpload={setCustomerPhotos}
               />
+            </div>
+          </div>
+
+          {/* 联系人 */}
+          <div className="border-t border-gray-100 pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-gray-900">联系人</h2>
+              <button
+                type="button"
+                onClick={addContact}
+                className="px-3 py-1.5 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+              >
+                + 添加联系人
+              </button>
+            </div>
+            {contacts.length === 0 && <p className="text-sm text-gray-400">暂无联系人，点击上方按钮添加</p>}
+            <div className="space-y-4">
+              {contacts.map((c, idx) => (
+                <div key={c.id} className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-gray-700">联系人 #{idx + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeContact(c.id)}
+                      className="text-xs text-red-600 hover:text-red-700"
+                    >
+                      删除
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">姓名 *</label>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={c.name}
+                        onChange={(e) => updateContact(c.id, "name", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">电话 *</label>
+                      <input
+                        type="tel"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={c.phone}
+                        onChange={(e) => updateContact(c.id, "phone", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">与客户关系</label>
+                      <input
+                        type="text"
+                        placeholder="如：配偶、朋友"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={c.relationship}
+                        onChange={(e) => updateContact(c.id, "relationship", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">备注</label>
+                      <input
+                        type="text"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        value={c.notes}
+                        onChange={(e) => updateContact(c.id, "notes", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

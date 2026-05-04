@@ -17,6 +17,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "汽修管家 - 汽车维修厂管理系统",
   description: "汽车维修厂工单、库存、客户一体化管理软件",
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({
@@ -26,9 +27,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <head>
-        <link rel="manifest" href="/manifest.json" />
-      </head>
       <body className="min-h-full flex flex-col bg-gray-50">
         <Navbar />
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 sm:px-6 lg:px-8">

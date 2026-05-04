@@ -26,6 +26,12 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   const customerPhotoUrls = photos?.map((p) => p.url) || [];
 
+  const { data: contacts } = await supabase
+    .from("customer_contacts")
+    .select("id, name, phone, relationship, notes")
+    .eq("customer_id", id)
+    .order("created_at", { ascending: true });
+
   if (!customer) {
     return (
       <div className="py-8 text-sm text-gray-500">客户不存在</div>
@@ -55,10 +61,6 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               <span className="text-gray-900">{customer.phone}</span>
             </div>
             <div>
-              <span className="text-gray-500">邮箱：</span>
-              <span className="text-gray-900">{customer.email || "-"}</span>
-            </div>
-            <div>
               <span className="text-gray-500">所属单位：</span>
               <span className="text-gray-900">{customer.company || "-"}</span>
             </div>
@@ -79,6 +81,37 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               <span className="text-gray-900">{formatDate(customer.created_at)}</span>
             </div>
           </div>
+        </div>
+
+        {/* 联系人 */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">联系人</h2>
+          {contacts && contacts.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">姓名</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">电话</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">关系</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">备注</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {contacts.map((c) => (
+                    <tr key={c.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
+                      <td className="px-4 py-3 text-gray-600">{c.phone}</td>
+                      <td className="px-4 py-3 text-gray-600">{c.relationship || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">{c.notes || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">暂无联系人</p>
+          )}
         </div>
 
         {/* 客户照片 */}
