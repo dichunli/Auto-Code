@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -103,13 +103,6 @@ export default function NewServiceItemPage() {
   const [pendingGroupPrices, setPendingGroupPrices] = useState<{ price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null } | null>(null);
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [appendMode, setAppendMode] = useState(false);
-  const [draftItemId, setDraftItemId] = useState<string | null>(null);
-  const draftItemIdRef = useRef<string | null>(null);
-  draftItemIdRef.current = draftItemId;
-  const [autoSavingVehicles, setAutoSavingVehicles] = useState(false);
-  const initialVehicleLoadRef = useRef(true);
-  const formRef = useRef(form);
-  formRef.current = form;
 
   const priceGroups = useMemo(() => {
     const map = new Map<string, { price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null; vehicles: VehiclePrice[] }>();
@@ -120,91 +113,9 @@ export default function NewServiceItemPage() {
       }
       map.get(key)!.vehicles.push(p);
     }
-    return Array.from(map.values());
+    return Array.from(map.entries()).map(([key, value]) => ({ ...value, key }));
   }, [vehiclePrices]);
 
-  // 车型定价自动保存
-  useEffect(() => {
-    if (initialVehicleLoadRef.current) {
-      initialVehicleLoadRef.current = false;
-      return;
-    }
-
-    // 没有草稿项目且没有车型定价时无需保存
-    if (vehiclePrices.length === 0 && !draftItemIdRef.current) return;
-
-    async function autoSave() {
-      const currentForm = formRef.current;
-      let itemId = draftItemIdRef.current;
-
-      if (!itemId) {
-        if (!currentForm.name.trim() || !currentForm.category_id) return;
-        setAutoSavingVehicles(true);
-        const autoCode = `XM-${Date.now().toString(36).toUpperCase().slice(-6)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
-        const { data: inserted, error } = await supabase
-          .from("service_items")
-          .insert({
-            code: autoCode,
-            category_id: currentForm.category_id,
-            service_name_id: currentForm.service_name_id || null,
-            name: currentForm.name.trim(),
-            standard_hours: currentForm.standard_hours ? parseFloat(currentForm.standard_hours) : null,
-            description: currentForm.description || null,
-            default_price: currentForm.default_price ? parseFloat(currentForm.default_price) : null,
-            vip_price: currentForm.vip_price ? parseFloat(currentForm.vip_price) : null,
-            customer_parts_price: currentForm.customer_parts_price ? parseFloat(currentForm.customer_parts_price) : null,
-            company_price: currentForm.company_price ? parseFloat(currentForm.company_price) : null,
-            sales_commission_type: currentForm.sales_type || null,
-            sales_commission_value: currentForm.sales_value ? parseFloat(currentForm.sales_value) : null,
-            diagnosis_commission_type: currentForm.diagnosis_type || null,
-            diagnosis_commission_value: currentForm.diagnosis_value ? parseFloat(currentForm.diagnosis_value) : null,
-            repair_commission_type: currentForm.repair_type || null,
-            repair_commission_value: currentForm.repair_value ? parseFloat(currentForm.repair_value) : null,
-            qc_commission_type: currentForm.qc_type || null,
-            qc_commission_value: currentForm.qc_value ? parseFloat(currentForm.qc_value) : null,
-          })
-          .select("id")
-          .single();
-        if (error || !inserted) {
-          console.error("自动创建项目失败:", error);
-          alert("自动保存失败（创建项目）: " + (error?.message || "未知错误"));
-          setAutoSavingVehicles(false);
-          return;
-        }
-        itemId = inserted.id;
-        setDraftItemId(itemId);
-      } else {
-        setAutoSavingVehicles(true);
-      }
-
-      const { error: delError } = await supabase.from("service_item_prices").delete().eq("service_item_id", itemId);
-      if (delError) {
-        console.error("删除旧车型定价失败:", delError);
-        alert("自动保存失败（删除旧数据）: " + delError.message);
-        setAutoSavingVehicles(false);
-        return;
-      }
-      if (vehiclePrices.length > 0) {
-        const { error: insError } = await supabase.from("service_item_prices").insert(
-          vehiclePrices.map((p) => ({
-            service_item_id: itemId,
-            vehicle_model_id: p.vehicle_model_id,
-            price: p.price,
-            vip_price: p.vip_price,
-            customer_parts_price: p.customer_parts_price,
-            company_price: p.company_price,
-          }))
-        );
-        if (insError) {
-          console.error("插入车型定价失败:", insError);
-          alert("自动保存失败（插入新数据）: " + insError.message);
-        }
-      }
-      setAutoSavingVehicles(false);
-    }
-
-    autoSave();
-  }, [vehiclePrices]);
 
   const modalExcludedIds = useMemo(() => {
     if (appendMode) {
@@ -557,89 +468,49 @@ export default function NewServiceItemPage() {
     setPendingGroupPrices(null);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!form.name.trim() || !form.category_id) {
       alert("请填写项目名称和所属分类");
       return;
     }
     setLoading(true);
 
-    let itemId = draftItemId;
+    // 新建项目
+    const autoCode = `XM-${Date.now().toString(36).toUpperCase().slice(-6)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
+    const { data: inserted, error } = await supabase
+      .from("service_items")
+      .insert({
+        code: autoCode,
+        category_id: form.category_id,
+        service_name_id: form.service_name_id || null,
+        name: form.name.trim(),
+        standard_hours: form.standard_hours ? parseFloat(form.standard_hours) : null,
+        description: form.description || null,
+        default_price: form.default_price ? parseFloat(form.default_price) : null,
+        vip_price: form.vip_price ? parseFloat(form.vip_price) : null,
+        customer_parts_price: form.customer_parts_price ? parseFloat(form.customer_parts_price) : null,
+        company_price: form.company_price ? parseFloat(form.company_price) : null,
+        sales_commission_type: form.sales_type || null,
+        sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
+        diagnosis_commission_type: form.diagnosis_type || null,
+        diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
+        repair_commission_type: form.repair_type || null,
+        repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
+        qc_commission_type: form.qc_type || null,
+        qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
+      })
+      .select("id")
+      .single();
 
-    if (itemId) {
-      // 已存在草稿项目，更新基本信息
-      const { error } = await supabase
-        .from("service_items")
-        .update({
-          category_id: form.category_id,
-          service_name_id: form.service_name_id || null,
-          name: form.name.trim(),
-          standard_hours: form.standard_hours ? parseFloat(form.standard_hours) : null,
-          description: form.description || null,
-          default_price: form.default_price ? parseFloat(form.default_price) : null,
-          vip_price: form.vip_price ? parseFloat(form.vip_price) : null,
-          customer_parts_price: form.customer_parts_price ? parseFloat(form.customer_parts_price) : null,
-          company_price: form.company_price ? parseFloat(form.company_price) : null,
-          sales_commission_type: form.sales_type || null,
-          sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-          diagnosis_commission_type: form.diagnosis_type || null,
-          diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-          repair_commission_type: form.repair_type || null,
-          repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-          qc_commission_type: form.qc_type || null,
-          qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-        })
-        .eq("id", itemId);
-
-      if (error) {
-        alert("保存失败: " + error.message);
-        setLoading(false);
-        return;
-      }
-    } else {
-      // 新建项目
-      const autoCode = `XM-${Date.now().toString(36).toUpperCase().slice(-6)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
-      const { data: inserted, error } = await supabase
-        .from("service_items")
-        .insert({
-          code: autoCode,
-          category_id: form.category_id,
-          service_name_id: form.service_name_id || null,
-          name: form.name.trim(),
-          standard_hours: form.standard_hours ? parseFloat(form.standard_hours) : null,
-          description: form.description || null,
-          default_price: form.default_price ? parseFloat(form.default_price) : null,
-          vip_price: form.vip_price ? parseFloat(form.vip_price) : null,
-          customer_parts_price: form.customer_parts_price ? parseFloat(form.customer_parts_price) : null,
-          company_price: form.company_price ? parseFloat(form.company_price) : null,
-          sales_commission_type: form.sales_type || null,
-          sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-          diagnosis_commission_type: form.diagnosis_type || null,
-          diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-          repair_commission_type: form.repair_type || null,
-          repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-          qc_commission_type: form.qc_type || null,
-          qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-        })
-        .select("id")
-        .single();
-
-      if (error || !inserted) {
-        alert("保存失败: " + (error?.message || "未知错误"));
-        setLoading(false);
-        return;
-      }
-      itemId = inserted.id;
-    }
-
-    // 保存车型定价（兜底：确保最终状态一致）
-    const { error: delVpError } = await supabase.from("service_item_prices").delete().eq("service_item_id", itemId);
-    if (delVpError) {
-      alert("删除旧车型定价失败: " + delVpError.message);
+    if (error || !inserted) {
+      alert("保存失败: " + (error?.message || "未知错误"));
       setLoading(false);
       return;
     }
+    const itemId = inserted.id;
+
+    // 保存车型定价
     if (vehiclePrices.length > 0) {
       const { error: vpError } = await supabase.from("service_item_prices").insert(
         vehiclePrices.map((p) => ({
@@ -649,6 +520,7 @@ export default function NewServiceItemPage() {
           vip_price: p.vip_price,
           customer_parts_price: p.customer_parts_price,
           company_price: p.company_price,
+          group_key: p.group_key || null,
         }))
       );
       if (vpError) {
@@ -659,12 +531,6 @@ export default function NewServiceItemPage() {
     }
 
     // 保存指定用户价格
-    const { error: delSpError } = await supabase.from("service_item_special_prices").delete().eq("service_item_id", itemId);
-    if (delSpError) {
-      alert("删除旧指定用户价格失败: " + delSpError.message);
-      setLoading(false);
-      return;
-    }
     if (specialPrices.length > 0) {
       const { error: spError } = await supabase.from("service_item_special_prices").insert(
         specialPrices.map((p) => ({
@@ -1137,17 +1003,23 @@ export default function NewServiceItemPage() {
                     编辑
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  {loading ? "保存中..." : "保存定价"}
+                </button>
               </div>
             </div>
 
             {priceGroups.length > 0 ? (
               <div className="space-y-3 max-h-[70vh] overflow-y-auto">
                 {priceGroups.map((g) => {
-                  const key = makeGroupKey(g);
                   const visibleVehicles = g.vehicles.slice(0, 3);
-                  const remaining = g.vehicles.length - 3;
                   return (
-                    <div key={key} className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div key={g.key} className="border border-gray-200 rounded-lg overflow-hidden">
                       <div className="px-3 py-2 bg-gray-50 flex items-center justify-between">
                         <div className="flex items-center gap-3 text-xs">
                           <span className="text-gray-600">销售:<b className="text-gray-900">{g.price}</b></span>
@@ -1160,7 +1032,7 @@ export default function NewServiceItemPage() {
                             type="button"
                             onClick={() => {
                               setAppendMode(true);
-                              setEditingGroupKey(key);
+                              setEditingGroupKey(g.key);
                               setPendingGroupPrices({
                                 price: g.price,
                                 vip_price: g.vip_price,
@@ -1186,7 +1058,7 @@ export default function NewServiceItemPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setDeleteGroupKey(key);
+                              setDeleteGroupKey(g.key);
                               setVehicleDeleteModalOpen(true);
                             }}
                             className="text-xs text-red-600 hover:text-red-700"
@@ -1195,7 +1067,7 @@ export default function NewServiceItemPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => removePriceGroup(key)}
+                            onClick={() => removePriceGroup(g.key)}
                             className="text-xs text-red-600 hover:text-red-700"
                           >
                             删除整组

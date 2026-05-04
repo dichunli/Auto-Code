@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -107,6 +107,7 @@ export default function EditServiceItemPage() {
   const [pendingGroupPrices, setPendingGroupPrices] = useState<{ price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null } | null>(null);
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [appendMode, setAppendMode] = useState(false);
+  const [savingPrices, setSavingPrices] = useState(false);
 
   const priceGroups = useMemo(() => {
     const map = new Map<string, { price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null; vehicles: VehiclePrice[] }>();
@@ -117,7 +118,7 @@ export default function EditServiceItemPage() {
       }
       map.get(key)!.vehicles.push(p);
     }
-    return Array.from(map.values());
+    return Array.from(map.entries()).map(([key, value]) => ({ ...value, key }));
   }, [vehiclePrices]);
 
   const modalExcludedIds = useMemo(() => {
@@ -147,52 +148,44 @@ export default function EditServiceItemPage() {
     setDeleteGroupKey(null);
   }
 
-  const [linkedParts, setLinkedParts] = useState<LinkedPart[]>([]);
-  const [autoSavingVehicles, setAutoSavingVehicles] = useState(false);
-  const initialVehicleLoadRef = useRef(true);
-
-  useEffect(() => {
-    if (initialVehicleLoadRef.current) {
-      initialVehicleLoadRef.current = false;
-      return;
-    }
+  async function handleSaveVehiclePrices() {
     if (!id) return;
-
-    async function autoSave() {
-      setAutoSavingVehicles(true);
-      try {
-        const { error: delError } = await supabase.from("service_item_prices").delete().eq("service_item_id", id);
-        if (delError) {
-          console.error("删除旧车型定价失败:", delError);
-          alert("自动保存失败（删除旧数据）: " + delError.message);
-          setAutoSavingVehicles(false);
-          return;
-        }
-        if (vehiclePrices.length > 0) {
-          const rows = vehiclePrices.map((p) => ({
+    setSavingPrices(true);
+    try {
+      const { error: delError } = await supabase.from("service_item_prices").delete().eq("service_item_id", id);
+      if (delError) {
+        alert("删除旧车型定价失败: " + delError.message);
+        setSavingPrices(false);
+        return;
+      }
+      if (vehiclePrices.length > 0) {
+        const { error: insError } = await supabase.from("service_item_prices").insert(
+          vehiclePrices.map((p) => ({
             service_item_id: id,
             vehicle_model_id: p.vehicle_model_id,
             price: p.price,
             vip_price: p.vip_price,
             customer_parts_price: p.customer_parts_price,
             company_price: p.company_price,
-          }));
-          const { error: insError } = await supabase.from("service_item_prices").insert(rows);
-          if (insError) {
-            console.error("插入新车型定价失败:", insError);
-            alert("自动保存失败（插入新数据）: " + insError.message);
-          }
+            group_key: p.group_key || null,
+          }))
+        );
+        if (insError) {
+          alert("保存车型定价失败: " + insError.message);
+          setSavingPrices(false);
+          return;
         }
-      } catch (err: any) {
-        console.error("自动保存车型定价失败:", err);
-        alert("自动保存异常: " + (err?.message || String(err)));
-      } finally {
-        setAutoSavingVehicles(false);
       }
+      alert("车型定价已保存");
+    } catch (err: any) {
+      alert("保存车型定价异常: " + (err?.message || String(err)));
+    } finally {
+      setSavingPrices(false);
     }
+  }
 
-    autoSave();
-  }, [vehiclePrices, id]);
+  const [linkedParts, setLinkedParts] = useState<LinkedPart[]>([]);
+
 
   // 指定用户价格
   interface SpecialPrice {
@@ -286,7 +279,7 @@ export default function EditServiceItemPage() {
         if (!item) { alert("维修项目不存在"); router.push("/service-items"); return; }
         const { data: vehicleData } = await supabase
           .from("service_item_prices")
-          .select("id, vehicle_model_id, price, vip_price, customer_parts_price, company_price, vehicle_models(品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号)")
+          .select("id, vehicle_model_id, price, vip_price, customer_parts_price, company_price, group_key, vehicle_models(品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号)")
           .eq("service_item_id", id);
         setForm({
           code: item.code || "",
@@ -350,6 +343,7 @@ export default function EditServiceItemPage() {
             发动机型号: m?.发动机型号 || null,
             底盘型号: m?.底盘型号 || null,
             变速箱型号: m?.变速箱型号 || null,
+            group_key: v.group_key || undefined,
           };
         }));
 
@@ -667,6 +661,7 @@ export default function EditServiceItemPage() {
           vip_price: p.vip_price,
           customer_parts_price: p.customer_parts_price,
           company_price: p.company_price,
+          group_key: p.group_key || null,
         }))
       );
       if (vpError) {
@@ -1150,10 +1145,7 @@ export default function EditServiceItemPage() {
           {/* 右侧车型定价 */}
           <div className="w-[560px] shrink-0 bg-white rounded-xl border border-gray-200 p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-gray-900">车型定价</h3>
-                {autoSavingVehicles && <span className="text-xs text-blue-500">保存中...</span>}
-              </div>
+              <h3 className="text-sm font-semibold text-gray-900">车型定价</h3>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -1171,17 +1163,23 @@ export default function EditServiceItemPage() {
                     编辑
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={handleSaveVehiclePrices}
+                  disabled={savingPrices}
+                  className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  {savingPrices ? "保存中..." : "保存定价"}
+                </button>
               </div>
             </div>
 
             {priceGroups.length > 0 ? (
               <div className="space-y-3 max-h-[70vh] overflow-y-auto">
                 {priceGroups.map((g) => {
-                  const key = makeGroupKey(g);
                   const visibleVehicles = g.vehicles.slice(0, 3);
-                  const remaining = g.vehicles.length - 3;
                   return (
-                    <div key={key} className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div key={g.key} className="border border-gray-200 rounded-lg overflow-hidden">
                       <div className="px-3 py-2 bg-gray-50 flex items-center justify-between">
                         <div className="flex items-center gap-3 text-xs">
                           <span className="text-gray-600">销售:<b className="text-gray-900">{g.price}</b></span>
@@ -1194,7 +1192,7 @@ export default function EditServiceItemPage() {
                             type="button"
                             onClick={() => {
                               setAppendMode(true);
-                              setEditingGroupKey(key);
+                              setEditingGroupKey(g.key);
                               setPendingGroupPrices({
                                 price: g.price,
                                 vip_price: g.vip_price,
@@ -1220,7 +1218,7 @@ export default function EditServiceItemPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setDeleteGroupKey(key);
+                              setDeleteGroupKey(g.key);
                               setVehicleDeleteModalOpen(true);
                             }}
                             className="text-xs text-red-600 hover:text-red-700"
@@ -1229,7 +1227,7 @@ export default function EditServiceItemPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => removePriceGroup(key)}
+                            onClick={() => removePriceGroup(g.key)}
                             className="text-xs text-red-600 hover:text-red-700"
                           >
                             删除整组
