@@ -1,38 +1,30 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useState, useMemo } from "react";
 
-interface VehicleModel {
-  id: number;
-  品牌: string;
-  车系: string;
-  车型: string;
-  年款: number | null;
-  排量: string | null;
+interface VehicleItem {
+  vehicle_model_id: number;
+  vehicle_name: string;
+  品牌?: string;
+  车系?: string;
+  车型?: string;
+  年款?: number | null;
+  排量?: string | null;
   发动机型号: string | null;
   底盘型号: string | null;
   变速箱型号: string | null;
 }
 
-interface VehiclePriceModalProps {
+interface VehicleDeleteModalProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: (vehicleIds: number[], price: number, vipPrice: number | null, customerPartsPrice: number | null, companyPrice: number | null) => void;
-  defaultPrices?: { price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null };
-  excludedIds?: number[];
-  preSelectedIds?: number[];
+  onConfirm: (vehicleIds: number[]) => void;
+  vehicles: VehicleItem[];
+  prices?: { price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null };
 }
 
-export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPrices, excludedIds, preSelectedIds }: VehiclePriceModalProps) {
-  const supabase = createClient();
-  const [price, setPrice] = useState("");
-  const [vipPrice, setVipPrice] = useState("");
-  const [customerPartsPrice, setCustomerPartsPrice] = useState("");
-  const [companyPrice, setCompanyPrice] = useState("");
-  const [allVehicles, setAllVehicles] = useState<VehicleModel[]>([]);
+export default function VehicleDeleteModal({ open, onClose, onConfirm, vehicles, prices }: VehicleDeleteModalProps) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 20;
@@ -49,72 +41,12 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
     变速箱型号: "",
   });
 
-  // 初始化：打开时重置价格和选择
-  useEffect(() => {
-    if (!open) {
-      setConfirming(false);
-      return;
-    }
-    if (defaultPrices) {
-      setPrice(defaultPrices.price.toString());
-      setVipPrice(defaultPrices.vip_price?.toString() ?? "");
-      setCustomerPartsPrice(defaultPrices.customer_parts_price?.toString() ?? "");
-      setCompanyPrice(defaultPrices.company_price?.toString() ?? "");
-    } else {
-      setPrice("");
-      setVipPrice("");
-      setCustomerPartsPrice("");
-      setCompanyPrice("");
-    }
-    setSelectedIds(new Set(preSelectedIds || []));
-    setPage(1);
-    setFilters({ id: "", 品牌: "", 车系: "", 车型: "", 年款: "", 排量: "", 发动机型号: "", 底盘型号: "", 变速箱型号: "" });
-  }, [open]);
-
-  // 加载全部车型（仅打开时触发一次）
-  useEffect(() => {
-    if (!open) return;
-    loadAllVehicles();
-  }, [open]);
-
-  async function loadAllVehicles() {
-    setLoading(true);
-    const all: VehicleModel[] = [];
-    let from = 0;
-    const batch = 1000;
-    while (true) {
-      const { data, error } = await supabase
-        .from("vehicle_models")
-        .select("id,品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号")
-        .order("id")
-        .range(from, from + batch - 1);
-
-      if (error) {
-        console.error("加载车型失败:", error);
-        break;
-      }
-      const rows = (data as unknown as VehicleModel[]) || [];
-      if (rows.length === 0) break;
-      all.push(...rows);
-      if (rows.length < batch) break;
-      from += batch;
-    }
-    setAllVehicles(all);
-    setLoading(false);
-  }
-
-  // 客户端筛选 + 排除
   const filteredVehicles = useMemo(() => {
-    let result = [...allVehicles];
-
-    const excludedSet = excludedIds && excludedIds.length > 0 ? new Set(excludedIds) : null;
-    if (excludedSet) {
-      result = result.filter((v) => !excludedSet.has(v.id));
-    }
+    let result = [...vehicles];
 
     if (filters.id) {
       const id = parseInt(filters.id);
-      if (!Number.isNaN(id)) result = result.filter((v) => v.id === id);
+      if (!Number.isNaN(id)) result = result.filter((v) => v.vehicle_model_id === id);
     }
     if (filters.品牌) {
       const q = filters.品牌.toLowerCase();
@@ -150,11 +82,13 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
     }
 
     return result;
-  }, [allVehicles, excludedIds, filters]);
+  }, [vehicles, filters]);
 
   const totalCount = filteredVehicles.length;
-  const vehicles = filteredVehicles.slice((page - 1) * pageSize, page * pageSize);
+  const displayVehicles = filteredVehicles.slice((page - 1) * pageSize, page * pageSize);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  const allPageSelected = displayVehicles.length > 0 && displayVehicles.every((v) => selectedIds.has(v.vehicle_model_id));
 
   function toggleSelection(id: number) {
     setSelectedIds((prev) => {
@@ -166,39 +100,33 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
   }
 
   function handleSelectAll() {
-    const allMatchingSelected = selectedIds.size === totalCount && totalCount > 0;
-    if (allMatchingSelected) {
-      setSelectedIds(new Set());
-      return;
+    if (allPageSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        displayVehicles.forEach((v) => next.delete(v.vehicle_model_id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        displayVehicles.forEach((v) => next.add(v.vehicle_model_id));
+        return next;
+      });
     }
-    const allIds = filteredVehicles.map((v) => v.id);
-    setSelectedIds(new Set(allIds));
   }
 
   function handleConfirm() {
-    if (confirming) return;
-    const priceVal = price === "" ? NaN : parseFloat(price);
-    const vipVal = vipPrice === "" ? null : parseFloat(vipPrice);
-    const cpVal = customerPartsPrice === "" ? null : parseFloat(customerPartsPrice);
-    const coVal = companyPrice === "" ? null : parseFloat(companyPrice);
-    if (Number.isNaN(priceVal)) {
-      alert("请输入有效的销售价");
-      return;
-    }
-    if (selectedIds.size === 0 && !preSelectedIds) {
+    if (selectedIds.size === 0) {
       alert("请至少选择一个车型");
       return;
     }
     setConfirming(true);
-    onConfirm(Array.from(selectedIds), priceVal, vipVal, cpVal, coVal);
+    onConfirm(Array.from(selectedIds));
   }
 
   function handleClose() {
-    setPrice("");
-    setVipPrice("");
-    setCustomerPartsPrice("");
-    setCompanyPrice("");
     setSelectedIds(new Set());
+    setConfirming(false);
     setPage(1);
     setFilters({ id: "", 品牌: "", 车系: "", 车型: "", 年款: "", 排量: "", 发动机型号: "", 底盘型号: "", 变速箱型号: "" });
     onClose();
@@ -215,56 +143,55 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900">关联车型定价</h3>
+          <h3 className="text-base font-semibold text-gray-900">删除已关联车型</h3>
           <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
         </div>
 
-        <div className="px-6 py-3 border-b border-gray-100 bg-gray-50">
-          <div className="flex items-center gap-4 flex-wrap">
-            <span className="text-sm text-gray-700 font-medium">设定价格：</span>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500">销售价</label>
-              <input
-                type="number"
-                className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="0.00"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-              />
+        {/* 价格显示 */}
+        {prices && (
+          <div className="px-6 py-3 border-b border-gray-100 bg-gray-50">
+            <div className="flex items-center gap-4 flex-wrap">
+              <span className="text-sm text-gray-700 font-medium">设定价格：</span>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">销售价</label>
+                <input
+                  type="number"
+                  className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-gray-100"
+                  value={prices.price}
+                  readOnly
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">VIP价</label>
+                <input
+                  type="number"
+                  className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-gray-100"
+                  value={prices.vip_price ?? ""}
+                  readOnly
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">自带配件价</label>
+                <input
+                  type="number"
+                  className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-gray-100"
+                  value={prices.customer_parts_price ?? ""}
+                  readOnly
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">单位价</label>
+                <input
+                  type="number"
+                  className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-gray-100"
+                  value={prices.company_price ?? ""}
+                  readOnly
+                />
+              </div>
+              <span className="text-xs text-gray-500">已选择 {selectedIds.size} 个车型</span>
             </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500">VIP价</label>
-              <input
-                type="number"
-                className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="0.00"
-                value={vipPrice}
-                onChange={(e) => setVipPrice(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500">自带配件价</label>
-              <input
-                type="number"
-                className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="0.00"
-                value={customerPartsPrice}
-                onChange={(e) => setCustomerPartsPrice(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500">单位价</label>
-              <input
-                type="number"
-                className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="0.00"
-                value={companyPrice}
-                onChange={(e) => setCompanyPrice(e.target.value)}
-              />
-            </div>
-            <span className="text-xs text-gray-500">已选择 {selectedIds.size} 个车型</span>
           </div>
-        </div>
+        )}
 
         <div className="flex-1 overflow-auto px-6 py-3">
           <table className="w-full text-sm">
@@ -273,10 +200,8 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
                 <th className="px-3 py-2 text-left w-10">
                   <input
                     type="checkbox"
-                    checked={totalCount > 0 && selectedIds.size === totalCount}
-                    ref={(el) => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size !== totalCount; }}
+                    checked={allPageSelected}
                     onChange={handleSelectAll}
-                    disabled={loading}
                     className="w-4 h-4"
                   />
                 </th>
@@ -287,7 +212,7 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
                       type="text"
                       className="w-16 px-1.5 py-0.5 border border-gray-300 rounded text-xs"
                       placeholder="筛选"
-                      value={filters.id?.toString() || ""}
+                      value={filters.id}
                       onChange={(e) => updateFilter("id", e.target.value)}
                     />
                   </div>
@@ -391,20 +316,20 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {vehicles.map((v) => (
-                <tr key={v.id} className="hover:bg-gray-50">
+              {displayVehicles.map((v) => (
+                <tr key={v.vehicle_model_id} className="hover:bg-gray-50">
                   <td className="px-3 py-2">
                     <input
                       type="checkbox"
-                      checked={selectedIds.has(v.id)}
-                      onChange={() => toggleSelection(v.id)}
+                      checked={selectedIds.has(v.vehicle_model_id)}
+                      onChange={() => toggleSelection(v.vehicle_model_id)}
                       className="w-4 h-4"
                     />
                   </td>
-                  <td className="px-3 py-2 text-gray-600">{v.id}</td>
-                  <td className="px-3 py-2 text-gray-900">{v.品牌}</td>
-                  <td className="px-3 py-2 text-gray-900">{v.车系}</td>
-                  <td className="px-3 py-2 text-gray-900">{v.车型}</td>
+                  <td className="px-3 py-2 text-gray-600">{v.vehicle_model_id}</td>
+                  <td className="px-3 py-2 text-gray-900">{v.品牌 || "-"}</td>
+                  <td className="px-3 py-2 text-gray-900">{v.车系 || "-"}</td>
+                  <td className="px-3 py-2 text-gray-900">{v.车型 || "-"}</td>
                   <td className="px-3 py-2 text-gray-600">{v.年款 ?? "-"}</td>
                   <td className="px-3 py-2 text-gray-600">{v.排量 ?? "-"}</td>
                   <td className="px-3 py-2 text-gray-600">{v.发动机型号 ?? "-"}</td>
@@ -412,70 +337,54 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
                   <td className="px-3 py-2 text-gray-600">{v.变速箱型号 ?? "-"}</td>
                 </tr>
               ))}
-              {vehicles.length === 0 && !loading && (
+              {displayVehicles.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-3 py-8 text-center">
-                    {excludedIds && excludedIds.length > 0 ? (
-                      <div className="text-gray-500 text-sm">
-                        <div className="mb-1">暂无未关联的车型</div>
-                        <div className="text-xs text-gray-400">
-                          已加载 {allVehicles.length} 条，排除 {excludedIds.length} 条，剩余 {allVehicles.length - excludedIds.length} 条
-                          {Object.values(filters).some(v => v) && "（当前有筛选条件）"}
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-gray-400">暂无数据，请调整筛选条件</span>
-                    )}
-                  </td>
+                  <td colSpan={10} className="px-3 py-8 text-center text-gray-400">无匹配车型</td>
                 </tr>
               )}
             </tbody>
           </table>
-          {loading && (
-            <div className="py-4 text-center text-sm text-gray-500">加载中...</div>
-          )}
         </div>
 
         <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50">
           <div className="text-xs text-gray-500">
             共 {totalCount} 条，第 {page}/{totalPages} 页
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                上一页
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                下一页
+              </button>
+            </div>
             <button
               type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50"
+              onClick={handleClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
             >
-              上一页
+              取消
             </button>
             <button
               type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50"
+              onClick={handleConfirm}
+              disabled={confirming || selectedIds.size === 0}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
             >
-              下一页
+              {confirming ? "删除中..." : "确认删除"}
             </button>
           </div>
-        </div>
-
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={confirming}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {confirming ? "保存中..." : "确认关联"}
-          </button>
         </div>
       </div>
     </div>

@@ -10,9 +10,15 @@ interface VehiclePrice {
   vip_price: number | null;
   customer_parts_price: number | null;
   company_price: number | null;
+  品牌?: string;
+  车系?: string;
+  车型?: string;
+  年款?: number | null;
+  排量?: string | null;
   发动机型号: string | null;
   底盘型号: string | null;
   变速箱型号: string | null;
+  group_key?: string;
   _expanded?: boolean;
 }
 
@@ -57,8 +63,11 @@ export default function VehiclePriceEditModal({ open, onClose, onConfirm, prices
           customer_parts_price: p.customer_parts_price,
           company_price: p.company_price,
           vehicles: [],
-          expanded: false,
+          expanded: p._expanded || false,
         });
+      } else {
+        const group = map.get(key)!;
+        if (p._expanded) group.expanded = true;
       }
       map.get(key)!.vehicles.push(p);
     }

@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import VehiclePriceModal from "@/components/VehiclePriceModal";
 import VehiclePriceEditModal from "@/components/VehiclePriceEditModal";
+import VehicleDeleteModal from "@/components/VehicleDeleteModal";
+import VehiclePriceViewModal from "@/components/VehiclePriceViewModal";
 
 interface VehiclePrice {
   id?: string;
@@ -15,9 +17,15 @@ interface VehiclePrice {
   vip_price: number | null;
   customer_parts_price: number | null;
   company_price: number | null;
+  品牌?: string;
+  车系?: string;
+  车型?: string;
+  年款?: number | null;
+  排量?: string | null;
   发动机型号: string | null;
   底盘型号: string | null;
   变速箱型号: string | null;
+  group_key?: string;
 }
 
 interface LinkedPart {
@@ -42,14 +50,18 @@ interface ServiceNameResult {
   qc_commission_value?: number | null;
 }
 
-function makeGroupKey(p: { price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null }) {
+function getPriceKey(p: { price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null }) {
   const fmt = (v: number | null) => v === null ? "null" : v.toFixed(2);
   return `${p.price.toFixed(2)}_${fmt(p.vip_price)}_${fmt(p.customer_parts_price)}_${fmt(p.company_price)}`;
 }
 
+function makeGroupKey(p: { price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null; group_key?: string }) {
+  return p.group_key || getPriceKey(p);
+}
+
 export default function NewServiceItemPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
 
@@ -84,8 +96,20 @@ export default function NewServiceItemPage() {
   const [vehiclePrices, setVehiclePrices] = useState<VehiclePrice[]>([]);
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
   const [vehicleEditModalOpen, setVehicleEditModalOpen] = useState(false);
+  const [vehicleDeleteModalOpen, setVehicleDeleteModalOpen] = useState(false);
+  const [deleteGroupKey, setDeleteGroupKey] = useState<string | null>(null);
+  const [vehicleViewModalOpen, setVehicleViewModalOpen] = useState(false);
+  const [viewVehicles, setViewVehicles] = useState<VehiclePrice[]>([]);
   const [pendingGroupPrices, setPendingGroupPrices] = useState<{ price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null } | null>(null);
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
+  const [appendMode, setAppendMode] = useState(false);
+  const [draftItemId, setDraftItemId] = useState<string | null>(null);
+  const draftItemIdRef = useRef<string | null>(null);
+  draftItemIdRef.current = draftItemId;
+  const [autoSavingVehicles, setAutoSavingVehicles] = useState(false);
+  const initialVehicleLoadRef = useRef(true);
+  const formRef = useRef(form);
+  formRef.current = form;
 
   const priceGroups = useMemo(() => {
     const map = new Map<string, { price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null; vehicles: VehiclePrice[] }>();
@@ -99,15 +123,114 @@ export default function NewServiceItemPage() {
     return Array.from(map.values());
   }, [vehiclePrices]);
 
-  const modalExcludedIds = useMemo(() => editingGroupKey
-    ? vehiclePrices.filter((p) => makeGroupKey(p) !== editingGroupKey).map((p) => p.vehicle_model_id)
-    : vehiclePrices.map((p) => p.vehicle_model_id), [editingGroupKey, vehiclePrices]);
-  const modalPreSelectedIds = useMemo(() => editingGroupKey
-    ? vehiclePrices.filter((p) => makeGroupKey(p) === editingGroupKey).map((p) => p.vehicle_model_id)
-    : undefined, [editingGroupKey, vehiclePrices]);
+  // 车型定价自动保存
+  useEffect(() => {
+    if (initialVehicleLoadRef.current) {
+      initialVehicleLoadRef.current = false;
+      return;
+    }
+
+    // 没有草稿项目且没有车型定价时无需保存
+    if (vehiclePrices.length === 0 && !draftItemIdRef.current) return;
+
+    async function autoSave() {
+      const currentForm = formRef.current;
+      let itemId = draftItemIdRef.current;
+
+      if (!itemId) {
+        if (!currentForm.name.trim() || !currentForm.category_id) return;
+        setAutoSavingVehicles(true);
+        const autoCode = `XM-${Date.now().toString(36).toUpperCase().slice(-6)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
+        const { data: inserted, error } = await supabase
+          .from("service_items")
+          .insert({
+            code: autoCode,
+            category_id: currentForm.category_id,
+            service_name_id: currentForm.service_name_id || null,
+            name: currentForm.name.trim(),
+            standard_hours: currentForm.standard_hours ? parseFloat(currentForm.standard_hours) : null,
+            description: currentForm.description || null,
+            default_price: currentForm.default_price ? parseFloat(currentForm.default_price) : null,
+            vip_price: currentForm.vip_price ? parseFloat(currentForm.vip_price) : null,
+            customer_parts_price: currentForm.customer_parts_price ? parseFloat(currentForm.customer_parts_price) : null,
+            company_price: currentForm.company_price ? parseFloat(currentForm.company_price) : null,
+            sales_commission_type: currentForm.sales_type || null,
+            sales_commission_value: currentForm.sales_value ? parseFloat(currentForm.sales_value) : null,
+            diagnosis_commission_type: currentForm.diagnosis_type || null,
+            diagnosis_commission_value: currentForm.diagnosis_value ? parseFloat(currentForm.diagnosis_value) : null,
+            repair_commission_type: currentForm.repair_type || null,
+            repair_commission_value: currentForm.repair_value ? parseFloat(currentForm.repair_value) : null,
+            qc_commission_type: currentForm.qc_type || null,
+            qc_commission_value: currentForm.qc_value ? parseFloat(currentForm.qc_value) : null,
+          })
+          .select("id")
+          .single();
+        if (error || !inserted) {
+          console.error("自动创建项目失败:", error);
+          alert("自动保存失败（创建项目）: " + (error?.message || "未知错误"));
+          setAutoSavingVehicles(false);
+          return;
+        }
+        itemId = inserted.id;
+        setDraftItemId(itemId);
+      } else {
+        setAutoSavingVehicles(true);
+      }
+
+      const { error: delError } = await supabase.from("service_item_prices").delete().eq("service_item_id", itemId);
+      if (delError) {
+        console.error("删除旧车型定价失败:", delError);
+        alert("自动保存失败（删除旧数据）: " + delError.message);
+        setAutoSavingVehicles(false);
+        return;
+      }
+      if (vehiclePrices.length > 0) {
+        const { error: insError } = await supabase.from("service_item_prices").insert(
+          vehiclePrices.map((p) => ({
+            service_item_id: itemId,
+            vehicle_model_id: p.vehicle_model_id,
+            price: p.price,
+            vip_price: p.vip_price,
+            customer_parts_price: p.customer_parts_price,
+            company_price: p.company_price,
+          }))
+        );
+        if (insError) {
+          console.error("插入车型定价失败:", insError);
+          alert("自动保存失败（插入新数据）: " + insError.message);
+        }
+      }
+      setAutoSavingVehicles(false);
+    }
+
+    autoSave();
+  }, [vehiclePrices]);
+
+  const modalExcludedIds = useMemo(() => {
+    if (appendMode) {
+      return [...new Set(vehiclePrices.map((p) => Number(p.vehicle_model_id)))];
+    }
+    if (editingGroupKey) {
+      return [...new Set(vehiclePrices.filter((p) => makeGroupKey(p) !== editingGroupKey).map((p) => Number(p.vehicle_model_id)))];
+    }
+    return [...new Set(vehiclePrices.map((p) => Number(p.vehicle_model_id)))];
+  }, [appendMode, editingGroupKey, vehiclePrices]);
+  const modalPreSelectedIds = useMemo(() => {
+    if (appendMode) return undefined;
+    if (editingGroupKey) {
+      return [...new Set(vehiclePrices.filter((p) => makeGroupKey(p) === editingGroupKey).map((p) => Number(p.vehicle_model_id)))];
+    }
+    return undefined;
+  }, [appendMode, editingGroupKey, vehiclePrices]);
 
   function removePriceGroup(key: string) {
     setVehiclePrices((prev) => prev.filter((p) => makeGroupKey(p) !== key));
+  }
+
+  function handleDeleteVehicles(vehicleIdsToDelete: number[]) {
+    setVehiclePrices((prev) => prev.filter((p) => !vehicleIdsToDelete.includes(p.vehicle_model_id)));
+    setVehicleDeleteModalOpen(false);
+    setDeleteGroupKey(null);
   }
 
   const [linkedParts, setLinkedParts] = useState<LinkedPart[]>([]);
@@ -350,14 +473,16 @@ export default function NewServiceItemPage() {
     customerPartsPrice: number | null,
     companyPrice: number | null
   ) {
-    const basePrice = pendingGroupPrices?.price ?? price;
-    const baseVip = pendingGroupPrices?.vip_price ?? vipPrice;
-    const baseCp = pendingGroupPrices?.customer_parts_price ?? customerPartsPrice;
-    const baseCo = pendingGroupPrices?.company_price ?? companyPrice;
+    const basePrice = price;
+    const baseVip = vipPrice;
+    const baseCp = customerPartsPrice;
+    const baseCo = companyPrice;
 
     if (editingGroupKey) {
       if (vehicleIds.length === 0) {
-        setVehiclePrices((prev) => prev.filter((p) => makeGroupKey(p) !== editingGroupKey));
+        if (!appendMode) {
+          setVehiclePrices((prev) => prev.filter((p) => makeGroupKey(p) !== editingGroupKey));
+        }
       } else {
         const { data, error } = await supabase.from("vehicle_models").select("id,品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号").in("id", vehicleIds);
         if (error) {
@@ -368,23 +493,35 @@ export default function NewServiceItemPage() {
           alert("未找到所选车型信息");
           return;
         }
+        const groupPrice = appendMode && pendingGroupPrices ? pendingGroupPrices : { price: basePrice, vip_price: baseVip, customer_parts_price: baseCp, company_price: baseCo };
+        const targetGroupKey = vehiclePrices.find((p) => getPriceKey(p) === editingGroupKey)?.group_key || editingGroupKey;
         const newEntries = data.map((m: any) => ({
           vehicle_model_id: m.id,
           vehicle_name: formatVehicleName(m),
-          price: basePrice,
-          vip_price: baseVip,
-          customer_parts_price: baseCp,
-          company_price: baseCo,
+          price: groupPrice.price,
+          vip_price: groupPrice.vip_price,
+          customer_parts_price: groupPrice.customer_parts_price,
+          company_price: groupPrice.company_price,
+          品牌: m.品牌 || "",
+          车系: m.车系 || "",
+          车型: m.车型 || "",
+          年款: m.年款 ?? null,
+          排量: m.排量 ?? null,
           发动机型号: m.发动机型号 || null,
           底盘型号: m.底盘型号 || null,
           变速箱型号: m.变速箱型号 || null,
+          group_key: targetGroupKey,
         }));
         setVehiclePrices((prev) => {
+          if (appendMode) {
+            return [...prev, ...newEntries];
+          }
           const filtered = prev.filter((p) => makeGroupKey(p) !== editingGroupKey);
           return [...filtered, ...newEntries];
         });
       }
       setEditingGroupKey(null);
+      setAppendMode(false);
     } else {
       if (vehicleIds.length === 0) return;
       const { data, error } = await supabase.from("vehicle_models").select("id,品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号").in("id", vehicleIds);
@@ -396,6 +533,7 @@ export default function NewServiceItemPage() {
         alert("未找到所选车型信息");
         return;
       }
+      const newGroupKey = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const newEntries = data.map((m: any) => ({
         vehicle_model_id: m.id,
         vehicle_name: formatVehicleName(m),
@@ -403,9 +541,15 @@ export default function NewServiceItemPage() {
         vip_price: baseVip,
         customer_parts_price: baseCp,
         company_price: baseCo,
+        品牌: m.品牌 || "",
+        车系: m.车系 || "",
+        车型: m.车型 || "",
+        年款: m.年款 ?? null,
+        排量: m.排量 ?? null,
         发动机型号: m.发动机型号 || null,
         底盘型号: m.底盘型号 || null,
         变速箱型号: m.变速箱型号 || null,
+        group_key: newGroupKey,
       }));
       setVehiclePrices((prev) => [...prev, ...newEntries]);
     }
@@ -421,43 +565,81 @@ export default function NewServiceItemPage() {
     }
     setLoading(true);
 
-    // 自动生成编码
-    const autoCode = `XM-${Date.now().toString(36).toUpperCase().slice(-6)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
+    let itemId = draftItemId;
 
-    const { data: inserted, error } = await supabase
-      .from("service_items")
-      .insert({
-        code: autoCode,
-        category_id: form.category_id,
-        service_name_id: form.service_name_id || null,
-        name: form.name.trim(),
-        standard_hours: form.standard_hours ? parseFloat(form.standard_hours) : null,
-        description: form.description || null,
-        default_price: form.default_price ? parseFloat(form.default_price) : null,
-        vip_price: form.vip_price ? parseFloat(form.vip_price) : null,
-        customer_parts_price: form.customer_parts_price ? parseFloat(form.customer_parts_price) : null,
-        company_price: form.company_price ? parseFloat(form.company_price) : null,
-        sales_commission_type: form.sales_type || null,
-        sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-        diagnosis_commission_type: form.diagnosis_type || null,
-        diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-        repair_commission_type: form.repair_type || null,
-        repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-        qc_commission_type: form.qc_type || null,
-        qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-      })
-      .select("id")
-      .single();
+    if (itemId) {
+      // 已存在草稿项目，更新基本信息
+      const { error } = await supabase
+        .from("service_items")
+        .update({
+          category_id: form.category_id,
+          service_name_id: form.service_name_id || null,
+          name: form.name.trim(),
+          standard_hours: form.standard_hours ? parseFloat(form.standard_hours) : null,
+          description: form.description || null,
+          default_price: form.default_price ? parseFloat(form.default_price) : null,
+          vip_price: form.vip_price ? parseFloat(form.vip_price) : null,
+          customer_parts_price: form.customer_parts_price ? parseFloat(form.customer_parts_price) : null,
+          company_price: form.company_price ? parseFloat(form.company_price) : null,
+          sales_commission_type: form.sales_type || null,
+          sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
+          diagnosis_commission_type: form.diagnosis_type || null,
+          diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
+          repair_commission_type: form.repair_type || null,
+          repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
+          qc_commission_type: form.qc_type || null,
+          qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
+        })
+        .eq("id", itemId);
 
-    if (error || !inserted) {
-      alert("保存失败: " + (error?.message || "未知错误"));
+      if (error) {
+        alert("保存失败: " + error.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      // 新建项目
+      const autoCode = `XM-${Date.now().toString(36).toUpperCase().slice(-6)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
+      const { data: inserted, error } = await supabase
+        .from("service_items")
+        .insert({
+          code: autoCode,
+          category_id: form.category_id,
+          service_name_id: form.service_name_id || null,
+          name: form.name.trim(),
+          standard_hours: form.standard_hours ? parseFloat(form.standard_hours) : null,
+          description: form.description || null,
+          default_price: form.default_price ? parseFloat(form.default_price) : null,
+          vip_price: form.vip_price ? parseFloat(form.vip_price) : null,
+          customer_parts_price: form.customer_parts_price ? parseFloat(form.customer_parts_price) : null,
+          company_price: form.company_price ? parseFloat(form.company_price) : null,
+          sales_commission_type: form.sales_type || null,
+          sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
+          diagnosis_commission_type: form.diagnosis_type || null,
+          diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
+          repair_commission_type: form.repair_type || null,
+          repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
+          qc_commission_type: form.qc_type || null,
+          qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
+        })
+        .select("id")
+        .single();
+
+      if (error || !inserted) {
+        alert("保存失败: " + (error?.message || "未知错误"));
+        setLoading(false);
+        return;
+      }
+      itemId = inserted.id;
+    }
+
+    // 保存车型定价（兜底：确保最终状态一致）
+    const { error: delVpError } = await supabase.from("service_item_prices").delete().eq("service_item_id", itemId);
+    if (delVpError) {
+      alert("删除旧车型定价失败: " + delVpError.message);
       setLoading(false);
       return;
     }
-
-    const itemId = inserted.id;
-
-    // 保存车型定价
     if (vehiclePrices.length > 0) {
       const { error: vpError } = await supabase.from("service_item_prices").insert(
         vehiclePrices.map((p) => ({
@@ -477,6 +659,12 @@ export default function NewServiceItemPage() {
     }
 
     // 保存指定用户价格
+    const { error: delSpError } = await supabase.from("service_item_special_prices").delete().eq("service_item_id", itemId);
+    if (delSpError) {
+      alert("删除旧指定用户价格失败: " + delSpError.message);
+      setLoading(false);
+      return;
+    }
     if (specialPrices.length > 0) {
       const { error: spError } = await supabase.from("service_item_special_prices").insert(
         specialPrices.map((p) => ({
@@ -935,7 +1123,7 @@ export default function NewServiceItemPage() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setVehicleModalOpen(true)}
+                  onClick={() => { setAppendMode(false); setEditingGroupKey(null); setPendingGroupPrices(null); setVehicleModalOpen(true); }}
                   className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
                 >
                   添加
@@ -943,7 +1131,7 @@ export default function NewServiceItemPage() {
                 {vehiclePrices.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setVehicleEditModalOpen(true)}
+                    onClick={() => { setEditingGroupKey(null); setPendingGroupPrices(null); setVehicleEditModalOpen(true); }}
                     className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900"
                   >
                     编辑
@@ -971,6 +1159,7 @@ export default function NewServiceItemPage() {
                           <button
                             type="button"
                             onClick={() => {
+                              setAppendMode(true);
                               setEditingGroupKey(key);
                               setPendingGroupPrices({
                                 price: g.price,
@@ -982,7 +1171,27 @@ export default function NewServiceItemPage() {
                             }}
                             className="text-xs text-blue-600 hover:text-blue-800"
                           >
-                            编辑
+                            添加
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setViewVehicles(g.vehicles);
+                              setVehicleViewModalOpen(true);
+                            }}
+                            className="text-xs text-blue-600 hover:text-blue-800"
+                          >
+                            查看
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteGroupKey(key);
+                              setVehicleDeleteModalOpen(true);
+                            }}
+                            className="text-xs text-red-600 hover:text-red-700"
+                          >
+                            删除
                           </button>
                           <button
                             type="button"
@@ -1003,8 +1212,8 @@ export default function NewServiceItemPage() {
                             <span className="text-gray-500">ID:{v.vehicle_model_id}</span> · {v.vehicle_name} · <span className="text-gray-500">发动机:{v.发动机型号 ?? "-"} · 底盘:{v.底盘型号 ?? "-"} · 变速箱:{v.变速箱型号 ?? "-"}</span>
                           </div>
                         ))}
-                        {remaining > 0 && (
-                          <div className="text-xs text-gray-400">还有 {remaining} 个车型</div>
+                        {g.vehicles.length > 0 && (
+                          <div className="text-xs text-gray-400">共 {g.vehicles.length} 个车型</div>
                         )}
                       </div>
                     </div>
@@ -1020,7 +1229,7 @@ export default function NewServiceItemPage() {
 
       <VehiclePriceModal
         open={vehicleModalOpen}
-        onClose={() => { setVehicleModalOpen(false); setPendingGroupPrices(null); setEditingGroupKey(null); }}
+        onClose={() => { setVehicleModalOpen(false); setPendingGroupPrices(null); setEditingGroupKey(null); setAppendMode(false); }}
         onConfirm={handleModalConfirm}
         defaultPrices={pendingGroupPrices || undefined}
         excludedIds={modalExcludedIds}
@@ -1032,6 +1241,47 @@ export default function NewServiceItemPage() {
         onConfirm={(prices) => { setVehiclePrices(prices); setVehicleEditModalOpen(false); }}
         prices={vehiclePrices}
         onAddVehicles={(prices) => { setPendingGroupPrices(prices); setVehicleEditModalOpen(false); setVehicleModalOpen(true); }}
+      />
+      <VehicleDeleteModal
+        open={vehicleDeleteModalOpen}
+        onClose={() => { setVehicleDeleteModalOpen(false); setDeleteGroupKey(null); }}
+        onConfirm={handleDeleteVehicles}
+        vehicles={deleteGroupKey ? vehiclePrices.filter((p) => makeGroupKey(p) === deleteGroupKey).map((p) => ({
+          vehicle_model_id: p.vehicle_model_id,
+          vehicle_name: p.vehicle_name,
+          品牌: p.品牌,
+          车系: p.车系,
+          车型: p.车型,
+          年款: p.年款,
+          排量: p.排量,
+          发动机型号: p.发动机型号,
+          底盘型号: p.底盘型号,
+          变速箱型号: p.变速箱型号,
+        })) : []}
+        prices={deleteGroupKey ? (() => {
+          const sample = vehiclePrices.find((p) => makeGroupKey(p) === deleteGroupKey);
+          return sample ? { price: sample.price, vip_price: sample.vip_price, customer_parts_price: sample.customer_parts_price, company_price: sample.company_price } : undefined;
+        })() : undefined}
+      />
+      <VehiclePriceViewModal
+        open={vehicleViewModalOpen}
+        onClose={() => { setVehicleViewModalOpen(false); setViewVehicles([]); }}
+        onDeleteVehicles={(ids) => {
+          setVehiclePrices((prev) => prev.filter((p) => !ids.includes(p.vehicle_model_id)));
+          setViewVehicles((prev) => prev.filter((p) => !ids.includes(p.vehicle_model_id)));
+        }}
+        vehicles={viewVehicles.map((p) => ({
+          vehicle_model_id: p.vehicle_model_id,
+          vehicle_name: p.vehicle_name,
+          品牌: p.品牌,
+          车系: p.车系,
+          车型: p.车型,
+          年款: p.年款,
+          排量: p.排量,
+          发动机型号: p.发动机型号,
+          底盘型号: p.底盘型号,
+          变速箱型号: p.变速箱型号,
+        }))}
       />
     </div>
   );
