@@ -40,10 +40,23 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="p-6 space-y-6">
-      <PageHeader
-        title="配件详情"
-        action={{ href: "/inventory", label: "返回列表" }}
-      />
+      <div className="flex items-center justify-between mb-6">
+        <PageHeader title="配件详情" className="mb-0" />
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/parts/${id}/edit`}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            编辑
+          </Link>
+          <Link
+            href="/inventory"
+            className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            返回列表
+          </Link>
+        </div>
+      </div>
 
       {/* 基础信息 */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">

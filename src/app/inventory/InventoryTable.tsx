@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import Link from "next/link";
 import JsBarcode from "jsbarcode";
 import DeletePartButton from "./DeletePartButton";
@@ -8,7 +8,31 @@ import { formatCurrency } from "@/lib/utils";
 
 export default function InventoryTable({ items }: { items: any[] }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Filter items by search query
+  const filteredItems = useMemo(() => {
+    if (!searchQuery.trim()) return items;
+    const q = searchQuery.trim().toLowerCase();
+    return items.filter((item) =>
+      (item.part_number || "").toLowerCase().includes(q) ||
+      (item.name || "").toLowerCase().includes(q) ||
+      (item.barcode || "").toLowerCase().includes(q)
+    );
+  }, [items, searchQuery]);
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedItems = filteredItems.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -115,8 +139,28 @@ export default function InventoryTable({ items }: { items: any[] }) {
     printWindow.print();
   }
 
+  function getSpecsText(item: any) {
+    const specs = item.parts_specifications;
+    if (!specs || specs.length === 0) return "-";
+    return specs
+      .map((s: any) => s.part_specifications?.name || "")
+      .filter(Boolean)
+      .join(", ");
+  }
+
   return (
     <div>
+      {/* 搜索框 */}
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="搜索配件编号、名称、条形码"
+          className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
       {/* 批量操作栏 */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
@@ -140,10 +184,13 @@ export default function InventoryTable({ items }: { items: any[] }) {
             <span className="text-sm text-gray-400">勾选配件可进行批量打印条码</span>
           )}
         </div>
+        <span className="text-sm text-gray-500">
+          共 {filteredItems.length} 条，第 {safePage}/{totalPages} 页
+        </span>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm min-w-[1200px] border-collapse">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left">
@@ -154,20 +201,22 @@ export default function InventoryTable({ items }: { items: any[] }) {
                   className="rounded border-gray-300"
                 />
               </th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">配件编号</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">条形码</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">名称</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 sticky left-0 bg-gray-50 z-10 w-[120px] min-w-[120px]">配件编号</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 sticky left-[120px] bg-gray-50 z-10 w-[150px] min-w-[150px]">名称</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">分类</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">品牌</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">规格</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">库存</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">采购价</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">成本价</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">销售价</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">存放位置</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">条形码</th>
               <th className="px-4 py-3 text-right font-medium text-gray-500">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {items.map((item: any) => (
+            {paginatedItems.map((item: any) => (
               <tr key={item.id} className="hover:bg-gray-50">
                 <td className="px-4 py-4">
                   <input
@@ -177,11 +226,13 @@ export default function InventoryTable({ items }: { items: any[] }) {
                     className="rounded border-gray-300"
                   />
                 </td>
-                <td className="px-4 py-4 font-medium text-gray-900">{item.part_number}</td>
-                <td className="px-4 py-4 text-gray-600">{item.barcode || "-"}</td>
-                <td className="px-4 py-4 text-gray-900">{item.name}</td>
+                <td className="px-4 py-4 font-medium text-gray-900 sticky left-0 bg-white z-10 w-[120px] min-w-[120px]">{item.part_number}</td>
+                <td className="px-4 py-4 text-gray-900 sticky left-[120px] bg-white z-10 w-[150px] min-w-[150px]">{item.name}</td>
                 <td className="px-4 py-4 text-gray-600">{item.part_names?.part_categories?.name || "-"}</td>
                 <td className="px-4 py-4 text-gray-600">{item.part_brands?.name || "-"}</td>
+                <td className="px-4 py-4 text-gray-600 max-w-[80px] truncate" title={getSpecsText(item)}>
+                  {getSpecsText(item).slice(0, 10)}
+                </td>
                 <td className="px-4 py-4">
                   <span className={`font-medium ${item.quantity <= item.min_stock ? "text-red-600" : "text-gray-900"}`}>
                     {item.quantity}
@@ -190,9 +241,11 @@ export default function InventoryTable({ items }: { items: any[] }) {
                     <span className="ml-2 text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded">库存不足</span>
                   )}
                 </td>
+                <td className="px-4 py-4 text-gray-600">{formatCurrency(item.purchase_price)}</td>
                 <td className="px-4 py-4 text-gray-600">{formatCurrency(item.unit_cost)}</td>
                 <td className="px-4 py-4 text-gray-600">{formatCurrency(item.unit_price)}</td>
                 <td className="px-4 py-4 text-gray-500">{item.location || "-"}</td>
+                <td className="px-4 py-4 text-gray-600">{item.barcode || "-"}</td>
                 <td className="px-4 py-4 text-right space-x-3 whitespace-nowrap">
                   <Link
                     href={`/parts/${item.id}`}
@@ -210,14 +263,48 @@ export default function InventoryTable({ items }: { items: any[] }) {
                 </td>
               </tr>
             ))}
-            {items.length === 0 && (
+            {paginatedItems.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-6 py-12 text-center text-gray-400">暂无配件数据</td>
+                <td colSpan={13} className="px-6 py-12 text-center text-gray-400">暂无配件数据</td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* 分页 */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-6">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            上一页
+          </button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+            <button
+              key={page}
+              onClick={() => setCurrentPage(page)}
+              className={`px-3 py-1.5 text-sm rounded-lg ${
+                page === safePage
+                  ? "bg-blue-600 text-white"
+                  : "border border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            下一页
+          </button>
+        </div>
+      )}
+
       <canvas ref={canvasRef} style={{ display: "none" }} />
     </div>
   );

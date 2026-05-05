@@ -53,10 +53,11 @@ interface VehicleModelPriceItem {
   standard_price: string;
 }
 
-export default function PartForm() {
+export default function PartForm({ editId }: { editId?: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
+  const isEditMode = !!editId;
   const [loading, setLoading] = useState(false);
   const [systemCode, setSystemCode] = useState("");
 
@@ -84,6 +85,7 @@ export default function PartForm() {
   const [partNameResults, setPartNameResults] = useState<any[] | null>(null);
   const [partNameSearching, setPartNameSearching] = useState(false);
   const [selectedPartName, setSelectedPartName] = useState<any | null>(null);
+  const [highlightedNameIndex, setHighlightedNameIndex] = useState(-1);
   const pnNameTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Brand search
@@ -91,6 +93,8 @@ export default function PartForm() {
   const [brandResults, setBrandResults] = useState<any[] | null>(null);
   const [brandSearching, setBrandSearching] = useState(false);
   const [selectedBrand, setSelectedBrand] = useState<LinkedItem | null>(null);
+  const [brandFocus, setBrandFocus] = useState(false);
+  const [highlightedBrandIndex, setHighlightedBrandIndex] = useState(-1);
   const brandTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Specification search (multiple)
@@ -98,6 +102,7 @@ export default function PartForm() {
   const [specResults, setSpecResults] = useState<any[] | null>(null);
   const [specSearching, setSpecSearching] = useState(false);
   const [selectedSpecs, setSelectedSpecs] = useState<LinkedItem[]>([]);
+  const [highlightedSpecIndex, setHighlightedSpecIndex] = useState(-1);
   const specTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Vehicle model search (multiple)
@@ -220,8 +225,9 @@ export default function PartForm() {
 
   const totalQuantity = stockLocations.reduce((sum, row) => sum + (parseInt(row.quantity) || 0), 0);
 
-  // Generate system code on mount
+  // Generate system code on mount (only for new)
   useEffect(() => {
+    if (isEditMode) return;
     async function generateCode() {
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       const prefix = `PJ${dateStr}`;
@@ -241,7 +247,7 @@ export default function PartForm() {
       setSystemCode(`${prefix}${String(seq).padStart(3, "0")}`);
     }
     generateCode();
-  }, [supabase]);
+  }, [supabase, isEditMode]);
 
   // Load copy-from part data
   useEffect(() => {
@@ -292,7 +298,7 @@ export default function PartForm() {
         ...prev,
         name: "",
         unit: part.unit || "件",
-        categoryName: partName?.part_categories?.name || "",
+        categoryName: (Array.isArray(partName?.part_categories) ? partName?.part_categories[0]?.name : partName?.part_categories?.name) || "",
         min_stock: String(part.min_stock || 10),
         purchase_price: "",
         reference_purchase_price: "",
@@ -324,6 +330,184 @@ export default function PartForm() {
     loadPart();
   }, [searchParams, supabase]);
 
+  // Load edit data
+  useEffect(() => {
+    if (!editId) return;
+    async function loadEditData() {
+      setLoading(true);
+      try {
+        const { data: part } = await supabase.from("parts").select("*").eq("id", editId).single();
+        if (!part) { alert("配件不存在"); router.push("/inventory"); return; }
+
+        const [
+          { data: partName },
+          { data: brand },
+          { data: supplier },
+          { data: specs },
+          { data: vms },
+          { data: images },
+          { data: stocks },
+          { data: specialData },
+          { data: vehiclePriceData },
+        ] = await Promise.all([
+          part.part_name_id
+            ? supabase.from("part_names").select("*, part_categories(*)").eq("id", part.part_name_id).single()
+            : Promise.resolve({ data: null }),
+          part.brand_id
+            ? supabase.from("part_brands").select("*").eq("id", part.brand_id).single()
+            : Promise.resolve({ data: null }),
+          part.supplier_id
+            ? supabase.from("suppliers").select("*").eq("id", part.supplier_id).single()
+            : Promise.resolve({ data: null }),
+          supabase.from("parts_specifications").select("specification_id, part_specifications(name)").eq("part_id", editId),
+          supabase.from("part_vehicle_models").select("vehicle_model_id, vehicle_models(brand, series, model_name, year_start, year_end, engine), notes").eq("part_id", editId),
+          supabase.from("part_images").select("*").eq("part_id", editId).order("sort_order", { ascending: true }),
+          supabase.from("part_stock_locations").select("*, warehouses(name)").eq("part_id", editId),
+          supabase.from("part_special_prices").select("*, companies(name), customers(name, phone), vehicles(plate_number, vin)").eq("part_id", editId),
+          supabase.from("part_vehicle_prices").select("*, vehicle_models(brand, series, model_name, year_start, year_end, engine)").eq("part_id", editId),
+        ]);
+
+        if (partName) {
+          setSelectedPartName(partName);
+          setPartNameQuery(partName.name);
+        }
+        if (brand) {
+          setSelectedBrand({ id: brand.id, name: brand.name });
+          setBrandQuery(brand.name);
+        }
+        if (supplier) {
+          setSelectedSupplier(supplier);
+          setSupplierQuery(supplier.name);
+        }
+        if (specs) {
+          setSelectedSpecs(specs.map((s: any) => ({ id: s.specification_id, name: s.part_specifications?.name })).filter((s: any) => s.name));
+        }
+        if (vms) {
+          setSelectedVehicleModels(vms.map((v: any) => {
+            const vm = v.vehicle_models;
+            const name = vm ? `${vm.brand} ${vm.series} ${vm.model_name || ""}`.trim() : "";
+            return { id: v.vehicle_model_id, name, brand: vm?.brand, series: vm?.series, model_name: vm?.model_name, year_start: vm?.year_start, year_end: vm?.year_end, engine: vm?.engine, notes: v.notes || "" };
+          }));
+        }
+        if (images) {
+          setPartImages(images.map((img: any) => img.storage_path));
+        }
+        if (stocks && stocks.length > 0) {
+          setStockLocations(stocks.map((s: any) => ({
+            id: s.id,
+            warehouseName: s.warehouses?.name || "",
+            location: s.location || "",
+            quantity: String(s.quantity || 0),
+            min_stock: String(s.min_stock || 0),
+            max_stock: s.max_stock ? String(s.max_stock) : "",
+          })));
+        }
+
+        setPartNumber(part.part_number || "");
+        setBarcode(part.barcode || "");
+        setInterchangeCode(part.interchange_code || "");
+        setDocNameQuery(part.document_name || "");
+        setSystemCode(part.system_code || "");
+
+        setForm({
+          name: part.name || "",
+          unit: part.unit || "件",
+          categoryName: (Array.isArray(partName?.part_categories) ? partName?.part_categories[0]?.name : partName?.part_categories?.name) || "",
+          min_stock: String(part.min_stock || 10),
+          purchase_price: part.purchase_price ? String(part.purchase_price) : "",
+          reference_purchase_price: part.reference_purchase_price ? String(part.reference_purchase_price) : "",
+          unit_price: part.unit_price ? String(part.unit_price) : "",
+          standard_price: part.standard_price ? String(part.standard_price) : "",
+          vip_price: part.vip_price ? String(part.vip_price) : "",
+          wholesale_price: part.wholesale_price ? String(part.wholesale_price) : "",
+          notes: part.notes || "",
+          auto_link_vehicle_model: part.auto_link_vehicle_model || false,
+          is_consumable: part.is_consumable || false,
+          sales_type: part.sales_commission_type || "",
+          sales_value: part.sales_commission_value ? String(part.sales_commission_value) : "",
+          diagnosis_type: part.diagnosis_commission_type || "",
+          diagnosis_value: part.diagnosis_commission_value ? String(part.diagnosis_commission_value) : "",
+          repair_type: part.repair_commission_type || "",
+          repair_value: part.repair_commission_value ? String(part.repair_commission_value) : "",
+          qc_type: part.qc_commission_type || "",
+          qc_value: part.qc_commission_value ? String(part.qc_commission_value) : "",
+          picking_type: part.picking_commission_type || "",
+          picking_value: part.picking_commission_value ? String(part.picking_commission_value) : "",
+        });
+
+        if (specialData) {
+          setSpecialPrices(specialData.map((s: any) => ({
+            id: s.id,
+            company_id: s.company_id || undefined,
+            company_name: s.companies?.name || undefined,
+            customer_id: s.customer_id || undefined,
+            customer_name: s.customers?.name || undefined,
+            vehicle_id: s.vehicle_id || undefined,
+            vehicle_name: s.vehicles ? `${s.vehicles.plate_number || ""}`.trim() : undefined,
+            price: String(s.price),
+          })));
+        }
+
+        if (vehiclePriceData) {
+          setVehicleModelPrices(vehiclePriceData.map((v: any) => {
+            const vm = v.vehicle_models;
+            const name = vm ? `${vm.brand} ${vm.series} ${vm.model_name || ""}`.trim() : "";
+            return {
+              vehicle_model_id: v.vehicle_model_id,
+              vehicle_name: name,
+              brand: vm?.brand || "",
+              series: vm?.series || "",
+              model_name: vm?.model_name || "",
+              year_start: vm?.year_start,
+              year_end: vm?.year_end,
+              engine: vm?.engine,
+              sales_price: v.sales_price ? String(v.sales_price) : "",
+              vip_price: v.vip_price ? String(v.vip_price) : "",
+              standard_price: v.standard_price ? String(v.standard_price) : "",
+            };
+          }));
+        }
+      } catch (err: any) {
+        alert("加载配件数据失败: " + (err.message || "未知错误"));
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadEditData();
+  }, [editId, supabase, router]);
+
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Ctrl+S / Cmd+S — 保存
+      if ((e.ctrlKey || e.metaKey) && e.key === "s" && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit();
+        return;
+      }
+      // Ctrl+Shift+D — 复制新建
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "D") {
+        e.preventDefault();
+        const copyId = isEditMode ? editId : searchParams.get("copy_from");
+        if (copyId) router.push(`/parts/new?copy_from=${copyId}`);
+        return;
+      }
+      // Ctrl+Shift+R — 重新输入
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "R") {
+        e.preventDefault();
+        window.location.reload();
+        return;
+      }
+      // Escape — 取消（仅在无弹窗时生效）
+      if (e.key === "Escape" && !vmModalOpen) {
+        router.back();
+        return;
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [handleSubmit, isEditMode, editId, searchParams, router, vmModalOpen]);
 
   // Load all warehouses for stock location selection
   useEffect(() => {
@@ -346,18 +530,22 @@ export default function PartForm() {
     }
     setPnSearching(true);
     pnTimeoutRef.current = setTimeout(async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("parts")
         .select("id, part_number, name")
         .ilike("part_number", `%${value}%`)
         .limit(5);
+      if (editId) {
+        query = query.neq("id", editId);
+      }
+      const { data } = await query;
       setPnResults(data || []);
       setPnSearching(false);
     }, 300);
     return () => {
       if (pnTimeoutRef.current) clearTimeout(pnTimeoutRef.current);
     };
-  }, [partNumber, supabase]);
+  }, [partNumber, supabase, editId]);
 
   function handlePartNumberChange(value: string) {
     if (/[一-龥]/.test(value)) return;
@@ -419,6 +607,11 @@ export default function PartForm() {
   useEffect(() => {
     if (pnNameTimeoutRef.current) clearTimeout(pnNameTimeoutRef.current);
     const value = partNameQuery.trim();
+    if (selectedPartName && value === selectedPartName.name) {
+      setPartNameResults(null);
+      setPartNameSearching(false);
+      return;
+    }
     if (!value) {
       setPartNameResults(null);
       setPartNameSearching(false);
@@ -454,17 +647,21 @@ export default function PartForm() {
     return () => {
       if (pnNameTimeoutRef.current) clearTimeout(pnNameTimeoutRef.current);
     };
-  }, [partNameQuery, supabase]);
+  }, [partNameQuery, supabase, selectedPartName]);
 
   function selectPartName(item: any) {
     setSelectedPartName(item);
     setPartNameQuery(item.name);
     setPartNameResults(null);
 
+    // Supabase 嵌套查询可能返回对象或数组，统一处理为对象
+    const rawCat = item.part_categories;
+    const cat = Array.isArray(rawCat) ? (rawCat[0] || {}) : (rawCat || {});
+
     // 优先取配件名称自身的设置，如果没有则取分类设置
-    const cat = item.part_categories || {};
-    const autoLink = item.auto_link_vehicle_model ?? cat.auto_link_vehicle_model ?? false;
-    const consumable = item.is_consumable ?? cat.is_consumable ?? false;
+    // 注意：布尔字段使用 || 而非 ??，因为数据库默认值为 false，需要允许分类的 true 覆盖
+    const autoLink = item.auto_link_vehicle_model || cat.auto_link_vehicle_model || false;
+    const consumable = item.is_consumable || cat.is_consumable || false;
 
     const pick = (nameVal: any, catVal: any) =>
       nameVal !== null && nameVal !== undefined ? nameVal : catVal;
@@ -493,7 +690,12 @@ export default function PartForm() {
   useEffect(() => {
     if (brandTimeoutRef.current) clearTimeout(brandTimeoutRef.current);
     const value = brandQuery.trim();
-    if (!value) {
+    if (selectedBrand) {
+      setBrandResults(null);
+      setBrandSearching(false);
+      return;
+    }
+    if (!brandFocus && !value) {
       setBrandResults(null);
       setBrandSearching(false);
       return;
@@ -504,20 +706,24 @@ export default function PartForm() {
       let others: any[] = [];
 
       if (selectedPartName) {
-        const { data: linkedData } = await supabase
+        let linkedQuery = supabase
           .from("part_brands")
           .select("id, name, part_name_brands!inner(part_name_id)")
-          .ilike("name", `%${value}%`)
-          .eq("part_name_brands.part_name_id", selectedPartName.id)
-          .limit(10);
+          .eq("part_name_brands.part_name_id", selectedPartName.id);
+        if (value) {
+          linkedQuery = linkedQuery.ilike("name", `%${value}%`);
+        }
+        const { data: linkedData } = await linkedQuery.limit(10);
         linked = (linkedData || []).map((b: any) => ({ id: b.id, name: b.name, linked: true }));
       }
 
-      const excludeIds = linked.map((b) => b.id);
-      let otherQuery = supabase.from("part_brands").select("id, name").ilike("name", `%${value}%`);
-      if (excludeIds.length > 0) otherQuery = otherQuery.not("id", "in", `(${excludeIds.join(",")})`);
-      const { data: otherData } = await otherQuery.limit(10);
-      others = (otherData || []).map((b: any) => ({ id: b.id, name: b.name, linked: false }));
+      if (value) {
+        const excludeIds = linked.map((b) => b.id);
+        let otherQuery = supabase.from("part_brands").select("id, name").ilike("name", `%${value}%`);
+        if (excludeIds.length > 0) otherQuery = otherQuery.not("id", "in", `(${excludeIds.join(",")})`);
+        const { data: otherData } = await otherQuery.limit(10);
+        others = (otherData || []).map((b: any) => ({ id: b.id, name: b.name, linked: false }));
+      }
 
       setBrandResults([...linked, ...others]);
       setBrandSearching(false);
@@ -525,7 +731,7 @@ export default function PartForm() {
     return () => {
       if (brandTimeoutRef.current) clearTimeout(brandTimeoutRef.current);
     };
-  }, [brandQuery, selectedPartName, supabase]);
+  }, [brandQuery, selectedPartName, brandFocus, supabase, selectedBrand]);
 
   async function createBrandAndSelect() {
     const name = brandQuery.trim();
@@ -540,8 +746,9 @@ export default function PartForm() {
       return;
     }
     setSelectedBrand({ id: data.id, name: data.name });
-    setBrandQuery("");
+    setBrandQuery(data.name);
     setBrandResults(null);
+    setHighlightedBrandIndex(-1);
     if (selectedPartName) {
       await supabase
         .from("part_name_brands")
@@ -554,8 +761,9 @@ export default function PartForm() {
 
   function selectBrand(item: any) {
     setSelectedBrand({ id: item.id, name: item.name });
-    setBrandQuery("");
+    setBrandQuery(item.name);
     setBrandResults(null);
+    setHighlightedBrandIndex(-1);
     if (selectedPartName && !item.linked) {
       supabase
         .from("part_name_brands")
@@ -569,39 +777,31 @@ export default function PartForm() {
   function removeBrand() {
     setSelectedBrand(null);
     setBrandQuery("");
+    setHighlightedBrandIndex(-1);
   }
 
-  // Specification debounced search with priority (multiple)
+  // Specification debounced search (only linked to part name)
   useEffect(() => {
     if (specTimeoutRef.current) clearTimeout(specTimeoutRef.current);
     const value = specQuery.trim();
-    if (!value) {
+    if (!value || !selectedPartName) {
       setSpecResults(null);
       setSpecSearching(false);
       return;
     }
     setSpecSearching(true);
     specTimeoutRef.current = setTimeout(async () => {
-      let linked: any[] = [];
-      let others: any[] = [];
+      const { data: linkedData } = await supabase
+        .from("part_specifications")
+        .select("id, name, part_name_specifications!inner(part_name_id)")
+        .ilike("name", `%${value}%`)
+        .eq("part_name_specifications.part_name_id", selectedPartName.id)
+        .limit(10);
+      const linked = (linkedData || [])
+        .map((s: any) => ({ id: s.id, name: s.name }))
+        .filter((s: any) => !selectedSpecs.some((sel) => sel.id === s.id));
 
-      if (selectedPartName) {
-        const { data: linkedData } = await supabase
-          .from("part_specifications")
-          .select("id, name, part_name_specifications!inner(part_name_id)")
-          .ilike("name", `%${value}%`)
-          .eq("part_name_specifications.part_name_id", selectedPartName.id)
-          .limit(10);
-        linked = (linkedData || []).map((s: any) => ({ id: s.id, name: s.name, linked: true }));
-      }
-
-      const excludeIds = [...linked.map((s) => s.id), ...selectedSpecs.map((s) => s.id)];
-      let otherQuery = supabase.from("part_specifications").select("id, name").ilike("name", `%${value}%`);
-      if (excludeIds.length > 0) otherQuery = otherQuery.not("id", "in", `(${excludeIds.join(",")})`);
-      const { data: otherData } = await otherQuery.limit(10);
-      others = (otherData || []).map((s: any) => ({ id: s.id, name: s.name, linked: false }));
-
-      setSpecResults([...linked, ...others]);
+      setSpecResults(linked);
       setSpecSearching(false);
     }, 300);
     return () => {
@@ -637,6 +837,8 @@ export default function PartForm() {
     setSelectedSpecs((prev) => [...prev, item]);
     setSpecQuery("");
     setSpecResults(null);
+    setHighlightedSpecIndex(-1);
+    setTimeout(() => document.getElementById("spec-input")?.focus(), 0);
     if (selectedPartName) {
       supabase
         .from("part_name_specifications")
@@ -919,8 +1121,8 @@ export default function PartForm() {
   }
 
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!partNumber.trim()) {
       alert("请填写配件编码");
       return;
@@ -929,7 +1131,8 @@ export default function PartForm() {
       alert("请选择配件名称");
       return;
     }
-    if (pnResults && pnResults.some((r) => r.part_number.toUpperCase() === partNumber.trim().toUpperCase())) {
+    const duplicateExists = pnResults && pnResults.some((r) => r.part_number.toUpperCase() === partNumber.trim().toUpperCase() && r.id !== editId);
+    if (duplicateExists) {
       alert("该配件编码已存在，请更换");
       return;
     }
@@ -939,10 +1142,110 @@ export default function PartForm() {
     const documentName = docNameQuery.trim() || null;
     const supplierId = selectedSupplier?.id || null;
 
-    const { data: inserted, error } = await supabase
-      .from("parts")
-      .insert({
-        system_code: systemCode,
+    let partId = editId;
+
+    if (isEditMode) {
+      const { error: updateError } = await supabase
+        .from("parts")
+        .update({
+          part_number: partNumber.trim().toUpperCase(),
+          barcode: barcode.trim() || null,
+          interchange_code: interchangeCode.trim().toUpperCase() || null,
+          document_name: documentName,
+          part_name_id: selectedPartName.id,
+          name: form.name.trim(),
+          brand_id: selectedBrand?.id || null,
+          category_id: selectedPartName.part_categories?.id || null,
+          unit: form.unit || "件",
+          quantity: totalQuantity,
+          min_stock: parseInt(form.min_stock) || 10,
+          purchase_price: form.purchase_price ? parseFloat(form.purchase_price) : null,
+          reference_purchase_price: form.reference_purchase_price ? parseFloat(form.reference_purchase_price) : null,
+          unit_price: form.unit_price ? parseFloat(form.unit_price) : null,
+          standard_price: form.standard_price ? parseFloat(form.standard_price) : null,
+          vip_price: form.vip_price ? parseFloat(form.vip_price) : null,
+          wholesale_price: form.wholesale_price ? parseFloat(form.wholesale_price) : null,
+          supplier_id: supplierId,
+          notes: form.notes || null,
+          auto_link_vehicle_model: form.auto_link_vehicle_model,
+          is_consumable: form.is_consumable,
+          sales_commission_type: form.sales_type || null,
+          sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
+          diagnosis_commission_type: form.diagnosis_type || null,
+          diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
+          repair_commission_type: form.repair_type || null,
+          repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
+          qc_commission_type: form.qc_type || null,
+          qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
+          picking_commission_type: form.picking_type || null,
+          picking_commission_value: form.picking_value ? parseFloat(form.picking_value) : null,
+        })
+        .eq("id", editId);
+
+      if (updateError) {
+        alert("保存失败: " + updateError.message);
+        setLoading(false);
+        return;
+      }
+
+      // Delete existing related data
+      await supabase.from("parts_specifications").delete().eq("part_id", editId);
+      await supabase.from("part_vehicle_models").delete().eq("part_id", editId);
+      await supabase.from("part_images").delete().eq("part_id", editId);
+      await supabase.from("part_stock_locations").delete().eq("part_id", editId);
+      await supabase.from("part_special_prices").delete().eq("part_id", editId);
+      await supabase.from("part_vehicle_prices").delete().eq("part_id", editId);
+    } else {
+      // 新建模式：重新生成系统码以确保唯一性
+      let finalSystemCode = systemCode;
+      if (!finalSystemCode) {
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+        const prefix = `PJ${dateStr}`;
+        const { data: existing } = await supabase
+          .from("parts")
+          .select("system_code")
+          .ilike("system_code", `${prefix}%`)
+          .order("system_code", { ascending: false })
+          .limit(1);
+        let seq = 1;
+        if (existing && existing.length > 0 && existing[0].system_code) {
+          const suffix = existing[0].system_code.slice(prefix.length);
+          const num = parseInt(suffix, 10);
+          if (!isNaN(num)) seq = num + 1;
+        }
+        finalSystemCode = `${prefix}${String(seq).padStart(3, "0")}`;
+        setSystemCode(finalSystemCode);
+      } else {
+        // 检查当前系统码是否已被占用
+        const { data: dup } = await supabase
+          .from("parts")
+          .select("id")
+          .eq("system_code", finalSystemCode)
+          .single();
+        if (dup) {
+          const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+          const prefix = `PJ${dateStr}`;
+          const { data: existing } = await supabase
+            .from("parts")
+            .select("system_code")
+            .ilike("system_code", `${prefix}%`)
+            .order("system_code", { ascending: false })
+            .limit(1);
+          let seq = 1;
+          if (existing && existing.length > 0 && existing[0].system_code) {
+            const suffix = existing[0].system_code.slice(prefix.length);
+            const num = parseInt(suffix, 10);
+            if (!isNaN(num)) seq = num + 1;
+          }
+          finalSystemCode = `${prefix}${String(seq).padStart(3, "0")}`;
+          setSystemCode(finalSystemCode);
+        }
+      }
+
+      const { data: inserted, error } = await supabase
+        .from("parts")
+        .insert({
+        system_code: finalSystemCode,
         part_number: partNumber.trim().toUpperCase(),
         barcode: barcode.trim() || null,
         interchange_code: interchangeCode.trim().toUpperCase() || null,
@@ -984,7 +1287,8 @@ export default function PartForm() {
       return;
     }
 
-    const partId = inserted.id;
+    partId = inserted.id;
+    }
 
     // Insert specifications
     if (selectedSpecs.length > 0) {
@@ -1073,13 +1377,16 @@ export default function PartForm() {
       if (vpError) console.error('part_vehicle_prices insert error:', vpError);
     }
 
-
-    router.push("/inventory");
+    if (isEditMode) {
+      router.push(`/parts/${editId}`);
+    } else {
+      router.push('/inventory');
+    }
     router.refresh();
   }
 
   const hasDuplicatePartNumber =
-    pnResults !== null && pnResults.some((r) => r.part_number.toUpperCase() === partNumber.trim().toUpperCase());
+    pnResults !== null && pnResults.some((r) => r.part_number.toUpperCase() === partNumber.trim().toUpperCase() && r.id !== editId);
 
   function CommissionField({
     label,
@@ -1126,7 +1433,7 @@ export default function PartForm() {
   return (
     <div>
       <PageHeader
-        title={searchParams.get("copy_from") ? "复制添加配件" : "新增配件"}
+        title={isEditMode ? "编辑配件" : searchParams.get("copy_from") ? "复制添加配件" : "新增配件"}
         description={searchParams.get("copy_from") ? "已带入原配件信息，请修改不允许重复的内容后保存" : undefined}
       />
 
@@ -1154,6 +1461,12 @@ export default function PartForm() {
               }`}
               value={partNumber}
               onChange={(e) => handlePartNumberChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  document.getElementById("part-name-input")?.focus();
+                }
+              }}
             />
             {pnSearching && <div className="text-xs text-gray-400 mt-1">检索中...</div>}
             {!pnSearching && pnResults !== null && pnResults.length > 0 && (
@@ -1204,6 +1517,7 @@ export default function PartForm() {
             </label>
             <div className="relative">
               <input
+                id="part-name-input"
                 type="text"
                 placeholder="输入名称或关键词检索"
                 className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 text-sm ${
@@ -1215,6 +1529,7 @@ export default function PartForm() {
                 onChange={(e) => {
                   const val = e.target.value;
                   setPartNameQuery(val);
+                  setHighlightedNameIndex(-1);
                   if (selectedPartName && val !== selectedPartName.name) {
                     setSelectedPartName(null);
                     setForm((prev) => ({
@@ -1237,6 +1552,33 @@ export default function PartForm() {
                     }));
                   }
                 }}
+                onBlur={() => setTimeout(() => setPartNameResults(null), 200)}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setHighlightedNameIndex((prev) => {
+                      const next = prev + 1;
+                      return partNameResults && next < partNameResults.length ? next : prev;
+                    });
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setHighlightedNameIndex((prev) => (prev > 0 ? prev - 1 : prev));
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (partNameResults && highlightedNameIndex >= 0 && highlightedNameIndex < partNameResults.length) {
+                      selectPartName(partNameResults[highlightedNameIndex]);
+                      setHighlightedNameIndex(-1);
+                      document.getElementById("document-name-input")?.focus();
+                    } else if (partNameResults && partNameResults.length > 0) {
+                      selectPartName(partNameResults[0]);
+                      setHighlightedNameIndex(-1);
+                      document.getElementById("document-name-input")?.focus();
+                    }
+                  } else if (e.key === "Escape") {
+                    setPartNameResults(null);
+                    setHighlightedNameIndex(-1);
+                  }
+                }}
               />
               {selectedPartName && (
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-green-600 bg-green-100 px-1.5 py-0.5 rounded">
@@ -1246,12 +1588,18 @@ export default function PartForm() {
               {partNameSearching && <div className="text-xs text-gray-400 mt-1">检索中...</div>}
               {partNameResults && partNameResults.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                  {partNameResults.map((item) => (
+                  {partNameResults.map((item, index) => (
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => selectPartName(item)}
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                      onClick={() => {
+                        selectPartName(item);
+                        setHighlightedNameIndex(-1);
+                        document.getElementById("document-name-input")?.focus();
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0 ${
+                        highlightedNameIndex === index ? "bg-blue-50" : ""
+                      }`}
                     >
                       <div className="font-medium text-gray-900">{item.name}</div>
                       <div className="text-xs text-gray-400">
@@ -1277,11 +1625,18 @@ export default function PartForm() {
             <label className="block text-sm font-medium text-gray-700 mb-1">单据名称</label>
             <div className="relative">
               <input
+                id="document-name-input"
                 type="text"
                 placeholder="输入采购单上的配件名称，可直接输入或从历史调用"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 value={docNameQuery}
                 onChange={(e) => setDocNameQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    document.getElementById("brand-input")?.focus();
+                  }
+                }}
               />
               {docNameSearching && <div className="text-xs text-gray-400 mt-1">检索中...</div>}
               {docNameResults && docNameResults.length > 0 && (
@@ -1331,6 +1686,7 @@ export default function PartForm() {
           <label className="block text-sm font-medium text-gray-700 mb-1">品牌</label>
           <div className="relative">
             <input
+              id="brand-input"
               type="text"
               placeholder="搜索品牌（优先显示已关联该配件名称的品牌）"
               className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 text-sm ${
@@ -1340,8 +1696,37 @@ export default function PartForm() {
               onChange={(e) => {
                 const val = e.target.value;
                 setBrandQuery(val);
+                setHighlightedBrandIndex(-1);
                 if (selectedBrand && val !== selectedBrand.name) {
                   setSelectedBrand(null);
+                }
+              }}
+              onFocus={() => setBrandFocus(true)}
+              onBlur={() => setTimeout(() => setBrandFocus(false), 200)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setHighlightedBrandIndex((prev) => {
+                    const next = prev + 1;
+                    return brandResults && next < brandResults.length ? next : prev;
+                  });
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setHighlightedBrandIndex((prev) => (prev > 0 ? prev - 1 : prev));
+                } else if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (brandResults && highlightedBrandIndex >= 0 && highlightedBrandIndex < brandResults.length) {
+                    selectBrand(brandResults[highlightedBrandIndex]);
+                  } else if (brandResults && brandResults.length > 0) {
+                    selectBrand(brandResults[0]);
+                  }
+                  setTimeout(() => document.getElementById("spec-input")?.focus(), 0);
+                } else if (e.key === "Escape") {
+                  setBrandResults(null);
+                  setHighlightedBrandIndex(-1);
+                } else if (e.key === "Tab") {
+                  setBrandResults(null);
+                  setHighlightedBrandIndex(-1);
                 }
               }}
             />
@@ -1353,12 +1738,14 @@ export default function PartForm() {
             {brandSearching && <div className="text-xs text-gray-400 mt-1">检索中...</div>}
             {brandResults && brandResults.length > 0 && (
               <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                {brandResults.map((b) => (
+                {brandResults.map((b, index) => (
                   <button
                     key={b.id}
                     type="button"
                     onClick={() => selectBrand(b)}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0 flex items-center justify-between"
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0 flex items-center justify-between ${
+                      highlightedBrandIndex === index ? "bg-blue-50" : ""
+                    }`}
                   >
                     <span>{b.name}</span>
                     {b.linked && (
@@ -1380,16 +1767,6 @@ export default function PartForm() {
               </div>
             )}
           </div>
-          {selectedBrand && (
-            <div className="mt-2">
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-md border border-blue-200">
-                {selectedBrand.name}
-                <button type="button" onClick={removeBrand} className="text-blue-400 hover:text-blue-600">
-                  ×
-                </button>
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Specifications search (multiple) */}
@@ -1397,26 +1774,56 @@ export default function PartForm() {
           <label className="block text-sm font-medium text-gray-700 mb-1">规格（可添加多个）</label>
           <div className="relative">
             <input
+              id="spec-input"
               type="text"
               placeholder="搜索规格（优先显示已关联该配件名称的规格）"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               value={specQuery}
-              onChange={(e) => setSpecQuery(e.target.value)}
+              onChange={(e) => {
+                setSpecQuery(e.target.value);
+                setHighlightedSpecIndex(-1);
+              }}
+              onBlur={() => setTimeout(() => setSpecResults(null), 200)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setHighlightedSpecIndex((prev) => {
+                    const next = prev + 1;
+                    return specResults && next < specResults.length ? next : prev;
+                  });
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setHighlightedSpecIndex((prev) => (prev > 0 ? prev - 1 : prev));
+                } else if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (specResults && highlightedSpecIndex >= 0 && highlightedSpecIndex < specResults.length) {
+                    addSpec(specResults[highlightedSpecIndex]);
+                  } else if (specResults && specResults.length > 0) {
+                    addSpec(specResults[0]);
+                  }
+                } else if (e.key === "Escape") {
+                  setSpecResults(null);
+                  setHighlightedSpecIndex(-1);
+                } else if (e.key === "Tab") {
+                  setSpecResults(null);
+                  setHighlightedSpecIndex(-1);
+                  setTimeout(() => document.getElementById("purchase-price-input")?.focus(), 0);
+                }
+              }}
             />
             {specSearching && <div className="text-xs text-gray-400 mt-1">检索中...</div>}
             {specResults && specResults.length > 0 && (
               <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                {specResults.map((s) => (
+                {specResults.map((s, index) => (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => addSpec(s)}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0 flex items-center justify-between"
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0 flex items-center justify-between ${
+                      highlightedSpecIndex === index ? "bg-blue-50" : ""
+                    }`}
                   >
                     <span>{s.name}</span>
-                    {s.linked && (
-                      <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded">已关联</span>
-                    )}
                   </button>
                 ))}
               </div>
@@ -1464,12 +1871,19 @@ export default function PartForm() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">采购价</label>
               <input
+                id="purchase-price-input"
                 type="number"
                 min={0}
                 step={0.01}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 value={form.purchase_price}
                 onChange={(e) => setForm((prev) => ({ ...prev, purchase_price: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    document.getElementById("sales-price-input")?.focus();
+                  }
+                }}
               />
             </div>
             <div>
@@ -1547,39 +1961,61 @@ export default function PartForm() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">销售价</label>
               <input
+                id="sales-price-input"
                 type="number"
                 min={0}
                 step={0.01}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 value={form.unit_price}
                 onChange={(e) => setForm((prev) => ({ ...prev, unit_price: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    document.getElementById("standard-price-input")?.focus();
+                  }
+                }}
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">单位价</label>
               <input
+                id="standard-price-input"
                 type="number"
                 min={0}
                 step={0.01}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 value={form.standard_price}
                 onChange={(e) => setForm((prev) => ({ ...prev, standard_price: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    document.getElementById("vip-price-input")?.focus();
+                  }
+                }}
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">VIP价</label>
               <input
+                id="vip-price-input"
                 type="number"
                 min={0}
                 step={0.01}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 value={form.vip_price}
                 onChange={(e) => setForm((prev) => ({ ...prev, vip_price: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    document.getElementById("wholesale-price-input")?.focus();
+                  }
+                }}
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">批发价</label>
               <input
+                id="wholesale-price-input"
                 type="number"
                 min={0}
                 step={0.01}
@@ -1829,23 +2265,6 @@ export default function PartForm() {
             folder="part-images"
           />
         </div>
-        </div>
-
-        <div className="flex gap-3 justify-end">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            取消
-          </button>
-          <button
-            type="submit"
-            disabled={loading || !!hasDuplicatePartNumber}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "保存中..." : "保存"}
-          </button>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -2308,6 +2727,57 @@ export default function PartForm() {
             </div>
           </div>
         )}
+        {/* 右侧悬浮操作按钮 */}
+        <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2">
+          <button
+            type="submit"
+            disabled={loading || !!hasDuplicatePartNumber || !partNumber.trim() || !selectedPartName}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-lg"
+          >
+            {loading ? (
+              <span className="block text-center">保存中...</span>
+            ) : (
+              <span className="flex flex-col items-center leading-tight">
+                <span>保存</span>
+                <span className="text-[10px] opacity-80">Ctrl+S</span>
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            disabled={!isEditMode && !searchParams.get("copy_from")}
+            onClick={() => {
+              const copyId = isEditMode ? editId : searchParams.get("copy_from");
+              if (copyId) router.push(`/parts/new?copy_from=${copyId}`);
+            }}
+            className="px-4 py-2 text-sm font-medium text-blue-700 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50 shadow-lg"
+          >
+            <span className="flex flex-col items-center leading-tight">
+              <span>复制新建</span>
+              <span className="text-[10px] opacity-80">Ctrl+Shift+D</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-lg"
+          >
+            <span className="flex flex-col items-center leading-tight">
+              <span>重新输入</span>
+              <span className="text-[10px] opacity-80">Ctrl+Shift+R</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-lg"
+          >
+            <span className="flex flex-col items-center leading-tight">
+              <span>取消</span>
+              <span className="text-[10px] opacity-80">Esc</span>
+            </span>
+          </button>
+        </div>
       </form>
     </div>
   );

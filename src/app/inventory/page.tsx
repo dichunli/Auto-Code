@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
@@ -8,7 +10,7 @@ export default async function InventoryPage() {
 
   const { data: items } = await supabase
     .from("parts")
-    .select("*, part_names(name, unit, part_categories(name)), part_brands(name), suppliers(name)")
+    .select("*, part_names(name, unit, part_categories(name)), part_brands(name), suppliers(name), parts_specifications(specification_id, part_specifications(name))")
     .order("created_at", { ascending: false });
 
   const { count: lowStock } = await supabase
@@ -25,8 +27,8 @@ export default async function InventoryPage() {
       />
 
       <div className="flex flex-wrap gap-2 mb-6">
-        <Link href="/inventory/in" className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
-          入库登记
+        <Link href="/inventory" className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+          配件列表
         </Link>
         <Link href="/procurement" className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
           采购订单
