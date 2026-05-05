@@ -203,6 +203,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
               </th>
               <th className="px-4 py-3 text-left font-medium text-gray-500 sticky left-0 bg-gray-50 z-10 w-[120px] min-w-[120px]">配件编号</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500 sticky left-[120px] bg-gray-50 z-10 w-[150px] min-w-[150px]">名称</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">单据名称</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">分类</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">品牌</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">规格</th>
@@ -226,14 +227,15 @@ export default function InventoryTable({ items }: { items: any[] }) {
                     className="rounded border-gray-300"
                   />
                 </td>
-                <td className="px-4 py-4 font-medium text-gray-900 sticky left-0 bg-white z-10 w-[120px] min-w-[120px]">{item.part_number}</td>
-                <td className="px-4 py-4 text-gray-900 sticky left-[120px] bg-white z-10 w-[150px] min-w-[150px]">{item.name}</td>
-                <td className="px-4 py-4 text-gray-600">{item.part_names?.part_categories?.name || "-"}</td>
-                <td className="px-4 py-4 text-gray-600">{item.part_brands?.name || "-"}</td>
-                <td className="px-4 py-4 text-gray-600 max-w-[80px] truncate" title={getSpecsText(item)}>
-                  {getSpecsText(item).slice(0, 10)}
+                <td className="px-4 py-4 font-medium text-gray-900 sticky left-0 bg-white z-10 w-[120px] min-w-[120px] whitespace-nowrap">{item.part_number}</td>
+                <td className="px-4 py-4 text-gray-900 sticky left-[120px] bg-white z-10 w-[150px] min-w-[150px] whitespace-nowrap">{item.name}</td>
+                <td className="px-4 py-4 text-gray-600 whitespace-nowrap">{item.document_name || "-"}</td>
+                <td className="px-4 py-4 text-gray-600 whitespace-nowrap">{item.part_names?.part_categories?.name || "-"}</td>
+                <td className="px-4 py-4 text-gray-600 whitespace-nowrap">{item.part_brands?.name || "-"}</td>
+                <td className="px-4 py-4 text-gray-600 max-w-[160px] truncate whitespace-nowrap" title={getSpecsText(item)}>
+                  {getSpecsText(item).slice(0, 20)}
                 </td>
-                <td className="px-4 py-4">
+                <td className="px-4 py-4 whitespace-nowrap">
                   <span className={`font-medium ${item.quantity <= item.min_stock ? "text-red-600" : "text-gray-900"}`}>
                     {item.quantity}
                   </span>
@@ -241,11 +243,11 @@ export default function InventoryTable({ items }: { items: any[] }) {
                     <span className="ml-2 text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded">库存不足</span>
                   )}
                 </td>
-                <td className="px-4 py-4 text-gray-600">{formatCurrency(item.purchase_price)}</td>
-                <td className="px-4 py-4 text-gray-600">{formatCurrency(item.unit_cost)}</td>
-                <td className="px-4 py-4 text-gray-600">{formatCurrency(item.unit_price)}</td>
-                <td className="px-4 py-4 text-gray-500">{item.location || "-"}</td>
-                <td className="px-4 py-4 text-gray-600">{item.barcode || "-"}</td>
+                <td className="px-4 py-4 text-gray-600 whitespace-nowrap">{formatCurrency(item.purchase_price)}</td>
+                <td className="px-4 py-4 text-gray-600 whitespace-nowrap">{formatCurrency(item.unit_cost)}</td>
+                <td className="px-4 py-4 text-gray-600 whitespace-nowrap">{formatCurrency(item.unit_price)}</td>
+                <td className="px-4 py-4 text-gray-500 whitespace-nowrap">{item.location || "-"}</td>
+                <td className="px-4 py-4 text-gray-600 whitespace-nowrap">{item.barcode || "-"}</td>
                 <td className="px-4 py-4 text-right space-x-3 whitespace-nowrap">
                   <Link
                     href={`/parts/${item.id}`}
@@ -265,7 +267,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
             ))}
             {paginatedItems.length === 0 && (
               <tr>
-                <td colSpan={13} className="px-6 py-12 text-center text-gray-400">暂无配件数据</td>
+                <td colSpan={14} className="px-6 py-12 text-center text-gray-400">暂无配件数据</td>
               </tr>
             )}
           </tbody>
