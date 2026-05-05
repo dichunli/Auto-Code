@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -21,6 +21,7 @@ export default function EditCustomerPage() {
     relationship: string;
     notes: string;
     isExisting?: boolean;
+    searchResult?: { name: string; phone: string; relationship: string; notes: string } | null;
   }
 
   const [form, setForm] = useState({
@@ -37,7 +38,10 @@ export default function EditCustomerPage() {
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [originalPhone, setOriginalPhone] = useState("");
   const [contacts, setContacts] = useState<ContactForm[]>([]);
-  let contactIdCounter = 0;
+  const [customerPhones, setCustomerPhones] = useState<{ id: string; phone: string; label: string }[]>([]);
+  const contactIdCounterRef = useRef(0);
+  const phoneIdCounterRef = useRef(0);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -61,6 +65,14 @@ export default function EditCustomerPage() {
           .order("created_at", { ascending: true });
         setContacts(
           (contactData || []).map((c: any) => ({ ...c, isExisting: true }))
+        );
+        const { data: phoneData } = await supabase
+          .from("customer_phones")
+          .select("id, phone, label")
+          .eq("customer_id", id)
+          .order("created_at", { ascending: true });
+        setCustomerPhones(
+          (phoneData || []).map((p: any) => ({ id: p.id, phone: p.phone || "", label: p.label || "" }))
         );
       }
       const { data: photoData } = await supabase
@@ -114,6 +126,21 @@ export default function EditCustomerPage() {
 
     if (error) { alert("保存失败: " + error.message); setSaving(false); return; }
 
+    // 保存备用手机号：删除旧记录，插入新记录
+    const { error: delPhoneError } = await supabase.from("customer_phones").delete().eq("customer_id", id);
+    if (delPhoneError) { alert("删除旧手机号失败: " + delPhoneError.message); setSaving(false); return; }
+    const validPhones = customerPhones.filter((p) => p.phone.trim());
+    if (validPhones.length > 0) {
+      const { error: insPhoneError } = await supabase.from("customer_phones").insert(
+        validPhones.map((p) => ({
+          customer_id: id,
+          phone: p.phone.trim(),
+          label: p.label.trim() || null,
+        }))
+      );
+      if (insPhoneError) { alert("备用手机号保存失败: " + insPhoneError.message); setSaving(false); return; }
+    }
+
     // 保存联系人：删除旧记录，插入新记录
     const { error: delContactError } = await supabase.from("customer_contacts").delete().eq("customer_id", id);
     if (delContactError) { alert("删除旧联系人失败: " + delContactError.message); setSaving(false); return; }
@@ -144,11 +171,27 @@ export default function EditCustomerPage() {
     router.refresh();
   }
 
+  function addPhone() {
+    phoneIdCounterRef.current++;
+    setCustomerPhones((prev) => [
+      ...prev,
+      { id: `p-${Date.now()}-${phoneIdCounterRef.current}`, phone: "", label: "" },
+    ]);
+  }
+
+  function removePhone(phoneId: string) {
+    setCustomerPhones((prev) => prev.filter((p) => p.id !== phoneId));
+  }
+
+  function updatePhone(phoneId: string, field: "phone" | "label", value: string) {
+    setCustomerPhones((prev) => prev.map((p) => (p.id === phoneId ? { ...p, [field]: value } : p)));
+  }
+
   function addContact() {
-    contactIdCounter++;
+    contactIdCounterRef.current++;
     setContacts((prev) => [
       ...prev,
-      { id: `c-${Date.now()}-${contactIdCounter}`, name: "", phone: "", relationship: "", notes: "" },
+      { id: `c-${Date.now()}-${contactIdCounterRef.current}`, name: "", phone: "", relationship: "", notes: "" },
     ]);
   }
 
@@ -157,7 +200,31 @@ export default function EditCustomerPage() {
   }
 
   function updateContact(contactId: string, field: keyof ContactForm, value: string) {
-    setContacts((prev) => prev.map((c) => (c.id === contactId ? { ...c, [field]: value } : c)));
+    setContacts((prev) => prev.map((c) => (c.id === contactId ? { ...c, [field]: value, searchResult: field === "phone" ? undefined : c.searchResult } : c)));
+  }
+
+  async function searchContactByPhone(contactId: string, phone: string) {
+    if (!phone.trim()) return;
+    const client = createClient();
+    const { data } = await client
+      .from("customers")
+      .select("name, phone")
+      .eq("phone", phone.trim())
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      setContacts((prev) => prev.map((c) => (c.id === contactId ? { ...c, searchResult: { name: data.name, phone: data.phone, relationship: "", notes: "" } } : c)));
+    }
+  }
+
+  function fillContactFromSearch(contactId: string) {
+    setContacts((prev) =>
+      prev.map((c) =>
+        c.id === contactId && c.searchResult
+          ? { ...c, name: c.searchResult.name, relationship: c.searchResult.relationship || "", notes: c.searchResult.notes || "", searchResult: undefined }
+          : c
+      )
+    );
   }
 
   if (loading) return <div className="py-8 text-sm text-gray-500">加载中...</div>;
@@ -174,6 +241,22 @@ export default function EditCustomerPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">联系电话 *</label>
             <input required type="tel" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          </div>
+          <div className="sm:col-span-2">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">备用手机号</label>
+              <button type="button" onClick={addPhone} className="px-3 py-1 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">+ 添加手机号</button>
+            </div>
+            {customerPhones.length === 0 && <p className="text-sm text-gray-400">暂无备用手机号</p>}
+            <div className="space-y-2">
+              {customerPhones.map((p) => (
+                <div key={p.id} className="flex gap-2 items-center">
+                  <input type="tel" placeholder="手机号" className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={p.phone} onChange={(e) => updatePhone(p.id, "phone", e.target.value)} />
+                  <input type="text" placeholder="标签，如：工作、家庭" className="w-40 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={p.label} onChange={(e) => updatePhone(p.id, "label", e.target.value)} />
+                  <button type="button" onClick={() => removePhone(p.id)} className="px-2 py-2 text-xs text-red-600 hover:text-red-700">删除</button>
+                </div>
+              ))}
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">性别</label>
@@ -271,7 +354,14 @@ export default function EditCustomerPage() {
                       type="tel"
                       className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                       value={c.phone}
-                      onChange={(e) => updateContact(c.id, "phone", e.target.value)}
+                      onChange={(e) => {
+                          const value = e.target.value;
+                          updateContact(c.id, "phone", value);
+                          if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                          searchTimeoutRef.current = setTimeout(() => {
+                            searchContactByPhone(c.id, value);
+                          }, 300);
+                        }}
                     />
                   </div>
                   <div>
@@ -294,6 +384,20 @@ export default function EditCustomerPage() {
                     />
                   </div>
                 </div>
+                {c.searchResult && (
+                  <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs flex items-center justify-between">
+                    <span className="text-blue-800">
+                      系统中已存在客户：{c.searchResult.name}，是否关联为联系人？
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => fillContactFromSearch(c.id)}
+                      className="text-blue-700 font-medium hover:text-blue-900"
+                    >
+                      关联
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

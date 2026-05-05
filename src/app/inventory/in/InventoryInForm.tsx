@@ -17,6 +17,7 @@ export default function InventoryInForm() {
   const [newPartMode, setNewPartMode] = useState(false);
 
   const [selectedPartId, setSelectedPartId] = useState("");
+  const [partSearchQuery, setPartSearchQuery] = useState("");
   const [branchId, setBranchId] = useState("");
 
   // 物流运单
@@ -274,21 +275,76 @@ export default function InventoryInForm() {
           </div>
 
           {!newPartMode && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">选择配件</label>
-              <select
-                required={!newPartMode}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                value={selectedPartId}
-                onChange={(e) => setSelectedPartId(e.target.value)}
-              >
-                <option value="">请选择</option>
-                {parts.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.part_number} - {p.name} (库存: {p.quantity})
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-gray-700">选择配件</label>
+              <input
+                type="text"
+                placeholder="搜索配件编号、名称或条形码..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                value={partSearchQuery}
+                onChange={(e) => setPartSearchQuery(e.target.value)}
+              />
+              <div className="border border-gray-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">编号</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">名称</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">条形码</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500">库存</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {parts
+                      .filter((p) => {
+                        const q = partSearchQuery.trim().toLowerCase();
+                        if (!q) return true;
+                        return (
+                          p.part_number?.toLowerCase().includes(q) ||
+                          p.name?.toLowerCase().includes(q) ||
+                          p.barcode?.toLowerCase().includes(q)
+                        );
+                      })
+                      .map((p) => (
+                        <tr
+                          key={p.id}
+                          onClick={() => setSelectedPartId(p.id)}
+                          className={`cursor-pointer ${
+                            selectedPartId === p.id
+                              ? "bg-blue-50"
+                              : "hover:bg-gray-50"
+                          }`}
+                        >
+                          <td className="px-3 py-2 font-medium text-gray-900">{p.part_number}</td>
+                          <td className="px-3 py-2 text-gray-700">{p.name}</td>
+                          <td className="px-3 py-2 text-gray-500">{p.barcode || "-"}</td>
+                          <td className="px-3 py-2 text-right text-gray-700">{p.quantity}</td>
+                        </tr>
+                      ))}
+                    {parts.filter((p) => {
+                      const q = partSearchQuery.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        p.part_number?.toLowerCase().includes(q) ||
+                        p.name?.toLowerCase().includes(q) ||
+                        p.barcode?.toLowerCase().includes(q)
+                      );
+                    }).length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-4 text-center text-gray-400 text-sm">
+                          未找到匹配配件
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {selectedPartId && (
+                <p className="text-sm text-blue-600">
+                  已选择：{parts.find((p) => p.id === selectedPartId)?.name || "-"}
+                </p>
+              )}
+              <input type="hidden" value={selectedPartId} required={!newPartMode} />
             </div>
           )}
 

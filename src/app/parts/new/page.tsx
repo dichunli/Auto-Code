@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import VehicleForm from "./VehicleForm";
+import PartForm from "./PartForm";
 
-export default function NewVehiclePage() {
+export default function NewPartPage() {
   return (
     <Suspense fallback={<div className="p-6 text-gray-500">加载中...</div>}>
-      <VehicleForm />
+      <PartForm />
     </Suspense>
   );
 }

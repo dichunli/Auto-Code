@@ -1,0 +1,2 @@
+-- 配件VIP价
+ALTER TABLE parts ADD COLUMN IF NOT EXISTS vip_price DECIMAL(10,2);

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
+import VehicleSearchAdd from "./VehicleSearchAdd";
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,6 +30,12 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const { data: contacts } = await supabase
     .from("customer_contacts")
     .select("id, name, phone, relationship, notes")
+    .eq("customer_id", id)
+    .order("created_at", { ascending: true });
+
+  const { data: customerPhones } = await supabase
+    .from("customer_phones")
+    .select("phone, label")
     .eq("customer_id", id)
     .order("created_at", { ascending: true });
 
@@ -60,6 +67,19 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               <span className="text-gray-500">联系电话：</span>
               <span className="text-gray-900">{customer.phone}</span>
             </div>
+            {(customerPhones && customerPhones.length > 0) && (
+              <div className="sm:col-span-2">
+                <span className="text-gray-500">备用手机号：</span>
+                <div className="inline-flex flex-wrap gap-2 mt-1">
+                  {customerPhones.map((p, i) => (
+                    <span key={i} className="text-gray-900">
+                      {p.phone}
+                      {p.label && <span className="text-gray-400 text-xs ml-1">({p.label})</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <span className="text-gray-500">所属单位：</span>
               <span className="text-gray-900">{customer.company || "-"}</span>
@@ -135,51 +155,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
         {/* 关联车辆 */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-gray-900">关联车辆</h2>
-            <Link
-              href={`/vehicles/new?customer_id=${id}`}
-              className="px-3 py-1.5 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
-            >
-              + 新增车辆
-            </Link>
-          </div>
-          {vehicles && vehicles.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left font-medium text-gray-500">车牌号</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-500">品牌</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-500">型号</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-500">VIN</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-500">颜色</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-500">年份</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-500">里程</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-500">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {vehicles.map((v) => (
-                    <tr key={v.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium text-gray-900">{v.plate_number}</td>
-                      <td className="px-4 py-3 text-gray-600">{v.brand || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{v.model || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{v.vin || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{v.color || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{v.year ?? "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{v.mileage != null ? v.mileage.toLocaleString() : "-"}</td>
-                      <td className="px-4 py-3">
-                        <Link href={`/vehicles/${v.id}/edit`} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">编辑</Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400">暂无关联车辆</p>
-          )}
+          <VehicleSearchAdd customerId={id} initialVehicles={vehicles || []} />
         </div>
       </div>
     </div>

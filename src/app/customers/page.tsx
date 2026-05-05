@@ -9,26 +9,60 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
   const searchParams = (await Promise.resolve(props.searchParams || {})) as Record<string, string | undefined>;
   const supabase = await createClient();
 
+  let phoneCustomerIds: string[] | null = null;
+  if (searchParams.phone) {
+    const [mainRes, phoneRes, contactRes] = await Promise.all([
+      supabase.from("customers").select("id").ilike("phone", `%${searchParams.phone}%`),
+      supabase.from("customer_phones").select("customer_id").ilike("phone", `%${searchParams.phone}%`),
+      supabase.from("customer_contacts").select("customer_id").ilike("phone", `%${searchParams.phone}%`),
+    ]);
+    const mainIds = mainRes.data?.map((c: any) => c.id) || [];
+    const extraIds = phoneRes.data?.map((p: any) => p.customer_id) || [];
+    const contactIds = contactRes.data?.map((c: any) => c.customer_id) || [];
+    phoneCustomerIds = [...new Set([...mainIds, ...extraIds, ...contactIds])];
+  }
+
   let query = supabase
     .from("customers")
-    .select("id, name, phone, company, address, star_level, total_spent, created_at, vehicles(id, plate_number), customer_contacts(id, name, phone, relationship)")
+    .select("id, name, phone, company, address, star_level, total_spent, created_at, vehicles(id, plate_number)")
     .order("created_at", { ascending: false });
 
   if (searchParams.name) query = query.ilike("name", `%${searchParams.name}%`);
-  if (searchParams.phone) query = query.ilike("phone", `%${searchParams.phone}%`);
+  if (searchParams.phone) {
+    if (phoneCustomerIds && phoneCustomerIds.length > 0) {
+      query = query.in("id", phoneCustomerIds);
+    } else {
+      query = query.eq("id", "no-match");
+    }
+  }
   if (searchParams.company) query = query.ilike("company", `%${searchParams.company}%`);
   if (searchParams.address) query = query.ilike("address", `%${searchParams.address}%`);
 
   const { data: customers } = await query;
 
   const customerIds = customers?.map((c: any) => c.id) || [];
+
   const { data: memberMap } = customerIds.length > 0
     ? await supabase.from("members").select("customer_id, card_no, balance").in("customer_id", customerIds)
+    : { data: [] };
+
+  const { data: allContacts } = customerIds.length > 0
+    ? await supabase
+        .from("customer_contacts")
+        .select("id, customer_id, name, phone, relationship")
+        .in("customer_id", customerIds)
+        .order("created_at", { ascending: true })
     : { data: [] };
 
   const membersByCustomer: Record<string, any> = {};
   memberMap?.forEach((m: any) => {
     membersByCustomer[m.customer_id] = m;
+  });
+
+  const contactsByCustomer: Record<string, any[]> = {};
+  allContacts?.forEach((c: any) => {
+    if (!contactsByCustomer[c.customer_id]) contactsByCustomer[c.customer_id] = [];
+    contactsByCustomer[c.customer_id].push(c);
   });
 
   return (
@@ -116,9 +150,9 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
                   </td>
                   <td className="px-6 py-4 text-gray-600">{customer.phone}</td>
                   <td className="px-6 py-4 text-gray-600">
-                    {customer.customer_contacts?.length > 0 ? (
+                    {(contactsByCustomer[customer.id] || []).length > 0 ? (
                       <div className="space-y-1">
-                        {customer.customer_contacts.map((c: any) => (
+                        {contactsByCustomer[customer.id].map((c: any) => (
                           <div key={c.id} className="text-xs">
                             <span className="font-medium">{c.name}</span>
                             <span className="text-gray-400 mx-1">·</span>

@@ -1,0 +1,4 @@
+-- 配件多价格体系
+ALTER TABLE parts ADD COLUMN IF NOT EXISTS purchase_price DECIMAL(10,2);
+ALTER TABLE parts ADD COLUMN IF NOT EXISTS standard_price DECIMAL(10,2);
+ALTER TABLE parts ADD COLUMN IF NOT EXISTS wholesale_price DECIMAL(10,2);
