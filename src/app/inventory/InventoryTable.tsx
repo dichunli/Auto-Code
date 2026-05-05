@@ -201,19 +201,19 @@ export default function InventoryTable({ items }: { items: any[] }) {
                   className="rounded border-gray-300"
                 />
               </th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500 sticky left-0 bg-gray-50 z-10 w-[120px] min-w-[120px]">配件编号</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500 sticky left-[120px] bg-gray-50 z-10 w-[150px] min-w-[150px]">名称</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">单据名称</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">分类</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">品牌</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">规格</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">库存</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">采购价</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">成本价</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">销售价</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">存放位置</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-500">条形码</th>
-              <th className="px-4 py-3 text-right font-medium text-gray-500">操作</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 sticky left-0 bg-gray-50 z-10 w-[120px] min-w-[120px] whitespace-nowrap">配件编号</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 sticky left-[120px] bg-gray-50 z-10 w-[150px] min-w-[150px] whitespace-nowrap">名称</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">单据名称</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">分类</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">品牌</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">规格</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">库存</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">采购价</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">成本价</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">销售价</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">存放位置</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">条形码</th>
+              <th className="px-4 py-3 text-right font-medium text-gray-500 whitespace-nowrap">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
