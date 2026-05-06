@@ -12,6 +12,7 @@ interface ColumnDef {
   width: number;
   visible: boolean;
   sticky?: boolean;
+  stickyRight?: boolean;
 }
 
 const DEFAULT_COLUMNS: ColumnDef[] = [
@@ -28,7 +29,7 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: "unit_price", label: "销售价", width: 80, visible: true },
   { key: "location", label: "存放位置", width: 100, visible: true },
   { key: "barcode", label: "条形码", width: 100, visible: true },
-  { key: "actions", label: "操作", width: 120, visible: true },
+  { key: "actions", label: "操作", width: 120, visible: true, stickyRight: true },
 ];
 
 const STORAGE_KEY = "inventory-table-config";
@@ -395,6 +396,10 @@ export default function InventoryTable({ items }: { items: any[] }) {
                   style.position = "sticky";
                   style.left = stickyLeft;
                   style.zIndex = 10;
+                } else if (col.stickyRight) {
+                  style.position = "sticky";
+                  style.right = 0;
+                  style.zIndex = 10;
                 }
                 style.width = col.width;
                 style.minWidth = col.width;
@@ -403,7 +408,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
                   <th
                     key={col.key}
                     className={`px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap ${
-                      col.sticky ? "bg-gray-50" : ""
+                      col.sticky || col.stickyRight ? "bg-gray-50" : ""
                     } ${draggingCol === col.key ? "opacity-50" : ""}`}
                     style={style}
                     draggable={isDraggable(col.key)}
@@ -464,6 +469,10 @@ export default function InventoryTable({ items }: { items: any[] }) {
                     style.position = "sticky";
                     style.left = stickyLeft;
                     style.zIndex = 10;
+                  } else if (col.stickyRight) {
+                    style.position = "sticky";
+                    style.right = 0;
+                    style.zIndex = 10;
                   }
                   style.width = col.width;
                   style.minWidth = col.width;
@@ -471,7 +480,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
                   return (
                     <td
                       key={col.key}
-                      className={`px-4 py-4 whitespace-nowrap ${col.sticky ? "bg-white" : ""}`}
+                      className={`px-4 py-4 whitespace-nowrap ${col.sticky || col.stickyRight ? "bg-white" : ""}`}
                       style={style}
                     >
                       {renderCell(item, col)}

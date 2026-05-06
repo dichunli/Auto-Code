@@ -1,20 +1,21 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 import { ReworkSelectModal } from "@/components/ReworkSelectModal";
+import { calculateItemCommission, calculatePartCommission } from "@/lib/commission";
 
 export default function NewRequirementPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [orderId, setOrderId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [existingRequirementId, setExistingRequirementId] = useState<string | null>(null);
   const [categories, setCategories] = useState<any[]>([]);
-  const [serviceNames, setServiceNames] = useState<any[]>([]);
-  const [serviceItems, setServiceItems] = useState<any[]>([]);
   const [partNames, setPartNames] = useState<any[]>([]);
   const [partsByName, setPartsByName] = useState<Record<string, any[]>>({});
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -23,11 +24,42 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
   const [vehicleModelId, setVehicleModelId] = useState("");
   const [partMatchModal, setPartMatchModal] = useState<any>(null);
   const [reworkModalIndex, setReworkModalIndex] = useState<number | null>(null);
+  const [allServiceItems, setAllServiceItems] = useState<any[]>([]);
+  const [serviceNames, setServiceNames] = useState<any[]>([]);
+  const [serviceItemPrices, setServiceItemPrices] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [searchDropdowns, setSearchDropdowns] = useState<Record<number, {
+    query: string;
+    results: any[];
+    activeIndex: number;
+    show: boolean;
+  }>>({});
+  const [newItemModal, setNewItemModal] = useState<{
+    open: boolean;
+    itemIndex: number;
+    name: string;
+    category_id: string;
+    service_name_id: string;
+    standard_hours: string;
+    description: string;
+    default_price: string;
+    vip_price: string;
+    customer_parts_price: string;
+    sales_type: string;
+    sales_value: string;
+    diagnosis_type: string;
+    diagnosis_value: string;
+    repair_type: string;
+    repair_value: string;
+    qc_type: string;
+    qc_value: string;
+  } | null>(null);
 
   const [requirement, setRequirement] = useState({ description: "", diagnosis: "", remarks: "" });
   const [requirementImages, setRequirementImages] = useState<string[]>([]);
   const [items, setItems] = useState([
-    { category_id: "", service_name_id: "", service_item_id: "", name: "", alias_name: "", item_type: "labor", quantity: "1", unit_price: "", mechanic_id: "", standard_hours: "", customer_opinion: "pending", description: "", is_outsourced: false, outsourced_supplier_id: "", business_type: "normal", rework_source_item_id: "", rework_reason: "", rework_loss_amount: "", parts: [] as any[] },
+    { category_id: "", service_name_id: "", service_item_id: "", name: "", alias_name: "", item_type: "labor", quantity: "1", unit_price: "", mechanic_id: "", submitter_id: "", inspector_id: "", standard_hours: "", customer_opinion: "pending", description: "", is_outsourced: false, is_customer_part: false, outsourced_supplier_id: "", business_type: "normal", rework_source_item_id: "", rework_reason: "", rework_loss_amount: "", parts: [] as any[] },
   ]);
 
   const emptyPart = () => ({
@@ -56,7 +88,45 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
     supabase.from("part_names").select("*").order("name").then(({ data }) => setPartNames(data || []));
     supabase.from("suppliers").select("*").order("name").then(({ data }) => setSuppliers(data || []));
     supabase.from("logistics_companies").select("*").order("name").then(({ data }) => setLogisticsCompanies(data || []));
+    // 加载所有标准项目（含分类和名称库信息）
+    supabase.from("service_items").select("*, service_names(id, name, category_id), service_categories(name)").order("name").then(({ data }) => setAllServiceItems(data || []));
+    // 加载名称库
+    supabase.from("service_names").select("*").order("name").then(({ data }) => setServiceNames(data || []));
+    // 加载维修项目车型定价（含自带配件价）
+    supabase.from("service_item_prices").select("*").then(({ data }) => setServiceItemPrices(data || []));
+    // 加载员工列表
+    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setProfiles(data || []));
+    // 获取当前用户信息
+    supabase.auth.getUser().then(({ data: authData }) => {
+      if (authData?.user) {
+        supabase.from("profiles").select("full_name").eq("id", authData.user.id).single().then(({ data: profile }) => {
+          setCurrentUser(profile);
+        });
+      }
+    });
   }, [params, supabase]);
+
+  // 读取 URL 参数中的 requirement_id，如果存在则加载已有需求信息
+  useEffect(() => {
+    const reqId = searchParams.get("requirement_id");
+    if (reqId) {
+      setExistingRequirementId(reqId);
+      supabase
+        .from("work_order_requirements")
+        .select("description, diagnosis, remarks")
+        .eq("id", reqId)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setRequirement({
+              description: data.description || "",
+              diagnosis: data.diagnosis || "",
+              remarks: data.remarks || "",
+            });
+          }
+        });
+    }
+  }, [searchParams, supabase]);
 
   // 查询当前工单的车辆车型，用于配件智能匹配
   useEffect(() => {
@@ -82,7 +152,7 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
   }, [orderId, supabase]);
 
   function addItem() {
-    setItems([...items, { category_id: "", service_name_id: "", service_item_id: "", name: "", alias_name: "", item_type: "labor", quantity: "1", unit_price: "", mechanic_id: "", standard_hours: "", customer_opinion: "pending", description: "", is_outsourced: false, outsourced_supplier_id: "", business_type: "normal", rework_source_item_id: "", rework_reason: "", rework_loss_amount: "", parts: [] }]);
+    setItems([...items, { category_id: "", service_name_id: "", service_item_id: "", name: "", alias_name: "", item_type: "labor", quantity: "1", unit_price: "", mechanic_id: "", submitter_id: "", inspector_id: "", standard_hours: "", customer_opinion: "pending", description: "", is_outsourced: false, is_customer_part: false, outsourced_supplier_id: "", business_type: "normal", rework_source_item_id: "", rework_reason: "", rework_loss_amount: "", parts: [] }]);
   }
 
   function addPart(itemIndex: number) {
@@ -102,17 +172,29 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
       next[index].unit_price = "";
     }
 
-    if (field === "service_name_id") {
-      const name = serviceNames.find((n) => n.id === value);
-      if (name) next[index].name = name.name;
-    }
-
     if (field === "service_item_id") {
-      const item = serviceItems.find((s) => s.id === value);
+      const item = allServiceItems.find((s) => s.id === value);
       if (item) {
         next[index].name = item.name;
         next[index].unit_price = item.default_price?.toString() || "";
         next[index].standard_hours = item.standard_hours;
+      }
+    }
+
+    // 自带配件勾选/取消时自动调整价格
+    if (field === "is_customer_part") {
+      const serviceItem = allServiceItems.find((s) => s.id === next[index].service_item_id);
+      if (value === true) {
+        // 勾选：按四级策略定价
+        const cpPrice = getCustomerPartPrice(next[index].service_item_id, vehicleModelId);
+        if (cpPrice != null) {
+          next[index].unit_price = cpPrice.toString();
+        }
+      } else {
+        // 取消：恢复为项目默认销售价
+        if (serviceItem?.default_price != null) {
+          next[index].unit_price = serviceItem.default_price.toString();
+        }
       }
     }
 
@@ -294,22 +376,223 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
     setItems(next);
   }
 
-  function loadNamesForItem(index: number, categoryId: string) {
-    if (!categoryId) return;
-    supabase.from("service_names").select("id, name").eq("category_id", categoryId).order("name").then(({ data }) => {
-      setServiceNames((prev) => {
-        const next = [...prev];
-        next[index] = data || [];
-        return next;
-      });
-    });
+  // 搜索项目库
+  function filterServiceItems(query: string) {
+    if (!query.trim()) return [];
+    const lower = query.toLowerCase();
+    return allServiceItems
+      .filter((item) => item.name?.toLowerCase().includes(lower))
+      .slice(0, 10);
   }
 
-  function loadItemsForName(nameId: string) {
-    if (!nameId) return;
-    supabase.from("service_items").select("*").eq("service_name_id", nameId).order("name").then(({ data }) => {
-      setServiceItems(data || []);
-    });
+  function handleSearchInput(index: number, value: string) {
+    // 同步输入到项目名称，即使用户没有选择下拉项也能保存
+    const next = [...items];
+    next[index].name = value;
+    setItems(next);
+
+    const results = filterServiceItems(value);
+    // 只要有输入就显示下拉（包含新建按钮）
+    const show = value.trim().length > 0;
+    setSearchDropdowns((prev) => ({
+      ...prev,
+      [index]: {
+        query: value,
+        results,
+        activeIndex: 0,
+        show,
+      },
+    }));
+  }
+
+  function handleSearchKeyDown(index: number, e: React.KeyboardEvent) {
+    const state = searchDropdowns[index];
+    if (!state || !state.show) return;
+
+    // 总选项数 = 搜索结果数 + 1个新建按钮
+    const totalOptions = state.results.length + 1;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setSearchDropdowns((prev) => ({
+          ...prev,
+          [index]: {
+            ...state,
+            activeIndex: (state.activeIndex + 1) % totalOptions,
+          },
+        }));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setSearchDropdowns((prev) => ({
+          ...prev,
+          [index]: {
+            ...state,
+            activeIndex: state.activeIndex <= 0 ? totalOptions - 1 : state.activeIndex - 1,
+          },
+        }));
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (state.activeIndex >= 0 && state.activeIndex < state.results.length) {
+          selectServiceItem(index, state.results[state.activeIndex]);
+        } else if (state.activeIndex === state.results.length) {
+          // 选中"新建项目"
+          setNewItemModal({
+            open: true,
+            itemIndex: index,
+            name: state.query,
+            category_id: "",
+            service_name_id: "",
+            standard_hours: "",
+            description: "",
+            default_price: "",
+            vip_price: "",
+            customer_parts_price: "",
+            sales_type: "",
+            sales_value: "",
+            diagnosis_type: "",
+            diagnosis_value: "",
+            repair_type: "",
+            repair_value: "",
+            qc_type: "",
+            qc_value: "",
+          });
+          setSearchDropdowns((prev) => ({ ...prev, [index]: { ...prev[index], show: false } }));
+        }
+        break;
+      case "Escape":
+        setSearchDropdowns((prev) => ({
+          ...prev,
+          [index]: { ...state, show: false },
+        }));
+        break;
+    }
+  }
+
+  // 自带配件四级价格策略
+  function getCustomerPartPrice(serviceItemId: string, vehicleModelId: string): number | null {
+    if (!serviceItemId) return null;
+    const serviceItem = allServiceItems.find((s) => s.id === serviceItemId);
+
+    // 1. 维修项目中设置工单车型的自带配件价格
+    if (vehicleModelId) {
+      const vehicleCp = serviceItemPrices.find(
+        (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vehicleModelId
+      )?.customer_parts_price;
+      if (vehicleCp != null) return vehicleCp;
+    }
+
+    // 2. 工单车型定价
+    if (vehicleModelId) {
+      const vehiclePrice = serviceItemPrices.find(
+        (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vehicleModelId
+      )?.price;
+      if (vehiclePrice != null) return vehiclePrice;
+    }
+
+    // 3. 维修项目的自带配件价格
+    if (serviceItem?.customer_parts_price != null) return serviceItem.customer_parts_price;
+
+    // 4. 项目销售价
+    if (serviceItem?.default_price != null) return serviceItem.default_price;
+
+    return null;
+  }
+
+  function selectServiceItem(index: number, serviceItem: any) {
+    const next = [...items];
+    next[index].service_item_id = serviceItem.id;
+    next[index].category_id = serviceItem.service_names?.category_id || "";
+    next[index].service_name_id = serviceItem.service_names?.id || "";
+    next[index].name = serviceItem.name || "";
+    next[index].standard_hours = serviceItem.standard_hours;
+
+    // 自带配件时按四级策略定价，否则用默认销售价
+    if (next[index].is_customer_part) {
+      const cpPrice = getCustomerPartPrice(serviceItem.id, vehicleModelId);
+      next[index].unit_price = cpPrice?.toString() ?? "";
+    } else {
+      next[index].unit_price = serviceItem.default_price?.toString() || "";
+    }
+
+    setItems(next);
+
+    setSearchDropdowns((prev) => ({
+      ...prev,
+      [index]: { query: serviceItem.name || "", results: [], activeIndex: -1, show: false },
+    }));
+  }
+
+  // 新建标准项目
+  async function createNewServiceItem() {
+    if (!newItemModal) return;
+    const m = newItemModal;
+    if (!m.name.trim()) {
+      alert("请输入项目名称");
+      return;
+    }
+    if (!m.service_name_id) {
+      alert("请选择名称库");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("service_items")
+      .insert({
+        name: m.name.trim(),
+        service_name_id: m.service_name_id,
+        category_id: m.category_id || null,
+        description: m.description || null,
+        default_price: parseFloat(m.default_price) || 0,
+        vip_price: m.vip_price ? parseFloat(m.vip_price) : null,
+        customer_parts_price: m.customer_parts_price ? parseFloat(m.customer_parts_price) : null,
+        standard_hours: m.standard_hours ? parseFloat(m.standard_hours) : null,
+        sales_commission_type: m.sales_type || null,
+        sales_commission_value: m.sales_value ? parseFloat(m.sales_value) : null,
+        diagnosis_commission_type: m.diagnosis_type || null,
+        diagnosis_commission_value: m.diagnosis_value ? parseFloat(m.diagnosis_value) : null,
+        repair_commission_type: m.repair_type || null,
+        repair_commission_value: m.repair_value ? parseFloat(m.repair_value) : null,
+        qc_commission_type: m.qc_type || null,
+        qc_commission_value: m.qc_value ? parseFloat(m.qc_value) : null,
+      })
+      .select("*, service_names(id, name, category_id), service_categories(name)")
+      .single();
+
+    if (error || !data) {
+      alert("新建项目失败: " + (error?.message || "未知错误"));
+      return;
+    }
+
+    // 刷新列表并自动选中
+    setAllServiceItems((prev) => [...prev, data]);
+    selectServiceItem(m.itemIndex, data);
+    setNewItemModal(null);
+  }
+
+  // 计算维修项目预估提成
+  function getItemCommissionPreview(index: number) {
+    const item = items[index];
+    if (!item.name) return null;
+    const revenue = (parseFloat(item.quantity) || 1) * (parseFloat(item.unit_price) || 0);
+    const serviceItem = allServiceItems.find((s) => s.id === item.service_item_id);
+    const serviceName = serviceItem?.service_names;
+    const category = categories.find((c) => c.id === item.category_id);
+    return calculateItemCommission(item, serviceItem, serviceName, category, revenue, 0);
+  }
+
+  // 计算配件预估提成
+  function getPartCommissionPreview(itemIndex: number, partIndex: number) {
+    const part = items[itemIndex]?.parts[partIndex];
+    if (!part?.part_name_id) return null;
+    const qty = parseFloat(part.quantity) || 1;
+    const revenue = qty * (parseFloat(part.unit_price) || 0);
+    const cost = qty * (parseFloat(part.unit_cost) || 0);
+    const partInstance = (partsByName[part.part_name_id] || []).find((p: any) => p.id === part.part_id);
+    const partName = partNames.find((pn) => pn.id === part.part_name_id);
+    return calculatePartCommission(partInstance, partName, revenue, cost);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -318,29 +601,38 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
     setLoading(true);
 
     try {
-      const { data: req, error: reqError } = await supabase
-        .from("work_order_requirements")
-        .insert({ work_order_id: orderId, description: requirement.description, diagnosis: requirement.diagnosis, remarks: requirement.remarks || null })
-        .select("id")
-        .single();
+      let reqId: string;
 
-      if (reqError || !req) throw reqError || new Error("创建需求失败");
+      if (existingRequirementId) {
+        // 为已有需求添加项目，不创建新需求
+        reqId = existingRequirementId;
+      } else {
+        // 创建新需求
+        const { data: req, error: reqError } = await supabase
+          .from("work_order_requirements")
+          .insert({ work_order_id: orderId, description: requirement.description, diagnosis: requirement.diagnosis, remarks: requirement.remarks || null })
+          .select("id")
+          .single();
 
-      // 保存需求图片
-      if (requirementImages.length > 0) {
-        const mediaRecords = requirementImages.map((path) => ({
-          requirement_id: req.id,
-          media_type: "image" as const,
-          storage_path: path,
-        }));
-        await supabase.from("work_order_requirement_media").insert(mediaRecords);
+        if (reqError || !req) throw reqError || new Error("创建需求失败");
+        reqId = req.id;
+
+        // 保存需求图片
+        if (requirementImages.length > 0) {
+          const mediaRecords = requirementImages.map((path) => ({
+            requirement_id: reqId,
+            media_type: "image" as const,
+            storage_path: path,
+          }));
+          await supabase.from("work_order_requirement_media").insert(mediaRecords);
+        }
       }
 
       for (const item of items) {
         if (!item.name) continue;
         const { data: createdItem, error: itemError } = await supabase.from("work_order_items").insert({
           work_order_id: orderId,
-          requirement_id: req.id,
+          requirement_id: reqId,
           service_item_id: item.service_item_id || null,
           name: item.name,
           alias_name: item.alias_name || null,
@@ -349,8 +641,11 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
           quantity: parseFloat(item.quantity) || 1,
           unit_price: parseFloat(item.unit_price) || 0,
           mechanic_id: item.mechanic_id || null,
+          submitter_id: item.submitter_id || null,
+          inspector_id: item.inspector_id || null,
           customer_opinion: item.customer_opinion || "pending",
           is_outsourced: item.is_outsourced || false,
+          is_customer_part: item.is_customer_part || false,
           outsourced_supplier_id: item.outsourced_supplier_id || null,
           business_type: item.business_type || "normal",
           rework_source_item_id: item.rework_source_item_id || null,
@@ -397,28 +692,40 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
 
   return (
     <div>
-      <PageHeader title="添加诊断与维修项目" />
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6 max-w-4xl">
+      <PageHeader title={existingRequirementId ? "为需求添加维修项目" : "添加诊断与维修项目"} />
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="space-y-6">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900 mb-3">客户需求</h2>
-            <input required placeholder="如：发动机异响" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={requirement.description} onChange={(e) => setRequirement({ ...requirement, description: e.target.value })} />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-gray-900 mb-3">诊断结果</h2>
-            <textarea rows={2} placeholder="如：皮带轮轴承损坏" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={requirement.diagnosis} onChange={(e) => setRequirement({ ...requirement, diagnosis: e.target.value })} />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-gray-900 mb-3">备注（技师说明）</h2>
-            <textarea rows={2} placeholder="补充说明..." className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={requirement.remarks} onChange={(e) => setRequirement({ ...requirement, remarks: e.target.value })} />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-gray-900 mb-3">需求图片</h2>
-            <ImageUploader onUpload={setRequirementImages} />
-          </div>
+          {existingRequirementId ? (
+            // 为已有需求添加项目：只读显示需求信息
+            <div className="bg-gray-50 rounded-lg p-4 flex flex-wrap gap-x-6 gap-y-2 text-sm items-center">
+              <span><span className="text-gray-500">客户需求:</span> <span className="font-medium text-gray-900">{requirement.description || "-"}</span></span>
+              {requirement.diagnosis && <span><span className="text-gray-500">诊断:</span> {requirement.diagnosis}</span>}
+              {requirement.remarks && <span><span className="text-gray-500">备注:</span> {requirement.remarks}</span>}
+              {currentUser?.full_name && <span className="text-gray-400 text-xs">提交人: {currentUser.full_name}</span>}
+            </div>
+          ) : (
+            <>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 mb-3">客户需求</h2>
+                <input required placeholder="如：发动机异响" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={requirement.description} onChange={(e) => setRequirement({ ...requirement, description: e.target.value })} />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 mb-3">诊断结果</h2>
+                <textarea rows={2} placeholder="如：皮带轮轴承损坏" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={requirement.diagnosis} onChange={(e) => setRequirement({ ...requirement, diagnosis: e.target.value })} />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 mb-3">备注（技师说明）</h2>
+                <textarea rows={2} placeholder="补充说明..." className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={requirement.remarks} onChange={(e) => setRequirement({ ...requirement, remarks: e.target.value })} />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 mb-3">需求图片</h2>
+                <ImageUploader onUpload={setRequirementImages} />
+              </div>
+            </>
+          )}
 
           <div className="border-t border-gray-100 pt-6">
             <div className="flex items-center justify-between mb-3">
@@ -428,46 +735,103 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
             <div className="space-y-4">
               {items.map((item, i) => (
                 <div key={i} className="p-4 bg-gray-50 rounded-lg space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">项目分类</label>
-                      <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        value={item.category_id} onChange={(e) => { updateItem(i, "category_id", e.target.value); loadNamesForItem(i, e.target.value); }}>
-                        <option value="">请选择</option>
-                        {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">名称库</label>
-                      <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        value={item.service_name_id} onChange={(e) => { updateItem(i, "service_name_id", e.target.value); loadItemsForName(e.target.value); }}>
-                        <option value="">请选择</option>
-                        {serviceNames.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">标准项目</label>
-                      <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        value={item.service_item_id} onChange={(e) => updateItem(i, "service_item_id", e.target.value)}>
-                        <option value="">自定义</option>
-                        {serviceItems.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.default_price}元)</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
-                    <div className="sm:col-span-2">
+                  {/* 项目信息单行 */}
+                  <div className="flex gap-2 items-end overflow-x-auto pb-1">
+                    <div className="w-36 relative">
                       <label className="block text-xs text-gray-500 mb-1">项目名称 *</label>
-                      <input required className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} />
+                      <input
+                        type="text"
+                        required
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                        placeholder="搜索项目库..."
+                        value={searchDropdowns[i]?.query || item.name || ""}
+                        onChange={(e) => handleSearchInput(i, e.target.value)}
+                        onKeyDown={(e) => handleSearchKeyDown(i, e)}
+                        onFocus={() => {
+                          const state = searchDropdowns[i];
+                          if (state?.query?.trim().length > 0) {
+                            setSearchDropdowns((prev) => ({ ...prev, [i]: { ...prev[i], show: true } }));
+                          }
+                        }}
+                        onBlur={() => {
+                          // 延迟关闭，让点击事件先触发
+                          setTimeout(() => {
+                            setSearchDropdowns((prev) => {
+                              const state = prev[i];
+                              if (!state) return prev;
+                              return { ...prev, [i]: { ...state, show: false } };
+                            });
+                          }, 150);
+                        }}
+                      />
+                      {searchDropdowns[i]?.show && searchDropdowns[i]?.query?.trim().length > 0 && (
+                        <div className="absolute z-10 w-80 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {searchDropdowns[i].results.map((si: any, idx: number) => (
+                            <div
+                              key={si.id}
+                              className={`px-3 py-2 text-sm cursor-pointer ${
+                                idx === searchDropdowns[i].activeIndex ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50"
+                              }`}
+                              onClick={() => selectServiceItem(i, si)}
+                              onMouseEnter={() => setSearchDropdowns((prev) => ({
+                                ...prev,
+                                [i]: { ...prev[i], activeIndex: idx },
+                              }))}
+                            >
+                              <div className="font-medium">{si.name}</div>
+                              <div className="text-xs text-gray-400">
+                                {si.service_categories?.name || "-"} · {si.service_names?.name || "-"} · {si.default_price}元
+                              </div>
+                            </div>
+                          ))}
+                          <div
+                            className={`px-3 py-2 text-sm cursor-pointer border-t border-dashed border-gray-200 ${
+                              searchDropdowns[i].activeIndex === searchDropdowns[i].results.length
+                                ? "bg-blue-50 text-blue-700"
+                                : "hover:bg-gray-50 text-gray-500"
+                            }`}
+                            onClick={() => {
+                              setNewItemModal({
+                                open: true,
+                                itemIndex: i,
+                                name: searchDropdowns[i].query,
+                                category_id: "",
+                                service_name_id: "",
+                                standard_hours: "",
+                                description: "",
+                                default_price: "",
+                                vip_price: "",
+                                customer_parts_price: "",
+                                sales_type: "",
+                                sales_value: "",
+                                diagnosis_type: "",
+                                diagnosis_value: "",
+                                repair_type: "",
+                                repair_value: "",
+                                qc_type: "",
+                                qc_value: "",
+                              });
+                              setSearchDropdowns((prev) => ({ ...prev, [i]: { ...prev[i], show: false } }));
+                            }}
+                            onMouseEnter={() => setSearchDropdowns((prev) => ({
+                              ...prev,
+                              [i]: { ...prev[i], activeIndex: prev[i].results.length },
+                            }))}
+                          >
+                            <div className="font-medium">+ 新建项目</div>
+                            <div className="text-xs text-gray-400">未找到匹配项目？点击创建</div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="sm:col-span-1">
+                    <div className="w-20">
                       <label className="block text-xs text-gray-500 mb-1">别名</label>
                       <input className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
                         placeholder="显示用"
                         value={item.alias_name}
                         onChange={(e) => updateItem(i, "alias_name", e.target.value)} />
                     </div>
-                    <div>
+                    <div className="w-20">
                       <label className="block text-xs text-gray-500 mb-1">类型</label>
                       <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
                         value={item.item_type} onChange={(e) => updateItem(i, "item_type", e.target.value)}>
@@ -476,12 +840,12 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
                         <option value="other">其他</option>
                       </select>
                     </div>
-                    <div>
+                    <div className="w-20">
                       <label className="block text-xs text-gray-500 mb-1">单价</label>
                       <input type="number" className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
                         value={item.unit_price} onChange={(e) => updateItem(i, "unit_price", e.target.value)} />
                     </div>
-                    <div>
+                    <div className="w-20">
                       <label className="block text-xs text-gray-500 mb-1">客户意见</label>
                       <button
                         type="button"
@@ -497,25 +861,8 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
                         {item.customer_opinion === 'agree' ? '✓ 同意' : item.customer_opinion === 'reject' ? '✗ 拒绝' : '待确认'}
                       </button>
                     </div>
-                  </div>
-
-                  {/* 项目备注 / 业务类型 / 外包 */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end"
-                  >
-                    <div className="sm:col-span-4"
-                    >
-                      <label className="block text-xs text-gray-500 mb-1"
-                      >备注</label>
-                      <input className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        placeholder="项目备注说明"
-                        value={item.description}
-                        onChange={(e) => updateItem(i, "description", e.target.value)}
-                      />
-                    </div>
-                    <div className="sm:col-span-2"
-                    >
-                      <label className="block text-xs text-gray-500 mb-1"
-                      >业务类型</label>
+                    <div className="w-24">
+                      <label className="block text-xs text-gray-500 mb-1">业务类型</label>
                       <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
                         value={item.business_type}
                         onChange={(e) => {
@@ -523,7 +870,6 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
                           if (val === 'rework') {
                             setReworkModalIndex(i);
                           } else {
-                            // 切换出返工时清空返工字段
                             const next = [...items];
                             next[i].rework_source_item_id = "";
                             next[i].rework_reason = "";
@@ -533,37 +879,102 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
                           updateItem(i, "business_type", val);
                         }}
                       >
-                        <option value="normal">正常工单</option>
-                        <option value="insurance">保险业务</option>
-                        <option value="gift">赠送项目</option>
-                        <option value="rework">返工项目</option>
+                        <option value="normal">正常</option>
+                        <option value="insurance">保险</option>
+                        <option value="gift">赠送</option>
+                        <option value="rework">返工</option>
                       </select>
                     </div>
-                    <div className="sm:col-span-6 flex items-end gap-2"
-                    >
-                      <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer mb-2"
+                    <div className="w-28">
+                      <label className="block text-xs text-gray-500 mb-1">备注</label>
+                      <input className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                        placeholder="备注"
+                        value={item.description}
+                        onChange={(e) => updateItem(i, "description", e.target.value)}
+                      />
+                    </div>
+                    <div className="w-24">
+                      <label className="block text-xs text-gray-500 mb-1">提交人</label>
+                      <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                        value={item.submitter_id} onChange={(e) => updateItem(i, "submitter_id", e.target.value)}
                       >
-                        <input type="checkbox" className="rounded"
-                          checked={item.is_outsourced}
-                          onChange={(e) => updateItem(i, "is_outsourced", e.target.checked)}
-                        />
-                        外包
-                      </label>
-                      {item.is_outsourced && (
-                        <select className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm"
+                        <option value="">请选择</option>
+                        {profiles.map((p) => (
+                          <option key={p.id} value={p.id}>{p.full_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-24">
+                      <label className="block text-xs text-gray-500 mb-1">施工人</label>
+                      <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                        value={item.mechanic_id} onChange={(e) => updateItem(i, "mechanic_id", e.target.value)}
+                      >
+                        <option value="">请选择</option>
+                        {profiles.map((p) => (
+                          <option key={p.id} value={p.id}>{p.full_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-24">
+                      <label className="block text-xs text-gray-500 mb-1">质检人</label>
+                      <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                        value={item.inspector_id} onChange={(e) => updateItem(i, "inspector_id", e.target.value)}
+                      >
+                        <option value="">请选择</option>
+                        {profiles.map((p) => (
+                          <option key={p.id} value={p.id}>{p.full_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer pb-1">
+                      <input type="checkbox" className="rounded"
+                        checked={item.is_outsourced}
+                        onChange={(e) => updateItem(i, "is_outsourced", e.target.checked)}
+                      />
+                      外包
+                    </label>
+                    {item.is_outsourced && (
+                      <div className="w-28">
+                        <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
                           value={item.outsourced_supplier_id}
                           onChange={(e) => updateItem(i, "outsourced_supplier_id", e.target.value)}
                         >
-                          <option value=""
-                          >选择外包供应商</option>
+                          <option value="">选择供应商</option>
                           {suppliers.map((s) => (
-                            <option key={s.id} value={s.id}
-                            >{s.name}</option>
+                            <option key={s.id} value={s.id}>{s.name}</option>
                           ))}
                         </select>
-                      )}
-                    </div>
+                      </div>
+                    )}
+                    <label className={`flex items-center gap-1 text-xs cursor-pointer pb-1 px-1 py-1 rounded border transition-colors ${
+                      item.is_customer_part
+                        ? 'bg-yellow-50 text-yellow-700 border-yellow-300 font-bold'
+                        : 'text-gray-600 border-transparent'
+                    }`}>
+                      <input type="checkbox" className="rounded"
+                        checked={item.is_customer_part}
+                        onChange={(e) => updateItem(i, "is_customer_part", e.target.checked)}
+                      />
+                      <span className="leading-tight text-center">
+                        自带<br />配件
+                      </span>
+                    </label>
                   </div>
+
+                  {/* 预估提成 */}
+                  {(() => {
+                    const comm = getItemCommissionPreview(i);
+                    if (!comm || (comm.diagnosis === 0 && comm.repair === 0 && comm.sales === 0 && comm.qc === 0)) return null;
+                    return (
+                      <div className="flex flex-wrap gap-3 text-xs">
+                        <span className="text-gray-400">预估提成:</span>
+                        {comm.diagnosis > 0 && <span className="text-orange-600 bg-orange-50 px-2 py-0.5 rounded">诊断 {comm.diagnosis.toFixed(2)}元</span>}
+                        {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
+                        {comm.sales > 0 && <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded">销售 {comm.sales.toFixed(2)}元</span>}
+                        {comm.qc > 0 && <span className="text-purple-600 bg-purple-50 px-2 py-0.5 rounded">质检 {comm.qc.toFixed(2)}元</span>}
+                      </div>
+                    );
+                  })()}
 
                   {/* 返工信息 */}
                   {item.business_type === 'rework' && (
@@ -789,6 +1200,21 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
                               </button>
                             </div>
                           </div>
+                          {/* 配件预估提成 */}
+                          {(() => {
+                            const comm = getPartCommissionPreview(i, pi);
+                            if (!comm || (comm.sales === 0 && comm.repair === 0 && comm.picking === 0 && comm.diagnosis === 0 && comm.qc === 0)) return null;
+                            return (
+                              <div className="flex flex-wrap gap-2 text-xs pt-1">
+                                <span className="text-gray-400">预估提成:</span>
+                                {comm.sales > 0 && <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded">销售 {comm.sales.toFixed(2)}元</span>}
+                                {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
+                                {comm.picking > 0 && <span className="text-orange-600 bg-orange-50 px-2 py-0.5 rounded">领料 {comm.picking.toFixed(2)}元</span>}
+                                {comm.diagnosis > 0 && <span className="text-purple-600 bg-purple-50 px-2 py-0.5 rounded">诊断 {comm.diagnosis.toFixed(2)}元</span>}
+                                {comm.qc > 0 && <span className="text-pink-600 bg-pink-50 px-2 py-0.5 rounded">质检 {comm.qc.toFixed(2)}元</span>}
+                              </div>
+                            );
+                          })()}
                         </div>
                       ))}
                     </div>
@@ -858,6 +1284,166 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
                 确认填入
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 新建标准项目弹窗 */}
+      {newItemModal?.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto py-8">
+          <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4">
+            <h3 className="text-base font-semibold text-gray-900 mb-4">新建维修项目</h3>
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">所属分类</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    value={newItemModal.category_id}
+                    onChange={(e) => setNewItemModal({ ...newItemModal, category_id: e.target.value })}
+                  >
+                    <option value="">请选择</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">名称库 *</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    value={newItemModal.service_name_id}
+                    onChange={(e) => setNewItemModal({ ...newItemModal, service_name_id: e.target.value })}
+                  >
+                    <option value="">请选择</option>
+                    {serviceNames.map((sn) => (
+                      <option key={sn.id} value={sn.id}>{sn.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">项目名称 *</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="项目名称"
+                    value={newItemModal.name}
+                    onChange={(e) => setNewItemModal({ ...newItemModal, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">标准工时</label>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="小时"
+                    value={newItemModal.standard_hours}
+                    onChange={(e) => setNewItemModal({ ...newItemModal, standard_hours: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">项目说明</label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  placeholder="简短说明"
+                  value={newItemModal.description}
+                  onChange={(e) => setNewItemModal({ ...newItemModal, description: e.target.value })}
+                />
+              </div>
+              <div className="border-t border-gray-100 pt-4">
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">项目价格</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">销售价</label>
+                    <input
+                      type="number"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      placeholder="0.00"
+                      value={newItemModal.default_price}
+                      onChange={(e) => setNewItemModal({ ...newItemModal, default_price: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">VIP价</label>
+                    <input
+                      type="number"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      placeholder="0.00"
+                      value={newItemModal.vip_price}
+                      onChange={(e) => setNewItemModal({ ...newItemModal, vip_price: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">自带配件价</label>
+                    <input
+                      type="number"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      placeholder="0.00"
+                      value={newItemModal.customer_parts_price}
+                      onChange={(e) => setNewItemModal({ ...newItemModal, customer_parts_price: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="border-t border-gray-100 pt-4">
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">提成规则</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  {[{
+                    label: "销售提成", typeKey: "sales_type" as const, valKey: "sales_value" as const,
+                  }, {
+                    label: "诊断提成", typeKey: "diagnosis_type" as const, valKey: "diagnosis_value" as const,
+                  }, {
+                    label: "施工提成", typeKey: "repair_type" as const, valKey: "repair_value" as const,
+                  }, {
+                    label: "质检提成", typeKey: "qc_type" as const, valKey: "qc_value" as const,
+                  }].map((c) => (
+                    <div key={c.typeKey} className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">{c.label}方式</label>
+                        <select
+                          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+                          value={(newItemModal as any)[c.typeKey]}
+                          onChange={(e) => setNewItemModal({ ...newItemModal, [c.typeKey]: e.target.value })}
+                        >
+                          <option value="">无提成</option>
+                          <option value="revenue_pct">按产值(%)</option>
+                          <option value="profit_pct">按毛利(%)</option>
+                          <option value="fixed">固定金额</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">{c.label}数值</label>
+                        <input
+                          type="number"
+                          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+                          value={(newItemModal as any)[c.valKey]}
+                          onChange={(e) => setNewItemModal({ ...newItemModal, [c.valKey]: e.target.value })}
+                          disabled={!(newItemModal as any)[c.typeKey]}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end mt-6">
+              <button
+                type="button"
+                onClick={() => setNewItemModal(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={createNewServiceItem}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                保存
               </button>
             </div>
           </div>

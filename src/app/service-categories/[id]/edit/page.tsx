@@ -24,6 +24,10 @@ export default function EditServiceCategoryPage() {
     repair_value: "",
     qc_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     qc_value: "",
+    dispatch_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
+    dispatch_value: "",
+    claim_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
+    claim_value: "",
   });
 
   useEffect(() => {
@@ -48,6 +52,10 @@ export default function EditServiceCategoryPage() {
           repair_value: data.repair_commission_value?.toString() || "",
           qc_type: data.qc_commission_type || "",
           qc_value: data.qc_commission_value?.toString() || "",
+          dispatch_type: data.dispatch_commission_type || "",
+          dispatch_value: data.dispatch_commission_value?.toString() || "",
+          claim_type: data.claim_commission_type || "",
+          claim_value: data.claim_commission_value?.toString() || "",
         });
         setLoading(false);
       });
@@ -69,6 +77,10 @@ export default function EditServiceCategoryPage() {
         repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
         qc_commission_type: form.qc_type || null,
         qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
+        dispatch_commission_type: form.dispatch_type || null,
+        dispatch_commission_value: form.dispatch_value ? parseFloat(form.dispatch_value) : null,
+        claim_commission_type: form.claim_type || null,
+        claim_commission_value: form.claim_value ? parseFloat(form.claim_value) : null,
       })
       .eq("id", id);
 
@@ -95,6 +107,10 @@ export default function EditServiceCategoryPage() {
       repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
       qc_commission_type: form.qc_type || null,
       qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
+      dispatch_commission_type: form.dispatch_type || null,
+      dispatch_commission_value: form.dispatch_value ? parseFloat(form.dispatch_value) : null,
+      claim_commission_type: form.claim_type || null,
+      claim_commission_value: form.claim_value ? parseFloat(form.claim_value) : null,
     };
 
     const { error: nameError } = await supabase.from("service_names").update(updateData).eq("category_id", id);
@@ -203,6 +219,20 @@ export default function EditServiceCategoryPage() {
                 valueValue={form.qc_value}
                 onTypeChange={(v) => setForm({ ...form, qc_type: v as any, qc_value: v ? form.qc_value : "" })}
                 onValueChange={(v) => setForm({ ...form, qc_value: v })}
+              />
+              <CommissionField
+                label="派单提成"
+                typeValue={form.dispatch_type}
+                valueValue={form.dispatch_value}
+                onTypeChange={(v) => setForm({ ...form, dispatch_type: v as any, dispatch_value: v ? form.dispatch_value : "" })}
+                onValueChange={(v) => setForm({ ...form, dispatch_value: v })}
+              />
+              <CommissionField
+                label="领单提成"
+                typeValue={form.claim_type}
+                valueValue={form.claim_value}
+                onTypeChange={(v) => setForm({ ...form, claim_type: v as any, claim_value: v ? form.claim_value : "" })}
+                onValueChange={(v) => setForm({ ...form, claim_value: v })}
               />
             </div>
           </div>

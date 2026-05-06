@@ -23,6 +23,10 @@ export default function ServiceCategoriesPage() {
     repair_value: "",
     qc_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     qc_value: "",
+    dispatch_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
+    dispatch_value: "",
+    claim_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
+    claim_value: "",
   });
 
   async function load() {
@@ -75,6 +79,10 @@ export default function ServiceCategoriesPage() {
       repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
       qc_commission_type: form.qc_type || null,
       qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
+      dispatch_commission_type: form.dispatch_type || null,
+      dispatch_commission_value: form.dispatch_value ? parseFloat(form.dispatch_value) : null,
+      claim_commission_type: form.claim_type || null,
+      claim_commission_value: form.claim_value ? parseFloat(form.claim_value) : null,
     });
 
     if (error) {
@@ -93,6 +101,10 @@ export default function ServiceCategoriesPage() {
       repair_value: "",
       qc_type: "",
       qc_value: "",
+      dispatch_type: "",
+      dispatch_value: "",
+      claim_type: "",
+      claim_value: "",
     });
     setShowForm(false);
     await load();
@@ -200,6 +212,20 @@ export default function ServiceCategoriesPage() {
                   onTypeChange={(v) => setForm({ ...form, qc_type: v as any })}
                   onValueChange={(v) => setForm({ ...form, qc_value: v })}
                 />
+                <CommissionField
+                  label="派单提成"
+                  typeValue={form.dispatch_type}
+                  valueValue={form.dispatch_value}
+                  onTypeChange={(v) => setForm({ ...form, dispatch_type: v as any })}
+                  onValueChange={(v) => setForm({ ...form, dispatch_value: v })}
+                />
+                <CommissionField
+                  label="领单提成"
+                  typeValue={form.claim_type}
+                  valueValue={form.claim_value}
+                  onTypeChange={(v) => setForm({ ...form, claim_type: v as any })}
+                  onValueChange={(v) => setForm({ ...form, claim_value: v })}
+                />
               </div>
             </div>
           </div>
@@ -233,6 +259,8 @@ export default function ServiceCategoriesPage() {
                 <th className="px-6 py-3 text-left font-medium text-gray-500">诊断提成</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">施工提成</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">质检提成</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">派单提成</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">领单提成</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">操作</th>
               </tr>
             </thead>
@@ -252,6 +280,12 @@ export default function ServiceCategoriesPage() {
                   <td className="px-6 py-4 text-gray-600">
                     {formatCommission(c.qc_commission_type, c.qc_commission_value)}
                   </td>
+                  <td className="px-6 py-4 text-gray-600">
+                    {formatCommission(c.dispatch_commission_type, c.dispatch_commission_value)}
+                  </td>
+                  <td className="px-6 py-4 text-gray-600">
+                    {formatCommission(c.claim_commission_type, c.claim_commission_value)}
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <Link
@@ -268,7 +302,7 @@ export default function ServiceCategoriesPage() {
               {(!categories || categories.length === 0) && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={8}
                     className="px-6 py-12 text-center text-gray-400"
                   >
                     暂无分类，请先新建

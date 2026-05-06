@@ -30,10 +30,10 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
     { data: images },
     { data: specs },
   ] = await Promise.all([
-    supabase.from("part_vehicle_models").select("vehicle_models(brand, series, model_name, year_start, year_end, engine), notes").eq("part_id", id),
+    supabase.from("part_vehicle_models").select("vehicle_models(厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准), notes").eq("part_id", id),
     supabase.from("part_stock_locations").select("*, warehouses(name)").eq("part_id", id),
     supabase.from("part_special_prices").select("*, companies(name), customers(name, phone), vehicles(plate_number, vin)").eq("part_id", id),
-    supabase.from("part_vehicle_prices").select("*, vehicle_models(brand, series, model_name, year_start, year_end, engine)").eq("part_id", id),
+    supabase.from("part_vehicle_prices").select("*, vehicle_models(品牌, 车系, 车型, 年款, 发动机型号)").eq("part_id", id),
     supabase.from("part_images").select("*").eq("part_id", id).order("sort_order", { ascending: true }),
     supabase.from("parts_specifications").select("*, part_specifications(name)").eq("part_id", id),
   ]);
@@ -141,17 +141,56 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="text-base font-semibold text-gray-900 mb-4">适用车型</h2>
         {vehicleModels && vehicleModels.length > 0 ? (
-          <div className="space-y-2">
-            {vehicleModels.map((vm: any, idx: number) => {
-              const v = vm.vehicle_models;
-              const name = v ? `${v.brand} ${v.series} ${v.model_name || ""}`.trim() : "-";
-              return (
-                <div key={idx} className="flex items-center justify-between text-sm py-2 border-b border-gray-50 last:border-0">
-                  <span className="text-gray-700">{name}</span>
-                  {vm.notes && <span className="text-gray-400 text-xs">{vm.notes}</span>}
-                </div>
-              );
-            })}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">厂商</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">品牌</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">车系</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">车型</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">销售版本</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">年款</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">排量</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">发动机</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">燃油</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">进气</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">变速箱</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">变速箱号</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">底盘号</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">驱动</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">车身</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">排放</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">备注</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {vehicleModels.map((vm: any, idx: number) => {
+                  const v = vm.vehicle_models;
+                  return (
+                    <tr key={idx}>
+                      <td className="px-3 py-2 text-gray-700">{v?.厂商 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.品牌 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.车系 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.车型 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.销售版本 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.年款 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.排量 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.发动机型号 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.燃油类型 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.进气形式 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.变速箱类型 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.变速箱代号 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.底盘代号 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.驱动方式 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.车身类型 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-700">{v?.排放标准 || "-"}</td>
+                      <td className="px-3 py-2 text-gray-500">{vm.notes || "-"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : (
           <p className="text-gray-400 text-sm">暂无适用车型</p>
@@ -174,7 +213,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
             <tbody className="divide-y divide-gray-100">
               {vehiclePrices.map((vp: any) => {
                 const v = vp.vehicle_models;
-                const name = v ? `${v.brand} ${v.series} ${v.model_name || ""}`.trim() : "-";
+                const name = v ? `${v.品牌 || ""} ${v.车系 || ""} ${v.车型 || ""}`.trim() : "-";
                 return (
                   <tr key={vp.id}>
                     <td className="px-4 py-2">{name}</td>

@@ -6,18 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
-
-interface LinkedItem {
-  id: string;
-  name: string;
-  brand?: string;
-  series?: string;
-  model_name?: string;
-  year_start?: number;
-  year_end?: number;
-  engine?: string;
-  notes?: string;
-}
+import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelector";
 
 interface StockLocationRow {
   id: string;
@@ -107,14 +96,6 @@ export default function PartForm({ editId }: { editId?: string }) {
 
   // Vehicle model search (multiple)
   const [selectedVehicleModels, setSelectedVehicleModels] = useState<LinkedItem[]>([]);
-  const [checkedVehicleModelIds, setCheckedVehicleModelIds] = useState<string[]>([]);
-
-  // Vehicle model modal
-  const [vmModalOpen, setVmModalOpen] = useState(false);
-  const [vmModalQuery, setVmModalQuery] = useState('');
-  const [vmModalList, setVmModalList] = useState<any[]>([]);
-  const [vmModalLoading, setVmModalLoading] = useState(false);
-  const [vmModalSelected, setVmModalSelected] = useState<Set<string>>(new Set());
 
   // Stock locations
   const [stockLocations, setStockLocations] = useState<StockLocationRow[]>([
@@ -282,7 +263,7 @@ export default function PartForm({ editId }: { editId?: string }) {
           ? supabase.from("suppliers").select("*").eq("id", part.supplier_id).single()
           : Promise.resolve({ data: null }),
         supabase.from("parts_specifications").select("specification_id, specifications(*)").eq("part_id", copyFromId),
-        supabase.from("part_vehicle_models").select("vehicle_model_id, vehicle_models(*)").eq("part_id", copyFromId),
+        supabase.from("part_vehicle_models").select("vehicle_model_id, vehicle_models(厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准, 前轮胎规格, 后轮胎规格)").eq("part_id", copyFromId),
         supabase.from("part_images").select("*").eq("part_id", copyFromId).order("sort_order", { ascending: true }),
         supabase.from("part_stock_locations").select("*, warehouses(name)").eq("part_id", copyFromId),
       ]);
@@ -291,7 +272,19 @@ export default function PartForm({ editId }: { editId?: string }) {
       if (brand) setSelectedBrand({ id: brand.id, name: brand.name });
       if (supplier) setSelectedSupplier(supplier);
       if (specs) setSelectedSpecs(specs.map((s: any) => ({ id: s.specification_id, name: s.specifications?.name })).filter((s: any) => s.name));
-      if (vms) setSelectedVehicleModels(vms.map((v: any) => ({ id: v.vehicle_model_id, name: v.vehicle_models?.name })).filter((v: any) => v.name));
+      if (vms) {
+        const mapped = vms.map((v: any) => {
+          const vm = v.vehicle_models;
+          if (!vm) return null;
+          const brand = vm.品牌 || "";
+          const series = vm.车系 || "";
+          const model_name = vm.车型 || "";
+          const name = `${brand} ${series} ${model_name}`.trim();
+          if (!name) return null;
+          return { id: String(v.vehicle_model_id), name, manufacturer: vm.厂商, brand, series, model_name, sales_version: vm.销售版本, year_start: vm.年款, year_end: vm.年款, displacement: vm.排量, engine: vm.发动机型号, fuel_type: vm.燃油类型, intake_form: vm.进气形式, chassis_code: vm.底盘代号, transmission_type: vm.变速箱类型, transmission_code: vm.变速箱代号, drive_type: vm.驱动方式, body_type: vm.车身类型, emission_standard: vm.排放标准, front_tire: vm.前轮胎规格, rear_tire: vm.后轮胎规格 };
+        }).filter((v: any) => v !== null);
+        setSelectedVehicleModels(mapped as LinkedItem[]);
+      }
 
       setDocNameQuery(part.document_name || "");
       setForm((prev) => ({
@@ -360,11 +353,11 @@ export default function PartForm({ editId }: { editId?: string }) {
             ? supabase.from("suppliers").select("*").eq("id", part.supplier_id).single()
             : Promise.resolve({ data: null }),
           supabase.from("parts_specifications").select("specification_id, part_specifications(name)").eq("part_id", editId),
-          supabase.from("part_vehicle_models").select("vehicle_model_id, vehicle_models(brand, series, model_name, year_start, year_end, engine), notes").eq("part_id", editId),
+          supabase.from("part_vehicle_models").select("vehicle_model_id, vehicle_models(厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准), notes").eq("part_id", editId),
           supabase.from("part_images").select("*").eq("part_id", editId).order("sort_order", { ascending: true }),
           supabase.from("part_stock_locations").select("*, warehouses(name)").eq("part_id", editId),
           supabase.from("part_special_prices").select("*, companies(name), customers(name, phone), vehicles(plate_number, vin)").eq("part_id", editId),
-          supabase.from("part_vehicle_prices").select("*, vehicle_models(brand, series, model_name, year_start, year_end, engine)").eq("part_id", editId),
+          supabase.from("part_vehicle_prices").select("*, vehicle_models(品牌, 车系, 车型, 年款, 发动机型号)").eq("part_id", editId),
         ]);
 
         if (partName) {
@@ -385,8 +378,11 @@ export default function PartForm({ editId }: { editId?: string }) {
         if (vms) {
           setSelectedVehicleModels(vms.map((v: any) => {
             const vm = v.vehicle_models;
-            const name = vm ? `${vm.brand} ${vm.series} ${vm.model_name || ""}`.trim() : "";
-            return { id: v.vehicle_model_id, name, brand: vm?.brand, series: vm?.series, model_name: vm?.model_name, year_start: vm?.year_start, year_end: vm?.year_end, engine: vm?.engine, notes: v.notes || "" };
+            const brand = vm?.品牌 || "";
+            const series = vm?.车系 || "";
+            const model_name = vm?.车型 || "";
+            const name = `${brand} ${series} ${model_name}`.trim();
+            return { id: String(v.vehicle_model_id), name, manufacturer: vm?.厂商, brand, series, model_name, sales_version: vm?.销售版本, year_start: vm?.年款, year_end: vm?.年款, displacement: vm?.排量, engine: vm?.发动机型号, fuel_type: vm?.燃油类型, intake_form: vm?.进气形式, chassis_code: vm?.底盘代号, transmission_type: vm?.变速箱类型, transmission_code: vm?.变速箱代号, drive_type: vm?.驱动方式, body_type: vm?.车身类型, emission_standard: vm?.排放标准, notes: v.notes || "" };
           }));
         }
         if (images) {
@@ -451,16 +447,19 @@ export default function PartForm({ editId }: { editId?: string }) {
         if (vehiclePriceData) {
           setVehicleModelPrices(vehiclePriceData.map((v: any) => {
             const vm = v.vehicle_models;
-            const name = vm ? `${vm.brand} ${vm.series} ${vm.model_name || ""}`.trim() : "";
+            const brand = vm?.品牌 || "";
+            const series = vm?.车系 || "";
+            const model_name = vm?.车型 || "";
+            const name = `${brand} ${series} ${model_name}`.trim();
             return {
-              vehicle_model_id: v.vehicle_model_id,
+              vehicle_model_id: String(v.vehicle_model_id),
               vehicle_name: name,
-              brand: vm?.brand || "",
-              series: vm?.series || "",
-              model_name: vm?.model_name || "",
-              year_start: vm?.year_start,
-              year_end: vm?.year_end,
-              engine: vm?.engine,
+              brand,
+              series,
+              model_name,
+              year_start: vm?.年款,
+              year_end: vm?.年款,
+              engine: vm?.发动机型号,
               sales_price: v.sales_price ? String(v.sales_price) : "",
               vip_price: v.vip_price ? String(v.vip_price) : "",
               standard_price: v.standard_price ? String(v.standard_price) : "",
@@ -499,15 +498,15 @@ export default function PartForm({ editId }: { editId?: string }) {
         window.location.reload();
         return;
       }
-      // Escape — 取消（仅在无弹窗时生效）
-      if (e.key === "Escape" && !vmModalOpen) {
+      // Escape — 取消
+      if (e.key === "Escape") {
         router.back();
         return;
       }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleSubmit, isEditMode, editId, searchParams, router, vmModalOpen]);
+  }, [handleSubmit, isEditMode, editId, searchParams, router]);
 
   // Load all warehouses for stock location selection
   useEffect(() => {
@@ -911,94 +910,25 @@ export default function PartForm({ editId }: { editId?: string }) {
       const excludeIds = vehicleModelPrices.map((v) => v.vehicle_model_id);
       let query = supabase
         .from('vehicle_models')
-        .select('id, brand, series, model_name, year_start, year_end, engine')
-        .or('brand.ilike.%' + value + '%,series.ilike.%' + value + '%,model_name.ilike.%' + value + '%')
+        .select('id, 品牌, 车系, 车型, 年款, 发动机型号')
+        .or(`品牌.ilike.%${value}%,车系.ilike.%${value}%,车型.ilike.%${value}%`)
         .limit(10);
       if (excludeIds.length > 0) query = query.not('id', 'in', '(' + excludeIds.join(',') + ')');
       const { data } = await query;
-      setVmPriceResults(data || []);
+      const mapped = (data || []).map((v: any) => ({
+        id: String(v.id),
+        brand: v.品牌 || '',
+        series: v.车系 || '',
+        model_name: v.车型 || '',
+        year_start: v.年款,
+        year_end: v.年款,
+        engine: v.发动机型号,
+      }));
+      setVmPriceResults(mapped);
       setVmPriceSearching(false);
     }, 300);
     return () => { if (vmPriceTimeoutRef.current) clearTimeout(vmPriceTimeoutRef.current); };
   }, [vmPriceQuery, vehicleModelPrices, supabase]);
-
-  // Vehicle model modal search
-  useEffect(() => {
-    if (!vmModalOpen) return;
-    setVmModalLoading(true);
-    const timer = setTimeout(async () => {
-      const value = vmModalQuery.trim();
-      const excludeIds = selectedVehicleModels.map((v) => v.id);
-      let query = supabase
-        .from('vehicle_models')
-        .select('id, brand, series, model_name, year_start, year_end, engine')
-        .order('brand')
-        .order('series')
-        .limit(100);
-      if (value) {
-        query = query.or(`brand.ilike.%${value}%,series.ilike.%${value}%,model_name.ilike.%${value}%`);
-      }
-      if (excludeIds.length > 0) {
-        query = query.not('id', 'in', `(${excludeIds.join(',')})`);
-      }
-      const { data } = await query;
-      setVmModalList(data || []);
-      setVmModalLoading(false);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [vmModalOpen, vmModalQuery, selectedVehicleModels, supabase]);
-
-  function removeVehicleModel(id: string) {
-    setSelectedVehicleModels((prev) => prev.filter((v) => v.id !== id));
-    setCheckedVehicleModelIds((prev) => prev.filter((vid) => vid !== id));
-  }
-
-  function batchRemoveVehicleModels() {
-    setSelectedVehicleModels((prev) => prev.filter((v) => !checkedVehicleModelIds.includes(v.id)));
-    setCheckedVehicleModelIds([]);
-  }
-
-  function updateVehicleModelNotes(id: string, notes: string) {
-    setSelectedVehicleModels((prev) => prev.map((v) => (v.id === id ? { ...v, notes } : v)));
-  }
-
-  // Vehicle model modal helpers
-  function openVmModal() {
-    setVmModalOpen(true);
-    setVmModalQuery('');
-    setVmModalSelected(new Set());
-  }
-
-  function toggleVmModalSelection(id: string) {
-    setVmModalSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function confirmVmModal() {
-    const selected = vmModalList.filter((v) => vmModalSelected.has(v.id));
-    const newItems = selected
-      .filter((v) => !selectedVehicleModels.some((existing) => String(existing.id) === String(v.id)))
-      .map((v) => {
-        const name = v.model_name ? `${v.brand} ${v.series} ${v.model_name}` : `${v.brand} ${v.series}`;
-        return {
-          id: v.id,
-          name,
-          brand: v.brand,
-          series: v.series,
-          model_name: v.model_name,
-          year_start: v.year_start,
-          year_end: v.year_end,
-          engine: v.engine,
-          notes: '',
-        };
-      });
-    setSelectedVehicleModels((prev) => [...prev, ...newItems]);
-    setVmModalOpen(false);
-  }
 
   // Stock locations helpers
   function updateStockLocation(id: string, field: keyof StockLocationRow, value: string) {
@@ -1129,6 +1059,10 @@ export default function PartForm({ editId }: { editId?: string }) {
     }
     if (!selectedPartName) {
       alert("请选择配件名称");
+      return;
+    }
+    if (!form.unit_price.trim()) {
+      alert("请填写销售价");
       return;
     }
     const duplicateExists = pnResults && pnResults.some((r) => r.part_number.toUpperCase() === partNumber.trim().toUpperCase() && r.id !== editId);
@@ -1299,9 +1233,14 @@ export default function PartForm({ editId }: { editId?: string }) {
 
     // Insert vehicle models
     if (selectedVehicleModels.length > 0) {
-      await supabase
+      const { error: vmError } = await supabase
         .from("part_vehicle_models")
-        .insert(selectedVehicleModels.map((v) => ({ part_id: partId, vehicle_model_id: v.id, notes: v.notes || null })));
+        .insert(selectedVehicleModels.map((v) => ({ part_id: partId, vehicle_model_id: Number(v.id), notes: v.notes || null })));
+      if (vmError) {
+        alert("适用车型保存失败: " + vmError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     // Insert part images
@@ -1368,7 +1307,7 @@ export default function PartForm({ editId }: { editId?: string }) {
       const { error: vpError } = await supabase.from('part_vehicle_prices').insert(
         vehicleModelPrices.map((p) => ({
           part_id: partId,
-          vehicle_model_id: p.vehicle_model_id,
+          vehicle_model_id: Number(p.vehicle_model_id),
           sales_price: p.sales_price ? parseFloat(p.sales_price) : null,
           vip_price: p.vip_price ? parseFloat(p.vip_price) : null,
           standard_price: p.standard_price ? parseFloat(p.standard_price) : null,
@@ -1959,7 +1898,7 @@ export default function PartForm({ editId }: { editId?: string }) {
           {/* 销售价、单位价、VIP价、批发价 */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">销售价</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">销售价 <span className="text-red-500">*</span></label>
               <input
                 id="sales-price-input"
                 type="number"
@@ -2093,7 +2032,6 @@ export default function PartForm({ editId }: { editId?: string }) {
         {/* 库存分布 */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">库存分布</h3>
-          <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-700">库存分布</label>
             <span className="text-xs text-gray-500">
@@ -2267,108 +2205,10 @@ export default function PartForm({ editId }: { editId?: string }) {
         </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-900">适用车型</h3>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={openVmModal}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-              >
-                添加
-              </button>
-              {checkedVehicleModelIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={batchRemoveVehicleModels}
-                  className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100"
-                >
-                  批量删除 ({checkedVehicleModelIds.length})
-                </button>
-              )}
-            </div>
-          </div>
-            {selectedVehicleModels.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                  <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="w-3.5 h-3.5"
-                        checked={checkedVehicleModelIds.length > 0 && checkedVehicleModelIds.length === selectedVehicleModels.length}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setCheckedVehicleModelIds(selectedVehicleModels.map((v) => v.id));
-                          } else {
-                            setCheckedVehicleModelIds([]);
-                          }
-                        }}
-                      />
-                      <span>全选</span>
-                    </label>
-                    <span>共 {selectedVehicleModels.length} 个车型</span>
-                  </div>
-                </div>
-                {selectedVehicleModels.map((v) => (
-                  <div key={v.id} className="bg-gray-50 rounded px-2 py-1.5 text-xs">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-2 flex-1 min-w-0">
-                        <input
-                          type="checkbox"
-                          className="w-3.5 h-3.5 mt-0.5 shrink-0"
-                          checked={checkedVehicleModelIds.includes(v.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setCheckedVehicleModelIds((prev) => [...prev, v.id]);
-                            } else {
-                              setCheckedVehicleModelIds((prev) => prev.filter((id) => id !== v.id));
-                            }
-                          }}
-                        />
-                        <div className="flex-1 min-w-0 text-gray-700">
-                          <span className="text-gray-500">ID:{String(v.id).slice(0,8)}</span>
-                          <span className="text-gray-400 mx-1">·</span>
-                          {v.brand} {v.series} {v.model_name}
-                          {v.year_start && (
-                            <span className="text-gray-400 ml-0.5">{v.year_start}{v.year_end && v.year_end !== v.year_start ? `-${v.year_end}` : ''}款</span>
-                          )}
-                          {v.engine && (
-                            <>
-                              <span className="text-gray-400 mx-1">·</span>
-                              <span className="text-gray-500">发动机:{v.engine}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeVehicleModel(v.id)}
-                        className="text-purple-400 hover:text-purple-600 ml-1 shrink-0"
-                      >
-                        删除
-                      </button>
-                    </div>
-                    <div className="mt-1 flex items-center gap-1 pl-5">
-                      <span className="text-gray-400">备注:</span>
-                      <input
-                        type="text"
-                        placeholder="可选"
-                        className="flex-1 min-w-0 px-1.5 py-0.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                        value={v.notes || ''}
-                        onChange={(e) => updateVehicleModelNotes(v.id, e.target.value)}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {selectedVehicleModels.length === 0 && (
-              <div className="text-xs text-gray-400 text-center py-4">暂未关联车型</div>
-            )}
-          </div>
-        </div>
+        <VehicleModelSelector
+          value={selectedVehicleModels}
+          onChange={setSelectedVehicleModels}
+        />
 
         {/* 特殊价格 */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -2525,7 +2365,7 @@ export default function PartForm({ editId }: { editId?: string }) {
                       type="button"
                       onClick={() => {
                         setVmPriceSelected({
-                          id: v.id,
+                          id: String(v.id),
                           name: v.brand + ' ' + v.series + ' ' + v.model_name,
                           brand: v.brand,
                           series: v.series,
@@ -2631,107 +2471,11 @@ export default function PartForm({ editId }: { editId?: string }) {
             )}
           </div>
 
-        {/* 选择适用车型弹窗 */}
-        {vmModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col mx-4">
-              <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-200">
-                <h3 className="text-base font-semibold text-gray-900 shrink-0">选择适用车型</h3>
-                <input
-                  type="text"
-                  placeholder="搜索品牌、车系或型号"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  value={vmModalQuery}
-                  onChange={(e) => setVmModalQuery(e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setVmModalOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 text-xl leading-none shrink-0"
-                >
-                  ×
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto px-6 py-3">
-                {vmModalLoading && <div className="text-sm text-gray-500 text-center py-4">加载中...</div>}
-                {!vmModalLoading && vmModalList.length === 0 && (
-                  <div className="text-sm text-gray-400 text-center py-4">未找到车型</div>
-                )}
-                {!vmModalLoading && vmModalList.length > 0 && (
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 sticky top-0">
-                      <tr>
-                        <th className="px-3 py-2 text-left w-10">
-                          <input
-                            type="checkbox"
-                            checked={vmModalList.length > 0 && vmModalList.every((v) => vmModalSelected.has(v.id))}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setVmModalSelected(new Set(vmModalList.map((v) => v.id)));
-                              } else {
-                                setVmModalSelected(new Set());
-                              }
-                            }}
-                          />
-                        </th>
-                        <th className="px-3 py-2 text-left">品牌</th>
-                        <th className="px-3 py-2 text-left">车系</th>
-                        <th className="px-3 py-2 text-left">车型</th>
-                        <th className="px-3 py-2 text-left">年款</th>
-                        <th className="px-3 py-2 text-left">发动机</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {vmModalList.map((v) => (
-                        <tr key={v.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2">
-                            <input
-                              type="checkbox"
-                              checked={vmModalSelected.has(v.id)}
-                              onChange={() => toggleVmModalSelection(v.id)}
-                            />
-                          </td>
-                          <td className="px-3 py-2">{v.brand}</td>
-                          <td className="px-3 py-2">{v.series}</td>
-                          <td className="px-3 py-2">{v.model_name}</td>
-                          <td className="px-3 py-2 text-gray-500">
-                            {v.year_start ? `${v.year_start}-${v.year_end || '今'}` : '-'}
-                          </td>
-                          <td className="px-3 py-2 text-gray-500">{v.engine || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
-                <span className="text-sm text-gray-500">已选 {vmModalSelected.size} 个车型</span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setVmModalOpen(false)}
-                    className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    onClick={confirmVmModal}
-                    disabled={vmModalSelected.size === 0}
-                    className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    确定
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
         {/* 右侧悬浮操作按钮 */}
         <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2">
           <button
             type="submit"
-            disabled={loading || !!hasDuplicatePartNumber || !partNumber.trim() || !selectedPartName}
+            disabled={loading || !!hasDuplicatePartNumber || !partNumber.trim() || !selectedPartName || !form.unit_price.trim()}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-lg"
           >
             {loading ? (
