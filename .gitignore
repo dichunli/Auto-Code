@@ -41,3 +41,10 @@ yarn-error.log*
 next-env.d.ts
 
 .env*.local
+
+# 备份与临时文件
+*.bak
+supabase/.temp/
+
+# 数据表（Excel）
+*.xlsx
