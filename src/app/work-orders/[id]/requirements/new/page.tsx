@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -35,7 +35,10 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
     activeIndex: number;
     show: boolean;
   }>>({});
+  const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const [dropdownPositions, setDropdownPositions] = useState<Record<number, { top: number; left: number }>>({});
   const [newItemModal, setNewItemModal] = useState<{
+
     open: boolean;
     itemIndex: number;
     name: string;
@@ -54,6 +57,16 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
     repair_value: string;
     qc_type: string;
     qc_value: string;
+  } | null>(null);
+
+  // 批量选择项目弹窗
+  const [bulkPickerModal, setBulkPickerModal] = useState<{
+    open: boolean;
+    itemIndex: number;
+    query: string;
+    categoryFilter: string;
+    defaultType: string;
+    selectedIds: string[];
   } | null>(null);
 
   const [requirement, setRequirement] = useState({ description: "", diagnosis: "", remarks: "" });
@@ -99,7 +112,7 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
     // 获取当前用户信息
     supabase.auth.getUser().then(({ data: authData }) => {
       if (authData?.user) {
-        supabase.from("profiles").select("full_name").eq("id", authData.user.id).single().then(({ data: profile }) => {
+        supabase.from("profiles").select("id, full_name").eq("id", authData.user.id).single().then(({ data: profile }) => {
           setCurrentUser(profile);
         });
       }
@@ -152,7 +165,7 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
   }, [orderId, supabase]);
 
   function addItem() {
-    setItems([...items, { category_id: "", service_name_id: "", service_item_id: "", name: "", alias_name: "", item_type: "labor", quantity: "1", unit_price: "", mechanic_id: "", submitter_id: "", inspector_id: "", standard_hours: "", customer_opinion: "pending", description: "", is_outsourced: false, is_customer_part: false, outsourced_supplier_id: "", business_type: "normal", rework_source_item_id: "", rework_reason: "", rework_loss_amount: "", parts: [] }]);
+    setItems([...items, { category_id: "", service_name_id: "", service_item_id: "", name: "", alias_name: "", item_type: "labor", quantity: "1", unit_price: "", mechanic_id: "", submitter_id: currentUser?.id || "", inspector_id: "", standard_hours: "", customer_opinion: "pending", description: "", is_outsourced: false, is_customer_part: false, outsourced_supplier_id: "", business_type: "normal", rework_source_item_id: "", rework_reason: "", rework_loss_amount: "", parts: [] }]);
   }
 
   function addPart(itemIndex: number) {
@@ -525,6 +538,105 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
     }));
   }
 
+  // 打开批量选择项目弹窗
+  function openBulkPicker(itemIndex: number) {
+    setBulkPickerModal({
+      open: true,
+      itemIndex,
+      query: "",
+      categoryFilter: "",
+      defaultType: "labor",
+      selectedIds: [],
+    });
+  }
+
+  // 切换勾选某个服务项目
+  function toggleBulkSelection(serviceItemId: string) {
+    setBulkPickerModal((prev) => {
+      if (!prev) return prev;
+      const exists = prev.selectedIds.includes(serviceItemId);
+      return {
+        ...prev,
+        selectedIds: exists
+          ? prev.selectedIds.filter((id) => id !== serviceItemId)
+          : [...prev.selectedIds, serviceItemId],
+      };
+    });
+  }
+
+  // 批量添加选中项目
+  function batchAddSelectedItems() {
+    if (!bulkPickerModal) return;
+    const { itemIndex, selectedIds, defaultType } = bulkPickerModal;
+    if (selectedIds.length === 0) {
+      alert("请至少勾选一个项目");
+      return;
+    }
+
+    // 排除已存在于当前表单中的同名项目
+    const existingNames = new Set(items.map((it) => it.name).filter(Boolean));
+    const picked = selectedIds
+      .map((id) => allServiceItems.find((s) => s.id === id))
+      .filter(Boolean) as any[];
+
+    const filtered = picked.filter((si) => !existingNames.has(si.name) || (items[itemIndex]?.name === "" && items[itemIndex]?.service_item_id === ""));
+    const duplicates = picked.filter((si) => existingNames.has(si.name) && !(items[itemIndex]?.name === "" && items[itemIndex]?.service_item_id === ""));
+
+    if (filtered.length === 0) {
+      alert("勾选的项目都已存在于当前表单，无需重复添加");
+      return;
+    }
+
+    const buildRow = (si: any) => {
+      const isCustomerPart = false; // 批量添加默认非自带配件
+      const unitPrice = si.default_price?.toString() || "";
+      return {
+        category_id: si.service_names?.category_id || si.category_id || "",
+        service_name_id: si.service_names?.id || si.service_name_id || "",
+        service_item_id: si.id,
+        name: si.name || "",
+        alias_name: "",
+        item_type: defaultType,
+        quantity: "1",
+        unit_price: unitPrice,
+        mechanic_id: "",
+        submitter_id: currentUser?.id || "",
+        inspector_id: "",
+        standard_hours: si.standard_hours || "",
+        customer_opinion: "pending",
+        description: si.description || "",
+        is_outsourced: false,
+        is_customer_part: isCustomerPart,
+        outsourced_supplier_id: "",
+        business_type: "normal",
+        rework_source_item_id: "",
+        rework_reason: "",
+        rework_loss_amount: "",
+        parts: [] as any[],
+      };
+    };
+
+    const next = [...items];
+    const target = next[itemIndex];
+    let cursor = 0;
+    // 若当前行未选项目，则把第一项填充进去
+    if (target && !target.service_item_id && !target.name) {
+      next[itemIndex] = buildRow(filtered[0]);
+      cursor = 1;
+    }
+    for (let i = cursor; i < filtered.length; i++) {
+      next.push(buildRow(filtered[i]));
+    }
+    setItems(next);
+    setBulkPickerModal(null);
+
+    if (duplicates.length > 0) {
+      setTimeout(() => {
+        alert(`已跳过 ${duplicates.length} 个重复项目：${duplicates.map((d) => d.name).join("、")}`);
+      }, 50);
+    }
+  }
+
   // 新建标准项目
   async function createNewServiceItem() {
     if (!newItemModal) return;
@@ -628,8 +740,32 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
         }
       }
 
+      // 查询当前工单已有项目名称，防止重复
+      const { data: existingItems } = await supabase
+        .from("work_order_items")
+        .select("name")
+        .eq("work_order_id", orderId);
+      const existingNames = new Set(existingItems?.map((i) => i.name) || []);
+
+      // 检查本次添加的项目之间是否有重复
+      const newNames = new Set<string>();
       for (const item of items) {
         if (!item.name) continue;
+        if (newNames.has(item.name)) {
+          alert(`项目名称 "${item.name}" 在当前表单中重复，请检查`);
+          setLoading(false);
+          return;
+        }
+        newNames.add(item.name);
+      }
+
+      for (const item of items) {
+        if (!item.name) continue;
+        if (existingNames.has(item.name)) {
+          alert(`项目名称 "${item.name}" 已在工单中存在，不能重复添加`);
+          setLoading(false);
+          return;
+        }
         const { data: createdItem, error: itemError } = await supabase.from("work_order_items").insert({
           work_order_id: orderId,
           requirement_id: reqId,
@@ -641,7 +777,7 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
           quantity: parseFloat(item.quantity) || 1,
           unit_price: parseFloat(item.unit_price) || 0,
           mechanic_id: item.mechanic_id || null,
-          submitter_id: item.submitter_id || null,
+          submitter_id: item.submitter_id || currentUser?.id || null,
           inspector_id: item.inspector_id || null,
           customer_opinion: item.customer_opinion || "pending",
           is_outsourced: item.is_outsourced || false,
@@ -730,16 +866,26 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
           <div className="border-t border-gray-100 pt-6">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-base font-semibold text-gray-900">维修项目</h2>
-              <button type="button" onClick={addItem} className="text-sm text-blue-600 hover:text-blue-700">+ 添加项目</button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => openBulkPicker(items.length - 1)}
+                  className="text-sm px-3 py-1 rounded border border-blue-300 text-blue-600 hover:bg-blue-50"
+                >
+                  📋 批量选择
+                </button>
+                <button type="button" onClick={addItem} className="text-sm text-blue-600 hover:text-blue-700">+ 添加项目</button>
+              </div>
             </div>
             <div className="space-y-4">
               {items.map((item, i) => (
                 <div key={i} className="p-4 bg-gray-50 rounded-lg space-y-3">
                   {/* 项目信息单行 */}
                   <div className="flex gap-2 items-end overflow-x-auto pb-1">
-                    <div className="w-36 relative">
+                    <div className="w-36 relative z-20">
                       <label className="block text-xs text-gray-500 mb-1">项目名称 *</label>
                       <input
+                        ref={(el) => { inputRefs.current[i] = el; }}
                         type="text"
                         required
                         className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
@@ -752,9 +898,12 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
                           if (state?.query?.trim().length > 0) {
                             setSearchDropdowns((prev) => ({ ...prev, [i]: { ...prev[i], show: true } }));
                           }
+                          const rect = inputRefs.current[i]?.getBoundingClientRect();
+                          if (rect) {
+                            setDropdownPositions((prev) => ({ ...prev, [i]: { top: rect.bottom + 4, left: rect.left } }));
+                          }
                         }}
                         onBlur={() => {
-                          // 延迟关闭，让点击事件先触发
                           setTimeout(() => {
                             setSearchDropdowns((prev) => {
                               const state = prev[i];
@@ -764,8 +913,8 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
                           }, 150);
                         }}
                       />
-                      {searchDropdowns[i]?.show && searchDropdowns[i]?.query?.trim().length > 0 && (
-                        <div className="absolute z-10 w-80 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {searchDropdowns[i]?.show && searchDropdowns[i]?.query?.trim().length > 0 && dropdownPositions[i] && (
+                        <div className="fixed z-50 w-96 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto" style={{ top: dropdownPositions[i].top, left: dropdownPositions[i].left }}>
                           {searchDropdowns[i].results.map((si: any, idx: number) => (
                             <div
                               key={si.id}
@@ -778,10 +927,18 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
                                 [i]: { ...prev[i], activeIndex: idx },
                               }))}
                             >
-                              <div className="font-medium">{si.name}</div>
-                              <div className="text-xs text-gray-400">
-                                {si.service_categories?.name || "-"} · {si.service_names?.name || "-"} · {si.default_price}元
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium truncate">{si.name}</span>
+                                <span className="text-xs text-blue-600 shrink-0">{si.default_price != null ? `${si.default_price}元` : "-"}</span>
                               </div>
+                              <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
+                                <span>分类: {si.service_categories?.name || "-"}</span>
+                                <span>别名: {si.service_names?.name || "-"}</span>
+                                <span>类型: 工时</span>
+                              </div>
+                              {si.description && (
+                                <div className="text-xs text-gray-400 mt-0.5 truncate">备注: {si.description}</div>
+                              )}
                             </div>
                           ))}
                           <div
@@ -893,72 +1050,6 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
                         onChange={(e) => updateItem(i, "description", e.target.value)}
                       />
                     </div>
-                    <div className="w-24">
-                      <label className="block text-xs text-gray-500 mb-1">提交人</label>
-                      <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        value={item.submitter_id} onChange={(e) => updateItem(i, "submitter_id", e.target.value)}
-                      >
-                        <option value="">请选择</option>
-                        {profiles.map((p) => (
-                          <option key={p.id} value={p.id}>{p.full_name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="w-24">
-                      <label className="block text-xs text-gray-500 mb-1">施工人</label>
-                      <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        value={item.mechanic_id} onChange={(e) => updateItem(i, "mechanic_id", e.target.value)}
-                      >
-                        <option value="">请选择</option>
-                        {profiles.map((p) => (
-                          <option key={p.id} value={p.id}>{p.full_name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="w-24">
-                      <label className="block text-xs text-gray-500 mb-1">质检人</label>
-                      <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        value={item.inspector_id} onChange={(e) => updateItem(i, "inspector_id", e.target.value)}
-                      >
-                        <option value="">请选择</option>
-                        {profiles.map((p) => (
-                          <option key={p.id} value={p.id}>{p.full_name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer pb-1">
-                      <input type="checkbox" className="rounded"
-                        checked={item.is_outsourced}
-                        onChange={(e) => updateItem(i, "is_outsourced", e.target.checked)}
-                      />
-                      外包
-                    </label>
-                    {item.is_outsourced && (
-                      <div className="w-28">
-                        <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                          value={item.outsourced_supplier_id}
-                          onChange={(e) => updateItem(i, "outsourced_supplier_id", e.target.value)}
-                        >
-                          <option value="">选择供应商</option>
-                          {suppliers.map((s) => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                    <label className={`flex items-center gap-1 text-xs cursor-pointer pb-1 px-1 py-1 rounded border transition-colors ${
-                      item.is_customer_part
-                        ? 'bg-yellow-50 text-yellow-700 border-yellow-300 font-bold'
-                        : 'text-gray-600 border-transparent'
-                    }`}>
-                      <input type="checkbox" className="rounded"
-                        checked={item.is_customer_part}
-                        onChange={(e) => updateItem(i, "is_customer_part", e.target.checked)}
-                      />
-                      <span className="leading-tight text-center">
-                        自带<br />配件
-                      </span>
-                    </label>
                   </div>
 
                   {/* 预估提成 */}
@@ -1445,6 +1536,185 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
               >
                 保存
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 批量选择项目弹窗 */}
+      {bulkPickerModal?.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto py-8">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-4 flex flex-col" style={{ maxHeight: "85vh" }}>
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">批量选择维修项目</h2>
+              <button
+                type="button"
+                onClick={() => setBulkPickerModal(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="px-6 py-3 border-b border-gray-100 bg-gray-50 flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                placeholder="搜索项目名称、备注..."
+                value={bulkPickerModal.query}
+                onChange={(e) => setBulkPickerModal({ ...bulkPickerModal, query: e.target.value })}
+                className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+              <select
+                value={bulkPickerModal.categoryFilter}
+                onChange={(e) => setBulkPickerModal({ ...bulkPickerModal, categoryFilter: e.target.value })}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+              >
+                <option value="">全部分类</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <select
+                value={bulkPickerModal.defaultType}
+                onChange={(e) => setBulkPickerModal({ ...bulkPickerModal, defaultType: e.target.value })}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                title="新增行的默认类型"
+              >
+                <option value="labor">默认类型: 工时</option>
+                <option value="part">默认类型: 配件</option>
+                <option value="other">默认类型: 其他</option>
+              </select>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-2 py-2">
+              {(() => {
+                const q = bulkPickerModal.query.trim().toLowerCase();
+                const filteredList = allServiceItems.filter((si: any) => {
+                  if (bulkPickerModal.categoryFilter) {
+                    const catId = si.service_names?.category_id || si.category_id;
+                    if (catId !== bulkPickerModal.categoryFilter) return false;
+                  }
+                  if (q) {
+                    const hay = [
+                      si.name,
+                      si.service_categories?.name,
+                      si.service_names?.name,
+                      si.description,
+                    ].filter(Boolean).join(" ").toLowerCase();
+                    if (!hay.includes(q)) return false;
+                  }
+                  return true;
+                });
+                const listToShow = filteredList.slice(0, 200);
+
+                if (listToShow.length === 0) {
+                  return (
+                    <div className="text-center text-gray-400 text-sm py-12">未找到匹配的项目</div>
+                  );
+                }
+
+                return (
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left w-10">选</th>
+                        <th className="px-3 py-2 text-left">项目名称</th>
+                        <th className="px-3 py-2 text-left w-24">分类</th>
+                        <th className="px-3 py-2 text-left w-28">别名</th>
+                        <th className="px-3 py-2 text-left w-16">类型</th>
+                        <th className="px-3 py-2 text-right w-20">单价</th>
+                        <th className="px-3 py-2 text-left">备注</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {listToShow.map((si: any) => {
+                        const checked = bulkPickerModal.selectedIds.includes(si.id);
+                        return (
+                          <tr
+                            key={si.id}
+                            className={`border-b border-gray-100 cursor-pointer ${checked ? "bg-blue-50" : "hover:bg-gray-50"}`}
+                            onClick={() => toggleBulkSelection(si.id)}
+                          >
+                            <td className="px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleBulkSelection(si.id)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="rounded"
+                              />
+                            </td>
+                            <td className="px-3 py-2 font-medium text-gray-900">{si.name}</td>
+                            <td className="px-3 py-2 text-gray-600">{si.service_categories?.name || "-"}</td>
+                            <td className="px-3 py-2 text-gray-600">{si.service_names?.name || "-"}</td>
+                            <td className="px-3 py-2 text-gray-600">工时</td>
+                            <td className="px-3 py-2 text-right text-blue-600">
+                              {si.default_price != null ? `${si.default_price}` : "-"}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gray-500 truncate max-w-xs" title={si.description || ""}>
+                              {si.description || "-"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                );
+              })()}
+              {(() => {
+                const q = bulkPickerModal.query.trim().toLowerCase();
+                const filteredList = allServiceItems.filter((si: any) => {
+                  if (bulkPickerModal.categoryFilter) {
+                    const catId = si.service_names?.category_id || si.category_id;
+                    if (catId !== bulkPickerModal.categoryFilter) return false;
+                  }
+                  if (q) {
+                    const hay = [si.name, si.service_categories?.name, si.service_names?.name, si.description].filter(Boolean).join(" ").toLowerCase();
+                    if (!hay.includes(q)) return false;
+                  }
+                  return true;
+                });
+                if (filteredList.length > 200) {
+                  return (
+                    <div className="text-center text-xs text-gray-400 py-2">
+                      共 {filteredList.length} 项，仅显示前 200 项，请输入关键词缩小范围
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+
+            <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50">
+              <div className="text-sm text-gray-600">
+                已选 <span className="font-semibold text-blue-600">{bulkPickerModal.selectedIds.length}</span> 项
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setBulkPickerModal({ ...bulkPickerModal, selectedIds: [] })}
+                  className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                  disabled={bulkPickerModal.selectedIds.length === 0}
+                >
+                  清空选择
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkPickerModal(null)}
+                  className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={batchAddSelectedItems}
+                  disabled={bulkPickerModal.selectedIds.length === 0}
+                  className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  批量添加 ({bulkPickerModal.selectedIds.length})
+                </button>
+              </div>
             </div>
           </div>
         </div>

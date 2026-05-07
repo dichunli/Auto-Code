@@ -44,13 +44,21 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-gray-900">{employee.full_name}</h2>
-          <span
-            className={`text-xs px-2 py-0.5 rounded ${
-              employee.is_active ? "bg-green-50 text-green-700" : "bg-gray-50 text-gray-500"
-            }`}
-          >
-            {employee.is_active ? "在职" : "离职"}
-          </span>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/employees/${id}/edit`}
+              className="px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors"
+            >
+              编辑
+            </Link>
+            <span
+              className={`text-xs px-2 py-0.5 rounded ${
+                employee.is_active ? "bg-green-50 text-green-700" : "bg-gray-50 text-gray-500"
+              }`}
+            >
+              {employee.is_active ? "在职" : "离职"}
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">

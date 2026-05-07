@@ -10,8 +10,16 @@ import { BatchEditWrapper } from "@/components/BatchEditWrapper";
 import { TemplateImportWrapper } from "@/components/TemplateImportWrapper";
 import { PartWorkflowActions } from "@/components/PartWorkflowActions";
 import { ConstructionControls } from "@/components/ConstructionControls";
+import { WorkOrderItemActions } from "@/components/WorkOrderItemActions";
+import { ItemPersonSelectors } from "@/components/ItemPersonSelectors";
+import { CustomerOpinionToggle } from "@/components/CustomerOpinionToggle";
+import { ItemFlagsToggle } from "@/components/ItemFlagsToggle";
+import { ItemMechanicAssigner } from "@/components/ItemMechanicAssigner";
+import { WorkOrderActions } from "@/components/WorkOrderActions";
+import { AdvancePaymentCard } from "@/components/AdvancePaymentCard";
 import RequirementActions from "@/components/RequirementActions";
 import WorkOrderFloatingSidebar from "@/components/WorkOrderFloatingSidebar";
+import { ItemNotesEditor } from "@/components/ItemNotesEditor";
 
 export default async function WorkOrderDetailPage({
   params,
@@ -46,9 +54,9 @@ export default async function WorkOrderDetailPage({
     .select("*")
     .in("requirement_id", requirements?.map((r: any) => r.id) || []);
 
-  const { data: items } = await supabase
+  const { data: items, error: itemsError } = await supabase
     .from("work_order_items")
-    .select("*, profiles!work_order_items_mechanic_id_fkey(full_name), submitter:profiles!work_order_items_submitter_id_fkey(full_name), inspector:profiles!work_order_items_inspector_id_fkey(full_name), service_items(service_name_id, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value), service_names(sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value), outsourced_supplier:suppliers(name)")
+    .select("*, profiles!work_order_items_mechanic_id_fkey(full_name), service_items(service_name_id, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, service_names(sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value)), outsourced_supplier:suppliers(name)")
     .eq("work_order_id", id)
     .order("created_at", { ascending: true });
 
@@ -56,6 +64,17 @@ export default async function WorkOrderDetailPage({
     .from("work_order_item_media")
     .select("*")
     .in("work_order_item_id", items?.map((i: any) => i.id) || []);
+
+  // 查询维修项目施工人（支持多人施工）
+  const { data: itemMechanics } = await supabase
+    .from("work_order_item_mechanics")
+    .select("work_order_item_id, mechanic_id, commission_ratio, profiles(full_name)")
+    .in("work_order_item_id", items?.map((i: any) => i.id) || []);
+
+  // 查询施工组
+  const { data: mechanicGroups } = await supabase
+    .from("mechanic_groups")
+    .select("*, mechanic_group_members(mechanic_id, profiles(full_name))");
 
   // 查询与维修项目关联的知识库文章
   const serviceItemIds = items?.map((i: any) => i.service_item_id).filter(Boolean) || [];
@@ -138,6 +157,16 @@ export default async function WorkOrderDetailPage({
 
   const { data: suppliers } = await supabase.from("suppliers").select("*").order("name");
   const { data: logisticsCompanies } = await supabase.from("logistics_companies").select("*").order("name");
+
+  // 按项目分组施工人
+  const mechanicsByItem: Record<string, any[]> = {};
+  if (itemMechanics) {
+    for (const m of itemMechanics) {
+      const itemId = m.work_order_item_id;
+      if (!mechanicsByItem[itemId]) mechanicsByItem[itemId] = [];
+      mechanicsByItem[itemId].push(m);
+    }
+  }
 
   const { data: inspections } = await supabase
     .from("work_order_inspections")
@@ -283,15 +312,56 @@ export default async function WorkOrderDetailPage({
             <div className="divide-y divide-gray-100">
               {requirements?.map((req: any) => (
                 <div key={req.id} className="px-6 py-4">
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-center gap-3">
                     <span className="text-sm font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded shrink-0">需求 {req.seq}</span>
                     <div className="flex-1">
-                      <p className="text-gray-900 font-medium">{req.description}</p>
-                      {req.diagnosis && (
-                        <p className="text-sm text-gray-600 mt-1"><span className="text-gray-400">诊断:</span> {req.diagnosis}</p>
-                      )}
-                      {req.remarks && (
-                        <p className="text-sm text-gray-500 mt-1"><span className="text-gray-400">备注:</span> {req.remarks}</p>
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <p className="text-gray-900 font-medium">{req.description}</p>
+                        {/* 提交人与指派信息 */}
+                        <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                          <span>提交: {req.submitted_by_profile?.full_name || "-"}</span>
+                          {req.dispatcher_profile && req.assignment_type === 'assigned' && (
+                            <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700">
+                              派单人: {req.dispatcher_profile.full_name}
+                            </span>
+                          )}
+                          {req.assigned_to_profile && req.assignment_type === 'claimed' && (
+                            <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700">
+                              领单人: {req.assigned_to_profile.full_name}
+                            </span>
+                          )}
+                          {req.assigned_to_profile && req.assignment_type === 'assigned' && (
+                            <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                              指派给: {req.assigned_to_profile.full_name}
+                            </span>
+                          )}
+                        </div>
+                        {/* 需求操作 */}
+                        {!isLocked && (
+                          <div className="flex items-center gap-2">
+                            <RequirementActions
+                              requirement={req}
+                              profiles={profiles || []}
+                              orderId={id}
+                            />
+                            <Link
+                              href={`/work-orders/${id}/requirements/new?requirement_id=${req.id}`}
+                              className="text-xs text-blue-600 hover:text-blue-700"
+                            >
+                              + 添加项目
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                      {(req.diagnosis || req.remarks) && (
+                        <div className="flex items-center gap-4 flex-wrap mt-1 text-sm">
+                          {req.diagnosis && (
+                            <span className="text-gray-600"><span className="text-gray-400">诊断:</span> {req.diagnosis}</span>
+                          )}
+                          {req.remarks && (
+                            <span className="text-gray-500"><span className="text-gray-400">备注:</span> {req.remarks}</span>
+                          )}
+                        </div>
                       )}
                       {/* 需求图片 */}
                       {mediaByRequirement[req.id]?.length > 0 && (
@@ -301,58 +371,34 @@ export default async function WorkOrderDetailPage({
                           ))}
                         </div>
                       )}
-                      {/* 提交人与指派信息 */}
-                      <div className="mt-2 flex items-center gap-3 text-xs text-gray-500 flex-wrap">
-                        <span>提交: {req.submitted_by_profile?.full_name || "-"}</span>
-                        {req.dispatcher_profile && req.assignment_type === 'assigned' && (
-                          <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700">
-                            派单人: {req.dispatcher_profile.full_name}
-                          </span>
-                        )}
-                        {req.assigned_to_profile && req.assignment_type === 'claimed' && (
-                          <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700">
-                            领单人: {req.assigned_to_profile.full_name}
-                          </span>
-                        )}
-                        {req.assigned_to_profile && req.assignment_type === 'assigned' && (
-                          <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
-                            指派给: {req.assigned_to_profile.full_name}
-                          </span>
-                        )}
-                      </div>
-                      {/* 需求操作 */}
-                      {!isLocked && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <RequirementActions
-                            requirement={req}
-                            profiles={profiles || []}
-                            orderId={id}
-                          />
-                          <Link
-                            href={`/work-orders/${id}/requirements/new?requirement_id=${req.id}`}
-                            className="text-xs text-blue-600 hover:text-blue-700"
-                          >
-                            + 添加项目
-                          </Link>
+                      {/* 该需求下的项目 */}
+                      {itemsError && (
+                        <div className="mt-3 text-xs text-red-600 bg-red-50 rounded p-2">
+                          项目加载失败: {itemsError.message}
                         </div>
                       )}
-                      {/* 该需求下的项目 */}
                       <div className="mt-3 space-y-2">
-                        {items?.filter((item: any) => item.requirement_id === req.id).map((item: any) => (
-                          <div key={item.id} className="bg-gray-50 rounded-lg p-3 text-sm">
+                        {items?.filter((item: any) => item.requirement_id === req.id).map((item: any, itemIdx: number) => (
+                          <div key={item.id} className="bg-gray-50 rounded-lg px-3 py-1 text-sm">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs text-gray-400 font-mono">{req.seq}.{itemIdx + 1}</span>
                                 <span className="font-medium text-gray-900">{item.alias_name || item.name}</span>
                                 {item.alias_name && (
                                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">别名</span>
                                 )}
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                                  item.customer_opinion === 'agree' ? 'bg-green-50 text-green-700' :
-                                  item.customer_opinion === 'reject' ? 'bg-red-50 text-red-700' :
-                                  'bg-gray-50 text-gray-500'
-                                }`}>
-                                  {item.customer_opinion === 'agree' ? '✓ 同意' : item.customer_opinion === 'reject' ? '✗ 拒绝' : '待确认'}
-                                </span>
+                                <ItemPersonSelectors
+                                  itemId={item.id}
+                                  submitterId={item.submitter_id}
+                                  mechanicId={item.mechanic_id}
+                                  inspectorId={item.inspector_id}
+                                  profiles={profiles || []}
+                                  mechanicGroups={(mechanicGroups || []).map((g: any) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
+                                  existingMechanics={mechanicsByItem[item.id] || []}
+                                />
+                                <div className="ml-6">
+                                  <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion} />
+                                </div>
                                 {item.business_type !== 'normal' && (
                                   <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                                     item.business_type === 'insurance' ? 'bg-purple-50 text-purple-700' :
@@ -362,16 +408,14 @@ export default async function WorkOrderDetailPage({
                                     {item.business_type === 'insurance' ? '保险' : item.business_type === 'gift' ? '赠送' : '返工'}
                                   </span>
                                 )}
-                                {item.is_outsourced && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
-                                    外包: {item.outsourced_supplier?.name || "-"}
-                                  </span>
-                                )}
-                                {item.is_customer_part && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700">
-                                    自带配件
-                                  </span>
-                                )}
+                                <div className="ml-4">
+                                  <ItemFlagsToggle
+                                    itemId={item.id}
+                                    isOutsourced={item.is_outsourced}
+                                    isCustomerPart={item.is_customer_part}
+                                    serviceItemId={item.service_item_id}
+                                  />
+                                </div>
                               </div>
                               <div className="flex items-center gap-2">
                                 {knowledgeByItem[item.id]?.length > 0 && (
@@ -384,11 +428,12 @@ export default async function WorkOrderDetailPage({
                                   </Link>
                                 )}
                                 <span className="text-gray-500">{item.item_type === 'labor' ? '工时' : item.item_type === 'part' ? '配件' : '其他'} × {item.quantity}</span>
+                                <WorkOrderItemActions itemId={item.id} />
                               </div>
                             </div>
                             {/* 返工信息 */}
                             {item.business_type === 'rework' && (
-                              <div className="mt-1 text-xs space-y-0.5">
+                              <div className="text-xs space-y-0.5">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded text-[10px]">
                                     返工原因: {item.rework_reason === 'part_quality' ? '配件质量' : item.rework_reason === 'workmanship' ? '施工原因' : '未指定'}
@@ -404,30 +449,23 @@ export default async function WorkOrderDetailPage({
                                 </div>
                               </div>
                             )}
-                            {item.description && (
-                              <div className="mt-1 text-xs text-gray-500"><span className="text-gray-400">备注:</span> {item.description}</div>
-                            )}
-                            <div className="flex items-center justify-between mt-1 text-gray-500">
-                              <div className="flex items-center gap-3 text-xs">
-                                <span>提交人: {(item.submitter as any)?.full_name || '未分配'}</span>
-                                <span>施工人: {(item.profiles as any)?.full_name || '未分配'}</span>
-                                <span>质检人: {(item.inspector as any)?.full_name || '未分配'}</span>
-                              </div>
-                              <span className="font-medium text-gray-900">{formatCurrency(item.total_price)}</span>
+                            <ItemNotesEditor itemId={item.id} description={item.description} />
+                            <div className="flex items-center justify-end">
+                              <span className="font-medium text-gray-900 text-base">{formatCurrency(item.total_price)}</span>
                             </div>
                             {/* 项目提成 */}
                             {(() => {
                               const comm = calculateItemCommission(
                                 item,
                                 item.service_items,
-                                item.service_names,
+                                item.service_items?.service_names,
                                 null,
                                 item.total_price || 0,
                                 0
                               );
                               if (comm.diagnosis === 0 && comm.repair === 0 && comm.sales === 0 && comm.qc === 0) return null;
                               return (
-                                <div className="flex flex-wrap gap-2 mt-1 text-xs">
+                                <div className="flex flex-wrap gap-2 text-xs">
                                   <span className="text-gray-400">提成:</span>
                                   {comm.diagnosis > 0 && <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">诊断 {comm.diagnosis.toFixed(2)}元</span>}
                                   {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
@@ -438,17 +476,26 @@ export default async function WorkOrderDetailPage({
                             })()}
                             {/* 施工状态控制 */}
                             {item.item_type === 'labor' && !isLocked && (
-                              <div className="mt-2">
+                              <div>
                                 <ConstructionControls
                                   itemId={item.id}
                                   workOrderId={id}
-                                  onStatusChange={() => {}}
+                                  customerOpinion={item.customer_opinion}
+                                  itemName={item.alias_name || item.name}
+                                  vehicleBrand={order.vehicles?.vehicle_models?.品牌 || order.vehicles?.brand}
+                                  vehicleSeries={order.vehicles?.vehicle_models?.车系}
+                                  vehicleModelName={order.vehicles?.vehicle_models?.车型 || order.vehicles?.model}
+                                  vehicleDisplacement={order.vehicles?.vehicle_models?.排量}
+                                  vehicleEngine={order.vehicles?.vehicle_models?.发动机型号 || order.vehicles?.engine_no}
+                                  vehicleChassis={order.vehicles?.vin}
+                                  vehicleTransmission={order.vehicles?.vehicle_models?.变速箱类型 || order.vehicles?.vehicle_models?.变速箱详情}
+                                  mechanics={(mechanicsByItem[item.id] || []).map((m: any) => ({ mechanic_id: m.mechanic_id, full_name: m.profiles?.full_name || "-" }))}
                                 />
                               </div>
                             )}
                             {/* 项目图片 */}
                             {imagesByItem[item.id]?.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
+                              <div className="flex flex-wrap gap-1.5">
                                 {imagesByItem[item.id].map((m: any) => (
                                   <img key={m.id} src={m.storage_path} alt="" className="w-14 h-14 object-cover rounded border border-gray-200" />
                                 ))}
@@ -456,7 +503,7 @@ export default async function WorkOrderDetailPage({
                             )}
                             {/* 项目所用配件 */}
                             {partsByItem[item.id]?.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-gray-200 text-xs space-y-2">
+                              <div className="pt-1 border-t border-gray-200 text-xs space-y-1">
                                 <div className="text-gray-400 mb-1">所用配件:</div>
                                 {partsByItem[item.id].map((p: any, idx: number) => {
                                   const pPickedQty = pickingByPart[p.id] || 0;
@@ -635,7 +682,7 @@ export default async function WorkOrderDetailPage({
                         const comm = calculateItemCommission(
                           item,
                           item.service_items,
-                          item.service_names,
+                          item.service_items?.service_names,
                           null,
                           item.total_price || 0,
                           0
@@ -990,7 +1037,7 @@ export default async function WorkOrderDetailPage({
                   const comm = calculateItemCommission(
                     item,
                     item.service_items,
-                    item.service_names,
+                    item.service_items?.service_names,
                     null,
                     item.total_price || 0,
                     0
@@ -1096,6 +1143,5 @@ export default async function WorkOrderDetailPage({
           </div>
         </div>
       </div>
-    </div>
   );
 }

@@ -23,7 +23,7 @@ export default function LoginPage() {
 
     const credentials: any = { password };
     if (isPhone(account)) {
-      credentials.email = account + "@auto.local";
+      credentials.email = "phone-" + account + "@auto.local";
     } else {
       credentials.email = account;
     }

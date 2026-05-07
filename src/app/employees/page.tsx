@@ -3,18 +3,22 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 
-export default async function EmployeesPage({ searchParams }: { searchParams?: Promise<{ group?: string; active?: string }> }) {
+export default async function EmployeesPage({ searchParams }: { searchParams?: Promise<{ group?: string; active?: string; sort?: string; order?: string }> }) {
   const params = await searchParams;
   const supabase = await createClient();
 
+  const sortField = params?.sort || "created_at";
+  const sortOrder = params?.order === "asc";
+
   let query = supabase
     .from("profiles")
-    .select("*, employee_groups(name), mechanic_levels(name), profile_roles(role_id, roles(name, label))")
-    .order("created_at", { ascending: false });
+    .select("*, employee_groups(name), mechanic_levels(name), profile_roles(role_id, roles(name, label))");
 
   if (params?.group) query = query.eq("group_id", params.group);
   if (params?.active === "1") query = query.eq("is_active", true);
   if (params?.active === "0") query = query.eq("is_active", false);
+
+  query = query.order(sortField, { ascending: sortOrder });
 
   const { data: employees } = await query;
   const { data: groups } = await supabase.from("employee_groups").select("id, name").order("sort_order");
@@ -55,12 +59,40 @@ export default async function EmployeesPage({ searchParams }: { searchParams?: P
         >
           离职
         </Link>
-        <Link
-          href="/employee-groups"
-          className="ml-auto px-4 py-2 text-sm font-medium rounded-lg border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors"
-        >
-          分组管理
-        </Link>
+        {/* 排序 */}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-sm text-gray-500">排序:</span>
+          <Link
+            href={`/employees?sort=full_name&order=${sortField === 'full_name' && !sortOrder ? 'asc' : 'desc'}${params?.group ? `&group=${params.group}` : ''}${params?.active ? `&active=${params.active}` : ''}`}
+            className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${sortField === 'full_name' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            姓名 {sortField === 'full_name' ? (sortOrder ? '↑' : '↓') : ''}
+          </Link>
+          <Link
+            href={`/employees?sort=entry_date&order=${sortField === 'entry_date' && !sortOrder ? 'asc' : 'desc'}${params?.group ? `&group=${params.group}` : ''}${params?.active ? `&active=${params.active}` : ''}`}
+            className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${sortField === 'entry_date' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            入职日期 {sortField === 'entry_date' ? (sortOrder ? '↑' : '↓') : ''}
+          </Link>
+          <Link
+            href={`/employees?sort=created_at&order=${sortField === 'created_at' && !sortOrder ? 'asc' : 'desc'}${params?.group ? `&group=${params.group}` : ''}${params?.active ? `&active=${params.active}` : ''}`}
+            className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${sortField === 'created_at' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            创建时间 {sortField === 'created_at' ? (sortOrder ? '↑' : '↓') : ''}
+          </Link>
+          <Link
+            href="/employee-groups"
+            className="px-4 py-2 text-sm font-medium rounded-lg border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors"
+          >
+            分组管理
+          </Link>
+          <Link
+            href="/mechanic-levels"
+            className="px-4 py-2 text-sm font-medium rounded-lg border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors"
+          >
+            等级管理
+          </Link>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
