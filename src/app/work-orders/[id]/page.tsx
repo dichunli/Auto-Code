@@ -21,6 +21,7 @@ import RequirementActions from "@/components/RequirementActions";
 import WorkOrderFloatingSidebar from "@/components/WorkOrderFloatingSidebar";
 import { ItemNotesEditor } from "@/components/ItemNotesEditor";
 import AddItemPartButton from "@/components/AddItemPartButton";
+import WorkOrderItemPartBranchActions from "@/components/WorkOrderItemPartBranchActions";
 
 export default async function WorkOrderDetailPage({
   params,
@@ -306,7 +307,6 @@ export default async function WorkOrderDetailPage({
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-gray-500">{item.item_type === 'labor' ? '工时' : item.item_type === 'part' ? '配件' : '其他'} × {item.quantity}</span>
                                 <AddItemPartButton
                                   itemId={item.id}
                                   serviceNameId={item.service_items?.service_name_id}
@@ -418,6 +418,7 @@ export default async function WorkOrderDetailPage({
                                   <div key={idx} className="bg-white rounded border border-gray-100 p-2">
                                     <div className="flex items-center flex-wrap gap-1.5">
                                       {/* 配件名称 */}
+                                      <span className="text-xs text-gray-400 font-mono">{req.seq}.{itemIdx + 1}.{idx + 1}</span>
                                       <span className="font-medium text-gray-800">
                                         {p.alias_name || p.parts?.name || p.name || p.part_names?.name || "未命名配件"}
                                       </span>
@@ -472,6 +473,13 @@ export default async function WorkOrderDetailPage({
                                         logisticsCompanies={logisticsCompanies || []}
                                         locked={isLocked}
                                       />
+                                      {!isLocked && (
+                                        <WorkOrderItemPartBranchActions
+                                          partId={p.id}
+                                          itemId={item.id}
+                                          canDelete={(partsByItem[item.id]?.length || 0) > 1}
+                                        />
+                                      )}
                                     </div>
                                     {/* 配件提成 */}
                                     {(() => {

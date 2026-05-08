@@ -4,6 +4,14 @@ import { cookies } from "next/headers";
 const cache: Record<string, { data: any; timestamp: number }> = {};
 const CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
 
+export function clearWorkOrderDataCache(id?: string) {
+  if (id) {
+    delete cache[id];
+  } else {
+    Object.keys(cache).forEach((key) => delete cache[key]);
+  }
+}
+
 export async function getWorkOrderData(id: string) {
   if (cache[id] && Date.now() - cache[id].timestamp < CACHE_TTL) {
     return cache[id].data;

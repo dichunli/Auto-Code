@@ -12,7 +12,7 @@ interface PartName {
 
 interface PresetPart {
   part_name_id: string;
-  quantity: number;
+  quantity: number | null;
   part_names: PartName | null;
 }
 
@@ -20,7 +20,7 @@ interface SelectedPart {
   part_name_id: string;
   name: string;
   unit: string;
-  quantity: number;
+  quantity: number | null;
 }
 
 interface Props {
@@ -75,7 +75,7 @@ export function AddWorkOrderItemPartModal({
           setPresetParts(
             (data || []).map((row: any) => ({
               part_name_id: row.part_name_id,
-              quantity: row.quantity ?? row.part_names?.default_quantity ?? 1,
+              quantity: row.quantity ?? row.part_names?.default_quantity ?? null,
               part_names: row.part_names,
             }))
           );
@@ -143,7 +143,7 @@ export function AddWorkOrderItemPartModal({
         part_name_id: part.id,
         name: part.name,
         unit: part.unit || "件",
-        quantity: part.default_quantity ?? 1,
+        quantity: part.default_quantity ?? null,
       },
     ]);
     setSearchQuery("");
@@ -151,9 +151,9 @@ export function AddWorkOrderItemPartModal({
   }
 
   // 修改已选配件的数量
-  function updateQuantity(partNameId: string, qty: number) {
+  function updateQuantity(partNameId: string, qty: number | null) {
     setSelectedParts((prev) =>
-      prev.map((sp) => (sp.part_name_id === partNameId ? { ...sp, quantity: Math.max(1, qty) } : sp))
+      prev.map((sp) => (sp.part_name_id === partNameId ? { ...sp, quantity: qty } : sp))
     );
   }
 
@@ -175,7 +175,7 @@ export function AddWorkOrderItemPartModal({
       part_name_id: sp.part_name_id,
       name: sp.name,
       unit: sp.unit,
-      quantity: sp.quantity,
+      quantity: sp.quantity ?? 1,
       customer_opinion: "pending",
     }));
 
@@ -317,9 +317,12 @@ export function AddWorkOrderItemPartModal({
                       <input
                         type="number"
                         min={1}
-                        value={sp.quantity}
+                        value={sp.quantity ?? ""}
                         onChange={(e) =>
-                          updateQuantity(sp.part_name_id, parseInt(e.target.value) || 1)
+                          updateQuantity(
+                            sp.part_name_id,
+                            e.target.value === "" ? null : parseInt(e.target.value) || 1
+                          )
                         }
                         className="w-16 px-2 py-1 border border-gray-200 rounded text-sm text-center"
                       />

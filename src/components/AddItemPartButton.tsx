@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { AddWorkOrderItemPartModal } from "./AddWorkOrderItemPartModal";
 
 interface Props {
@@ -11,7 +10,6 @@ interface Props {
 }
 
 export default function AddItemPartButton({ itemId, serviceNameId, itemName }: Props) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
 
   return (
@@ -32,7 +30,7 @@ export default function AddItemPartButton({ itemId, serviceNameId, itemName }: P
           onClose={() => setOpen(false)}
           onSuccess={() => {
             setOpen(false);
-            router.refresh();
+            window.location.reload();
           }}
         />
       )}
