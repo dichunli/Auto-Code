@@ -21,7 +21,9 @@ import RequirementActions from "@/components/RequirementActions";
 import WorkOrderFloatingSidebar from "@/components/WorkOrderFloatingSidebar";
 import { ItemNotesEditor } from "@/components/ItemNotesEditor";
 import AddItemPartButton from "@/components/AddItemPartButton";
-import WorkOrderItemPartBranchActions from "@/components/WorkOrderItemPartBranchActions";
+import PartBranchEditor from "@/components/PartBranchEditor";
+import { WorkOrderToggleProvider, ShowCommission, ShowTimer } from "@/components/WorkOrderToggleContext";
+import { WorkOrderToggleBar } from "@/components/WorkOrderToggleBar";
 
 export default async function WorkOrderDetailPage({
   params,
@@ -130,6 +132,7 @@ export default async function WorkOrderDetailPage({
   const isLocked = ["pending_settlement", "settled", "delivered"].includes(order.status);
 
   return (
+    <WorkOrderToggleProvider>
     <div>
       <PageHeader title={`工单详情: ${order.order_no}`} />
 
@@ -141,6 +144,8 @@ export default async function WorkOrderDetailPage({
           ← 返回列表
         </Link>
       </div>
+
+      <WorkOrderToggleBar />
 
       <div className="space-y-4">
         {/* 主内容 */}
@@ -343,45 +348,49 @@ export default async function WorkOrderDetailPage({
                             <div className="flex items-center justify-end">
                               <span className="font-medium text-gray-900 text-base">{formatCurrency(item.total_price)}</span>
                             </div>
-                            {/* 项目提成 */}
-                            {(() => {
-                              const comm = calculateItemCommission(
-                                item,
-                                item.service_items,
-                                item.service_items?.service_names,
-                                null,
-                                item.total_price || 0,
-                                0
-                              );
-                              if (comm.diagnosis === 0 && comm.repair === 0 && comm.sales === 0 && comm.qc === 0) return null;
-                              return (
-                                <div className="flex flex-wrap gap-2 text-xs">
-                                  <span className="text-gray-400">提成:</span>
-                                  {comm.diagnosis > 0 && <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">诊断 {comm.diagnosis.toFixed(2)}元</span>}
-                                  {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
-                                  {comm.sales > 0 && <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded">销售 {comm.sales.toFixed(2)}元</span>}
-                                  {comm.qc > 0 && <span className="text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">质检 {comm.qc.toFixed(2)}元</span>}
-                                </div>
-                              );
-                            })()}
+                            <ShowCommission>
+                              {/* 项目提成 */}
+                              {(() => {
+                                const comm = calculateItemCommission(
+                                  item,
+                                  item.service_items,
+                                  item.service_items?.service_names,
+                                  null,
+                                  item.total_price || 0,
+                                  0
+                                );
+                                if (comm.diagnosis === 0 && comm.repair === 0 && comm.sales === 0 && comm.qc === 0) return null;
+                                return (
+                                  <div className="flex flex-wrap gap-2 text-xs">
+                                    <span className="text-gray-400">提成:</span>
+                                    {comm.diagnosis > 0 && <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">诊断 {comm.diagnosis.toFixed(2)}元</span>}
+                                    {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
+                                    {comm.sales > 0 && <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded">销售 {comm.sales.toFixed(2)}元</span>}
+                                    {comm.qc > 0 && <span className="text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">质检 {comm.qc.toFixed(2)}元</span>}
+                                  </div>
+                                );
+                              })()}
+                            </ShowCommission>
                             {/* 施工状态控制 */}
                             {item.item_type === 'labor' && !isLocked && (
-                              <div>
-                                <ConstructionControls
-                                  itemId={item.id}
-                                  workOrderId={id}
-                                  customerOpinion={item.customer_opinion}
-                                  itemName={item.alias_name || item.name}
-                                  vehicleBrand={order.vehicles?.vehicle_models?.品牌 || order.vehicles?.brand}
-                                  vehicleSeries={order.vehicles?.vehicle_models?.车系}
-                                  vehicleModelName={order.vehicles?.vehicle_models?.车型 || order.vehicles?.model}
-                                  vehicleDisplacement={order.vehicles?.vehicle_models?.排量}
-                                  vehicleEngine={order.vehicles?.vehicle_models?.发动机型号 || order.vehicles?.engine_no}
-                                  vehicleChassis={order.vehicles?.vin}
-                                  vehicleTransmission={order.vehicles?.vehicle_models?.变速箱类型 || order.vehicles?.vehicle_models?.变速箱详情}
-                                  mechanics={(mechanicsByItem[item.id] || []).map((m: any) => ({ mechanic_id: m.mechanic_id, full_name: m.profiles?.full_name || "-" }))}
-                                />
-                              </div>
+                              <ShowTimer>
+                                <div>
+                                  <ConstructionControls
+                                    itemId={item.id}
+                                    workOrderId={id}
+                                    customerOpinion={item.customer_opinion}
+                                    itemName={item.alias_name || item.name}
+                                    vehicleBrand={order.vehicles?.vehicle_models?.品牌 || order.vehicles?.brand}
+                                    vehicleSeries={order.vehicles?.vehicle_models?.车系}
+                                    vehicleModelName={order.vehicles?.vehicle_models?.车型 || order.vehicles?.model}
+                                    vehicleDisplacement={order.vehicles?.vehicle_models?.排量}
+                                    vehicleEngine={order.vehicles?.vehicle_models?.发动机型号 || order.vehicles?.engine_no}
+                                    vehicleChassis={order.vehicles?.vin}
+                                    vehicleTransmission={order.vehicles?.vehicle_models?.变速箱类型 || order.vehicles?.vehicle_models?.变速箱详情}
+                                    mechanics={(mechanicsByItem[item.id] || []).map((m: any) => ({ mechanic_id: m.mechanic_id, full_name: m.profiles?.full_name || "-" }))}
+                                  />
+                                </div>
+                              </ShowTimer>
                             )}
                             {/* 项目图片 */}
                             {imagesByItem[item.id]?.length > 0 && (
@@ -393,132 +402,125 @@ export default async function WorkOrderDetailPage({
                             )}
                             {/* 项目所用配件 */}
                             {partsByItem[item.id]?.length > 0 && (
-                              <div className="pt-1 border-t border-gray-200 text-xs space-y-1">
+                              <div className="pt-1 border-t border-gray-200 text-xs space-y-2">
                                 <div className="text-gray-400 mb-1">所用配件:</div>
-                                {partsByItem[item.id].map((p: any, idx: number) => {
-                                  const pPickedQty = pickingByPart[p.id] || 0;
-                                  const pReturnQty = returnByPart[p.id] || 0;
-                                  const pNetPicked = pPickedQty - pReturnQty;
-                                  const pInventory = inventoryByPart[p.part_id] || 0;
-                                  const pHasPendingSupplierReturn = pendingSupplierReturnByPart[p.id] || false;
-                                  const pStatus = getPartWorkflowStatus({
-                                    unit_cost: p.unit_cost,
-                                    unit_price: p.unit_price,
-                                    customer_opinion: p.customer_opinion,
-                                    is_purchased: p.is_purchased,
-                                    is_arrived: p.is_arrived,
-                                    part_id: p.part_id,
-                                    quantity: p.quantity,
-                                    inventoryQty: pInventory,
-                                    pickedQty: pNetPicked,
-                                    hasReturnRecords: pReturnQty > 0,
-                                    hasPendingSupplierReturn: pHasPendingSupplierReturn,
+                                {(() => {
+                                  const groups: Record<string, { name: string; parts: any[] }> = {};
+                                  partsByItem[item.id].forEach((p: any) => {
+                                    const key = p.part_name_id || `no_name_${p.id}`;
+                                    if (!groups[key]) {
+                                      groups[key] = { name: p.alias_name || p.parts?.name || p.name || p.part_names?.name || "未命名配件", parts: [] };
+                                    }
+                                    groups[key].parts.push(p);
                                   });
-                                  return (
-                                  <div key={idx} className="bg-white rounded border border-gray-100 p-2">
-                                    <div className="flex items-center flex-wrap gap-1.5">
-                                      {/* 配件名称 */}
-                                      <span className="text-xs text-gray-400 font-mono">{req.seq}.{itemIdx + 1}.{idx + 1}</span>
-                                      <span className="font-medium text-gray-800">
-                                        {p.alias_name || p.parts?.name || p.name || p.part_names?.name || "未命名配件"}
-                                      </span>
-                                      {p.alias_name && (
-                                        <span className="text-[10px] px-1 py-0.5 rounded bg-blue-50 text-blue-600">别名</span>
-                                      )}
-                                      {/* 品牌 */}
-                                      {(p.parts?.part_brands?.name || p.brand) && (
-                                        <span className="text-gray-500">
-                                          ({p.parts?.part_brands?.name || p.brand})
-                                        </span>
-                                      )}
-                                      {/* 规格 */}
-                                      {(p.parts?.specification_text || p.specification) && (
-                                        <span className="text-gray-400">
-                                          {p.parts?.specification_text || p.specification}
-                                        </span>
-                                      )}
-                                      {/* 空分支标记 */}
-                                      {!p.part_id && (
-                                        <span className="text-yellow-700 bg-yellow-50 px-1.5 py-0.5 rounded text-[10px]">空分支</span>
-                                      )}
-                                      {/* 数量 */}
-                                      <span className="text-gray-500 ml-1">×{p.quantity}</span>
-                                      {/* 客户意见 */}
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                                        p.customer_opinion === 'agree' ? 'bg-green-50 text-green-700' :
-                                        p.customer_opinion === 'reject' ? 'bg-red-50 text-red-700' :
-                                        'bg-gray-50 text-gray-500'
-                                      }`}>
-                                        {p.customer_opinion === 'agree' ? '客户同意' :
-                                         p.customer_opinion === 'reject' ? '客户拒绝' : '待确认'}
-                                      </span>
-                                      {/* 空分支已到货 → 入库登记 */}
-                                      {p.is_arrived && !p.part_id && (
-                                        <Link
-                                          href={`/inventory/in?auto_fill=1&branch_id=${p.id}&part_number=${encodeURIComponent(p.part_number || '')}&name=${encodeURIComponent(p.name || p.part_names?.name || '')}&unit=${encodeURIComponent(p.unit || p.part_names?.unit || '')}&brand=${encodeURIComponent(p.brand || '')}&specification=${encodeURIComponent(p.specification || '')}&unit_cost=${p.unit_cost || ''}&supplier=${encodeURIComponent(p.supplier_name || '')}`}
-                                          className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 hover:bg-orange-100"
-                                        >
-                                          入库登记
-                                        </Link>
-                                      )}
-                                      <PartWorkflowActions
-                                        status={pStatus}
-                                        partName={p.alias_name || p.parts?.name || p.name || p.part_names?.name || "未命名配件"}
-                                        workOrderItemPartId={p.id}
-                                        partId={p.part_id}
-                                        quantity={p.quantity}
-                                        pickedQty={pNetPicked}
-                                        returnQty={pReturnQty}
-                                        suppliers={suppliers || []}
-                                        logisticsCompanies={logisticsCompanies || []}
-                                        locked={isLocked}
-                                      />
-                                      {!isLocked && (
-                                        <WorkOrderItemPartBranchActions
-                                          partId={p.id}
-                                          itemId={item.id}
-                                          canDelete={(partsByItem[item.id]?.length || 0) > 1}
-                                        />
-                                      )}
+                                  return Object.entries(groups).map(([nameKey, group], groupIdx) => (
+                                    <div key={nameKey} className="space-y-2">
+                                      {/* 配件名称分组标题 */}
+                                      <div className="flex items-center gap-2 pl-1">
+                                        <span className="text-xs text-gray-400 font-mono">{req.seq}.{itemIdx + 1}.{groupIdx + 1}</span>
+                                        <span className="font-medium text-sm text-gray-800">{group.name}</span>
+                                      </div>
+                                      {/* 分支列表 */}
+                                      <div className="space-y-2 pl-2">
+                                        {group.parts.map((p: any, branchIdx: number) => {
+                                          const pPickedQty = pickingByPart[p.id] || 0;
+                                          const pReturnQty = returnByPart[p.id] || 0;
+                                          const pNetPicked = pPickedQty - pReturnQty;
+                                          const pInventory = inventoryByPart[p.part_id] || 0;
+                                          const pHasPendingSupplierReturn = pendingSupplierReturnByPart[p.id] || false;
+                                          const pStatus = getPartWorkflowStatus({
+                                            unit_cost: p.unit_cost,
+                                            unit_price: p.unit_price,
+                                            customer_opinion: p.customer_opinion,
+                                            is_purchased: p.is_purchased,
+                                            is_arrived: p.is_arrived,
+                                            part_id: p.part_id,
+                                            quantity: p.quantity,
+                                            inventoryQty: pInventory,
+                                            pickedQty: pNetPicked,
+                                            hasReturnRecords: pReturnQty > 0,
+                                            hasPendingSupplierReturn: pHasPendingSupplierReturn,
+                                          });
+                                          return (
+                                            <PartBranchEditor
+                                              key={p.id}
+                                              part={p}
+                                              itemId={item.id}
+                                              inventoryQty={pInventory}
+                                              suppliers={suppliers || []}
+                                              seqLabel={`${req.seq}.${itemIdx + 1}.${groupIdx + 1}.${branchIdx + 1}`}
+                                              canDelete={group.parts.length > 1}
+                                              isLocked={isLocked}
+                                            >
+                                              {/* 空分支已到货 → 入库登记 */}
+                                              {p.is_arrived && !p.part_id && (
+                                                <div className="mt-2">
+                                                  <Link
+                                                    href={`/inventory/in?auto_fill=1&branch_id=${p.id}&part_number=${encodeURIComponent(p.part_number || '')}&name=${encodeURIComponent(p.name || p.part_names?.name || '')}&unit=${encodeURIComponent(p.unit || p.part_names?.unit || '')}&brand=${encodeURIComponent(p.brand || '')}&specification=${encodeURIComponent(p.specification || '')}&unit_cost=${p.unit_cost || ''}&supplier=${encodeURIComponent(p.supplier_name || '')}`}
+                                                    className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 inline-block"
+                                                  >
+                                                    入库登记
+                                                  </Link>
+                                                </div>
+                                              )}
+                                              <div className="mt-2 flex items-center flex-wrap gap-2">
+                                                <PartWorkflowActions
+                                                  status={pStatus}
+                                                  partName={p.alias_name || p.parts?.name || p.name || p.part_names?.name || "未命名配件"}
+                                                  workOrderItemPartId={p.id}
+                                                  partId={p.part_id}
+                                                  quantity={p.quantity}
+                                                  pickedQty={pNetPicked}
+                                                  returnQty={pReturnQty}
+                                                  suppliers={suppliers || []}
+                                                  logisticsCompanies={logisticsCompanies || []}
+                                                  locked={isLocked}
+                                                />
+                                              </div>
+                                              <ShowCommission>
+                                                {/* 配件提成 */}
+                                                {(() => {
+                                                  const revenue = (p.quantity || 0) * (p.unit_price || 0);
+                                                  const cost = (p.quantity || 0) * (p.unit_cost || 0);
+                                                  const comm = calculatePartCommission(p.parts, p.part_names, revenue, cost);
+                                                  if (comm.sales === 0 && comm.repair === 0 && comm.picking === 0 && comm.diagnosis === 0 && comm.qc === 0) return null;
+                                                  return (
+                                                    <div className="flex flex-wrap gap-2 mt-2 text-xs">
+                                                      <span className="text-gray-400">提成:</span>
+                                                      {comm.sales > 0 && <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded">销售 {comm.sales.toFixed(2)}元</span>}
+                                                      {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
+                                                      {comm.picking > 0 && <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">领料 {comm.picking.toFixed(2)}元</span>}
+                                                      {comm.diagnosis > 0 && <span className="text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">诊断 {comm.diagnosis.toFixed(2)}元</span>}
+                                                      {comm.qc > 0 && <span className="text-pink-600 bg-pink-50 px-1.5 py-0.5 rounded">质检 {comm.qc.toFixed(2)}元</span>}
+                                                    </div>
+                                                  );
+                                                })()}
+                                              </ShowCommission>
+                                              {/* 物流信息 */}
+                                              {p.logistics_agreement && (
+                                                <div className="mt-2 text-gray-400 text-[10px]">
+                                                  <span>物流公司: {p.logistics_agreement}</span>
+                                                </div>
+                                              )}
+                                              {/* 备注 */}
+                                              {p.notes && (
+                                                <div className="mt-2 text-gray-400 text-xs">{p.notes}</div>
+                                              )}
+                                              {/* 配件分支图片 */}
+                                              {imagesByPart[p.id]?.length > 0 && (
+                                                <div className="mt-2 flex flex-wrap gap-1">
+                                                  {imagesByPart[p.id].map((m: any) => (
+                                                    <img key={m.id} src={m.storage_path} alt="" className="w-10 h-10 object-cover rounded border border-gray-100" />
+                                                  ))}
+                                                </div>
+                                              )}
+                                            </PartBranchEditor>
+                                          );
+                                        })}
+                                      </div>
                                     </div>
-                                    {/* 配件提成 */}
-                                    {(() => {
-                                      const revenue = (p.quantity || 0) * (p.unit_price || 0);
-                                      const cost = (p.quantity || 0) * (p.unit_cost || 0);
-                                      const comm = calculatePartCommission(p.parts, p.part_names, revenue, cost);
-                                      if (comm.sales === 0 && comm.repair === 0 && comm.picking === 0 && comm.diagnosis === 0 && comm.qc === 0) return null;
-                                      return (
-                                        <div className="flex flex-wrap gap-2 mt-1 text-xs">
-                                          <span className="text-gray-400">提成:</span>
-                                          {comm.sales > 0 && <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded">销售 {comm.sales.toFixed(2)}元</span>}
-                                          {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
-                                          {comm.picking > 0 && <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">领料 {comm.picking.toFixed(2)}元</span>}
-                                          {comm.diagnosis > 0 && <span className="text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">诊断 {comm.diagnosis.toFixed(2)}元</span>}
-                                          {comm.qc > 0 && <span className="text-pink-600 bg-pink-50 px-1.5 py-0.5 rounded">质检 {comm.qc.toFixed(2)}元</span>}
-                                        </div>
-                                      );
-                                    })()}
-                                    {/* 供应商/物流 */}
-                                    {(p.supplier_name || p.logistics_agreement) && (
-                                      <div className="mt-1 text-gray-400 text-[10px]">
-                                        {p.supplier_name && <span>供应商: {p.supplier_name}</span>}
-                                        {p.logistics_agreement && <span className="ml-2">物流公司: {p.logistics_agreement}</span>}
-                                      </div>
-                                    )}
-                                    {/* 备注 */}
-                                    {p.notes && (
-                                      <div className="mt-1 text-gray-400">{p.notes}</div>
-                                    )}
-                                    {/* 配件分支图片 */}
-                                    {imagesByPart[p.id]?.length > 0 && (
-                                      <div className="mt-1.5 flex flex-wrap gap-1">
-                                        {imagesByPart[p.id].map((m: any) => (
-                                          <img key={m.id} src={m.storage_path} alt="" className="w-10 h-10 object-cover rounded border border-gray-100" />
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                )})}
+                                  ));
+                                })()}
                               </div>
                             )}
                           </div>
@@ -575,26 +577,28 @@ export default async function WorkOrderDetailPage({
                           {item.rework_loss_amount > 0 ? ` · 损失${formatCurrency(item.rework_loss_amount)}` : ''}
                         </span>
                       )}
-                      {/* 项目提成 */}
-                      {(() => {
-                        const comm = calculateItemCommission(
-                          item,
-                          item.service_items,
-                          item.service_items?.service_names,
-                          null,
-                          item.total_price || 0,
-                          0
-                        );
-                        if (comm.diagnosis === 0 && comm.repair === 0 && comm.sales === 0 && comm.qc === 0) return null;
-                        return (
-                          <div className="flex flex-wrap gap-1.5">
-                            {comm.diagnosis > 0 && <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">诊断提{comm.diagnosis.toFixed(0)}</span>}
-                            {comm.repair > 0 && <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修提{comm.repair.toFixed(0)}</span>}
-                            {comm.sales > 0 && <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded">销售提{comm.sales.toFixed(0)}</span>}
-                            {comm.qc > 0 && <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">质检提{comm.qc.toFixed(0)}</span>}
-                          </div>
-                        );
-                      })()}
+                      <ShowCommission>
+                        {/* 项目提成 */}
+                        {(() => {
+                          const comm = calculateItemCommission(
+                            item,
+                            item.service_items,
+                            item.service_items?.service_names,
+                            null,
+                            item.total_price || 0,
+                            0
+                          );
+                          if (comm.diagnosis === 0 && comm.repair === 0 && comm.sales === 0 && comm.qc === 0) return null;
+                          return (
+                            <div className="flex flex-wrap gap-1.5">
+                              {comm.diagnosis > 0 && <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">诊断提{comm.diagnosis.toFixed(0)}</span>}
+                              {comm.repair > 0 && <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修提{comm.repair.toFixed(0)}</span>}
+                              {comm.sales > 0 && <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded">销售提{comm.sales.toFixed(0)}</span>}
+                              {comm.qc > 0 && <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">质检提{comm.qc.toFixed(0)}</span>}
+                            </div>
+                          );
+                        })()}
+                      </ShowCommission>
                     </div>
                     <span className="font-medium">{formatCurrency(item.total_price)}</span>
                   </div>
@@ -928,34 +932,36 @@ export default async function WorkOrderDetailPage({
               <div className="flex justify-between text-gray-600"><span>配件费用</span><span>{formatCurrency(order.parts_cost)}</span></div>
               <div className="flex justify-between text-gray-600"><span>工时费用</span><span>{formatCurrency(order.labor_cost)}</span></div>
               <div className="flex justify-between text-gray-600"><span>其他费用</span><span>{formatCurrency(order.other_cost)}</span></div>
-              {/* 总提成 */}
-              {(() => {
-                let totalCommission = 0;
-                items?.forEach((item: any) => {
-                  const comm = calculateItemCommission(
-                    item,
-                    item.service_items,
-                    item.service_items?.service_names,
-                    null,
-                    item.total_price || 0,
-                    0
+              <ShowCommission>
+                {/* 总提成 */}
+                {(() => {
+                  let totalCommission = 0;
+                  items?.forEach((item: any) => {
+                    const comm = calculateItemCommission(
+                      item,
+                      item.service_items,
+                      item.service_items?.service_names,
+                      null,
+                      item.total_price || 0,
+                      0
+                    );
+                    totalCommission += comm.diagnosis + comm.repair + comm.sales + comm.qc;
+                  });
+                  itemParts?.forEach((p: any) => {
+                    const revenue = (p.quantity || 0) * (p.unit_price || 0);
+                    const cost = (p.quantity || 0) * (p.unit_cost || 0);
+                    const comm = calculatePartCommission(p.parts, p.part_names, revenue, cost);
+                    totalCommission += comm.sales + comm.repair + comm.picking + comm.diagnosis + comm.qc;
+                  });
+                  if (totalCommission <= 0) return null;
+                  return (
+                    <div className="flex justify-between text-purple-600">
+                      <span>预估总提成</span>
+                      <span>{formatCurrency(totalCommission)}</span>
+                    </div>
                   );
-                  totalCommission += comm.diagnosis + comm.repair + comm.sales + comm.qc;
-                });
-                itemParts?.forEach((p: any) => {
-                  const revenue = (p.quantity || 0) * (p.unit_price || 0);
-                  const cost = (p.quantity || 0) * (p.unit_cost || 0);
-                  const comm = calculatePartCommission(p.parts, p.part_names, revenue, cost);
-                  totalCommission += comm.sales + comm.repair + comm.picking + comm.diagnosis + comm.qc;
-                });
-                if (totalCommission <= 0) return null;
-                return (
-                  <div className="flex justify-between text-purple-600">
-                    <span>预估总提成</span>
-                    <span>{formatCurrency(totalCommission)}</span>
-                  </div>
-                );
-              })()}
+                })()}
+              </ShowCommission>
               {(order.discount_amount || 0) > 0 && (
                 <div className="flex justify-between text-orange-600"><span>整单优惠</span><span>-{formatCurrency(order.discount_amount)}</span></div>
               )}
@@ -1041,5 +1047,6 @@ export default async function WorkOrderDetailPage({
           </div>
         </div>
       </div>
+    </WorkOrderToggleProvider>
   );
 }
