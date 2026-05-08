@@ -1,10 +1,30 @@
-import { createClient } from "@/lib/supabase/server";
-import { getStatusLabel } from "@/lib/utils";
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
+import { createServerClient } from "@supabase/ssr";
 import Link from "next/link";
 
-export default async function DashboardPage() {
-  const supabase = await createClient();
+// 内存缓存：避免每次请求都查云端数据库
+let dashboardCache: {
+  orderCounts: Record<string, number>;
+  partStatusCounts: Record<string, number>;
+  timestamp: number;
+} | null = null;
+
+const CACHE_TTL_MS = 60 * 1000; // 60 秒
+
+async function getDashboardStats() {
+  // 缓存未过期直接返回
+  if (dashboardCache && Date.now() - dashboardCache.timestamp < CACHE_TTL_MS) {
+    return {
+      orderCounts: dashboardCache.orderCounts,
+      partStatusCounts: dashboardCache.partStatusCounts,
+    };
+  }
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => [], setAll: () => {} } }
+  );
 
   // 1. 工单状态统计
   const { data: orderStatusCounts } = await supabase
@@ -17,6 +37,82 @@ export default async function DashboardPage() {
     orderCounts[o.status] = (orderCounts[o.status] || 0) + 1;
   });
 
+  // 2. 配件状态统计
+  const { data: parts } = await supabase
+    .from("work_order_item_parts")
+    .select("id, unit_cost, unit_price, customer_opinion, is_purchased, is_arrived, part_id, quantity")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  const partStatusCounts: Record<string, number> = {};
+
+  if (parts && parts.length > 0) {
+    const partIds = parts.map((p: any) => p.id);
+    const relatedPartIds = [...new Set(parts.map((p: any) => p.part_id).filter(Boolean))];
+
+    const [{ data: pickingRecords }, { data: returnRecords }, { data: supplierReturnRecords }, { data: partBatches }] =
+      await Promise.all([
+        supabase.from("part_picking_records").select("work_order_item_part_id, quantity").in("work_order_item_part_id", partIds),
+        supabase.from("part_return_records").select("work_order_item_part_id, quantity").in("work_order_item_part_id", partIds),
+        supabase.from("supplier_return_records").select("work_order_item_part_id, status").in("work_order_item_part_id", partIds),
+        relatedPartIds.length > 0
+          ? supabase.from("part_batches").select("part_id, quantity").in("part_id", relatedPartIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+    const inventoryByPart: Record<string, number> = {};
+    partBatches?.forEach((b: any) => {
+      inventoryByPart[b.part_id] = (inventoryByPart[b.part_id] || 0) + b.quantity;
+    });
+
+    const pickingByPart: Record<string, number> = {};
+    pickingRecords?.forEach((r: any) => {
+      pickingByPart[r.work_order_item_part_id] = (pickingByPart[r.work_order_item_part_id] || 0) + r.quantity;
+    });
+
+    const returnByPart: Record<string, number> = {};
+    returnRecords?.forEach((r: any) => {
+      returnByPart[r.work_order_item_part_id] = (returnByPart[r.work_order_item_part_id] || 0) + r.quantity;
+    });
+
+    const pendingSupplierReturnByPart: Record<string, boolean> = {};
+    supplierReturnRecords?.forEach((r: any) => {
+      if (r.status === "pending") pendingSupplierReturnByPart[r.work_order_item_part_id] = true;
+    });
+
+    parts.forEach((p: any) => {
+      const pPickedQty = pickingByPart[p.id] || 0;
+      const pReturnQty = returnByPart[p.id] || 0;
+      const pNetPicked = pPickedQty - pReturnQty;
+      const pInventory = inventoryByPart[p.part_id] || 0;
+      const pHasPendingSupplierReturn = pendingSupplierReturnByPart[p.id] || false;
+
+      const status = getPartWorkflowStatus({
+        unit_cost: p.unit_cost,
+        unit_price: p.unit_price,
+        customer_opinion: p.customer_opinion,
+        is_purchased: p.is_purchased,
+        is_arrived: p.is_arrived,
+        part_id: p.part_id,
+        quantity: p.quantity,
+        inventoryQty: pInventory,
+        pickedQty: pNetPicked,
+        hasReturnRecords: pReturnQty > 0,
+        hasPendingSupplierReturn: pHasPendingSupplierReturn,
+      });
+
+      partStatusCounts[status] = (partStatusCounts[status] || 0) + 1;
+    });
+  }
+
+  // 写入缓存
+  dashboardCache = { orderCounts, partStatusCounts, timestamp: Date.now() };
+  return { orderCounts, partStatusCounts };
+}
+
+export default async function DashboardPage() {
+  const { orderCounts, partStatusCounts } = await getDashboardStats();
+
   const orderStatusList = [
     { key: "pending_diagnosis", label: "待诊断" },
     { key: "pending_repair", label: "待维修" },
@@ -25,71 +121,6 @@ export default async function DashboardPage() {
     { key: "pending_close", label: "待结单" },
     { key: "pending_settlement", label: "待结算" },
   ];
-
-  // 2. 配件状态统计（只查最近 200 条未完成的配件分支）
-  const { data: parts } = await supabase
-    .from("work_order_item_parts")
-    .select("id, unit_cost, unit_price, customer_opinion, is_purchased, is_arrived, part_id, quantity, work_order_item_id")
-    .order("created_at", { ascending: false })
-    .limit(500);
-
-  const partIds = parts?.map((p: any) => p.id) || [];
-  const relatedPartIds = parts?.map((p: any) => p.part_id).filter(Boolean) || [];
-
-  const [{ data: pickingRecords }, { data: returnRecords }, { data: supplierReturnRecords }, { data: partBatches }] =
-    await Promise.all([
-      supabase.from("part_picking_records").select("work_order_item_part_id, quantity").in("work_order_item_part_id", partIds),
-      supabase.from("part_return_records").select("work_order_item_part_id, quantity").in("work_order_item_part_id", partIds),
-      supabase.from("supplier_return_records").select("work_order_item_part_id, status").in("work_order_item_part_id", partIds),
-      relatedPartIds.length > 0
-        ? supabase.from("part_batches").select("part_id, quantity").in("part_id", relatedPartIds)
-        : Promise.resolve({ data: [] }),
-    ]);
-
-  const inventoryByPart: Record<string, number> = {};
-  partBatches?.forEach((b: any) => {
-    inventoryByPart[b.part_id] = (inventoryByPart[b.part_id] || 0) + b.quantity;
-  });
-
-  const pickingByPart: Record<string, number> = {};
-  pickingRecords?.forEach((r: any) => {
-    pickingByPart[r.work_order_item_part_id] = (pickingByPart[r.work_order_item_part_id] || 0) + r.quantity;
-  });
-
-  const returnByPart: Record<string, number> = {};
-  returnRecords?.forEach((r: any) => {
-    returnByPart[r.work_order_item_part_id] = (returnByPart[r.work_order_item_part_id] || 0) + r.quantity;
-  });
-
-  const pendingSupplierReturnByPart: Record<string, boolean> = {};
-  supplierReturnRecords?.forEach((r: any) => {
-    if (r.status === "pending") pendingSupplierReturnByPart[r.work_order_item_part_id] = true;
-  });
-
-  const partStatusCounts: Record<string, number> = {};
-  parts?.forEach((p: any) => {
-    const pPickedQty = pickingByPart[p.id] || 0;
-    const pReturnQty = returnByPart[p.id] || 0;
-    const pNetPicked = pPickedQty - pReturnQty;
-    const pInventory = inventoryByPart[p.part_id] || 0;
-    const pHasPendingSupplierReturn = pendingSupplierReturnByPart[p.id] || false;
-
-    const status = getPartWorkflowStatus({
-      unit_cost: p.unit_cost,
-      unit_price: p.unit_price,
-      customer_opinion: p.customer_opinion,
-      is_purchased: p.is_purchased,
-      is_arrived: p.is_arrived,
-      part_id: p.part_id,
-      quantity: p.quantity,
-      inventoryQty: pInventory,
-      pickedQty: pNetPicked,
-      hasReturnRecords: pReturnQty > 0,
-      hasPendingSupplierReturn: pHasPendingSupplierReturn,
-    });
-
-    partStatusCounts[status] = (partStatusCounts[status] || 0) + 1;
-  });
 
   const partStatusList = [
     { key: "pending_inquiry", label: "待询价" },

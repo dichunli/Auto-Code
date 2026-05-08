@@ -83,6 +83,33 @@ function calculatePauseSeconds(logs: Log[]): number {
   return Math.max(0, Math.round(totalSpan - constructionSeconds));
 }
 
+interface PauseDetail {
+  start: Date;
+  end: Date;
+  duration: number;
+}
+
+function getPauseDetails(logs: Log[]): PauseDetail[] {
+  const details: PauseDetail[] = [];
+  let pauseTime: Date | null = null;
+
+  for (const log of logs) {
+    const t = new Date(log.created_at);
+    if (log.action === "pause") {
+      pauseTime = t;
+    } else if ((log.action === "resume" || log.action === "complete") && pauseTime) {
+      details.push({
+        start: pauseTime,
+        end: t,
+        duration: Math.round((t.getTime() - pauseTime.getTime()) / 1000),
+      });
+      pauseTime = null;
+    }
+  }
+
+  return details;
+}
+
 export function ConstructionControls({
   itemId,
   workOrderId,
@@ -377,6 +404,23 @@ export function ConstructionControls({
           </button>
         </>
       )}
+
+      {/* 中断明细 */}
+      {(() => {
+        const details = getPauseDetails(logs);
+        if (details.length === 0) return null;
+        return (
+          <div className="w-full mt-1 space-y-0.5">
+            {details.map((d, idx) => (
+              <div key={idx} className="text-[10px] text-gray-400 flex items-center gap-1">
+                <span className="text-yellow-500">中断 {idx + 1}</span>
+                <span>{d.start.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} ~ {d.end.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                <span className="font-mono">({formatDuration(d.duration)})</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }

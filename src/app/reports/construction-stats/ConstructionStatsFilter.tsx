@@ -30,7 +30,7 @@ export function ConstructionStatsFilter({ mechanic, search, allMechanics }: Prop
         name="search"
         value={searchValue}
         onChange={(e) => setSearchValue(e.target.value)}
-        placeholder="搜索项目名称"
+        placeholder="搜索项目或车型"
         className="px-3 py-2 border border-gray-200 rounded-lg text-sm w-48"
       />
       <button

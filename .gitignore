@@ -48,3 +48,9 @@ supabase/.temp/
 
 # 数据表（Excel）
 *.xlsx
+
+# Claude 临时文件
+.claude/
+
+# 测试脚本
+scripts/

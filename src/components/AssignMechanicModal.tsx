@@ -17,7 +17,7 @@ interface MechanicGroup {
 
 interface ExistingMechanic {
   mechanic_id: string;
-  commission_ratio: number;
+  share_pct: number;
   profiles?: { full_name: string } | null;
 }
 
@@ -42,7 +42,16 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
   const [showClaimChoice, setShowClaimChoice] = useState(false);
   const [levelPreview, setLevelPreview] = useState<{ id: string; name: string; coeff: number; ratio: number }[]>([]);
 
-  if (!open) return null;
+  useEffect(() => {
+    if (open) {
+      setSelectedPersons(existingMechanics.map((m) => m.mechanic_id));
+      setSelectedGroup("");
+      setShowClaimChoice(false);
+      setCommissionRule("equal");
+      setManualRatios({});
+      setLevelPreview([]);
+    }
+  }, [open, existingMechanics]);
 
   const personCount = mode === "group" && selectedGroup
     ? (mechanicGroups.find((g) => g.id === selectedGroup)?.members.length || 0)
@@ -105,7 +114,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
     const { error } = await supabase.from("work_order_item_mechanics").insert({
       work_order_item_id: itemId,
       mechanic_id: user.id,
-      commission_ratio: 100,
+      share_pct: 100,
     });
     setLoading(false);
     if (error) {
@@ -217,7 +226,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
     const records = mechanicIds.map((id) => ({
       work_order_item_id: itemId,
       mechanic_id: id,
-      commission_ratio: ratios[id] ?? 100,
+      share_pct: ratios[id] ?? 100,
     }));
 
     const { error } = await supabase.from("work_order_item_mechanics").insert(records);
@@ -233,7 +242,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 ${open ? "" : "hidden"}`}>
       <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">派工</h2>
 

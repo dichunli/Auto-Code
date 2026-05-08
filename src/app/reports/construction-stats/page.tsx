@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { ConstructionStatsFilter } from "./ConstructionStatsFilter";
+import Link from "next/link";
 
 function formatDuration(totalSeconds: number) {
   if (!totalSeconds || totalSeconds <= 0) return "-";
@@ -32,7 +33,9 @@ export default async function ConstructionStatsPage({
     query = query.eq("mechanic_name", mechanic);
   }
   if (search) {
-    query = query.ilike("item_name", `%${search}%`);
+    query = query.or(
+      `item_name.ilike.%${search}%,vehicle_brand.ilike.%${search}%,vehicle_series.ilike.%${search}%,vehicle_model_name.ilike.%${search}%`
+    );
   }
 
   const { data: stats } = await query;
@@ -45,6 +48,43 @@ export default async function ConstructionStatsPage({
   const allMechanics = Array.from(
     new Set((mechanicList || []).map((s: any) => s.mechanic_name).filter(Boolean))
   ).sort();
+
+  // 按维修项目+车型+施工人分组聚合
+  const groupedMap = new Map<string, any>();
+  for (const s of stats || []) {
+    const key = [s.item_name, s.vehicle_brand || "", s.vehicle_series || "", s.vehicle_model_name || "", s.mechanic_name].join("|");
+    if (!groupedMap.has(key)) {
+      groupedMap.set(key, {
+        item_name: s.item_name,
+        vehicle_brand: s.vehicle_brand,
+        vehicle_series: s.vehicle_series,
+        vehicle_model_name: s.vehicle_model_name,
+        vehicle_displacement: s.vehicle_displacement,
+        mechanic_name: s.mechanic_name,
+        count: 0,
+        total_construction_seconds: 0,
+        total_pause_seconds: 0,
+        total_total_seconds: 0,
+        work_order_ids: new Set<string>(),
+      });
+    }
+    const g = groupedMap.get(key);
+    g.count++;
+    g.total_construction_seconds += s.construction_seconds || 0;
+    g.total_pause_seconds += s.pause_seconds || 0;
+    g.total_total_seconds += s.total_seconds || 0;
+    g.work_order_ids.add(s.work_order_id);
+  }
+
+  const groupedStats = Array.from(groupedMap.values())
+    .map((g) => ({
+      ...g,
+      work_order_ids: Array.from(g.work_order_ids) as string[],
+      avg_construction_seconds: g.count > 0 ? Math.round(g.total_construction_seconds / g.count) : 0,
+      avg_pause_seconds: g.count > 0 ? Math.round(g.total_pause_seconds / g.count) : 0,
+      avg_total_seconds: g.count > 0 ? Math.round(g.total_total_seconds / g.count) : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
 
   return (
     <div className="space-y-6">
@@ -73,8 +113,79 @@ export default async function ConstructionStatsPage({
         </div>
       </div>
 
-      {/* 表格 */}
+      {/* 分组统计 */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+          <h2 className="text-sm font-semibold text-gray-700">按维修项目及车型分组统计</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">维修项目</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">车型信息</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">施工次数</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">平均施工时长</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">平均中断时长</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">平均总时长</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">涉及技师</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">关联工单</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {groupedStats.map((g: any, idx: number) => (
+                <tr key={idx} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium text-gray-900">{g.item_name}</td>
+                  <td className="px-4 py-3 text-gray-600">
+                    <div className="space-y-0.5">
+                      {g.vehicle_brand && <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{g.vehicle_brand}</span>}
+                      {g.vehicle_series && <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{g.vehicle_series}</span>}
+                      {g.vehicle_model_name && <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{g.vehicle_model_name}</span>}
+                      {g.vehicle_displacement && <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{g.vehicle_displacement}</span>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-900 font-medium">{g.count}</td>
+                  <td className="px-4 py-3 text-gray-600">{formatDuration(g.avg_construction_seconds)}</td>
+                  <td className="px-4 py-3 text-gray-600">{formatDuration(g.avg_pause_seconds)}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900">{formatDuration(g.avg_total_seconds)}</td>
+                  <td className="px-4 py-3 text-gray-600">
+                    <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">{g.mechanic_name}</span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    <div className="flex flex-wrap gap-1">
+                      {g.work_order_ids.slice(0, 3).map((id: string) => (
+                        <Link
+                          key={id}
+                          href={`/work-orders/${id}`}
+                          className="text-xs bg-green-50 text-green-600 px-1.5 py-0.5 rounded hover:bg-green-100"
+                        >
+                          {id.slice(0, 8)}
+                        </Link>
+                      ))}
+                      {g.work_order_ids.length > 3 && (
+                        <span className="text-xs text-gray-400">等{g.work_order_ids.length}个</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {groupedStats.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
+                    暂无分组统计记录
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 明细记录 */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+          <h2 className="text-sm font-semibold text-gray-700">明细记录</h2>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">

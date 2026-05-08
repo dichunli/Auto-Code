@@ -1,34 +1,74 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelector";
+import { SimpleRichEditor } from "@/components/SimpleRichEditor";
+
+interface NamedItem {
+  id: string;
+  name: string;
+}
 
 export default function NewKnowledgePage() {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
-  const [serviceNames, setServiceNames] = useState<any[]>([]);
-  const [serviceItems, setServiceItems] = useState<any[]>([]);
 
   const [form, setForm] = useState({
     title: "",
-    type: "article" as "article" | "video" | "qa",
+    type: "article" as "article" | "video" | "qa" | "guide",
     category_id: "",
     content: "",
     video_url: "",
   });
 
-  const [linkedNames, setLinkedNames] = useState<string[]>([]);
-  const [linkedItems, setLinkedItems] = useState<string[]>([]);
+  // 搜索添加维修项目名称
+  const [nameSearch, setNameSearch] = useState("");
+  const [nameResults, setNameResults] = useState<NamedItem[]>([]);
+  const [nameSearching, setNameSearching] = useState(false);
+  const [linkedNames, setLinkedNames] = useState<NamedItem[]>([]);
+  const nameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 适用车型
+  const [linkedVehicles, setLinkedVehicles] = useState<LinkedItem[]>([]);
 
   useEffect(() => {
     supabase.from("knowledge_categories").select("*").order("sort_order").then(({ data }) => setCategories(data || []));
-    supabase.from("service_names").select("id, name").order("name").then(({ data }) => setServiceNames(data || []));
-    supabase.from("service_items").select("id, name").order("name").then(({ data }) => setServiceItems(data || []));
   }, [supabase]);
+
+  async function doNameSearch(keyword: string) {
+    if (!keyword.trim()) { setNameResults([]); return; }
+    setNameSearching(true);
+    const { data } = await supabase
+      .from("service_names")
+      .select("id, name")
+      .ilike("name", `%${keyword.trim()}%`)
+      .limit(20);
+    setNameResults((data || []) as NamedItem[]);
+    setNameSearching(false);
+  }
+
+  function handleNameSearchChange(val: string) {
+    setNameSearch(val);
+    if (nameTimer.current) clearTimeout(nameTimer.current);
+    nameTimer.current = setTimeout(() => doNameSearch(val), 300);
+  }
+
+  function addLinkedName(item: NamedItem) {
+    if (!linkedNames.find((n) => n.id === item.id)) {
+      setLinkedNames((prev) => [...prev, item]);
+    }
+    setNameSearch("");
+    setNameResults([]);
+  }
+
+  function removeLinkedName(id: string) {
+    setLinkedNames((prev) => prev.filter((n) => n.id !== id));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,16 +89,17 @@ export default function NewKnowledgePage() {
 
       if (error || !article) throw error || new Error("创建失败");
 
-      // 关联维修项目名称
       if (linkedNames.length > 0) {
-        const nameLinks = linkedNames.map((id) => ({ article_id: article.id, service_name_id: id }));
+        const nameLinks = linkedNames.map((n) => ({ article_id: article.id, service_name_id: n.id }));
         await supabase.from("knowledge_service_links").insert(nameLinks);
       }
 
-      // 关联维修项目实例
-      if (linkedItems.length > 0) {
-        const itemLinks = linkedItems.map((id) => ({ article_id: article.id, service_item_id: id }));
-        await supabase.from("knowledge_service_links").insert(itemLinks);
+      if (linkedVehicles.length > 0) {
+        const vehicleLinks = linkedVehicles.map((v) => ({
+          article_id: article.id,
+          vehicle_model_id: Number(v.id),
+        }));
+        await supabase.from("knowledge_vehicle_links").insert(vehicleLinks);
       }
 
       router.push("/knowledge");
@@ -66,14 +107,6 @@ export default function NewKnowledgePage() {
     } catch (err: any) {
       alert("保存失败: " + err.message);
       setLoading(false);
-    }
-  }
-
-  function toggleSelection(list: string[], setList: (v: string[]) => void, id: string) {
-    if (list.includes(id)) {
-      setList(list.filter((x) => x !== id));
-    } else {
-      setList([...list, id]);
     }
   }
 
@@ -103,6 +136,7 @@ export default function NewKnowledgePage() {
                 <option value="article">文章</option>
                 <option value="video">视频</option>
                 <option value="qa">知识问答</option>
+                <option value="guide">维修指导</option>
               </select>
             </div>
             <div>
@@ -136,56 +170,56 @@ export default function NewKnowledgePage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">内容</label>
-            <textarea
-              rows={10}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-              placeholder="支持 HTML 格式"
+            <SimpleRichEditor
               value={form.content}
-              onChange={(e) => setForm({ ...form, content: e.target.value })}
+              onChange={(html) => setForm({ ...form, content: html })}
+              placeholder="请输入内容，支持插入短视频..."
             />
-            <p className="text-xs text-gray-400 mt-1">支持 HTML 标签，如 &lt;h3&gt;、&lt;p&gt;、&lt;ul&gt;、&lt;li&gt; 等</p>
           </div>
 
           {/* 关联维修项目名称 */}
           <div className="border-t border-gray-100 pt-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-2">关联维修项目名称</h3>
-            <div className="flex flex-wrap gap-2">
-              {serviceNames.map((n) => (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => toggleSelection(linkedNames, setLinkedNames, n.id)}
-                  className={`px-3 py-1 rounded-full text-xs border transition-colors ${
-                    linkedNames.includes(n.id)
-                      ? "bg-blue-50 border-blue-300 text-blue-700"
-                      : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
-                  }`}
-                >
-                  {n.name}
-                </button>
-              ))}
-            </div>
+            <input
+              type="text"
+              value={nameSearch}
+              onChange={(e) => handleNameSearchChange(e.target.value)}
+              placeholder="输入项目名称搜索后添加..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-2"
+            />
+            {nameSearching && <p className="text-xs text-gray-400">搜索中...</p>}
+            {nameResults.length > 0 && (
+              <div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto mb-2">
+                {nameResults.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => addLinkedName(n)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                  >
+                    {n.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            {linkedNames.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {linkedNames.map((n) => (
+                  <span key={n.id} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                    {n.name}
+                    <button
+                      type="button"
+                      onClick={() => removeLinkedName(n.id)}
+                      className="text-blue-400 hover:text-blue-600">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* 关联维修项目实例 */}
+          {/* 关联车型 - 使用适用车型模块 */}
           <div className="border-t border-gray-100 pt-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">关联具体维修项目</h3>
-            <div className="flex flex-wrap gap-2">
-              {serviceItems.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => toggleSelection(linkedItems, setLinkedItems, s.id)}
-                  className={`px-3 py-1 rounded-full text-xs border transition-colors ${
-                    linkedItems.includes(s.id)
-                      ? "bg-blue-50 border-blue-300 text-blue-700"
-                      : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
-                  }`}
-                >
-                  {s.name}
-                </button>
-              ))}
-            </div>
+            <VehicleModelSelector value={linkedVehicles} onChange={setLinkedVehicles} />
           </div>
         </div>
 

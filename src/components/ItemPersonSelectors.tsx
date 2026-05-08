@@ -17,7 +17,7 @@ interface MechanicGroup {
 
 interface ExistingMechanic {
   mechanic_id: string;
-  commission_ratio: number;
+  share_pct: number;
   profiles?: { full_name: string } | null;
 }
 

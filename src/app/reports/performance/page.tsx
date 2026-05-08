@@ -13,7 +13,7 @@ export default async function PerformanceReportPage() {
   // 从 work_order_item_mechanics 统计多人施工的分配业绩
   const { data: mechanicCommissions } = await supabase
     .from("work_order_item_mechanics")
-    .select("mechanic_id, commission_ratio, work_order_items(total_price, status)")
+    .select("mechanic_id, share_pct, work_order_items(total_price, status)")
     .eq("work_order_items.status", "completed");
 
   // 施工工时统计（从 construction_logs）
@@ -46,12 +46,12 @@ export default async function PerformanceReportPage() {
     };
   });
 
-  // 按 commission_ratio 计算业绩
+  // 按 share_pct 计算业绩
   (mechanicCommissions || []).forEach((row: any) => {
     const stats = mechanicStats[row.mechanic_id];
     if (stats && row.work_order_items) {
       const price = row.work_order_items.total_price || 0;
-      const ratio = (row.commission_ratio || 100) / 100;
+      const ratio = (row.share_pct || 100) / 100;
       stats.itemCount += 1;
       stats.totalValue += price * ratio;
     }

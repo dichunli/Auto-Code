@@ -64,10 +64,12 @@ export default async function KnowledgePage() {
                           ? "bg-red-50 text-red-700"
                           : a.type === "qa"
                           ? "bg-green-50 text-green-700"
+                          : a.type === "guide"
+                          ? "bg-orange-50 text-orange-700"
                           : "bg-blue-50 text-blue-700"
                       }`}
                     >
-                      {a.type === "video" ? "视频" : a.type === "qa" ? "问答" : "文章"}
+                      {a.type === "video" ? "视频" : a.type === "qa" ? "问答" : a.type === "guide" ? "维修指导" : "文章"}
                     </span>
                     {a.knowledge_categories?.name && (
                       <span className="text-xs text-gray-500">

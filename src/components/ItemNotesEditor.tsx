@@ -43,14 +43,15 @@ export function ItemNotesEditor({ itemId, description }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`text-xs text-left w-full hover:bg-gray-100 rounded px-1 py-0.5 transition-colors ${
+        className={`text-xs text-left inline-flex items-center hover:bg-gray-100 rounded px-1 py-0.5 transition-colors ${
           hasNote ? "text-gray-500" : "text-blue-500"
         }`}
         title="点击编辑备注"
       >
         {hasNote ? (
           <>
-            <span className="text-gray-400">备注:</span> {description}{" "}
+            <span className="text-gray-400">备注:</span>
+            <span className="ml-1 max-w-[120px] truncate">{description}</span>
             <span className="text-blue-500 ml-1">✎</span>
           </>
         ) : (

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { getWorkOrderData } from "@/lib/workOrderData";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -27,136 +27,20 @@ export default async function WorkOrderDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
+  const {
+    order, requirements, profiles, requirementMedia, items, itemsError,
+    itemMedia, itemMechanics, mechanicGroups, knowledgeLinks, itemParts,
+    partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches,
+    qualityChecks, payments, followUps, history, suppliers, logisticsCompanies,
+    inspections, inspectionMedia,
+  } = await getWorkOrderData(id);
 
-  const { data: order } = await supabase
-    .from("work_orders")
-    .select(`*, vehicles(*, vehicle_models(*)), customers(*)`)
-    .eq("id", id)
-    .single();
+  console.log("[DEBUG] work order id:", id, "order:", order ? "found" : "null", "itemsError:", itemsError);
 
   if (!order) notFound();
 
-  const { data: requirements } = await supabase
-    .from("work_order_requirements")
-    .select("*, submitted_by_profile:profiles!work_order_requirements_submitted_by_fkey(full_name), assigned_to_profile:profiles!work_order_requirements_assigned_to_fkey(full_name), dispatcher_profile:profiles!work_order_requirements_dispatcher_id_fkey(full_name)")
-    .eq("work_order_id", id)
-    .order("seq", { ascending: true });
-
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, full_name")
-    .eq("is_active", true)
-    .order("full_name");
-
-  const { data: requirementMedia } = await supabase
-    .from("work_order_requirement_media")
-    .select("*")
-    .in("requirement_id", requirements?.map((r: any) => r.id) || []);
-
-  const { data: items, error: itemsError } = await supabase
-    .from("work_order_items")
-    .select("*, profiles!work_order_items_mechanic_id_fkey(full_name), service_items(service_name_id, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, service_names(sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value)), outsourced_supplier:suppliers(name)")
-    .eq("work_order_id", id)
-    .order("created_at", { ascending: true });
-
-  const { data: itemMedia } = await supabase
-    .from("work_order_item_media")
-    .select("*")
-    .in("work_order_item_id", items?.map((i: any) => i.id) || []);
-
-  // 查询维修项目施工人（支持多人施工）
-  const { data: itemMechanics } = await supabase
-    .from("work_order_item_mechanics")
-    .select("work_order_item_id, mechanic_id, commission_ratio, profiles(full_name)")
-    .in("work_order_item_id", items?.map((i: any) => i.id) || []);
-
-  // 查询施工组
-  const { data: mechanicGroups } = await supabase
-    .from("mechanic_groups")
-    .select("*, mechanic_group_members(mechanic_id, profiles(full_name))");
-
-  // 查询与维修项目关联的知识库文章
-  const serviceItemIds = items?.map((i: any) => i.service_item_id).filter(Boolean) || [];
-  const serviceNameIds = items?.map((i: any) => i.service_items?.service_name_id).filter(Boolean) || [];
-
-  let knowledgeLinks: any[] = [];
-  if (serviceItemIds.length > 0 || serviceNameIds.length > 0) {
-    const { data: links } = await supabase
-      .from("knowledge_service_links")
-      .select("article_id, service_item_id, service_name_id, knowledge_articles(id, title, type)")
-      .or(serviceItemIds.map((sid: string) => `service_item_id.eq.${sid}`).join(","));
-    knowledgeLinks = links || [];
-
-    if (serviceNameIds.length > 0) {
-      const { data: nameLinks } = await supabase
-        .from("knowledge_service_links")
-        .select("article_id, service_item_id, service_name_id, knowledge_articles(id, title, type)")
-        .or(serviceNameIds.map((sid: string) => `service_name_id.eq.${sid}`).join(","));
-      knowledgeLinks = [...knowledgeLinks, ...(nameLinks || [])];
-    }
-  }
-
-  const { data: itemParts } = await supabase
-    .from("work_order_item_parts")
-    .select("*, part_names(name, unit, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value), parts(*, part_brands(name))")
-    .in("work_order_item_id", items?.map((i: any) => i.id) || []);
-
   // 查询未关联具体配件但已到货的分支，用于入库自动填写
   const pendingInboundParts = itemParts?.filter((p: any) => p.is_arrived && !p.part_id) || [];
-
-  const { data: partMedia } = await supabase
-    .from("work_order_item_part_media")
-    .select("*")
-    .in("work_order_item_part_id", itemParts?.map((p: any) => p.id) || []);
-
-  const { data: pickingRecords } = await supabase
-    .from("part_picking_records")
-    .select("*")
-    .in("work_order_item_part_id", itemParts?.map((p: any) => p.id) || []);
-
-  const { data: returnRecords } = await supabase
-    .from("part_return_records")
-    .select("*")
-    .in("work_order_item_part_id", itemParts?.map((p: any) => p.id) || []);
-
-  const { data: supplierReturnRecords } = await supabase
-    .from("supplier_return_records")
-    .select("*")
-    .in("work_order_item_part_id", itemParts?.map((p: any) => p.id) || []);
-
-  // 查询相关配件库存
-  const partIds = itemParts?.map((p: any) => p.part_id).filter(Boolean) || [];
-  const { data: partBatches } = partIds.length > 0
-    ? await supabase.from("part_batches").select("part_id, quantity").in("part_id", partIds)
-    : { data: [] };
-
-  const { data: qualityChecks } = await supabase
-    .from("quality_checks")
-    .select("*, profiles(full_name)")
-    .eq("work_order_id", id)
-    .order("created_at", { ascending: true });
-
-  const { data: payments } = await supabase
-    .from("payments")
-    .select("*")
-    .eq("work_order_id", id)
-    .order("paid_at", { ascending: true });
-
-  const { data: followUps } = await supabase
-    .from("follow_ups")
-    .select("*")
-    .eq("work_order_id", id)
-    .order("scheduled_at", { ascending: true });
-
-  const { data: history } = await supabase
-    .from("work_order_history")
-    .select("*")
-    .eq("work_order_id", id)
-    .order("created_at", { ascending: true });
-
-  const { data: suppliers } = await supabase.from("suppliers").select("*").order("name");
-  const { data: logisticsCompanies } = await supabase.from("logistics_companies").select("*").order("name");
 
   // 按项目分组施工人
   const mechanicsByItem: Record<string, any[]> = {};
@@ -167,17 +51,6 @@ export default async function WorkOrderDetailPage({
       mechanicsByItem[itemId].push(m);
     }
   }
-
-  const { data: inspections } = await supabase
-    .from("work_order_inspections")
-    .select("*")
-    .eq("work_order_id", id)
-    .order("created_at", { ascending: true });
-
-  const { data: inspectionMedia } = await supabase
-    .from("work_order_inspection_media")
-    .select("*")
-    .in("inspection_id", inspections?.map((insp: any) => insp.id) || []);
 
   // 按项目分组配件
   const partsByItem: Record<string, any[]> = {};
@@ -416,19 +289,31 @@ export default async function WorkOrderDetailPage({
                                     serviceItemId={item.service_item_id}
                                   />
                                 </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {knowledgeByItem[item.id]?.length > 0 && (
+                                {knowledgeByItem[item.id]?.length > 0 ? (
                                   <Link
                                     href={`/knowledge/${knowledgeByItem[item.id][0].knowledge_articles.id}`}
                                     target="_blank"
-                                    className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
+                                    className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 ml-2"
                                   >
                                     维修指导
                                   </Link>
+                                ) : (
+                                  <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-400 ml-2">维修指导</span>
                                 )}
+                                <div className="ml-4">
+                                  <ItemNotesEditor itemId={item.id} description={item.description} />
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
                                 <span className="text-gray-500">{item.item_type === 'labor' ? '工时' : item.item_type === 'part' ? '配件' : '其他'} × {item.quantity}</span>
-                                <WorkOrderItemActions itemId={item.id} />
+                                <WorkOrderItemActions
+                                  itemId={item.id}
+                                  itemName={item.name}
+                                  aliasName={item.alias_name}
+                                  quantity={item.quantity}
+                                  unitPrice={item.unit_price}
+                                  serviceItemId={item.service_item_id}
+                                />
                               </div>
                             </div>
                             {/* 返工信息 */}
@@ -449,7 +334,6 @@ export default async function WorkOrderDetailPage({
                                 </div>
                               </div>
                             )}
-                            <ItemNotesEditor itemId={item.id} description={item.description} />
                             <div className="flex items-center justify-end">
                               <span className="font-medium text-gray-900 text-base">{formatCurrency(item.total_price)}</span>
                             </div>
