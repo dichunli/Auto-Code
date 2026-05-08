@@ -20,6 +20,7 @@ import { AdvancePaymentCard } from "@/components/AdvancePaymentCard";
 import RequirementActions from "@/components/RequirementActions";
 import WorkOrderFloatingSidebar from "@/components/WorkOrderFloatingSidebar";
 import { ItemNotesEditor } from "@/components/ItemNotesEditor";
+import AddItemPartButton from "@/components/AddItemPartButton";
 
 export default async function WorkOrderDetailPage({
   params,
@@ -306,6 +307,11 @@ export default async function WorkOrderDetailPage({
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="text-gray-500">{item.item_type === 'labor' ? '工时' : item.item_type === 'part' ? '配件' : '其他'} × {item.quantity}</span>
+                                <AddItemPartButton
+                                  itemId={item.id}
+                                  serviceNameId={item.service_items?.service_name_id}
+                                  itemName={item.alias_name || item.name}
+                                />
                                 <WorkOrderItemActions
                                   itemId={item.id}
                                   itemName={item.name}
