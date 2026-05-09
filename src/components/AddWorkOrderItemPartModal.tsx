@@ -191,7 +191,7 @@ export function AddWorkOrderItemPartModal({
       part_name_id: sp.part_name_id,
       name: sp.name,
       unit: sp.unit,
-      quantity: sp.quantity ?? 1,
+      quantity: sp.quantity,
       customer_opinion: "pending",
     }));
 

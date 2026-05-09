@@ -18,6 +18,7 @@ import { ItemFlagsToggle } from "@/components/ItemFlagsToggle";
 import { ItemMechanicAssigner } from "@/components/ItemMechanicAssigner";
 import { WorkOrderActions } from "@/components/WorkOrderActions";
 import { AdvancePaymentCard } from "@/components/AdvancePaymentCard";
+import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
 import RequirementActions from "@/components/RequirementActions";
 import WorkOrderFloatingSidebar from "@/components/WorkOrderFloatingSidebar";
 import { ItemNotesEditor } from "@/components/ItemNotesEditor";
@@ -181,6 +182,10 @@ export default async function WorkOrderDetailPage({
               维修记录{historyOrderCount ? `(${historyOrderCount})` : ""}
             </Link>
           )}
+          <WorkOrderActionButtons
+            workOrderId={id}
+            orderNo={order.order_no}
+          />
           <WorkOrderToggleBar />
           <AdvancePaymentDropdown
             orderId={id}
@@ -533,7 +538,6 @@ export default async function WorkOrderDetailPage({
                                             parts={group.parts}
                                             isLocked={isLocked}
                                             itemId={item.id}
-                                            quantity={item.quantity}
                                             existingImages={groupImages}
                                           />
                                         );

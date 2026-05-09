@@ -19,5 +19,6 @@ CREATE INDEX IF NOT EXISTS idx_advance_payment_records_paid_at
 -- RLS
 ALTER TABLE advance_payment_records ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow all" ON advance_payment_records;
 CREATE POLICY "Allow all" ON advance_payment_records
   FOR ALL USING (true) WITH CHECK (true);

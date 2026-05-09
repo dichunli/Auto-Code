@@ -11,11 +11,10 @@ interface Props {
   parts: any[];
   isLocked: boolean;
   itemId?: string;
-  quantity?: number;
   existingImages?: string[];
 }
 
-export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemId, quantity, existingImages = [] }: Props) {
+export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemId, existingImages = [] }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -24,7 +23,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   const unit = parts[0]?.unit || parts[0]?.part_names?.unit || parts[0]?.parts?.unit || "件";
   const category = parts[0]?.part_names?.part_categories?.name || parts[0]?.parts?.part_categories?.name;
 
-  const defaultQty = quantity != null ? String(quantity) : (parts[0]?.quantity != null ? String(parts[0].quantity) : "1");
+  const defaultQty = parts[0]?.quantity != null ? String(parts[0].quantity) : "";
   const [qty, setQty] = useState(defaultQty);
 
   const [notes, setNotes] = useState(parts[0]?.notes || "");
@@ -46,7 +45,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       part_name_id: parts[0].part_name_id || null,
       name: parts[0].name || null,
       unit: parts[0].unit || parts[0].part_names?.unit || parts[0].parts?.unit || "件",
-      quantity: 1,
+      quantity: null,
       customer_opinion: "pending",
       is_selected: false,
     });
@@ -72,17 +71,17 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   }
 
   async function saveQuantity() {
-    const val = parseInt(qty, 10);
-    if (isNaN(val) || val < 1) return;
+    const val = qty.trim() === "" ? null : parseInt(qty, 10);
+    if (val !== null && (isNaN(val) || val < 1)) return;
     setSaving(true);
-    if (itemId) {
+    if (parts[0]) {
       const { error } = await supabase
-        .from("work_order_items")
+        .from("work_order_item_parts")
         .update({ quantity: val })
-        .eq("id", itemId);
+        .eq("id", parts[0].id);
       setSaving(false);
       if (error) {
-        alert("保存失败: " + error.message);
+        alert("保存数量失败: " + error.message);
         return;
       }
     }
@@ -177,26 +176,20 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         <span className="text-xs text-gray-400 font-mono shrink-0">{seqLabel}</span>
         <span className="font-medium text-sm text-gray-800 shrink-0">{name}</span>
 
-        {/* 供应商名称 */}
-        {parts[0]?.supplier_name && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 shrink-0">
-            {parts[0].supplier_name}
-          </span>
-        )}
-
         {!isLocked ? (
           <input
-            type="number"
-            min="1"
+            type="text"
+            inputMode="numeric"
             value={qty}
             onChange={(e) => setQty(e.target.value)}
             onBlur={saveQuantity}
             disabled={saving}
-            className="w-14 px-1 py-0.5 border border-gray-200 rounded text-xs disabled:bg-gray-50 text-center shrink-0"
+            placeholder=""
+            className="w-12 px-1 py-0.5 border border-gray-200 rounded text-xs disabled:bg-gray-50 text-center shrink-0"
           />
-        ) : (
+        ) : qty ? (
           <span className="text-xs text-gray-500 shrink-0">×{qty}</span>
-        )}
+        ) : null}
 
         <span className="text-xs text-gray-400 shrink-0">{unit}</span>
 

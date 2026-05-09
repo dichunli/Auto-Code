@@ -16,9 +16,9 @@ export default async function DashboardPage() {
     .limit(5);
 
   const { count: totalOrders } = await supabase.from("work_orders").select("*", { count: "exact", head: true });
-  const { count: activeOrders } = await supabase.from("work_orders").select("*", { count: "exact", head: true }).in("status", ["received", "diagnosing", "quoted", "repairing", "quality_check"]);
-  const { count: pendingQuality } = await supabase.from("work_orders").select("*", { count: "exact", head: true }).eq("status", "quality_check");
-  const { count: pendingSettle } = await supabase.from("work_orders").select("*", { count: "exact", head: true }).eq("status", "completed");
+  const { count: activeOrders } = await supabase.from("work_orders").select("*", { count: "exact", head: true }).in("status", ["received", "pending_diagnosis", "pending_repair", "repairing", "pending_quality_check", "pending_close"]);
+  const { count: pendingQuality } = await supabase.from("work_orders").select("*", { count: "exact", head: true }).eq("status", "pending_quality_check");
+  const { count: pendingSettle } = await supabase.from("work_orders").select("*", { count: "exact", head: true }).eq("status", "pending_settlement");
   const { count: lowStock } = await supabase.from("parts").select("*", { count: "exact", head: true }).lte("quantity", 10);
 
   const { data: todayRevenue } = await supabase.from("payments").select("amount").gte("paid_at", `${today}T00:00:00`);

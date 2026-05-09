@@ -28,22 +28,40 @@ export default function LoginPage() {
       credentials.email = account;
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword(credentials);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword(credentials);
 
-    if (error) {
-      setError(error.message);
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!data.session) {
+        setError("登录成功但未获取到会话，请检查网络或 Supabase 配置");
+        setLoading(false);
+        return;
+      }
+
+      // 记录登录日志
+      try {
+        await supabase.from("operation_logs").insert({
+          user_id: data.user?.id,
+          user_name: data.user?.email || account,
+          action_type: "login",
+          description: `用户 ${account} 登录系统`,
+        });
+      } catch {
+        // 日志失败不影响登录
+      }
+
+      router.push("/");
+      router.refresh();
+    } catch (err: any) {
+      console.error("登录异常:", err);
+      setError("登录请求失败: " + (err?.message || "网络错误或浏览器安全策略阻止了请求"));
       setLoading(false);
-      return;
     }
-
-    if (!data.session) {
-      setError("登录成功但未获取到会话，请检查网络或 Supabase 配置");
-      setLoading(false);
-      return;
-    }
-
-    router.push("/");
-    router.refresh();
   }
 
   return (

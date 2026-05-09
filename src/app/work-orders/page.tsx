@@ -3,25 +3,60 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
+import WorkOrderSearch from "@/components/WorkOrderSearch";
 
 export default async function WorkOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; keyword?: string; type?: string }>;
 }) {
-  const { status } = await searchParams;
+  const { status, keyword, type } = await searchParams;
   const supabase = await createClient();
 
   let query = supabase
     .from("work_orders")
-    .select("id, order_no, status, total_cost, created_at, vehicles(plate_number, brand, model), customers(name, phone)")
+    .select("id, order_no, status, total_cost, created_at, vehicles(plate_number, brand, model, vin), customers(name, phone, company)")
     .order("created_at", { ascending: false });
 
   if (status) {
     query = query.eq("status", status);
   }
 
-  const { data: orders } = await query;
+  // 注：order_type 字段需先执行 migrations_20260509_work_order_types.sql
+  // if (type) {
+  //   query = query.eq("order_type", type);
+  // }
+
+  const { data: allOrders, error: queryError } = await query;
+
+  if (queryError) {
+    console.error("工单查询失败:", queryError);
+  }
+
+  let orders = allOrders;
+  if (keyword?.trim()) {
+    const k = keyword.trim().toLowerCase();
+    orders = allOrders?.filter((order: any) => {
+      const orderNo = order.order_no?.toLowerCase() || "";
+      const plate = order.vehicles?.plate_number?.toLowerCase() || "";
+      const vin = order.vehicles?.vin?.toLowerCase() || "";
+      const brand = order.vehicles?.brand?.toLowerCase() || "";
+      const model = order.vehicles?.model?.toLowerCase() || "";
+      const customerName = order.customers?.name?.toLowerCase() || "";
+      const phone = order.customers?.phone?.toLowerCase() || "";
+      const company = order.customers?.company?.toLowerCase() || "";
+      return (
+        orderNo.includes(k) ||
+        plate.includes(k) ||
+        vin.includes(k) ||
+        brand.includes(k) ||
+        model.includes(k) ||
+        customerName.includes(k) ||
+        phone.includes(k) ||
+        company.includes(k)
+      );
+    });
+  }
 
   const statusFilters = [
     { value: "", label: "全部" },
@@ -34,11 +69,32 @@ export default async function WorkOrdersPage({
     { value: "settled", label: "已结算" },
   ];
 
+  const typeLabelMap: Record<string, string> = {
+    normal: "正常工单",
+    appointment: "预约单",
+    quote: "报价单",
+    maintenance: "保养工单",
+    cancelled: "作废工单",
+  };
+
+  function buildLink(params: Record<string, string>) {
+    const sp = new URLSearchParams();
+    if (type) sp.set("type", type);
+    Object.entries(params).forEach(([k, v]) => {
+      if (v) sp.set(k, v);
+      else sp.delete(k);
+    });
+    const qs = sp.toString();
+    return qs ? `/work-orders?${qs}` : "/work-orders";
+  }
+
+  const pageTitle = type ? typeLabelMap[type] || "工单管理" : "工单管理";
+
   return (
     <div>
       <PageHeader
-        title="工单管理"
-        description="管理维修工单的全生命周期"
+        title={pageTitle}
+        description={type ? `查看${typeLabelMap[type]}列表` : "管理维修工单的全生命周期"}
         action={{ href: "/work-orders/new", label: "新建工单" }}
       />
 
@@ -47,7 +103,7 @@ export default async function WorkOrdersPage({
           {statusFilters.map((filter) => (
             <Link
               key={filter.value}
-              href={filter.value ? `?status=${filter.value}` : "/work-orders"}
+              href={buildLink({ status: filter.value })}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 (status || "") === filter.value
                   ? "bg-blue-600 text-white"
@@ -58,11 +114,13 @@ export default async function WorkOrdersPage({
             </Link>
           ))}
         </div>
+        <div className="flex-1" />
+        <WorkOrderSearch />
       </div>
 
       <div className="flex items-center gap-2 mb-6">
         <Link
-          href="/work-orders"
+          href={buildLink({})}
           className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200"
         >
           列表视图
@@ -81,8 +139,12 @@ export default async function WorkOrdersPage({
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">工单号</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">客户</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">车辆</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">车牌号</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">VIN</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">车型</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">客户名称</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">电话</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">单位</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">状态</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">金额</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">创建时间</th>
@@ -93,18 +155,16 @@ export default async function WorkOrdersPage({
               {orders?.map((order: any) => (
                 <tr key={order.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">
-                    <Link href={`/work-orders/${order.id}`} className="hover:text-blue-600">
+                    <Link href={`/work-orders/${order.id}`} className="text-blue-600 hover:text-blue-700 hover:underline">
                       {order.order_no}
                     </Link>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="text-gray-900">{order.customers?.name}</div>
-                    <div className="text-gray-500 text-xs">{order.customers?.phone}</div>
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">
-                    {order.vehicles?.plate_number}
-                    <div className="text-gray-400 text-xs">{order.vehicles?.brand} {order.vehicles?.model}</div>
-                  </td>
+                  <td className="px-6 py-4 text-gray-900">{order.vehicles?.plate_number || "-"}</td>
+                  <td className="px-6 py-4 text-gray-600 font-mono text-xs">{order.vehicles?.vin || "-"}</td>
+                  <td className="px-6 py-4 text-gray-600">{order.vehicles?.brand} {order.vehicles?.model}</td>
+                  <td className="px-6 py-4 text-gray-900">{order.customers?.name || "-"}</td>
+                  <td className="px-6 py-4 text-gray-500">{order.customers?.phone || "-"}</td>
+                  <td className="px-6 py-4 text-gray-500">{order.customers?.company || "-"}</td>
                   <td className="px-6 py-4">
                     <StatusBadge status={order.status} />
                   </td>
@@ -120,9 +180,16 @@ export default async function WorkOrdersPage({
                   </td>
                 </tr>
               ))}
-              {(!orders || orders.length === 0) && (
+              {queryError && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={11} className="px-6 py-12 text-center text-red-500">
+                    查询失败: {queryError.message}
+                  </td>
+                </tr>
+              )}
+              {(!queryError && (!orders || orders.length === 0)) && (
+                <tr>
+                  <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
                     暂无工单数据
                   </td>
                 </tr>
