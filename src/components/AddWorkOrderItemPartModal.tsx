@@ -47,6 +47,9 @@ export function AddWorkOrderItemPartModal({
   // 预置配件
   const [presetParts, setPresetParts] = useState<PresetPart[]>([]);
 
+  // 当前项目已存在的 part_name_id（用于过滤预置列表，避免重复）
+  const [existingPartNameIds, setExistingPartNameIds] = useState<Set<string>>(new Set());
+
   // 已选配件（预置 + 手动搜索）
   const [selectedParts, setSelectedParts] = useState<SelectedPart[]>([]);
 
@@ -63,28 +66,41 @@ export function AddWorkOrderItemPartModal({
     setSelectedParts([]);
     setSearchQuery("");
     setSearchResults([]);
+    setExistingPartNameIds(new Set());
 
     if (serviceNameId) {
       setLoading(true);
-      supabase
-        .from("service_name_part_names")
-        .select("part_name_id, quantity, part_names(id, name, unit, default_quantity)")
-        .eq("service_name_id", serviceNameId)
-        .order("sort_order", { ascending: true })
-        .then(({ data }) => {
-          setPresetParts(
-            (data || []).map((row: any) => ({
+      // 同时查预置配件 + 当前项目已存在的配件
+      Promise.all([
+        supabase
+          .from("service_name_part_names")
+          .select("part_name_id, quantity, part_names(id, name, unit, default_quantity)")
+          .eq("service_name_id", serviceNameId)
+          .order("sort_order", { ascending: true }),
+        supabase
+          .from("work_order_item_parts")
+          .select("part_name_id")
+          .eq("work_order_item_id", itemId)
+          .not("part_name_id", "is", null),
+      ]).then(([{ data: presetData }, { data: existingData }]) => {
+        const existingIds = new Set((existingData || []).map((row: any) => row.part_name_id as string));
+        setExistingPartNameIds(existingIds);
+        setPresetParts(
+          (presetData || [])
+            .filter((row: any) => !existingIds.has(row.part_name_id))
+            .map((row: any) => ({
               part_name_id: row.part_name_id,
               quantity: row.quantity ?? row.part_names?.default_quantity ?? null,
               part_names: row.part_names,
             }))
-          );
-          setLoading(false);
-        });
+        );
+        setLoading(false);
+      });
     } else {
       setPresetParts([]);
     }
-  }, [open, serviceNameId, supabase]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, serviceNameId, itemId]);
 
   // 搜索配件名称
   const doSearch = useCallback(
@@ -268,14 +284,16 @@ export function AddWorkOrderItemPartModal({
                   const alreadySelected = selectedParts.some(
                     (sp) => sp.part_name_id === part.id
                   );
+                  const alreadyExists = existingPartNameIds.has(part.id);
+                  const disabled = alreadySelected || alreadyExists;
                   return (
                     <button
                       key={part.id}
                       type="button"
-                      onClick={() => !alreadySelected && addFromSearch(part)}
-                      disabled={alreadySelected}
+                      onClick={() => !disabled && addFromSearch(part)}
+                      disabled={disabled}
                       className={`w-full text-left px-3 py-2 text-sm border-b border-gray-100 last:border-0 ${
-                        alreadySelected
+                        disabled
                           ? "text-gray-400 bg-gray-50 cursor-not-allowed"
                           : "hover:bg-gray-50"
                       }`}
@@ -286,6 +304,9 @@ export function AddWorkOrderItemPartModal({
                       </span>
                       {alreadySelected && (
                         <span className="text-xs text-blue-600 ml-2">已选择</span>
+                      )}
+                      {alreadyExists && !alreadySelected && (
+                        <span className="text-xs text-gray-400 ml-2">已添加</span>
                       )}
                     </button>
                   );

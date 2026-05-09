@@ -498,11 +498,18 @@ async function SettlementDoc({ order }: { order: any }) {
     .eq("work_order_id", order.id)
     .eq("type", "consume");
 
+  const { data: advancePaymentRecords } = await supabase
+    .from("advance_payment_records")
+    .select("*, profiles(full_name)")
+    .eq("work_order_id", order.id)
+    .order("paid_at", { ascending: true });
+
   const methodLabels: Record<string, string> = {
     cash: "现金", wechat: "微信支付", alipay: "支付宝",
     credit: "挂账", member: "会员/储值卡", bank_transfer: "银行转账",
   };
 
+  const advancePaymentTotal = (advancePaymentRecords || []).reduce((sum, r) => sum + (r.amount || 0), 0);
   const totalPaid = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
 
   return (
@@ -558,13 +565,33 @@ async function SettlementDoc({ order }: { order: any }) {
         {(order.discount_amount || 0) > 0 && (
           <div className="flex justify-between text-orange-600"><span>整单优惠</span><span>-{formatCurrency(order.discount_amount)}</span></div>
         )}
-        {(order.advance_payment || 0) > 0 && (
-          <div className="flex justify-between text-green-600"><span>预收款抵扣</span><span>-{formatCurrency(order.advance_payment)}</span></div>
+        {(advancePaymentTotal || 0) > 0 && (
+          <div className="flex justify-between text-green-600"><span>预收款抵扣</span><span>-{formatCurrency(advancePaymentTotal)}</span></div>
         )}
         <div className="flex justify-between text-base font-bold border-t border-gray-300 pt-2 mt-2">
-          <span>应收合计</span><span>{formatCurrency(order.total_cost - (order.advance_payment || 0))}</span>
+          <span>应收合计</span><span>{formatCurrency(order.total_cost - advancePaymentTotal)}</span>
         </div>
       </div>
+
+      {advancePaymentRecords && advancePaymentRecords.length > 0 && (
+        <div className="border-t border-gray-300 pt-4">
+          <h3 className="font-bold text-sm mb-2">预收款记录</h3>
+          <div className="space-y-1 text-sm">
+            {advancePaymentRecords.map((r: any, idx: number) => (
+              <div key={idx} className="flex justify-between">
+                <span className="text-gray-500">
+                  {formatDate(r.paid_at)} {methodLabels[r.method] || r.method}
+                  {r.profiles?.full_name && <span className="text-gray-400 ml-1">({r.profiles.full_name})</span>}
+                </span>
+                <span>{formatCurrency(r.amount)}</span>
+              </div>
+            ))}
+            <div className="flex justify-between font-medium border-t border-gray-200 pt-1 mt-1">
+              <span>预收合计</span><span className="text-green-600">{formatCurrency(advancePaymentTotal)}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {payments && payments.length > 0 && (
         <div className="border-t border-gray-300 pt-4">
@@ -588,7 +615,7 @@ async function SettlementDoc({ order }: { order: any }) {
               <span>已付合计</span><span className="text-green-600">{formatCurrency(totalPaid)}</span>
             </div>
             <div className="flex justify-between font-medium">
-              <span>未付金额</span><span className="text-red-600">{formatCurrency(order.total_cost - (order.advance_payment || 0) - totalPaid)}</span>
+              <span>未付金额</span><span className="text-red-600">{formatCurrency(order.total_cost - advancePaymentTotal - totalPaid)}</span>
             </div>
           </div>
         </div>

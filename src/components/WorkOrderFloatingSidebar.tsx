@@ -25,11 +25,13 @@ export default function WorkOrderFloatingSidebar({
   status,
   order,
   payments,
+  advancePaymentTotal,
 }: {
   orderId: string;
   status: string;
   order: any;
   payments: any[];
+  advancePaymentTotal?: number;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -53,7 +55,7 @@ export default function WorkOrderFloatingSidebar({
   }
 
   const totalPaid = payments?.reduce((s, p) => s + (p.amount || 0), 0) || 0;
-  const remaining = (order.total_cost || 0) - totalPaid - (order.advance_payment || 0);
+  const remaining = (order.total_cost || 0) - totalPaid - (advancePaymentTotal || 0);
 
   return (
     <>
@@ -129,11 +131,11 @@ export default function WorkOrderFloatingSidebar({
             {(order.discount_amount || 0) > 0 && (
               <div className="flex justify-between text-orange-600"><span>优惠</span><span>-¥{(order.discount_amount || 0).toFixed(2)}</span></div>
             )}
-            {(order.advance_payment || 0) > 0 && (
-              <div className="flex justify-between text-green-600"><span>预收</span><span>-¥{(order.advance_payment || 0).toFixed(2)}</span></div>
+            {(advancePaymentTotal || 0) > 0 && (
+              <div className="flex justify-between text-green-600"><span>预收</span><span>-¥{(advancePaymentTotal || 0).toFixed(2)}</span></div>
             )}
             <div className="border-t border-gray-100 pt-1.5 flex justify-between font-bold text-gray-900">
-              <span>应收</span><span>¥{((order.total_cost || 0) - (order.advance_payment || 0)).toFixed(2)}</span>
+              <span>应收</span><span>¥{((order.total_cost || 0) - (advancePaymentTotal || 0)).toFixed(2)}</span>
             </div>
           </div>
 

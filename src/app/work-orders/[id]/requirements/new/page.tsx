@@ -1330,10 +1330,10 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
             const next = [...items];
             next[reworkModalIndex].rework_source_item_id = sourceItem.id;
             if (unlockOrder) {
-              // 解锁原工单：将其状态从 settled 改回 completed
+              // 解锁原工单：将其状态从 settled 改回 pending_settlement
               supabase
                 .from("work_orders")
-                .update({ status: "completed" })
+                .update({ status: "pending_settlement" })
                 .eq("id", sourceItem.work_order_id)
                 .then(() => {
                   // 静默更新即可

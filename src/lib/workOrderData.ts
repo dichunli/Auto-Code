@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 const cache: Record<string, { data: any; timestamp: number }> = {};
-const CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
+const CACHE_TTL = 2000; // 2秒缓存，减少短时间内重复查询
 
 export function clearWorkOrderDataCache(id?: string) {
   if (id) {
@@ -61,6 +61,7 @@ export async function getWorkOrderData(id: string) {
     { data: inspections },
     { data: qualityChecks },
     { data: payments },
+    { data: advancePaymentRecords },
     { data: followUps },
     { data: history },
   ] = await Promise.all([
@@ -79,8 +80,8 @@ export async function getWorkOrderData(id: string) {
       outsourced_supplier:suppliers(name),
       work_order_item_media(*),
       work_order_item_mechanics(work_order_item_id, mechanic_id, share_pct, profiles(full_name)),
-      work_order_item_parts(*, part_names(name, unit, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value), parts(*, part_brands(name)))
-    `).eq("work_order_id", id).order("created_at", { ascending: true }),
+      work_order_item_parts(*, part_names(name, unit, category_id, part_categories(name), sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value), parts(*, part_categories(name), part_brands(name)))
+    `).eq("work_order_id", id).order("sort_order", { ascending: true }),
 
     supabase.from("work_order_inspections").select(`
       *,
@@ -89,6 +90,7 @@ export async function getWorkOrderData(id: string) {
 
     supabase.from("quality_checks").select("*, profiles(full_name)").eq("work_order_id", id).order("created_at", { ascending: true }),
     supabase.from("payments").select("*").eq("work_order_id", id).order("paid_at", { ascending: true }),
+    supabase.from("advance_payment_records").select("*, profiles(full_name)").eq("work_order_id", id).order("paid_at", { ascending: true }),
     supabase.from("follow_ups").select("*").eq("work_order_id", id).order("scheduled_at", { ascending: true }),
     supabase.from("work_order_history").select("*").eq("work_order_id", id).order("created_at", { ascending: true }),
   ]);
@@ -188,7 +190,7 @@ export async function getWorkOrderData(id: string) {
     order, requirements, profiles, requirementMedia, items, itemsError,
     itemMedia, itemMechanics, mechanicGroups, knowledgeLinks, itemParts,
     partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches,
-    qualityChecks, payments, followUps, history, suppliers, logisticsCompanies,
+    qualityChecks, payments, advancePaymentRecords, followUps, history, suppliers, logisticsCompanies,
     inspections, inspectionMedia,
   };
 

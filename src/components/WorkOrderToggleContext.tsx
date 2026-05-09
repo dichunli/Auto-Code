@@ -17,12 +17,18 @@ const Context = createContext<ToggleState>({
 });
 
 export function WorkOrderToggleProvider({ children }: { children: ReactNode }) {
-  const [showCommission, setShowCommissionState] = useState(true);
-  const [showTimer, setShowTimerState] = useState(true);
+  const [showCommission, setShowCommissionState] = useState(false);
+  const [showTimer, setShowTimerState] = useState(false);
 
   useEffect(() => {
-    setShowCommissionState(localStorage.getItem("wo_show_commission") !== "false");
-    setShowTimerState(localStorage.getItem("wo_show_timer") !== "false");
+    const savedCommission = localStorage.getItem("wo_show_commission");
+    const savedTimer = localStorage.getItem("wo_show_timer");
+    if (savedCommission !== null) {
+      setShowCommissionState(savedCommission !== "false");
+    }
+    if (savedTimer !== null) {
+      setShowTimerState(savedTimer !== "false");
+    }
   }, []);
 
   function setShowCommission(v: boolean) {

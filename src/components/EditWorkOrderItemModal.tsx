@@ -37,7 +37,7 @@ export function EditWorkOrderItemModal({
   const supabase = createClient();
   const [aliasName, setAliasName] = useState(currentAlias || "");
   const [quantity, setQuantity] = useState(String(currentQuantity || 1));
-  const [unitPrice, setUnitPrice] = useState(String(currentUnitPrice || 0));
+  const [unitPrice, setUnitPrice] = useState(currentUnitPrice != null ? currentUnitPrice.toFixed(2) : "0.00");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [searchResults, setSearchResults] = useState<ServiceItem[]>([]);
   const [selectedServiceItem, setSelectedServiceItem] = useState<ServiceItem | null>(null);
@@ -83,7 +83,7 @@ export function EditWorkOrderItemModal({
     setSearchResults([]);
     // 自动填入新项目的价格
     if (si.default_price != null) {
-      setUnitPrice(String(si.default_price));
+      setUnitPrice(si.default_price.toFixed(2));
     }
   }
 
@@ -201,7 +201,7 @@ export function EditWorkOrderItemModal({
                 step="0.01"
                 value={unitPrice}
                 onChange={(e) => setUnitPrice(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-right"
               />
             </div>
           </div>

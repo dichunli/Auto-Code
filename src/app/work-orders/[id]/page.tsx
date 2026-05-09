@@ -6,6 +6,7 @@ import { calculateItemCommission, calculatePartCommission } from "@/lib/commissi
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import { BatchEditWrapper } from "@/components/BatchEditWrapper";
 import { TemplateImportWrapper } from "@/components/TemplateImportWrapper";
 import { PartWorkflowActions } from "@/components/PartWorkflowActions";
@@ -22,8 +23,15 @@ import WorkOrderFloatingSidebar from "@/components/WorkOrderFloatingSidebar";
 import { ItemNotesEditor } from "@/components/ItemNotesEditor";
 import AddItemPartButton from "@/components/AddItemPartButton";
 import PartBranchEditor from "@/components/PartBranchEditor";
+import PartGroupHeader from "@/components/PartGroupHeader";
 import { WorkOrderToggleProvider, ShowCommission, ShowTimer } from "@/components/WorkOrderToggleContext";
 import { WorkOrderToggleBar } from "@/components/WorkOrderToggleBar";
+import PrintDropdown from "@/components/PrintDropdown";
+import AdvancePaymentDropdown from "@/components/AdvancePaymentDropdown";
+import ItemSubtotalDisplay from "@/components/ItemSubtotalDisplay";
+import WorkOrderTotalFooter from "@/components/WorkOrderTotalFooter";
+import SortableList from "@/components/SortableList";
+import ItemImageUploader from "@/components/ItemImageUploader";
 
 export default async function WorkOrderDetailPage({
   params,
@@ -35,13 +43,27 @@ export default async function WorkOrderDetailPage({
     order, requirements, profiles, requirementMedia, items, itemsError,
     itemMedia, itemMechanics, mechanicGroups, knowledgeLinks, itemParts,
     partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches,
-    qualityChecks, payments, followUps, history, suppliers, logisticsCompanies,
+    qualityChecks, payments, advancePaymentRecords, followUps, history, suppliers, logisticsCompanies,
     inspections, inspectionMedia,
   } = await getWorkOrderData(id);
 
   console.log("[DEBUG] work order id:", id, "order:", order ? "found" : "null", "itemsError:", itemsError);
 
   if (!order) notFound();
+
+  // 预收款总额（从记录表实时计算）
+  const advancePaymentTotal = (advancePaymentRecords || []).reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
+
+  // 工单车型ID（用于配件库存匹配）
+  const vehicleModelId = order?.vehicles?.vehicle_model_id;
+
+  // 查询该车历史维修工单数量（排除当前工单）
+  const supabaseServer = await createClient();
+  const { count: historyOrderCount } = await supabaseServer
+    .from("work_orders")
+    .select("*", { count: "exact", head: true })
+    .eq("vehicle_id", order.vehicle_id)
+    .neq("id", id);
 
   // 查询未关联具体配件但已到货的分支，用于入库自动填写
   const pendingInboundParts = itemParts?.filter((p: any) => p.is_arrived && !p.part_id) || [];
@@ -56,12 +78,18 @@ export default async function WorkOrderDetailPage({
     }
   }
 
-  // 按项目分组配件
+  // 按项目分组配件，并按 sort_order 排序
   const partsByItem: Record<string, any[]> = {};
   itemParts?.forEach((p: any) => {
     if (!partsByItem[p.work_order_item_id]) partsByItem[p.work_order_item_id] = [];
     partsByItem[p.work_order_item_id].push(p);
   });
+  Object.values(partsByItem).forEach((arr) => {
+    arr.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
+  });
+
+  // items 按 sort_order 排序（兼容未执行迁移的情况）
+  const sortedItems = (items || []).slice().sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
 
   // 按需求分组多媒体
   const mediaByRequirement: Record<string, any[]> = {};
@@ -133,33 +161,84 @@ export default async function WorkOrderDetailPage({
 
   return (
     <WorkOrderToggleProvider>
-    <div>
-      <PageHeader title={`工单详情: ${order.order_no}`} />
-
-      <div className="flex items-center gap-2 mb-6">
-        <Link
-          href="/work-orders"
-          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-        >
-          ← 返回列表
-        </Link>
+    <div className="pb-20">
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/work-orders"
+            className="px-2.5 py-1 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+          >
+            ← 返回列表
+          </Link>
+          <h1 className="text-lg font-semibold text-gray-900">工单 {order.order_no}</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          {order.vehicle_id && (
+            <Link
+              href={`/work-orders?vehicle_id=${order.vehicle_id}`}
+              className="text-sm text-blue-600 hover:text-blue-700"
+            >
+              维修记录{historyOrderCount ? `(${historyOrderCount})` : ""}
+            </Link>
+          )}
+          <WorkOrderToggleBar />
+          <AdvancePaymentDropdown
+            orderId={id}
+            advancePayment={advancePaymentTotal}
+            totalCost={order.total_cost || 0}
+          />
+          <PrintDropdown orderId={id} />
+        </div>
       </div>
-
-      <WorkOrderToggleBar />
 
       <div className="space-y-4">
         {/* 主内容 */}
           {/* 基本信息 */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <StatusBadge status={order.status} />
-              <span className="text-sm text-gray-500">创建于 {formatDate(order.created_at)}</span>
-            </div>
+            {/* 车牌号 / VIN / 车型 / 创建于 一行 */}
+            {(() => {
+              const vin: string = order.vehicles?.vin || "";
+              const vinValid = /^[A-HJ-NPR-Z0-9]{17}$/.test(vin);
+              const modelInfo = [order.vehicles?.brand, order.vehicles?.model].filter(Boolean).join(" ");
+              return (
+                <div className="flex items-center justify-between gap-6 flex-wrap mb-3 pb-3 border-b border-gray-200">
+                  <div className="flex items-center gap-6 flex-wrap">
+                    <div>
+                      <span className="text-xs text-gray-500">车牌号: </span>
+                      <span className="text-lg font-semibold text-gray-900 tracking-wide">
+                        {order.vehicles?.plate_number || "-"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500">VIN: </span>
+                      {vin ? (
+                        <span
+                          className={`inline-block w-[17ch] font-mono ${vinValid ? "text-gray-900" : "text-red-600"}`}
+                          title={vinValid ? "VIN 校验通过" : "VIN 应为 17 位大写字母与数字（不含 I/O/Q）"}
+                        >
+                          {vin}
+                          {!vinValid && (
+                            <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-50 text-red-600">
+                              格式错误
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="inline-block w-[17ch] text-gray-400">-</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500">车型: </span>
+                      <span className="font-medium text-gray-800">{modelInfo || "-"}</span>
+                    </div>
+                  </div>
+                  <span className="text-sm text-gray-500 shrink-0">创建于 {formatDate(order.created_at)}</span>
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div><span className="text-gray-500">客户:</span> <span className="font-medium">{order.customers?.name}</span></div>
               <div><span className="text-gray-500">电话:</span> {order.customers?.phone}</div>
-              <div><span className="text-gray-500">车辆:</span> <span className="font-medium">{order.vehicles?.plate_number} ({order.vehicles?.brand} {order.vehicles?.model})</span></div>
-              <div><span className="text-gray-500">VIN:</span> {order.vehicles?.vin || "-"}</div>
               <div><span className="text-gray-500">接车里程:</span> {order.mileage_in} km</div>
               <div><span className="text-gray-500">油量:</span> {order.fuel_level}%</div>
             </div>
@@ -189,14 +268,13 @@ export default async function WorkOrderDetailPage({
                 <Link href={`/work-orders/${id}/inspection/new`} className="text-sm text-green-600 hover:text-green-700">+ 车况检查</Link>
               </div>
             </div>
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-gray-300">
               {requirements?.map((req: any) => (
                 <div key={req.id} className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded shrink-0">需求 {req.seq}</span>
                     <div className="flex-1">
                       <div className="flex items-center gap-4 flex-wrap">
-                        <p className="text-gray-900 font-medium">{req.description}</p>
+                        <p className="text-gray-900 font-medium"><span className="text-blue-600 mr-1">需求{req.seq}</span>{req.description}</p>
                         {/* 提交人与指派信息 */}
                         <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
                           <span>提交: {req.submitted_by_profile?.full_name || "-"}</span>
@@ -257,9 +335,17 @@ export default async function WorkOrderDetailPage({
                           项目加载失败: {itemsError.message}
                         </div>
                       )}
-                      <div className="mt-3 space-y-2">
-                        {items?.filter((item: any) => item.requirement_id === req.id).map((item: any, itemIdx: number) => (
-                          <div key={item.id} className="bg-gray-50 rounded-lg px-3 py-1 text-sm">
+                      <div className="mt-3">
+                        {(() => {
+                          const reqItems = sortedItems?.filter((item: any) => item.requirement_id === req.id) || [];
+                          return (
+                            <SortableList
+                              ids={reqItems.map((it: any) => it.id)}
+                              groupKey={req.id}
+                              tableName="work_order_items"
+                            >
+                              {reqItems.map((item: any, itemIdx: number) => (
+                                <div key={item.id} className={`rounded-lg px-3 py-1 text-sm ${item.item_type === 'labor' ? 'bg-blue-50' : 'bg-gray-50'}`}>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs text-gray-400 font-mono">{req.seq}.{itemIdx + 1}</span>
@@ -310,6 +396,11 @@ export default async function WorkOrderDetailPage({
                                 <div className="ml-4">
                                   <ItemNotesEditor itemId={item.id} description={item.description} />
                                 </div>
+                                <ItemImageUploader
+                                  itemId={item.id}
+                                  existingImages={imagesByItem[item.id]?.map((m: any) => m.storage_path) || []}
+                                  isLocked={isLocked}
+                                />
                               </div>
                               <div className="flex items-center gap-2">
                                 <AddItemPartButton
@@ -345,9 +436,17 @@ export default async function WorkOrderDetailPage({
                                 </div>
                               </div>
                             )}
-                            <div className="flex items-center justify-end">
-                              <span className="font-medium text-gray-900 text-base">{formatCurrency(item.total_price)}</span>
-                            </div>
+                            {/* 项目价格 + 小计 */}
+                            <ItemSubtotalDisplay
+                              itemId={item.id}
+                              itemTotalPrice={item.total_price || 0}
+                              parts={(partsByItem[item.id] || []).map((p: any) => ({
+                                id: p.id,
+                                unit_price: p.unit_price || 0,
+                                quantity: p.quantity || 1,
+                                is_selected: p.is_selected || false,
+                              }))}
+                            />
                             <ShowCommission>
                               {/* 项目提成 */}
                               {(() => {
@@ -392,18 +491,10 @@ export default async function WorkOrderDetailPage({
                                 </div>
                               </ShowTimer>
                             )}
-                            {/* 项目图片 */}
-                            {imagesByItem[item.id]?.length > 0 && (
-                              <div className="flex flex-wrap gap-1.5">
-                                {imagesByItem[item.id].map((m: any) => (
-                                  <img key={m.id} src={m.storage_path} alt="" className="w-14 h-14 object-cover rounded border border-gray-200" />
-                                ))}
-                              </div>
-                            )}
                             {/* 项目所用配件 */}
                             {partsByItem[item.id]?.length > 0 && (
-                              <div className="pt-1 border-t border-gray-200 text-xs space-y-2">
-                                <div className="text-gray-400 mb-1">所用配件:</div>
+                              <div className="mt-2 pt-3 border-t-2 border-dashed border-gray-400 text-xs space-y-2">
+                                <div className="inline-block text-[11px] font-medium text-gray-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded mb-1">所用配件</div>
                                 {(() => {
                                   const groups: Record<string, { name: string; parts: any[] }> = {};
                                   partsByItem[item.id].forEach((p: any) => {
@@ -413,13 +504,40 @@ export default async function WorkOrderDetailPage({
                                     }
                                     groups[key].parts.push(p);
                                   });
-                                  return Object.entries(groups).map(([nameKey, group], groupIdx) => (
-                                    <div key={nameKey} className="space-y-2">
+                                  const groupEntries = Object.entries(groups).map(([key, group]) => ({
+                                    key,
+                                    group,
+                                    repId: group.parts[0]?.id,
+                                    repSort: group.parts[0]?.sort_order || 0,
+                                  })).filter((g) => g.repId).sort((a, b) => a.repSort - b.repSort);
+                                  const extraIdMap: Record<string, string[]> = {};
+                                  groupEntries.forEach((g) => {
+                                    extraIdMap[g.repId] = g.group.parts.map((p: any) => p.id);
+                                  });
+                                  return (
+                                    <SortableList
+                                      ids={groupEntries.map((g) => g.repId)}
+                                      groupKey={item.id}
+                                      tableName="work_order_item_parts"
+                                      extraIdMap={extraIdMap}
+                                    >
+                                      {groupEntries.map(({ key: nameKey, group }, groupIdx) => (
+                                        <div key={nameKey} className="space-y-2">
                                       {/* 配件名称分组标题 */}
-                                      <div className="flex items-center gap-2 pl-1">
-                                        <span className="text-xs text-gray-400 font-mono">{req.seq}.{itemIdx + 1}.{groupIdx + 1}</span>
-                                        <span className="font-medium text-sm text-gray-800">{group.name}</span>
-                                      </div>
+                                      {(() => {
+                                        const groupImages = group.parts.flatMap((p: any) => imagesByPart[p.id] || []).map((m: any) => m.storage_path);
+                                        return (
+                                          <PartGroupHeader
+                                            seqLabel={`${req.seq}.${itemIdx + 1}.${groupIdx + 1}`}
+                                            name={group.name}
+                                            parts={group.parts}
+                                            isLocked={isLocked}
+                                            itemId={item.id}
+                                            quantity={item.quantity}
+                                            existingImages={groupImages}
+                                          />
+                                        );
+                                      })()}
                                       {/* 分支列表 */}
                                       <div className="space-y-2 pl-2">
                                         {group.parts.map((p: any, branchIdx: number) => {
@@ -450,20 +568,20 @@ export default async function WorkOrderDetailPage({
                                               suppliers={suppliers || []}
                                               seqLabel={`${req.seq}.${itemIdx + 1}.${groupIdx + 1}.${branchIdx + 1}`}
                                               canDelete={group.parts.length > 1}
+                                              siblingIds={group.parts.filter((sp: any) => sp.id !== p.id).map((sp: any) => sp.id)}
+                                              vehicleModelId={vehicleModelId}
                                               isLocked={isLocked}
                                             >
                                               {/* 空分支已到货 → 入库登记 */}
                                               {p.is_arrived && !p.part_id && (
-                                                <div className="mt-2">
-                                                  <Link
-                                                    href={`/inventory/in?auto_fill=1&branch_id=${p.id}&part_number=${encodeURIComponent(p.part_number || '')}&name=${encodeURIComponent(p.name || p.part_names?.name || '')}&unit=${encodeURIComponent(p.unit || p.part_names?.unit || '')}&brand=${encodeURIComponent(p.brand || '')}&specification=${encodeURIComponent(p.specification || '')}&unit_cost=${p.unit_cost || ''}&supplier=${encodeURIComponent(p.supplier_name || '')}`}
-                                                    className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 inline-block"
-                                                  >
-                                                    入库登记
-                                                  </Link>
-                                                </div>
+                                                <Link
+                                                  href={`/inventory/in?auto_fill=1&branch_id=${p.id}&part_number=${encodeURIComponent(p.part_number || '')}&name=${encodeURIComponent(p.name || p.part_names?.name || '')}&unit=${encodeURIComponent(p.unit || p.part_names?.unit || '')}&brand=${encodeURIComponent(p.brand || '')}&specification=${encodeURIComponent(p.specification || '')}&unit_cost=${p.unit_cost || ''}&supplier=${encodeURIComponent(p.supplier_name || '')}`}
+                                                  className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 inline-block"
+                                                >
+                                                  入库登记
+                                                </Link>
                                               )}
-                                              <div className="mt-2 flex items-center flex-wrap gap-2">
+                                              <div className="flex items-center flex-wrap gap-2">
                                                 <PartWorkflowActions
                                                   status={pStatus}
                                                   partName={p.alias_name || p.parts?.name || p.name || p.part_names?.name || "未命名配件"}
@@ -485,7 +603,7 @@ export default async function WorkOrderDetailPage({
                                                   const comm = calculatePartCommission(p.parts, p.part_names, revenue, cost);
                                                   if (comm.sales === 0 && comm.repair === 0 && comm.picking === 0 && comm.diagnosis === 0 && comm.qc === 0) return null;
                                                   return (
-                                                    <div className="flex flex-wrap gap-2 mt-2 text-xs">
+                                                    <div className="flex flex-wrap gap-2 text-xs">
                                                       <span className="text-gray-400">提成:</span>
                                                       {comm.sales > 0 && <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded">销售 {comm.sales.toFixed(2)}元</span>}
                                                       {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
@@ -498,17 +616,15 @@ export default async function WorkOrderDetailPage({
                                               </ShowCommission>
                                               {/* 物流信息 */}
                                               {p.logistics_agreement && (
-                                                <div className="mt-2 text-gray-400 text-[10px]">
-                                                  <span>物流公司: {p.logistics_agreement}</span>
-                                                </div>
+                                                <span className="text-gray-400 text-[10px]">物流公司: {p.logistics_agreement}</span>
                                               )}
                                               {/* 备注 */}
                                               {p.notes && (
-                                                <div className="mt-2 text-gray-400 text-xs">{p.notes}</div>
+                                                <span className="text-gray-400 text-xs">{p.notes}</span>
                                               )}
                                               {/* 配件分支图片 */}
                                               {imagesByPart[p.id]?.length > 0 && (
-                                                <div className="mt-2 flex flex-wrap gap-1">
+                                                <div className="flex flex-wrap gap-1">
                                                   {imagesByPart[p.id].map((m: any) => (
                                                     <img key={m.id} src={m.storage_path} alt="" className="w-10 h-10 object-cover rounded border border-gray-100" />
                                                   ))}
@@ -519,12 +635,17 @@ export default async function WorkOrderDetailPage({
                                         })}
                                       </div>
                                     </div>
-                                  ));
+                                  ))}
+                                </SortableList>
+                                  );
                                 })()}
                               </div>
                             )}
-                          </div>
-                        ))}
+                                </div>
+                              ))}
+                            </SortableList>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -537,14 +658,18 @@ export default async function WorkOrderDetailPage({
           </div>
 
           {/* 未关联需求的项目 */}
-          {(items?.filter((item: any) => !item.requirement_id) ?? []).length > 0 && (
+          {(sortedItems?.filter((item: any) => !item.requirement_id) ?? []).length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-base font-semibold text-gray-900">其他维修项目</h2>
               </div>
-              <div className="divide-y divide-gray-100">
-                {items?.filter((item: any) => !item.requirement_id).map((item: any) => (
-                  <div key={item.id} className="px-6 py-4 text-sm flex items-center justify-between">
+              <div>
+                {(() => {
+                  const orphanItems = sortedItems?.filter((item: any) => !item.requirement_id) || [];
+                  return (
+                    <SortableList ids={orphanItems.map((it: any) => it.id)} groupKey={`orphan_${id}`} tableName="work_order_items">
+                      {orphanItems.map((item: any) => (
+                        <div key={item.id} className={`px-6 py-4 text-sm flex items-center justify-between ${item.item_type === 'labor' ? 'bg-blue-50' : ''}`}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-gray-900">{item.alias_name || item.name}</span>
                       {item.alias_name && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">别名</span>}
@@ -603,6 +728,9 @@ export default async function WorkOrderDetailPage({
                     <span className="font-medium">{formatCurrency(item.total_price)}</span>
                   </div>
                 ))}
+              </SortableList>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -613,7 +741,7 @@ export default async function WorkOrderDetailPage({
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-base font-semibold text-gray-900">接车检查</h2>
               </div>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-300">
                 {inspections?.filter((insp: any) => insp.inspection_type === 'reception').map((insp: any) => {
                   const media = mediaByInspection[insp.id] || [];
                   const receptionVideos = media.filter((m: any) => m.media_type === 'reception_video');
@@ -660,7 +788,7 @@ export default async function WorkOrderDetailPage({
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-base font-semibold text-gray-900">车况检查</h2>
               </div>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-300">
                 {inspections?.filter((insp: any) => insp.inspection_type === 'inspection').map((insp: any) => {
                   const media = mediaByInspection[insp.id] || [];
                   const oilBefore = media.find((m: any) => m.media_type === 'engine_oil_before');
@@ -871,27 +999,6 @@ export default async function WorkOrderDetailPage({
         <div className="space-y-6">
           <WorkOrderActions orderId={id} status={order.status} />
 
-          {/* 打印单据 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h2 className="text-base font-semibold text-gray-900 mb-3">打印单据</h2>
-            <div className="grid grid-cols-2 gap-2">
-              <Link href={`/work-orders/${id}/print?type=reception`} className="text-sm px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-center">接车单</Link>
-              <Link href={`/work-orders/${id}/print?type=dispatch`} className="text-sm px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-center">派工单</Link>
-              <Link href={`/work-orders/${id}/print?type=picking`} className="text-sm px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-center">领料单</Link>
-              <Link href={`/work-orders/${id}/print?type=return`} className="text-sm px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-center">退料单</Link>
-              <Link href={`/work-orders/${id}/print?type=settlement`} className="text-sm px-3 py-1.5 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-center">结算单</Link>
-              <Link href={`/work-orders/${id}/print?type=reimbursement`} className="text-sm px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-center">报销单</Link>
-            </div>
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <Link
-                href={`/work-orders/${id}/reimbursement`}
-                className="text-sm text-blue-600 hover:text-blue-700"
-              >
-                编辑报销单 →
-              </Link>
-            </div>
-          </div>
-
           {/* 待入库配件 */}
           {pendingInboundParts.length > 0 && (
             <div className="bg-white rounded-xl border border-orange-200 p-5">
@@ -923,7 +1030,6 @@ export default async function WorkOrderDetailPage({
           )}
 
           {/* 预收款 */}
-          <AdvancePaymentCard orderId={id} advancePayment={order.advance_payment || 0} totalCost={order.total_cost} />
 
           {/* 费用汇总 */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -965,12 +1071,30 @@ export default async function WorkOrderDetailPage({
               {(order.discount_amount || 0) > 0 && (
                 <div className="flex justify-between text-orange-600"><span>整单优惠</span><span>-{formatCurrency(order.discount_amount)}</span></div>
               )}
-              {(order.advance_payment || 0) > 0 && (
-                <div className="flex justify-between text-green-600"><span>已预收</span><span>-{formatCurrency(order.advance_payment)}</span></div>
+              {(advancePaymentTotal || 0) > 0 && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-green-600">
+                    <span>已预收</span>
+                    <span>-{formatCurrency(advancePaymentTotal)}</span>
+                  </div>
+                  <div className="pl-3 space-y-0.5 text-xs text-gray-500">
+                    {(advancePaymentRecords || []).map((r: any) => (
+                      <div key={r.id} className="flex justify-between">
+                        <span>
+                          {formatDate(r.paid_at)}
+                          {' · '}
+                          {r.method === 'cash' ? '现金' : r.method === 'wechat' ? '微信' : r.method === 'alipay' ? '支付宝' : '银行转账'}
+                          {r.profiles?.full_name && ` · ${r.profiles.full_name}`}
+                        </span>
+                        <span>{formatCurrency(r.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
               <div className="border-t border-gray-100 pt-2 flex justify-between text-base font-bold text-gray-900">
                 <span>应收合计</span>
-                <span>{formatCurrency(order.total_cost - (order.advance_payment || 0))}</span>
+                <span>{formatCurrency(order.total_cost - (advancePaymentTotal || 0))}</span>
               </div>
             </div>
           </div>
@@ -1047,6 +1171,17 @@ export default async function WorkOrderDetailPage({
           </div>
         </div>
       </div>
+      <WorkOrderTotalFooter
+        items={(items || []).map((it: any) => ({ id: it.id, total_price: it.total_price || 0 }))}
+        parts={(itemParts || []).map((p: any) => ({
+          id: p.id,
+          itemId: p.work_order_item_id,
+          unit_price: p.unit_price || 0,
+          quantity: p.quantity || 1,
+          is_selected: p.is_selected || false,
+        }))}
+        advancePaymentTotal={advancePaymentTotal}
+      />
     </WorkOrderToggleProvider>
   );
 }
