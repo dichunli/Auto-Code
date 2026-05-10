@@ -180,6 +180,19 @@ export default function PartBranchEditor({
     setSaving(false);
     if (error) {
       alert("自动填充失败: " + error.message);
+      return;
+    }
+    // 广播价格变更给小计/费用合计组件
+    if (data.unit_price != null) {
+      window.dispatchEvent(
+        new CustomEvent("wo-part-update", {
+          detail: {
+            itemId,
+            partId: part.id,
+            unit_price: data.unit_price,
+          },
+        })
+      );
     }
   }
 

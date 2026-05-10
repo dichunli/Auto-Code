@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { FuelGauge } from "@/components/FuelGauge";
 
 interface Customer {
   id: string;
@@ -58,6 +59,8 @@ export default function NewWorkOrderPage() {
   ]);
   const [fuelLevel, setFuelLevel] = useState("50");
   const [inspectionNotes, setInspectionNotes] = useState("");
+  const [senderName, setSenderName] = useState("");
+  const [senderPhone, setSenderPhone] = useState("");
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -245,6 +248,8 @@ export default function NewWorkOrderPage() {
           p_inspection_notes: inspectionNotes,
           p_receptionist_id: currentUserId || null,
           p_requirements: reqPayload,
+          p_sender_name: senderName.trim() || null,
+          p_sender_phone: senderPhone.trim() || null,
         }
       );
 
@@ -536,15 +541,35 @@ export default function NewWorkOrderPage() {
 
           {/* 油量 */}
           <div className="border-t border-gray-100 pt-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">油量 ({fuelLevel}%)</label>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              className="w-full"
-              value={fuelLevel}
-              onChange={(e) => setFuelLevel(e.target.value)}
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-2">油量/电量</label>
+            <FuelGauge value={fuelLevel} onChange={setFuelLevel} />
+          </div>
+
+          {/* 送修人信息 */}
+          <div className="border-t border-gray-100 pt-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-4">送修人信息</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">送修人姓名</label>
+                <input
+                  type="text"
+                  placeholder="如非车主本人，请填写实际送修人"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={senderName}
+                  onChange={(e) => setSenderName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">送修人电话</label>
+                <input
+                  type="text"
+                  placeholder="送修人联系电话"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={senderPhone}
+                  onChange={(e) => setSenderPhone(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
 
           {/* 客户需求 */}

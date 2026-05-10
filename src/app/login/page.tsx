@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { logLogin } from "@/lib/operationLog";
 
 export default function LoginPage() {
   const [account, setAccount] = useState("");
@@ -45,10 +46,9 @@ export default function LoginPage() {
 
       // 记录登录日志
       try {
-        await supabase.from("operation_logs").insert({
-          user_id: data.user?.id,
-          user_name: data.user?.email || account,
-          action_type: "login",
+        await logLogin({
+          userId: data.user?.id || "",
+          userName: data.user?.email || account,
           description: `用户 ${account} 登录系统`,
         });
       } catch {

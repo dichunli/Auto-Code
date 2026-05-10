@@ -69,7 +69,13 @@ export default function WorkOrderTotalFooter({ items, parts, advancePaymentTotal
     (sum, p) => sum + (p.is_selected ? p.unit_price * p.quantity : 0),
     0
   );
-  const grandTotal = laborTotal + partsTotal;
+  // 应收合计 = 每个项目小计之和（项目工时费 + 该项目被选中配件费）
+  const grandTotal = items.reduce((sum, it) => {
+    const itemPartsTotal = partsState
+      .filter((p) => p.itemId === it.id && p.is_selected)
+      .reduce((s, p) => s + p.unit_price * p.quantity, 0);
+    return sum + (it.total_price || 0) + itemPartsTotal;
+  }, 0);
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-300 shadow-[0_-2px_8px_rgba(0,0,0,0.06)] z-40">
@@ -82,12 +88,17 @@ export default function WorkOrderTotalFooter({ items, parts, advancePaymentTotal
         </span>
         {advancePaymentTotal > 0 && (
           <span className="text-gray-500">
-            预收款: <span className="font-medium text-green-600">-{formatCurrency(advancePaymentTotal)}</span>
+            已收: <span className="font-medium text-green-600">{formatCurrency(advancePaymentTotal)}</span>
           </span>
         )}
         <span className="text-base font-semibold text-gray-900">
-          应收合计: <span className="text-blue-600">{formatCurrency(grandTotal - advancePaymentTotal)}</span>
+          应收合计: <span className="text-blue-600">{formatCurrency(grandTotal)}</span>
         </span>
+        {advancePaymentTotal > 0 && (
+          <span className="text-gray-500">
+            待收: <span className="font-medium text-red-600">{formatCurrency(grandTotal - advancePaymentTotal)}</span>
+          </span>
+        )}
       </div>
     </div>
   );

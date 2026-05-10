@@ -200,7 +200,7 @@ export default async function FinancePage() {
       </div>
 
       {/* 快捷入口 */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Link href="/finance/transactions/new" className="bg-blue-50 text-blue-700 rounded-xl border border-blue-100 p-4 text-sm font-medium hover:bg-blue-100 transition-colors text-center">
           + 记一笔
         </Link>
@@ -209,6 +209,9 @@ export default async function FinancePage() {
         </Link>
         <Link href="/finance/payroll" className="bg-gray-50 text-gray-700 rounded-xl border border-gray-100 p-4 text-sm font-medium hover:bg-gray-100 transition-colors text-center">
           工资提成
+        </Link>
+        <Link href="/supplier-transactions" className="bg-gray-50 text-gray-700 rounded-xl border border-gray-100 p-4 text-sm font-medium hover:bg-gray-100 transition-colors text-center">
+          供应商往来
         </Link>
         <Link href="/reports" className="bg-purple-50 text-purple-700 rounded-xl border border-purple-100 p-4 text-sm font-medium hover:bg-purple-100 transition-colors text-center">
           报表统计

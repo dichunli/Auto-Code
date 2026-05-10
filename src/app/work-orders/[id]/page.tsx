@@ -7,6 +7,8 @@ import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
+import { ReceptionInfoEditor } from "@/components/ReceptionInfoEditor";
 import { BatchEditWrapper } from "@/components/BatchEditWrapper";
 import { TemplateImportWrapper } from "@/components/TemplateImportWrapper";
 import { PartWorkflowActions } from "@/components/PartWorkflowActions";
@@ -36,10 +38,14 @@ import ItemImageUploader from "@/components/ItemImageUploader";
 
 export default async function WorkOrderDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { id } = await params;
+  const sp = searchParams ? await searchParams : {};
+  const tabsParam = typeof sp.tabs === "string" ? sp.tabs : "";
   const {
     order, requirements, profiles, requirementMedia, items, itemsError,
     itemMedia, itemMechanics, mechanicGroups, knowledgeLinks, itemParts,
@@ -65,6 +71,12 @@ export default async function WorkOrderDetailPage({
     .select("*", { count: "exact", head: true })
     .eq("vehicle_id", order.vehicle_id)
     .neq("id", id);
+
+  // 查询该客户消费次数
+  const { count: customerOrderCount } = await supabaseServer
+    .from("work_orders")
+    .select("*", { count: "exact", head: true })
+    .eq("customer_id", order.customer_id);
 
   // 查询未关联具体配件但已到货的分支，用于入库自动填写
   const pendingInboundParts = itemParts?.filter((p: any) => p.is_arrived && !p.part_id) || [];
@@ -162,16 +174,11 @@ export default async function WorkOrderDetailPage({
 
   return (
     <WorkOrderToggleProvider>
+    <WorkOrderTabBar tabs={tabsParam} />
     <div className="pb-20">
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <Link
-            href="/work-orders"
-            className="px-2.5 py-1 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-          >
-            ← 返回列表
-          </Link>
-          <h1 className="text-lg font-semibold text-gray-900">工单 {order.order_no}</h1>
+          <h1 className="text-base font-semibold text-gray-900">工单 {order.order_no}</h1>
         </div>
         <div className="flex items-center gap-3">
           {order.vehicle_id && (
@@ -200,25 +207,23 @@ export default async function WorkOrderDetailPage({
         {/* 主内容 */}
           {/* 基本信息 */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
-            {/* 车牌号 / VIN / 车型 / 创建于 一行 */}
+            {/* 车辆信息行 - 字号缩小 */}
             {(() => {
               const vin: string = order.vehicles?.vin || "";
               const vinValid = /^[A-HJ-NPR-Z0-9]{17}$/.test(vin);
               const modelInfo = [order.vehicles?.brand, order.vehicles?.model].filter(Boolean).join(" ");
               return (
-                <div className="flex items-center justify-between gap-6 flex-wrap mb-3 pb-3 border-b border-gray-200">
-                  <div className="flex items-center gap-6 flex-wrap">
-                    <div>
-                      <span className="text-xs text-gray-500">车牌号: </span>
-                      <span className="text-lg font-semibold text-gray-900 tracking-wide">
-                        {order.vehicles?.plate_number || "-"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-xs text-gray-500">VIN: </span>
+                <div className="flex items-center justify-between gap-4 flex-wrap text-sm mb-2 pb-2 border-b border-gray-100">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <span>
+                      <span className="text-gray-500">车牌:</span>{' '}
+                      <span className="font-semibold text-gray-900">{order.vehicles?.plate_number || "-"}</span>
+                    </span>
+                    <span>
+                      <span className="text-gray-500">VIN:</span>{' '}
                       {vin ? (
                         <span
-                          className={`inline-block w-[17ch] font-mono ${vinValid ? "text-gray-900" : "text-red-600"}`}
+                          className={`inline-block w-[17ch] font-mono text-xs ${vinValid ? "text-gray-900" : "text-red-600"}`}
                           title={vinValid ? "VIN 校验通过" : "VIN 应为 17 位大写字母与数字（不含 I/O/Q）"}
                         >
                           {vin}
@@ -231,23 +236,79 @@ export default async function WorkOrderDetailPage({
                       ) : (
                         <span className="inline-block w-[17ch] text-gray-400">-</span>
                       )}
-                    </div>
-                    <div>
-                      <span className="text-xs text-gray-500">车型: </span>
-                      <span className="font-medium text-gray-800">{modelInfo || "-"}</span>
-                    </div>
+                    </span>
+                    <span>
+                      <span className="text-gray-500">车型:</span>{' '}
+                      <span className="text-gray-800">{modelInfo || "-"}</span>
+                    </span>
+                    <span><span className="text-gray-500">接车里程:</span> {order.mileage_in ? `${order.mileage_in} km` : "-"}</span>
+                    <span><span className="text-gray-500">油量:</span> {order.fuel_level != null ? `${order.fuel_level}%` : "-"}</span>
                   </div>
-                  <span className="text-sm text-gray-500 shrink-0">创建于 {formatDate(order.created_at)}</span>
+                  <span className="text-gray-400 shrink-0 text-xs">创建于 {formatDate(order.created_at)}</span>
                 </div>
               );
             })()}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              <div><span className="text-gray-500">客户:</span> <span className="font-medium">{order.customers?.name}</span></div>
-              <div><span className="text-gray-500">电话:</span> {order.customers?.phone}</div>
-              <div><span className="text-gray-500">接车里程:</span> {order.mileage_in} km</div>
-              <div><span className="text-gray-500">油量:</span> {order.fuel_level}%</div>
+
+            {/* 客户信息 + 展开更多 - 同一行 */}
+            <div className="flex items-start justify-between gap-4 flex-wrap text-sm mb-2">
+              <div className="flex items-center gap-4 flex-wrap">
+                <span>
+                  <span className="text-gray-500">客户:</span>{' '}
+                  <span className="font-medium">{order.customers?.name || "-"}</span>
+                  {order.customers?.star_level && (
+                    <span className="ml-1 text-amber-500" title={`${order.customers.star_level}星客户`}>
+                      {'★'.repeat(order.customers.star_level)}
+                    </span>
+                  )}
+                </span>
+                <span><span className="text-gray-500">电话:</span> {order.customers?.phone || "-"}</span>
+                <span><span className="text-gray-500">消费总额:</span> <span className="font-medium text-gray-900">{formatCurrency(order.customers?.total_spent || 0)}</span></span>
+                <span><span className="text-gray-500">消费次数:</span> <span className="font-medium text-gray-900">{customerOrderCount ?? 0}</span></span>
+                <span><span className="text-gray-500">约定交车:</span> {order.estimated_completion_at ? formatDate(order.estimated_completion_at) : "-"}</span>
+                {order.sender_name && (
+                  <span><span className="text-gray-500">送修人:</span> <span className="font-medium">{order.sender_name}</span> {order.sender_phone && <span className="text-gray-400">({order.sender_phone})</span>}</span>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <ReceptionInfoEditor
+                  orderId={id}
+                  mileageIn={order.mileage_in}
+                  fuelLevel={order.fuel_level}
+                  estimatedCompletionAt={order.estimated_completion_at}
+                  senderName={order.sender_name}
+                  senderPhone={order.sender_phone}
+                />
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-blue-600 hover:text-blue-700 text-xs inline-block select-none">
+                    展开更多信息
+                  </summary>
+                  <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-gray-600">
+                  {order.customers?.company && (
+                    <div><span className="text-gray-400">单位:</span> {order.customers.company}</div>
+                  )}
+                  {order.vehicles?.color && (
+                    <div><span className="text-gray-400">颜色:</span> {order.vehicles.color}</div>
+                  )}
+                  {order.vehicles?.engine_no && (
+                    <div><span className="text-gray-400">发动机号:</span> {order.vehicles.engine_no}</div>
+                  )}
+                  {order.vehicles?.vehicle_models?.排量 && (
+                    <div><span className="text-gray-400">排量:</span> {order.vehicles.vehicle_models.排量}</div>
+                  )}
+                  {order.vehicles?.vehicle_models?.变速箱类型 && (
+                    <div><span className="text-gray-400">变速箱:</span> {order.vehicles.vehicle_models.变速箱类型}</div>
+                  )}
+                  {order.vehicles?.vehicle_models?.年份 && (
+                    <div><span className="text-gray-400">年份:</span> {order.vehicles.vehicle_models.年份}</div>
+                  )}
+                  {order.description && (
+                    <div className="col-span-2 md:col-span-4"><span className="text-gray-400">备注:</span> {order.description}</div>
+                  )}
+                </div>
+              </details>
             </div>
           </div>
+        </div>
 
           {/* 客户需求 */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -351,76 +412,81 @@ export default async function WorkOrderDetailPage({
                             >
                               {reqItems.map((item: any, itemIdx: number) => (
                                 <div key={item.id} className={`rounded-lg px-3 py-1 text-sm ${item.item_type === 'labor' ? 'bg-blue-50' : 'bg-gray-50'}`}>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs text-gray-400 font-mono">{req.seq}.{itemIdx + 1}</span>
-                                <span className="font-medium text-gray-900">{item.alias_name || item.name}</span>
-                                {item.alias_name && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">别名</span>
-                                )}
-                                <ItemPersonSelectors
-                                  itemId={item.id}
-                                  submitterId={item.submitter_id}
-                                  mechanicId={item.mechanic_id}
-                                  inspectorId={item.inspector_id}
-                                  profiles={profiles || []}
-                                  mechanicGroups={(mechanicGroups || []).map((g: any) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
-                                  existingMechanics={mechanicsByItem[item.id] || []}
-                                />
-                                <div className="ml-6">
-                                  <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion} />
-                                </div>
-                                {item.business_type !== 'normal' && (
-                                  <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                                    item.business_type === 'insurance' ? 'bg-purple-50 text-purple-700' :
-                                    item.business_type === 'gift' ? 'bg-pink-50 text-pink-700' :
-                                    'bg-orange-50 text-orange-700'
-                                  }`}>
-                                    {item.business_type === 'insurance' ? '保险' : item.business_type === 'gift' ? '赠送' : '返工'}
-                                  </span>
-                                )}
-                                <div className="ml-4">
-                                  <ItemFlagsToggle
+                            <div className="overflow-x-auto relative">
+                              <div className="flex items-center min-w-max">
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className="text-xs text-gray-400 font-mono">{req.seq}.{itemIdx + 1}</span>
+                                  <span className="font-medium text-gray-900">{item.alias_name || item.name}</span>
+                                  {item.alias_name && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">别名</span>
+                                  )}
+                                  <ItemPersonSelectors
                                     itemId={item.id}
-                                    isOutsourced={item.is_outsourced}
-                                    isCustomerPart={item.is_customer_part}
+                                    submitterId={item.submitter_id}
+                                    mechanicId={item.mechanic_id}
+                                    inspectorId={item.inspector_id}
+                                    profiles={profiles || []}
+                                    mechanicGroups={(mechanicGroups || []).map((g: any) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
+                                    existingMechanics={mechanicsByItem[item.id] || []}
+                                  />
+                                  <div className="ml-6">
+                                    <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion} />
+                                  </div>
+                                  {item.business_type !== 'normal' && (
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                                      item.business_type === 'insurance' ? 'bg-purple-50 text-purple-700' :
+                                      item.business_type === 'gift' ? 'bg-pink-50 text-pink-700' :
+                                      'bg-orange-50 text-orange-700'
+                                    }`}>
+                                      {item.business_type === 'insurance' ? '保险' : item.business_type === 'gift' ? '赠送' : '返工'}
+                                    </span>
+                                  )}
+                                  <div className="ml-4">
+                                    <ItemFlagsToggle
+                                      itemId={item.id}
+                                      isOutsourced={item.is_outsourced}
+                                      isCustomerPart={item.is_customer_part}
+                                      serviceItemId={item.service_item_id}
+                                    />
+                                  </div>
+                                  {knowledgeByItem[item.id]?.length > 0 ? (
+                                    <Link
+                                      href={`/knowledge/${knowledgeByItem[item.id][0].knowledge_articles.id}`}
+                                      target="_blank"
+                                      className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 ml-2"
+                                    >
+                                      维修指导
+                                    </Link>
+                                  ) : (
+                                    <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-400 ml-2">维修指导</span>
+                                  )}
+                                  <div className="ml-4">
+                                    <ItemNotesEditor itemId={item.id} description={item.description} />
+                                  </div>
+                                  <div className="ml-[10ch]">
+                                    <ItemImageUploader
+                                      itemId={item.id}
+                                      existingImages={imagesByItem[item.id]?.map((m: any) => m.storage_path) || []}
+                                      isLocked={isLocked}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="w-[10ch] flex-shrink-0" />
+                                <div className={`flex items-center gap-2 flex-shrink-0 sticky right-0 pl-2 ${item.item_type === 'labor' ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                                  <AddItemPartButton
+                                    itemId={item.id}
+                                    serviceNameId={item.service_items?.service_name_id}
+                                    itemName={item.alias_name || item.name}
+                                  />
+                                  <WorkOrderItemActions
+                                    itemId={item.id}
+                                    itemName={item.name}
+                                    aliasName={item.alias_name}
+                                    quantity={item.quantity}
+                                    unitPrice={item.unit_price}
                                     serviceItemId={item.service_item_id}
                                   />
                                 </div>
-                                {knowledgeByItem[item.id]?.length > 0 ? (
-                                  <Link
-                                    href={`/knowledge/${knowledgeByItem[item.id][0].knowledge_articles.id}`}
-                                    target="_blank"
-                                    className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 ml-2"
-                                  >
-                                    维修指导
-                                  </Link>
-                                ) : (
-                                  <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-400 ml-2">维修指导</span>
-                                )}
-                                <div className="ml-4">
-                                  <ItemNotesEditor itemId={item.id} description={item.description} />
-                                </div>
-                                <ItemImageUploader
-                                  itemId={item.id}
-                                  existingImages={imagesByItem[item.id]?.map((m: any) => m.storage_path) || []}
-                                  isLocked={isLocked}
-                                />
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <AddItemPartButton
-                                  itemId={item.id}
-                                  serviceNameId={item.service_items?.service_name_id}
-                                  itemName={item.alias_name || item.name}
-                                />
-                                <WorkOrderItemActions
-                                  itemId={item.id}
-                                  itemName={item.name}
-                                  aliasName={item.alias_name}
-                                  quantity={item.quantity}
-                                  unitPrice={item.unit_price}
-                                  serviceItemId={item.service_item_id}
-                                />
                               </div>
                             </div>
                             {/* 返工信息 */}

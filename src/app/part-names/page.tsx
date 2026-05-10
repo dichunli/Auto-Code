@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
+import * as XLSX from "xlsx";
 import { DeleteButton } from "./DeleteButton";
 import { BatchLinkDialog } from "./BatchLinkDialog";
 import { BatchMergeDialog } from "./BatchMergeDialog";
@@ -14,12 +15,24 @@ interface LinkedItem {
   name: string;
 }
 
+const importFields = [
+  { key: "配件名称", required: true },
+  { key: "分类名称", required: true },
+  { key: "单位", required: false },
+  { key: "搜索关键词", required: false },
+  { key: "自动关联车型", required: false },
+  { key: "是否耗材", required: false },
+];
+
 export default function PartNamesPage() {
   const supabase = createClient();
   const [query, setQuery] = useState("");
   const [names, setNames] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -137,6 +150,122 @@ export default function PartNamesPage() {
   function handleStartCreate() {
     setForm((prev) => ({ ...prev, name: query.trim() }));
     setShowForm(true);
+  }
+
+  function handleDownloadTemplate() {
+    const headers = importFields.map((f) => f.key);
+    const example = [
+      "机油",
+      "常规保养",
+      "升",
+      "机油 润滑油 发动机油",
+      "否",
+      "否",
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "配件名称导入模板");
+    XLSX.writeFile(wb, "配件名称导入模板.xlsx");
+  }
+
+  function parseBool(value: any): boolean {
+    if (value === undefined || value === null || value === "") return false;
+    const s = String(value).trim().toLowerCase();
+    return s === "是" || s === "yes" || s === "true" || s === "1" || s === "y";
+  }
+
+  async function handleImportFile(file: File) {
+    setImporting(true);
+    setImportMsg("正在读取文件...");
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if (rows.length < 2) {
+        setImportMsg("文件中没有数据");
+        setImporting(false);
+        return;
+      }
+
+      const headers: string[] = rows[0];
+      const dataRows = rows.slice(1);
+
+      setImportMsg("正在加载分类数据...");
+      const { data: categories } = await supabase.from("part_categories").select("id, name");
+      const categoryMap = new Map((categories || []).map((c: any) => [c.name, c.id]));
+
+      const records: any[] = [];
+      const errors: string[] = [];
+
+      for (let i = 0; i < dataRows.length; i++) {
+        const row = dataRows[i];
+        const record: any = {};
+        for (let j = 0; j < headers.length; j++) {
+          const key = headers[j];
+          let value = row[j];
+          if (value === undefined || value === "") value = null;
+          record[key] = value;
+        }
+
+        const rowNum = i + 2;
+        if (!record["配件名称"]) {
+          errors.push(`第 ${rowNum} 行: 配件名称不能为空`);
+          continue;
+        }
+        if (!record["分类名称"]) {
+          errors.push(`第 ${rowNum} 行: 分类名称不能为空`);
+          continue;
+        }
+
+        const categoryId = categoryMap.get(record["分类名称"]);
+        if (!categoryId) {
+          errors.push(`第 ${rowNum} 行: 分类"${record["分类名称"]}"不存在，请先创建该分类`);
+          continue;
+        }
+
+        records.push({
+          name: String(record["配件名称"]).trim(),
+          category_id: categoryId,
+          unit: record["单位"] ? String(record["单位"]).trim() : "件",
+          search_keywords: record["搜索关键词"] ? String(record["搜索关键词"]).trim() : null,
+          auto_link_vehicle_model: parseBool(record["自动关联车型"]),
+          is_consumable: parseBool(record["是否耗材"]),
+        });
+      }
+
+      if (records.length === 0) {
+        setImportMsg("没有有效数据可导入\n" + errors.slice(0, 5).join("\n"));
+        setImporting(false);
+        return;
+      }
+
+      setImportMsg(`验证通过 ${records.length} 条，开始导入...`);
+      const batchSize = 100;
+      let inserted = 0;
+      for (let i = 0; i < records.length; i += batchSize) {
+        const batch = records.slice(i, i + batchSize);
+        const { error } = await supabase.from("part_names").insert(batch);
+        if (error) {
+          setImportMsg(`第 ${i + 1} 批导入失败: ${error.message}`);
+          setImporting(false);
+          return;
+        }
+        inserted += batch.length;
+        setImportMsg(`已导入 ${inserted}/${records.length} 条...`);
+      }
+
+      let msg = `导入完成：新增 ${inserted} 条`;
+      if (errors.length > 0) {
+        msg += `，跳过 ${errors.length} 条（有错误）`;
+      }
+      setImportMsg(msg);
+      loadNames(query);
+    } catch (err: any) {
+      setImportMsg("导入出错: " + (err.message || String(err)));
+    }
+    setImporting(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function handleCategoryChange(categoryId: string) {
@@ -330,9 +459,9 @@ export default function PartNamesPage() {
     <div>
       <PageHeader title="配件名称库" description="管理标准配件名称，新建配件时自动带入" />
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
-          className="w-1/4 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-1/4 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="搜索配件名称..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -344,6 +473,30 @@ export default function PartNamesPage() {
           >
             清空
           </button>
+        )}
+        <button
+          type="button"
+          onClick={handleDownloadTemplate}
+          className="px-3 py-2 text-sm font-medium text-blue-600 bg-white border border-blue-300 rounded-lg hover:bg-blue-50"
+        >
+          下载导入模板
+        </button>
+        <label className="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 cursor-pointer disabled:opacity-50">
+          {importing ? "导入中..." : "批量导入"}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            disabled={importing}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImportFile(file);
+            }}
+          />
+        </label>
+        {importMsg && (
+          <span className="text-sm text-gray-600">{importMsg}</span>
         )}
       </div>
 

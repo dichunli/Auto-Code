@@ -12,7 +12,7 @@ export default async function OperationLogsPage({
 
   let query = supabase
     .from("operation_logs")
-    .select("id, user_name, action_type, target_table, target_name, description, old_values, new_values, created_at")
+    .select("id, user_name, action_type, target_table, target_name, description, old_values, new_values, ip_address, created_at")
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -114,6 +114,7 @@ export default async function OperationLogsPage({
                 <th className="px-4 py-3 text-left font-medium text-gray-500">操作类型</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">对象</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">描述</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">IP地址</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">变更</th>
               </tr>
             </thead>
@@ -131,6 +132,7 @@ export default async function OperationLogsPage({
                     {log.target_name || log.target_table || "-"}
                   </td>
                   <td className="px-4 py-3 text-gray-900 max-w-md truncate">{log.description}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{log.ip_address || "-"}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs max-w-xs truncate">
                     {log.old_values || log.new_values ? (
                       <span title={JSON.stringify({ 前: log.old_values, 后: log.new_values }, null, 2)}>
@@ -144,7 +146,7 @@ export default async function OperationLogsPage({
               ))}
               {(!logs || logs.length === 0) && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                     暂无操作日志
                   </td>
                 </tr>

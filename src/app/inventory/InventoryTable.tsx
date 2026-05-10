@@ -3,6 +3,8 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import JsBarcode from "jsbarcode";
+import * as XLSX from "xlsx";
+import { createClient } from "@/lib/supabase/client";
 import DeletePartButton from "./DeletePartButton";
 import { formatCurrency } from "@/lib/utils";
 
@@ -45,12 +47,32 @@ function computeStickyLeft(columns: ColumnDef[], targetKey: string): number {
   return left;
 }
 
+const importFields = [
+  { key: "配件名称", required: true },
+  { key: "配件编号", required: true },
+  { key: "分类名称", required: false },
+  { key: "品牌名称", required: false },
+  { key: "规格名称", required: false },
+  { key: "单位", required: false },
+  { key: "库存数量", required: false },
+  { key: "最低库存", required: false },
+  { key: "成本价", required: false },
+  { key: "销售价", required: false },
+  { key: "供应商名称", required: false },
+  { key: "存放位置", required: false },
+  { key: "备注", required: false },
+];
+
 export default function InventoryTable({ items }: { items: any[] }) {
+  const supabase = createClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState("");
 
   const [columns, setColumns] = useState<ColumnDef[]>(() => {
     if (typeof window === "undefined") return DEFAULT_COLUMNS;
@@ -153,6 +175,278 @@ export default function InventoryTable({ items }: { items: any[] }) {
     } else {
       setSelectedIds(new Set(items.map((i) => i.id)));
     }
+  }
+
+  function handleDownloadTemplate() {
+    const headers = importFields.map((f) => f.key);
+    const example = [
+      "机油滤芯",
+      "LF-001",
+      "常规保养",
+      "原厂",
+      "标准",
+      "个",
+      50,
+      10,
+      45,
+      68,
+      "某某汽配",
+      "A区-01架",
+      "适用于大多数日系车",
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "配件信息导入模板");
+    XLSX.writeFile(wb, "配件信息导入模板.xlsx");
+  }
+
+  async function handleImportFile(file: File) {
+    setImporting(true);
+    setImportMsg("正在读取文件...");
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if (rows.length < 2) {
+        setImportMsg("文件中没有数据");
+        setImporting(false);
+        return;
+      }
+
+      const headers: string[] = rows[0];
+      const dataRows = rows.slice(1);
+
+      setImportMsg("正在加载关联数据...");
+      const [
+        { data: categories },
+        { data: partNames },
+        { data: brands },
+        { data: specs },
+        { data: suppliers },
+      ] = await Promise.all([
+        supabase.from("part_categories").select("id, name"),
+        supabase.from("part_names").select("id, name"),
+        supabase.from("part_brands").select("id, name"),
+        supabase.from("part_specifications").select("id, name"),
+        supabase.from("suppliers").select("id, name"),
+      ]);
+
+      const categoryMap = new Map((categories || []).map((c: any) => [c.name, c.id]));
+      const partNameMap = new Map((partNames || []).map((p: any) => [p.name, p.id]));
+      const brandMap = new Map((brands || []).map((b: any) => [b.name, b.id]));
+      const specMap = new Map((specs || []).map((s: any) => [s.name, s.id]));
+      const supplierMap = new Map((suppliers || []).map((s: any) => [s.name, s.id]));
+
+      const newPartNames: { name: string }[] = [];
+      const newBrands: { name: string }[] = [];
+      const newSpecs: { name: string }[] = [];
+
+      const records: any[] = [];
+      const errors: string[] = [];
+
+      for (let i = 0; i < dataRows.length; i++) {
+        const row = dataRows[i];
+        const record: any = {};
+        for (let j = 0; j < headers.length; j++) {
+          const key = headers[j];
+          let value = row[j];
+          if (value === undefined || value === "") value = null;
+          record[key] = value;
+        }
+
+        const rowNum = i + 2;
+        if (!record["配件名称"]) {
+          errors.push(`第 ${rowNum} 行: 配件名称不能为空`);
+          continue;
+        }
+        if (!record["配件编号"]) {
+          errors.push(`第 ${rowNum} 行: 配件编号不能为空`);
+          continue;
+        }
+
+        const nameStr = String(record["配件名称"]).trim();
+        const pnStr = String(record["配件编号"]).trim();
+
+        let partNameId = partNameMap.get(nameStr);
+        if (!partNameId) {
+          if (!newPartNames.some((p) => p.name === nameStr)) {
+            newPartNames.push({ name: nameStr });
+          }
+        }
+
+        let brandId: string | null = null;
+        if (record["品牌名称"]) {
+          const brandName = String(record["品牌名称"]).trim();
+          brandId = brandMap.get(brandName) || null;
+          if (!brandId && !newBrands.some((b) => b.name === brandName)) {
+            newBrands.push({ name: brandName });
+          }
+        }
+
+        let specId: string | null = null;
+        if (record["规格名称"]) {
+          const specName = String(record["规格名称"]).trim();
+          specId = specMap.get(specName) || null;
+          if (!specId && !newSpecs.some((s) => s.name === specName)) {
+            newSpecs.push({ name: specName });
+          }
+        }
+
+        let categoryId: string | null = null;
+        if (record["分类名称"]) {
+          categoryId = categoryMap.get(String(record["分类名称"]).trim()) || null;
+          if (!categoryId) {
+            errors.push(`第 ${rowNum} 行: 分类"${record["分类名称"]}"不存在，请先创建`);
+            continue;
+          }
+        }
+
+        let supplierId: string | null = null;
+        if (record["供应商名称"]) {
+          supplierId = supplierMap.get(String(record["供应商名称"]).trim()) || null;
+        }
+
+        records.push({
+          rowNum,
+          name: nameStr,
+          part_number: pnStr,
+          part_name_id: partNameId || nameStr,
+          category_id: categoryId,
+          brand_id: brandId,
+          brand_name: record["品牌名称"] ? String(record["品牌名称"]).trim() : null,
+          spec_id: specId,
+          spec_name: record["规格名称"] ? String(record["规格名称"]).trim() : null,
+          unit: record["单位"] ? String(record["单位"]).trim() : "件",
+          quantity: record["库存数量"] ? parseInt(record["库存数量"]) : 0,
+          min_stock: record["最低库存"] ? parseInt(record["最低库存"]) : 10,
+          unit_cost: record["成本价"] ? parseFloat(record["成本价"]) : null,
+          unit_price: record["销售价"] ? parseFloat(record["销售价"]) : null,
+          supplier_id: supplierId,
+          location: record["存放位置"] ? String(record["存放位置"]).trim() : null,
+          notes: record["备注"] ? String(record["备注"]).trim() : null,
+        });
+      }
+
+      if (records.length === 0) {
+        setImportMsg("没有有效数据可导入\n" + errors.slice(0, 5).join("\n"));
+        setImporting(false);
+        return;
+      }
+
+      setImportMsg("正在创建缺失的关联数据...");
+
+      // 创建缺失的配件名称
+      if (newPartNames.length > 0) {
+        const { data: insertedNames, error: nameErr } = await supabase
+          .from("part_names")
+          .insert(newPartNames)
+          .select("id, name");
+        if (nameErr) {
+          setImportMsg("创建配件名称失败: " + nameErr.message);
+          setImporting(false);
+          return;
+        }
+        (insertedNames || []).forEach((p: any) => partNameMap.set(p.name, p.id));
+      }
+
+      // 创建缺失的品牌
+      if (newBrands.length > 0) {
+        const { data: insertedBrands, error: brandErr } = await supabase
+          .from("part_brands")
+          .insert(newBrands)
+          .select("id, name");
+        if (brandErr) {
+          setImportMsg("创建品牌失败: " + brandErr.message);
+          setImporting(false);
+          return;
+        }
+        (insertedBrands || []).forEach((b: any) => brandMap.set(b.name, b.id));
+      }
+
+      // 创建缺失的规格
+      if (newSpecs.length > 0) {
+        const { data: insertedSpecs, error: specErr } = await supabase
+          .from("part_specifications")
+          .insert(newSpecs)
+          .select("id, name");
+        if (specErr) {
+          setImportMsg("创建规格失败: " + specErr.message);
+          setImporting(false);
+          return;
+        }
+        (insertedSpecs || []).forEach((s: any) => specMap.set(s.name, s.id));
+      }
+
+      // 构建最终插入数据
+      const insertData = records.map((r) => {
+        const data: any = {
+          name: r.name,
+          part_number: r.part_number,
+          part_name_id: typeof r.part_name_id === "string" && r.part_name_id.length === 36
+            ? r.part_name_id
+            : partNameMap.get(r.part_name_id),
+          category_id: r.category_id,
+          unit: r.unit,
+          quantity: r.quantity,
+          min_stock: r.min_stock,
+          unit_cost: r.unit_cost,
+          unit_price: r.unit_price,
+          supplier_id: r.supplier_id,
+          location: r.location,
+          notes: r.notes,
+        };
+        if (r.brand_name) {
+          data.brand_id = brandMap.get(r.brand_name) || null;
+        }
+        return data;
+      });
+
+      setImportMsg(`验证通过 ${insertData.length} 条，开始导入...`);
+      const batchSize = 50;
+      let inserted = 0;
+      const insertedPartIds: string[] = [];
+
+      for (let i = 0; i < insertData.length; i += batchSize) {
+        const batch = insertData.slice(i, i + batchSize);
+        const { data: insertedParts, error } = await supabase
+          .from("parts")
+          .insert(batch)
+          .select("id");
+        if (error) {
+          setImportMsg(`第 ${i + 1} 批导入失败: ${error.message}`);
+          setImporting(false);
+          return;
+        }
+        (insertedParts || []).forEach((p: any) => insertedPartIds.push(p.id));
+        inserted += batch.length;
+        setImportMsg(`已导入 ${inserted}/${insertData.length} 条...`);
+      }
+
+      // 创建规格关联
+      const specLinks = records
+        .filter((r, idx) => r.spec_name && insertedPartIds[idx])
+        .map((r, idx) => ({
+          part_id: insertedPartIds[idx],
+          specification_id: specMap.get(r.spec_name),
+        }))
+        .filter((l) => l.specification_id);
+
+      if (specLinks.length > 0) {
+        await supabase.from("parts_specifications").insert(specLinks);
+      }
+
+      let msg = `导入完成：新增 ${inserted} 条`;
+      if (errors.length > 0) {
+        msg += `，跳过 ${errors.length} 条（有错误）`;
+      }
+      setImportMsg(msg);
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: any) {
+      setImportMsg("导入出错: " + (err.message || String(err)));
+    }
+    setImporting(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function printSingle(part: any) {
@@ -313,8 +607,8 @@ export default function InventoryTable({ items }: { items: any[] }) {
 
   return (
     <div>
-      {/* 搜索框 + 列设置 */}
-      <div className="mb-4 flex items-center gap-3">
+      {/* 搜索框 + 列设置 + 导入 */}
+      <div className="mb-4 flex items-center gap-3 flex-wrap">
         <input
           type="text"
           placeholder="搜索配件编号、名称、条形码"
@@ -322,6 +616,30 @@ export default function InventoryTable({ items }: { items: any[] }) {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
+        <button
+          type="button"
+          onClick={handleDownloadTemplate}
+          className="px-3 py-2 text-sm font-medium text-blue-600 bg-white border border-blue-300 rounded-lg hover:bg-blue-50"
+        >
+          下载导入模板
+        </button>
+        <label className="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 cursor-pointer disabled:opacity-50">
+          {importing ? "导入中..." : "批量导入"}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            disabled={importing}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImportFile(file);
+            }}
+          />
+        </label>
+        {importMsg && (
+          <span className="text-sm text-gray-600">{importMsg}</span>
+        )}
         <div className="relative" ref={settingsRef}>
           <button
             type="button"

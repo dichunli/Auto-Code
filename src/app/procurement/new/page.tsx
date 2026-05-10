@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -20,18 +20,44 @@ interface LineItem {
   isNewPart: boolean;
 }
 
+interface Supplier {
+  id: string;
+  name: string;
+  recommendation_level: number;
+  vehicleMakers: string[];
+  vehicleBrands: string[];
+  vehicleSeries: string[];
+  categoryNames: string[];
+  partNameList: string[];
+  brandNames: string[];
+}
+
+interface PendingBranch {
+  id: string;
+  name: string;
+  part_number: string;
+  brand: string;
+  specification: string;
+  quantity: number;
+  plate_number: string;
+  vehicle_maker: string;
+  vehicle_brand: string;
+  vehicle_series: string;
+}
+
 export default function NewPurchaseOrderPage() {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [parts, setParts] = useState<any[]>([]);
   const [partNames, setPartNames] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
-  const [pendingBranches, setPendingBranches] = useState<any[]>([]);
+  const [pendingBranches, setPendingBranches] = useState<PendingBranch[]>([]);
 
   const [supplierId, setSupplierId] = useState("");
   const [notes, setNotes] = useState("");
+  const [selectedBranchId, setSelectedBranchId] = useState("");
   const [items, setItems] = useState<LineItem[]>([
     {
       id: crypto.randomUUID(),
@@ -50,20 +76,119 @@ export default function NewPurchaseOrderPage() {
   ]);
 
   useEffect(() => {
-    supabase.from("suppliers").select("*").order("name").then(({ data }) => setSuppliers(data || []));
+    // 加载供应商（带关联信息）
+    async function loadSuppliers() {
+      const { data } = await supabase.from("suppliers").select("*").order("name");
+      const baseList = (data || []).map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        recommendation_level: s.recommendation_level || 0,
+        vehicleMakers: [] as string[],
+        vehicleBrands: [] as string[],
+        vehicleSeries: [] as string[],
+        categoryNames: [] as string[],
+        partNameList: [] as string[],
+        brandNames: [] as string[],
+      }));
+
+      // 尝试加载关联信息（兼容未迁移的情况）
+      const map = new Map<string, Supplier>();
+      baseList.forEach((s) => map.set(s.id, s));
+
+      try {
+        const [{ data: vData }, { data: catData }, { data: pnData }, { data: bData }] = await Promise.all([
+          supabase.from("supplier_vehicle_models").select("supplier_id, vehicle_models(厂商,品牌,车系)"),
+          supabase.from("supplier_part_categories").select("supplier_id, part_categories(name)"),
+          supabase.from("supplier_part_names").select("supplier_id, part_names(name)"),
+          supabase.from("supplier_part_brands").select("supplier_id, part_brands(name)"),
+        ]);
+
+        (vData || []).forEach((r: any) => {
+          const s = map.get(r.supplier_id);
+          const vm = r.vehicle_models;
+          if (s && vm) {
+            if (vm.厂商 && !s.vehicleMakers.includes(vm.厂商)) s.vehicleMakers.push(vm.厂商);
+            if (vm.品牌 && !s.vehicleBrands.includes(vm.品牌)) s.vehicleBrands.push(vm.品牌);
+            if (vm.车系 && !s.vehicleSeries.includes(vm.车系)) s.vehicleSeries.push(vm.车系);
+          }
+        });
+        (catData || []).forEach((r: any) => {
+          const s = map.get(r.supplier_id);
+          const name = r.part_categories?.name;
+          if (s && name && !s.categoryNames.includes(name)) s.categoryNames.push(name);
+        });
+        (pnData || []).forEach((r: any) => {
+          const s = map.get(r.supplier_id);
+          const name = r.part_names?.name;
+          if (s && name && !s.partNameList.includes(name)) s.partNameList.push(name);
+        });
+        (bData || []).forEach((r: any) => {
+          const s = map.get(r.supplier_id);
+          const name = r.part_brands?.name;
+          if (s && name && !s.brandNames.includes(name)) s.brandNames.push(name);
+        });
+      } catch {
+        // 忽略关联表查询错误
+      }
+
+      setSuppliers(baseList);
+    }
+
+    loadSuppliers();
+
     supabase.from("parts").select("*, part_names(name, unit)").order("name").then(({ data }) => setParts(data || []));
     supabase.from("part_names").select("*").order("name").then(({ data }) => setPartNames(data || []));
     supabase.from("part_brands").select("*").order("name").then(({ data }) => setBrands(data || []));
 
-    // 获取待采购的工单配件分支
+    // 获取待采购的工单配件分支（含车辆厂商、品牌、车系）
     supabase
       .from("work_order_item_parts")
-      .select("id, name, part_number, brand, specification, quantity, work_order_items!inner(work_orders!inner(plate_number))")
+      .select("id, name, part_number, brand, specification, quantity, work_order_items!inner(work_orders!inner(plate_number, vehicles(vehicle_models(厂商,品牌,车系))))")
       .is("part_id", null)
       .then(({ data }) => {
-        setPendingBranches(data || []);
+        const branches: PendingBranch[] = (data || []).map((b: any) => {
+          const vm = b.work_order_items?.work_orders?.vehicles?.vehicle_models;
+          return {
+            id: b.id,
+            name: b.name,
+            part_number: b.part_number,
+            brand: b.brand,
+            specification: b.specification,
+            quantity: b.quantity,
+            plate_number: b.work_order_items?.work_orders?.plate_number || "",
+            vehicle_maker: vm?.厂商 || "",
+            vehicle_brand: vm?.品牌 || "",
+            vehicle_series: vm?.车系 || "",
+          };
+        });
+        setPendingBranches(branches);
       });
   }, [supabase]);
+
+  // 根据所选配件分支的车辆信息排序供应商
+  // 匹配规则：供应商关联的车型中，厂商/品牌/车系任意一项匹配即可
+  const sortedSuppliers = useMemo(() => {
+    if (!selectedBranchId) return suppliers;
+    const selectedBranch = pendingBranches.find((b) => b.id === selectedBranchId);
+    if (!selectedBranch) return suppliers;
+
+    const vm = selectedBranch;
+
+    return [...suppliers].sort((a, b) => {
+      const aMatch =
+        (vm.vehicle_maker && a.vehicleMakers.includes(vm.vehicle_maker)) ||
+        (vm.vehicle_brand && a.vehicleBrands.includes(vm.vehicle_brand)) ||
+        (vm.vehicle_series && a.vehicleSeries.includes(vm.vehicle_series));
+      const bMatch =
+        (vm.vehicle_maker && b.vehicleMakers.includes(vm.vehicle_maker)) ||
+        (vm.vehicle_brand && b.vehicleBrands.includes(vm.vehicle_brand)) ||
+        (vm.vehicle_series && b.vehicleSeries.includes(vm.vehicle_series));
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      // 都匹配或都不匹配时，按推荐等级降序
+      return b.recommendation_level - a.recommendation_level;
+    });
+  }, [suppliers, selectedBranchId, pendingBranches]);
 
   function addItem() {
     setItems((prev) => [
@@ -112,6 +237,7 @@ export default function NewPurchaseOrderPage() {
     const branch = pendingBranches.find((b) => b.id === branchId);
     if (!branch) {
       updateItem(itemId, { work_order_item_part_id: "", name: "", part_number: "", brand: "", specification: "" });
+      setSelectedBranchId("");
       return;
     }
     updateItem(itemId, {
@@ -122,6 +248,7 @@ export default function NewPurchaseOrderPage() {
       specification: branch.specification || "",
       quantity: String(branch.quantity || 1),
     });
+    setSelectedBranchId(branchId);
   }
 
   const totalAmount = items.reduce((sum, item) => {
@@ -144,7 +271,6 @@ export default function NewPurchaseOrderPage() {
     setLoading(true);
 
     try {
-      // 生成订单号：CG-YYYYMMDD-XXXX
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       const randomStr = Math.floor(1000 + Math.random() * 9000);
       const orderNo = `CG-${dateStr}-${randomStr}`;
@@ -189,6 +315,8 @@ export default function NewPurchaseOrderPage() {
     }
   }
 
+  const selectedSupplier = suppliers.find((s) => s.id === supplierId);
+
   return (
     <div>
       <PageHeader title="新建采购订单" />
@@ -204,12 +332,72 @@ export default function NewPurchaseOrderPage() {
               onChange={(e) => setSupplierId(e.target.value)}
             >
               <option value="">请选择</option>
-              {suppliers.map((s) => (
+              {sortedSuppliers.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
+                  {s.recommendation_level > 0 ? ` ${"⭐".repeat(s.recommendation_level)}` : ""}
                 </option>
               ))}
             </select>
+
+            {/* 供应商详情 */}
+            {selectedSupplier && (
+              <div className="mt-2 p-3 bg-gray-50 rounded-lg text-xs space-y-1">
+                {selectedSupplier.recommendation_level > 0 && (
+                  <div>
+                    <span className="text-gray-500">推荐等级：</span>
+                    <span className="text-amber-500">{"⭐".repeat(selectedSupplier.recommendation_level)}</span>
+                  </div>
+                )}
+                {(selectedSupplier.vehicleMakers.length + selectedSupplier.vehicleBrands.length + selectedSupplier.vehicleSeries.length) > 0 && (
+                  <div>
+                    <span className="text-gray-500">关联车型：</span>
+                    <span className="text-gray-700">
+                      {[...selectedSupplier.vehicleMakers, ...selectedSupplier.vehicleBrands, ...selectedSupplier.vehicleSeries].join("、")}
+                    </span>
+                  </div>
+                )}
+                {selectedSupplier.categoryNames.length > 0 && (
+                  <div>
+                    <span className="text-gray-500">配件分类：</span>
+                    <span className="text-gray-700">{selectedSupplier.categoryNames.join("、")}</span>
+                  </div>
+                )}
+                {selectedSupplier.brandNames.length > 0 && (
+                  <div>
+                    <span className="text-gray-500">配件品牌：</span>
+                    <span className="text-gray-700">{selectedSupplier.brandNames.join("、")}</span>
+                  </div>
+                )}
+                {selectedSupplier.vehicleMakers.length === 0 && selectedSupplier.vehicleBrands.length === 0 && selectedSupplier.vehicleSeries.length === 0 && selectedSupplier.categoryNames.length === 0 && selectedSupplier.brandNames.length === 0 && selectedSupplier.recommendation_level === 0 && (
+                  <span className="text-gray-400">暂无扩展信息</span>
+                )}
+              </div>
+            )}
+
+            {/* 智能排序提示 */}
+            {selectedBranchId && (
+              <div className="mt-2 text-xs text-blue-600">
+                {(() => {
+                  const branch = pendingBranches.find((b) => b.id === selectedBranchId);
+                  if (!branch) return "已按推荐等级排序供应商";
+                  const targets = [branch.vehicle_maker, branch.vehicle_brand, branch.vehicle_series].filter(Boolean);
+                  if (targets.length === 0) return "已按推荐等级排序供应商";
+
+                  const matchCount = suppliers.filter((s) => {
+                    if (branch.vehicle_maker && s.vehicleMakers.includes(branch.vehicle_maker)) return true;
+                    if (branch.vehicle_brand && s.vehicleBrands.includes(branch.vehicle_brand)) return true;
+                    if (branch.vehicle_series && s.vehicleSeries.includes(branch.vehicle_series)) return true;
+                    return false;
+                  }).length;
+
+                  if (matchCount > 0) {
+                    return `厂商/品牌/车系匹配「${targets.join("/")}」的供应商优先展示（${matchCount}家）`;
+                  }
+                  return `当前无供应商匹配「${targets.join("/")}」，已按推荐等级排序`;
+                })()}
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">备注</label>
@@ -262,7 +450,10 @@ export default function NewPurchaseOrderPage() {
                       <option value="">不关联工单</option>
                       {pendingBranches.map((b) => (
                         <option key={b.id} value={b.id}>
-                          {b.name} ({b.part_number || "无编号"}) - {b.work_order_items?.work_orders?.plate_number || "无车牌"}
+                          {b.name} ({b.part_number || "无编号"}) - {b.plate_number || "无车牌"}
+                          {[b.vehicle_maker, b.vehicle_brand, b.vehicle_series].filter(Boolean).length > 0
+                            ? ` [${[b.vehicle_maker, b.vehicle_brand, b.vehicle_series].filter(Boolean).join(" ")}]`
+                            : ""}
                         </option>
                       ))}
                     </select>

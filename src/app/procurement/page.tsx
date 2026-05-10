@@ -48,6 +48,18 @@ export default async function ProcurementPage() {
         >
           入库登记
         </Link>
+        <Link
+          href="/supplier-returns"
+          className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          退货记录
+        </Link>
+        <Link
+          href="/supplier-transactions"
+          className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          往来款项
+        </Link>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
