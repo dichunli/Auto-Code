@@ -1,16 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { AddWorkOrderItemPartModal } from "./AddWorkOrderItemPartModal";
 
 interface Props {
   itemId: string;
   serviceNameId?: string | null;
   itemName: string;
+  vehicleModelId?: string | null;
 }
 
-export default function AddItemPartButton({ itemId, serviceNameId, itemName }: Props) {
+export default function AddItemPartButton({ itemId, serviceNameId, itemName, vehicleModelId }: Props) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
 
   return (
     <>
@@ -27,10 +30,11 @@ export default function AddItemPartButton({ itemId, serviceNameId, itemName }: P
           itemId={itemId}
           serviceNameId={serviceNameId}
           itemName={itemName}
+          vehicleModelId={vehicleModelId}
           onClose={() => setOpen(false)}
           onSuccess={() => {
             setOpen(false);
-            window.location.reload();
+            router.refresh();
           }}
         />
       )}

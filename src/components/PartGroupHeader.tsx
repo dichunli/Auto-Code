@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/imageCompress";
+import { formatCurrency } from "@/lib/utils";
+import { PartPickerModal } from "./PartPickerModal";
 
 interface Props {
   seqLabel: string;
@@ -27,6 +29,15 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   const [nameSearching, setNameSearching] = useState(false);
   const nameTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // 配件选择器弹窗
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // 已选库存配件（编辑弹窗中）
+  const [selectedRealPart, setSelectedRealPart] = useState<any | null>(null);
+
+  // 待替换的配件名称（延迟到保存时执行）
+  const [pendingName, setPendingName] = useState<any | null>(null);
+
   const unit = parts[0]?.unit || parts[0]?.part_names?.unit || parts[0]?.parts?.unit || "件";
   const category = parts[0]?.part_names?.part_categories?.name || parts[0]?.parts?.part_categories?.name;
 
@@ -36,16 +47,57 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   const [notes, setNotes] = useState(parts[0]?.notes || "");
   const [images, setImages] = useState<string[]>(existingImages);
 
+  // 实时跟踪分支字段变化（用于销售价/数量修改时的即时刷新）
+  const [liveParts, setLiveParts] = useState(parts);
   useEffect(() => {
-    setImages(existingImages);
-  }, [existingImages]);
+    setLiveParts(parts);
+  }, [parts]);
+
+  useEffect(() => {
+    function handleUpdate(e: Event) {
+      const detail = (e as CustomEvent).detail as {
+        itemId: string;
+        partId: string;
+        unit_price?: number;
+        quantity?: number;
+        is_selected?: boolean;
+      };
+      if (!detail) return;
+      const partIds = parts.map((p) => p.id);
+      if (!partIds.includes(detail.partId)) return;
+      setLiveParts((prev) =>
+        prev.map((p) =>
+          p.id === detail.partId
+            ? {
+                ...p,
+                unit_price: detail.unit_price !== undefined ? detail.unit_price : p.unit_price,
+                quantity: detail.quantity !== undefined ? detail.quantity : p.quantity,
+                is_selected: detail.is_selected !== undefined ? detail.is_selected : p.is_selected,
+              }
+            : p
+        )
+      );
+    }
+    window.addEventListener("wo-part-update", handleUpdate as EventListener);
+    return () => window.removeEventListener("wo-part-update", handleUpdate as EventListener);
+  }, [parts]);
+
+  // 该配件组下所有分支的单价与小计（使用 liveParts 实现实时刷新）
+  const { unitPrice, subtotal } = useMemo(() => {
+    const total = liveParts.reduce((sum, p) => sum + ((p.quantity || 0) * (p.unit_price || 0)), 0);
+    const prices = liveParts.map((p) => p.unit_price).filter((v): v is number => v != null && v > 0);
+    const price = prices.length > 0 ? prices[0] : 0;
+    return { unitPrice: price, subtotal: total };
+  }, [liveParts]);
 
   useEffect(() => {
     if (showModal) {
-      setNameQuery(name);
+      setNameQuery("");
       setNameResults([]);
+      setPendingName(null);
+      setSelectedRealPart(parts[0]?.parts || null);
     }
-  }, [showModal, name]);
+  }, [showModal, name, parts]);
 
   async function handleAddBranch() {
     if (!itemId || !parts[0]) return;
@@ -193,26 +245,87 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     };
   }, [nameQuery, supabase]);
 
-  async function handleReplacePartName(selected: any) {
-    if (!parts[0]) return;
-    setSaving(true);
-    const ids = parts.map((p) => p.id).filter(Boolean);
-    const { error } = await supabase
-      .from("work_order_item_parts")
-      .update({
-        part_name_id: selected.id,
-        name: selected.name,
-        unit: selected.unit || parts[0].unit,
-      })
-      .in("id", ids);
-    setSaving(false);
-    if (error) {
-      alert("替换配件名称失败: " + error.message);
-      return;
-    }
-    setShowModal(false);
+  // 选择待替换的配件名称（延迟到保存时执行）
+  function handleSelectPendingName(selected: any) {
+    setPendingName(selected);
     setNameQuery("");
     setNameResults([]);
+    setSelectedRealPart(null); // 名称变更后清空已选库存配件
+  }
+
+  // 取消待替换
+  function handleCancelPendingName() {
+    setPendingName(null);
+  }
+
+  // 处理从配件选择器返回的配件
+  function handlePickerConfirm(partsList: any[]) {
+    if (partsList.length === 0) return;
+    const part = partsList[0];
+    setSelectedRealPart(part);
+    setPickerOpen(false);
+  }
+
+  // 保存编辑（统一处理名称替换和库存关联）
+  async function handleSaveEdit() {
+    if (!parts[0]) return;
+    setSaving(true);
+
+    const ids = parts.map((p) => p.id).filter(Boolean);
+
+    // 1. 如果有待替换的名称，先执行名称替换，同时清空所有分支的旧库存关联
+    if (pendingName) {
+      const { error } = await supabase
+        .from("work_order_item_parts")
+        .update({
+          part_name_id: pendingName.id,
+          name: pendingName.name,
+          unit: pendingName.unit || parts[0].unit,
+          part_id: null,
+          part_number: "",
+          brand: "",
+          specification: "",
+          unit_cost: null,
+          unit_price: null,
+        })
+        .in("id", ids);
+      if (error) {
+        setSaving(false);
+        alert("替换配件名称失败: " + error.message);
+        return;
+      }
+    }
+
+    // 2. 如果选择了库存配件，更新所有分支的 part_id 及相关信息
+    if (selectedRealPart) {
+      const updateData: any = {
+        part_id: selectedRealPart.id,
+        part_name_id: selectedRealPart.part_name_id,
+        part_number: selectedRealPart.part_number || "",
+        name: selectedRealPart.name,
+        unit: selectedRealPart.unit || "件",
+        brand: selectedRealPart.part_brands?.name || "",
+        specification: selectedRealPart.specification_text || selectedRealPart.part_specifications?.name || "",
+        unit_cost: selectedRealPart.unit_cost,
+        unit_price: selectedRealPart.unit_price,
+      };
+
+      const { error } = await supabase
+        .from("work_order_item_parts")
+        .update(updateData)
+        .in("id", ids);
+
+      if (error) {
+        setSaving(false);
+        alert("关联库存配件失败: " + error.message);
+        return;
+      }
+    }
+
+    setSaving(false);
+    setShowModal(false);
+    setPendingName(null);
+    setSelectedRealPart(null);
     router.refresh();
   }
 
@@ -256,6 +369,13 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
 
           {category && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0">{category}</span>
+          )}
+
+          {parts.length > 0 && (
+            <>
+              <span className="text-xs text-gray-500 shrink-0">单价:{formatCurrency(unitPrice)}</span>
+              <span className="text-xs text-gray-700 font-medium shrink-0">小计:{formatCurrency(subtotal)}</span>
+            </>
           )}
 
           {/* 右侧操作区：用 ml-auto 推到右边并对齐 */}
@@ -339,7 +459,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
               onClick={() => setShowModal(true)}
               disabled={saving}
               className="text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
-              title="替换配件名称"
+              title="编辑配件"
             >
               编辑
             </button>
@@ -356,63 +476,189 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         )}
       </div>
 
-      {/* 替换配件名称弹窗 */}
+      {/* 编辑弹窗 — 左右分栏 */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => { setShowModal(false); setNameResults([]); }} />
-          <div className="relative bg-white rounded-xl border border-gray-200 p-6 w-full max-w-md shadow-lg">
-            <h3 className="text-base font-semibold text-gray-900 mb-4">替换配件名称</h3>
-            <p className="text-xs text-gray-500 mb-3">
-              当前配件：<span className="font-medium text-gray-800">{name}</span>
-              <br />
-              替换后将同步更新该配件下的所有分支。
-            </p>
-            <div className="relative mb-4">
-              <input
-                type="text"
-                autoFocus
-                value={nameQuery}
-                onChange={(e) => setNameQuery(e.target.value)}
-                placeholder="搜索配件名称..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {nameSearching && (
-                <span className="absolute right-3 top-2 text-xs text-gray-400">搜索中...</span>
-              )}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-5xl max-h-[90vh] flex flex-col mx-4">
+            {/* 标题 */}
+            <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-lg font-semibold text-gray-900">
+                编辑配件「{name}」
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                左侧可替换配件名称，右侧可从库存选择实际配件
+              </p>
             </div>
-            {nameResults.length > 0 && (
-              <div className="border border-gray-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto mb-4">
-                {nameResults.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => handleReplacePartName(r)}
-                    disabled={saving}
-                    className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0 disabled:opacity-50"
-                  >
-                    <div className="text-gray-900">{r.name}</div>
-                    <div className="text-xs text-gray-400">
-                      {r.part_categories?.name || "-"} · {r.unit || "件"}
+
+            {/* 左右分栏 */}
+            <div className="flex-1 overflow-hidden flex flex-col md:flex-row min-h-0">
+              {/* 左侧：替换配件名称 */}
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 border-b md:border-b-0 md:border-r border-gray-100 space-y-5 min-h-0">
+                <div className="text-sm font-medium text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg inline-block">
+                  替换配件名称
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  当前配件：<span className="font-medium text-gray-800">{name}</span>
+                  <br />
+                  替换后将同步更新该配件下的所有分支。
+                </p>
+
+                <div className="relative">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={nameQuery}
+                    onChange={(e) => setNameQuery(e.target.value)}
+                    placeholder="搜索配件名称..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {nameSearching && (
+                    <span className="absolute right-3 top-2 text-xs text-gray-400">搜索中...</span>
+                  )}
+                </div>
+
+                {nameResults.length > 0 && (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto">
+                    {nameResults.map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => handleSelectPendingName(r)}
+                        disabled={saving}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0 disabled:opacity-50"
+                      >
+                        <div className="text-gray-900">{r.name}</div>
+                        <div className="text-xs text-gray-400">
+                          {r.part_categories?.name || "-"} · {r.unit || "件"}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {nameQuery.trim() && !nameSearching && nameResults.length === 0 && (
+                  <p className="text-xs text-gray-400">未找到匹配的配件名称</p>
+                )}
+
+                {/* 待替换的名称 */}
+                {pendingName && (
+                  <div className="p-3 rounded-lg border border-green-200 bg-green-50">
+                    <div className="text-sm font-medium text-gray-900">
+                      待替换为：{pendingName.name}
                     </div>
-                  </button>
-                ))}
+                    <div className="text-xs text-gray-500 mt-1">
+                      {pendingName.part_categories?.name || "-"} · {pendingName.unit || "件"}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCancelPendingName}
+                      className="mt-2 text-xs text-red-600 hover:text-red-700"
+                    >
+                      取消替换
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-            {nameQuery.trim() && !nameSearching && nameResults.length === 0 && (
-              <p className="text-xs text-gray-400 mb-4">未找到匹配的配件名称</p>
-            )}
-            <div className="flex justify-end gap-2">
+
+              {/* 右侧：从库存选择配件 */}
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 min-h-0">
+                <div className="text-sm font-medium text-green-700 bg-green-50 px-3 py-1.5 rounded-lg inline-block">
+                  关联库存配件
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  从库存中选择实际配件，会自动带入编号、品牌、价格等信息。
+                  关联后该配件将使用库存配件的数据。
+                </p>
+
+                {/* 名称已更改提示 */}
+                {pendingName ? (
+                  <div className="p-3 rounded-lg border border-orange-200 bg-orange-50 text-sm text-orange-700">
+                    配件名称已更改，保存后将清除原库存关联。
+                    如需关联新库存配件，请先保存名称替换后再编辑。
+                  </div>
+                ) : (
+                  <>
+                    {/* 当前已关联的库存配件 */}
+                    {parts[0]?.part_id && parts[0]?.parts ? (
+                      <div className="p-3 rounded-lg border border-blue-200 bg-blue-50">
+                        <div className="text-sm font-medium text-gray-900">
+                          当前已关联：{parts[0].parts.name}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {parts[0].parts.part_number && <span className="mr-2">编号:{parts[0].parts.part_number}</span>}
+                          {parts[0].parts.part_brands?.name && <span className="mr-2">品牌:{parts[0].parts.part_brands.name}</span>}
+                          库存:{parts[0].parts.quantity}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-500">
+                        当前未关联库存配件
+                      </div>
+                    )}
+
+                    {/* 新选择的库存配件 */}
+                    {selectedRealPart ? (
+                      <div className="p-3 rounded-lg border border-green-200 bg-green-50">
+                        <div className="text-sm font-medium text-gray-900">
+                          新选择：{selectedRealPart.name}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {selectedRealPart.part_number && <span className="mr-2">编号:{selectedRealPart.part_number}</span>}
+                          {selectedRealPart.part_brands?.name && <span className="mr-2">品牌:{selectedRealPart.part_brands.name}</span>}
+                          库存:{selectedRealPart.quantity}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRealPart(null)}
+                          className="mt-2 text-xs text-red-600 hover:text-red-700"
+                        >
+                          取消选择
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPickerOpen(true)}
+                        className="w-full py-3 border-2 border-dashed border-blue-300 rounded-xl text-blue-600 hover:bg-blue-50 hover:border-blue-400 transition-colors text-sm font-medium"
+                      >
+                        + 选择配件
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100 flex-shrink-0">
               <button
                 type="button"
-                onClick={() => { setShowModal(false); setNameResults([]); }}
-                className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                onClick={() => { setShowModal(false); setNameResults([]); setPendingName(null); setSelectedRealPart(null); }}
+                disabled={saving}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
               >
                 取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={saving || (!pendingName && !selectedRealPart)}
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {saving ? "保存中..." : "保存"}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* 配件选择器弹窗 */}
+      <PartPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onConfirm={handlePickerConfirm}
+      />
     </>
   );
 }

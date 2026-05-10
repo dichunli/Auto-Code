@@ -512,7 +512,20 @@ export default function PartBranchEditor({
             type="number"
             step="0.01"
             value={editForm.unit_price}
-            onChange={(e) => setEditForm((prev) => ({ ...prev, unit_price: e.target.value }))}
+            onChange={(e) => {
+              const val = e.target.value;
+              setEditForm((prev) => ({ ...prev, unit_price: val }));
+              // 实时广播更新，让小计/费用合计组件即时刷新
+              window.dispatchEvent(
+                new CustomEvent("wo-part-update", {
+                  detail: {
+                    itemId,
+                    partId: part.id,
+                    unit_price: val === "" ? 0 : parseFloat(val) || 0,
+                  },
+                })
+              );
+            }}
             onBlur={() => saveField("unit_price", editForm.unit_price)}
             disabled={isLocked || saving}
             className="w-16 px-1 py-0.5 border border-gray-200 rounded text-xs text-right disabled:bg-gray-50"
