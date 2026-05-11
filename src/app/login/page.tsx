@@ -31,11 +31,12 @@ export default function LoginPage() {
 
     try {
       console.log("[登录] 开始调用 signInWithPassword...");
-      const signInPromise = supabase.auth.signInWithPassword(credentials);
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("登录请求超时，请检查网络连接")), 15000)
-      );
-      const { data, error } = await Promise.race([signInPromise, timeoutPromise]) as any;
+      const { data, error } = await Promise.race([
+        supabase.auth.signInWithPassword(credentials),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("登录请求超时，请检查网络连接或刷新页面重试")), 10000)
+        ),
+      ]);
       console.log("[登录] signInWithPassword 返回", { hasSession: !!data?.session, error: error?.message });
 
       if (error) {

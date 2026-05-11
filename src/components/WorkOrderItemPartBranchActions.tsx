@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function WorkOrderItemPartBranchActions({ partId, itemId, canDelete }: Props) {
+  const router = useRouter();
   const supabase = createClient();
   const [deleting, setDeleting] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -27,7 +29,7 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       alert("删除失败: " + error.message);
       return;
     }
-    window.location.reload();
+    router.refresh();
   }
 
   async function handleAdd() {
@@ -53,7 +55,7 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       alert("添加失败: " + error.message);
       return;
     }
-    window.location.reload();
+    router.refresh();
   }
 
   return (

@@ -33,6 +33,7 @@ import PrintDropdown from "@/components/PrintDropdown";
 import AdvancePaymentDropdown from "@/components/AdvancePaymentDropdown";
 import ItemSubtotalDisplay from "@/components/ItemSubtotalDisplay";
 import WorkOrderTotalFooter from "@/components/WorkOrderTotalFooter";
+import AdvancePaymentList from "@/components/AdvancePaymentList";
 import SortableList from "@/components/SortableList";
 import ItemImageUploader from "@/components/ItemImageUploader";
 
@@ -56,8 +57,11 @@ export default async function WorkOrderDetailPage({
 
   if (!order) notFound();
 
-  // 预收款总额（从记录表实时计算）
-  const advancePaymentTotal = (advancePaymentRecords || []).reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
+  // 预收款净额（从记录表实时计算，扣除已退款）
+  const advancePaymentTotal = (advancePaymentRecords || []).reduce(
+    (sum: number, r: any) => sum + (r.amount || 0) - (r.refunded_amount || 0),
+    0
+  );
 
   // 工单车型ID（用于配件库存匹配）
   const vehicleModelId = order?.vehicles?.vehicle_model_id;
@@ -295,6 +299,7 @@ export default async function WorkOrderDetailPage({
             orderId={id}
             advancePayment={advancePaymentTotal}
             totalCost={order.total_cost || 0}
+            records={advancePaymentRecords || []}
           />
           <PrintDropdown orderId={id} />
         </div>
@@ -1194,24 +1199,18 @@ export default async function WorkOrderDetailPage({
               {(order.discount_amount || 0) > 0 && (
                 <div className="flex justify-between text-orange-600"><span>整单优惠</span><span>-{formatCurrency(order.discount_amount)}</span></div>
               )}
-              {(advancePaymentTotal || 0) > 0 && (
+              {(advancePaymentRecords || []).length > 0 && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-green-600">
                     <span>已预收</span>
                     <span>-{formatCurrency(advancePaymentTotal)}</span>
                   </div>
-                  <div className="pl-3 space-y-0.5 text-xs text-gray-500">
-                    {(advancePaymentRecords || []).map((r: any) => (
-                      <div key={r.id} className="flex justify-between">
-                        <span>
-                          {formatDate(r.paid_at)}
-                          {' · '}
-                          {r.method === 'cash' ? '现金' : r.method === 'wechat' ? '微信' : r.method === 'alipay' ? '支付宝' : '银行转账'}
-                          {r.profiles?.full_name && ` · ${r.profiles.full_name}`}
-                        </span>
-                        <span>{formatCurrency(r.amount)}</span>
-                      </div>
-                    ))}
+                  <div className="pl-3">
+                    <AdvancePaymentList
+                      records={advancePaymentRecords}
+                      orderId={id}
+                      currentAdvancePayment={advancePaymentTotal}
+                    />
                   </div>
                 </div>
               )}

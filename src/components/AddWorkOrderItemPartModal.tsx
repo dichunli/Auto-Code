@@ -317,8 +317,8 @@ export function AddWorkOrderItemPartModal({
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="relative z-[60] bg-white rounded-xl border border-gray-200 w-full max-w-5xl max-h-[90vh] flex flex-col mx-4">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+        <div className="relative bg-white rounded-xl border border-gray-200 w-full max-w-5xl max-h-[90vh] flex flex-col mx-4">
           {/* 标题 */}
           <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
             <h2 className="text-lg font-semibold text-gray-900">

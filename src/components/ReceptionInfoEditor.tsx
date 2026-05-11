@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { FuelGauge } from "./FuelGauge";
 
@@ -25,6 +26,7 @@ interface Props {
 }
 
 export function ReceptionInfoEditor({ orderId, mileageIn, fuelLevel, estimatedCompletionAt, senderName, senderPhone }: Props) {
+  const router = useRouter();
   const supabase = createClient();
   const [open, setOpen] = useState(false);
   const [mileage, setMileage] = useState(mileageIn != null ? String(mileageIn) : "");
@@ -56,7 +58,7 @@ export function ReceptionInfoEditor({ orderId, mileageIn, fuelLevel, estimatedCo
       return;
     }
     setOpen(false);
-    window.location.reload();
+    router.refresh();
   }
 
   return (
