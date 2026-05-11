@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -62,6 +62,8 @@ function NavGroup({
     if (!item.children) return false;
     return pathname.startsWith(item.href + "/") || pathname === item.href;
   });
+  const searchParams = useSearchParams();
+  const queryString = searchParams ? (searchParams.toString() ? "?" + searchParams.toString() : "") : "";
   const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
 
   if (!item.children) {
@@ -101,7 +103,7 @@ function NavGroup({
       {open && (
         <div className="ml-3 mt-1 space-y-1 border-l-2 border-gray-100 pl-2">
           {item.children.map((child) => {
-            const childActive = pathname === child.href || pathname + location.search === child.href;
+            const childActive = pathname === child.href || pathname + queryString === child.href;
             const count = child.countKey ? counts[child.countKey] || 0 : 0;
             return (
               <Link

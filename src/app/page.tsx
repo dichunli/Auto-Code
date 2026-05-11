@@ -9,40 +9,51 @@ export default async function DashboardPage() {
 
   const today = new Date().toISOString().split("T")[0];
 
-  const { data: recentOrders } = await supabase
-    .from("work_orders")
-    .select("id, order_no, status, total_cost, created_at, vehicles(plate_number, brand, model)")
-    .order("created_at", { ascending: false })
-    .limit(5);
+  // 并行发起所有独立查询，避免串行等待
+  const [
+    { data: recentOrders },
+    { count: totalOrders },
+    { count: activeOrders },
+    { count: pendingQuality },
+    { count: pendingSettle },
+    { count: lowStock },
+    { data: todayRevenue },
+    { count: memberCount },
+    { data: todayRecharges },
+    { count: todayAppointments },
+    { count: pendingReminders },
+    { data: birthdayCustomers },
+    { data: topMechanics },
+  ] = await Promise.all([
+    supabase
+      .from("work_orders")
+      .select("id, order_no, status, total_cost, created_at, vehicles(plate_number, brand, model)")
+      .order("created_at", { ascending: false })
+      .limit(5),
+    supabase.from("work_orders").select("*", { count: "exact", head: true }),
+    supabase.from("work_orders").select("*", { count: "exact", head: true }).in("status", ["received", "pending_diagnosis", "pending_repair", "repairing", "pending_quality_check", "pending_close"]),
+    supabase.from("work_orders").select("*", { count: "exact", head: true }).eq("status", "pending_quality_check"),
+    supabase.from("work_orders").select("*", { count: "exact", head: true }).eq("status", "pending_settlement"),
+    supabase.from("parts").select("*", { count: "exact", head: true }).lte("quantity", 10),
+    supabase.from("payments").select("amount").gte("paid_at", `${today}T00:00:00`),
+    supabase.from("members").select("*", { count: "exact", head: true }).eq("status", "active"),
+    supabase.from("member_transactions").select("amount").eq("type", "recharge").gte("created_at", `${today}T00:00:00`),
+    supabase.from("appointments").select("*", { count: "exact", head: true }).eq("appointment_date", today).eq("status", "pending"),
+    supabase.from("maintenance_reminders").select("*", { count: "exact", head: true }).eq("status", "pending"),
+    supabase
+      .from("customers")
+      .select("id, name, phone")
+      .not("birthday", "is", null)
+      .ilike("birthday", `%${today.slice(5)}`),
+    supabase
+      .from("mechanic_scores")
+      .select("mechanic_id, points, profiles(full_name)")
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
 
-  const { count: totalOrders } = await supabase.from("work_orders").select("*", { count: "exact", head: true });
-  const { count: activeOrders } = await supabase.from("work_orders").select("*", { count: "exact", head: true }).in("status", ["received", "pending_diagnosis", "pending_repair", "repairing", "pending_quality_check", "pending_close"]);
-  const { count: pendingQuality } = await supabase.from("work_orders").select("*", { count: "exact", head: true }).eq("status", "pending_quality_check");
-  const { count: pendingSettle } = await supabase.from("work_orders").select("*", { count: "exact", head: true }).eq("status", "pending_settlement");
-  const { count: lowStock } = await supabase.from("parts").select("*", { count: "exact", head: true }).lte("quantity", 10);
-
-  const { data: todayRevenue } = await supabase.from("payments").select("amount").gte("paid_at", `${today}T00:00:00`);
   const todayTotal = todayRevenue?.reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
-
-  const { count: memberCount } = await supabase.from("members").select("*", { count: "exact", head: true }).eq("status", "active");
-  const { data: todayRecharges } = await supabase.from("member_transactions").select("amount").eq("type", "recharge").gte("created_at", `${today}T00:00:00`);
   const todayRechargeTotal = todayRecharges?.reduce((sum: number, t: any) => sum + (t.amount || 0), 0) || 0;
-
-  const { count: todayAppointments } = await supabase.from("appointments").select("*", { count: "exact", head: true }).eq("appointment_date", today).eq("status", "pending");
-
-  const { count: pendingReminders } = await supabase.from("maintenance_reminders").select("*", { count: "exact", head: true }).eq("status", "pending");
-
-  const { data: birthdayCustomers } = await supabase
-    .from("customers")
-    .select("id, name, phone")
-    .not("birthday", "is", null)
-    .ilike("birthday", `%${today.slice(5)}`);
-
-  const { data: topMechanics } = await supabase
-    .from("mechanic_scores")
-    .select("mechanic_id, points, profiles(full_name)")
-    .order("created_at", { ascending: false })
-    .limit(20);
 
   const mechanicMap: Record<string, { name: string; score: number }> = {};
   topMechanics?.forEach((m: any) => {

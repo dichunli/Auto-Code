@@ -30,7 +30,13 @@ export default function LoginPage() {
     }
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword(credentials);
+      console.log("[登录] 开始调用 signInWithPassword...");
+      const signInPromise = supabase.auth.signInWithPassword(credentials);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("登录请求超时，请检查网络连接")), 15000)
+      );
+      const { data, error } = await Promise.race([signInPromise, timeoutPromise]) as any;
+      console.log("[登录] signInWithPassword 返回", { hasSession: !!data?.session, error: error?.message });
 
       if (error) {
         setError(error.message);
@@ -44,21 +50,21 @@ export default function LoginPage() {
         return;
       }
 
-      // 记录登录日志
-      try {
-        await logLogin({
-          userId: data.user?.id || "",
-          userName: data.user?.email || account,
-          description: `用户 ${account} 登录系统`,
-        });
-      } catch {
-        // 日志失败不影响登录
-      }
+      // 记录登录日志（不阻塞登录流程）
+      logLogin({
+        userId: data.user?.id || "",
+        userName: data.user?.email || account,
+        description: `用户 ${account} 登录系统`,
+      }).catch(() => {
+        console.log("[登录] 日志记录失败，不影响登录");
+      });
 
+      console.log("[登录] 开始跳转首页...");
       router.push("/");
       router.refresh();
+      console.log("[登录] router.push 已调用");
     } catch (err: any) {
-      console.error("登录异常:", err);
+      console.error("[登录] 异常:", err);
       setError("登录请求失败: " + (err?.message || "网络错误或浏览器安全策略阻止了请求"));
       setLoading(false);
     }

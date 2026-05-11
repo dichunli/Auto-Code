@@ -27,9 +27,18 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getUser() 可能因网络超时而卡住，加 5 秒保护
+  let user = null;
+  try {
+    const getUserPromise = supabase.auth.getUser();
+    const timeoutPromise = new Promise((_resolve, reject) =>
+      setTimeout(() => reject(new Error("getUser timeout")), 5000)
+    );
+    const result = (await Promise.race([getUserPromise, timeoutPromise])) as any;
+    user = result.data?.user || null;
+  } catch {
+    user = null;
+  }
 
   if (!user && !request.nextUrl.pathname.startsWith("/login")) {
     const url = request.nextUrl.clone();
