@@ -359,11 +359,23 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
               onBlur={saveQuantity}
               disabled={saving}
               placeholder=""
-              className="w-12 px-1 py-0.5 border border-gray-200 rounded text-xs disabled:bg-gray-50 text-center shrink-0"
+              className={`w-12 px-1 py-0.5 border rounded text-xs disabled:bg-gray-50 text-center shrink-0 ${
+                !qty ? "border-red-300 bg-red-50" : "border-gray-200"
+              }`}
             />
           ) : qty ? (
             <span className="text-xs text-gray-500 shrink-0">×{qty}</span>
-          ) : null}
+          ) : (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 shrink-0">
+              缺少数量
+            </span>
+          )}
+
+          {!qty && !isLocked && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 shrink-0">
+              缺少数量
+            </span>
+          )}
 
           <span className="text-xs text-gray-400 shrink-0">{unit}</span>
 

@@ -316,7 +316,7 @@ export function AddWorkOrderItemPartModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
         <div className="bg-white rounded-xl border border-gray-200 w-full max-w-5xl max-h-[90vh] flex flex-col mx-4">
           {/* 标题 */}
           <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">

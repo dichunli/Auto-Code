@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { BatchEditModal } from "./BatchEditModal";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function BatchEditWrapper({ orderId, items, itemParts, suppliers, logisticsCompanies }: Props) {
+  const router = useRouter();
   const [show, setShow] = useState(false);
 
   return (
@@ -33,7 +35,7 @@ export function BatchEditWrapper({ orderId, items, itemParts, suppliers, logisti
           onClose={() => setShow(false)}
           onSuccess={() => {
             setShow(false);
-            window.location.reload();
+            router.refresh();
           }}
         />
       )}

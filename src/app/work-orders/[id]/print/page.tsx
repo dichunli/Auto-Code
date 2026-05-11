@@ -509,7 +509,10 @@ async function SettlementDoc({ order }: { order: any }) {
     credit: "挂账", member: "会员/储值卡", bank_transfer: "银行转账",
   };
 
-  const advancePaymentTotal = (advancePaymentRecords || []).reduce((sum, r) => sum + (r.amount || 0), 0);
+  const advancePaymentTotal = (advancePaymentRecords || []).reduce(
+    (sum, r) => sum + (r.amount || 0) - (r.refunded_amount || 0),
+    0
+  );
   const totalPaid = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
 
   return (
@@ -577,15 +580,26 @@ async function SettlementDoc({ order }: { order: any }) {
         <div className="border-t border-gray-300 pt-4">
           <h3 className="font-bold text-sm mb-2">预收款记录</h3>
           <div className="space-y-1 text-sm">
-            {advancePaymentRecords.map((r: any, idx: number) => (
-              <div key={idx} className="flex justify-between">
-                <span className="text-gray-500">
-                  {formatDate(r.paid_at)} {methodLabels[r.method] || r.method}
-                  {r.profiles?.full_name && <span className="text-gray-400 ml-1">({r.profiles.full_name})</span>}
-                </span>
-                <span>{formatCurrency(r.amount)}</span>
-              </div>
-            ))}
+            {advancePaymentRecords.map((r: any, idx: number) => {
+              const net = (r.amount || 0) - (r.refunded_amount || 0);
+              return (
+                <div key={idx}>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">
+                      {formatDate(r.paid_at)} {methodLabels[r.method] || r.method}
+                      {r.profiles?.full_name && <span className="text-gray-400 ml-1">({r.profiles.full_name})</span>}
+                    </span>
+                    <span className={net <= 0 ? "text-gray-400 line-through" : ""}>{formatCurrency(r.amount)}</span>
+                  </div>
+                  {(r.refunded_amount || 0) > 0 && (
+                    <div className="flex justify-between text-xs text-gray-400 pl-2">
+                      <span>已退款 · {methodLabels[r.refund_method] || r.refund_method || "未知方式"}</span>
+                      <span className="text-orange-500">-{formatCurrency(r.refunded_amount)}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <div className="flex justify-between font-medium border-t border-gray-200 pt-1 mt-1">
               <span>预收合计</span><span className="text-green-600">{formatCurrency(advancePaymentTotal)}</span>
             </div>

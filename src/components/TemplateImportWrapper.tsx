@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { TemplateImportModal } from "./TemplateImportModal";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function TemplateImportWrapper({ vehicleId, orderId }: Props) {
+  const router = useRouter();
   const [show, setShow] = useState(false);
 
   return (
@@ -27,7 +29,7 @@ export function TemplateImportWrapper({ vehicleId, orderId }: Props) {
           onClose={() => setShow(false)}
           onSuccess={() => {
             setShow(false);
-            window.location.reload();
+            router.refresh();
           }}
         />
       )}

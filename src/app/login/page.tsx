@@ -30,7 +30,12 @@ export default function LoginPage() {
     }
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword(credentials);
+      const { data, error } = await Promise.race([
+        supabase.auth.signInWithPassword(credentials),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("登录请求超时，请检查网络连接或刷新页面重试")), 10000)
+        ),
+      ]);
 
       if (error) {
         setError(error.message);
@@ -44,9 +49,9 @@ export default function LoginPage() {
         return;
       }
 
-      // 记录登录日志
+      // 记录登录日志（不等待，避免阻塞跳转）
       try {
-        await logLogin({
+        logLogin({
           userId: data.user?.id || "",
           userName: data.user?.email || account,
           description: `用户 ${account} 登录系统`,
@@ -56,7 +61,6 @@ export default function LoginPage() {
       }
 
       router.push("/");
-      router.refresh();
     } catch (err: any) {
       console.error("登录异常:", err);
       setError("登录请求失败: " + (err?.message || "网络错误或浏览器安全策略阻止了请求"));

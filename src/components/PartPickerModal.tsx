@@ -357,21 +357,19 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
                     <th className="px-3 py-2 text-left font-medium text-gray-500">品牌</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500">适用车型</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500">售价</th>
-                    <th className="px-3 py-2 text-left font-medium text-gray-500">俗称</th>
-                    <th className="px-3 py-2 text-left font-medium text-gray-500">来源</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500">仓位</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={12} className="px-6 py-12 text-center text-gray-400">
+                      <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
                         加载中...
                       </td>
                     </tr>
                   ) : paginatedParts.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="px-6 py-12 text-center text-gray-400">
+                      <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
                         暂无配件数据
                       </td>
                     </tr>
@@ -406,8 +404,6 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
                           )}
                         </td>
                         <td className="px-3 py-2 text-gray-600">{formatCurrency(part.unit_price)}</td>
-                        <td className="px-3 py-2 text-gray-600">{part.part_names?.name || "-"}</td>
-                        <td className="px-3 py-2 text-gray-600">{part.suppliers?.name || "本店"}</td>
                         <td className="px-3 py-2 text-gray-600">{part.location || "-"}</td>
                       </tr>
                     ))
@@ -500,18 +496,17 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
                           <span className="mx-1">·</span>
                           <span>售价:{formatCurrency(part.unit_price)}</span>
                         </div>
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {part.part_brands?.name && <span className="mr-1">品牌:{part.part_brands.name} ·</span>}
-                          {part.part_specifications?.name || part.specification_text || "-"}
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-xs text-gray-500">数量:</span>
+                        <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1 flex-wrap">
+                          {part.part_brands?.name && <span>品牌:{part.part_brands.name} ·</span>}
+                          <span>{part.part_specifications?.name || part.specification_text || "-"}</span>
+                          <span className="mx-1">·</span>
+                          <span>数量:</span>
                           <input
                             type="number"
                             min={1}
                             value={selectedQtyMap[part.id] ?? 1}
                             onChange={(e) => updateQuantity(part.id, parseInt(e.target.value) || 1)}
-                            className="w-16 px-2 py-1 border border-gray-200 rounded text-sm text-center"
+                            className="w-14 px-1 py-0.5 border border-gray-200 rounded text-xs text-center"
                           />
                         </div>
                       </div>

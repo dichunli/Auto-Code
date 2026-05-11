@@ -6,7 +6,8 @@ interface FuelGaugeProps {
 }
 
 export function FuelGauge({ value, onChange }: FuelGaugeProps) {
-  const numValue = typeof value === "string" ? parseInt(value) || 0 : value || 0;
+  const isEmpty = value === "";
+  const numValue = isEmpty ? 0 : (typeof value === "string" ? parseInt(value) || 0 : value || 0);
   const totalCells = 20;
   const cellValue = 100 / totalCells; // 每格 5%
 
@@ -25,7 +26,7 @@ export function FuelGauge({ value, onChange }: FuelGaugeProps) {
       <span className="text-sm text-gray-500 shrink-0">E&lt;</span>
       <div className="flex-1 flex h-8 rounded border border-gray-300 overflow-hidden">
         {Array.from({ length: totalCells }, (_, i) => {
-          const isActive = (i + 1) * cellValue <= numValue;
+          const isActive = !isEmpty && (i + 1) * cellValue <= numValue;
           return (
             <div
               key={i}
@@ -37,8 +38,8 @@ export function FuelGauge({ value, onChange }: FuelGaugeProps) {
           );
         })}
       </div>
-      <span className="text-sm font-medium text-blue-600 min-w-[2.5rem] text-right">
-        {numValue}%
+      <span className={`text-sm font-medium min-w-[2.5rem] text-right ${isEmpty ? "text-gray-400" : "text-blue-600"}`}>
+        {isEmpty ? "-" : `${numValue}%`}
       </span>
       <span className="text-sm text-gray-500 shrink-0">&gt;F</span>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function RequirementActions({
@@ -12,6 +13,7 @@ export default function RequirementActions({
   profiles: any[];
   orderId: string;
 }) {
+  const router = useRouter();
   const supabase = createClient();
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -35,7 +37,7 @@ export default function RequirementActions({
       alert("保存失败: " + error.message);
     } else {
       setEditing(false);
-      window.location.reload();
+      router.refresh();
     }
     setLoading(false);
   }
@@ -56,7 +58,7 @@ export default function RequirementActions({
     if (error) {
       alert("操作失败: " + error.message);
     } else {
-      window.location.reload();
+      router.refresh();
     }
   }
 
