@@ -31,6 +31,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
     contact: "",
     phone: "",
     address: "",
+    region: "harbin",
     notes: "",
     wechat_id: "",
     wrong_shipment_count: "0",
@@ -70,6 +71,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
           contact: data.contact || "",
           phone: data.phone || "",
           address: data.address || "",
+          region: data.region || "harbin",
           notes: data.notes || "",
           wechat_id: data.wechat_id || "",
           wrong_shipment_count: String(data.wrong_shipment_count || 0),
@@ -281,6 +283,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
 
     // 扩展字段（迁移后才有，不存在的字段会单独尝试）
     const extPayload: any = {
+      region: form.region || "harbin",
       wechat_id: form.wechat_id.trim() || null,
       wechat_group_qr: wechatGroupQr || null,
       wrong_shipment_count: parseInt(form.wrong_shipment_count) || 0,
@@ -412,6 +415,31 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
           <div className="sm:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">地址</label>
             <input className="w-full px-3 py-2 border border-gray-300 rounded-lg" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">所属地域 *</label>
+            <div className="flex gap-2">
+              {[
+                { value: "local", label: "本地", desc: "无需物流，直接送货" },
+                { value: "harbin", label: "哈市", desc: "匹配哈市物流公司" },
+                { value: "outside", label: "外阜", desc: "匹配常用快递" },
+              ].map((r) => (
+                <button
+                  key={r.value}
+                  type="button"
+                  onClick={() => setForm({ ...form, region: r.value })}
+                  className={`flex-1 px-3 py-2 text-sm rounded-lg border transition ${
+                    form.region === r.value
+                      ? "bg-blue-50 text-blue-700 border-blue-300 font-medium"
+                      : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                  }`}
+                  title={r.desc}
+                >
+                  <div>{r.label}</div>
+                  <div className="text-[10px] text-gray-400 mt-0.5">{r.desc}</div>
+                </button>
+              ))}
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">发错件次数</label>

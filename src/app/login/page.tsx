@@ -61,9 +61,8 @@ export default function LoginPage() {
       });
 
       console.log("[登录] 开始跳转首页...");
-      router.push("/");
-      router.refresh();
-      console.log("[登录] router.push 已调用");
+      window.location.href = "/";
+      console.log("[登录] window.location.href 已设置");
     } catch (err: any) {
       console.error("[登录] 异常:", err);
       setError("登录请求失败: " + (err?.message || "网络错误或浏览器安全策略阻止了请求"));

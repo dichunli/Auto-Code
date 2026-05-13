@@ -225,6 +225,19 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                 <span className="text-gray-900">{supplier.address || "-"}</span>
               </div>
               <div>
+                <span className="text-gray-500">地域：</span>
+                {supplier.region === "local" && (
+                  <span className="text-xs px-2 py-0.5 rounded border bg-green-50 text-green-700 border-green-200">本地（无需物流）</span>
+                )}
+                {supplier.region === "harbin" && (
+                  <span className="text-xs px-2 py-0.5 rounded border bg-blue-50 text-blue-700 border-blue-200">哈市（哈市物流）</span>
+                )}
+                {supplier.region === "outside" && (
+                  <span className="text-xs px-2 py-0.5 rounded border bg-orange-50 text-orange-700 border-orange-200">外阜（快递）</span>
+                )}
+                {!supplier.region && <span className="text-gray-400">-</span>}
+              </div>
+              <div>
                 <span className="text-gray-500">发错件次数：</span>
                 <span className="text-red-600 font-medium">{supplier.wrong_shipment_count || 0}</span>
               </div>

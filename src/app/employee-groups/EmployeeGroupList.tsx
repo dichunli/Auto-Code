@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 interface Group {
   id: string;
@@ -19,6 +20,7 @@ interface Props {
 export function EmployeeGroupList({ groups }: Props) {
   const router = useRouter();
   const supabase = createClient();
+  const [busy, setBusy] = useState<string | null>(null);
 
   async function handleDelete(id: string, name: string, memberCount: number) {
     if (memberCount > 0) {
@@ -39,6 +41,48 @@ export function EmployeeGroupList({ groups }: Props) {
     router.refresh();
   }
 
+  async function swapOrder(currentIndex: number, targetIndex: number) {
+    if (targetIndex < 0 || targetIndex >= groups.length) return;
+    const a = groups[currentIndex];
+    const b = groups[targetIndex];
+    setBusy(a.id);
+    try {
+      const { error: e1 } = await supabase
+        .from("employee_groups")
+        .update({ sort_order: b.sort_order })
+        .eq("id", a.id);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase
+        .from("employee_groups")
+        .update({ sort_order: a.sort_order })
+        .eq("id", b.id);
+      if (e2) throw e2;
+      router.refresh();
+    } catch (err: any) {
+      alert("排序失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function updateOrder(id: string, value: string) {
+    const num = parseInt(value);
+    if (isNaN(num)) return;
+    setBusy(id);
+    try {
+      const { error } = await supabase
+        .from("employee_groups")
+        .update({ sort_order: num })
+        .eq("id", id);
+      if (error) throw error;
+      router.refresh();
+    } catch (err: any) {
+      alert("排序失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="overflow-x-auto">
@@ -53,8 +97,11 @@ export function EmployeeGroupList({ groups }: Props) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {groups?.map((g) => {
+            {groups?.map((g, index) => {
               const memberCount = g.profiles?.[0]?.count || 0;
+              const isFirst = index === 0;
+              const isLast = index === groups.length - 1;
+              const isBusy = busy === g.id;
               return (
                 <tr key={g.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">
@@ -63,7 +110,39 @@ export function EmployeeGroupList({ groups }: Props) {
                     </Link>
                   </td>
                   <td className="px-6 py-4 text-gray-600">{g.description || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{g.sort_order}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={isFirst || isBusy}
+                        onClick={() => swapOrder(index, index - 1)}
+                        className="px-2 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="上移"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLast || isBusy}
+                        onClick={() => swapOrder(index, index + 1)}
+                        className="px-2 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="下移"
+                      >
+                        ↓
+                      </button>
+                      <input
+                        type="number"
+                        defaultValue={g.sort_order}
+                        disabled={isBusy}
+                        onBlur={(e) => {
+                          if (parseInt(e.target.value) !== g.sort_order) {
+                            updateOrder(g.id, e.target.value);
+                          }
+                        }}
+                        className="w-16 ml-2 px-2 py-1 text-sm rounded border border-gray-300 text-center"
+                      />
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-gray-600">{memberCount}</td>
                   <td className="px-6 py-4">
                     <button

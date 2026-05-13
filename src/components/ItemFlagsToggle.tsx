@@ -3,18 +3,33 @@
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
+import { OutsourceModal } from "./OutsourceModal";
 
 interface Props {
   itemId: string;
   isOutsourced: boolean;
   isCustomerPart: boolean;
   serviceItemId?: string | null;
+  workOrderId?: string;
+  itemName?: string;
+  existingOrder?: any;
+  existingItem?: any;
 }
 
-export function ItemFlagsToggle({ itemId, isOutsourced, isCustomerPart, serviceItemId }: Props) {
+export function ItemFlagsToggle({
+  itemId,
+  isOutsourced,
+  isCustomerPart,
+  serviceItemId,
+  workOrderId,
+  itemName,
+  existingOrder,
+  existingItem,
+}: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [updating, setUpdating] = useState(false);
+  const [outsourceModalOpen, setOutsourceModalOpen] = useState(false);
 
   async function toggleField(field: string, value: boolean) {
     if (updating) return;
@@ -50,11 +65,15 @@ export function ItemFlagsToggle({ itemId, isOutsourced, isCustomerPart, serviceI
     router.refresh();
   }
 
+  function handleOutsourceClick() {
+    setOutsourceModalOpen(true);
+  }
+
   return (
     <span className="flex items-center gap-1.5">
       <button
         type="button"
-        onClick={() => toggleField("is_outsourced", !isOutsourced)}
+        onClick={handleOutsourceClick}
         disabled={updating}
         className={`text-[10px] px-1.5 py-0.5 rounded border cursor-pointer disabled:opacity-50 ${
           isOutsourced
@@ -76,6 +95,21 @@ export function ItemFlagsToggle({ itemId, isOutsourced, isCustomerPart, serviceI
       >
         自带配件
       </button>
+      {workOrderId && (
+        <OutsourceModal
+          open={outsourceModalOpen}
+          workOrderId={workOrderId}
+          workOrderItemId={itemId}
+          currentItemName={itemName || ""}
+          existingOrder={existingOrder}
+          existingItem={existingItem}
+          onClose={() => setOutsourceModalOpen(false)}
+          onSuccess={() => {
+            setOutsourceModalOpen(false);
+            router.refresh();
+          }}
+        />
+      )}
     </span>
   );
 }

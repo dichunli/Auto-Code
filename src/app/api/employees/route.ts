@@ -21,6 +21,9 @@ interface CreateEmployeeBody {
   entryDate?: string;
   address?: string;
   notes?: string;
+  idCard?: string;
+  idCardFrontUrl?: string;
+  idCardBackUrl?: string;
   contacts?: ContactInput[];
 }
 
@@ -38,6 +41,9 @@ export async function POST(request: Request) {
     entryDate,
     address,
     notes,
+    idCard,
+    idCardFrontUrl,
+    idCardBackUrl,
     contacts,
   } = body;
 
@@ -89,6 +95,9 @@ export async function POST(request: Request) {
       entry_date: entryDate || null,
       address: address || null,
       notes: notes || null,
+      id_card: idCard || null,
+      id_card_front_url: idCardFrontUrl || null,
+      id_card_back_url: idCardBackUrl || null,
       is_active: true,
     }, { onConflict: "id" });
 

@@ -4,6 +4,12 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { ImageUploader } from "@/components/ImageUploader";
+
+const GENDERS = [
+  { value: "male", label: "男" },
+  { value: "female", label: "女" },
+];
 
 const RELATIONSHIPS = [
   { value: "spouse", label: "配偶" },
@@ -38,9 +44,12 @@ export default function EditEmployeePage() {
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [idCard, setIdCard] = useState("");
+  const [idCardFrontUrl, setIdCardFrontUrl] = useState<string>("");
+  const [idCardBackUrl, setIdCardBackUrl] = useState<string>("");
 
   const [contacts, setContacts] = useState<
-    { id?: string; name: string; phone: string; relationship: string; is_primary: boolean }
+    { id?: string; name: string; phone: string; relationship: string; is_primary: boolean }[]
   >([]);
 
   useEffect(() => {
@@ -72,6 +81,9 @@ export default function EditEmployeePage() {
         setAddress(employee.address || "");
         setNotes(employee.notes || "");
         setIsActive(employee.is_active ?? true);
+        setIdCard(employee.id_card || "");
+        setIdCardFrontUrl(employee.id_card_front_url || "");
+        setIdCardBackUrl(employee.id_card_back_url || "");
       }
 
       // 加载角色
@@ -147,6 +159,9 @@ export default function EditEmployeePage() {
           address: address || null,
           notes: notes || null,
           is_active: isActive,
+          id_card: idCard || null,
+          id_card_front_url: idCardFrontUrl || null,
+          id_card_back_url: idCardBackUrl || null,
         })
         .eq("id", employeeId);
 
@@ -239,16 +254,22 @@ export default function EditEmployeePage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">性别</label>
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">请选择</option>
-                <option value="male">男</option>
-                <option value="female">女</option>
-                <option value="other">其他</option>
-              </select>
+              <div className="flex gap-2">
+                {GENDERS.map((g) => (
+                  <button
+                    key={g.value}
+                    type="button"
+                    onClick={() => setGender(gender === g.value ? "" : g.value)}
+                    className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
+                      gender === g.value
+                        ? "bg-blue-50 text-blue-700 border-blue-300"
+                        : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -305,6 +326,41 @@ export default function EditEmployeePage() {
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">身份证号</label>
+            <input
+              type="text"
+              value={idCard}
+              onChange={(e) => setIdCard(e.target.value)}
+              placeholder="18位身份证号码"
+              maxLength={18}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">身份证正面</label>
+              <ImageUploader
+                key={`id-front-${idCardFrontUrl}`}
+                existingImages={idCardFrontUrl ? [idCardFrontUrl] : []}
+                onUpload={(paths) => setIdCardFrontUrl(paths[0] || "")}
+                maxImages={1}
+                folder="id-cards"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">身份证反面</label>
+              <ImageUploader
+                key={`id-back-${idCardBackUrl}`}
+                existingImages={idCardBackUrl ? [idCardBackUrl] : []}
+                onUpload={(paths) => setIdCardBackUrl(paths[0] || "")}
+                maxImages={1}
+                folder="id-cards"
               />
             </div>
           </div>

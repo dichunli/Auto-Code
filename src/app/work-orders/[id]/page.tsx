@@ -25,7 +25,10 @@ import RequirementActions from "@/components/RequirementActions";
 import WorkOrderFloatingSidebar from "@/components/WorkOrderFloatingSidebar";
 import { ItemNotesEditor } from "@/components/ItemNotesEditor";
 import AddItemPartButton from "@/components/AddItemPartButton";
+import AddRequirementButton from "@/components/AddRequirementButton";
+import AddRequirementItemsButton from "@/components/AddRequirementItemsButton";
 import PartBranchEditor from "@/components/PartBranchEditor";
+import { PartBranchImages } from "@/components/PartBranchImages";
 import PartGroupHeader from "@/components/PartGroupHeader";
 import { WorkOrderToggleProvider, ShowCommission, ShowTimer } from "@/components/WorkOrderToggleContext";
 import { WorkOrderToggleBar } from "@/components/WorkOrderToggleBar";
@@ -36,6 +39,7 @@ import WorkOrderTotalFooter from "@/components/WorkOrderTotalFooter";
 import AdvancePaymentList from "@/components/AdvancePaymentList";
 import SortableList from "@/components/SortableList";
 import ItemImageUploader from "@/components/ItemImageUploader";
+import { WorkOrderRealtimeSync } from "@/components/WorkOrderRealtimeSync";
 
 export default async function WorkOrderDetailPage({
   params,
@@ -52,7 +56,7 @@ export default async function WorkOrderDetailPage({
     itemMedia, itemMechanics, mechanicGroups, knowledgeLinks, itemParts,
     partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches,
     qualityChecks, payments, advancePaymentRecords, followUps, history, suppliers, logisticsCompanies,
-    inspections, inspectionMedia,
+    inspections, inspectionMedia, outsourceOrder,
   } = await getWorkOrderData(id);
 
   if (!order) notFound();
@@ -429,7 +433,7 @@ export default async function WorkOrderDetailPage({
                     {order.vehicle_id && (
                       <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />
                     )}
-                    <Link href={`/work-orders/${id}/requirements/new`} className="text-sm text-blue-600 hover:text-blue-700">+ 添加诊断/项目</Link>
+                    <AddRequirementButton orderId={id} />
                   </>
                 )}
                 <Link href={`/work-orders/${id}/reception/new`} className="text-sm text-orange-600 hover:text-orange-700">+ 接车检查</Link>
@@ -470,12 +474,7 @@ export default async function WorkOrderDetailPage({
                               profiles={profiles || []}
                               orderId={id}
                             />
-                            <Link
-                              href={`/work-orders/${id}/requirements/new?requirement_id=${req.id}`}
-                              className="text-xs text-blue-600 hover:text-blue-700"
-                            >
-                              + 添加项目
-                            </Link>
+                            <AddRequirementItemsButton orderId={id} requirementId={req.id} />
                           </div>
                         )}
                       </div>
@@ -549,6 +548,14 @@ export default async function WorkOrderDetailPage({
                                       isOutsourced={item.is_outsourced}
                                       isCustomerPart={item.is_customer_part}
                                       serviceItemId={item.service_item_id}
+                                      workOrderId={order.id}
+                                      itemName={item.name}
+                                      existingOrder={outsourceOrder}
+                                      existingItem={
+                                        outsourceOrder?.outsource_order_items?.find(
+                                          (oi: any) => oi.work_order_item_id === item.id
+                                        ) || null
+                                      }
                                     />
                                   </div>
                                   {knowledgeByItem[item.id]?.length > 0 ? (
@@ -774,13 +781,7 @@ export default async function WorkOrderDetailPage({
                                                 <span className="text-gray-400 text-xs">{p.notes}</span>
                                               )}
                                               {/* 配件分支图片 */}
-                                              {imagesByPart[p.id]?.length > 0 && (
-                                                <div className="flex flex-wrap gap-1">
-                                                  {imagesByPart[p.id].map((m: any) => (
-                                                    <img loading="lazy" key={m.id} src={m.storage_path} alt="" className="w-10 h-10 object-cover rounded border border-gray-100" />
-                                                  ))}
-                                                </div>
-                                              )}
+                                              <PartBranchImages images={imagesByPart[p.id] || []} />
                                             </PartBranchEditor>
                                           );
                                         })}
@@ -842,6 +843,26 @@ export default async function WorkOrderDetailPage({
                       )}
                       {item.is_outsourced && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">外包</span>
+                      )}
+                      {/* 外包单信息（来自 outsource_order_items） */}
+                      {item.outsource_order_items && item.outsource_order_items.length > 0 && outsourceOrder && (
+                        <div className="text-[10px] text-gray-500 mt-1">
+                          {item.outsource_order_items.map((oi: any) => (
+                            <span key={oi.id} className="inline-flex items-center gap-1">
+                              <span className="text-gray-400">{outsourceOrder.order_no}</span>
+                              <span className="text-gray-600">{oi.service_name}</span>
+                              <span className="text-gray-600">¥{oi.amount}</span>
+                              {outsourceOrder.suppliers?.name && (
+                                <span className="text-gray-400">{outsourceOrder.suppliers.name}</span>
+                              )}
+                              {outsourceOrder.is_paid ? (
+                                <span className="text-green-600">已支付</span>
+                              ) : (
+                                <span className="text-orange-600">未支付</span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
                       )}
                       {item.is_customer_part && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700">自带配件</span>
@@ -1304,6 +1325,7 @@ export default async function WorkOrderDetailPage({
         }))}
         advancePaymentTotal={advancePaymentTotal}
       />
+      <WorkOrderRealtimeSync itemIds={items?.map((i: any) => i.id) || []} />
     </WorkOrderToggleProvider>
   );
 }

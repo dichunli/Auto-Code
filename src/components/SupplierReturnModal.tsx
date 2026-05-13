@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "./ImageUploader";
+import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
 
 const RETURN_REASONS = [
   { key: "wrong_ship", label: "错发" },
@@ -16,8 +17,8 @@ interface Props {
   partName: string;
   workOrderItemPartId: string;
   maxQty: number;
-  suppliers: { id: string; name: string }[];
-  logisticsCompanies: { id: string; name: string }[];
+  suppliers: { id: string; name: string; region?: string | null }[];
+  logisticsCompanies: { id: string; name: string; scopes?: string[] | null }[];
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -144,31 +145,49 @@ export function SupplierReturnModal({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">物流公司</label>
-              <select
-                value={logisticsCompany}
-                onChange={(e) => setLogisticsCompany(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              >
-                <option value="">请选择</option>
-                {logisticsCompanies.map((l) => (
-                  <option key={l.id} value={l.name}>{l.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">运单号</label>
-              <input
-                type="text"
-                value={trackingNo}
-                onChange={(e) => setTrackingNo(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                placeholder="运单号"
-              />
-            </div>
-          </div>
+          {(() => {
+            const selectedSupplier = suppliers.find((s) => s.name === supplierName);
+            const region = selectedSupplier?.region as ("local" | "harbin" | "outside" | undefined);
+            if (selectedSupplier && !supplierNeedsLogistics(region)) {
+              return (
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded">本地供应商，无需物流和运单</div>
+                </div>
+              );
+            }
+            const filtered = filterLogisticsBySupplierName(logisticsCompanies, supplierName, suppliers);
+            return (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    物流公司
+                    {region === "harbin" && <span className="ml-1 text-blue-500">（哈市）</span>}
+                    {region === "outside" && <span className="ml-1 text-orange-500">（外阜）</span>}
+                  </label>
+                  <select
+                    value={logisticsCompany}
+                    onChange={(e) => setLogisticsCompany(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="">请选择</option>
+                    {filtered.map((l) => (
+                      <option key={l.id} value={l.name}>{l.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">运单号</label>
+                  <input
+                    type="text"
+                    value={trackingNo}
+                    onChange={(e) => setTrackingNo(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="运单号"
+                  />
+                </div>
+              </div>
+            );
+          })()}
 
           <div>
             <label className="block text-xs text-gray-500 mb-2">退货照片（必填）</label>

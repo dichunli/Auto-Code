@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { EmployeeDeleteButton } from "./EmployeeDeleteButton";
 
 export default async function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -51,6 +52,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
             >
               编辑
             </Link>
+            <EmployeeDeleteButton employeeId={id} employeeName={employee.full_name || "该员工"} />
             <span
               className={`text-xs px-2 py-0.5 rounded ${
                 employee.is_active ? "bg-green-50 text-green-700" : "bg-gray-50 text-gray-500"
@@ -73,7 +75,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           <div>
             <span className="text-gray-500">性别:</span>{" "}
             <span className="text-gray-900">
-              {employee.gender === "male" ? "男" : employee.gender === "female" ? "女" : employee.gender === "other" ? "其他" : "-"}
+              {employee.gender === "male" ? "男" : employee.gender === "female" ? "女" : "-"}
             </span>
           </div>
           <div>
@@ -88,6 +90,12 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
             <span className="text-gray-500">注册时间:</span>{" "}
             <span className="text-gray-900">{formatDate(employee.created_at)}</span>
           </div>
+          {employee.id_card && (
+            <div className="sm:col-span-2">
+              <span className="text-gray-500">身份证号:</span>{" "}
+              <span className="text-gray-900">{employee.id_card}</span>
+            </div>
+          )}
           {employee.address && (
             <div className="sm:col-span-2">
               <span className="text-gray-500">地址:</span>{" "}
@@ -101,6 +109,38 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
             </div>
           )}
         </div>
+
+        {(employee.id_card_front_url || employee.id_card_back_url) && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="text-sm text-gray-500 mb-2">身份证照片</div>
+            <div className="flex flex-wrap gap-3">
+              {employee.id_card_front_url && (
+                <div>
+                  <a href={employee.id_card_front_url} target="_blank" rel="noreferrer">
+                    <img
+                      src={employee.id_card_front_url}
+                      alt="身份证正面"
+                      className="w-40 h-24 object-cover rounded border border-gray-200 hover:opacity-80 transition-opacity"
+                    />
+                  </a>
+                  <div className="text-[10px] text-gray-400 mt-1 text-center">正面</div>
+                </div>
+              )}
+              {employee.id_card_back_url && (
+                <div>
+                  <a href={employee.id_card_back_url} target="_blank" rel="noreferrer">
+                    <img
+                      src={employee.id_card_back_url}
+                      alt="身份证反面"
+                      className="w-40 h-24 object-cover rounded border border-gray-200 hover:opacity-80 transition-opacity"
+                    />
+                  </a>
+                  <div className="text-[10px] text-gray-400 mt-1 text-center">反面</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="mt-4">
           <span className="text-sm text-gray-500">角色:</span>{" "}

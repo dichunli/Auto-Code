@@ -24,7 +24,7 @@ export function getStatusLabel(status: string) {
     pending_diagnosis: "待诊断",
     pending_repair: "待维修",
     repairing: "维修中",
-    pending_quality_check: "待质检",
+    pending_quality_check: "已质检",
     pending_close: "待结单",
     pending_settlement: "待结算",
     settled: "已结算",

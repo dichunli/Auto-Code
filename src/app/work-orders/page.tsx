@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
@@ -13,10 +12,58 @@ interface Order {
   id: string;
   order_no: string;
   status: string;
+  boardStage: string;
   total_cost: number;
   created_at: string;
   vehicles: { plate_number: string; brand: string; model: string; vin: string } | null;
   customers: { name: string; phone: string; company: string } | null;
+}
+
+// 工单"已结单"对应的几种 work_orders.status
+const SETTLED_STATUSES = ["settled", "delivered", "pending_close", "pending_settlement"];
+
+const STAGE_LABELS: Record<string, string> = {
+  pending_diagnosis: "待诊断",
+  pending_dispatch: "待派工",
+  pending_construction: "待施工",
+  in_progress: "施工中",
+  paused: "已中断",
+  completed: "已完工",
+  pending_qc: "已质检",
+  settled: "已结单",
+};
+
+const STAGE_COLORS: Record<string, string> = {
+  pending_diagnosis: "bg-gray-100 text-gray-700",
+  pending_dispatch: "bg-slate-100 text-slate-700",
+  pending_construction: "bg-orange-100 text-orange-700",
+  in_progress: "bg-blue-100 text-blue-700",
+  paused: "bg-yellow-100 text-yellow-700",
+  completed: "bg-green-100 text-green-700",
+  pending_qc: "bg-purple-100 text-purple-700",
+  settled: "bg-emerald-100 text-emerald-700",
+};
+
+// 综合 work_orders.status + work_order_items 计算该工单的"代表看板阶段"
+function computeBoardStage(raw: any): string {
+  const orderStatus = raw.status;
+  if (SETTLED_STATUSES.includes(orderStatus)) return "settled";
+  if (orderStatus === "pending_quality_check") return "pending_qc";
+
+  const labors = (raw.work_order_items || []).filter((it: any) => it.item_type === "labor");
+  if (labors.length === 0) return "pending_diagnosis";
+
+  // 优先级（高→低）：已中断 → 施工中 → 已完工 → 待派工 → 待施工
+  if (labors.some((it: any) => it.status === "paused")) return "paused";
+  if (labors.some((it: any) => it.status === "in_progress")) return "in_progress";
+  if (labors.every((it: any) => it.status === "completed")) return "completed";
+
+  const hasUnassigned = labors.some(
+    (it: any) => (it.status === "pending" || !it.status) && !it.mechanic_id
+  );
+  if (hasUnassigned) return "pending_dispatch";
+
+  return "pending_construction";
 }
 
 function normalizeOrder(raw: any): Order {
@@ -26,6 +73,7 @@ function normalizeOrder(raw: any): Order {
     id: raw.id,
     order_no: raw.order_no,
     status: raw.status,
+    boardStage: computeBoardStage(raw),
     total_cost: raw.total_cost,
     created_at: raw.created_at,
     vehicles: Array.isArray(v) ? v[0] || null : v || null,
@@ -36,12 +84,13 @@ function normalizeOrder(raw: any): Order {
 const statusFilters = [
   { value: "", label: "全部" },
   { value: "pending_diagnosis", label: "待诊断" },
-  { value: "pending_repair", label: "待维修" },
-  { value: "repairing", label: "维修中" },
-  { value: "pending_quality_check", label: "待质检" },
-  { value: "pending_close", label: "待结单" },
-  { value: "pending_settlement", label: "待结算" },
-  { value: "settled", label: "已结算" },
+  { value: "pending_dispatch", label: "待派工" },
+  { value: "pending_construction", label: "待施工" },
+  { value: "in_progress", label: "施工中" },
+  { value: "paused", label: "已中断" },
+  { value: "completed", label: "已完工" },
+  { value: "pending_qc", label: "已质检" },
+  { value: "settled", label: "已结单" },
 ];
 
 const typeLabelMap: Record<string, string> = {
@@ -70,20 +119,28 @@ export default function WorkOrdersPage() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      let q = supabase
+      const { data, error } = await supabase
         .from("work_orders")
-        .select("id, order_no, status, total_cost, created_at, vehicles(plate_number, brand, model, vin), customers(name, phone, company)")
+        .select(`
+          id, order_no, status, total_cost, created_at,
+          vehicles(plate_number, brand, model, vin),
+          customers(name, phone, company),
+          work_order_items(id, status, mechanic_id, item_type)
+        `)
         .order("created_at", { ascending: false });
 
-      if (status) q = q.eq("status", status);
-
-      const { data, error } = await q;
       if (error) {
         setQueryError(error.message);
         setOrders([]);
       } else {
         setQueryError(null);
         let result = (data || []).map(normalizeOrder);
+
+        // 按看板阶段筛选（URL 中的 status 参数实际表示 boardStage）
+        if (status) {
+          result = result.filter((o) => o.boardStage === status);
+        }
+
         if (keyword?.trim()) {
           const k = keyword.trim().toLowerCase();
           result = result.filter((order) => {
@@ -218,7 +275,13 @@ export default function WorkOrdersPage() {
                   <td className="px-6 py-4 text-gray-500">{order.customers?.phone || "-"}</td>
                   <td className="px-6 py-4 text-gray-500">{order.customers?.company || "-"}</td>
                   <td className="px-6 py-4">
-                    <StatusBadge status={order.status} />
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        STAGE_COLORS[order.boardStage] || "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      {STAGE_LABELS[order.boardStage] || order.boardStage}
+                    </span>
                   </td>
                   <td className="px-6 py-4 text-gray-900">{formatCurrency(order.total_cost)}</td>
                   <td className="px-6 py-4 text-gray-500">{formatDate(order.created_at)}</td>

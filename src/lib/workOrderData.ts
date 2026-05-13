@@ -47,12 +47,18 @@ export async function getWorkOrderData(id: string) {
     { data: mechanicGroups },
     { data: suppliers },
     { data: logisticsCompanies },
+    { data: outsourceOrder },
   ] = await Promise.all([
     supabase.from("work_orders").select(`*, vehicles(*, vehicle_models(*)), customers(*)`).eq("id", id).single(),
     supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
     supabase.from("mechanic_groups").select("*, mechanic_group_members(mechanic_id, profiles(full_name))"),
     supabase.from("suppliers").select("*").order("name"),
     supabase.from("logistics_companies").select("*").order("name"),
+    supabase
+      .from("outsource_orders")
+      .select("*, suppliers(name), outsource_order_items(id, work_order_item_id, service_item_id, service_name, amount)")
+      .eq("work_order_id", id)
+      .maybeSingle(),
   ]);
 
   // 第二批：工单关联数据（嵌套查询减少 HTTP 请求次数）
@@ -80,7 +86,8 @@ export async function getWorkOrderData(id: string) {
       service_items(service_name_id, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, service_names(sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value)),
       outsourced_supplier:suppliers(name),
       work_order_item_media(*),
-      work_order_item_mechanics(work_order_item_id, mechanic_id, share_pct, profiles(full_name))
+      work_order_item_mechanics(work_order_item_id, mechanic_id, share_pct, profiles(full_name)),
+      outsource_order_items(*)
     `).eq("work_order_id", id).order("sort_order", { ascending: true }),
 
     supabase.from("work_order_inspections").select(`
@@ -194,7 +201,7 @@ export async function getWorkOrderData(id: string) {
     itemMedia, itemMechanics, mechanicGroups, knowledgeLinks, itemParts,
     partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches,
     qualityChecks, payments, advancePaymentRecords, followUps, history, suppliers, logisticsCompanies,
-    inspections, inspectionMedia,
+    inspections, inspectionMedia, outsourceOrder,
   };
 
   // 写入缓存前检查大小限制，超出则淘汰最旧条目

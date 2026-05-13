@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
 
 interface BatchEditModalProps {
   orderId: string;
@@ -162,15 +163,34 @@ export function BatchEditModal({ orderId, items, itemParts, suppliers, logistics
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">物流公司</label>
-              <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" value={batchValues.logistics_agreement} onChange={(e) => setBatchValues({ ...batchValues, logistics_agreement: e.target.value })}>
-                <option value="">不修改</option>
-                {logisticsCompanies.map((lc) => (
-                  <option key={lc.id} value={lc.name}>{lc.name}</option>
-                ))}
-              </select>
-            </div>
+            {(() => {
+              const selectedSupplier = suppliers.find((s) => s.name === batchValues.supplier_name);
+              const region = selectedSupplier?.region as ("local" | "harbin" | "outside" | undefined);
+              if (selectedSupplier && !supplierNeedsLogistics(region)) {
+                return (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">物流公司</label>
+                    <div className="w-full px-2 py-1.5 text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded">本地供应商，无需物流</div>
+                  </div>
+                );
+              }
+              const filtered = filterLogisticsBySupplierName(logisticsCompanies, batchValues.supplier_name, suppliers);
+              return (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    物流公司
+                    {region === "harbin" && <span className="ml-1 text-blue-500">（哈市）</span>}
+                    {region === "outside" && <span className="ml-1 text-orange-500">（外阜）</span>}
+                  </label>
+                  <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" value={batchValues.logistics_agreement} onChange={(e) => setBatchValues({ ...batchValues, logistics_agreement: e.target.value })}>
+                    <option value="">不修改</option>
+                    {filtered.map((lc) => (
+                      <option key={lc.id} value={lc.name}>{lc.name}</option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })()}
             <div>
               <label className="block text-xs text-gray-500 mb-1">业务类型</label>
               <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" value={batchValues.business_type} onChange={(e) => setBatchValues({ ...batchValues, business_type: e.target.value })}>

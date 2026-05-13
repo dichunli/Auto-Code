@@ -19,8 +19,8 @@ interface Props {
   quantity: number;
   pickedQty: number;
   returnQty: number;
-  suppliers: { id: string; name: string }[];
-  logisticsCompanies: { id: string; name: string }[];
+  suppliers: { id: string; name: string; region?: string | null }[];
+  logisticsCompanies: { id: string; name: string; scopes?: string[] | null }[];
   locked?: boolean;
 }
 

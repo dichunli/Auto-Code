@@ -562,9 +562,20 @@ export default function InventoryInForm() {
                     onChange={(e) => setNewWaybill({ ...newWaybill, logistics_company_id: e.target.value })}
                   >
                     <option value="">请选择</option>
-                    {logisticsCompanies.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
+                    {logisticsCompanies.filter((c) => !c.scopes || c.scopes.includes("harbin")).length > 0 && (
+                      <optgroup label="哈市物流（哈市供应商）">
+                        {logisticsCompanies.filter((c) => !c.scopes || c.scopes.includes("harbin")).map((c) => (
+                          <option key={`harbin-${c.id}`} value={c.id}>{c.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {logisticsCompanies.filter((c) => c.scopes?.includes("outside")).length > 0 && (
+                      <optgroup label="外阜快递（外阜供应商）">
+                        {logisticsCompanies.filter((c) => c.scopes?.includes("outside")).map((c) => (
+                          <option key={`outside-${c.id}`} value={c.id}>{c.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
                 <div>

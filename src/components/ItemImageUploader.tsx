@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/imageCompress";
+import { ImageViewer } from "./ImageViewer";
 
 interface Props {
   itemId: string;
@@ -14,6 +15,8 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
   const supabase = createClient();
   const [images, setImages] = useState(existingImages);
   const [saving, setSaving] = useState(false);
+  const [viewerSrc, setViewerSrc] = useState<string | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -63,11 +66,15 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
   async function removeImage(index: number) {
     const path = images[index];
     setImages((prev) => prev.filter((_, i) => i !== index));
-    await supabase
+    const { error } = await supabase
       .from("work_order_item_media")
       .delete()
       .eq("work_order_item_id", itemId)
       .eq("storage_path", path);
+    if (error) {
+      alert("删除失败: " + error.message);
+      setImages(existingImages);
+    }
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -77,26 +84,27 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
     e.target.value = "";
   }
 
-  // 粘贴上传
+  // 粘贴上传（只有鼠标悬停在本组件上时才响应）
   useEffect(() => {
     const handler = (e: ClipboardEvent) => {
+      if (!isHovered) return;
       const files = e.clipboardData?.files;
-      if (!files) return;
+      if (!files || files.length === 0) return;
       Array.from(files).forEach((f) => uploadFile(f));
     };
     window.addEventListener("paste", handler);
     return () => window.removeEventListener("paste", handler);
-  }, [uploadFile]);
+  }, [uploadFile, isHovered]);
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
       {images.map((src, i) => (
-        <div key={i} className="relative w-8 h-8 rounded border border-gray-200 overflow-hidden group">
-          <img src={src} alt="" className="w-full h-full object-cover" />
+        <div key={i} className="relative w-8 h-8 rounded border border-gray-200 overflow-hidden group cursor-pointer">
+          <img src={src} alt="" className="w-full h-full object-cover" onClick={() => setViewerSrc(src)} />
           {!isLocked && (
             <button
               type="button"
-              onClick={() => removeImage(i)}
+              onClick={(e) => { e.stopPropagation(); removeImage(i); }}
               className="absolute top-0 right-0 w-3 h-3 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
             >
               ×
@@ -132,6 +140,9 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
             onChange={handleFileChange}
           />
         </>
+      )}
+      {viewerSrc && (
+        <ImageViewer src={viewerSrc} onClose={() => setViewerSrc(null)} />
       )}
     </div>
   );

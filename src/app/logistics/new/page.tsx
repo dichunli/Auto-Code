@@ -75,9 +75,20 @@ export default function NewWaybillPage() {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">请选择</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
+              {companies.filter((c) => !c.scopes || c.scopes.includes("harbin")).length > 0 && (
+                <optgroup label="哈市物流（哈市供应商）">
+                  {companies.filter((c) => !c.scopes || c.scopes.includes("harbin")).map((c) => (
+                    <option key={`harbin-${c.id}`} value={c.id}>{c.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {companies.filter((c) => c.scopes?.includes("outside")).length > 0 && (
+                <optgroup label="外阜快递（外阜供应商）">
+                  {companies.filter((c) => c.scopes?.includes("outside")).map((c) => (
+                    <option key={`outside-${c.id}`} value={c.id}>{c.name}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
         </div>

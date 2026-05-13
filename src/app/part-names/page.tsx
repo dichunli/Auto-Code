@@ -197,6 +197,8 @@ export default function PartNamesPage() {
 
       const records: any[] = [];
       const errors: string[] = [];
+      const seenInFile = new Map<string, number>(); // 文件内重名记录:name -> 首次出现的行号
+      let duplicateInFile = 0;
 
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
@@ -224,8 +226,18 @@ export default function PartNamesPage() {
           continue;
         }
 
+        const name = String(record["配件名称"]).trim();
+
+        // 文件内重名检查
+        if (seenInFile.has(name)) {
+          duplicateInFile++;
+          errors.push(`第 ${rowNum} 行: 配件名称"${name}"与第 ${seenInFile.get(name)} 行重复，已跳过`);
+          continue;
+        }
+        seenInFile.set(name, rowNum);
+
         records.push({
-          name: String(record["配件名称"]).trim(),
+          name,
           category_id: categoryId,
           unit: record["单位"] ? String(record["单位"]).trim() : "件",
           search_keywords: record["搜索关键词"] ? String(record["搜索关键词"]).trim() : null,
@@ -240,11 +252,41 @@ export default function PartNamesPage() {
         return;
       }
 
-      setImportMsg(`验证通过 ${records.length} 条，开始导入...`);
+      // 查询数据库中已存在的名称,过滤重复
+      setImportMsg(`验证通过 ${records.length} 条，正在检查重复名称...`);
+      const allNames = records.map((r) => r.name);
+      const existingNames = new Set<string>();
+      // 分批查询,避免 in() 参数过多
+      const queryBatchSize = 200;
+      for (let i = 0; i < allNames.length; i += queryBatchSize) {
+        const namesBatch = allNames.slice(i, i + queryBatchSize);
+        const { data: existing } = await supabase
+          .from("part_names")
+          .select("name")
+          .in("name", namesBatch);
+        (existing || []).forEach((row: any) => existingNames.add(row.name));
+      }
+
+      const toInsert = records.filter((r) => !existingNames.has(r.name));
+      const duplicateInDb = records.length - toInsert.length;
+
+      if (toInsert.length === 0) {
+        let msg = `导入完成：新增 0 条`;
+        if (duplicateInDb > 0) msg += `，${duplicateInDb} 条名称已存在`;
+        if (duplicateInFile > 0) msg += `，文件内重名 ${duplicateInFile} 条`;
+        const otherErrors = errors.length - duplicateInFile;
+        if (otherErrors > 0) msg += `，${otherErrors} 条有错误`;
+        setImportMsg(msg);
+        setImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
+      setImportMsg(`将导入 ${toInsert.length} 条（跳过 ${duplicateInDb} 条已存在），开始导入...`);
       const batchSize = 100;
       let inserted = 0;
-      for (let i = 0; i < records.length; i += batchSize) {
-        const batch = records.slice(i, i + batchSize);
+      for (let i = 0; i < toInsert.length; i += batchSize) {
+        const batch = toInsert.slice(i, i + batchSize);
         const { error } = await supabase.from("part_names").insert(batch);
         if (error) {
           setImportMsg(`第 ${i + 1} 批导入失败: ${error.message}`);
@@ -252,13 +294,14 @@ export default function PartNamesPage() {
           return;
         }
         inserted += batch.length;
-        setImportMsg(`已导入 ${inserted}/${records.length} 条...`);
+        setImportMsg(`已导入 ${inserted}/${toInsert.length} 条...`);
       }
 
       let msg = `导入完成：新增 ${inserted} 条`;
-      if (errors.length > 0) {
-        msg += `，跳过 ${errors.length} 条（有错误）`;
-      }
+      if (duplicateInDb > 0) msg += `，跳过 ${duplicateInDb} 条（名称已存在）`;
+      if (duplicateInFile > 0) msg += `，文件内重名 ${duplicateInFile} 条`;
+      const otherErrors = errors.length - duplicateInFile;
+      if (otherErrors > 0) msg += `，${otherErrors} 条有错误`;
       setImportMsg(msg);
       loadNames(query);
     } catch (err: any) {
@@ -338,8 +381,21 @@ export default function PartNamesPage() {
     }
     setSaving(true);
 
+    // 检查名称是否重复
+    const trimmedName = form.name.trim();
+    const { data: existed } = await supabase
+      .from("part_names")
+      .select("id")
+      .eq("name", trimmedName)
+      .limit(1);
+    if (existed && existed.length > 0) {
+      alert(`配件名称"${trimmedName}"已存在，请使用其他名称`);
+      setSaving(false);
+      return;
+    }
+
     const { data: inserted, error } = await supabase.from("part_names").insert({
-      name: form.name.trim(),
+      name: trimmedName,
       category_id: form.category_id,
       unit: form.unit,
       search_keywords: form.search_keywords || null,

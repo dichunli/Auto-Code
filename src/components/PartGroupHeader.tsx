@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/imageCompress";
 import { formatCurrency } from "@/lib/utils";
 import { PartPickerModal } from "./PartPickerModal";
+import { ImageViewer } from "./ImageViewer";
 
 interface Props {
   seqLabel: string;
@@ -46,6 +47,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
 
   const [notes, setNotes] = useState(parts[0]?.notes || "");
   const [images, setImages] = useState<string[]>(existingImages);
+  const [viewerSrc, setViewerSrc] = useState<string | null>(null);
 
   // 实时跟踪分支字段变化（用于销售价/数量修改时的即时刷新）
   const [liveParts, setLiveParts] = useState(parts);
@@ -171,10 +173,25 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         alert("最多上传 5 张图片");
         return;
       }
-      if (!parts[0]) return;
+      if (!parts[0]?.id) {
+        alert("无法获取配件分支ID，请刷新页面后重试");
+        return;
+      }
 
       setSaving(true);
       try {
+        /* 诊断：确认配件分支记录仍存在 */
+        const { data: branchCheck, error: checkError } = await supabase
+          .from("work_order_item_parts")
+          .select("id")
+          .eq("id", parts[0].id)
+          .maybeSingle();
+        if (checkError || !branchCheck) {
+          throw new Error(
+            `找不到对应的配件分支记录(ID: ${parts[0].id})，可能已被删除，请刷新页面后重试`
+          );
+        }
+
         const compressed = await compressImage(file, 150);
         const ext = file.name.split(".").pop() || "jpg";
         const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
@@ -209,11 +226,14 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     const path = images[index];
     setImages((prev) => prev.filter((_, i) => i !== index));
     if (!parts[0]) return;
-    await supabase
+    const { error } = await supabase
       .from("work_order_item_part_media")
       .delete()
       .eq("work_order_item_part_id", parts[0].id)
       .eq("storage_path", path);
+    if (error) {
+      alert("删除失败: " + error.message);
+    }
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -329,20 +349,24 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     router.refresh();
   }
 
-  // 粘贴上传
+  // 鼠标悬停状态，用于确定哪个组件接收粘贴
+  const [isHovered, setIsHovered] = useState(false);
+
+  // 粘贴上传（只有鼠标悬停在本组件上时才响应）
   useEffect(() => {
     const handler = (e: ClipboardEvent) => {
+      if (!isHovered) return;
       const files = e.clipboardData?.files;
-      if (!files) return;
+      if (!files || files.length === 0) return;
       Array.from(files).forEach((f) => uploadFile(f));
     };
     window.addEventListener("paste", handler);
     return () => window.removeEventListener("paste", handler);
-  }, [uploadFile]);
+  }, [uploadFile, isHovered]);
 
   return (
     <>
-      <div className="flex items-center gap-1.5 pl-1">
+      <div className="flex items-center gap-1.5 pl-1" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
         {/* 左侧可滚动内容区 */}
         <div className="flex-1 flex items-center gap-1.5 overflow-x-auto min-w-0">
           <span className="text-xs text-gray-400 font-mono shrink-0">{seqLabel}</span>
@@ -411,12 +435,12 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
             <div className="flex items-center gap-1 ml-2">
               <span className="text-[10px] text-gray-400">添加图片</span>
               {images.map((src, i) => (
-                <div key={i} className="relative w-8 h-8 rounded border border-gray-200 overflow-hidden group">
-                  <img src={src} alt="" className="w-full h-full object-cover" />
+                <div key={i} className="relative w-8 h-8 rounded border border-gray-200 overflow-hidden group cursor-pointer">
+                  <img src={src} alt="" className="w-full h-full object-cover" onClick={() => setViewerSrc(src)} />
                   {!isLocked && (
                     <button
                       type="button"
-                      onClick={() => removeImage(i)}
+                      onClick={(e) => { e.stopPropagation(); removeImage(i); }}
                       className="absolute top-0 right-0 w-3 h-3 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       ×
@@ -671,6 +695,9 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         onClose={() => setPickerOpen(false)}
         onConfirm={handlePickerConfirm}
       />
+      {viewerSrc && (
+        <ImageViewer src={viewerSrc} onClose={() => setViewerSrc(null)} />
+      )}
     </>
   );
 }

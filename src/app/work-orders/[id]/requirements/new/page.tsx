@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 import { ReworkSelectModal } from "@/components/ReworkSelectModal";
 import { calculateItemCommission, calculatePartCommission } from "@/lib/commission";
+import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
 
 export default function NewRequirementPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -1251,20 +1252,39 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
                                 ))}
                               </select>
                             </div>
-                            {/* 物流公司下拉 */}
-                            <div className="sm:col-span-3">
-                              <label className="block text-xs text-gray-500 mb-1">物流公司</label>
-                              <select
-                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs"
-                                value={part.logistics_agreement}
-                                onChange={(e) => updatePart(i, pi, "logistics_agreement", e.target.value)}
-                              >
-                                <option value="">请选择</option>
-                                {logisticsCompanies.map((lc) => (
-                                  <option key={lc.id} value={lc.name}>{lc.name}</option>
-                                ))}
-                              </select>
-                            </div>
+                            {/* 物流公司下拉（本地供应商不显示） */}
+                            {(() => {
+                              const currentSupplier = suppliers.find((s) => s.name === part.supplier_name);
+                              const region = currentSupplier?.region as ("local" | "harbin" | "outside" | undefined);
+                              if (currentSupplier && !supplierNeedsLogistics(region)) {
+                                return (
+                                  <div className="sm:col-span-3">
+                                    <label className="block text-xs text-gray-500 mb-1">物流公司</label>
+                                    <div className="px-2 py-1.5 text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded">本地供应商，无需物流</div>
+                                  </div>
+                                );
+                              }
+                              const filtered = filterLogisticsBySupplierName(logisticsCompanies, part.supplier_name, suppliers);
+                              return (
+                                <div className="sm:col-span-3">
+                                  <label className="block text-xs text-gray-500 mb-1">
+                                    物流公司
+                                    {region === "harbin" && <span className="ml-1 text-blue-500">（哈市物流）</span>}
+                                    {region === "outside" && <span className="ml-1 text-orange-500">（外阜快递）</span>}
+                                  </label>
+                                  <select
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs"
+                                    value={part.logistics_agreement}
+                                    onChange={(e) => updatePart(i, pi, "logistics_agreement", e.target.value)}
+                                  >
+                                    <option value="">请选择</option>
+                                    {filtered.map((lc) => (
+                                      <option key={lc.id} value={lc.name}>{lc.name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              );
+                            })()}
                             {/* 采购/到货状态按钮 */}
                             <div className="sm:col-span-5 flex gap-2 items-center pt-4">
                               <button

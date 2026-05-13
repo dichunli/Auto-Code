@@ -11,19 +11,33 @@ interface Supplier {
   contact: string | null;
   phone: string | null;
   address: string | null;
+  region: string | null;
   notes: string | null;
   recommendation_level: number;
   parts?: { count: number }[];
 }
 
+const REGION_LABELS: Record<string, string> = {
+  local: "本地",
+  harbin: "哈市",
+  outside: "外阜",
+};
+
+const REGION_STYLES: Record<string, string> = {
+  local: "bg-green-50 text-green-700 border-green-200",
+  harbin: "bg-blue-50 text-blue-700 border-blue-200",
+  outside: "bg-orange-50 text-orange-700 border-orange-200",
+};
+
 export default function SuppliersPage() {
   const supabase = createClient();
   const [query, setQuery] = useState("");
+  const [regionFilter, setRegionFilter] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  async function loadSuppliers(search?: string) {
+  async function loadSuppliers(search?: string, region?: string) {
     setLoading(true);
     let q = supabase
       .from("suppliers")
@@ -31,6 +45,9 @@ export default function SuppliersPage() {
       .order("created_at", { ascending: false });
     if (search?.trim()) {
       q = q.or(`name.ilike.%${search.trim()}%,contact.ilike.%${search.trim()}%,phone.ilike.%${search.trim()}%`);
+    }
+    if (region) {
+      q = q.eq("region", region);
     }
     const { data, error } = await q;
     if (error) {
@@ -42,13 +59,13 @@ export default function SuppliersPage() {
   }
 
   useEffect(() => {
-    loadSuppliers();
-  }, [supabase]);
+    loadSuppliers(undefined, regionFilter);
+  }, [supabase, regionFilter]);
 
   useEffect(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
-      loadSuppliers(query);
+      loadSuppliers(query, regionFilter);
     }, 300);
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -67,7 +84,7 @@ export default function SuppliersPage() {
       alert("删除失败: " + error.message);
       return;
     }
-    loadSuppliers(query);
+    loadSuppliers(query, regionFilter);
   }
 
   return (
@@ -86,9 +103,22 @@ export default function SuppliersPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        {query.trim() && (
+        <select
+          value={regionFilter}
+          onChange={(e) => setRegionFilter(e.target.value)}
+          className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">全部地域</option>
+          <option value="local">本地</option>
+          <option value="harbin">哈市</option>
+          <option value="outside">外阜</option>
+        </select>
+        {(query.trim() || regionFilter) && (
           <button
-            onClick={() => setQuery("")}
+            onClick={() => {
+              setQuery("");
+              setRegionFilter("");
+            }}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             清空
@@ -104,6 +134,7 @@ export default function SuppliersPage() {
                 <th className="px-6 py-3 text-left font-medium text-gray-500">供应商名称</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">联系人</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">电话</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">地域</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">地址</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">推荐等级</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">配件数</th>
@@ -123,6 +154,15 @@ export default function SuppliersPage() {
                   </td>
                     <td className="px-6 py-4 text-gray-600">{s.contact || "-"}</td>
                     <td className="px-6 py-4 text-gray-600">{s.phone || "-"}</td>
+                    <td className="px-6 py-4">
+                      {s.region ? (
+                        <span className={`text-xs px-2 py-0.5 rounded border ${REGION_STYLES[s.region] || "bg-gray-50 text-gray-600 border-gray-200"}`}>
+                          {REGION_LABELS[s.region] || s.region}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-gray-600">{s.address || "-"}</td>
                     <td className="px-6 py-4 text-gray-600">
                       {s.recommendation_level > 0 ? (
@@ -150,7 +190,7 @@ export default function SuppliersPage() {
               })}
               {(!suppliers || suppliers.length === 0) && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
                     {loading ? "加载中..." : "暂无供应商数据"}
                   </td>
                 </tr>

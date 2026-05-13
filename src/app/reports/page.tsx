@@ -6,6 +6,7 @@ const reportCards = [
   { href: "/reports/profit", title: "利润分析", desc: "收入、成本、毛利与利润率分析", color: "bg-green-50 text-green-700 border-green-100" },
   { href: "/reports/work-orders", title: "工单统计", desc: "工单数量、状态分布与金额统计", color: "bg-purple-50 text-purple-700 border-purple-100" },
   { href: "/reports/inventory", title: "库存周转", desc: "配件库存量、价值与周转天数", color: "bg-orange-50 text-orange-700 border-orange-100" },
+  { href: "/reports/auto-linked-parts", title: "自动关联配件", desc: "查看自动从工单建立的配件与车型关联记录", color: "bg-yellow-50 text-yellow-700 border-yellow-100" },
   { href: "/reports/performance", title: "员工业绩", desc: "技师工单数、项目金额与工时统计", color: "bg-teal-50 text-teal-700 border-teal-100" },
   { href: "/reports/construction-stats", title: "施工用时统计", desc: "项目施工时长、中断时长与技师效率对比", color: "bg-indigo-50 text-indigo-700 border-indigo-100" },
 ];

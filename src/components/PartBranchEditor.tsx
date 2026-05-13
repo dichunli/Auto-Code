@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -80,6 +80,18 @@ export default function PartBranchEditor({
     document_name: part.document_name || part.parts?.document_name || "",
   });
 
+  // 供应商推荐相关状态
+  const [vehicleInfo, setVehicleInfo] = useState<{ 厂商?: string; 品牌?: string; 车系?: string }>({});
+  const [supplierVehicleMap, setSupplierVehicleMap] = useState<Map<string, Array<{ 厂商?: string; 品牌?: string; 车系?: string }>>>(new Map());
+  const [matchedPartNameSupplierIds, setMatchedPartNameSupplierIds] = useState<Set<string>>(new Set());
+  const [matchedCategorySupplierIds, setMatchedCategorySupplierIds] = useState<Set<string>>(new Set());
+  const [matchedBrandSupplierIds, setMatchedBrandSupplierIds] = useState<Set<string>>(new Set());
+  const [brandId, setBrandId] = useState<string | null>(null);
+  const [supplierDropdownOpen, setSupplierDropdownOpen] = useState(false);
+  const supplierDropdownRef = useRef<HTMLDivElement>(null);
+  const supplierButtonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+
   // 系统中关联的编码、品牌和规格列表
   const [availablePartNumbers, setAvailablePartNumbers] = useState<string[]>([]);
   const [availableBrands, setAvailableBrands] = useState<string[]>([]);
@@ -102,6 +114,108 @@ export default function PartBranchEditor({
       });
     });
   }, [part.part_name_id, supabase]);
+
+  // 查询供应商推荐相关数据
+  useEffect(() => {
+    // 1. 查询当前车型信息
+    const vehiclePromise = vehicleModelId
+      ? supabase.from("vehicle_models").select("厂商,品牌,车系").eq("id", vehicleModelId).single()
+      : Promise.resolve({ data: null });
+
+    // 2. 查询所有供应商的车型关联
+    const vehicleLinksPromise = supabase
+      .from("supplier_vehicle_models")
+      .select("supplier_id, vehicle_models(厂商,品牌,车系)");
+
+    // 3. 查询配件名称匹配的供应商
+    const partNamePromise = part.part_name_id
+      ? supabase.from("supplier_part_names").select("supplier_id").eq("part_name_id", part.part_name_id)
+      : Promise.resolve({ data: [] });
+
+    // 4. 查询配件分类匹配的供应商
+    const categoryId = part.part_names?.category_id;
+    const categoryPromise = categoryId
+      ? supabase.from("supplier_part_categories").select("supplier_id").eq("part_category_id", categoryId)
+      : Promise.resolve({ data: [] });
+
+    Promise.all([vehiclePromise, vehicleLinksPromise, partNamePromise, categoryPromise])
+      .then(([vehicleRes, linksRes, pnRes, pcRes]) => {
+        // 车型信息
+        if (vehicleRes.data) {
+          setVehicleInfo(vehicleRes.data);
+        }
+
+        // 供应商车型关联映射
+        const vmMap = new Map<string, Array<{ 厂商?: string; 品牌?: string; 车系?: string }>>();
+        (linksRes.data || []).forEach((r: any) => {
+          const list = vmMap.get(r.supplier_id) || [];
+          list.push(r.vehicle_models);
+          vmMap.set(r.supplier_id, list);
+        });
+        setSupplierVehicleMap(vmMap);
+
+        // 配件名称匹配
+        setMatchedPartNameSupplierIds(new Set((pnRes.data || []).map((r: any) => r.supplier_id)));
+
+        // 配件分类匹配
+        setMatchedCategorySupplierIds(new Set((pcRes.data || []).map((r: any) => r.supplier_id)));
+      });
+  }, [vehicleModelId, part.part_name_id, part.part_names?.category_id, supabase]);
+
+  // 查询品牌ID（当品牌变化时）
+  useEffect(() => {
+    if (!editForm.brand) {
+      setBrandId(null);
+      setMatchedBrandSupplierIds(new Set());
+      return;
+    }
+    supabase.from("part_brands").select("id").eq("name", editForm.brand).single().then(({ data }) => {
+      const bid = data?.id || null;
+      setBrandId(bid);
+      if (bid) {
+        supabase.from("supplier_part_brands").select("supplier_id").eq("part_brand_id", bid).then(({ data: bd }) => {
+          setMatchedBrandSupplierIds(new Set((bd || []).map((r: any) => r.supplier_id)));
+        });
+      } else {
+        setMatchedBrandSupplierIds(new Set());
+      }
+    });
+  }, [editForm.brand, supabase]);
+
+  // 计算下拉位置
+  useEffect(() => {
+    if (!supplierDropdownOpen || !supplierButtonRef.current) return;
+    function updatePos() {
+      if (!supplierButtonRef.current) return;
+      const rect = supplierButtonRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+    }
+    updatePos();
+    window.addEventListener("scroll", updatePos, true);
+    window.addEventListener("resize", updatePos);
+    return () => {
+      window.removeEventListener("scroll", updatePos, true);
+      window.removeEventListener("resize", updatePos);
+    };
+  }, [supplierDropdownOpen]);
+
+  // 点击外部关闭供应商下拉
+  useEffect(() => {
+    if (!supplierDropdownOpen) return;
+    function handleClick(e: MouseEvent) {
+      const target = e.target as Node;
+      if (
+        supplierDropdownRef.current &&
+        !supplierDropdownRef.current.contains(target) &&
+        supplierButtonRef.current &&
+        !supplierButtonRef.current.contains(target)
+      ) {
+        setSupplierDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [supplierDropdownOpen]);
 
   async function saveField(field: string, value: string) {
     setSaving(true);
@@ -304,6 +418,83 @@ export default function PartBranchEditor({
       return;
     }
     refresh();
+  }
+
+  // 供应商推荐排序
+  const recommendedSuppliers = useMemo(() => {
+    if (!suppliers.length) return [];
+
+    const categoryId = part.part_names?.category_id;
+
+    return [...suppliers].sort((a, b) => {
+      const getScore = (s: any) => {
+        let score = 0;
+        const sid = s.id;
+
+        // 车型匹配（厂商/品牌/车系任意一项匹配即可）
+        if (vehicleInfo.厂商 || vehicleInfo.品牌 || vehicleInfo.车系) {
+          const vmList = supplierVehicleMap.get(sid) || [];
+          const hasVehicleMatch = vmList.some((vm: any) =>
+            (vehicleInfo.厂商 && vm?.厂商 === vehicleInfo.厂商) ||
+            (vehicleInfo.品牌 && vm?.品牌 === vehicleInfo.品牌) ||
+            (vehicleInfo.车系 && vm?.车系 === vehicleInfo.车系)
+          );
+          if (hasVehicleMatch) score += 1000;
+        }
+
+        // 配件名称匹配
+        if (part.part_name_id && matchedPartNameSupplierIds.has(sid)) score += 500;
+
+        // 配件分类匹配
+        if (categoryId && matchedCategorySupplierIds.has(sid)) score += 200;
+
+        // 品牌匹配
+        if (brandId && matchedBrandSupplierIds.has(sid)) score += 200;
+
+        // 推荐等级加成
+        score += (s.recommendation_level || 0) * 10;
+
+        return score;
+      };
+
+      const aScore = getScore(a);
+      const bScore = getScore(b);
+      if (bScore !== aScore) return bScore - aScore;
+      // 同分按名称排序
+      return (a.name || "").localeCompare(b.name || "", "zh-CN");
+    });
+  }, [
+    suppliers,
+    vehicleInfo,
+    supplierVehicleMap,
+    part.part_name_id,
+    part.part_names?.category_id,
+    matchedPartNameSupplierIds,
+    matchedCategorySupplierIds,
+    matchedBrandSupplierIds,
+    brandId,
+  ]);
+
+  // 判断供应商是否匹配当前条件
+  function getSupplierMatchReasons(s: any): string[] {
+    const reasons: string[] = [];
+    const sid = s.id;
+
+    if (vehicleInfo.厂商 || vehicleInfo.品牌 || vehicleInfo.车系) {
+      const vmList = supplierVehicleMap.get(sid) || [];
+      const hasVehicleMatch = vmList.some((vm: any) =>
+        (vehicleInfo.厂商 && vm?.厂商 === vehicleInfo.厂商) ||
+        (vehicleInfo.品牌 && vm?.品牌 === vehicleInfo.品牌) ||
+        (vehicleInfo.车系 && vm?.车系 === vehicleInfo.车系)
+      );
+      if (hasVehicleMatch) reasons.push("匹配车型");
+    }
+
+    if (part.part_name_id && matchedPartNameSupplierIds.has(sid)) reasons.push("匹配配件");
+    if (part.part_names?.category_id && matchedCategorySupplierIds.has(sid)) reasons.push("匹配分类");
+    if (brandId && matchedBrandSupplierIds.has(sid)) reasons.push("匹配品牌");
+
+    return reasons;
   }
 
   const partName = part.alias_name || part.parts?.name || part.name || part.part_names?.name || "未命名配件";
@@ -644,24 +835,60 @@ export default function PartBranchEditor({
           </button>
         )}
 
-        {/* 供应商选择 */}
+        {/* 供应商选择（自定义下拉，展示窄、下拉宽） */}
         {!isLocked && suppliers.length > 0 && (
-          <select
-            value={editForm.supplier_name}
-            onChange={(e) => {
-              setEditForm((prev) => ({ ...prev, supplier_name: e.target.value }));
-              saveField("supplier_name", e.target.value);
-            }}
-            disabled={saving}
-            className="text-[10px] px-2 py-0.5 border border-gray-200 rounded disabled:opacity-50"
-          >
-            <option value="">选择供应商</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.name}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <button
+              ref={supplierButtonRef}
+              type="button"
+              onClick={() => setSupplierDropdownOpen((v) => !v)}
+              disabled={saving}
+              className="text-[10px] px-2 py-0.5 border border-gray-200 rounded disabled:opacity-50 w-20 text-left truncate bg-white"
+              title={editForm.supplier_name || "选择供应商"}
+            >
+              {editForm.supplier_name || "选择供应商"}
+            </button>
+            {supplierDropdownOpen && (
+              <div
+                ref={supplierDropdownRef}
+                className="fixed z-[100] bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto w-56"
+                style={{ top: dropdownPos.top, left: dropdownPos.left }}
+              >
+                <div
+                  className="px-2 py-1 text-[10px] hover:bg-gray-100 cursor-pointer text-gray-400"
+                  onClick={() => {
+                    setEditForm((prev) => ({ ...prev, supplier_name: "" }));
+                    saveField("supplier_name", "");
+                    setSupplierDropdownOpen(false);
+                  }}
+                >
+                  选择供应商
+                </div>
+                {recommendedSuppliers.map((s) => {
+                  const reasons = getSupplierMatchReasons(s);
+                  const stars = s.recommendation_level > 0 ? "⭐".repeat(s.recommendation_level) + " " : "";
+                  return (
+                    <div
+                      key={s.id}
+                      className={`px-2 py-1 text-[10px] hover:bg-blue-50 cursor-pointer border-t border-gray-50 ${
+                        editForm.supplier_name === s.name ? "bg-blue-50 text-blue-700" : ""
+                      }`}
+                      onClick={() => {
+                        setEditForm((prev) => ({ ...prev, supplier_name: s.name }));
+                        saveField("supplier_name", s.name);
+                        setSupplierDropdownOpen(false);
+                      }}
+                    >
+                      <div className="font-medium">{stars}{s.name}</div>
+                      {reasons.length > 0 && (
+                        <div className="text-[10px] text-gray-400 mt-0.5">{reasons.join(" · ")}</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
 
         {/* 库存提示 */}

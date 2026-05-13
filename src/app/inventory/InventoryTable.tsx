@@ -244,6 +244,8 @@ export default function InventoryTable({ items }: { items: any[] }) {
 
       const records: any[] = [];
       const errors: string[] = [];
+      const seenCodeInFile = new Map<string, number>(); // 文件内重复的配件编号:code -> 首次行号
+      let duplicateInFile = 0;
 
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
@@ -267,6 +269,14 @@ export default function InventoryTable({ items }: { items: any[] }) {
 
         const nameStr = String(record["配件名称"]).trim();
         const pnStr = String(record["配件编号"]).trim();
+
+        // 文件内编号重复检查
+        if (seenCodeInFile.has(pnStr)) {
+          duplicateInFile++;
+          errors.push(`第 ${rowNum} 行: 配件编号"${pnStr}"与第 ${seenCodeInFile.get(pnStr)} 行重复，已跳过`);
+          continue;
+        }
+        seenCodeInFile.set(pnStr, rowNum);
 
         let partNameId = partNameMap.get(nameStr);
         if (!partNameId) {
@@ -333,6 +343,39 @@ export default function InventoryTable({ items }: { items: any[] }) {
         setImporting(false);
         return;
       }
+
+      // 查询数据库中已存在的配件编号,过滤重复
+      setImportMsg(`验证通过 ${records.length} 条，正在检查配件编号是否重复...`);
+      const allCodes = records.map((r) => r.part_number);
+      const existingCodes = new Set<string>();
+      const queryBatchSize = 200;
+      for (let i = 0; i < allCodes.length; i += queryBatchSize) {
+        const codesBatch = allCodes.slice(i, i + queryBatchSize);
+        const { data: existing } = await supabase
+          .from("parts")
+          .select("part_number")
+          .in("part_number", codesBatch);
+        (existing || []).forEach((row: any) => existingCodes.add(row.part_number));
+      }
+
+      const filteredRecords = records.filter((r) => !existingCodes.has(r.part_number));
+      const duplicateInDb = records.length - filteredRecords.length;
+
+      if (filteredRecords.length === 0) {
+        let msg = `导入完成：新增 0 条`;
+        if (duplicateInDb > 0) msg += `，${duplicateInDb} 条配件编号已存在`;
+        if (duplicateInFile > 0) msg += `，文件内编号重复 ${duplicateInFile} 条`;
+        const otherErrors = errors.length - duplicateInFile;
+        if (otherErrors > 0) msg += `，${otherErrors} 条有错误`;
+        setImportMsg(msg);
+        setImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
+      // 用过滤后的记录替换原 records,后续逻辑只处理 filteredRecords
+      records.length = 0;
+      records.push(...filteredRecords);
 
       setImportMsg("正在创建缺失的关联数据...");
 
@@ -437,9 +480,10 @@ export default function InventoryTable({ items }: { items: any[] }) {
       }
 
       let msg = `导入完成：新增 ${inserted} 条`;
-      if (errors.length > 0) {
-        msg += `，跳过 ${errors.length} 条（有错误）`;
-      }
+      if (duplicateInDb > 0) msg += `，跳过 ${duplicateInDb} 条（编号已存在）`;
+      if (duplicateInFile > 0) msg += `，文件内编号重复 ${duplicateInFile} 条`;
+      const otherErrors = errors.length - duplicateInFile;
+      if (otherErrors > 0) msg += `，${otherErrors} 条有错误`;
       setImportMsg(msg);
       setTimeout(() => window.location.reload(), 1500);
     } catch (err: any) {
