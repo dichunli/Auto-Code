@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import DeletePartButton from "./DeletePartButton";
 import { formatCurrency } from "@/lib/utils";
+import { PriceValue } from "@/components/PriceVisibilityContext";
 
 interface ColumnDef {
   key: string;
@@ -614,11 +615,11 @@ export default function InventoryTable({ items }: { items: any[] }) {
           </>
         );
       case "purchase_price":
-        return formatCurrency(item.purchase_price);
+        return <PriceValue value={item.purchase_price} />;
       case "unit_cost":
-        return formatCurrency(item.unit_cost);
+        return <PriceValue value={item.unit_cost} />;
       case "unit_price":
-        return formatCurrency(item.unit_price);
+        return <PriceValue value={item.unit_price} />;
       case "location":
         return item.location || "-";
       case "barcode":

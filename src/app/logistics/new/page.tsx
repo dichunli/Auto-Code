@@ -4,6 +4,13 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { ImageUploader } from "@/components/ImageUploader";
+
+function generateTrackingNo(): string {
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const randomStr = Math.floor(1000 + Math.random() * 9000);
+  return `YD-${dateStr}-${randomStr}`;
+}
 
 export default function NewWaybillPage() {
   const router = useRouter();
@@ -11,19 +18,22 @@ export default function NewWaybillPage() {
   const [loading, setLoading] = useState(false);
   const [companies, setCompanies] = useState<any[]>([]);
 
-  const [trackingNo, setTrackingNo] = useState("");
+  const [trackingNo, setTrackingNo] = useState(generateTrackingNo());
   const [companyId, setCompanyId] = useState("");
+  const [phone, setPhone] = useState("");
+  const [packageCount, setPackageCount] = useState("1");
   const [freightAmount, setFreightAmount] = useState("");
   const [codAmount, setCodAmount] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
-    supabase.from("logistics_companies").select("*").order("name").then(({ data }) => setCompanies(data || []));
+    supabase.from("logistics_companies").select("*").order("sort_order").then(({ data }) => setCompanies(data || []));
   }, [supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!trackingNo) {
+    if (!trackingNo.trim()) {
       alert("请填写物流单号");
       return;
     }
@@ -36,8 +46,11 @@ export default function NewWaybillPage() {
         tracking_no: trackingNo.trim(),
         logistics_company_id: companyId || null,
         logistics_company_name: company?.name || null,
+        phone: phone.trim() || null,
+        package_count: parseInt(packageCount) || 1,
         freight_amount: parseFloat(freightAmount) || 0,
         cod_amount: parseFloat(codAmount) || 0,
+        photos: photos.length > 0 ? photos : null,
         status: "pending",
         notes: notes || null,
       });
@@ -75,9 +88,9 @@ export default function NewWaybillPage() {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">请选择</option>
-              {companies.filter((c) => !c.scopes || c.scopes.includes("harbin")).length > 0 && (
+              {companies.filter((c) => !c.scopes || c.scopes.length === 0 || c.scopes.includes("harbin")).length > 0 && (
                 <optgroup label="哈市物流（哈市供应商）">
-                  {companies.filter((c) => !c.scopes || c.scopes.includes("harbin")).map((c) => (
+                  {companies.filter((c) => !c.scopes || c.scopes.length === 0 || c.scopes.includes("harbin")).map((c) => (
                     <option key={`harbin-${c.id}`} value={c.id}>{c.name}</option>
                   ))}
                 </optgroup>
@@ -90,6 +103,30 @@ export default function NewWaybillPage() {
                 </optgroup>
               )}
             </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">运单电话</label>
+            <input
+              type="text"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="请输入运单电话"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">件数</label>
+            <input
+              type="number"
+              min={1}
+              value={packageCount}
+              onChange={(e) => setPackageCount(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="1"
+            />
           </div>
         </div>
 
@@ -118,6 +155,17 @@ export default function NewWaybillPage() {
               placeholder="0"
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">运单照片</label>
+          <ImageUploader
+            onUpload={(paths) => setPhotos(paths)}
+            existingImages={photos}
+            maxImages={5}
+            bucket="work-order-media"
+            folder="waybill-photos"
+          />
         </div>
 
         <div>

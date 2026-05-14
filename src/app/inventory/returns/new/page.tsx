@@ -4,10 +4,12 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { usePriceVisibility } from "@/components/PriceVisibilityContext";
 
 export default function NewPurchaseReturnPage() {
   const router = useRouter();
   const supabase = createClient();
+  const { showPrices } = usePriceVisibility();
   const [loading, setLoading] = useState(false);
   const [parts, setParts] = useState<any[]>([]);
   const [batches, setBatches] = useState<any[]>([]);
@@ -146,7 +148,7 @@ export default function NewPurchaseReturnPage() {
               <option value="">请选择批次</option>
               {batches.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.batch_no || "未命名批次"} - 剩余 {b.remaining} - 进价 ¥{b.unit_cost}
+                  {b.batch_no || "未命名批次"} - 剩余 {b.remaining}{showPrices ? ` - 进价 ¥${b.unit_cost}` : " - 进价 ***"}
                 </option>
               ))}
             </select>

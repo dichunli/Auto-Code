@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { usePriceVisibility } from "./PriceVisibilityContext";
 
 function toFixed2(val: string | number | null | undefined): string {
   if (val === "" || val === null || val === undefined) return "";
@@ -38,6 +39,7 @@ export default function PartBranchEditor({
 }: Props) {
   const supabase = createClient();
   const router = useRouter();
+  const { showPrices } = usePriceVisibility();
   const [saving, setSaving] = useState(false);
   const clickTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -669,59 +671,71 @@ export default function PartBranchEditor({
         {/* 采购价 */}
         <div className="flex items-center gap-1">
           <span className="text-[10px] text-gray-400 min-w-[3em] text-right">采购价</span>
-          <input
-            type="number"
-            step="0.01"
-            value={editForm.unit_cost}
-            onChange={(e) => setEditForm((prev) => ({ ...prev, unit_cost: e.target.value }))}
-            onBlur={() => saveField("unit_cost", editForm.unit_cost)}
-            disabled={isLocked || saving}
-            className="w-16 px-1 py-0.5 border border-gray-200 rounded text-xs text-right disabled:bg-gray-50"
-            placeholder="采购价"
-          />
+          {showPrices ? (
+            <input
+              type="number"
+              step="0.01"
+              value={editForm.unit_cost}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, unit_cost: e.target.value }))}
+              onBlur={() => saveField("unit_cost", editForm.unit_cost)}
+              disabled={isLocked || saving}
+              className="w-16 px-1 py-0.5 border border-gray-200 rounded text-xs text-right disabled:bg-gray-50"
+              placeholder="采购价"
+            />
+          ) : (
+            <span className="w-16 px-1 py-0.5 text-xs text-right text-gray-700">***</span>
+          )}
         </div>
 
         {/* 成本价 */}
         <div className="flex items-center gap-1">
           <span className="text-[10px] text-gray-400 min-w-[3em] text-right">成本价</span>
-          <input
-            type="number"
-            step="0.01"
-            value={editForm.cost_price}
-            onChange={(e) => setEditForm((prev) => ({ ...prev, cost_price: e.target.value }))}
-            onBlur={() => saveField("cost_price", editForm.cost_price)}
-            disabled={isLocked || saving}
-            className="w-16 px-1 py-0.5 border border-gray-200 rounded text-xs text-right disabled:bg-gray-50"
-            placeholder="成本价"
-          />
+          {showPrices ? (
+            <input
+              type="number"
+              step="0.01"
+              value={editForm.cost_price}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, cost_price: e.target.value }))}
+              onBlur={() => saveField("cost_price", editForm.cost_price)}
+              disabled={isLocked || saving}
+              className="w-16 px-1 py-0.5 border border-gray-200 rounded text-xs text-right disabled:bg-gray-50"
+              placeholder="成本价"
+            />
+          ) : (
+            <span className="w-16 px-1 py-0.5 text-xs text-right text-gray-700">***</span>
+          )}
         </div>
 
         {/* 销售价 */}
         <div className="flex items-center gap-1">
           <span className="text-[10px] text-gray-400 min-w-[3em] text-right">销售价</span>
-          <input
-            type="number"
-            step="0.01"
-            value={editForm.unit_price}
-            onChange={(e) => {
-              const val = e.target.value;
-              setEditForm((prev) => ({ ...prev, unit_price: val }));
-              // 实时广播更新，让小计/费用合计组件即时刷新
-              window.dispatchEvent(
-                new CustomEvent("wo-part-update", {
-                  detail: {
-                    itemId,
-                    partId: part.id,
-                    unit_price: val === "" ? 0 : parseFloat(val) || 0,
-                  },
-                })
-              );
-            }}
-            onBlur={() => saveField("unit_price", editForm.unit_price)}
-            disabled={isLocked || saving}
-            className="w-16 px-1 py-0.5 border border-gray-200 rounded text-xs text-right disabled:bg-gray-50"
-            placeholder="销售价"
-          />
+          {showPrices ? (
+            <input
+              type="number"
+              step="0.01"
+              value={editForm.unit_price}
+              onChange={(e) => {
+                const val = e.target.value;
+                setEditForm((prev) => ({ ...prev, unit_price: val }));
+                // 实时广播更新，让小计/费用合计组件即时刷新
+                window.dispatchEvent(
+                  new CustomEvent("wo-part-update", {
+                    detail: {
+                      itemId,
+                      partId: part.id,
+                      unit_price: val === "" ? 0 : parseFloat(val) || 0,
+                    },
+                  })
+                );
+              }}
+              onBlur={() => saveField("unit_price", editForm.unit_price)}
+              disabled={isLocked || saving}
+              className="w-16 px-1 py-0.5 border border-gray-200 rounded text-xs text-right disabled:bg-gray-50"
+              placeholder="销售价"
+            />
+          ) : (
+            <span className="w-16 px-1 py-0.5 text-xs text-right text-gray-700">***</span>
+          )}
         </div>
 
         {/* 客户意见 */}

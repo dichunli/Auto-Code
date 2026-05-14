@@ -3,6 +3,10 @@ import Link from "next/link";
 import { PartBranchStatusList } from "@/components/PartBranchStatusList";
 import { PendingPurchaseList } from "@/components/PendingPurchaseList";
 import { PendingReceiptList } from "@/components/PendingReceiptList";
+import { PendingStorageList } from "@/components/PendingStorageList";
+import { CompletedStorageList } from "@/components/CompletedStorageList";
+import { PendingReturnList } from "@/components/PendingReturnList";
+import { CompletedReturnList } from "@/components/CompletedReturnList";
 import { ProcurementTabBar } from "@/components/ProcurementTabBar";
 import { BrowserNotificationToggle } from "@/components/BrowserNotificationToggle";
 
@@ -11,7 +15,11 @@ type ProcurementTab =
   | "pending_quote"
   | "pending_confirm"
   | "pending_purchase"
-  | "pending_receipt";
+  | "pending_receipt"
+  | "pending_storage"
+  | "completed_storage"
+  | "pending_return"
+  | "completed_return";
 
 export default async function ProcurementPage({
   searchParams,
@@ -25,6 +33,10 @@ export default async function ProcurementPage({
     "pending_confirm",
     "pending_purchase",
     "pending_receipt",
+    "pending_storage",
+    "completed_storage",
+    "pending_return",
+    "completed_return",
   ].includes(sp.tab as ProcurementTab)
     ? (sp.tab as ProcurementTab)
     : "pending_inquiry";
@@ -81,6 +93,10 @@ export default async function ProcurementPage({
       )}
       {currentTab === "pending_purchase" && <PendingPurchaseList />}
       {currentTab === "pending_receipt" && <PendingReceiptList />}
+      {currentTab === "pending_storage" && <PendingStorageList />}
+      {currentTab === "completed_storage" && <CompletedStorageList />}
+      {currentTab === "pending_return" && <PendingReturnList />}
+      {currentTab === "completed_return" && <CompletedReturnList />}
     </div>
   );
 }

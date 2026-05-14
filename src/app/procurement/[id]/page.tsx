@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { PriceValue } from "@/components/PriceVisibilityContext";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
@@ -249,7 +250,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                     </td>
                     <td className="px-6 py-4 text-gray-900">{item.quantity}</td>
                     <td className="px-6 py-4 text-gray-600">
-                      {item.unit_cost != null ? `¥${item.unit_cost.toFixed(2)}` : "-"}
+                      {item.unit_cost != null ? <PriceValue value={item.unit_cost} /> : "-"}
                     </td>
                     <td className="px-6 py-4 text-gray-900">
                       {item.received_qty || 0} / {item.quantity}

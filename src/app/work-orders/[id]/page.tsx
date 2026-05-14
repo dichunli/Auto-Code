@@ -2,6 +2,7 @@ import { getWorkOrderData } from "@/lib/workOrderData";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { PriceValue } from "@/components/PriceVisibilityContext";
 import { calculateItemCommission, calculatePartCommission } from "@/lib/commission";
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import Link from "next/link";
@@ -1206,14 +1207,14 @@ export default async function WorkOrderDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">费用合计</h2>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-gray-600"><span>配件费用</span><span>{formatCurrency(order.parts_cost)}</span></div>
-              <div className="flex justify-between text-gray-600"><span>工时费用</span><span>{formatCurrency(order.labor_cost)}</span></div>
-              <div className="flex justify-between text-gray-600"><span>其他费用</span><span>{formatCurrency(order.other_cost)}</span></div>
+              <div className="flex justify-between text-gray-600"><span>配件费用</span><span><PriceValue value={order.parts_cost} /></span></div>
+              <div className="flex justify-between text-gray-600"><span>工时费用</span><span><PriceValue value={order.labor_cost} /></span></div>
+              <div className="flex justify-between text-gray-600"><span>其他费用</span><span><PriceValue value={order.other_cost} /></span></div>
               <ShowCommission>
                 {totalCommission > 0 && (
                   <div className="flex justify-between text-purple-600">
                     <span>预估总提成</span>
-                    <span>{formatCurrency(totalCommission)}</span>
+                    <span><PriceValue value={totalCommission} /></span>
                   </div>
                 )}
               </ShowCommission>
@@ -1237,7 +1238,7 @@ export default async function WorkOrderDetailPage({
               )}
               <div className="border-t border-gray-100 pt-2 flex justify-between text-base font-bold text-gray-900">
                 <span>应收合计</span>
-                <span>{formatCurrency(order.total_cost - (advancePaymentTotal || 0))}</span>
+                <span><PriceValue value={order.total_cost - (advancePaymentTotal || 0)} /></span>
               </div>
             </div>
           </div>

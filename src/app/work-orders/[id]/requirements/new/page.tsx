@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 import { ReworkSelectModal } from "@/components/ReworkSelectModal";
+import { PriceValue } from "@/components/PriceVisibilityContext";
 import { calculateItemCommission, calculatePartCommission } from "@/lib/commission";
 import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
 
@@ -1378,8 +1379,8 @@ export default function NewRequirementPage({ params }: { params: Promise<{ id: s
               <div><span className="text-gray-400">配件编号：</span>{partMatchModal.matchedPart.part_number || "-"}</div>
               <div><span className="text-gray-400">品牌：</span>{partMatchModal.matchedPart.part_brands?.name || "-"}</div>
               <div><span className="text-gray-400">规格：</span>{partMatchModal.matchedPart.specification_text || "-"}</div>
-              <div><span className="text-gray-400">成本价：</span>{partMatchModal.matchedPart.unit_cost || "-"}</div>
-              <div><span className="text-gray-400">销售价：</span>{partMatchModal.matchedPart.unit_price || "-"}</div>
+              <div><span className="text-gray-400">成本价：</span><PriceValue value={partMatchModal.matchedPart.unit_cost} /></div>
+              <div><span className="text-gray-400">销售价：</span><PriceValue value={partMatchModal.matchedPart.unit_price} /></div>
             </div>
             <div className="flex gap-3 justify-end">
               <button

@@ -1,15 +1,35 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Navbar } from "./Navbar";
+import { PriceVisibilityProvider, usePriceVisibility } from "./PriceVisibilityContext";
+
+function KeyboardHandler() {
+  const { togglePrices } = usePriceVisibility();
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        togglePrices();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [togglePrices]);
+
+  return null;
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isLogin = pathname === "/login";
 
   return (
-    <>
+    <PriceVisibilityProvider>
+      <KeyboardHandler />
       {!isLogin && <Navbar />}
       <main
         className={cn(
@@ -19,6 +39,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         {children}
       </main>
-    </>
+    </PriceVisibilityProvider>
   );
 }

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
+import { PriceValue } from "@/components/PriceVisibilityContext";
 import Link from "next/link";
 
 export default async function PartDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -96,10 +97,10 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="text-base font-semibold text-gray-900 mb-4">价格信息</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 text-sm">
-          <InfoItem label="成本价" value={formatCurrency(part.unit_cost)} />
-          <InfoItem label="销售价" value={formatCurrency(part.unit_price)} />
-          <InfoItem label="采购价" value={formatCurrency(part.purchase_price)} />
-          <InfoItem label="参考采购价" value={formatCurrency(part.reference_purchase_price)} />
+          <InfoItem label="成本价" value={<PriceValue value={part.unit_cost} />} />
+          <InfoItem label="销售价" value={<PriceValue value={part.unit_price} />} />
+          <InfoItem label="采购价" value={<PriceValue value={part.purchase_price} />} />
+          <InfoItem label="参考采购价" value={<PriceValue value={part.reference_purchase_price} />} />
           <InfoItem label="标准价" value={formatCurrency(part.standard_price)} />
           <InfoItem label="VIP价" value={formatCurrency(part.vip_price)} />
           <InfoItem label="批发价" value={formatCurrency(part.wholesale_price)} />

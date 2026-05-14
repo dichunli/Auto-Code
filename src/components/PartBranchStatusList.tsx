@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { requestNotificationPermission, sendBrowserNotification } from "@/lib/notification";
 import { PartBranchImages } from "./PartBranchImages";
+import { usePriceVisibility } from "./PriceVisibilityContext";
 
 const OPINION_LABELS: Record<string, { text: string; cls: string }> = {
   agree: { text: "同意", cls: "bg-green-50 text-green-700" },
@@ -210,7 +211,7 @@ export function PartBranchStatusList({ status }: Props) {
             )
           )
         `)
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: true })
         .limit(1000),
       supabase.from("suppliers").select("id, name, recommendation_level").order("name"),
       supabase.from("part_brands").select("id, name"),
@@ -361,10 +362,14 @@ export function PartBranchStatusList({ status }: Props) {
         const val = trimmed === "" ? null : trimmed;
         if (val !== (row.customer_opinion || null)) update.customer_opinion = val;
       } else if (_field === "cost" || _field === "price") {
-        if (trimmed === "") continue;
+        const dbField = _field === "cost" ? "unit_cost" : "unit_price";
+        if (trimmed === "") {
+          const original = _field === "cost" ? row.unit_cost : row.unit_price;
+          if (original !== null) update[dbField] = null;
+          continue;
+        }
         const num = Number(trimmed);
         if (!Number.isFinite(num) || num < 0) continue;
-        const dbField = _field === "cost" ? "unit_cost" : "unit_price";
         const original = _field === "cost" ? Number(row.unit_cost || 0) : Number(row.unit_price || 0);
         if (num !== original) update[dbField] = num;
       }
@@ -444,17 +449,29 @@ export function PartBranchStatusList({ status }: Props) {
     const rowIds = Object.keys(edits);
     if (rowIds.length === 0) return;
 
-    /* 待询价状态下必须填写供应商 */
-    if (status === "pending_inquiry") {
-      const missingSupplier = rowIds.some((id) => {
-        const row = rows.find((r) => r.id === id);
-        if (!row) return false;
-        const supplier = edits[id]?.supplier !== undefined ? edits[id].supplier : row.supplier_name;
-        return !supplier || supplier.trim() === "";
-      });
-      if (missingSupplier) {
-        alert("待报价单据必须填写供应商，请先补全后再提交");
-        return;
+    /* 提交时，如果编辑会导致记录推进到下阶段，必须填写采购价和供应商 */
+    for (const id of rowIds) {
+      const row = rows.find((r) => r.id === id);
+      if (!row) continue;
+      const newCost = edits[id]?.cost !== undefined ? Number(edits[id].cost || 0) : Number(row.unit_cost || 0);
+      const newPrice = edits[id]?.price !== undefined ? Number(edits[id].price || 0) : Number(row.unit_price || 0);
+      const newOpinion = edits[id]?.customer_opinion !== undefined ? edits[id].customer_opinion : row.customer_opinion;
+      const newSupplier = edits[id]?.supplier !== undefined ? edits[id].supplier : row.supplier_name;
+
+      const willAdvance =
+        (status === "pending_inquiry" && newCost > 0) ||
+        (status === "pending_quote" && newPrice > 0) ||
+        (status === "pending_confirm" && newOpinion === "agree");
+
+      if (willAdvance) {
+        if (newCost <= 0) {
+          alert("推进到下阶段必须填写采购价");
+          return;
+        }
+        if (!newSupplier || newSupplier.trim() === "") {
+          alert("推进到下阶段必须填写供应商");
+          return;
+        }
       }
     }
 
@@ -653,7 +670,7 @@ export function PartBranchStatusList({ status }: Props) {
     }
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b, "zh"))
-      .map(([key, rs]) => ({ key, rows: rs }));
+      .map(([key, rs]) => ({ key, rows: rs.sort((a, b) => (a.name || "").localeCompare(b.name || "", "zh")) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, groupBy]);
 
@@ -759,41 +776,49 @@ export function PartBranchStatusList({ status }: Props) {
           )}
         </td>
         <td className="px-3 py-3 text-right">
-          <div className="flex items-center justify-end gap-1">
-            <span className="text-gray-400">¥</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              disabled={isSaving}
-              value={costValue}
-              onChange={(e) => setEditValue(row.id, "cost", e.target.value)}
-              onKeyDown={(e) => handleKeyDown(e, row, "cost")}
-              placeholder="-"
-              className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && costDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
-            />
-          </div>
+          {showPrices ? (
+            <div className="flex items-center justify-end gap-1">
+              <span className="text-gray-400">¥</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                disabled={isSaving}
+                value={costValue}
+                onChange={(e) => setEditValue(row.id, "cost", e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, row, "cost")}
+                placeholder="-"
+                className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && costDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+              />
+            </div>
+          ) : (
+            <span className="text-gray-700">***</span>
+          )}
         </td>
         <td className="px-3 py-3 text-right">
-          <div className="flex items-center justify-end gap-1">
-            <span className="text-gray-400">¥</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              disabled={isSaving}
-              value={priceValue}
-              onChange={(e) => setEditValue(row.id, "price", e.target.value)}
-              onKeyDown={(e) => handleKeyDown(e, row, "price")}
-              placeholder="-"
-              className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && priceDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
-            />
-          </div>
+          {showPrices ? (
+            <div className="flex items-center justify-end gap-1">
+              <span className="text-gray-400">¥</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                disabled={isSaving}
+                value={priceValue}
+                onChange={(e) => setEditValue(row.id, "price", e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, row, "price")}
+                placeholder="-"
+                className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && priceDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+              />
+            </div>
+          ) : (
+            <span className="text-gray-700">***</span>
+          )}
         </td>
         <td className="px-3 py-3">
           <select
             disabled={isSaving}
-            value={edits[row.id]?.customer_opinion !== undefined ? edits[row.id]!.customer_opinion! : (row.customer_opinion || "pending")}
+  value={edits[row.id]?.customer_opinion !== undefined ? edits[row.id]!.customer_opinion! : (row.customer_opinion || "pending")}
             onChange={(e) => setEditValue(row.id, "customer_opinion", e.target.value)}
             className={`px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && edits[row.id]?.customer_opinion !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
           >
@@ -907,6 +932,8 @@ export function PartBranchStatusList({ status }: Props) {
       </tr>
     );
   }
+
+  const { showPrices } = usePriceVisibility();
 
   return (
     <div className="bg-white rounded-xl border border-gray-200">
@@ -1084,8 +1111,8 @@ export function PartBranchStatusList({ status }: Props) {
                 {(() => {
                   let branchColorIdx = -1;
                   return g.rows.map((r, rIdx) => {
-                    const prevItemId = rIdx > 0 ? g.rows[rIdx - 1].work_order_item_id : null;
-                    const isNewBranch = prevItemId !== null && prevItemId !== r.work_order_item_id;
+                    const prevName = rIdx > 0 ? g.rows[rIdx - 1].name : null;
+                    const isNewBranch = prevName !== null && prevName !== r.name;
                     if (rIdx === 0 || isNewBranch) {
                       branchColorIdx = (branchColorIdx + 1) % BRANCH_BG_COLORS.length;
                     }

@@ -9,7 +9,11 @@ export type ProcurementTab =
   | "pending_quote"
   | "pending_confirm"
   | "pending_purchase"
-  | "pending_receipt";
+  | "pending_receipt"
+  | "pending_storage"
+  | "completed_storage"
+  | "pending_return"
+  | "completed_return";
 
 const TABS: { key: ProcurementTab; label: string }[] = [
   { key: "pending_inquiry", label: "待询价" },
@@ -17,6 +21,10 @@ const TABS: { key: ProcurementTab; label: string }[] = [
   { key: "pending_confirm", label: "待确认" },
   { key: "pending_purchase", label: "待采购" },
   { key: "pending_receipt", label: "待收货" },
+  { key: "pending_storage", label: "待入库" },
+  { key: "completed_storage", label: "已入库" },
+  { key: "pending_return", label: "待退货" },
+  { key: "completed_return", label: "已退货" },
 ];
 
 interface Props {
@@ -31,6 +39,10 @@ export function ProcurementTabBar({ currentTab }: Props) {
     pending_confirm: 0,
     pending_purchase: 0,
     pending_receipt: 0,
+    pending_storage: 0,
+    completed_storage: 0,
+    pending_return: 0,
+    completed_return: 0,
   });
 
   useEffect(() => {
@@ -118,10 +130,34 @@ export function ProcurementTabBar({ currentTab }: Props) {
 
     const { data: poData } = await supabase
       .from("purchase_orders")
-      .select("id")
+      .select("id, status, purchase_order_items(quantity, received_qty, not_arrived_reason)")
       .in("status", ["submitted", "approved", "partial_received"]);
 
-    const pendingReceipt = poData?.length || 0;
+    const pendingReceipt = (poData || []).filter((o: any) => {
+      const items = o.purchase_order_items || [];
+      return items.some((it: any) => (it.received_qty || 0) < it.quantity && !it.not_arrived_reason);
+    }).length;
+
+    const { data: storageData } = await supabase
+      .from("purchase_orders")
+      .select("id")
+      .eq("status", "pending_storage");
+
+    const pendingStorage = storageData?.length || 0;
+
+    const { data: completedData } = await supabase
+      .from("purchase_orders")
+      .select("id")
+      .eq("status", "completed");
+
+    const completedStorage = completedData?.length || 0;
+
+    const { data: returnData } = await supabase
+      .from("supplier_return_records")
+      .select("id, status");
+
+    const pendingReturn = (returnData || []).filter((r: any) => r.status === "pending").length;
+    const completedReturn = (returnData || []).filter((r: any) => r.status === "completed").length;
 
     setCounts({
       pending_inquiry: pendingInquiry,
@@ -129,6 +165,10 @@ export function ProcurementTabBar({ currentTab }: Props) {
       pending_confirm: pendingConfirm,
       pending_purchase: pendingPurchase,
       pending_receipt: pendingReceipt,
+      pending_storage: pendingStorage,
+      completed_storage: completedStorage,
+      pending_return: pendingReturn,
+      completed_return: completedReturn,
     });
   }
 

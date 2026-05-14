@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
@@ -15,6 +16,7 @@ interface LogisticsCompany {
   phone: string | null;
   tracking_url: string | null;
   notes: string | null;
+  sort_order: number;
   created_at: string;
 }
 
@@ -91,6 +93,7 @@ export default function LogisticsPage() {
     let query = supabase
       .from("logistics_companies")
       .select("*")
+      .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
 
     if (scopeFilter !== "all") {
@@ -139,6 +142,26 @@ export default function LogisticsPage() {
       alert("删除失败: " + error.message);
       return;
     }
+    loadCompanies();
+  }
+
+  async function moveCompany(index: number, direction: "up" | "down") {
+    if (direction === "up" && index === 0) return;
+    if (direction === "down" && index === companies.length - 1) return;
+
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    const a = companies[index];
+    const b = companies[targetIndex];
+
+    await supabase
+      .from("logistics_companies")
+      .update({ sort_order: b.sort_order })
+      .eq("id", a.id);
+    await supabase
+      .from("logistics_companies")
+      .update({ sort_order: a.sort_order })
+      .eq("id", b.id);
+
     loadCompanies();
   }
 
@@ -203,6 +226,12 @@ export default function LogisticsPage() {
               <option value="received">已签收</option>
               <option value="returned">已退回</option>
             </select>
+            <Link
+              href="/logistics/new"
+              className="px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+            >
+              新建运单
+            </Link>
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -211,11 +240,12 @@ export default function LogisticsPage() {
                 <tr>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">物流单号</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">物流公司</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">电话/件数</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">运费</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">代收款</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">状态</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">创建时间</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">备注</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -226,6 +256,9 @@ export default function LogisticsPage() {
                       <span className="mr-2">{w.logistics_companies?.name || w.logistics_company_name || "-"}</span>
                       <ScopesBadges scopes={w.logistics_companies?.scopes} />
                     </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {w.phone || "-"} / {w.package_count || 1}件
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{formatCurrency(w.freight_amount)}</td>
                     <td className="px-4 py-3 text-gray-600">{formatCurrency(w.cod_amount)}</td>
                     <td className="px-4 py-3">
@@ -234,12 +267,22 @@ export default function LogisticsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-500">{formatDate(w.created_at)}</td>
-                    <td className="px-4 py-3 text-gray-500">{w.notes || "-"}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteWaybill(w)}
+                          className="text-xs text-red-600 hover:text-red-800 hover:underline"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {waybills.length === 0 && !waybillLoading && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                    <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
                       暂无运单记录
                     </td>
                   </tr>
@@ -268,6 +311,7 @@ export default function LogisticsPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 w-20">排序</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">名称</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">范围</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">联系人</th>
@@ -279,8 +323,24 @@ export default function LogisticsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {companies.map((c) => (
+                {companies.map((c, idx) => (
                   <tr key={c.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-gray-600">
+                      <input
+                        type="number"
+                        defaultValue={c.sort_order}
+                        onBlur={async (e) => {
+                          const newOrder = parseInt(e.target.value, 10);
+                          if (isNaN(newOrder)) return;
+                          await supabase
+                            .from("logistics_companies")
+                            .update({ sort_order: newOrder })
+                            .eq("id", c.id);
+                          loadCompanies();
+                        }}
+                        className="w-16 px-2 py-1 text-xs text-center border border-gray-300 rounded"
+                      />
+                    </td>
                     <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
                     <td className="px-4 py-3">
                       <ScopesBadges scopes={c.scopes} />
@@ -300,6 +360,24 @@ export default function LogisticsPage() {
                     <td className="px-4 py-3 text-gray-500">{formatDate(c.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => moveCompany(idx, "up")}
+                          disabled={idx === 0}
+                          className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
+                          title="上移"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveCompany(idx, "down")}
+                          disabled={idx === companies.length - 1}
+                          className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-30"
+                          title="下移"
+                        >
+                          ↓
+                        </button>
                         <button
                           type="button"
                           onClick={() => openEdit(c)}
@@ -359,6 +437,7 @@ function CompanyEditModal({ company, onClose, onSaved }: CompanyEditModalProps) 
   const [phone, setPhone] = useState(company?.phone || "");
   const [trackingUrl, setTrackingUrl] = useState(company?.tracking_url || "");
   const [notes, setNotes] = useState(company?.notes || "");
+  const [sortOrderInput, setSortOrderInput] = useState(String(company?.sort_order ?? 0));
   const [saving, setSaving] = useState(false);
 
   function toggleScope(s: string) {
@@ -382,6 +461,7 @@ function CompanyEditModal({ company, onClose, onSaved }: CompanyEditModalProps) 
       phone: phone.trim() || null,
       tracking_url: trackingUrl.trim() || null,
       notes: notes.trim() || null,
+      sort_order: parseInt(sortOrderInput, 10) || 0,
     };
 
     if (company) {
@@ -392,7 +472,7 @@ function CompanyEditModal({ company, onClose, onSaved }: CompanyEditModalProps) 
         return;
       }
     } else {
-      const { error } = await supabase.from("logistics_companies").insert(payload);
+      const { error } = await supabase.from("logistics_companies").insert({ ...payload, sort_order: Date.now() });
       setSaving(false);
       if (error) {
         alert("新增失败: " + error.message);
@@ -420,6 +500,16 @@ function CompanyEditModal({ company, onClose, onSaved }: CompanyEditModalProps) 
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="如：顺丰快递"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">排序号</label>
+            <input
+              type="number"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={sortOrderInput}
+              onChange={(e) => setSortOrderInput(e.target.value)}
             />
           </div>
 
