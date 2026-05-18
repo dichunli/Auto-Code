@@ -40,6 +40,7 @@ export function CompletedStorageList() {
   const supabase = createClient();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState<string | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -73,6 +74,23 @@ export function CompletedStorageList() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleRevokeCompleted(orderId: string) {
+    if (!confirm("确认退回待入库?已写入库存的数据不会自动删除,请手动到库存页面调整。")) return;
+    setSubmitting(`revoke-${orderId}`);
+    try {
+      const { error } = await supabase
+        .from("purchase_orders")
+        .update({ status: "pending_storage" })
+        .eq("id", orderId);
+      if (error) throw error;
+      loadData();
+    } catch (err: any) {
+      alert("退回失败: " + (err.message || String(err)));
+    } finally {
+      setSubmitting(null);
+    }
+  }
 
   const displayGroups = useMemo(() => {
     const map = new Map<string, PurchaseOrder[]>();
@@ -176,6 +194,16 @@ export function CompletedStorageList() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => handleRevokeCompleted(order.id)}
+                    disabled={submitting === `revoke-${order.id}`}
+                    className="px-3 py-1.5 border border-orange-200 text-orange-600 bg-orange-50 text-sm font-medium rounded-lg hover:bg-orange-100 transition-colors disabled:opacity-50"
+                  >
+                    {submitting === `revoke-${order.id}` ? "处理中..." : "退回待入库"}
+                  </button>
                 </div>
               </div>
             ))}

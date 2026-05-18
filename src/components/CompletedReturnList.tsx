@@ -56,6 +56,19 @@ export function CompletedReturnList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function handleRevoke(id: string) {
+    if (!confirm("确认将该退货记录退回待退货状态?")) return;
+    const { error } = await supabase
+      .from("supplier_return_records")
+      .update({ status: "pending" })
+      .eq("id", id);
+    if (error) {
+      alert("退回失败: " + error.message);
+      return;
+    }
+    loadData();
+  }
+
   if (loading) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
@@ -85,6 +98,7 @@ export function CompletedReturnList() {
               <th className="px-6 py-3 text-left font-medium text-gray-500">物流信息</th>
               <th className="px-6 py-3 text-left font-medium text-gray-500">退货照片</th>
               <th className="px-6 py-3 text-left font-medium text-gray-500">时间</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -127,6 +141,14 @@ export function CompletedReturnList() {
                 </td>
                 <td className="px-6 py-4 text-gray-500 text-xs">
                   {new Date(r.created_at).toLocaleString("zh-CN")}
+                </td>
+                <td className="px-6 py-4">
+                  <button
+                    onClick={() => handleRevoke(r.id)}
+                    className="text-xs text-orange-600 hover:text-orange-800 hover:underline"
+                  >
+                    退回待退货
+                  </button>
                 </td>
               </tr>
             ))}

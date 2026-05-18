@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { filterLogisticsByRegion, supplierNeedsLogistics, REGION_LABELS } from "@/lib/logisticsFilter";
 import { PriceValue } from "@/components/PriceVisibilityContext";
+import { PartSearchDropdown } from "@/components/PartSearchDropdown";
+import PartForm from "@/app/parts/new/PartForm";
 
 interface PartBranchRow {
   id: string;
@@ -23,6 +25,7 @@ interface PartBranchRow {
   part_name_id: string | null;
   alias_name: string | null;
   notes: string | null;
+  purchase_reason: string | null;
   work_order_item_id: string;
   work_order_items: {
     name: string;
@@ -83,6 +86,13 @@ const BRANCH_BG_COLORS = [
   "bg-cyan-50/40",
 ];
 
+/* 配件需求来源标签 — 由「待收货」流程中的换货/补货动作生成 */
+const PURCHASE_REASON_LABELS: Record<string, { text: string; color: string }> = {
+  broken_resupply: { text: "破损补发", color: "bg-orange-50 text-orange-700 border-orange-200" },
+  wrong_exchange: { text: "错发换货", color: "bg-purple-50 text-purple-700 border-purple-200" },
+  short_resupply: { text: "少发补货", color: "bg-red-50 text-red-700 border-red-200" },
+};
+
 function getGroupKey(r: PartBranchRow, groupBy: GroupBy): string {
   switch (groupBy) {
     case "plate":
@@ -131,6 +141,11 @@ export function PendingPurchaseList() {
   const [revokeReason, setRevokeReason] = useState("");
   const [revokeCustomReason, setRevokeCustomReason] = useState("");
 
+  /* 编辑配件弹窗 */
+  const [editRow, setEditRow] = useState<PartBranchRow | null>(null);
+  const [newPartQuery, setNewPartQuery] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   const REVOKE_REASONS = [
     "客户取消",
     "配件缺货",
@@ -151,7 +166,7 @@ export function PendingPurchaseList() {
         .select(`
           id, name, brand, specification, unit, quantity, unit_cost, unit_price,
           customer_opinion, supplier_name, part_id, part_number, part_name_id,
-          alias_name, notes, work_order_item_id,
+          alias_name, notes, purchase_reason, work_order_item_id,
           work_order_items(
             name,
             work_orders(
@@ -201,6 +216,119 @@ export function PendingPurchaseList() {
     setSuppliers(sups || []);
     setLogisticsCompanies(logistics || []);
     setLoading(false);
+  }
+
+  /* ========== 配件编辑弹窗 ========== */
+  function openEditModal(row: PartBranchRow) {
+    setNewPartQuery("");
+    setEditRow(row);
+  }
+  function closeEditModal() {
+    setNewPartQuery("");
+    setEditRow(null);
+  }
+
+  async function handlePartSaved(partId: string) {
+    if (!editRow) return;
+    setEditingId(editRow.id);
+    try {
+      const { data: part } = await supabase
+        .from("parts")
+        .select(
+          "part_number, name, unit, category_id, part_categories(name), brand_id, part_brands(name), specification_id, part_specifications(name), unit_cost, unit_price, purchase_price, notes, document_name"
+        )
+        .eq("id", partId)
+        .single();
+
+      const updates: Record<string, any> = { part_id: partId };
+      if (part) {
+        if (part.part_number != null) updates.part_number = part.part_number;
+        if (part.name != null) updates.name = part.name;
+        if (part.unit != null) updates.unit = part.unit;
+        if (part.part_brands?.name != null) updates.brand = part.part_brands.name;
+        if (part.part_specifications?.name != null) updates.specification = part.part_specifications.name;
+        if (part.purchase_price != null) updates.unit_cost = part.purchase_price;
+        if (part.notes != null) updates.notes = part.notes;
+        if (part.document_name != null) updates.document_name = part.document_name;
+      }
+
+      const { error } = await supabase
+        .from("work_order_item_parts")
+        .update(updates)
+        .eq("id", editRow.id);
+      if (error) throw error;
+
+      closeEditModal();
+      loadData();
+    } catch (err: any) {
+      alert("同步配件信息失败: " + (err.message || String(err)));
+    } finally {
+      setEditingId(null);
+    }
+  }
+
+  /* 行内搜索选中配件（待采购阶段不更新售价） */
+  async function handleInlinePartSelect(row: PartBranchRow, part: any) {
+    setEditingId(row.id);
+    try {
+      const updates: Record<string, any> = { part_id: part.id };
+      if (part.part_number != null) updates.part_number = part.part_number;
+      if (part.barcode != null && !part.part_number) updates.part_number = part.barcode;
+
+      /* 已有内容保留，为空才按配件填充 */
+      if (!row.name) {
+        if (part.name != null) updates.name = part.name;
+        else if (part.part_names?.name != null) updates.name = part.part_names.name;
+      }
+      if (!row.unit) {
+        if (part.unit != null) updates.unit = part.unit;
+        else if (part.part_names?.unit != null) updates.unit = part.part_names.unit;
+      }
+      if (!row.brand && part.part_brands?.name != null) updates.brand = part.part_brands.name;
+      if (!row.specification && part.part_specifications?.name != null) updates.specification = part.part_specifications.name;
+
+      /* 采购价：为空才填充 */
+      if ((row.unit_cost == null || row.unit_cost === 0) && part.unit_cost != null) {
+        updates.unit_cost = part.unit_cost;
+      }
+
+      /* 售价：已报不覆盖，没有才按配件更新 */
+      if (row.unit_price == null && part.unit_price != null) {
+        updates.unit_price = part.unit_price;
+      }
+
+      const { error } = await supabase
+        .from("work_order_item_parts")
+        .update(updates)
+        .eq("id", row.id);
+      if (error) throw error;
+      loadData();
+    } catch (err: any) {
+      alert("更新配件信息失败: " + (err.message || String(err)));
+    } finally {
+      setEditingId(null);
+    }
+  }
+
+  async function handleInlineClear(row: PartBranchRow) {
+    setEditingId(row.id);
+    try {
+      const { error } = await supabase
+        .from("work_order_item_parts")
+        .update({ part_id: null, part_number: null })
+        .eq("id", row.id);
+      if (error) throw error;
+      loadData();
+    } catch (err: any) {
+      alert("清除配件关联失败: " + (err.message || String(err)));
+    } finally {
+      setEditingId(null);
+    }
+  }
+
+  function handleInlineCreateNew(row: PartBranchRow, query: string) {
+    setNewPartQuery(query);
+    setEditRow(row);
   }
 
   function getRowSupplierId(row: PartBranchRow): string | null {
@@ -680,18 +808,20 @@ export function PendingPurchaseList() {
               <th className="px-3 py-3 text-left font-medium text-gray-500">客户/车牌</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">项目</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">配件</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500">编码</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">数量</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">采购价</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">销售价</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">供应商 *</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">物流公司</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {groups.map((g, gIdx) => (
               <Fragment key={`grp-${gIdx}`}>
                 <tr className="bg-gray-200">
-                  <td colSpan={10} className="px-3 py-2 text-xs font-semibold text-gray-700">
+                  <td colSpan={12} className="px-3 py-2 text-xs font-semibold text-gray-700">
                     <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 mr-2">
                       {GROUP_OPTIONS.find((o) => o.key === groupBy)?.label.replace("按", "")}
                     </span>
@@ -733,8 +863,13 @@ export function PendingPurchaseList() {
                         <td className="px-3 py-3">
                           <div className="text-base font-medium text-gray-900">{r.name}</div>
                           <div className="text-sm text-gray-400">{r.brand || ""} {r.specification || ""}</div>
+                          {r.purchase_reason && PURCHASE_REASON_LABELS[r.purchase_reason] && (
+                            <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded border ${PURCHASE_REASON_LABELS[r.purchase_reason].color}`}>
+                              {PURCHASE_REASON_LABELS[r.purchase_reason].text}
+                            </span>
+                          )}
                           {notArrivedMarks[r.id] && (
-                            <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded border ${
+                            <span className={`inline-block mt-1 ml-1 text-[10px] px-1.5 py-0.5 rounded border ${
                               notArrivedMarks[r.id] === "欠发货已入库"
                                 ? "bg-blue-50 text-blue-600 border-blue-100"
                                 : "bg-orange-50 text-orange-600 border-orange-100"
@@ -742,6 +877,18 @@ export function PendingPurchaseList() {
                               {notArrivedMarks[r.id] === "欠发货已入库" ? "欠发货已入库" : "漏发"}
                             </span>
                           )}
+                        </td>
+                        <td className="px-3 py-3">
+                          <PartSearchDropdown
+                            value={r.part_number || ""}
+                            onChange={() => {}}
+                            onSelect={(part) => handleInlinePartSelect(r, part)}
+                            onCreateNew={(query) => handleInlineCreateNew(r, query)}
+                            onClear={() => handleInlineClear(r)}
+                            disabled={editingId === r.id}
+                            placeholder="编码/条码"
+                            inputClassName="w-28 border-gray-200"
+                          />
                         </td>
                         <td className="px-3 py-3 text-right text-gray-700">
                           {r.quantity} {r.unit || "件"}
@@ -785,6 +932,16 @@ export function PendingPurchaseList() {
                             );
                           })()}
                         </td>
+                        <td className="px-3 py-3">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(r)}
+                            disabled={editingId === r.id}
+                            className="text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                          >
+                            编辑
+                          </button>
+                        </td>
                       </tr>
                     );
                   });
@@ -793,7 +950,7 @@ export function PendingPurchaseList() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={12} className="px-6 py-12 text-center text-gray-400">
                   暂无待采购的配件
                 </td>
               </tr>
@@ -1038,6 +1195,40 @@ export function PendingPurchaseList() {
               >
                 {submitting ? "处理中..." : "确认撤销"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 编辑配件弹窗 */}
+      {editRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-6xl max-h-[90vh] overflow-y-auto m-4">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {editRow.part_id ? "编辑配件信息" : "新增配件信息"}
+              </h3>
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="p-6">
+              <PartForm
+                editId={editRow.part_id || undefined}
+                onSaved={handlePartSaved}
+                onCancel={closeEditModal}
+                prefillData={{
+                  part_number: newPartQuery || editRow.part_number || undefined,
+                  name: editRow.name || undefined,
+                  unit: editRow.unit || undefined,
+                  purchase_price: editRow.unit_cost != null ? String(editRow.unit_cost) : undefined,
+                  notes: editRow.notes || undefined,
+                }}
+              />
             </div>
           </div>
         </div>

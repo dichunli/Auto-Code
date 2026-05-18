@@ -72,9 +72,22 @@ export function ProcurementTabBar({ currentTab }: Props) {
       )
       .subscribe();
 
+    /* Realtime 订阅: supplier_return_records 变化时刷新待退货/已退货计数 */
+    const retChannel = supabase
+      .channel("procurement_tab_return_counts")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "supplier_return_records" },
+        () => {
+          loadCounts();
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(partsChannel);
       supabase.removeChannel(poChannel);
+      supabase.removeChannel(retChannel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
@@ -130,12 +143,12 @@ export function ProcurementTabBar({ currentTab }: Props) {
 
     const { data: poData } = await supabase
       .from("purchase_orders")
-      .select("id, status, purchase_order_items(quantity, received_qty, not_arrived_reason)")
+      .select("id, status, purchase_order_items(quantity, handle_action)")
       .in("status", ["submitted", "approved", "partial_received"]);
 
     const pendingReceipt = (poData || []).filter((o: any) => {
       const items = o.purchase_order_items || [];
-      return items.some((it: any) => (it.received_qty || 0) < it.quantity && !it.not_arrived_reason);
+      return items.some((it: any) => !it.handle_action);
     }).length;
 
     const { data: storageData } = await supabase

@@ -69,6 +69,19 @@ export function PendingReturnList() {
     loadData();
   }
 
+  async function handleDelete(id: string) {
+    if (!confirm("确认删除该退货记录?")) return;
+    const { error } = await supabase
+      .from("supplier_return_records")
+      .delete()
+      .eq("id", id);
+    if (error) {
+      alert("删除失败: " + error.message);
+      return;
+    }
+    loadData();
+  }
+
   if (loading) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
@@ -143,12 +156,20 @@ export function PendingReturnList() {
                   {new Date(r.created_at).toLocaleString("zh-CN")}
                 </td>
                 <td className="px-6 py-4">
-                  <button
-                    onClick={() => handleComplete(r.id)}
-                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                  >
-                    标记完成
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleComplete(r.id)}
+                      className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      标记完成
+                    </button>
+                    <button
+                      onClick={() => handleDelete(r.id)}
+                      className="text-xs text-red-600 hover:text-red-800 hover:underline"
+                    >
+                      删除
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

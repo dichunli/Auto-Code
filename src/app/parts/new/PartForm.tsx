@@ -42,11 +42,29 @@ interface VehicleModelPriceItem {
   standard_price: string;
 }
 
-export default function PartForm({ editId }: { editId?: string }) {
+export default function PartForm({
+  editId,
+  onSaved,
+  onCancel,
+  prefillData,
+}: {
+  editId?: string;
+  onSaved?: (partId: string) => void;
+  onCancel?: () => void;
+  prefillData?: {
+    part_number?: string;
+    name?: string;
+    unit?: string;
+    purchase_price?: string;
+    notes?: string;
+    document_name?: string;
+  };
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
   const isEditMode = !!editId;
+  const isEmbedded = !!onSaved;
   const [loading, setLoading] = useState(false);
   const [systemCode, setSystemCode] = useState("");
 
@@ -475,6 +493,108 @@ export default function PartForm({ editId }: { editId?: string }) {
     loadEditData();
   }, [editId, supabase, router]);
 
+  /* 弹窗预填数据 */
+  useEffect(() => {
+    if (editId || !prefillData) return;
+    if (prefillData.part_number) setPartNumber(prefillData.part_number);
+    if (prefillData.name) {
+      setPartNameQuery(prefillData.name);
+      setForm((prev) => ({ ...prev, name: prefillData.name! }));
+      /* 尝试查找并选中配件名称 */
+      supabase
+        .from("part_names")
+        .select("id, name, part_categories(id, name)")
+        .ilike("name", `%${prefillData.name}%`)
+        .limit(10)
+        .then(({ data }) => {
+          if (data && data.length > 0) {
+            const exact = data.find((p: any) => p.name === prefillData.name);
+            setSelectedPartName(exact || data[0]);
+          }
+        });
+    }
+    if (prefillData.unit) setForm((prev) => ({ ...prev, unit: prefillData.unit! }));
+    if (prefillData.purchase_price) setForm((prev) => ({ ...prev, purchase_price: prefillData.purchase_price! }));
+    if (prefillData.notes) setForm((prev) => ({ ...prev, notes: prefillData.notes! }));
+    if (prefillData.document_name) setDocNameQuery(prefillData.document_name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* 弹窗模式下：编码精确匹配配件库时自动填充 */
+  useEffect(() => {
+    if (!isEmbedded || !partNumber.trim() || isEditMode) return;
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from("parts")
+        .select(
+          "id, part_number, name, unit, purchase_price, notes, document_name, barcode, interchange_code, min_stock, unit_price, standard_price, vip_price, wholesale_price, supplier_id, brand_id, part_brands(id, name), specification_id, part_specifications(id, name), category_id, part_categories(id, name), part_images(image_path), part_stock_locations(warehouse_id, warehouses(name), location, quantity, min_stock, max_stock), auto_link_vehicle_model, is_consumable, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value"
+        )
+        .eq("part_number", partNumber.trim().toUpperCase())
+        .single();
+      if (!data) return;
+      /* 自动填充 */
+      setPartNumber(data.part_number || "");
+      setBarcode(data.barcode || "");
+      setInterchangeCode(data.interchange_code || "");
+      setDocNameQuery(data.document_name || "");
+      setForm((prev) => ({
+        ...prev,
+        name: data.name || prev.name,
+        unit: data.unit || prev.unit,
+        min_stock: String(data.min_stock || 10),
+        purchase_price: data.purchase_price != null ? String(data.purchase_price) : prev.purchase_price,
+        reference_purchase_price: "",
+        unit_price: data.unit_price != null ? String(data.unit_price) : prev.unit_price,
+        standard_price: data.standard_price != null ? String(data.standard_price) : prev.standard_price,
+        vip_price: data.vip_price != null ? String(data.vip_price) : prev.vip_price,
+        wholesale_price: data.wholesale_price != null ? String(data.wholesale_price) : prev.wholesale_price,
+        notes: data.notes || prev.notes,
+        auto_link_vehicle_model: data.auto_link_vehicle_model || false,
+        is_consumable: data.is_consumable || false,
+        sales_type: (data.sales_commission_type as any) || "",
+        sales_value: data.sales_commission_value != null ? String(data.sales_commission_value) : "",
+        diagnosis_type: (data.diagnosis_commission_type as any) || "",
+        diagnosis_value: data.diagnosis_commission_value != null ? String(data.diagnosis_commission_value) : "",
+        repair_type: (data.repair_commission_type as any) || "",
+        repair_value: data.repair_commission_value != null ? String(data.repair_commission_value) : "",
+        qc_type: (data.qc_commission_type as any) || "",
+        qc_value: data.qc_commission_value != null ? String(data.qc_commission_value) : "",
+        picking_type: (data.picking_commission_type as any) || "",
+        picking_value: data.picking_commission_value != null ? String(data.picking_commission_value) : "",
+      }));
+      if (data.part_images?.length > 0) {
+        setPartImages(data.part_images.map((img: any) => img.image_path).filter(Boolean));
+      }
+      if (data.part_brands) setSelectedBrand({ id: data.part_brands.id, name: data.part_brands.name });
+      if (data.part_specifications) setSelectedSpecs([{ id: data.part_specifications.id, name: data.part_specifications.name }]);
+      if (data.part_categories) {
+        setSelectedPartName((prev: any) =>
+          prev
+            ? { ...prev, part_categories: data.part_categories }
+            : { id: "", name: data.name, part_categories: data.part_categories }
+        );
+      }
+      if (data.supplier_id) {
+        supabase.from("suppliers").select("id, name").eq("id", data.supplier_id).single().then(({ data: s }) => {
+          if (s) setSelectedSupplier(s);
+        });
+      }
+      if (data.part_stock_locations?.length > 0) {
+        setStockLocations(
+          data.part_stock_locations.map((loc: any) => ({
+            id: crypto.randomUUID(),
+            warehouseName: loc.warehouses?.name || "",
+            location: loc.location || "",
+            quantity: String(loc.quantity || 0),
+            min_stock: String(loc.min_stock || 0),
+            max_stock: loc.max_stock != null ? String(loc.max_stock) : "",
+          }))
+        );
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partNumber, isEmbedded, isEditMode]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -500,7 +620,8 @@ export default function PartForm({ editId }: { editId?: string }) {
       }
       // Escape — 取消
       if (e.key === "Escape") {
-        router.back();
+        if (onCancel) onCancel();
+        else router.back();
         return;
       }
     }
@@ -1316,7 +1437,9 @@ export default function PartForm({ editId }: { editId?: string }) {
       if (vpError) console.error('part_vehicle_prices insert error:', vpError);
     }
 
-    if (isEditMode) {
+    if (onSaved) {
+      onSaved(partId);
+    } else if (isEditMode) {
       router.push(`/parts/${editId}`);
     } else {
       router.push('/inventory');
@@ -1370,11 +1493,13 @@ export default function PartForm({ editId }: { editId?: string }) {
   }
 
   return (
-    <div>
-      <PageHeader
-        title={isEditMode ? "编辑配件" : searchParams.get("copy_from") ? "复制添加配件" : "新增配件"}
-        description={searchParams.get("copy_from") ? "已带入原配件信息，请修改不允许重复的内容后保存" : undefined}
-      />
+    <div className={isEmbedded ? "relative" : ""}>
+      {!isEmbedded && (
+        <PageHeader
+          title={isEditMode ? "编辑配件" : searchParams.get("copy_from") ? "复制添加配件" : "新增配件"}
+          description={searchParams.get("copy_from") ? "已带入原配件信息，请修改不允许重复的内容后保存" : undefined}
+        />
+      )}
 
       <form onSubmit={handleSubmit} className="max-w-6xl relative space-y-6">
           {/* 基础信息 */}
@@ -2472,7 +2597,7 @@ export default function PartForm({ editId }: { editId?: string }) {
           </div>
 
         {/* 右侧悬浮操作按钮 */}
-        <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2">
+        <div className={`${isEmbedded ? "absolute" : "fixed"} right-4 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2`}>
           <button
             type="submit"
             disabled={loading || !!hasDuplicatePartNumber || !partNumber.trim() || !selectedPartName || !form.unit_price.trim()}
@@ -2487,33 +2612,37 @@ export default function PartForm({ editId }: { editId?: string }) {
               </span>
             )}
           </button>
+          {!isEmbedded && (
+            <>
+              <button
+                type="button"
+                disabled={!isEditMode && !searchParams.get("copy_from")}
+                onClick={() => {
+                  const copyId = isEditMode ? editId : searchParams.get("copy_from");
+                  if (copyId) router.push(`/parts/new?copy_from=${copyId}`);
+                }}
+                className="px-4 py-2 text-sm font-medium text-blue-700 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50 shadow-lg"
+              >
+                <span className="flex flex-col items-center leading-tight">
+                  <span>复制新建</span>
+                  <span className="text-[10px] opacity-80">Ctrl+Shift+D</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-lg"
+              >
+                <span className="flex flex-col items-center leading-tight">
+                  <span>重新输入</span>
+                  <span className="text-[10px] opacity-80">Ctrl+Shift+R</span>
+                </span>
+              </button>
+            </>
+          )}
           <button
             type="button"
-            disabled={!isEditMode && !searchParams.get("copy_from")}
-            onClick={() => {
-              const copyId = isEditMode ? editId : searchParams.get("copy_from");
-              if (copyId) router.push(`/parts/new?copy_from=${copyId}`);
-            }}
-            className="px-4 py-2 text-sm font-medium text-blue-700 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50 shadow-lg"
-          >
-            <span className="flex flex-col items-center leading-tight">
-              <span>复制新建</span>
-              <span className="text-[10px] opacity-80">Ctrl+Shift+D</span>
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-lg"
-          >
-            <span className="flex flex-col items-center leading-tight">
-              <span>重新输入</span>
-              <span className="text-[10px] opacity-80">Ctrl+Shift+R</span>
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => router.back()}
+            onClick={() => (onCancel ? onCancel() : router.back())}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-lg"
           >
             <span className="flex flex-col items-center leading-tight">

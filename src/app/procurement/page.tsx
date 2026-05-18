@@ -78,6 +78,12 @@ export default async function ProcurementPage({
         >
           往来款项
         </Link>
+        <Link
+          href="/logistics"
+          className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          物流运单
+        </Link>
         </div>
         <BrowserNotificationToggle />
       </div>

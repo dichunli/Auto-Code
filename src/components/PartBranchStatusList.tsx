@@ -6,6 +6,9 @@ import { createClient } from "@/lib/supabase/client";
 import { requestNotificationPermission, sendBrowserNotification } from "@/lib/notification";
 import { PartBranchImages } from "./PartBranchImages";
 import { usePriceVisibility } from "./PriceVisibilityContext";
+import { PartSearchDropdown } from "./PartSearchDropdown";
+import { resolvePartSellingPrice } from "@/lib/partPriceResolver";
+import PartForm from "@/app/parts/new/PartForm";
 
 const OPINION_LABELS: Record<string, { text: string; cls: string }> = {
   agree: { text: "同意", cls: "bg-green-50 text-green-700" },
@@ -19,7 +22,7 @@ const STATUS_TITLES: Record<string, string> = {
   pending_confirm: "待确认",
 };
 
-type EditableField = "part_number" | "brand" | "specification" | "cost" | "price" | "supplier" | "notes" | "customer_opinion";
+type EditableField = "part_number" | "brand" | "specification" | "cost" | "price" | "supplier" | "notes" | "customer_opinion" | "name" | "unit";
 type GroupBy = "plate" | "category" | "name" | "supplier";
 
 const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
@@ -70,8 +73,8 @@ interface PartBranchRow {
       order_no: string;
       settled_at: string | null;
       order_type: string | null;
-      customers: { name: string; phone: string | null } | null;
-      vehicles: { plate_number: string; vin: string | null } | null;
+      customers: { id: string; name: string; phone: string | null; company: string | null } | null;
+      vehicles: { id: string; plate_number: string; vin: string | null; vehicle_model_id: string | null } | null;
     } | null;
   } | null;
 }
@@ -130,6 +133,10 @@ export function PartBranchStatusList({ status }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchSupplier, setBatchSupplier] = useState<string>("");
   const [showBatchBar, setShowBatchBar] = useState(false);
+
+  /* 编辑配件弹窗 */
+  const [editRow, setEditRow] = useState<PartBranchRow | null>(null);
+  const [newPartQuery, setNewPartQuery] = useState<string>("");
 
   useEffect(() => {
     if (!openSupplierRowId) return;
@@ -206,8 +213,8 @@ export function PartBranchStatusList({ status }: Props) {
             name,
             work_orders(
               id, order_no, settled_at, order_type,
-              customers(name, phone),
-              vehicles(plate_number, vin, vehicle_model_id)
+              customers(id, name, phone, company),
+              vehicles(id, plate_number, vin, vehicle_model_id)
             )
           )
         `)
@@ -361,6 +368,12 @@ export function PartBranchStatusList({ status }: Props) {
       } else if (_field === "customer_opinion") {
         const val = trimmed === "" ? null : trimmed;
         if (val !== (row.customer_opinion || null)) update.customer_opinion = val;
+      } else if (_field === "name") {
+        const val = trimmed === "" ? null : trimmed;
+        if (val !== (row.name || null)) update.name = val;
+      } else if (_field === "unit") {
+        const val = trimmed === "" ? null : trimmed;
+        if (val !== (row.unit || null)) update.unit = val;
       } else if (_field === "cost" || _field === "price") {
         const dbField = _field === "cost" ? "unit_cost" : "unit_price";
         if (trimmed === "") {
@@ -376,6 +389,148 @@ export function PartBranchStatusList({ status }: Props) {
     }
 
     return Object.keys(update).length > 0 ? update : null;
+  }
+
+  /* ========== 配件编辑弹窗 ========== */
+  function openEditModal(row: PartBranchRow) {
+    setNewPartQuery("");
+    setEditRow(row);
+  }
+  function closeEditModal() {
+    setNewPartQuery("");
+    setEditRow(null);
+  }
+
+  async function handlePartSaved(partId: string) {
+    if (!editRow) return;
+    setSavingId(editRow.id);
+    try {
+      const { data: part } = await supabase
+        .from("parts")
+        .select(
+          "part_number, name, unit, category_id, part_categories(name), brand_id, part_brands(name), specification_id, part_specifications(name), unit_cost, unit_price, purchase_price, notes, document_name"
+        )
+        .eq("id", partId)
+        .single();
+
+      const updates: Record<string, any> = { part_id: partId };
+      if (part) {
+        if (part.part_number != null) updates.part_number = part.part_number;
+        if (part.name != null) updates.name = part.name;
+        if (part.unit != null) updates.unit = part.unit;
+        if (part.part_brands?.name != null) updates.brand = part.part_brands.name;
+        if (part.part_specifications?.name != null) updates.specification = part.part_specifications.name;
+        if (part.purchase_price != null) updates.unit_cost = part.purchase_price;
+        if (part.notes != null) updates.notes = part.notes;
+        if (part.document_name != null) updates.document_name = part.document_name;
+      }
+
+      const { error } = await supabase
+        .from("work_order_item_parts")
+        .update(updates)
+        .eq("id", editRow.id);
+      if (error) throw error;
+
+      /* 同步更新关联的 purchase_order_items */
+      const { error: poiErr } = await supabase
+        .from("purchase_order_items")
+        .update({
+          part_id: partId,
+          part_number: part?.part_number || updates.part_number || null,
+          name: part?.name || updates.name || null,
+          unit: part?.unit || updates.unit || null,
+          brand: part?.part_brands?.name || updates.brand || null,
+          specification: part?.part_specifications?.name || updates.specification || null,
+          category: part?.part_categories?.name || null,
+        })
+        .eq("work_order_item_part_id", editRow.id);
+      if (poiErr) console.warn("同步采购单配件信息失败:", poiErr);
+
+      closeEditModal();
+      lastSelfUpdate.current = Date.now();
+      loadData();
+    } catch (err: any) {
+      alert("同步配件信息失败: " + (err.message || String(err)));
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  /* 行内搜索选中配件 */
+  async function handleInlinePartSelect(row: PartBranchRow, part: any) {
+    const currentName = edits[row.id]?.name ?? row.name ?? "";
+    const currentBrand = edits[row.id]?.brand ?? row.brand ?? "";
+    const currentSpec = edits[row.id]?.specification ?? row.specification ?? "";
+    const currentUnit = edits[row.id]?.unit ?? row.unit ?? "";
+
+    setEdits((prev) => ({
+      ...prev,
+      [row.id]: {
+        ...prev[row.id],
+        part_number: part.part_number || part.barcode || "",
+        name: currentName || part.name || part.part_names?.name || "",
+        brand: currentBrand || part.part_brands?.name || "",
+        specification: currentSpec || part.part_specifications?.name || "",
+        unit: currentUnit || part.unit || part.part_names?.unit || "",
+      },
+    }));
+    setReplacePartIds((prev) => ({ ...prev, [row.id]: part.id }));
+
+    /* 待询价/待报价阶段：填充采购价和根据工单匹配销售价 */
+    if (status === "pending_inquiry" || status === "pending_quote") {
+      const currentCost = edits[row.id]?.cost ?? (row.unit_cost != null ? String(row.unit_cost) : "");
+      const costStr = part.unit_cost != null ? String(part.unit_cost) : "";
+      setEdits((prev) => ({
+        ...prev,
+        [row.id]: {
+          ...prev[row.id],
+          cost: currentCost || costStr,
+        },
+      }));
+
+      /* 售价：工单中已报则不覆盖，没有才按配件更新 */
+      const currentPrice = edits[row.id]?.price ?? (row.unit_price != null ? String(row.unit_price) : "");
+      if (!currentPrice) {
+        const wo = row.work_order_items?.work_orders;
+        const ctx = {
+          vehicleId: wo?.vehicles?.id,
+          customerId: wo?.customers?.id,
+          companyName: wo?.customers?.company || undefined,
+          vehicleModelId: wo?.vehicles?.vehicle_model_id || undefined,
+        };
+        const resolved = await resolvePartSellingPrice(supabase, part.id, ctx);
+        const priceStr = resolved.price != null ? String(resolved.price) : (part.unit_price != null ? String(part.unit_price) : "");
+        if (priceStr) {
+          setEdits((prev) => ({
+            ...prev,
+            [row.id]: {
+              ...prev[row.id],
+              price: priceStr,
+            },
+          }));
+        }
+      }
+    }
+  }
+
+  /* 行内搜索清除配件关联 */
+  function handleInlineClear(row: PartBranchRow) {
+    setEdits((prev) => {
+      const next = { ...prev, [row.id]: { ...prev[row.id] } };
+      delete next[row.id].part_number;
+      return next;
+    });
+    setReplacePartIds((prev) => {
+      const next = { ...prev };
+      delete next[row.id];
+      return next;
+    });
+  }
+
+  /* 行内搜索无匹配 -> 新建配件 */
+  function handleInlineCreateNew(row: PartBranchRow, query: string) {
+    setNewPartQuery(query);
+    setEditRow(row);
   }
 
   /* 根据编码从库存中查找配件并预填充 */
@@ -692,16 +847,20 @@ export function PartBranchStatusList({ status }: Props) {
     const opinion = OPINION_LABELS[row.customer_opinion || "pending"];
     const isSaving = savingId === row.id;
     const partNumberDraft = edits[row.id]?.part_number;
+    const nameDraft = edits[row.id]?.name;
     const brandDraft = edits[row.id]?.brand;
     const specDraft = edits[row.id]?.specification;
+    const unitDraft = edits[row.id]?.unit;
     const costDraft = edits[row.id]?.cost;
     const priceDraft = edits[row.id]?.price;
     const supplierDraft = edits[row.id]?.supplier;
     const notesDraft = edits[row.id]?.notes;
 
     const partNumberValue = partNumberDraft !== undefined ? partNumberDraft : (row.part_number || "");
+    const nameValue = nameDraft !== undefined ? nameDraft : (row.name || "");
     const brandValue = brandDraft !== undefined ? brandDraft : (row.brand || "");
     const specValue = specDraft !== undefined ? specDraft : (row.specification || "");
+    const unitValue = unitDraft !== undefined ? unitDraft : (row.unit || "");
     const costValue = costDraft !== undefined ? costDraft : (row.unit_cost != null && row.unit_cost > 0 ? String(row.unit_cost) : "");
     const priceValue = priceDraft !== undefined ? priceDraft : (row.unit_price != null && row.unit_price > 0 ? String(row.unit_price) : "");
     const supplierValue = supplierDraft !== undefined ? supplierDraft : (row.supplier_name || "");
@@ -729,17 +888,18 @@ export function PartBranchStatusList({ status }: Props) {
         </td>
         {/* 编码 */}
         <td className="px-3 py-3">
-          <input
-            type="text"
-            disabled={isSaving}
+          <PartSearchDropdown
             value={partNumberValue}
-            onChange={(e) => setEditValue(row.id, "part_number", e.target.value.toUpperCase())}
-            onKeyDown={(e) => handleKeyDown(e, row, "part_number")}
+            onChange={(val) => setEditValue(row.id, "part_number", val.toUpperCase())}
+            onSelect={(part) => handleInlinePartSelect(row, part)}
+            onCreateNew={(query) => handleInlineCreateNew(row, query)}
+            onClear={() => handleInlineClear(row)}
+            disabled={isSaving}
             placeholder="编码/条码"
-            className={`w-24 px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && partNumberDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+            inputClassName={`w-28 ${hasDraft && partNumberDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
           />
         </td>
-        <td className="px-3 py-3 text-gray-900">{row.name}</td>
+        <td className={`px-3 py-3 text-gray-900 ${hasDraft && nameDraft !== undefined ? "text-blue-700 font-medium" : ""}`}>{nameValue}</td>
         <td className="px-3 py-3">
           <input
             type="text"
@@ -765,7 +925,7 @@ export function PartBranchStatusList({ status }: Props) {
           />
         </td>
         <td className={`px-3 py-3 text-right ${row.quantity <= 0 ? "bg-red-50 text-red-600 font-semibold" : "text-gray-700"}`}>
-          {row.quantity} {row.unit || "件"}
+          {row.quantity} {unitValue || "件"}
         </td>
         {/* 库存 */}
         <td className="px-3 py-3 text-right text-gray-700">
@@ -907,6 +1067,14 @@ export function PartBranchStatusList({ status }: Props) {
             <Link href={`/work-orders/${wo.id}`} className="text-xs text-blue-600 hover:text-blue-700">
               处理
             </Link>
+            <button
+              type="button"
+              onClick={() => openEditModal(row)}
+              disabled={isSaving}
+              className="text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
+            >
+              编辑
+            </button>
             <button
               type="button"
               onClick={() => handleAddSiblingBranch(row)}
@@ -1124,6 +1292,40 @@ export function PartBranchStatusList({ status }: Props) {
           </tbody>
         </table>
       </div>
+
+      {/* 编辑配件弹窗 */}
+      {editRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-6xl max-h-[90vh] overflow-y-auto m-4">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {editRow.part_id ? "编辑配件信息" : "新增配件信息"}
+              </h3>
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="p-6">
+              <PartForm
+                editId={editRow.part_id || undefined}
+                onSaved={handlePartSaved}
+                onCancel={closeEditModal}
+                prefillData={{
+                  part_number: newPartQuery || editRow.part_number || undefined,
+                  name: editRow.name || undefined,
+                  unit: editRow.unit || undefined,
+                  purchase_price: editRow.unit_cost != null ? String(editRow.unit_cost) : undefined,
+                  notes: editRow.notes || undefined,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
