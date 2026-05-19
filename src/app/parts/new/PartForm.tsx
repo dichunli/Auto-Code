@@ -128,6 +128,7 @@ export default function PartForm({
 
   const [barcode, setBarcode] = useState("");
   const [interchangeCode, setInterchangeCode] = useState("");
+  const [oeNumber, setOeNumber] = useState("");
   const [partImages, setPartImages] = useState<string[]>([]);
 
   const [form, setForm] = useState({
@@ -281,7 +282,7 @@ export default function PartForm({
           ? supabase.from("suppliers").select("*").eq("id", part.supplier_id).single()
           : Promise.resolve({ data: null }),
         supabase.from("parts_specifications").select("specification_id, specifications(*)").eq("part_id", copyFromId),
-        supabase.from("part_vehicle_models").select("vehicle_model_id, vehicle_models(厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准, 前轮胎规格, 后轮胎规格)").eq("part_id", copyFromId),
+        supabase.from("part_vehicle_models").select("vehicle_model_id, vehicle_models(厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准, 前轮胎规格, 后轮胎规格), notes, fitment_position, source").eq("part_id", copyFromId),
         supabase.from("part_images").select("*").eq("part_id", copyFromId).order("sort_order", { ascending: true }),
         supabase.from("part_stock_locations").select("*, warehouses(name)").eq("part_id", copyFromId),
       ]);
@@ -299,11 +300,12 @@ export default function PartForm({
           const model_name = vm.车型 || "";
           const name = `${brand} ${series} ${model_name}`.trim();
           if (!name) return null;
-          return { id: String(v.vehicle_model_id), name, manufacturer: vm.厂商, brand, series, model_name, sales_version: vm.销售版本, year_start: vm.年款, year_end: vm.年款, displacement: vm.排量, engine: vm.发动机型号, fuel_type: vm.燃油类型, intake_form: vm.进气形式, chassis_code: vm.底盘代号, transmission_type: vm.变速箱类型, transmission_code: vm.变速箱代号, drive_type: vm.驱动方式, body_type: vm.车身类型, emission_standard: vm.排放标准, front_tire: vm.前轮胎规格, rear_tire: vm.后轮胎规格 };
+          return { id: String(v.vehicle_model_id), name, manufacturer: vm.厂商, brand, series, model_name, sales_version: vm.销售版本, year_start: vm.年款, year_end: vm.年款, displacement: vm.排量, engine: vm.发动机型号, fuel_type: vm.燃油类型, intake_form: vm.进气形式, chassis_code: vm.底盘代号, transmission_type: vm.变速箱类型, transmission_code: vm.变速箱代号, drive_type: vm.驱动方式, body_type: vm.车身类型, emission_standard: vm.排放标准, front_tire: vm.前轮胎规格, rear_tire: vm.后轮胎规格, fitment_position: v.fitment_position || "", source: v.source || "manual" };
         }).filter((v: any) => v !== null);
         setSelectedVehicleModels(mapped as LinkedItem[]);
       }
 
+      setOeNumber("");
       setDocNameQuery(part.document_name || "");
       setForm((prev) => ({
         ...prev,
@@ -371,7 +373,7 @@ export default function PartForm({
             ? supabase.from("suppliers").select("*").eq("id", part.supplier_id).single()
             : Promise.resolve({ data: null }),
           supabase.from("parts_specifications").select("specification_id, part_specifications(name)").eq("part_id", editId),
-          supabase.from("part_vehicle_models").select("vehicle_model_id, vehicle_models(厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准), notes").eq("part_id", editId),
+          supabase.from("part_vehicle_models").select("vehicle_model_id, vehicle_models(厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准), notes, fitment_position, source").eq("part_id", editId),
           supabase.from("part_images").select("*").eq("part_id", editId).order("sort_order", { ascending: true }),
           supabase.from("part_stock_locations").select("*, warehouses(name)").eq("part_id", editId),
           supabase.from("part_special_prices").select("*, companies(name), customers(name, phone), vehicles(plate_number, vin)").eq("part_id", editId),
@@ -400,7 +402,7 @@ export default function PartForm({
             const series = vm?.车系 || "";
             const model_name = vm?.车型 || "";
             const name = `${brand} ${series} ${model_name}`.trim();
-            return { id: String(v.vehicle_model_id), name, manufacturer: vm?.厂商, brand, series, model_name, sales_version: vm?.销售版本, year_start: vm?.年款, year_end: vm?.年款, displacement: vm?.排量, engine: vm?.发动机型号, fuel_type: vm?.燃油类型, intake_form: vm?.进气形式, chassis_code: vm?.底盘代号, transmission_type: vm?.变速箱类型, transmission_code: vm?.变速箱代号, drive_type: vm?.驱动方式, body_type: vm?.车身类型, emission_standard: vm?.排放标准, notes: v.notes || "" };
+            return { id: String(v.vehicle_model_id), name, manufacturer: vm?.厂商, brand, series, model_name, sales_version: vm?.销售版本, year_start: vm?.年款, year_end: vm?.年款, displacement: vm?.排量, engine: vm?.发动机型号, fuel_type: vm?.燃油类型, intake_form: vm?.进气形式, chassis_code: vm?.底盘代号, transmission_type: vm?.变速箱类型, transmission_code: vm?.变速箱代号, drive_type: vm?.驱动方式, body_type: vm?.车身类型, emission_standard: vm?.排放标准, notes: v.notes || "", fitment_position: v.fitment_position || "", source: v.source || "manual" };
           }));
         }
         if (images) {
@@ -420,6 +422,7 @@ export default function PartForm({
         setPartNumber(part.part_number || "");
         setBarcode(part.barcode || "");
         setInterchangeCode(part.interchange_code || "");
+        setOeNumber(part.oe_number || "");
         setDocNameQuery(part.document_name || "");
         setSystemCode(part.system_code || "");
 
@@ -565,8 +568,14 @@ export default function PartForm({
       if (data.part_images?.length > 0) {
         setPartImages(data.part_images.map((img: any) => img.image_path).filter(Boolean));
       }
-      if (data.part_brands) setSelectedBrand({ id: data.part_brands.id, name: data.part_brands.name });
-      if (data.part_specifications) setSelectedSpecs([{ id: data.part_specifications.id, name: data.part_specifications.name }]);
+      if (data.part_brands) {
+        const pb = Array.isArray(data.part_brands) ? data.part_brands[0] : data.part_brands;
+        if (pb) setSelectedBrand({ id: pb.id, name: pb.name });
+      }
+      if (data.part_specifications) {
+        const ps = Array.isArray(data.part_specifications) ? data.part_specifications[0] : data.part_specifications;
+        if (ps) setSelectedSpecs([{ id: ps.id, name: ps.name }]);
+      }
       if (data.part_categories) {
         setSelectedPartName((prev: any) =>
           prev
@@ -1206,6 +1215,7 @@ export default function PartForm({
           part_number: partNumber.trim().toUpperCase(),
           barcode: barcode.trim() || null,
           interchange_code: interchangeCode.trim().toUpperCase() || null,
+          oe_number: oeNumber.trim().toUpperCase() || null,
           document_name: documentName,
           part_name_id: selectedPartName.id,
           name: form.name.trim(),
@@ -1304,6 +1314,7 @@ export default function PartForm({
         part_number: partNumber.trim().toUpperCase(),
         barcode: barcode.trim() || null,
         interchange_code: interchangeCode.trim().toUpperCase() || null,
+        oe_number: oeNumber.trim().toUpperCase() || null,
         document_name: documentName,
         part_name_id: selectedPartName.id,
         name: form.name.trim(),
@@ -1356,7 +1367,7 @@ export default function PartForm({
     if (selectedVehicleModels.length > 0) {
       const { error: vmError } = await supabase
         .from("part_vehicle_models")
-        .insert(selectedVehicleModels.map((v) => ({ part_id: partId, vehicle_model_id: Number(v.id), notes: v.notes || null })));
+        .insert(selectedVehicleModels.map((v) => ({ part_id: partId, vehicle_model_id: Number(v.id), notes: v.notes || null, fitment_position: v.fitment_position || null, source: v.source || 'manual' })));
       if (vmError) {
         alert("适用车型保存失败: " + vmError.message);
         setLoading(false);
@@ -1437,7 +1448,7 @@ export default function PartForm({
       if (vpError) console.error('part_vehicle_prices insert error:', vpError);
     }
 
-    if (onSaved) {
+    if (onSaved && partId) {
       onSaved(partId);
     } else if (isEditMode) {
       router.push(`/parts/${editId}`);
@@ -1508,8 +1519,8 @@ export default function PartForm({
               <span className="text-xs text-gray-400 font-mono tracking-wider select-none">{systemCode || ""}</span>
             </div>
 
-        {/* Row 1: Part number + Barcode + Interchange code */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 mt-2">
+        {/* Row 1: Part number + Barcode + Interchange code + OE号 */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4 mt-2">
           <div className="relative">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               配件编码 <span className="text-red-500">*</span>
@@ -1569,6 +1580,17 @@ export default function PartForm({
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               value={interchangeCode}
               onChange={(e) => setInterchangeCode(e.target.value.toUpperCase())}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">OE号</label>
+            <input
+              type="text"
+              placeholder="原厂编码"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              value={oeNumber}
+              onChange={(e) => setOeNumber(e.target.value.toUpperCase())}
             />
           </div>
         </div>

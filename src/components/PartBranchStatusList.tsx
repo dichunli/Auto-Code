@@ -23,7 +23,7 @@ const STATUS_TITLES: Record<string, string> = {
 };
 
 type EditableField = "part_number" | "brand" | "specification" | "cost" | "price" | "supplier" | "notes" | "customer_opinion" | "name" | "unit";
-type GroupBy = "plate" | "category" | "name" | "supplier";
+type GroupBy = "plate" | "category" | "name" | "supplier" | "none";
 
 const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
   { key: "plate", label: "按车牌" },
@@ -418,8 +418,12 @@ export function PartBranchStatusList({ status }: Props) {
         if (part.part_number != null) updates.part_number = part.part_number;
         if (part.name != null) updates.name = part.name;
         if (part.unit != null) updates.unit = part.unit;
-        if (part.part_brands?.name != null) updates.brand = part.part_brands.name;
-        if (part.part_specifications?.name != null) updates.specification = part.part_specifications.name;
+        const pb = part.part_brands as any;
+        const ps = part.part_specifications as any;
+        const brandName = Array.isArray(pb) ? pb[0]?.name : pb?.name;
+        const specName = Array.isArray(ps) ? ps[0]?.name : ps?.name;
+        if (brandName != null) updates.brand = brandName;
+        if (specName != null) updates.specification = specName;
         if (part.purchase_price != null) updates.unit_cost = part.purchase_price;
         if (part.notes != null) updates.notes = part.notes;
         if (part.document_name != null) updates.document_name = part.document_name;
@@ -439,9 +443,9 @@ export function PartBranchStatusList({ status }: Props) {
           part_number: part?.part_number || updates.part_number || null,
           name: part?.name || updates.name || null,
           unit: part?.unit || updates.unit || null,
-          brand: part?.part_brands?.name || updates.brand || null,
-          specification: part?.part_specifications?.name || updates.specification || null,
-          category: part?.part_categories?.name || null,
+          brand: (Array.isArray((part as any)?.part_brands) ? (part as any)?.part_brands[0]?.name : (part as any)?.part_brands?.name) || updates.brand || null,
+          specification: (Array.isArray((part as any)?.part_specifications) ? (part as any)?.part_specifications[0]?.name : (part as any)?.part_specifications?.name) || updates.specification || null,
+          category: (Array.isArray((part as any)?.part_categories) ? (part as any)?.part_categories[0]?.name : (part as any)?.part_categories?.name) || null,
         })
         .eq("work_order_item_part_id", editRow.id);
       if (poiErr) console.warn("同步采购单配件信息失败:", poiErr);

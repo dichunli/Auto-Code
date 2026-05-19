@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 interface MatchedPart {
   id: string;
   part_number: string | null;
+  oe_number: string | null;
   barcode: string | null;
   name: string | null;
   unit: string | null;
@@ -84,13 +85,13 @@ export function PartSearchDropdown({
     const { data, error } = await supabase
       .from("parts")
       .select(
-        `id, part_number, barcode, name, unit, unit_cost, unit_price, standard_price, vip_price, purchase_price,
+        `id, part_number, oe_number, barcode, name, unit, unit_cost, unit_price, standard_price, vip_price, purchase_price,
          part_name_id, brand_id, specification_id,
          part_brands(name), part_specifications(name),
          part_names(name, unit, part_categories(name)),
          part_images(storage_path)`
       )
-      .or(`part_number.ilike.%${trimmed}%,barcode.ilike.%${trimmed}%`)
+      .or(`part_number.ilike.%${trimmed}%,barcode.ilike.%${trimmed}%,oe_number.ilike.%${trimmed}%`)
       .order("part_number", { ascending: true })
       .limit(10);
 
@@ -278,7 +279,8 @@ export function PartSearchDropdown({
                     <div className="text-gray-600 mt-0.5">
                       {part.name || part.part_names?.name || "-"}
                     </div>
-                    <div className="text-gray-400 mt-0.5 flex gap-2">
+                    <div className="text-gray-400 mt-0.5 flex gap-2 flex-wrap">
+                      {part.oe_number && <span>OE:{part.oe_number}</span>}
                       {part.part_brands?.name && <span>品牌:{part.part_brands.name}</span>}
                       {part.part_specifications?.name && <span>规格:{part.part_specifications.name}</span>}
                       {part.part_names?.part_categories?.name && (

@@ -216,5 +216,6 @@ export default function AutoLinkedPartsReportTable({ rows: initialRows }: { rows
         </tbody>
       </table>
     </div>
+    </div>
   );
 }

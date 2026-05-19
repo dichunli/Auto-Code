@@ -359,6 +359,10 @@ CREATE TABLE parts (
   qc_commission_value NUMERIC,
   picking_commission_type TEXT,
   picking_commission_value NUMERIC,
+  oe_number TEXT,
+  oe_numbers TEXT[] DEFAULT '{}',
+  epc_source TEXT DEFAULT 'manual',
+  vin17_part_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -377,6 +381,9 @@ CREATE TABLE part_vehicle_models (
   part_id UUID NOT NULL REFERENCES parts(id) ON DELETE CASCADE,
   vehicle_model_id UUID NOT NULL REFERENCES vehicle_models(id) ON DELETE CASCADE,
   notes TEXT,
+  fitment_position TEXT,
+  source TEXT DEFAULT 'manual',
+  vin17_fitness_id TEXT,
   UNIQUE(part_id, vehicle_model_id)
 );
 

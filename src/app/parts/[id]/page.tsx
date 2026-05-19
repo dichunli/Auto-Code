@@ -73,6 +73,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
           <InfoItem label="单位" value={part.part_names?.unit || part.unit || "-"} />
           <InfoItem label="供应商" value={part.suppliers?.name || "-"} />
           <InfoItem label="互换码" value={part.interchange_code || "-"} />
+          <InfoItem label="OE号" value={part.oe_number || "-"} />
           <InfoItem label="安全库存" value={part.min_stock ?? "-"} />
           <InfoItem label="存放位置" value={part.location || "-"} />
           <InfoItem label="备注" value={part.notes || "-"} className="sm:col-span-2 lg:col-span-3" />

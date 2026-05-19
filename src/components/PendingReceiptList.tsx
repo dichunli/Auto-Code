@@ -599,8 +599,12 @@ export function PendingReceiptList() {
         if (part.part_number != null) poiUpdates.part_number = part.part_number;
         if (part.name != null) poiUpdates.name = part.name;
         if (part.unit != null) poiUpdates.unit = part.unit;
-        if (part.part_categories?.name != null) poiUpdates.category = part.part_categories.name;
-        if (part.brand_id != null) poiUpdates.brand = part.part_brands?.name || null;
+        const pc = part.part_categories as any;
+        const pb = part.part_brands as any;
+        const catName = Array.isArray(pc) ? pc[0]?.name : pc?.name;
+        const brandName = Array.isArray(pb) ? pb[0]?.name : pb?.name;
+        if (catName != null) poiUpdates.category = catName;
+        if (part.brand_id != null) poiUpdates.brand = brandName || null;
         if (part.specification_text != null) poiUpdates.specification = part.specification_text;
         if (part.purchase_price != null) poiUpdates.unit_cost = part.purchase_price;
         if (part.notes != null) poiUpdates.notes = part.notes;
@@ -619,7 +623,10 @@ export function PendingReceiptList() {
           if (part.part_number != null) woiUpdates.part_number = part.part_number;
           if (part.name != null) woiUpdates.name = part.name;
           if (part.unit != null) woiUpdates.unit = part.unit;
-          if (part.brand_id != null) woiUpdates.brand = part.part_brands?.name || null;
+          if (part.brand_id != null) {
+            const pb = part.part_brands as any;
+            woiUpdates.brand = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || null;
+          }
           if (part.specification_text != null) woiUpdates.specification = part.specification_text;
           if (part.purchase_price != null) woiUpdates.unit_cost = part.purchase_price;
           if (part.notes != null) woiUpdates.notes = part.notes;

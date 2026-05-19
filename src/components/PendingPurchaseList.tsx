@@ -245,8 +245,12 @@ export function PendingPurchaseList() {
         if (part.part_number != null) updates.part_number = part.part_number;
         if (part.name != null) updates.name = part.name;
         if (part.unit != null) updates.unit = part.unit;
-        if (part.part_brands?.name != null) updates.brand = part.part_brands.name;
-        if (part.part_specifications?.name != null) updates.specification = part.part_specifications.name;
+        const pb = part.part_brands as any;
+        const ps = part.part_specifications as any;
+        const brandName = Array.isArray(pb) ? pb[0]?.name : pb?.name;
+        const specName = Array.isArray(ps) ? ps[0]?.name : ps?.name;
+        if (brandName != null) updates.brand = brandName;
+        if (specName != null) updates.specification = specName;
         if (part.purchase_price != null) updates.unit_cost = part.purchase_price;
         if (part.notes != null) updates.notes = part.notes;
         if (part.document_name != null) updates.document_name = part.document_name;
@@ -428,7 +432,7 @@ export function PendingPurchaseList() {
       return;
     }
 
-    const available = filterLogisticsByRegion(logisticsCompanies, region);
+    const available = filterLogisticsByRegion(logisticsCompanies, region as import("@/lib/logisticsFilter").SupplierRegion);
     setFilteredLogistics(available);
     setModalRegion(region);
     setSelectedLogisticsId("");
@@ -917,7 +921,7 @@ export function PendingPurchaseList() {
                             if (region === "local") {
                               return <span className="text-gray-400 text-xs">-</span>;
                             }
-                            const available = filterLogisticsByRegion(logisticsCompanies, region);
+                            const available = filterLogisticsByRegion(logisticsCompanies, region as import("@/lib/logisticsFilter").SupplierRegion);
                             return (
                               <select
                                 value={logisticsMap[r.id] || ""}

@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 
 const reportCards = [
   { href: "/reports/revenue", title: "营收报表", desc: "按日/月查看营业收入与回款情况", color: "bg-blue-50 text-blue-700 border-blue-100" },
+  { href: "/reports/procurement", title: "采购分析", desc: "供应商采购排名、配件采购统计与采退率分析", color: "bg-cyan-50 text-cyan-700 border-cyan-100" },
   { href: "/reports/profit", title: "利润分析", desc: "收入、成本、毛利与利润率分析", color: "bg-green-50 text-green-700 border-green-100" },
   { href: "/reports/work-orders", title: "工单统计", desc: "工单数量、状态分布与金额统计", color: "bg-purple-50 text-purple-700 border-purple-100" },
   { href: "/reports/inventory", title: "库存周转", desc: "配件库存量、价值与周转天数", color: "bg-orange-50 text-orange-700 border-orange-100" },

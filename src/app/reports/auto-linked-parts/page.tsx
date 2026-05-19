@@ -42,7 +42,7 @@ export default async function AutoLinkedPartsReportPage() {
     `)
     .order("created_at", { ascending: false });
 
-  const autoLinkedRows = (rows || []).filter((row: any) => {
+  const autoLinkedRows = ((rows as any[]) || []).filter((row: any) => {
     return (
       row.parts?.part_names?.auto_link_vehicle_model ||
       row.parts?.part_names?.part_categories?.auto_link_vehicle_model

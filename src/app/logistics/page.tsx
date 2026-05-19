@@ -34,6 +34,7 @@ interface Waybill {
   photos: string[] | null;
   status: string;
   created_at: string;
+  notes: string | null;
   logistics_companies: { name: string; scopes: string[] | null } | null;
   purchase_orders?: { id: string; order_no: string | null }[];
 }
@@ -93,7 +94,7 @@ export default function LogisticsPage() {
   const [batchSaving, setBatchSaving] = useState(false);
 
   /* 行内编辑状态: 记录正在编辑的字段 */
-  const [inlineEditing, setInlineEditing] = useState<Record<string, { phone?: string; package_count?: string; freight_amount?: string; cod_amount?: string }>>({});
+  const [inlineEditing, setInlineEditing] = useState<Record<string, Record<string, string>>>({});
   /* 行内编辑电话时的实时供应商提示 */
   const [inlinePhoneHints, setInlinePhoneHints] = useState<Record<string, string>>({});
 
@@ -124,6 +125,34 @@ export default function LogisticsPage() {
     if (activeTab === "waybills") loadWaybills();
   }, [filter, activeTab]);
 
+  /* 通过主电话或联系人电话搜索供应商 */
+  async function findSupplierByPhone(phone: string): Promise<{ id: string; name: string } | null> {
+    if (!phone.trim()) return null;
+    const val = phone.trim();
+    // 先查主电话
+    const { data: main } = await supabase
+      .from("suppliers")
+      .select("id, name")
+      .ilike("phone", `%${val}%`)
+      .limit(1);
+    if (main && main.length > 0) return main[0];
+    // 再查联系人电话
+    const { data: contacts } = await supabase
+      .from("supplier_contacts")
+      .select("supplier_id")
+      .ilike("phone", `%${val}%`)
+      .limit(1);
+    if (contacts && contacts.length > 0) {
+      const { data: sup } = await supabase
+        .from("suppliers")
+        .select("id, name")
+        .eq("id", contacts[0].supplier_id)
+        .single();
+      if (sup) return sup;
+    }
+    return null;
+  }
+
   /* 运单电话输入时实时检索供应商 */
   useEffect(() => {
     async function lookup() {
@@ -135,13 +164,9 @@ export default function LogisticsPage() {
         setSingleSupplierName("");
         return;
       }
-      const { data } = await supabase
-        .from("suppliers")
-        .select("name")
-        .ilike("phone", `%${singlePhone.trim()}%`)
-        .limit(1);
-      if (data && data.length > 0) {
-        setSingleSupplierName(data[0].name);
+      const result = await findSupplierByPhone(singlePhone);
+      if (result) {
+        setSingleSupplierName(result.name);
       }
     }
     lookup();
@@ -465,15 +490,11 @@ export default function LogisticsPage() {
     /* 如果修改的是电话,保存后自动检索供应商并同步更新 supplier_name */
     if (field === "phone") {
       if (value.trim()) {
-        const { data } = await supabase
-          .from("suppliers")
-          .select("name")
-          .ilike("phone", `%${value.trim()}%`)
-          .limit(1);
-        if (data && data.length > 0) {
+        const result = await findSupplierByPhone(value);
+        if (result) {
           await supabase
             .from("logistics_waybills")
-            .update({ supplier_name: data[0].name })
+            .update({ supplier_name: result.name })
             .eq("id", waybillId);
         }
       } else {
@@ -641,8 +662,11 @@ export default function LogisticsPage() {
               <tbody className="divide-y divide-gray-100">
                 {waybills.map((w) => {
                   const editState = inlineEditing[w.id] || {};
+                  const hasPurchaseOrder = w.purchase_orders && w.purchase_orders.length > 0;
+                  const hasSupplier = !!w.supplier_name;
+                  const rowHighlight = !hasPurchaseOrder ? "bg-yellow-50" : !hasSupplier ? "bg-orange-50" : "";
                   return (
-                    <tr key={w.id} className="hover:bg-gray-50">
+                    <tr key={w.id} className={`hover:bg-gray-50 ${rowHighlight}`}>
                       <td className="px-4 py-3 font-medium text-gray-900">{w.tracking_no}</td>
                       <td className="px-4 py-3 text-gray-600">
                         <span className="mr-2">{w.logistics_companies?.name || w.logistics_company_name || "-"}</span>
@@ -662,13 +686,9 @@ export default function LogisticsPage() {
                                 [w.id]: { ...prev[w.id], phone: val },
                               }));
                               if (val.trim()) {
-                                const { data } = await supabase
-                                  .from("suppliers")
-                                  .select("name")
-                                  .ilike("phone", `%${val.trim()}%`)
-                                  .limit(1);
-                                if (data && data.length > 0) {
-                                  setInlinePhoneHints((prev) => ({ ...prev, [w.id]: data[0].name }));
+                                const result = await findSupplierByPhone(val);
+                                if (result) {
+                                  setInlinePhoneHints((prev) => ({ ...prev, [w.id]: result.name }));
                                 } else {
                                   setInlinePhoneHints((prev) => {
                                     const n = { ...prev };
@@ -714,7 +734,7 @@ export default function LogisticsPage() {
                             <span className="text-gray-400">-</span>
                           )
                         ) : (
-                          w.supplier_name || "-"
+                          w.supplier_name || <span className="text-xs text-orange-600 font-medium">未匹配</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -731,7 +751,7 @@ export default function LogisticsPage() {
                             ))}
                           </div>
                         ) : (
-                          <span className="text-gray-400">-</span>
+                          <span className="text-xs text-red-600 font-medium">未绑定</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -1159,6 +1179,24 @@ export default function LogisticsPage() {
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+              {/* 关联采购单 */}
+              {editingWaybill && editingWaybill.purchase_orders && editingWaybill.purchase_orders.length > 0 && (
+                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <div className="text-sm font-medium text-gray-700 mb-2">关联采购单（{editingWaybill.purchase_orders.length} 条）</div>
+                  <div className="space-y-1">
+                    {editingWaybill.purchase_orders.map((po) => (
+                      <Link
+                        key={po.id}
+                        href={`/procurement/${po.id}`}
+                        className="block text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                        target="_blank"
+                      >
+                        {po.order_no || po.id.slice(0, 8)}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button

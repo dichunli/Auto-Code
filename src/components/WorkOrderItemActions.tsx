@@ -55,7 +55,7 @@ export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, un
         open={editOpen}
         itemId={itemId}
         currentName={itemName}
-        currentAlias={aliasName}
+        currentAlias={aliasName || null}
         currentQuantity={quantity || 1}
         currentUnitPrice={unitPrice || 0}
         currentServiceItemId={serviceItemId}

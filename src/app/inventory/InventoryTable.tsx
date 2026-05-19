@@ -21,6 +21,7 @@ interface ColumnDef {
 const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: "checkbox", label: "", width: 50, visible: true, sticky: true },
   { key: "part_number", label: "配件编号", width: 120, visible: true, sticky: true },
+  { key: "oe_number", label: "OE号", width: 120, visible: true },
   { key: "name", label: "名称", width: 150, visible: true, sticky: true },
   { key: "document_name", label: "单据名称", width: 120, visible: true },
   { key: "category", label: "分类", width: 80, visible: true },
@@ -51,6 +52,7 @@ function computeStickyLeft(columns: ColumnDef[], targetKey: string): number {
 const importFields = [
   { key: "配件名称", required: true },
   { key: "配件编号", required: true },
+  { key: "OE号", required: false },
   { key: "分类名称", required: false },
   { key: "品牌名称", required: false },
   { key: "规格名称", required: false },
@@ -148,6 +150,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
     const q = searchQuery.trim().toLowerCase();
     return items.filter((item) =>
       (item.part_number || "").toLowerCase().includes(q) ||
+      (item.oe_number || "").toLowerCase().includes(q) ||
       (item.name || "").toLowerCase().includes(q) ||
       (item.barcode || "").toLowerCase().includes(q)
     );
@@ -183,6 +186,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
     const example = [
       "机油滤芯",
       "LF-001",
+      "90919-02244",
       "常规保养",
       "原厂",
       "标准",
@@ -322,6 +326,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
           rowNum,
           name: nameStr,
           part_number: pnStr,
+          oe_number: record["OE号"] ? String(record["OE号"]).trim().toUpperCase() : null,
           part_name_id: partNameId || nameStr,
           category_id: categoryId,
           brand_id: brandId,
@@ -427,6 +432,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
         const data: any = {
           name: r.name,
           part_number: r.part_number,
+          oe_number: r.oe_number,
           part_name_id: typeof r.part_name_id === "string" && r.part_name_id.length === 36
             ? r.part_name_id
             : partNameMap.get(r.part_name_id),
@@ -591,6 +597,8 @@ export default function InventoryTable({ items }: { items: any[] }) {
         );
       case "part_number":
         return <span className="font-medium text-gray-900">{item.part_number}</span>;
+      case "oe_number":
+        return item.oe_number || "-";
       case "name":
         return <span className="text-gray-900">{item.name}</span>;
       case "document_name":
@@ -656,7 +664,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
       <div className="mb-4 flex items-center gap-3 flex-wrap">
         <input
           type="text"
-          placeholder="搜索配件编号、名称、条形码"
+          placeholder="搜索配件编号、OE号、名称、条形码"
           className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}

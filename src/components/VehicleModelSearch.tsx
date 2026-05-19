@@ -44,10 +44,15 @@ export function VehicleModelSearch({ onSelect, placeholder = "搜索品牌、车
         return;
       }
       const s = query.trim();
+      /* 搜索词太短不查，避免结果过多 */
+      if (s.length < 2) {
+        setResults([]);
+        return;
+      }
       const { data } = await supabase
         .from("vehicle_models")
         .select("id,品牌,车系,车型,年款,排量,底盘代号,发动机型号,变速箱类型,变速箱代号")
-        .or(`品牌.ilike.%${s}%,车系.ilike.%${s}%,车型.ilike.%${s}%,厂商.ilike.%${s}%,发动机型号.ilike.%${s}%,底盘代号.ilike.%${s}%,销售版本.ilike.%${s}%`)
+        .ilike("搜索字段", `%${s}%`)
         .limit(10);
       setResults(((data as unknown) as VehicleModelOption[]) || []);
       setOpen(true);

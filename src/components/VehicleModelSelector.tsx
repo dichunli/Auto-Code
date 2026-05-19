@@ -26,6 +26,8 @@ export interface LinkedItem {
   front_tire?: string;
   rear_tire?: string;
   notes?: string;
+  fitment_position?: string;
+  source?: string;
 }
 
 interface VehicleModelSelectorProps {
@@ -201,6 +203,7 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
       setVmModalSelectAllLoading(false);
       return;
     }
+    query = query.limit(500);
     const { data } = await query;
     setVmModalSelectAllLoading(false);
     if (!data) return;
@@ -254,6 +257,7 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
       setVmModalSelectAllLoading(false);
       return;
     }
+    query = query.limit(500);
     const { data } = await query;
     setVmModalSelectAllLoading(false);
     if (!data) return;

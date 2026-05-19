@@ -37,7 +37,15 @@ const navItems: NavItem[] = [
   { href: "/vehicle-models", label: "车型库" },
   { href: "/appointments", label: "客户预约" },
   { href: "/inventory", label: "配件库存" },
-  { href: "/procurement", label: "采购管理" },
+  {
+    href: "/procurement",
+    label: "采购管理",
+    children: [
+      { href: "/procurement", label: "采购流程" },
+      { href: "/inbound-orders", label: "入库单" },
+      { href: "/return-orders", label: "采退单" },
+    ],
+  },
   { href: "/logistics", label: "物流运单" },
   { href: "/service-items", label: "维修项目" },
   { href: "/service-categories", label: "项目分类" },

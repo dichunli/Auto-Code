@@ -7,7 +7,7 @@ import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/log
 
 const RETURN_REASONS = [
   { key: "wrong_ship", label: "错发" },
-  { key: "excess", label: "多发" },
+  { key: "excess", label: "多发退货" },
   { key: "damaged", label: "损坏" },
   { key: "cancel", label: "客户悔单" },
 ];

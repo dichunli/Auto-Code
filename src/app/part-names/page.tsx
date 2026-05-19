@@ -168,6 +168,25 @@ export default function PartNamesPage() {
     XLSX.writeFile(wb, "配件名称导入模板.xlsx");
   }
 
+  function handleExport() {
+    const headers = ["配件名称", "分类", "关联品牌", "关联规格", "单位", "默认数量", "搜索关键词", "自动关联车型", "是否耗材"];
+    const rows = names.map((n: any) => [
+      n.name,
+      n.part_categories?.name || "",
+      formatLinkedBrands(n),
+      formatLinkedSpecs(n),
+      n.unit || "",
+      n.default_quantity ?? "",
+      n.search_keywords || "",
+      n.auto_link_vehicle_model ? "是" : "否",
+      n.is_consumable ? "是" : "否",
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "配件名称");
+    XLSX.writeFile(wb, `配件名称库_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   function parseBool(value: any): boolean {
     if (value === undefined || value === null || value === "") return false;
     const s = String(value).trim().toLowerCase();
@@ -551,6 +570,13 @@ export default function PartNamesPage() {
             }}
           />
         </label>
+        <button
+          type="button"
+          onClick={handleExport}
+          className="px-3 py-2 text-sm font-medium text-green-600 bg-white border border-green-300 rounded-lg hover:bg-green-50"
+        >
+          导出Excel
+        </button>
         {importMsg && (
           <span className="text-sm text-gray-600">{importMsg}</span>
         )}

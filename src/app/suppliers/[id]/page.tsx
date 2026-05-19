@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -29,6 +29,8 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
   const [returnRecords, setReturnRecords] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<string[]>([]);
+  const [inboundOrders, setInboundOrders] = useState<any[]>([]);
+  const [returnOrders, setReturnOrders] = useState<any[]>([]);
 
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [transactionForm, setTransactionForm] = useState<TransactionForm>({
@@ -111,6 +113,22 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
       // 过滤出该供应商的退货记录
       setReturnRecords((rData || []).filter((r: any) => r.work_order_item_parts?.supplier_id === id));
 
+      // 入库单记录
+      const { data: inboundData } = await supabase
+        .from("inbound_orders")
+        .select("id, inbound_no, total_quantity, total_amount, freight_amount, status, created_at")
+        .eq("supplier_id", id)
+        .order("created_at", { ascending: false });
+      setInboundOrders(inboundData || []);
+
+      // 采退单记录
+      const { data: returnOrderData } = await supabase
+        .from("purchase_return_orders")
+        .select("id, return_no, total_quantity, status, logistics_company, tracking_no, return_shipping_fee, shipping_fee_payer, created_at")
+        .eq("supplier_id", id)
+        .order("created_at", { ascending: false });
+      setReturnOrders(returnOrderData || []);
+
       // 往来款项
       const { data: tData } = await supabase
         .from("supplier_transactions")
@@ -154,6 +172,61 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
     setTransactions(data || []);
   }
 
+  /* 财务统计 */
+  const payableBalance = useMemo(() => {
+    let debit = 0;
+    let payment = 0;
+    let credit = 0;
+    let refund = 0;
+    for (const t of transactions) {
+      if (t.transaction_type === "debit") debit += t.amount || 0;
+      if (t.transaction_type === "payment") payment += t.amount || 0;
+      if (t.transaction_type === "credit") credit += t.amount || 0;
+      if (t.transaction_type === "refund") refund += t.amount || 0;
+    }
+    return { debit, payment, credit, refund, net: debit + payment - credit - refund };
+  }, [transactions]);
+
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisYear = String(new Date().getFullYear());
+
+  const thisMonthInbound = useMemo(() =>
+    inboundOrders
+      .filter((o) => o.created_at?.slice(0, 7) === thisMonth)
+      .reduce((sum, o) => sum + (o.total_amount || 0), 0),
+    [inboundOrders]
+  );
+
+  const thisYearInbound = useMemo(() =>
+    inboundOrders
+      .filter((o) => o.created_at?.startsWith(thisYear))
+      .reduce((sum, o) => sum + (o.total_amount || 0), 0),
+    [inboundOrders]
+  );
+
+  const thisMonthReturnCount = useMemo(() =>
+    returnOrders.filter((o) => o.created_at?.slice(0, 7) === thisMonth).length,
+    [returnOrders]
+  );
+
+  const thisYearReturnCount = useMemo(() =>
+    returnOrders.filter((o) => o.created_at?.startsWith(thisYear)).length,
+    [returnOrders]
+  );
+
+  const monthlyTrend = useMemo(() => {
+    const map = new Map<string, { month: string; inbound: number }>();
+    for (const o of inboundOrders) {
+      const month = o.created_at.slice(0, 7);
+      const prev = map.get(month) || { month, inbound: 0 };
+      prev.inbound += o.total_amount || 0;
+      map.set(month, prev);
+    }
+    return Array.from(map.values())
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .slice(-6);
+  }, [inboundOrders]);
+
   const transactionTypeMap: Record<string, string> = {
     payment: "付款",
     refund: "退款",
@@ -163,7 +236,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
 
   const returnReasonMap: Record<string, string> = {
     wrong_ship: "错发",
-    excess: "多发",
+    excess: "多发退货",
     damaged: "损坏",
     cancel: "客户悔单",
     quality: "质量问题",
@@ -411,6 +484,112 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
               </div>
             )}
           </div>
+
+          {/* 入库单记录 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-4">入库单记录 ({inboundOrders.length})</h2>
+            {inboundOrders.length === 0 ? (
+              <p className="text-sm text-gray-400">暂无入库单记录</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">入库单号</th>
+                      <th className="px-4 py-2 text-right font-medium text-gray-500">数量</th>
+                      <th className="px-4 py-2 text-right font-medium text-gray-500">金额</th>
+                      <th className="px-4 py-2 text-right font-medium text-gray-500">运费</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">状态</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">时间</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {inboundOrders.map((io) => (
+                      <tr key={io.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-gray-900 font-medium">{io.inbound_no}</td>
+                        <td className="px-4 py-3 text-right text-gray-600">{io.total_quantity}</td>
+                        <td className="px-4 py-3 text-right text-gray-600">{formatCurrency(io.total_amount)}</td>
+                        <td className="px-4 py-3 text-right text-gray-600">{io.freight_amount != null ? `¥${io.freight_amount.toFixed(2)}` : "-"}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded bg-green-50 text-green-600 text-xs">
+                            {io.status === "completed" ? "已完成" : io.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">{new Date(io.created_at).toLocaleString("zh-CN")}</td>
+                        <td className="px-4 py-3">
+                          <Link href={`/inbound-orders/${io.id}`} className="text-xs text-blue-600 hover:text-blue-700">
+                            查看
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* 采退单记录 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-4">采退单记录 ({returnOrders.length})</h2>
+            {returnOrders.length === 0 ? (
+              <p className="text-sm text-gray-400">暂无采退单记录</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">采退单号</th>
+                      <th className="px-4 py-2 text-right font-medium text-gray-500">数量</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">物流</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">退货运费</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">状态</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">时间</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-500">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {returnOrders.map((ro) => (
+                      <tr key={ro.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-gray-900 font-medium">{ro.return_no}</td>
+                        <td className="px-4 py-3 text-right text-gray-600">{ro.total_quantity}</td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">
+                          {ro.logistics_company && ro.tracking_no ? (
+                            <div>
+                              <div>{ro.logistics_company}</div>
+                              <div className="text-gray-400">{ro.tracking_no}</div>
+                            </div>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">
+                          {ro.return_shipping_fee != null ? `¥${ro.return_shipping_fee.toFixed(2)}` : "-"}
+                          {ro.shipping_fee_payer && (
+                            <span className="ml-1 text-gray-400">
+                              ({ro.shipping_fee_payer === "self" ? "我方" : "供应商"})
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded bg-green-50 text-green-600 text-xs">
+                            {ro.status === "completed" ? "已完成" : ro.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">{new Date(ro.created_at).toLocaleString("zh-CN")}</td>
+                        <td className="px-4 py-3">
+                          <Link href={`/return-orders/${ro.id}`} className="text-xs text-blue-600 hover:text-blue-700">
+                            查看
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 右侧：二维码 + 往来款项 */}
@@ -431,6 +610,71 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
               <div className="mt-4 pt-4 border-t border-gray-100 text-center">
                 <p className="text-sm text-gray-500 mb-2">微信群二维码</p>
                 <img src={supplier.wechat_group_qr} alt="微信群" className="w-40 h-40 object-cover rounded mx-auto" />
+              </div>
+            )}
+          </div>
+
+          {/* 财务概况 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-4">财务概况</h2>
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">应付余额</span>
+                <span
+                  className={`font-bold ${
+                    payableBalance.net > 0
+                      ? "text-red-600"
+                      : payableBalance.net < 0
+                      ? "text-green-600"
+                      : "text-gray-900"
+                  }`}
+                >
+                  {payableBalance.net > 0
+                    ? "应付"
+                    : payableBalance.net < 0
+                    ? "应收"
+                    : ""}
+                  {formatCurrency(Math.abs(payableBalance.net))}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">本月入库金额</span>
+                <span className="font-medium text-gray-900">{formatCurrency(thisMonthInbound)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">本年入库金额</span>
+                <span className="font-medium text-gray-900">{formatCurrency(thisYearInbound)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">本月采退单数</span>
+                <span className="font-medium text-gray-900">{thisMonthReturnCount} 单</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">本年采退单数</span>
+                <span className="font-medium text-gray-900">{thisYearReturnCount} 单</span>
+              </div>
+            </div>
+            {monthlyTrend.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <h3 className="text-xs text-gray-500 mb-2">近6个月入库金额趋势</h3>
+                <div className="flex items-end gap-1 h-24">
+                  {(() => {
+                    const max = Math.max(...monthlyTrend.map((m) => m.inbound), 1);
+                    return monthlyTrend.map((m) => {
+                      const h = (m.inbound / max) * 100;
+                      return (
+                        <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
+                          <div
+                            className="w-full bg-blue-500 rounded-t"
+                            style={{ height: `${h}%` }}
+                            title={`${m.month}: ${formatCurrency(m.inbound)}`}
+                          />
+                          <div className="text-[10px] text-gray-500">{m.month.slice(5)}</div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
               </div>
             )}
           </div>
@@ -501,6 +745,16 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                     <div>
                       <span className="text-gray-500">{transactionTypeMap[t.transaction_type]}</span>
                       {t.description && <span className="text-gray-400 ml-2">{t.description}</span>}
+                      {t.reference_type === "inbound_order" && t.reference_id && (
+                        <Link href={`/inbound-orders/${t.reference_id}`} className="ml-2 text-xs text-blue-600 hover:text-blue-700">
+                          入库单
+                        </Link>
+                      )}
+                      {t.reference_type === "purchase_return_order" && t.reference_id && (
+                        <Link href={`/return-orders/${t.reference_id}`} className="ml-2 text-xs text-blue-600 hover:text-blue-700">
+                          采退单
+                        </Link>
+                      )}
                     </div>
                     <span className={`font-medium ${t.transaction_type === "payment" || t.transaction_type === "debit" ? "text-red-600" : "text-green-600"}`}>
                       {t.transaction_type === "payment" || t.transaction_type === "debit" ? "-" : "+"}

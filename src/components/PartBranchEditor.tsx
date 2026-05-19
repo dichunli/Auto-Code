@@ -144,7 +144,7 @@ export default function PartBranchEditor({
       .then(([vehicleRes, linksRes, pnRes, pcRes]) => {
         // 车型信息
         if (vehicleRes.data) {
-          setVehicleInfo(vehicleRes.data);
+          setVehicleInfo(vehicleRes.data as any);
         }
 
         // 供应商车型关联映射
@@ -272,8 +272,10 @@ export default function PartBranchEditor({
       .maybeSingle();
     if (!data) return;
 
-    const newBrand = data.part_brands?.name || "";
-    const newSpec = data.part_specifications?.name || "";
+    const pb = data.part_brands as any;
+    const ps = data.part_specifications as any;
+    const newBrand = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
+    const newSpec = (Array.isArray(ps) ? ps[0]?.name : ps?.name) || "";
     const newDocName = data.document_name || "";
     setEditForm((prev) => ({
       ...prev,

@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import { cn } from "@/lib/utils";
 import { Navbar } from "./Navbar";
 import { PriceVisibilityProvider, usePriceVisibility } from "./PriceVisibilityContext";
@@ -30,7 +30,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <PriceVisibilityProvider>
       <KeyboardHandler />
-      {!isLogin && <Navbar />}
+      <Suspense fallback={null}>
+        {!isLogin && <Navbar />}
+      </Suspense>
       <main
         className={cn(
           "flex-1 overflow-auto px-4 pb-6 sm:px-6 lg:px-8",

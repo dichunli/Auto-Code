@@ -7,6 +7,7 @@ import { formatCurrency } from "@/lib/utils";
 interface Part {
   id: string;
   part_number: string;
+  oe_number: string | null;
   name: string;
   unit: string;
   quantity: number;
@@ -40,6 +41,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
 
   // 搜索条件
   const [partNumber, setPartNumber] = useState("");
+  const [oeNumberQuery, setOeNumberQuery] = useState("");
   const [nameQuery, setNameQuery] = useState("");
   const [specQuery, setSpecQuery] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -90,7 +92,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
     let query = supabase
       .from("parts")
       .select(
-        "id, part_number, name, unit, quantity, min_stock, unit_cost, unit_price, location, specification_text, part_name_id, part_names(name, unit), part_brands(name), part_specifications(name), part_categories(name), suppliers(name)"
+        "id, part_number, oe_number, name, unit, quantity, min_stock, unit_cost, unit_price, location, specification_text, part_name_id, part_names(name, unit), part_brands(name), part_specifications(name), part_categories(name), suppliers(name)"
       )
       .order("name", { ascending: true })
       .limit(500);
@@ -98,6 +100,11 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
     // 编号/零件号
     if (partNumber.trim()) {
       query = query.ilike("part_number", `%${partNumber.trim()}%`);
+    }
+
+    // OE号
+    if (oeNumberQuery.trim()) {
+      query = query.ilike("oe_number", `%${oeNumberQuery.trim()}%`);
     }
 
     // 名称
@@ -124,7 +131,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
       setParts((data as any[]) || []);
     }
     setLoading(false);
-  }, [supabase, partNumber, nameQuery, specQuery, categoryId]);
+  }, [supabase, partNumber, oeNumberQuery, nameQuery, specQuery, categoryId]);
 
   // 打开时自动查询一次
   useEffect(() => {
@@ -263,6 +270,16 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
               />
             </div>
             <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 whitespace-nowrap">OE号:</span>
+              <input
+                type="text"
+                value={oeNumberQuery}
+                onChange={(e) => setOeNumberQuery(e.target.value)}
+                placeholder="OE原厂编码"
+                className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 whitespace-nowrap">名称/品牌:</span>
               <input
                 type="text"
@@ -352,6 +369,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
                     <th className="px-3 py-2 text-left font-medium text-gray-500 w-10">序号</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500">配件名称</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500">零件编号</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">OE号</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500">总库存</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500">规格/型号</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500">品牌</th>
@@ -363,13 +381,13 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
+                      <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
                         加载中...
                       </td>
                     </tr>
                   ) : paginatedParts.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
+                      <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
                         暂无配件数据
                       </td>
                     </tr>
@@ -387,6 +405,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
                         <td className="px-3 py-2 text-gray-500">{(safePage - 1) * pageSize + idx + 1}</td>
                         <td className="px-3 py-2 font-medium text-gray-900">{part.name}</td>
                         <td className="px-3 py-2 text-gray-600">{part.part_number || "-"}</td>
+                        <td className="px-3 py-2 text-gray-600">{part.oe_number || "-"}</td>
                         <td className="px-3 py-2">
                           <span className={`font-medium ${part.quantity <= 0 ? "text-red-600" : part.quantity <= part.min_stock ? "text-orange-600" : "text-gray-900"}`}>
                             {part.quantity}

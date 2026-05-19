@@ -19,7 +19,9 @@ type ProcurementTab =
   | "pending_storage"
   | "completed_storage"
   | "pending_return"
-  | "completed_return";
+  | "completed_return"
+  | "inbound_orders"
+  | "return_orders";
 
 export default async function ProcurementPage({
   searchParams,
@@ -37,6 +39,8 @@ export default async function ProcurementPage({
     "completed_storage",
     "pending_return",
     "completed_return",
+    "inbound_orders",
+    "return_orders",
   ].includes(sp.tab as ProcurementTab)
     ? (sp.tab as ProcurementTab)
     : "pending_inquiry";

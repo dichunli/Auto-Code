@@ -13,7 +13,9 @@ export type ProcurementTab =
   | "pending_storage"
   | "completed_storage"
   | "pending_return"
-  | "completed_return";
+  | "completed_return"
+  | "inbound_orders"
+  | "return_orders";
 
 const TABS: { key: ProcurementTab; label: string }[] = [
   { key: "pending_inquiry", label: "待询价" },
@@ -25,6 +27,8 @@ const TABS: { key: ProcurementTab; label: string }[] = [
   { key: "completed_storage", label: "已入库" },
   { key: "pending_return", label: "待退货" },
   { key: "completed_return", label: "已退货" },
+  { key: "inbound_orders", label: "入库单" },
+  { key: "return_orders", label: "采退单" },
 ];
 
 interface Props {
@@ -43,6 +47,8 @@ export function ProcurementTabBar({ currentTab }: Props) {
     completed_storage: 0,
     pending_return: 0,
     completed_return: 0,
+    inbound_orders: 0,
+    return_orders: 0,
   });
 
   useEffect(() => {
@@ -172,6 +178,12 @@ export function ProcurementTabBar({ currentTab }: Props) {
     const pendingReturn = (returnData || []).filter((r: any) => r.status === "pending").length;
     const completedReturn = (returnData || []).filter((r: any) => r.status === "completed").length;
 
+    const { data: inboundData } = await supabase.from("inbound_orders").select("id");
+    const inboundOrdersCount = inboundData?.length || 0;
+
+    const { data: returnOrderData } = await supabase.from("purchase_return_orders").select("id");
+    const returnOrdersCount = returnOrderData?.length || 0;
+
     setCounts({
       pending_inquiry: pendingInquiry,
       pending_quote: pendingQuote,
@@ -182,6 +194,8 @@ export function ProcurementTabBar({ currentTab }: Props) {
       completed_storage: completedStorage,
       pending_return: pendingReturn,
       completed_return: completedReturn,
+      inbound_orders: inboundOrdersCount,
+      return_orders: returnOrdersCount,
     });
   }
 
@@ -193,7 +207,13 @@ export function ProcurementTabBar({ currentTab }: Props) {
         return (
           <Link
             key={tab.key}
-            href={`/procurement?tab=${tab.key}`}
+            href={
+              tab.key === "inbound_orders"
+                ? "/inbound-orders"
+                : tab.key === "return_orders"
+                ? "/return-orders"
+                : `/procurement?tab=${tab.key}`
+            }
             className={`px-4 py-2.5 text-sm border-b-2 -mb-px transition-colors rounded-t-md flex items-center gap-1.5 ${
               isActive
                 ? "border-blue-600 text-blue-700 font-semibold bg-blue-50"

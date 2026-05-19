@@ -359,6 +359,10 @@ CREATE TABLE parts (
   qc_commission_value NUMERIC,
   picking_commission_type TEXT,
   picking_commission_value NUMERIC,
+  oe_number TEXT,
+  oe_numbers TEXT[] DEFAULT '{}',
+  epc_source TEXT DEFAULT 'manual',
+  vin17_part_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -377,6 +381,9 @@ CREATE TABLE part_vehicle_models (
   part_id UUID NOT NULL REFERENCES parts(id) ON DELETE CASCADE,
   vehicle_model_id UUID NOT NULL REFERENCES vehicle_models(id) ON DELETE CASCADE,
   notes TEXT,
+  fitment_position TEXT,
+  source TEXT DEFAULT 'manual',
+  vin17_fitness_id TEXT,
   UNIQUE(part_id, vehicle_model_id)
 );
 
@@ -699,6 +706,17 @@ CREATE TABLE work_order_inspections (
   light_checks JSONB DEFAULT '{}',
   dashboard_fuel_level DECIMAL(5,2),
   dashboard_fault_lights JSONB DEFAULT '[]',
+  engine_oil_before_level INTEGER,
+  engine_oil_after_level INTEGER,
+  coolant_ph DECIMAL(4,2),
+  brake_fluid_water DECIMAL(5,2),
+  battery_health INTEGER,
+  battery_voltage DECIMAL(4,2),
+  drive_belt_status TEXT CHECK (drive_belt_status IN ('good', 'fair', 'replace')),
+  tire_checks JSONB DEFAULT '{}',
+  inspection_mileage DECIMAL(10,2),
+  submitter_id UUID,
+  inspectors JSONB DEFAULT '{}',
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -706,7 +724,7 @@ CREATE TABLE work_order_inspections (
 CREATE TABLE work_order_inspection_media (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   inspection_id UUID NOT NULL REFERENCES work_order_inspections(id) ON DELETE CASCADE,
-  media_type TEXT NOT NULL CHECK (media_type IN ('engine_oil_before', 'engine_oil_after', 'fluid', 'exterior', 'dashboard', 'reception_video')),
+  media_type TEXT NOT NULL CHECK (media_type IN ('engine_oil_before', 'engine_oil_after', 'fluid', 'exterior', 'dashboard', 'reception_video', 'drive_belt', 'tire')),
   storage_path TEXT NOT NULL,
   annotations JSONB DEFAULT '[]',
   notes TEXT,

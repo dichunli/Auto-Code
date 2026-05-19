@@ -46,6 +46,7 @@ interface PurchaseOrder {
   total_amount: number | null;
   notes: string | null;
   created_at: string;
+  waybill_id: string | null;
   suppliers: { id: string; name: string } | null;
   purchase_order_items: PurchaseOrderItem[];
 }
@@ -75,12 +76,14 @@ const ACTION_TO_RETURN_REASON: Record<string, string> = {
 
 /* 算每个 item 在入库时需要登记的库存数量
    - wrong_discard: 0 (不入库)
-   - excess_*: received_qty (全入库,多出部分另算)
+   - excess_return: 只入采购单数量(多出部分直接生成退货,不入库)
+   - excess_paid / excess_free: received_qty (全入库)
    - short_*: received_qty
    - 其它: 取 received_qty || quantity
 */
 function getStorageQty(item: PurchaseOrderItem): number {
   if (item.handle_action === "wrong_discard") return 0;
+  if (item.handle_action === "excess_return") return item.quantity; /* 多发退货只入采购单数量 */
   return item.received_qty ?? item.quantity;
 }
 
@@ -95,6 +98,22 @@ function getReturnQty(item: PurchaseOrderItem): number {
   return item.quantity;
 }
 
+interface Warehouse {
+  id: string;
+  name: string;
+}
+
+interface InboundItemForm {
+  id: string;
+  item: PurchaseOrderItem;
+  quantity: string;
+  batchNo: string;
+  notes: string;
+  warehouseId: string;
+  location: string;
+  isExcess: boolean;
+}
+
 export function PendingStorageList() {
   const supabase = createClient();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -105,6 +124,14 @@ export function PendingStorageList() {
   /* 编辑配件信息弹窗 */
   const [editItem, setEditItem] = useState<PurchaseOrderItem | null>(null);
   const [newPartQuery, setNewPartQuery] = useState("");
+
+  /* 入库单确认弹窗 */
+  const [inboundModalOpen, setInboundModalOpen] = useState(false);
+  const [inboundModalOrder, setInboundModalOrder] = useState<PurchaseOrder | null>(null);
+  const [inboundItems, setInboundItems] = useState<InboundItemForm[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [freightAmount, setFreightAmount] = useState("");
+  const [waybillInfo, setWaybillInfo] = useState<{ logistics_company_name: string | null; tracking_no: string | null; freight_amount: number | null } | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -140,12 +167,112 @@ export function PendingStorageList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleCompleteStorage(orderId: string) {
-    if (!confirm("确认已完成入库?")) return;
+  /* 打开入库单确认弹窗 */
+  async function openInboundModal(order: PurchaseOrder) {
+    const items = order.purchase_order_items || [];
+    let formIdCounter = 0;
+    const forms: InboundItemForm[] = items
+      .filter((it) => it.handle_action !== "wrong_discard")
+      .flatMap((it) => {
+        if (it.handle_action === "excess_return") {
+          /* 多发退货拆分为两行：正常采购数量 + 多出数量 */
+          return [
+            {
+              id: `form-${formIdCounter++}`,
+              item: it,
+              quantity: String(it.quantity),
+              batchNo: "",
+              notes: it.notes || "",
+              warehouseId: "",
+              location: "",
+              isExcess: false,
+            },
+            {
+              id: `form-${formIdCounter++}`,
+              item: it,
+              quantity: String(Math.max(0, (it.received_qty ?? 0) - it.quantity)),
+              batchNo: "",
+              notes: "多发退货",
+              warehouseId: "",
+              location: "",
+              isExcess: true,
+            },
+          ];
+        }
+        return [
+          {
+            id: `form-${formIdCounter++}`,
+            item: it,
+            quantity: String(getStorageQty(it)),
+            batchNo: "",
+            notes: it.notes || "",
+            warehouseId: "",
+            location: "",
+            isExcess: false,
+          },
+        ];
+      });
+
+    /* 加载仓库列表 */
+    const { data: whData } = await supabase.from("warehouses").select("id, name").order("name");
+    setWarehouses(whData || []);
+
+    /* 加载关联运单信息 */
+    if (order.waybill_id) {
+      const { data: wb } = await supabase
+        .from("logistics_waybills")
+        .select("logistics_company_name, tracking_no, freight_amount")
+        .eq("id", order.waybill_id)
+        .single();
+      if (wb) {
+        setWaybillInfo(wb as any);
+        setFreightAmount(wb.freight_amount != null ? String(wb.freight_amount) : "");
+      } else {
+        setWaybillInfo(null);
+        setFreightAmount("");
+      }
+    } else {
+      setWaybillInfo(null);
+      setFreightAmount("");
+    }
+
+    setInboundModalOrder(order);
+    setInboundItems(forms);
+    setInboundModalOpen(true);
+  }
+
+  function closeInboundModal() {
+    setInboundModalOpen(false);
+    setInboundModalOrder(null);
+    setInboundItems([]);
+    setWaybillInfo(null);
+    setFreightAmount("");
+  }
+
+  /* 计算分摊后的成本价（多发退货部分不参与分摊） */
+  const allocatedCosts = useMemo(() => {
+    const totalFreight = parseFloat(freightAmount) || 0;
+    const totalQty = inboundItems
+      .filter((f) => !f.isExcess)
+      .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0), 0);
+    if (totalFreight <= 0 || totalQty <= 0) {
+      return inboundItems.map(() => 0);
+    }
+    const perUnit = totalFreight / totalQty;
+    return inboundItems.map((f) => {
+      if (f.isExcess) return 0;
+      const q = parseInt(f.quantity, 10) || 0;
+      return Math.round(perUnit * q * 100) / 100;
+    });
+  }, [inboundItems, freightAmount]);
+
+  async function handleConfirmInbound() {
+    if (!inboundModalOrder) return;
+    const orderId = inboundModalOrder.id;
     setSubmitting(`complete-${orderId}`);
     try {
-      const order = orders.find((o) => o.id === orderId);
-      const items = order?.purchase_order_items || [];
+      const order = inboundModalOrder;
+      const items = order.purchase_order_items || [];
 
       /* 找出需要生成退货记录的明细 */
       const returnItems = items.filter((it) => {
@@ -153,8 +280,166 @@ export function PendingStorageList() {
         return !!ACTION_TO_RETURN_REASON[it.handle_action];
       });
 
-      /* 退库：对破损/错发配件减少库存 */
+      /* 计算入库单总数量和总金额（含分摊运费，多发退货部分不计入） */
+      const totalFreight = parseFloat(freightAmount) || 0;
+      let totalQty = 0;
+      let totalAmount = 0;
+      for (let i = 0; i < inboundItems.length; i++) {
+        const f = inboundItems[i];
+        if (f.isExcess) continue;
+        const q = parseInt(f.quantity, 10) || 0;
+        totalQty += q;
+        totalAmount += q * (f.item.unit_cost || 0) + allocatedCosts[i];
+      }
+
+      /* 1. 创建入库单 */
+      const { data: inboundOrder, error: inboundErr } = await supabase
+        .from("inbound_orders")
+        .insert({
+          purchase_order_id: orderId,
+          supplier_id: order.supplier_id,
+          supplier_name: order.suppliers?.name || "",
+          total_quantity: totalQty,
+          total_amount: totalAmount,
+          freight_amount: totalFreight,
+          waybill_id: order.waybill_id || null,
+          status: "completed",
+          notes: "",
+        })
+        .select("id")
+        .single();
+      if (inboundErr) {
+        alert("创建入库单失败: " + inboundErr.message);
+        setSubmitting(null);
+        return;
+      }
+
+      /* 2. 创建入库单明细（跳过多发退货部分） */
+      const inboundOrderId = inboundOrder.id;
+      const inboundItemRows = inboundItems
+        .filter((f) => !f.isExcess && (parseInt(f.quantity, 10) || 0) > 0)
+        .map((f, idx) => ({
+          inbound_order_id: inboundOrderId,
+          purchase_order_item_id: f.item.id,
+          part_id: f.item.part_id,
+          part_number: f.item.part_number,
+          name: f.item.name,
+          brand: f.item.brand,
+          specification: f.item.specification,
+          unit: f.item.unit,
+          quantity: parseInt(f.quantity, 10) || 0,
+          unit_cost: f.item.unit_cost,
+          allocated_cost: allocatedCosts[idx] || 0,
+          batch_no: f.batchNo || null,
+          warehouse_id: f.warehouseId || null,
+          location: f.location || null,
+          notes: f.notes || null,
+        }));
+
+      if (inboundItemRows.length > 0) {
+        const { error: itemErr } = await supabase
+          .from("inbound_order_items")
+          .insert(inboundItemRows);
+        if (itemErr) {
+          alert("创建入库单明细失败: " + itemErr.message);
+          setSubmitting(null);
+          return;
+        }
+      }
+
+      /* 3. 增加库存、创建批次、日志和仓位（跳过多发退货部分） */
+      for (let i = 0; i < inboundItems.length; i++) {
+        const f = inboundItems[i];
+        if (f.isExcess) continue;
+        const qty = parseInt(f.quantity, 10) || 0;
+        if (qty <= 0 || !f.item.part_id) continue;
+
+        const { data: part } = await supabase
+          .from("parts")
+          .select("quantity")
+          .eq("id", f.item.part_id)
+          .single();
+        if (part) {
+          const newQty = (part.quantity || 0) + qty;
+          const { error: stockErr } = await supabase
+            .from("parts")
+            .update({ quantity: newQty })
+            .eq("id", f.item.part_id);
+          if (stockErr) {
+            console.error(`入库增库失败(${f.item.name}):`, stockErr);
+            alert(`入库增库失败(${f.item.name}): ${stockErr.message}`);
+            setSubmitting(null);
+            return;
+          }
+
+          /* 更新配件采购价 */
+          if (f.item.unit_cost != null) {
+            const { error: priceErr } = await supabase
+              .from("parts")
+              .update({ purchase_price: f.item.unit_cost })
+              .eq("id", f.item.part_id);
+            if (priceErr) {
+              console.warn(`更新配件采购价失败(${f.item.name}):`, priceErr);
+            }
+          }
+        }
+
+        /* 更新仓位库存 */
+        if (f.warehouseId) {
+          const { data: existingLoc } = await supabase
+            .from("part_stock_locations")
+            .select("id, quantity")
+            .eq("part_id", f.item.part_id)
+            .eq("warehouse_id", f.warehouseId)
+            .eq("location", f.location || "")
+            .single();
+          if (existingLoc) {
+            await supabase
+              .from("part_stock_locations")
+              .update({ quantity: existingLoc.quantity + qty })
+              .eq("id", existingLoc.id);
+          } else {
+            await supabase.from("part_stock_locations").insert({
+              part_id: f.item.part_id,
+              warehouse_id: f.warehouseId,
+              location: f.location || null,
+              quantity: qty,
+            });
+          }
+        }
+
+        /* 创建批次记录 */
+        const { error: batchErr } = await supabase.from("part_batches").insert({
+          part_id: f.item.part_id,
+          batch_no: f.batchNo || null,
+          quantity: qty,
+          unit_cost: f.item.unit_cost,
+          inbound_type: "purchase",
+          reference_id: orderId,
+          notes: f.notes || null,
+        });
+        if (batchErr) {
+          console.warn(`创建批次记录失败(${f.item.name}):`, batchErr);
+        }
+
+        /* 创建库存日志 */
+        const { error: logErr } = await supabase.from("inventory_logs").insert({
+          part_id: f.item.part_id,
+          change_qty: qty,
+          type: "inbound",
+          reference_type: "inbound_order",
+          reference_id: inboundOrderId,
+          notes: `采购入库: ${f.item.name}${f.batchNo ? " 批次:" + f.batchNo : ""}`,
+        });
+        if (logErr) {
+          console.warn(`创建库存日志失败(${f.item.name}):`, logErr);
+        }
+      }
+
+      /* 4. 退库：对破损/错发配件减少库存
+         注意：excess_return 的多出部分未入库，无需扣减 */
       for (const it of returnItems) {
+        if (it.handle_action === "excess_return") continue;
         if (it.part_id) {
           const qty = getReturnQty(it);
           if (qty > 0) {
@@ -180,15 +465,33 @@ export function PendingStorageList() {
         }
       }
 
+      /* 5. 生成应付账款记录 */
+      if (inboundOrderId && order.supplier_id && totalAmount > 0) {
+        const { error: txnErr } = await supabase.from("supplier_transactions").insert({
+          supplier_id: order.supplier_id,
+          transaction_type: "debit",
+          amount: parseFloat(totalAmount.toFixed(2)),
+          description: "采购入库",
+          reference_id: inboundOrderId,
+          reference_type: "inbound_order",
+        });
+        if (txnErr) {
+          console.warn("生成应付账款记录失败:", txnErr);
+        }
+      }
+
+      /* 6. 更新采购单状态 */
       const { error } = await supabase
         .from("purchase_orders")
         .update({ status: "completed" })
         .eq("id", orderId);
       if (error) {
         alert("操作失败: " + error.message);
+        setSubmitting(null);
         return;
       }
 
+      /* 7. 创建退货记录 */
       if (returnItems.length > 0) {
         const supplierName = order?.suppliers?.name || "";
         const returnRecords = returnItems
@@ -214,6 +517,7 @@ export function PendingStorageList() {
         }
       }
 
+      closeInboundModal();
       loadData();
     } catch (err: any) {
       alert("操作失败: " + (err.message || String(err)));
@@ -253,7 +557,20 @@ export function PendingStorageList() {
         }
       }
 
-      /* 2. 清空所有明细处理结果 */
+      /* 2. 删除该采购单生成的待退货记录 */
+      if (itemsWithPartId.length > 0) {
+        const { error: retDelErr } = await supabase
+          .from("supplier_return_records")
+          .delete()
+          .in(
+            "work_order_item_part_id",
+            itemsWithPartId.map((it) => it.work_order_item_part_id!)
+          )
+          .eq("status", "pending");
+        if (retDelErr) console.warn("删除待退货记录失败:", retDelErr);
+      }
+
+      /* 3. 清空所有明细处理结果 */
       const { error: clrErr } = await supabase
         .from("purchase_order_items")
         .update({
@@ -265,7 +582,7 @@ export function PendingStorageList() {
         .eq("order_id", order.id);
       if (clrErr) throw clrErr;
 
-      /* 3. 订单状态改回 submitted */
+      /* 4. 订单状态改回 submitted */
       const { error: stErr } = await supabase
         .from("purchase_orders")
         .update({ status: "submitted" })
@@ -322,8 +639,12 @@ export function PendingStorageList() {
         if (part.part_number != null) poiUpdates.part_number = part.part_number;
         if (part.name != null) poiUpdates.name = part.name;
         if (part.unit != null) poiUpdates.unit = part.unit;
-        if (part.part_categories?.name != null) poiUpdates.category = part.part_categories.name;
-        if (part.brand_id != null) poiUpdates.brand = part.part_brands?.name || null;
+        const pc = part.part_categories as any;
+        const pb = part.part_brands as any;
+        const catName = Array.isArray(pc) ? pc[0]?.name : pc?.name;
+        const brandName = Array.isArray(pb) ? pb[0]?.name : pb?.name;
+        if (catName != null) poiUpdates.category = catName;
+        if (part.brand_id != null) poiUpdates.brand = brandName || null;
         if (part.specification_text != null) poiUpdates.specification = part.specification_text;
         if (part.purchase_price != null) poiUpdates.unit_cost = part.purchase_price;
         if (part.notes != null) poiUpdates.notes = part.notes;
@@ -341,7 +662,10 @@ export function PendingStorageList() {
           if (part.part_number != null) woiUpdates.part_number = part.part_number;
           if (part.name != null) woiUpdates.name = part.name;
           if (part.unit != null) woiUpdates.unit = part.unit;
-          if (part.brand_id != null) woiUpdates.brand = part.part_brands?.name || null;
+          if (part.brand_id != null) {
+            const pb = part.part_brands as any;
+            woiUpdates.brand = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || null;
+          }
           if (part.specification_text != null) woiUpdates.specification = part.specification_text;
           if (part.purchase_price != null) woiUpdates.unit_cost = part.purchase_price;
           if (part.notes != null) woiUpdates.notes = part.notes;
@@ -657,7 +981,7 @@ export function PendingStorageList() {
                                 </span>
                               ) : item.return_reason ? (
                                 <span className="text-xs px-2 py-0.5 rounded bg-orange-50 text-orange-700">
-                                  退货:{item.return_reason === "damaged" ? "破损" : item.return_reason === "wrong_ship" ? "错发" : item.return_reason === "excess" ? "多发" : "客户悔单"}
+                                  退货:{item.return_reason === "damaged" ? "破损" : item.return_reason === "wrong_ship" ? "错发" : item.return_reason === "excess" ? "多发退货" : "客户悔单"}
                                 </span>
                               ) : (
                                 <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">
@@ -712,11 +1036,11 @@ export function PendingStorageList() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleCompleteStorage(order.id)}
+                    onClick={() => openInboundModal(order)}
                     disabled={submitting === `complete-${order.id}`}
                     className="px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                   >
-                    {submitting === `complete-${order.id}` ? "处理中..." : "提交入库"}
+                    {submitting === `complete-${order.id}` ? "处理中..." : "生成入库单"}
                   </button>
                 </div>
               </div>
@@ -724,6 +1048,267 @@ export function PendingStorageList() {
           </div>
         </div>
       ))}
+
+      {/* 入库单确认弹窗 */}
+      {inboundModalOpen && inboundModalOrder && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-5xl my-8 relative">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">入库单确认</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  采购单: {inboundModalOrder.order_no || inboundModalOrder.id.slice(0, 8)} · 供应商: {inboundModalOrder.suppliers?.name || "-"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeInboundModal}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* 运费信息 */}
+              <div className="bg-gray-50 rounded-lg p-3 flex items-center gap-4 flex-wrap">
+                {waybillInfo ? (
+                  <span className="text-xs text-gray-500">
+                    关联运单: {waybillInfo.logistics_company_name || "-"} / {waybillInfo.tracking_no || "-"}
+                  </span>
+                ) : (
+                  <span className="text-xs text-gray-500">无关联运单</span>
+                )}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">运费金额(¥):</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={freightAmount}
+                    onChange={(e) => setFreightAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-24 px-2 py-1 text-xs text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border border-gray-100 rounded-lg">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-10">序号</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">商品名称</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">编码</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-16">数量</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">单价</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">分摊运费</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">成本价</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">批次号</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">仓库</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">仓位</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">备注</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {inboundItems.map((f, idx) => {
+                      const qty = parseInt(f.quantity, 10) || 0;
+                      const baseCost = qty * (f.item.unit_cost || 0);
+                      const alloc = allocatedCosts[idx] || 0;
+                      const totalCost = baseCost + alloc;
+                      return (
+                        <tr key={f.id} className={f.isExcess ? "bg-gray-50" : "hover:bg-gray-50"}>
+                          <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
+                          <td className="px-3 py-2 text-gray-900 font-medium">
+                            {f.item.name}
+                            {f.isExcess && (
+                              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 align-middle">
+                                多发退货
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-gray-600">{f.item.part_number || "-"}</td>
+                          <td className="px-3 py-2">
+                            {f.isExcess ? (
+                              <span className="block text-right text-gray-500 text-sm">{f.quantity}</span>
+                            ) : (
+                              <input
+                                type="number"
+                                min={0}
+                                value={f.quantity}
+                                onChange={(e) => {
+                                  setInboundItems((prev) =>
+                                    prev.map((p) =>
+                                      p.id === f.id ? { ...p, quantity: e.target.value } : p
+                                    )
+                                  );
+                                }}
+                                className="w-full px-2 py-1 text-xs text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                              />
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-600">
+                            {f.item.unit_cost != null ? `¥${f.item.unit_cost}` : "-"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-600">
+                            {alloc > 0 ? `¥${alloc.toFixed(2)}` : "-"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-900 font-medium">
+                            {totalCost > 0 ? `¥${totalCost.toFixed(2)}` : "-"}
+                          </td>
+                          <td className="px-3 py-2">
+                            {f.isExcess ? (
+                              <span className="text-gray-400 text-xs">-</span>
+                            ) : (
+                              <input
+                                type="text"
+                                value={f.batchNo}
+                                onChange={(e) => {
+                                  setInboundItems((prev) =>
+                                    prev.map((p) =>
+                                      p.id === f.id ? { ...p, batchNo: e.target.value } : p
+                                    )
+                                  );
+                                }}
+                                placeholder="批次号"
+                                className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                              />
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {f.isExcess ? (
+                              <span className="text-gray-400 text-xs">-</span>
+                            ) : (
+                              <select
+                                value={f.warehouseId}
+                                onChange={(e) => {
+                                  setInboundItems((prev) =>
+                                    prev.map((p) =>
+                                      p.id === f.id ? { ...p, warehouseId: e.target.value } : p
+                                    )
+                                  );
+                                }}
+                                className="w-full px-1 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                              >
+                                <option value="">选择仓库</option>
+                                {warehouses.map((w) => (
+                                  <option key={w.id} value={w.id}>{w.name}</option>
+                                ))}
+                              </select>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {f.isExcess ? (
+                              <span className="text-gray-400 text-xs">-</span>
+                            ) : (
+                              <input
+                                type="text"
+                                value={f.location}
+                                onChange={(e) => {
+                                  setInboundItems((prev) =>
+                                    prev.map((p) =>
+                                      p.id === f.id ? { ...p, location: e.target.value } : p
+                                    )
+                                  );
+                                }}
+                                placeholder="仓位"
+                                className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                              />
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {f.isExcess ? (
+                              <span className="text-gray-500 text-xs">{f.notes || "-"}</span>
+                            ) : (
+                              <input
+                                type="text"
+                                value={f.notes}
+                                onChange={(e) => {
+                                  setInboundItems((prev) =>
+                                    prev.map((p) =>
+                                      p.id === f.id ? { ...p, notes: e.target.value } : p
+                                    )
+                                  );
+                                }}
+                                placeholder="备注"
+                                className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                              />
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot className="bg-gray-50">
+                    <tr>
+                      <td colSpan={3} className="px-3 py-2 text-right font-medium text-gray-700">
+                        合计
+                      </td>
+                      <td className="px-3 py-2 text-right font-medium text-gray-900">
+                        {inboundItems
+                          .filter((f) => !f.isExcess)
+                          .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0), 0)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-medium text-gray-900">
+                        ¥
+                        {inboundItems
+                          .filter((f) => !f.isExcess)
+                          .reduce(
+                            (sum, f) =>
+                              sum + (parseInt(f.quantity, 10) || 0) * (f.item.unit_cost || 0),
+                            0
+                          )
+                          .toFixed(2)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-medium text-gray-900">
+                        ¥{allocatedCosts.reduce((sum, a) => sum + a, 0).toFixed(2)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-medium text-gray-900">
+                        ¥
+                        {(
+                          inboundItems
+                            .filter((f) => !f.isExcess)
+                            .reduce(
+                              (sum, f) =>
+                                sum + (parseInt(f.quantity, 10) || 0) * (f.item.unit_cost || 0),
+                              0
+                            ) + allocatedCosts.reduce((sum, a) => sum + a, 0)
+                        ).toFixed(2)}
+                      </td>
+                      <td colSpan={4} />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              {inboundItems.some((f) => f.isExcess) && (
+                <div className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                  该采购单包含多发退货配件，确认入库后将自动创建
+                  {
+                    inboundItems.filter((f) => f.isExcess).length
+                  }{" "}
+                  条待退货记录
+                </div>
+              )}
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeInboundModal}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmInbound}
+                  disabled={submitting === `complete-${inboundModalOrder.id}`}
+                  className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                >
+                  {submitting === `complete-${inboundModalOrder.id}` ? "处理中..." : "确认入库"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 编辑配件信息弹窗 */}
       {editItem && (

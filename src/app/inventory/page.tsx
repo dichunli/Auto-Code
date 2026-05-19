@@ -60,6 +60,9 @@ export default async function InventoryPage() {
         <Link href="/inventory/warehouses" className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
           仓库管理
         </Link>
+        <Link href="/inventory/batches" className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+          批次管理
+        </Link>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden p-4">

@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { PriceValue } from "@/components/PriceVisibilityContext";
+import FaultLightIcon from "@/components/FaultLightIcon";
 import { calculateItemCommission, calculatePartCommission } from "@/lib/commission";
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import Link from "next/link";
@@ -968,13 +969,51 @@ export default async function WorkOrderDetailPage({
                   const fluidPhotos = media.filter((m: any) => m.media_type === 'fluid');
                   const exteriorPhotos = media.filter((m: any) => m.media_type === 'exterior');
                   const dashboardPhotos = media.filter((m: any) => m.media_type === 'dashboard');
+                  const driveBeltPhotos = media.filter((m: any) => m.media_type === 'drive_belt');
+                  const tirePhotos = media.filter((m: any) => m.media_type === 'tire');
 
                   return (
                     <div key={insp.id} className="px-6 py-4 text-sm space-y-4">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
                         <span className="text-gray-500">检查时间: {formatDate(insp.created_at)}</span>
+                        {insp.inspection_mileage != null && (
+                          <span className="text-gray-500">检查里程: <span className="font-medium text-gray-700">{insp.inspection_mileage} km</span></span>
+                        )}
+                        {(() => {
+                          const submitter = profiles?.find((p: any) => p.id === insp.submitter_id);
+                          return submitter ? <span className="text-gray-500">提交人: <span className="font-medium text-gray-700">{submitter.full_name}</span></span> : null;
+                        })()}
                         {insp.notes && <span className="text-gray-400">备注: {insp.notes}</span>}
                       </div>
+
+                      {/* 各部分检查人 */}
+                      {insp.inspectors && Object.keys(insp.inspectors).length > 0 && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">各项目检查人</div>
+                          <div className="flex flex-wrap gap-2">
+                            {(() => {
+                              const labelMap: Record<string, string> = {
+                                oil: '机油油位', dashboard: '仪表检查', fluid_level: '其它油液',
+                                belt: '传动皮带', fluid: '油液检测', battery: '蓄电池',
+                                light: '灯光检查', brake: '刹车片', exhaust: '尾气数据',
+                                tire: '轮胎检查', exterior: '外检',
+                              };
+                              return Object.entries(insp.inspectors as Record<string, string>)
+                                .filter(([_, uid]) => uid)
+                                .map(([key, uid], idx) => {
+                                  const person = profiles?.find((p: any) => p.id === uid);
+                                  if (!person) return null;
+                                  return (
+                                    <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-blue-50 text-blue-700">
+                                      <span className="text-gray-500">{labelMap[key] || key}:</span>
+                                      {person.full_name}
+                                    </span>
+                                  );
+                                });
+                            })()}
+                          </div>
+                        </div>
+                      )}
 
                       {/* 仪表检查 */}
                       {(dashboardPhotos.length > 0 || insp.dashboard_fuel_level || (insp.dashboard_fault_lights && insp.dashboard_fault_lights.length > 0)) && (
@@ -1003,7 +1042,8 @@ export default async function WorkOrderDetailPage({
                                     seatbelt: '安全带提示灯', maintenance: '保养提示灯', esp: 'ESP/防滑灯',
                                   };
                                   return (
-                                    <span key={idx} className="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700">
+                                    <span key={idx} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700">
+                                      <FaultLightIcon type={light} className="w-3 h-3" />
                                       {labelMap[light] || light}
                                     </span>
                                   );
@@ -1015,45 +1055,108 @@ export default async function WorkOrderDetailPage({
                       )}
 
                       {/* 机油油位 */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {oilBefore && (
-                          <div>
-                            <div className="text-xs text-gray-500 mb-1">机油油位 - 施工前</div>
-                            <div className="relative rounded border border-gray-200 overflow-hidden max-w-xs">
-                              <img loading="lazy" src={oilBefore.storage_path} alt="机油施工前" className="w-full object-contain" />
-                              {oilBefore.annotations && oilBefore.annotations.length > 0 && (
-                                <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                                  {oilBefore.annotations.map((line: any, idx: number) => (
-                                    <line key={idx}
-                                      x1={`${line.x1 * 100}%`} y1={`${line.y1 * 100}%`}
-                                      x2={`${line.x2 * 100}%`} y2={`${line.y2 * 100}%`}
-                                      stroke="#ef4444" strokeWidth="2"
+                      <div className="space-y-3">
+                        {/* 机油标尺数值 */}
+                        {(insp.engine_oil_before_level != null || insp.engine_oil_after_level != null) && (
+                          <div className="flex flex-wrap gap-4">
+                            {insp.engine_oil_before_level != null && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">施工前油位:</span>
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-24 h-3 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
+                                    <div
+                                      className={`h-full rounded-full ${
+                                        insp.engine_oil_before_level < 25
+                                          ? 'bg-red-500'
+                                          : insp.engine_oil_before_level > 80
+                                          ? 'bg-amber-500'
+                                          : 'bg-green-500'
+                                      }`}
+                                      style={{ width: `${insp.engine_oil_before_level}%` }}
                                     />
-                                  ))}
-                                </svg>
-                              )}
-                            </div>
+                                  </div>
+                                  <span className={`text-sm font-semibold ${
+                                    insp.engine_oil_before_level < 25
+                                      ? 'text-red-600'
+                                      : insp.engine_oil_before_level > 80
+                                      ? 'text-amber-600'
+                                      : 'text-green-600'
+                                  }`}>
+                                    {insp.engine_oil_before_level}%
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {insp.engine_oil_after_level != null && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">施工后油位:</span>
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-24 h-3 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
+                                    <div
+                                      className={`h-full rounded-full ${
+                                        insp.engine_oil_after_level < 25
+                                          ? 'bg-red-500'
+                                          : insp.engine_oil_after_level > 80
+                                          ? 'bg-amber-500'
+                                          : 'bg-green-500'
+                                      }`}
+                                      style={{ width: `${insp.engine_oil_after_level}%` }}
+                                    />
+                                  </div>
+                                  <span className={`text-sm font-semibold ${
+                                    insp.engine_oil_after_level < 25
+                                      ? 'text-red-600'
+                                      : insp.engine_oil_after_level > 80
+                                      ? 'text-amber-600'
+                                      : 'text-green-600'
+                                  }`}>
+                                    {insp.engine_oil_after_level}%
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
-                        {oilAfter && (
-                          <div>
-                            <div className="text-xs text-gray-500 mb-1">机油油位 - 施工后</div>
-                            <div className="relative rounded border border-gray-200 overflow-hidden max-w-xs">
-                              <img loading="lazy" src={oilAfter.storage_path} alt="机油施工后" className="w-full object-contain" />
-                              {oilAfter.annotations && oilAfter.annotations.length > 0 && (
-                                <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                                  {oilAfter.annotations.map((line: any, idx: number) => (
-                                    <line key={idx}
-                                      x1={`${line.x1 * 100}%`} y1={`${line.y1 * 100}%`}
-                                      x2={`${line.x2 * 100}%`} y2={`${line.y2 * 100}%`}
-                                      stroke="#ef4444" strokeWidth="2"
-                                    />
-                                  ))}
-                                </svg>
-                              )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {oilBefore && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">机油油位照片 - 施工前</div>
+                              <div className="relative rounded border border-gray-200 overflow-hidden max-w-xs">
+                                <img loading="lazy" src={oilBefore.storage_path} alt="机油施工前" className="w-full object-contain" />
+                                {oilBefore.annotations && oilBefore.annotations.length > 0 && (
+                                  <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                                    {oilBefore.annotations.map((line: any, idx: number) => (
+                                      <line key={idx}
+                                        x1={`${line.x1 * 100}%`} y1={`${line.y1 * 100}%`}
+                                        x2={`${line.x2 * 100}%`} y2={`${line.y2 * 100}%`}
+                                        stroke="#ef4444" strokeWidth="2"
+                                      />
+                                    ))}
+                                  </svg>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
+                          {oilAfter && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">机油油位照片 - 施工后</div>
+                              <div className="relative rounded border border-gray-200 overflow-hidden max-w-xs">
+                                <img loading="lazy" src={oilAfter.storage_path} alt="机油施工后" className="w-full object-contain" />
+                                {oilAfter.annotations && oilAfter.annotations.length > 0 && (
+                                  <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                                    {oilAfter.annotations.map((line: any, idx: number) => (
+                                      <line key={idx}
+                                        x1={`${line.x1 * 100}%`} y1={`${line.y1 * 100}%`}
+                                        x2={`${line.x2 * 100}%`} y2={`${line.y2 * 100}%`}
+                                        stroke="#ef4444" strokeWidth="2"
+                                      />
+                                    ))}
+                                  </svg>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {/* 其它油液 */}
@@ -1065,6 +1168,71 @@ export default async function WorkOrderDetailPage({
                               <img loading="lazy" key={idx} src={m.storage_path} alt="" className="w-20 h-20 object-cover rounded border border-gray-200" />
                             ))}
                           </div>
+                        </div>
+                      )}
+
+                      {/* 传动皮带 */}
+                      {(driveBeltPhotos.length > 0 || insp.drive_belt_status) && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">传动皮带</div>
+                          {driveBeltPhotos.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {driveBeltPhotos.map((m: any, idx: number) => (
+                                <img loading="lazy" key={idx} src={m.storage_path} alt="" className="w-20 h-20 object-cover rounded border border-gray-200" />
+                              ))}
+                            </div>
+                          )}
+                          {insp.drive_belt_status && (<div className="flex items-center gap-2">
+                            <span className="text-sm">状态:</span>
+                            {(() => {
+                              const map: Record<string, { text: string; class: string }> = {
+                                good: { text: '良好', class: 'bg-green-50 text-green-700' },
+                                fair: { text: '一般', class: 'bg-amber-50 text-amber-700' },
+                                replace: { text: '需更换', class: 'bg-red-50 text-red-700' },
+                              };
+                              const s = map[insp.drive_belt_status];
+                              return s ? <span className={`px-1.5 py-0.5 rounded text-[10px] ${s.class}`}>{s.text}</span> : null;
+                            })()}
+                          </div>)}
+                        </div>
+                      )}
+
+                      {/* 轮胎检查 */}
+                      {(tirePhotos.length > 0 || (insp.tire_checks && Object.keys(insp.tire_checks).length > 0)) && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">轮胎检查</div>
+                          {tirePhotos.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {tirePhotos.map((m: any, idx: number) => (
+                                <img loading="lazy" key={idx} src={m.storage_path} alt="" className="w-20 h-20 object-cover rounded border border-gray-200" />
+                              ))}
+                            </div>
+                          )}
+                          {insp.tire_checks && (
+                            <div className="flex flex-wrap gap-2">
+                              {[
+                                { key: 'fl', label: '左前轮' },
+                                { key: 'fr', label: '右前轮' },
+                                { key: 'rl', label: '左后轮' },
+                                { key: 'rr', label: '右后轮' },
+                              ].map((tire) => {
+                                const status = insp.tire_checks[tire.key];
+                                if (!status) return null;
+                                const map: Record<string, { text: string; class: string }> = {
+                                  good: { text: '良好', class: 'bg-green-50 text-green-700' },
+                                  fair: { text: '一般', class: 'bg-amber-50 text-amber-700' },
+                                  replace: { text: '需更换', class: 'bg-red-50 text-red-700' },
+                                };
+                                const s = map[status];
+                                return s ? (
+                                  <span key={tire.key} className="inline-flex items-center gap-1 text-sm">
+                                    <span className="text-gray-500">{tire.label}:</span>
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${s.class}`}>{s.text}</span>
+                                  </span>
+                                ) : null;
+                              })}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -1099,34 +1267,133 @@ export default async function WorkOrderDetailPage({
                         </div>
                       )}
 
-                      {/* 刹车片 + 尾气 */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {(insp.front_brake_pad_thickness || insp.rear_brake_pad_thickness) && (
-                          <div>
-                            <div className="text-xs text-gray-500 mb-1">刹车片厚度</div>
-                            <div className="space-y-0.5 text-sm">
-                              {insp.front_brake_pad_thickness !== null && (
-                                <div>前刹车片: <span className="font-medium">{insp.front_brake_pad_thickness} mm</span></div>
-                              )}
-                              {insp.rear_brake_pad_thickness !== null && (
-                                <div>后刹车片: <span className="font-medium">{insp.rear_brake_pad_thickness} mm</span></div>
-                              )}
+                      {/* 油液检测 */}
+                      {(insp.coolant_ph != null || insp.brake_fluid_water != null) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {insp.coolant_ph != null && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">防冻液检测</div>
+                              <div className="flex items-center gap-2 text-sm">
+                                <span>PH: <span className="font-medium">{insp.coolant_ph}</span></span>
+                                <span className="text-xs text-gray-400">(标准: 7.5~11.0)</span>
+                                {(() => {
+                                  const ph = insp.coolant_ph;
+                                  if (ph >= 7.5 && ph <= 11.0) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-50 text-green-700">正常</span>;
+                                  if (ph < 7.5) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700">酸性偏重</span>;
+                                  return <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700">碱性过强</span>;
+                                })()}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                        {(insp.exhaust_hc || insp.exhaust_co || insp.exhaust_no || insp.exhaust_co2 || insp.exhaust_o2) && (
-                          <div>
-                            <div className="text-xs text-gray-500 mb-1">尾气数据</div>
-                            <div className="grid grid-cols-5 gap-2 text-center text-xs">
-                              {insp.exhaust_hc !== null && <div><div className="text-gray-400">HC</div><div className="font-medium">{insp.exhaust_hc}</div></div>}
-                              {insp.exhaust_co !== null && <div><div className="text-gray-400">CO</div><div className="font-medium">{insp.exhaust_co}</div></div>}
-                              {insp.exhaust_no !== null && <div><div className="text-gray-400">NO</div><div className="font-medium">{insp.exhaust_no}</div></div>}
-                              {insp.exhaust_co2 !== null && <div><div className="text-gray-400">CO₂</div><div className="font-medium">{insp.exhaust_co2}</div></div>}
-                              {insp.exhaust_o2 !== null && <div><div className="text-gray-400">O₂</div><div className="font-medium">{insp.exhaust_o2}</div></div>}
+                          )}
+                          {insp.brake_fluid_water != null && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">刹车油检测</div>
+                              <div className="flex items-center gap-2 text-sm">
+                                <span>含水量: <span className="font-medium">{insp.brake_fluid_water}%</span></span>
+                                <span className="text-xs text-gray-400">(标准: ≤1%)</span>
+                                {(() => {
+                                  const w = insp.brake_fluid_water;
+                                  if (w <= 1.0) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-50 text-green-700">良好</span>;
+                                  if (w <= 2.0) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700">一般</span>;
+                                  return <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700">需更换</span>;
+                                })()}
+                              </div>
                             </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 蓄电池 */}
+                      {(insp.battery_health != null || insp.battery_voltage != null) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {insp.battery_health != null && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">蓄电池寿命</div>
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-medium">{insp.battery_health}%</span>
+                                {(() => {
+                                  const h = insp.battery_health;
+                                  if (h >= 80) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-50 text-green-700">良好</span>;
+                                  if (h >= 50) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700">一般</span>;
+                                  return <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700">建议更换</span>;
+                                })()}
+                              </div>
+                            </div>
+                          )}
+                          {insp.battery_voltage != null && (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">蓄电池电压</div>
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-medium">{insp.battery_voltage}V</span>
+                                <span className="text-xs text-gray-400">(标准: 12.4~12.9V)</span>
+                                {(() => {
+                                  const v = insp.battery_voltage;
+                                  if (v >= 12.4 && v <= 12.9) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-50 text-green-700">正常</span>;
+                                  if (v < 12.4) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700">亏电</span>;
+                                  return <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700">偏高</span>;
+                                })()}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 刹车片 */}
+                      {(insp.front_brake_pad_thickness != null || insp.rear_brake_pad_thickness != null) && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">刹车片厚度</div>
+                          <div className="space-y-1 text-sm">
+                            {insp.front_brake_pad_thickness != null && (
+                              <div className="flex items-center gap-2">
+                                <span>前刹车片: <span className="font-medium">{insp.front_brake_pad_thickness} mm</span></span>
+                                <span className="text-xs text-gray-400">(极限: 3mm)</span>
+                                {(() => {
+                                  const v = insp.front_brake_pad_thickness;
+                                  if (v <= 3.0) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700">≤极限，建议更换</span>;
+                                  if (v <= 4.0) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700">接近极限</span>;
+                                  return <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-50 text-green-700">正常</span>;
+                                })()}
+                              </div>
+                            )}
+                            {insp.rear_brake_pad_thickness != null && (
+                              <div className="flex items-center gap-2">
+                                <span>后刹车片: <span className="font-medium">{insp.rear_brake_pad_thickness} mm</span></span>
+                                <span className="text-xs text-gray-400">(极限: 2mm)</span>
+                                {(() => {
+                                  const v = insp.rear_brake_pad_thickness;
+                                  if (v <= 2.0) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700">≤极限，建议更换</span>;
+                                  if (v <= 3.0) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700">接近极限</span>;
+                                  return <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-50 text-green-700">正常</span>;
+                                })()}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
+
+                      {/* 尾气数据 — 竖排 + 标准值 */}
+                      {(insp.exhaust_hc != null || insp.exhaust_co != null || insp.exhaust_no != null || insp.exhaust_co2 != null || insp.exhaust_o2 != null) && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">尾气数据</div>
+                          <div className="space-y-1 text-sm max-w-sm">
+                            {[
+                              { key: 'hc', label: 'HC', unit: 'ppm', standard: '≤100', val: insp.exhaust_hc },
+                              { key: 'co', label: 'CO', unit: '%', standard: '≤0.5', val: insp.exhaust_co },
+                              { key: 'no', label: 'NO', unit: 'ppm', standard: '≤500', val: insp.exhaust_no },
+                              { key: 'co2', label: 'CO₂', unit: '%', standard: '14~16', val: insp.exhaust_co2 },
+                              { key: 'o2', label: 'O₂', unit: '%', standard: '0.5~2', val: insp.exhaust_o2 },
+                            ].map((item) => (
+                              item.val != null && (
+                                <div key={item.key} className="flex items-center gap-3">
+                                  <span className="w-10 font-medium">{item.label}</span>
+                                  <span>{item.val} {item.unit}</span>
+                                  <span className="text-xs text-gray-400">标准: {item.standard}</span>
+                                </div>
+                              )
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {/* 外检照片 */}
                       {exteriorPhotos.length > 0 && (

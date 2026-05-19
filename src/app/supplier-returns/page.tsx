@@ -7,7 +7,7 @@ import Link from "next/link";
 
 const returnReasonMap: Record<string, string> = {
   wrong_ship: "错发",
-  excess: "多发",
+  excess: "多发退货",
   damaged: "损坏",
   cancel: "客户悔单",
   quality: "质量问题",
@@ -31,7 +31,7 @@ export default function SupplierReturnsPage() {
     setLoading(true);
     let q = supabase
       .from("supplier_return_records")
-      .select("*, work_order_item_parts(name, part_number), profiles(full_name)")
+      .select("*, work_order_item_parts(name, part_number), profiles(full_name), purchase_return_orders(id, return_no)")
       .order("created_at", { ascending: false });
 
     if (statusFilter) {
@@ -105,6 +105,22 @@ export default function SupplierReturnsPage() {
         action={{ href: "/procurement", label: "采购管理" }}
       />
 
+      {/* 快捷入口 */}
+      <div className="mb-4 flex items-center gap-2">
+        <Link
+          href="/return-orders"
+          className="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+        >
+          采退单列表
+        </Link>
+        <Link
+          href="/inbound-orders"
+          className="px-3 py-1.5 text-xs rounded bg-green-600 text-white hover:bg-green-700 transition-colors"
+        >
+          入库单列表
+        </Link>
+      </div>
+
       {/* 筛选栏 */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
@@ -144,6 +160,7 @@ export default function SupplierReturnsPage() {
                 <th className="px-6 py-3 text-left font-medium text-gray-500">供应商</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">物流信息</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">状态</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">关联采退单</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">退货照片</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">时间</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">操作</th>
@@ -177,6 +194,18 @@ export default function SupplierReturnsPage() {
                       <span className={`text-xs px-2 py-0.5 rounded ${s.class}`}>{s.label}</span>
                     </td>
                     <td className="px-6 py-4">
+                      {r.purchase_return_orders ? (
+                        <Link
+                          href={`/return-orders/${r.purchase_return_orders.id}`}
+                          className="text-xs text-blue-600 hover:text-blue-700"
+                        >
+                          {r.purchase_return_orders.return_no}
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
                       {r.photos && r.photos.length > 0 ? (
                         <div className="flex gap-1">
                           {r.photos.slice(0, 3).map((url: string, i: number) => (
@@ -196,7 +225,7 @@ export default function SupplierReturnsPage() {
                       {new Date(r.created_at).toLocaleString("zh-CN")}
                     </td>
                     <td className="px-6 py-4">
-                      {r.status === "pending" && (
+                      {r.status === "pending" && !r.purchase_return_orders && (
                         <button
                           onClick={() => {
                             if (confirm("确认标记为已完成？")) {
@@ -214,7 +243,7 @@ export default function SupplierReturnsPage() {
               })}
               {(!records || records.length === 0) && (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
                     {loading ? "加载中..." : "暂无退货记录"}
                   </td>
                 </tr>
