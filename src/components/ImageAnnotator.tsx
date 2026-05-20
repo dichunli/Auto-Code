@@ -15,9 +15,10 @@ interface Props {
   onChange: (lines: Line[]) => void;
   width?: number;
   height?: number;
+  readonly?: boolean;
 }
 
-export function ImageAnnotator({ imageUrl, annotations, onChange, width = 400, height = 300 }: Props) {
+export function ImageAnnotator({ imageUrl, annotations, onChange, width = 400, height = 300, readonly }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [drawing, setDrawing] = useState(false);
@@ -90,6 +91,7 @@ export function ImageAnnotator({ imageUrl, annotations, onChange, width = 400, h
   }
 
   function handleStart(e: React.MouseEvent | React.TouchEvent) {
+    if (readonly) return;
     e.preventDefault();
     const pos = getRelativePos(e);
     setDrawing(true);
@@ -98,14 +100,14 @@ export function ImageAnnotator({ imageUrl, annotations, onChange, width = 400, h
   }
 
   function handleMove(e: React.MouseEvent | React.TouchEvent) {
-    if (!drawing || !startPos) return;
+    if (readonly || !drawing || !startPos) return;
     e.preventDefault();
     const pos = getRelativePos(e);
     setCurrentLine({ x1: startPos.x, y1: startPos.y, x2: pos.x, y2: pos.y });
   }
 
   function handleEnd(e: React.MouseEvent | React.TouchEvent) {
-    if (!drawing || !startPos || !currentLine) return;
+    if (readonly || !drawing || !startPos || !currentLine) return;
     e.preventDefault();
     setDrawing(false);
     // 只有长度大于阈值才保存
@@ -139,7 +141,7 @@ export function ImageAnnotator({ imageUrl, annotations, onChange, width = 400, h
           ref={canvasRef}
           width={imgSize.width}
           height={imgSize.height}
-          className="absolute inset-0 cursor-crosshair"
+          className={`absolute inset-0 ${readonly ? "cursor-default" : "cursor-crosshair"}`}
           onMouseDown={handleStart}
           onMouseMove={handleMove}
           onMouseUp={handleEnd}
@@ -149,25 +151,27 @@ export function ImageAnnotator({ imageUrl, annotations, onChange, width = 400, h
           onTouchEnd={handleEnd}
         />
       </div>
-      <div className="flex items-center gap-2 mt-2">
-        <button
-          type="button"
-          onClick={undo}
-          disabled={annotations.length === 0}
-          className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded border border-gray-300 hover:bg-gray-200 disabled:opacity-40"
-        >
-          撤销
-        </button>
-        <button
-          type="button"
-          onClick={clearAll}
-          disabled={annotations.length === 0}
-          className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100 disabled:opacity-40"
-        >
-          清除标记
-        </button>
-        <span className="text-xs text-gray-400">已标记 {annotations.length} 条线</span>
-      </div>
+      {!readonly && (
+        <div className="flex items-center gap-2 mt-2">
+          <button
+            type="button"
+            onClick={undo}
+            disabled={annotations.length === 0}
+            className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded border border-gray-300 hover:bg-gray-200 disabled:opacity-40"
+          >
+            撤销
+          </button>
+          <button
+            type="button"
+            onClick={clearAll}
+            disabled={annotations.length === 0}
+            className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100 disabled:opacity-40"
+          >
+            清除标记
+          </button>
+          <span className="text-xs text-gray-400">已标记 {annotations.length} 条线</span>
+        </div>
+      )}
     </div>
   );
 }

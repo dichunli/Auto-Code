@@ -4,8 +4,15 @@ import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import VehicleSearchAdd from "./VehicleSearchAdd";
 
-export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CustomerDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ from_work_order?: string }>;
+}) {
   const { id } = await params;
+  const { from_work_order } = (await searchParams) || {};
   const supabase = await createClient();
 
   const { data: customer } = await supabase
@@ -52,6 +59,21 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         description={`${customer.name} 的档案信息`}
         action={{ href: `/customers/${id}/edit`, label: "编辑客户" }}
       />
+
+      {/* 返回工单按钮 */}
+      {from_work_order && (
+        <div className="mb-4">
+          <Link
+            href={`/work-orders/${from_work_order}`}
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            返回工单
+          </Link>
+        </div>
+      )}
 
       <div className="space-y-6 max-w-4xl">
         {/* 基本信息 */}

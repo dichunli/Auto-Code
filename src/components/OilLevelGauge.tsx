@@ -6,9 +6,10 @@ interface OilLevelGaugeProps {
   value: number;
   onChange: (value: number) => void;
   label?: string;
+  readonly?: boolean;
 }
 
-export default function OilLevelGauge({ value, onChange, label }: OilLevelGaugeProps) {
+export default function OilLevelGauge({ value, onChange, label, readonly }: OilLevelGaugeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [hoverValue, setHoverValue] = useState<number | null>(null);
@@ -30,23 +31,25 @@ export default function OilLevelGauge({ value, onChange, label }: OilLevelGaugeP
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
+      if (readonly) return;
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       setIsDragging(true);
       const v = getValueFromEvent(e.clientY);
       onChange(v);
     },
-    [getValueFromEvent, onChange]
+    [getValueFromEvent, onChange, readonly]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
+      if (readonly) return;
       const v = getValueFromEvent(e.clientY);
       setHoverValue(v);
       if (isDragging) {
         onChange(v);
       }
     },
-    [getValueFromEvent, onChange, isDragging]
+    [getValueFromEvent, onChange, isDragging, readonly]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -81,7 +84,7 @@ export default function OilLevelGauge({ value, onChange, label }: OilLevelGaugeP
         {/* 标尺主体 */}
         <div
           ref={containerRef}
-          className="relative w-10 h-[200px] bg-gray-100 rounded-lg border border-gray-300 cursor-pointer touch-none"
+          className={`relative w-10 h-[200px] bg-gray-100 rounded-lg border border-gray-300 touch-none ${readonly ? "" : "cursor-pointer"}`}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}

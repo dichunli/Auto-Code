@@ -61,8 +61,9 @@ export default function LoginPage() {
       });
 
       console.log("[登录] 开始跳转首页...");
-      window.location.href = "/";
-      console.log("[登录] window.location.href 已设置");
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      window.location.href = isMobile ? "/m" : "/";
+      console.log("[登录] window.location.href 已设置", isMobile ? "跳转手机端 /m" : "跳转电脑端 /");
     } catch (err: any) {
       console.error("[登录] 异常:", err);
       setError("登录请求失败: " + (err?.message || "网络错误或浏览器安全策略阻止了请求"));

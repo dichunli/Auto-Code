@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { VehicleModelSearch } from "@/components/VehicleModelSearch";
 import { ImageUploader } from "@/components/ImageUploader";
+import VinDecodeInput from "@/components/VinDecodeInput";
+import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 
 type OwnerMode = "existing" | "new";
 
@@ -48,6 +50,7 @@ export default function VehicleForm() {
   const [nameplatePhotos, setNameplatePhotos] = useState<string[]>([]);
   const [licenseFrontPhotos, setLicenseFrontPhotos] = useState<string[]>([]);
   const [licenseBackPhotos, setLicenseBackPhotos] = useState<string[]>([]);
+  const [vinSearchKeyword, setVinSearchKeyword] = useState("");
 
   // 车牌号逐字检索
   const plateSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -270,13 +273,18 @@ export default function VehicleForm() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">车牌号 *</label>
-              <input
-                required
-                type="text"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={form.plate_number}
-                onChange={(e) => handlePlateChange(e.target.value)}
-              />
+              <div className="flex gap-2">
+                <input
+                  required
+                  type="text"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={form.plate_number}
+                  onChange={(e) => handlePlateChange(e.target.value)}
+                />
+                <LicensePlateOcrButton
+                  onRecognize={(plate) => setForm((prev) => ({ ...prev, plate_number: plate }))}
+                />
+              </div>
               {plateSearching && <p className="text-xs text-gray-400 mt-1">搜索中...</p>}
               {plateSearchResults && plateSearchResults.length > 0 && (
                 <div className="mt-2 bg-gray-50 rounded-lg p-2 space-y-1">
@@ -322,13 +330,35 @@ export default function VehicleForm() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">VIN 码</label>
-              <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.vin} onChange={(e) => setForm({ ...form, vin: e.target.value.toUpperCase() })} />
+              <VinDecodeInput
+                value={form.vin}
+                onChange={(v) => setForm({ ...form, vin: v })}
+                onDecode={(result) => {
+                  if (!result) return;
+                  setForm((prev) => ({
+                    ...prev,
+                    brand: result.brand || prev.brand,
+                    model: result.series && result.model ? [...new Set([result.series, result.model])].join(" ") : prev.model,
+                    engine_no: result.engineNo || prev.engine_no,
+                    chassis_code: result.chassisCode || prev.chassis_code,
+                    transmission_type: result.transmissionType || prev.transmission_type,
+                    transmission_code: result.transmissionCode || prev.transmission_code,
+                    year: result.year || prev.year,
+                  }));
+                  setVinSearchKeyword(
+                    [result.brand, result.series, result.model].filter(Boolean).join(" ")
+                  );
+                }}
+                inputClassName="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                buttonClassName="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap shrink-0"
+              />
             </div>
           </div>
           <div className="mt-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">车型信息（从车型库选择）</label>
             <VehicleModelSearch
               placeholder="智能模糊搜索：品牌、车系、车型、厂商、发动机、底盘代号..."
+              searchKeyword={vinSearchKeyword}
               onSelect={(m) => setForm({
                 ...form,
                 brand: m.brand,

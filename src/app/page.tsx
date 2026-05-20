@@ -3,8 +3,23 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ desktop?: string }>;
+}) {
+  const { desktop } = await searchParams;
+  if (desktop !== "1") {
+    const userAgent = (await headers()).get("user-agent") || "";
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+    if (isMobile) {
+      redirect("/m");
+    }
+  }
+
   const supabase = await createClient();
 
   const today = new Date().toISOString().split("T")[0];

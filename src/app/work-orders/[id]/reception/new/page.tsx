@@ -15,6 +15,8 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
 
   const [videoPaths, setVideoPaths] = useState<string[]>([]);
   const [exteriorPaths, setExteriorPaths] = useState<string[]>([]);
+  const [dashboardPaths, setDashboardPaths] = useState<string[]>([]);
+  const [mileage, setMileage] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -32,6 +34,7 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
         .insert({
           work_order_id: orderId,
           inspection_type: "reception",
+          inspection_mileage: mileage ? parseFloat(mileage) : null,
           notes: notes || null,
         })
         .select("id")
@@ -51,6 +54,13 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
         mediaRecords.push({
           inspection_id: inspection.id,
           media_type: "exterior",
+          storage_path: path,
+        });
+      });
+      dashboardPaths.forEach((path) => {
+        mediaRecords.push({
+          inspection_id: inspection.id,
+          media_type: "dashboard",
           storage_path: path,
         });
       });
@@ -80,6 +90,22 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
         <section className="border-t border-gray-100 pt-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">外观照片</h2>
           <ImageUploader onUpload={setExteriorPaths} maxImages={8} />
+        </section>
+
+        <section className="border-t border-gray-100 pt-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">仪表照片</h2>
+          <ImageUploader onUpload={setDashboardPaths} maxImages={3} />
+        </section>
+
+        <section className="border-t border-gray-100 pt-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">当前里程</h2>
+          <input
+            type="number"
+            value={mileage}
+            onChange={(e) => setMileage(e.target.value)}
+            placeholder="请输入当前里程（km）"
+            className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </section>
 
         <section className="border-t border-gray-100 pt-6">

@@ -172,7 +172,7 @@ export function PendingStorageList() {
     const items = order.purchase_order_items || [];
     let formIdCounter = 0;
     const forms: InboundItemForm[] = items
-      .filter((it) => it.handle_action !== "wrong_discard")
+      .filter((it) => it.handle_action !== "wrong_discard" && getStorageQty(it) > 0)
       .flatMap((it) => {
         if (it.handle_action === "excess_return") {
           /* 多发退货拆分为两行：正常采购数量 + 多出数量 */
@@ -928,7 +928,7 @@ export function PendingStorageList() {
                       {order.purchase_order_items.map((item, idx) => {
                         const actionInfo = item.handle_action ? ACTION_LABELS[item.handle_action] : null;
                         const storageQty = getStorageQty(item);
-                        const skipStorage = item.handle_action === "wrong_discard";
+                        const skipStorage = item.handle_action === "wrong_discard" || storageQty <= 0;
                         return (
                           <tr key={item.id} className="hover:bg-gray-50">
                             <td className="px-3 py-2 text-gray-500">{idx + 1}</td>

@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { FuelGauge } from "@/components/FuelGauge";
+import VinDecodeInput from "@/components/VinDecodeInput";
+import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
+import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
 
 interface Customer {
   id: string;
@@ -285,17 +288,23 @@ export default function NewWorkOrderPage() {
             <h2 className="text-base font-semibold text-gray-900 mb-4">搜索车辆 *</h2>
             {!selectedVehicle && !isNewVehicle ? (
               <div className="relative">
-                <input
-                  type="text"
-                  placeholder="输入车牌号搜索，如：京A12345"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={vehicleQuery}
-                  onChange={(e) => {
-                    setVehicleQuery(e.target.value);
-                    setShowVehicleResults(true);
-                  }}
-                  onFocus={() => setShowVehicleResults(true)}
-                />
+                <div className="flex gap-2">
+                  <LicensePlateKeyboard
+                    value={vehicleQuery}
+                    onChange={(val) => {
+                      setVehicleQuery(val);
+                      setShowVehicleResults(true);
+                    }}
+                    placeholder="输入车牌号搜索，如：京A12345"
+                    className="flex-1"
+                  />
+                  <LicensePlateOcrButton
+                    onRecognize={(plate) => {
+                      setVehicleQuery(plate);
+                      setShowVehicleResults(true);
+                    }}
+                  />
+                </div>
                 {showVehicleResults && vehicleResults.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     {vehicleResults.map((v) => (
@@ -368,13 +377,18 @@ export default function NewWorkOrderPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">车牌号 *</label>
-                  <input
-                    required
-                    type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={newVehicle.plate_number}
-                    onChange={(e) => setNewVehicle({ ...newVehicle, plate_number: e.target.value })}
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      required
+                      type="text"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={newVehicle.plate_number}
+                      onChange={(e) => setNewVehicle({ ...newVehicle, plate_number: e.target.value })}
+                    />
+                    <LicensePlateOcrButton
+                      onRecognize={(plate) => setNewVehicle((prev) => ({ ...prev, plate_number: plate }))}
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">品牌</label>
@@ -398,11 +412,20 @@ export default function NewWorkOrderPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">VIN 码</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <VinDecodeInput
                     value={newVehicle.vin}
-                    onChange={(e) => setNewVehicle({ ...newVehicle, vin: e.target.value })}
+                    onChange={(v) => setNewVehicle({ ...newVehicle, vin: v })}
+                    onDecode={(result) => {
+                      if (!result) return;
+                      setNewVehicle((prev) => ({
+                        ...prev,
+                        brand: result.brand || prev.brand,
+                        model: result.series && result.model ? [...new Set([result.series, result.model])].join(" ") : prev.model,
+                        vin: prev.vin,
+                      }));
+                    }}
+                    inputClassName="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    buttonClassName="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap shrink-0"
                   />
                 </div>
                 <div>

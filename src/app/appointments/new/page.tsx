@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 
 export default function NewAppointmentPage() {
   const router = useRouter();
@@ -89,12 +90,17 @@ export default function NewAppointmentPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">车牌号码</label>
-            <input
-              value={form.plate_number}
-              onChange={(e) => handleChange("plate_number", e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="例如: 京A12345"
-            />
+            <div className="flex gap-2">
+              <input
+                value={form.plate_number}
+                onChange={(e) => handleChange("plate_number", e.target.value)}
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="例如: 京A12345"
+              />
+              <LicensePlateOcrButton
+                onRecognize={(plate) => handleChange("plate_number", plate)}
+              />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">车辆品牌</label>

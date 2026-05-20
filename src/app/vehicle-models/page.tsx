@@ -507,12 +507,20 @@ export default function VehicleModelsPage() {
               <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                 {detailFields.map((f) => {
                   const val = detailModel[f.key];
+                  const displayVal = val === null || val === undefined || val === "" ? "-" : String(val);
                   return (
                     <div key={f.key} className="flex justify-between text-sm border-b border-gray-50 pb-1">
                       <span className="text-gray-500">{f.label}</span>
-                      <span className="text-gray-900 font-medium">
-                        {val === null || val === undefined || val === "" ? "-" : String(val)}
-                      </span>
+                      {f.key === "品牌图标" && displayVal !== "-" ? (
+                        <img
+                          src={displayVal}
+                          alt={detailModel.品牌 || "品牌图标"}
+                          className="h-8 object-contain"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      ) : (
+                        <span className="text-gray-900 font-medium">{displayVal}</span>
+                      )}
                     </div>
                   );
                 })}

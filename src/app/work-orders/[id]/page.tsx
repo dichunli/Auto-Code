@@ -285,7 +285,7 @@ export default async function WorkOrderDetailPage({
     <div className="pb-20">
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <h1 className="text-base font-semibold text-gray-900">工单 {order.order_no}</h1>
+          <h1 className="text-xs md:text-base font-semibold text-gray-900">工单 {order.order_no}</h1>
         </div>
         <div className="flex items-center gap-3">
           {order.vehicle_id && (
@@ -307,14 +307,16 @@ export default async function WorkOrderDetailPage({
             totalCost={order.total_cost || 0}
             records={advancePaymentRecords || []}
           />
-          <PrintDropdown orderId={id} />
+          <div className="hidden md:block">
+            <PrintDropdown orderId={id} />
+          </div>
         </div>
       </div>
 
       <div className="space-y-4">
         {/* 主内容 */}
           {/* 基本信息 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
             {/* 车辆信息行 - 字号缩小 */}
             {(() => {
               const vin: string = order.vehicles?.vin || "";
@@ -325,7 +327,16 @@ export default async function WorkOrderDetailPage({
                   <div className="flex items-center gap-4 flex-wrap">
                     <span>
                       <span className="text-gray-500">车牌:</span>{' '}
-                      <span className="font-semibold text-gray-900">{order.vehicles?.plate_number || "-"}</span>
+                      {order.vehicle_id ? (
+                        <Link
+                          href={`/vehicles/${order.vehicle_id}?from_work_order=${id}`}
+                          className="font-semibold text-blue-600 hover:underline"
+                        >
+                          {order.vehicles?.plate_number || "-"}
+                        </Link>
+                      ) : (
+                        <span className="font-semibold text-gray-900">{order.vehicles?.plate_number || "-"}</span>
+                      )}
                     </span>
                     <span>
                       <span className="text-gray-500">VIN:</span>{' '}
@@ -352,17 +363,101 @@ export default async function WorkOrderDetailPage({
                     <span><span className="text-gray-500">接车里程:</span> {order.mileage_in ? `${order.mileage_in} km` : "-"}</span>
                     <span><span className="text-gray-500">油量:</span> {order.fuel_level != null ? `${order.fuel_level}%` : "-"}</span>
                   </div>
-                  <span className="text-gray-400 shrink-0 text-xs">创建于 {formatDate(order.created_at)}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-gray-400 text-xs">创建于 {formatDate(order.created_at)}</span>
+                    <div className="md:hidden">
+                      <ReceptionInfoEditor
+                        orderId={id}
+                        mileageIn={order.mileage_in}
+                        fuelLevel={order.fuel_level}
+                        estimatedCompletionAt={order.estimated_completion_at}
+                        senderName={order.sender_name}
+                        senderPhone={order.sender_phone}
+                      />
+                    </div>
+                  </div>
                 </div>
               );
             })()}
 
-            {/* 客户信息 + 展开更多 - 同一行 */}
-            <div className="flex items-start justify-between gap-4 flex-wrap text-sm mb-2">
+            {/* 移动端：折叠的客户信息 */}
+            <details className="md:hidden text-sm mb-2">
+              <summary className="cursor-pointer text-blue-600 hover:text-blue-700 select-none flex items-center justify-between py-1">
+                <span className="font-medium text-gray-700">
+                  客户: {order.customers?.name || "-"}
+                  {order.customers?.phone && <span className="text-gray-500 font-normal ml-2">{order.customers.phone}</span>}
+                </span>
+                <span className="text-xs text-blue-600">展开</span>
+              </summary>
+              <div className="mt-2 space-y-1.5 text-sm">
+                <div><span className="text-gray-500">客户:</span>{' '}
+                  {order.customer_id ? (
+                    <Link href={`/customers/${order.customer_id}?from_work_order=${id}`} className="font-medium text-blue-600 hover:underline">
+                      {order.customers?.name || "-"}
+                    </Link>
+                  ) : (
+                    <span className="font-medium">{order.customers?.name || "-"}</span>
+                  )}
+                  {order.customers?.star_level && (
+                    <span className="ml-1 text-amber-500">{'★'.repeat(order.customers.star_level)}</span>
+                  )}
+                </div>
+                <div><span className="text-gray-500">电话:</span> {order.customers?.phone || "-"}</div>
+                <div><span className="text-gray-500">消费总额:</span> <span className="font-medium text-gray-900">{formatCurrency(order.customers?.total_spent || 0)}</span></div>
+                <div><span className="text-gray-500">消费次数:</span> <span className="font-medium text-gray-900">{customerOrderCount ?? 0}</span></div>
+                <div><span className="text-gray-500">约定交车:</span> {order.estimated_completion_at ? formatDate(order.estimated_completion_at) : "-"}</div>
+                {order.sender_name && (
+                  <div><span className="text-gray-500">送修人:</span> <span className="font-medium">{order.sender_name}</span> {order.sender_phone && <span className="text-gray-400">({order.sender_phone})</span>}</div>
+                )}
+                <div className="pt-2 border-t border-gray-100">
+                  <ReceptionInfoEditor
+                    orderId={id}
+                    mileageIn={order.mileage_in}
+                    fuelLevel={order.fuel_level}
+                    estimatedCompletionAt={order.estimated_completion_at}
+                    senderName={order.sender_name}
+                    senderPhone={order.sender_phone}
+                  />
+                </div>
+                {order.customers?.company && (
+                  <div><span className="text-gray-400">单位:</span> {order.customers.company}</div>
+                )}
+                {order.vehicles?.color && (
+                  <div><span className="text-gray-400">颜色:</span> {order.vehicles.color}</div>
+                )}
+                {order.vehicles?.engine_no && (
+                  <div><span className="text-gray-400">发动机号:</span> {order.vehicles.engine_no}</div>
+                )}
+                {order.vehicles?.vehicle_models?.排量 && (
+                  <div><span className="text-gray-400">排量:</span> {order.vehicles.vehicle_models.排量}</div>
+                )}
+                {order.vehicles?.vehicle_models?.变速箱类型 && (
+                  <div><span className="text-gray-400">变速箱:</span> {order.vehicles.vehicle_models.变速箱类型}</div>
+                )}
+                {order.vehicles?.vehicle_models?.年份 && (
+                  <div><span className="text-gray-400">年份:</span> {order.vehicles.vehicle_models.年份}</div>
+                )}
+                {order.description && (
+                  <div><span className="text-gray-400">备注:</span> {order.description}</div>
+                )}
+              </div>
+            </details>
+
+            {/* PC端：客户信息 + 展开更多 - 同一行 */}
+            <div className="hidden md:flex items-start justify-between gap-4 flex-wrap text-sm mb-2">
               <div className="flex items-center gap-4 flex-wrap">
                 <span>
                   <span className="text-gray-500">客户:</span>{' '}
-                  <span className="font-medium">{order.customers?.name || "-"}</span>
+                  {order.customer_id ? (
+                    <Link
+                      href={`/customers/${order.customer_id}?from_work_order=${id}`}
+                      className="font-medium text-blue-600 hover:underline"
+                    >
+                      {order.customers?.name || "-"}
+                    </Link>
+                  ) : (
+                    <span className="font-medium">{order.customers?.name || "-"}</span>
+                  )}
                   {order.customers?.star_level && (
                     <span className="ml-1 text-amber-500" title={`${order.customers.star_level}星客户`}>
                       {'★'.repeat(order.customers.star_level)}
@@ -420,7 +515,8 @@ export default async function WorkOrderDetailPage({
 
           {/* 客户需求 */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            {/* PC端标题栏 */}
+            <div className="hidden md:flex px-6 py-4 border-b border-gray-100 items-center justify-between">
               <h2 className="text-base font-semibold text-gray-900">客户需求与诊断</h2>
               <div className="flex items-center gap-3">
                 {!isLocked && (
@@ -441,6 +537,22 @@ export default async function WorkOrderDetailPage({
                 <Link href={`/work-orders/${id}/reception/new`} className="text-sm text-orange-600 hover:text-orange-700">+ 接车检查</Link>
                 <Link href={`/work-orders/${id}/inspection/new`} className="text-sm text-green-600 hover:text-green-700">+ 车况检查</Link>
               </div>
+            </div>
+            {/* 移动端按钮栏（无标题，添加客户需求在前，批量修改在后） */}
+            <div className="md:hidden px-4 py-3 border-b border-gray-100 flex items-center flex-wrap gap-2">
+              {!isLocked && <AddRequirementButton orderId={id} />}
+              {!isLocked && order.vehicle_id && <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />}
+              <Link href={`/work-orders/${id}/reception/new`} className="text-xs text-orange-600 hover:text-orange-700">+ 接车检查</Link>
+              <Link href={`/work-orders/${id}/inspection/new`} className="text-xs text-green-600 hover:text-green-700">+ 车况检查</Link>
+              {!isLocked && (
+                <BatchEditWrapper
+                  orderId={id}
+                  items={items || []}
+                  itemParts={itemParts || []}
+                  suppliers={suppliers || []}
+                  logisticsCompanies={logisticsCompanies || []}
+                />
+              )}
             </div>
             <div className="divide-y divide-gray-300">
               {requirements?.map((req: any) => (
@@ -985,35 +1097,6 @@ export default async function WorkOrderDetailPage({
                         })()}
                         {insp.notes && <span className="text-gray-400">备注: {insp.notes}</span>}
                       </div>
-
-                      {/* 各部分检查人 */}
-                      {insp.inspectors && Object.keys(insp.inspectors).length > 0 && (
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">各项目检查人</div>
-                          <div className="flex flex-wrap gap-2">
-                            {(() => {
-                              const labelMap: Record<string, string> = {
-                                oil: '机油油位', dashboard: '仪表检查', fluid_level: '其它油液',
-                                belt: '传动皮带', fluid: '油液检测', battery: '蓄电池',
-                                light: '灯光检查', brake: '刹车片', exhaust: '尾气数据',
-                                tire: '轮胎检查', exterior: '外检',
-                              };
-                              return Object.entries(insp.inspectors as Record<string, string>)
-                                .filter(([_, uid]) => uid)
-                                .map(([key, uid], idx) => {
-                                  const person = profiles?.find((p: any) => p.id === uid);
-                                  if (!person) return null;
-                                  return (
-                                    <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-blue-50 text-blue-700">
-                                      <span className="text-gray-500">{labelMap[key] || key}:</span>
-                                      {person.full_name}
-                                    </span>
-                                  );
-                                });
-                            })()}
-                          </div>
-                        </div>
-                      )}
 
                       {/* 仪表检查 */}
                       {(dashboardPhotos.length > 0 || insp.dashboard_fuel_level || (insp.dashboard_fault_lights && insp.dashboard_fault_lights.length > 0)) && (

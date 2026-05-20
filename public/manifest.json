@@ -2,8 +2,10 @@
   "name": "汽修管家",
   "short_name": "汽修管家",
   "description": "汽车维修厂管理系统",
-  "start_url": "/",
+  "start_url": "/m/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#2563eb",
   "icons": [

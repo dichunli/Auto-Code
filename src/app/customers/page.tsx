@@ -4,6 +4,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { SubNav } from "./SubNav";
 import { DeleteButton } from "./DeleteButton";
+import CustomerImportExport from "./CustomerImportExport";
 
 export default async function CustomersPage(props: { searchParams?: Promise<Record<string, string | undefined>> | Record<string, string | undefined> }) {
   const searchParams = (await Promise.resolve(props.searchParams || {})) as Record<string, string | undefined>;
@@ -22,9 +23,14 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
     phoneCustomerIds = [...new Set([...mainIds, ...extraIds, ...contactIds])];
   }
 
+  const pageSize = 20;
+  const page = Math.max(1, parseInt(searchParams.page || "1", 10));
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
   let query = supabase
     .from("customers")
-    .select("id, name, phone, company, address, star_level, total_spent, created_at, vehicles(id, plate_number)")
+    .select("id, name, phone, gender, company, address, star_level, id_card, notes, total_spent, created_at, vehicles(id, plate_number)", { count: "exact" })
     .order("created_at", { ascending: false });
 
   if (searchParams.name) query = query.ilike("name", `%${searchParams.name}%`);
@@ -38,7 +44,11 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
   if (searchParams.company) query = query.ilike("company", `%${searchParams.company}%`);
   if (searchParams.address) query = query.ilike("address", `%${searchParams.address}%`);
 
-  const { data: customers } = await query;
+  query = query.range(from, to);
+
+  const { data: customers, count } = await query;
+  const total = count || 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const customerIds = customers?.map((c: any) => c.id) || [];
 
@@ -69,7 +79,7 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
     <div>
       <PageHeader
         title="客户管理"
-        description="管理客户档案"
+        description={`共 ${total} 位客户`}
         action={{ href: "/customers/new", label: "新增客户" }}
       />
 
@@ -123,27 +133,33 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
         </div>
       </form>
 
+      <div className="mb-4 flex justify-end">
+        <CustomerImportExport customers={customers || []} />
+      </div>
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[1400px]">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">客户姓名</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">电话</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">联系人</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">所属单位</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">地址</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">星级</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">累计消费</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">关联车辆</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">会员</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">注册时间</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">操作</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500 w-16 whitespace-nowrap">序号</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 whitespace-nowrap">客户姓名</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 whitespace-nowrap">电话</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 whitespace-nowrap">联系人</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 whitespace-nowrap">所属单位</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 whitespace-nowrap">地址</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 whitespace-nowrap">星级</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 whitespace-nowrap">累计消费</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 whitespace-nowrap">关联车辆</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 whitespace-nowrap">会员</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 whitespace-nowrap">注册时间</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 whitespace-nowrap">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {customers?.map((customer: any) => (
+              {customers?.map((customer: any, idx: number) => (
                 <tr key={customer.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-4 text-gray-500 text-sm">{(page - 1) * pageSize + idx + 1}</td>
                   <td className="px-6 py-4 font-medium text-gray-900">
                     {customer.name}
                     {customer.gender && <span className="ml-1 text-xs text-gray-400">{customer.gender}</span>}
@@ -218,7 +234,7 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
               ))}
               {(!customers || customers.length === 0) && (
                 <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={12} className="px-6 py-12 text-center text-gray-400">
                     暂无客户数据
                   </td>
                 </tr>
@@ -227,6 +243,69 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
           </table>
         </div>
       </div>
+
+      {/* 分页 */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-gray-500">
+            共 {total} 条，第 {page}/{totalPages} 页
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              href={(() => {
+                const params = new URLSearchParams();
+                if (searchParams.name) params.set("name", searchParams.name);
+                if (searchParams.phone) params.set("phone", searchParams.phone);
+                if (searchParams.company) params.set("company", searchParams.company);
+                if (searchParams.address) params.set("address", searchParams.address);
+                params.set("page", String(Math.max(1, page - 1)));
+                return `/customers?${params.toString()}`;
+              })()}
+              className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page <= 1 ? "pointer-events-none opacity-50" : ""}`}
+            >
+              上一页
+            </Link>
+            <span className="text-sm text-gray-600 px-2">
+              {page} / {totalPages}
+            </span>
+            <Link
+              href={(() => {
+                const params = new URLSearchParams();
+                if (searchParams.name) params.set("name", searchParams.name);
+                if (searchParams.phone) params.set("phone", searchParams.phone);
+                if (searchParams.company) params.set("company", searchParams.company);
+                if (searchParams.address) params.set("address", searchParams.address);
+                params.set("page", String(Math.min(totalPages, page + 1)));
+                return `/customers?${params.toString()}`;
+              })()}
+              className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page >= totalPages ? "pointer-events-none opacity-50" : ""}`}
+            >
+              下一页
+            </Link>
+            <form method="GET" className="flex items-center gap-2 ml-4">
+              {searchParams.name && <input type="hidden" name="name" value={searchParams.name} />}
+              {searchParams.phone && <input type="hidden" name="phone" value={searchParams.phone} />}
+              {searchParams.company && <input type="hidden" name="company" value={searchParams.company} />}
+              {searchParams.address && <input type="hidden" name="address" value={searchParams.address} />}
+              <span className="text-sm text-gray-500">跳转到</span>
+              <input
+                name="page"
+                type="number"
+                min={1}
+                max={totalPages}
+                defaultValue={page}
+                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                确定
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

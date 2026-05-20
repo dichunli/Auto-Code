@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 
 interface Vehicle {
   id: string;
@@ -200,12 +201,18 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1">车牌号 *</label>
-              <input
-                type="text"
-                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                value={newVehicle.plate_number}
-                onChange={(e) => setNewVehicle({ ...newVehicle, plate_number: e.target.value.toUpperCase() })}
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={newVehicle.plate_number}
+                  onChange={(e) => setNewVehicle({ ...newVehicle, plate_number: e.target.value.toUpperCase() })}
+                />
+                <LicensePlateOcrButton
+                  onRecognize={(plate) => setNewVehicle((prev) => ({ ...prev, plate_number: plate }))}
+                  className="px-2 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50 whitespace-nowrap shrink-0"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">VIN 码</label>

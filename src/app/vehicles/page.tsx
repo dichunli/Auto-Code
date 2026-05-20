@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { SubNav } from "../customers/SubNav";
 import { DeleteButton } from "./DeleteButton";
+import VehicleImportExport from "./VehicleImportExport";
 
 export default async function VehiclesPage(props: { searchParams?: Promise<Record<string, string | undefined>> | Record<string, string | undefined> }) {
   const searchParams = (await Promise.resolve(props.searchParams || {})) as Record<string, string | undefined>;
@@ -27,9 +28,14 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
     companyIds = data?.map((c) => c.id) || [];
   }
 
+  const pageSize = 20;
+  const page = Math.max(1, parseInt(searchParams.page || "1", 10));
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
   let query = supabase
     .from("vehicles")
-    .select("id, plate_number, brand, model, vin, engine_no, color, year, mileage, notes, customer_id, customers(id, name, phone), companies(id, name)")
+    .select("id, plate_number, brand, model, vin, engine_no, chassis_code, color, year, mileage, notes, customer_id, customers(id, name, phone), companies(id, name)", { count: "exact" })
     .order("created_at", { ascending: false });
 
   if (searchParams.plate) query = query.ilike("plate_number", `%${searchParams.plate}%`);
@@ -45,13 +51,17 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
     else query = query.eq("company_id", "no-match");
   }
 
-  const { data: vehicles } = await query;
+  query = query.range(from, to);
+
+  const { data: vehicles, count } = await query;
+  const total = count || 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div>
       <PageHeader
         title="车辆管理"
-        description="管理所有车辆档案"
+        description={`共 ${total} 辆车`}
         action={{ href: "/vehicles/new", label: "新增车辆" }}
       />
 
@@ -119,16 +129,22 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
         </div>
       </form>
 
+      <div className="mb-4 flex justify-end">
+        <VehicleImportExport vehicles={vehicles || []} />
+      </div>
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-500 w-16">序号</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">车牌号</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">VIN码</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">品牌</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">型号</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">VIN码</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">发动机号</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">底盘型号</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">颜色</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">年份</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">里程</th>
@@ -138,17 +154,19 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {vehicles?.map((v: any) => (
+              {vehicles?.map((v: any, idx: number) => (
                 <tr key={v.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-4 text-gray-500 text-sm">{(page - 1) * pageSize + idx + 1}</td>
                   <td className="px-6 py-4 font-medium text-gray-900">
                     <Link href={`/vehicles/${v.id}/edit`} className="hover:text-blue-600 hover:underline">
                       {v.plate_number}
                     </Link>
                   </td>
+                  <td className="px-6 py-4 text-gray-600">{v.vin || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{v.brand || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{v.model || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{v.vin || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{v.engine_no || "-"}</td>
+                  <td className="px-6 py-4 text-gray-600">{v.chassis_code || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{v.color || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{v.year ?? "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{v.mileage != null ? v.mileage.toLocaleString() : "-"}</td>
@@ -170,7 +188,7 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
               ))}
               {(!vehicles || vehicles.length === 0) && (
                 <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={13} className="px-6 py-12 text-center text-gray-400">
                     暂无车辆数据
                   </td>
                 </tr>
@@ -179,6 +197,75 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
           </table>
         </div>
       </div>
+
+      {/* 分页 */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-gray-500">
+            共 {total} 条，第 {page}/{totalPages} 页
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              href={(() => {
+                const params = new URLSearchParams();
+                if (searchParams.plate) params.set("plate", searchParams.plate);
+                if (searchParams.brand) params.set("brand", searchParams.brand);
+                if (searchParams.model) params.set("model", searchParams.model);
+                if (searchParams.vin) params.set("vin", searchParams.vin);
+                if (searchParams.customer) params.set("customer", searchParams.customer);
+                if (searchParams.company) params.set("company", searchParams.company);
+                params.set("page", String(Math.max(1, page - 1)));
+                return `/vehicles?${params.toString()}`;
+              })()}
+              className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page <= 1 ? "pointer-events-none opacity-50" : ""}`}
+            >
+              上一页
+            </Link>
+            <span className="text-sm text-gray-600 px-2">
+              {page} / {totalPages}
+            </span>
+            <Link
+              href={(() => {
+                const params = new URLSearchParams();
+                if (searchParams.plate) params.set("plate", searchParams.plate);
+                if (searchParams.brand) params.set("brand", searchParams.brand);
+                if (searchParams.model) params.set("model", searchParams.model);
+                if (searchParams.vin) params.set("vin", searchParams.vin);
+                if (searchParams.customer) params.set("customer", searchParams.customer);
+                if (searchParams.company) params.set("company", searchParams.company);
+                params.set("page", String(Math.min(totalPages, page + 1)));
+                return `/vehicles?${params.toString()}`;
+              })()}
+              className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page >= totalPages ? "pointer-events-none opacity-50" : ""}`}
+            >
+              下一页
+            </Link>
+            <form method="GET" className="flex items-center gap-2 ml-4">
+              {searchParams.plate && <input type="hidden" name="plate" value={searchParams.plate} />}
+              {searchParams.brand && <input type="hidden" name="brand" value={searchParams.brand} />}
+              {searchParams.model && <input type="hidden" name="model" value={searchParams.model} />}
+              {searchParams.vin && <input type="hidden" name="vin" value={searchParams.vin} />}
+              {searchParams.customer && <input type="hidden" name="customer" value={searchParams.customer} />}
+              {searchParams.company && <input type="hidden" name="company" value={searchParams.company} />}
+              <span className="text-sm text-gray-500">跳转到</span>
+              <input
+                name="page"
+                type="number"
+                min={1}
+                max={totalPages}
+                defaultValue={page}
+                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                确定
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

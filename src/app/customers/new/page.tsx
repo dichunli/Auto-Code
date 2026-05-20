@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { VehicleModelSearch } from "@/components/VehicleModelSearch";
 import { ImageUploader } from "@/components/ImageUploader";
+import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 
 interface VehicleForm {
   id: string;
@@ -564,13 +565,19 @@ export default function NewCustomerPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">车牌号</label>
-                      <input
-                        type="text"
-                        placeholder="如：京A12345"
-                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        value={v.plate_number}
-                        onChange={(e) => updateVehicle(v.id, "plate_number", e.target.value.toUpperCase())}
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="如：京A12345"
+                          className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          value={v.plate_number}
+                          onChange={(e) => updateVehicle(v.id, "plate_number", e.target.value.toUpperCase())}
+                        />
+                        <LicensePlateOcrButton
+                          onRecognize={(plate) => updateVehicle(v.id, "plate_number", plate)}
+                          className="px-2 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50 whitespace-nowrap shrink-0"
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">VIN 码</label>

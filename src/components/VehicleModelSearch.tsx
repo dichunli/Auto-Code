@@ -6,10 +6,12 @@ import { createClient } from "@/lib/supabase/client";
 interface VehicleModelOption {
   id: number;
   品牌: string | null;
+  品牌别名: string | null;
   车系: string | null;
   车型: string | null;
   年款: number | null;
   排量: string | null;
+  销售版本: string | null;
   底盘代号: string | null;
   发动机型号: string | null;
   变速箱类型: string | null;
@@ -28,9 +30,10 @@ interface Props {
   }) => void;
   placeholder?: string;
   className?: string;
+  searchKeyword?: string;
 }
 
-export function VehicleModelSearch({ onSelect, placeholder = "搜索品牌、车系、车型...", className = "" }: Props) {
+export function VehicleModelSearch({ onSelect, placeholder = "搜索品牌、车系、车型...", className = "", searchKeyword }: Props) {
   const supabase = createClient();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<VehicleModelOption[]>([]);
@@ -51,7 +54,7 @@ export function VehicleModelSearch({ onSelect, placeholder = "搜索品牌、车
       }
       const { data } = await supabase
         .from("vehicle_models")
-        .select("id,品牌,车系,车型,年款,排量,底盘代号,发动机型号,变速箱类型,变速箱代号")
+        .select("id,品牌,品牌别名,车系,车型,年款,排量,销售版本,底盘代号,发动机型号,变速箱类型,变速箱代号")
         .ilike("搜索字段", `%${s}%`)
         .limit(10);
       setResults(((data as unknown) as VehicleModelOption[]) || []);
@@ -59,6 +62,12 @@ export function VehicleModelSearch({ onSelect, placeholder = "搜索品牌、车
     }, 300);
     return () => clearTimeout(t);
   }, [query, supabase]);
+
+  useEffect(() => {
+    if (searchKeyword !== undefined && searchKeyword !== query) {
+      setQuery(searchKeyword);
+    }
+  }, [searchKeyword]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -71,16 +80,19 @@ export function VehicleModelSearch({ onSelect, placeholder = "搜索品牌、车
   }, []);
 
   function handleSelect(m: VehicleModelOption) {
+    /* 去重拼接，避免车系和车型相同时重复 */
+    const modelParts = [...new Set([m.车系, m.车型].filter(Boolean))];
+    const queryParts = [...new Set([m.品牌, m.车系, m.车型].filter(Boolean))];
     onSelect({
       id: m.id,
       brand: m.品牌 || "",
-      model: [m.车系, m.车型].filter(Boolean).join(" ") || m.品牌 || "",
+      model: modelParts.join(" ") || m.品牌 || "",
       chassis_code: m.底盘代号 || "",
       engine_no: m.发动机型号 || "",
       transmission_type: m.变速箱类型 || "",
       transmission_code: m.变速箱代号 || "",
     });
-    setQuery([m.品牌, m.车系, m.车型].filter(Boolean).join(" "));
+    setQuery(queryParts.join(" "));
     setOpen(false);
   }
 
@@ -104,10 +116,15 @@ export function VehicleModelSearch({ onSelect, placeholder = "搜索品牌、车
               className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0"
             >
               <div className="font-medium text-gray-900">
-                {m.品牌} {m.车系} {m.车型}
-              </div>
-              <div className="text-xs text-gray-500">
-                {m.年款 ? `${m.年款}款 ` : ""}{m.排量 || ""}
+                {[
+                  m.年款 ? `${m.年款}款` : null,
+                  m.品牌别名 || m.品牌,
+                  m.车型,
+                  m.销售版本,
+                  m.排量,
+                  m.发动机型号,
+                  m.底盘代号,
+                ].filter(Boolean).join(" ")}
               </div>
             </button>
           ))}
