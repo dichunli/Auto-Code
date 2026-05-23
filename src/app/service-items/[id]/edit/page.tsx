@@ -380,7 +380,7 @@ export default function EditServiceItemPage() {
       const [{ data: directMatches }, { data: partMatches }] = await Promise.all([
         supabase
           .from("service_names")
-          .select("id, name, category_id, search_keywords, service_categories(*)")
+          .select("id, name, category_id, search_keywords, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, service_categories(*)")
           .or(`name.ilike.%${trimmed}%,search_keywords.ilike.%${trimmed}%`)
           .limit(20),
         supabase
@@ -402,7 +402,7 @@ export default function EditServiceItemPage() {
         if (linkedIds.length > 0) {
           const { data } = await supabase
             .from("service_names")
-            .select("id, name, category_id, search_keywords, service_categories(*)")
+            .select("id, name, category_id, search_keywords, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, service_categories(*)")
             .in("id", linkedIds)
             .limit(20);
           indirectMatches = (data || []) as ServiceNameResult[];
