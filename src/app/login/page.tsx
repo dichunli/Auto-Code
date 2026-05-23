@@ -73,12 +73,12 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md bg-white rounded-xl border border-gray-200 p-8">
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+      <div className="w-full max-w-md bg-white rounded-xl border border-gray-200 p-6 md:p-8 shadow-sm">
+        <div className="flex items-center justify-center gap-2 mb-6 md:mb-8">
+          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
             <span className="text-white font-bold text-lg">修</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">汽修管家</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">汽修管家</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -89,7 +89,7 @@ export default function LoginPage() {
             <input
               type="text"
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
               value={account}
               onChange={(e) => setAccount(e.target.value)}
               placeholder="请输入手机号或邮箱"
@@ -102,7 +102,7 @@ export default function LoginPage() {
             <input
               type="password"
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="请输入密码"
@@ -110,7 +110,7 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+            <div className="text-sm text-red-600 bg-red-50 px-3 py-2.5 rounded-lg">
               {error}
             </div>
           )}
@@ -118,7 +118,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="w-full py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
             {loading ? "登录中..." : "登录"}
           </button>
