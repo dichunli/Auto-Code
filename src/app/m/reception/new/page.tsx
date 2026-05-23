@@ -9,15 +9,24 @@ import { ImageUploader } from "@/components/ImageUploader";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
+import { StarDisplay, TagDisplay } from "@/components/CustomerSearchDropdown";
 
 /* ============================================================
    接车登记 — 手机端新建工单（一步提交）
    ============================================================ */
 
+interface CustomerTag {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface Customer {
   id: string;
   name: string;
   phone: string;
+  star_level?: number;
+  customer_tags?: { tags: CustomerTag | CustomerTag[] }[] | null;
 }
 
 interface Vehicle {
@@ -127,10 +136,10 @@ export default function MobileReceptionNewPage() {
     vehicleTimeoutRef.current = setTimeout(async () => {
       const { data } = await supabase
         .from("vehicles")
-        .select("id, plate_number, brand, model, vin, customer_id, customers(id, name, phone)")
+        .select("id, plate_number, brand, model, vin, customer_id, customers(id, name, phone, star_level, customer_tags(tags(id, name, color)))")
         .ilike("plate_number", `%${q}%`)
         .limit(8);
-      setVehicleResults((data || []) as Vehicle[]);
+      setVehicleResults((data || []) as unknown as Vehicle[]);
     }, 300);
     return () => {
       if (vehicleTimeoutRef.current) clearTimeout(vehicleTimeoutRef.current);
@@ -178,7 +187,7 @@ export default function MobileReceptionNewPage() {
     customerTimeoutRef.current = setTimeout(async () => {
       const { data } = await supabase
         .from("customers")
-        .select("id, name, phone")
+        .select("id, name, phone, star_level, customer_tags(tags(id, name, color))")
         .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
         .limit(8);
       setCustomerResults(data || []);
@@ -454,7 +463,13 @@ export default function MobileReceptionNewPage() {
                       <div className="font-medium">{v.plate_number}</div>
                       <div className="text-gray-500 text-xs">{v.brand} {v.model} {v.vin && `· VIN:${v.vin}`}</div>
                       {getVehicleCustomer(v as any) ? (
-                        <div className="text-blue-600 text-xs mt-0.5">车主: {getVehicleCustomer(v as any)!.name} · {getVehicleCustomer(v as any)!.phone}</div>
+                        <div className="text-xs mt-0.5">
+                          <div className="flex items-center gap-1 text-blue-600">
+                            <span>车主: {getVehicleCustomer(v as any)!.name} · {getVehicleCustomer(v as any)!.phone}</span>
+                            <StarDisplay level={getVehicleCustomer(v as any)!.star_level} />
+                          </div>
+                          <TagDisplay tags={getVehicleCustomer(v as any)!.customer_tags} />
+                        </div>
                       ) : (
                         <div className="text-orange-500 text-xs mt-0.5">未关联客户</div>
                       )}
@@ -674,8 +689,12 @@ export default function MobileReceptionNewPage() {
                           setShowCustomerSelect(false);
                         }}
                       >
-                        <div className="font-medium">{c.name}</div>
+                        <div className="flex items-center gap-1">
+                          <span className="font-medium">{c.name}</span>
+                          <StarDisplay level={c.star_level} />
+                        </div>
                         <div className="text-gray-500 text-xs">{c.phone}</div>
+                        <TagDisplay tags={c.customer_tags} />
                       </button>
                     ))}
                   </div>
@@ -705,8 +724,12 @@ export default function MobileReceptionNewPage() {
             {selectedCustomer && !isNewCustomer && (
               <div className="flex items-start justify-between bg-blue-50 rounded-lg px-3 py-2">
                 <div>
-                  <div className="text-sm font-medium">{selectedCustomer.name}</div>
+                  <div className="flex items-center gap-1">
+                    <div className="text-sm font-medium">{selectedCustomer.name}</div>
+                    <StarDisplay level={selectedCustomer.star_level} />
+                  </div>
                   <div className="text-xs text-gray-500">{selectedCustomer.phone}</div>
+                  <TagDisplay tags={selectedCustomer.customer_tags} />
                 </div>
                 <div className="flex items-center gap-2">
                   <button

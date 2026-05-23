@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
-import { CustomerSearchDropdown, Customer } from "@/components/CustomerSearchDropdown";
+import { CustomerSearchDropdown, Customer, StarDisplay, TagDisplay } from "@/components/CustomerSearchDropdown";
 
 export default function NewWorkOrderPage() {
   const router = useRouter();
@@ -76,7 +76,7 @@ export default function NewWorkOrderPage() {
       }
       const { data } = await supabase
         .from("vehicles")
-        .select("id, plate_number, brand, model, vin, mileage, customer_id, customers(id, name, phone, company)")
+        .select("id, plate_number, brand, model, vin, mileage, customer_id, customers(id, name, phone, company, star_level, customer_tags(tags(id, name, color)))")
         .ilike("plate_number", `%${query}%`)
         .limit(10);
       setVehicleResults(data || []);
@@ -362,12 +362,18 @@ export default function NewWorkOrderPage() {
                         <div className="text-sm font-medium text-gray-900">
                           {v.plate_number} {v.brand && v.model ? `(${v.brand} ${v.model})` : ""}
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {(() => {
-                            const c = Array.isArray(v.customers) ? v.customers[0] : v.customers;
-                            return `车主：${c?.name || "-"} ${c?.phone || ""}`;
-                          })()}
-                        </div>
+                        {(() => {
+                          const c = Array.isArray(v.customers) ? v.customers[0] : v.customers;
+                          return (
+                            <div className="text-xs text-gray-500">
+                              <div className="flex items-center gap-1">
+                                <span>车主：{c?.name || "-"} {c?.phone || ""}</span>
+                                <StarDisplay level={c?.star_level} />
+                              </div>
+                              <TagDisplay tags={c?.customer_tags} />
+                            </div>
+                          );
+                        })()}
                       </button>
                     ))}
                   </div>
@@ -410,9 +416,12 @@ export default function NewWorkOrderPage() {
                   <div className="text-xs text-gray-500">VIN：{selectedVehicle.vin}</div>
                 )}
                 {customerInfo && (
-                  <div className="text-xs text-gray-500">
-                    车主：{customerInfo.name} {customerInfo.phone}
-                    {customerInfo.company ? ` · ${customerInfo.company}` : ""}
+                  <div className="text-xs text-gray-500 space-y-1">
+                    <div className="flex items-center gap-1">
+                      <span>车主：{customerInfo.name} {customerInfo.phone}</span>
+                      <StarDisplay level={customerInfo.star_level} />
+                    </div>
+                    <TagDisplay tags={customerInfo.customer_tags} />
                   </div>
                 )}
               </div>
@@ -526,8 +535,12 @@ export default function NewWorkOrderPage() {
                 ) : selectedCustomer ? (
                   <div className="flex items-center justify-between bg-green-50 px-4 py-3 rounded-lg">
                     <div>
-                      <span className="font-medium text-gray-900">{selectedCustomer.name}</span>
-                      <span className="text-sm text-gray-500 ml-2">{selectedCustomer.phone}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900">{selectedCustomer.name}</span>
+                        <StarDisplay level={selectedCustomer.star_level} />
+                      </div>
+                      <div className="text-sm text-gray-500">{selectedCustomer.phone}</div>
+                      <TagDisplay tags={selectedCustomer.customer_tags} />
                     </div>
                     <button
                       type="button"
@@ -535,7 +548,7 @@ export default function NewWorkOrderPage() {
                         setSelectedCustomer(null);
                         setIsNewCustomer(false);
                       }}
-                      className="text-sm text-blue-600 hover:text-blue-700"
+                      className="text-sm text-blue-600 hover:text-blue-700 shrink-0 ml-2"
                     >
                       更换
                     </button>
