@@ -430,6 +430,7 @@ export default function MobileReceptionNewPage() {
               <div className="flex gap-2">
                 <input
                   type="text"
+                  lang="en"
                   autoCapitalize="characters"
                   value={vehicleQuery}
                   onChange={(e) => setVehicleQuery(e.target.value.toUpperCase())}
