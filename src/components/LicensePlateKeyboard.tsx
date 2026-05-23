@@ -8,6 +8,7 @@ interface Props {
   placeholder?: string;
   className?: string;
   maxLength?: number;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
 /* 是否为移动设备 */
@@ -38,6 +39,7 @@ export default function LicensePlateKeyboard({
   placeholder = "请输入车牌号",
   className = "",
   maxLength = 8,
+  onKeyDown,
 }: Props) {
   const displayValue = value.toUpperCase();
 
@@ -48,6 +50,7 @@ export default function LicensePlateKeyboard({
         type="text"
         value={displayValue}
         onChange={(e) => onChange(e.target.value.toUpperCase())}
+        onKeyDown={onKeyDown}
         placeholder={placeholder}
         maxLength={maxLength}
         className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${className}`}

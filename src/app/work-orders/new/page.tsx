@@ -20,6 +20,7 @@ export default function NewWorkOrderPage() {
   const [vehicleResults, setVehicleResults] = useState<any[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<any | null>(null);
   const [showVehicleResults, setShowVehicleResults] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   // 车辆关联工单统计
   const [vehicleOrderStats, setVehicleOrderStats] = useState<{
@@ -88,6 +89,11 @@ export default function NewWorkOrderPage() {
     return () => clearTimeout(timer);
   }, [vehicleQuery, searchVehicles]);
 
+  // 搜索结果变化时重置高亮
+  useEffect(() => {
+    setHighlightedIndex(vehicleResults.length > 0 ? 0 : -1);
+  }, [vehicleResults]);
+
   // 选中车辆后加载关联工单统计
   useEffect(() => {
     if (!selectedVehicle) {
@@ -136,6 +142,30 @@ export default function NewWorkOrderPage() {
     setSelectedCustomer(null);
     setIsNewCustomer(false);
     setNewCustomer({ name: "", phone: "", company: "" });
+  }
+
+  /* 键盘上下选择车辆 */
+  function handleVehicleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!showVehicleResults) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex((prev) =>
+        prev < vehicleResults.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : prev));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (vehicleResults.length > 0 && highlightedIndex >= 0) {
+        handleSelectVehicle(vehicleResults[highlightedIndex]);
+      } else if (vehicleResults.length === 0 && vehicleQuery.trim()) {
+        handleStartNewVehicle();
+      }
+    } else if (e.key === "Escape") {
+      setShowVehicleResults(false);
+    }
   }
 
   /* 检查是否有未完成工单 */
@@ -313,17 +343,21 @@ export default function NewWorkOrderPage() {
                     setVehicleQuery(val);
                     setShowVehicleResults(true);
                   }}
+                  onKeyDown={handleVehicleKeyDown}
                   placeholder="输入车牌号搜索，如：京A12345"
                   className="w-full"
                 />
                 {showVehicleResults && vehicleResults.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {vehicleResults.map((v) => (
+                    {vehicleResults.map((v, idx) => (
                       <button
                         key={v.id}
                         type="button"
                         onClick={() => handleSelectVehicle(v)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                        onMouseEnter={() => setHighlightedIndex(idx)}
+                        className={`w-full text-left px-4 py-2.5 border-b border-gray-100 last:border-0 ${
+                          idx === highlightedIndex ? "bg-blue-50" : "hover:bg-gray-50"
+                        }`}
                       >
                         <div className="text-sm font-medium text-gray-900">
                           {v.plate_number} {v.brand && v.model ? `(${v.brand} ${v.model})` : ""}
