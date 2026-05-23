@@ -38,7 +38,19 @@ const navItems: NavItem[] = [
   ] },
   { href: "/vehicle-models", label: "车型库" },
   { href: "/appointments", label: "客户预约" },
-  { href: "/inventory", label: "配件库存" },
+  {
+    href: "/inventory",
+    label: "配件库存",
+    children: [
+      { href: "/inventory", label: "配件列表" },
+      { href: "/part-categories", label: "配件分类" },
+      { href: "/part-names", label: "名称库管理" },
+      { href: "/part-brands", label: "品牌管理" },
+      { href: "/part-specifications", label: "规格管理" },
+      { href: "/inventory/warehouses", label: "仓库管理" },
+      { href: "/inventory/batches", label: "批次管理" },
+    ],
+  },
   {
     href: "/procurement",
     label: "采购管理",
