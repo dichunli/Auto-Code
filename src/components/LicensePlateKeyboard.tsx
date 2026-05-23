@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 interface Props {
   value: string;
@@ -257,24 +257,17 @@ function FullKeyboard({
   maxLength: number;
 }) {
   const [show, setShow] = useState(false);
-  const [mode, setMode] = useState<"province" | "letter" | "mixed" | "energy">("province");
   const inputRef = useRef<HTMLInputElement>(null);
   const keyboardRef = useRef<HTMLDivElement>(null);
 
-  /* 根据当前输入长度决定键盘模式 */
-  useEffect(() => {
-    if (!show) return;
+  /* 根据当前输入长度决定键盘模式（派生状态） */
+  const mode = useMemo(() => {
     const len = value.length;
-    if (len === 0) {
-      setMode("province");
-    } else if (len === 1) {
-      setMode("letter");
-    } else if (len === 2 && (value[2 - 1] === "D" || value[2 - 1] === "F")) {
-      setMode("energy");
-    } else {
-      setMode("mixed");
-    }
-  }, [value, show]);
+    if (len === 0) return "province";
+    if (len === 1) return "letter";
+    if (len === 2 && (value[1] === "D" || value[1] === "F")) return "energy";
+    return "mixed";
+  }, [value]);
 
   /* 点击外部关闭键盘 */
   useEffect(() => {
@@ -302,14 +295,6 @@ function FullKeyboard({
   /* 点击输入框打开键盘 */
   function handleInputClick() {
     setShow(true);
-    const len = value.length;
-    if (len === 0) {
-      setMode("province");
-    } else if (len === 1) {
-      setMode("letter");
-    } else {
-      setMode("mixed");
-    }
   }
 
   /* 追加字符 */
@@ -332,7 +317,6 @@ function FullKeyboard({
   /* 清空 */
   const handleClear = useCallback(() => {
     onChange("");
-    setMode("province");
   }, [onChange]);
 
   /* 完成 */
@@ -341,7 +325,7 @@ function FullKeyboard({
   }, []);
 
   /* ========== 省份面板 ========== */
-  function ProvincePanel() {
+  function renderProvincePanel() {
     return (
       <div className="grid grid-cols-8 gap-1.5">
         {PROVINCES.map((p) => (
@@ -363,7 +347,7 @@ function FullKeyboard({
   }
 
   /* ========== 字母面板 ========== */
-  function LetterPanel() {
+  function renderLetterPanel() {
     return (
       <div className="grid grid-cols-6 gap-1.5">
         {LETTERS.map((c) => (
@@ -381,7 +365,7 @@ function FullKeyboard({
   }
 
   /* ========== 混合面板（字母+数字） ========== */
-  function MixedPanel() {
+  function renderMixedPanel() {
     return (
       <div className="space-y-1.5">
         {/* 数字行 */}
@@ -415,7 +399,7 @@ function FullKeyboard({
   }
 
   /* ========== 新能源面板（D/F + 数字） ========== */
-  function EnergyPanel() {
+  function renderEnergyPanel() {
     return (
       <div className="space-y-1.5">
         <div className="grid grid-cols-6 gap-1.5">
@@ -510,10 +494,10 @@ function FullKeyboard({
 
           {/* 键盘面板 */}
           <div className="touch-none select-none">
-            {mode === "province" && <ProvincePanel />}
-            {mode === "letter" && <LetterPanel />}
-            {mode === "energy" && <EnergyPanel />}
-            {mode === "mixed" && <MixedPanel />}
+            {mode === "province" && renderProvincePanel()}
+            {mode === "letter" && renderLetterPanel()}
+            {mode === "energy" && renderEnergyPanel()}
+            {mode === "mixed" && renderMixedPanel()}
           </div>
 
           {/* 底部操作栏 */}

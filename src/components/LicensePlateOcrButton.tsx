@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useRef, ReactNode } from "react";
+import dynamic from "next/dynamic";
 import { recognizeLicensePlate } from "@/lib/baidu-ocr/client";
+
+const LicensePlateCameraModal = dynamic(
+  () => import("./LicensePlateCameraModal"),
+  { ssr: false }
+);
 
 interface Props {
   onRecognize: (plateNumber: string) => void;
@@ -17,8 +23,24 @@ export default function LicensePlateOcrButton({
   loadingText = "识别中...",
 }: Props) {
   const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /* 判断是否移动端 */
+  const isMobile =
+    typeof navigator !== "undefined" &&
+    /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  function handleClick() {
+    if (isMobile) {
+      setOpen(true);
+    } else {
+      /* PC 端直接调文件选择 */
+      fileInputRef.current?.click();
+    }
+  }
+
+  /* PC 端文件选择后识别 */
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -57,7 +79,7 @@ export default function LicensePlateOcrButton({
     <>
       <button
         type="button"
-        onClick={() => fileInputRef.current?.click()}
+        onClick={handleClick}
         disabled={loading}
         className={
           className ||
@@ -66,14 +88,26 @@ export default function LicensePlateOcrButton({
       >
         {loading ? loadingText : buttonText}
       </button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={handleFileChange}
-        className="hidden"
-      />
+
+      {/* 移动端相机弹窗 */}
+      {isMobile && (
+        <LicensePlateCameraModal
+          open={open}
+          onClose={() => setOpen(false)}
+          onRecognize={onRecognize}
+        />
+      )}
+
+      {/* PC 端兜底 file input */}
+      {!isMobile && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+      )}
     </>
   );
 }
