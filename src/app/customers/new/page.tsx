@@ -58,6 +58,8 @@ export default function NewCustomerPage() {
 
   const [phoneSearchResult, setPhoneSearchResult] = useState<{ name: string; phone: string } | null>(null);
 
+  const [hasPhone, setHasPhone] = useState(true);
+
   const [vehicles, setVehicles] = useState<VehicleForm[]>([]);
 
   function addVehicle() {
@@ -179,22 +181,28 @@ export default function NewCustomerPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!customer.name.trim() || !customer.phone.trim()) {
-      alert("请填写客户姓名和电话");
+    if (!customer.name.trim()) {
+      alert("请填写客户姓名");
+      return;
+    }
+    if (hasPhone && !customer.phone.trim()) {
+      alert("请填写手机号");
       return;
     }
     setLoading(true);
 
     // 手机号唯一性校验
-    const { data: existingPhone } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("phone", customer.phone.trim())
-      .maybeSingle();
-    if (existingPhone) {
-      alert("该手机号已存在，请更换");
-      setLoading(false);
-      return;
+    if (hasPhone && customer.phone.trim()) {
+      const { data: existingPhone } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("phone", customer.phone.trim())
+        .maybeSingle();
+      if (existingPhone) {
+        alert("该手机号已存在，请更换");
+        setLoading(false);
+        return;
+      }
     }
 
     try {
@@ -202,7 +210,7 @@ export default function NewCustomerPage() {
         .from("customers")
         .insert({
           name: customer.name.trim(),
-          phone: customer.phone.trim(),
+          phone: hasPhone ? customer.phone.trim() : null,
           gender: customer.gender || null,
           address: customer.address.trim() || null,
           company: customer.company.trim() || null,
@@ -304,23 +312,41 @@ export default function NewCustomerPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">联系电话 *</label>
-                <input
-                  required
-                  type="tel"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={customer.phone}
-                  onChange={(e) => {
-                    setCustomer({ ...customer, phone: e.target.value });
-                    if (!e.target.value.trim()) setPhoneSearchResult(null);
-                  }}
-                  onBlur={(e) => searchMainPhone(e.target.value)}
-                />
-                {phoneSearchResult && (
-                  <div className="mt-1 p-2 bg-blue-50 border border-blue-200 rounded text-xs flex items-center justify-between">
-                    <span className="text-blue-800">系统中已有该手机号的联系人：{phoneSearchResult.name}</span>
-                    <button type="button" onClick={applyPhoneSearch} className="text-blue-700 font-medium hover:text-blue-900">使用该姓名</button>
-                  </div>
+                <div className="flex items-center gap-2 mb-1">
+                  <input
+                    type="checkbox"
+                    id="hasPhone"
+                    checked={hasPhone}
+                    onChange={(e) => {
+                      setHasPhone(e.target.checked);
+                      if (!e.target.checked) {
+                        setCustomer({ ...customer, phone: "" });
+                        setPhoneSearchResult(null);
+                      }
+                    }}
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <label htmlFor="hasPhone" className="text-sm text-gray-700">有手机号</label>
+                </div>
+                {hasPhone && (
+                  <>
+                    <input
+                      type="tel"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={customer.phone}
+                      onChange={(e) => {
+                        setCustomer({ ...customer, phone: e.target.value });
+                        if (!e.target.value.trim()) setPhoneSearchResult(null);
+                      }}
+                      onBlur={(e) => searchMainPhone(e.target.value)}
+                    />
+                    {phoneSearchResult && (
+                      <div className="mt-1 p-2 bg-blue-50 border border-blue-200 rounded text-xs flex items-center justify-between">
+                        <span className="text-blue-800">系统中已有该手机号的联系人：{phoneSearchResult.name}</span>
+                        <button type="button" onClick={applyPhoneSearch} className="text-blue-700 font-medium hover:text-blue-900">使用该姓名</button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
               <div className="sm:col-span-3">

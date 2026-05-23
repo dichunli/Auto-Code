@@ -193,26 +193,24 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         }
 
         const compressed = await compressImage(file, 150);
-        const ext = file.name.split(".").pop() || "jpg";
-        const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+        const formData = new FormData();
+        formData.append("file", compressed, file.name);
 
-        const { error: uploadError } = await supabase.storage.from("work-order-media").upload(fileName, compressed, {
-          contentType: "image/jpeg",
-          upsert: false,
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
         });
-        if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage.from("work-order-media").getPublicUrl(fileName);
-        const path = urlData?.publicUrl || fileName;
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || "上传失败");
 
         const { error: dbError } = await supabase.from("work_order_item_part_media").insert({
           work_order_item_part_id: parts[0].id,
           media_type: "image",
-          storage_path: path,
+          storage_path: result.path,
         });
         if (dbError) throw dbError;
 
-        setImages((prev) => [...prev, path]);
+        setImages((prev) => [...prev, result.path]);
       } catch (err: any) {
         alert("图片上传失败: " + err.message);
       } finally {
@@ -469,7 +467,6 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 multiple
                 className="hidden"
                 onChange={handleFileChange}

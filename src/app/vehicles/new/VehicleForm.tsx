@@ -181,13 +181,13 @@ export default function VehicleForm() {
     const supabase = createClient();
 
     if (ownerMode === "new") {
-      if (!newCustomer.name.trim() || !newCustomer.phone.trim()) {
-        alert("请填写新车主的姓名和电话");
+      if (!newCustomer.name.trim()) {
+        alert("请填写新车主的姓名");
         return;
       }
       const { data: cust, error: custErr } = await supabase
         .from("customers")
-        .insert({ name: newCustomer.name.trim(), phone: newCustomer.phone.trim(), gender: newCustomer.gender || null })
+        .insert({ name: newCustomer.name.trim(), phone: newCustomer.phone.trim() || null, gender: newCustomer.gender || null })
         .select("id")
         .single();
       if (custErr || !cust) {

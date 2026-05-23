@@ -18,10 +18,44 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
   const [dashboardPaths, setDashboardPaths] = useState<string[]>([]);
   const [mileage, setMileage] = useState("");
   const [notes, setNotes] = useState("");
+  const [inspectorName, setInspectorName] = useState("");
 
   useEffect(() => {
     params.then((p) => setOrderId(p.id));
   }, [params]);
+
+  // 加载工单当前里程
+  useEffect(() => {
+    if (!orderId) return;
+    supabase
+      .from("work_orders")
+      .select("mileage_in")
+      .eq("id", orderId)
+      .single()
+      .then(({ data }) => {
+        if (data?.mileage_in != null) {
+          setMileage(String(data.mileage_in));
+        }
+      });
+  }, [orderId, supabase]);
+
+  // 获取当前用户信息作为检查人
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", data.user.id)
+          .single()
+          .then(({ data: profile }) => {
+            if (profile?.full_name) {
+              setInspectorName(profile.full_name);
+            }
+          });
+      }
+    });
+  }, [supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,12 +63,20 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
     setLoading(true);
 
     try {
+      /* 统一更新工单里程（唯一的里程数据源） */
+      if (mileage) {
+        const { error: orderError } = await supabase
+          .from("work_orders")
+          .update({ mileage_in: parseFloat(mileage) })
+          .eq("id", orderId);
+        if (orderError) throw orderError;
+      }
+
       const { data: inspection, error: inspectionError } = await supabase
         .from("work_order_inspections")
         .insert({
           work_order_id: orderId,
           inspection_type: "reception",
-          inspection_mileage: mileage ? parseFloat(mileage) : null,
           notes: notes || null,
         })
         .select("id")
@@ -83,13 +125,23 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
       <PageHeader title="接车检查" />
       <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6 max-w-4xl space-y-8">
         <section>
-          <h2 className="text-base font-semibold text-gray-900 mb-4">环车检查视频</h2>
-          <VideoUploader onUpload={setVideoPaths} maxVideos={3} />
-        </section>
-
-        <section className="border-t border-gray-100 pt-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">外观照片</h2>
-          <ImageUploader onUpload={setExteriorPaths} maxImages={8} />
+          <h2 className="text-base font-semibold text-gray-900 mb-4">当前里程</h2>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5 w-1/2 sm:w-48">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={mileage}
+                onChange={(e) => setMileage(e.target.value.replace(/[^0-9.]/g, ""))}
+                placeholder="请输入里程"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-sm text-gray-500 shrink-0">km</span>
+            </div>
+            <div className="ml-auto text-sm text-gray-500">
+              检查人：<span className="text-gray-900">{inspectorName || "-"}</span>
+            </div>
+          </div>
         </section>
 
         <section className="border-t border-gray-100 pt-6">
@@ -98,14 +150,13 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
         </section>
 
         <section className="border-t border-gray-100 pt-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">当前里程</h2>
-          <input
-            type="number"
-            value={mileage}
-            onChange={(e) => setMileage(e.target.value)}
-            placeholder="请输入当前里程（km）"
-            className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <h2 className="text-base font-semibold text-gray-900 mb-4">外观照片</h2>
+          <ImageUploader onUpload={setExteriorPaths} maxImages={8} />
+        </section>
+
+        <section className="border-t border-gray-100 pt-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">环车检查视频</h2>
+          <VideoUploader onUpload={setVideoPaths} maxVideos={3} />
         </section>
 
         <section className="border-t border-gray-100 pt-6">

@@ -7,6 +7,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
 import WorkOrderSearch from "@/components/WorkOrderSearch";
+import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
 
 interface Order {
   id: string;
@@ -15,6 +16,7 @@ interface Order {
   boardStage: string;
   total_cost: number;
   created_at: string;
+  order_type: string;
   vehicles: { plate_number: string; brand: string; model: string; vin: string } | null;
   customers: { name: string; phone: string; company: string } | null;
 }
@@ -76,10 +78,14 @@ function normalizeOrder(raw: any): Order {
     boardStage: computeBoardStage(raw),
     total_cost: raw.total_cost,
     created_at: raw.created_at,
+    order_type: raw.order_type || "normal",
     vehicles: Array.isArray(v) ? v[0] || null : v || null,
     customers: Array.isArray(c) ? c[0] || null : c || null,
   };
 }
+
+const ACTIVE_STATUSES = ["received", "pending_diagnosis", "pending_repair", "repairing", "pending_quality_check", "pending_close", "pending_settlement"];
+const HISTORY_STATUSES = ["settled", "delivered"];
 
 const statusFilters = [
   { value: "", label: "全部" },
@@ -101,6 +107,13 @@ const typeLabelMap: Record<string, string> = {
   cancelled: "作废工单",
 };
 
+const SETTLEMENT_OPTIONS = [
+  { value: "", label: "全部" },
+  { value: "unsettled", label: "未结算" },
+  { value: "pending", label: "待结算" },
+  { value: "settled", label: "已结算" },
+];
+
 export default function WorkOrdersContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -109,12 +122,14 @@ export default function WorkOrdersContent() {
   const status = searchParams.get("status") || "";
   const keyword = searchParams.get("keyword") || "";
   const type = searchParams.get("type") || "";
+  const settlement = searchParams.get("settlement") || "";
   const tabsParam = searchParams.get("tabs") || "";
   const tabs = tabsParam.split(",").filter(Boolean);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [queryError, setQueryError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -122,7 +137,7 @@ export default function WorkOrdersContent() {
       const { data, error } = await supabase
         .from("work_orders")
         .select(`
-          id, order_no, status, total_cost, created_at,
+          id, order_no, status, order_type, total_cost, created_at,
           vehicles(plate_number, brand, model, vin),
           customers(name, phone, company),
           work_order_items(id, status, mechanic_id, item_type)
@@ -136,9 +151,31 @@ export default function WorkOrdersContent() {
         setQueryError(null);
         let result = (data || []).map(normalizeOrder);
 
-        // 按看板阶段筛选（URL 中的 status 参数实际表示 boardStage）
-        if (status) {
+        // 按工单类型筛选（优先）
+        if (type) {
+          result = result.filter((o) => o.order_type === type);
+        }
+
+        // 按状态筛选
+        if (status === "active" && !type) {
+          result = result.filter((o) => !HISTORY_STATUSES.includes(o.status) && o.order_type === "normal");
+        } else if (status === "history" && !type) {
+          result = result.filter((o) => HISTORY_STATUSES.includes(o.status));
+        } else if (status === "all" && !type) {
+          // 显示全部，不过滤 active/history
+        } else if (status && !type) {
           result = result.filter((o) => o.boardStage === status);
+        }
+
+        // 按结算状态筛选
+        if (settlement && !type) {
+          if (settlement === "unsettled") {
+            result = result.filter((o) => !["pending_settlement", "settled", "delivered"].includes(o.status));
+          } else if (settlement === "pending") {
+            result = result.filter((o) => o.status === "pending_settlement");
+          } else if (settlement === "settled") {
+            result = result.filter((o) => ["settled", "delivered"].includes(o.status));
+          }
         }
 
         if (keyword?.trim()) {
@@ -169,12 +206,14 @@ export default function WorkOrdersContent() {
       setLoading(false);
     }
     load();
-  }, [status, keyword, type, supabase]);
+  }, [status, keyword, type, settlement, supabase, refreshKey]);
 
   function buildLink(params: Record<string, string>) {
     const sp = new URLSearchParams();
     if (type) sp.set("type", type);
     if (tabsParam) sp.set("tabs", tabsParam);
+    if (settlement) sp.set("settlement", settlement);
+    if (keyword) sp.set("keyword", keyword);
     Object.entries(params).forEach(([k, v]) => {
       if (v) sp.set(k, v);
       else sp.delete(k);
@@ -190,54 +229,106 @@ export default function WorkOrdersContent() {
 
   const pageTitle = type ? typeLabelMap[type] || "工单管理" : "工单管理";
 
+  async function handleDelete(orderId: string, orderNo: string) {
+    if (!confirm(`确定删除工单「${orderNo}」吗？此操作不可恢复。`)) return;
+    const { error } = await supabase.from("work_orders").delete().eq("id", orderId);
+    if (error) {
+      alert("删除失败: " + error.message);
+      return;
+    }
+    setOrders((prev) => prev.filter((o) => o.id !== orderId));
+  }
+
   return (
     <div>
       <WorkOrderTabBar tabs={tabsParam} />
 
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-900">{pageTitle}</h1>
-        <Link
-          href="/work-orders/new"
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-        >
-          新建工单
-        </Link>
+        {(!type && status !== "history") && (
+          <Link
+            href="/work-orders/new"
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+          >
+            新建工单
+          </Link>
+        )}
       </div>
 
-      <div className="flex items-center gap-3 mb-4 overflow-x-auto pb-1">
-        <div className="flex gap-2">
-          {statusFilters.map((filter) => (
-            <Link
-              key={filter.value}
-              href={buildLink({ status: filter.value })}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                (status || "") === filter.value
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-              }`}
+      {!type && (
+        <div className="flex items-center gap-3 mb-4 overflow-x-auto pb-1">
+          <div className="flex gap-2">
+            {statusFilters.map((filter) => (
+              <Link
+                key={filter.value}
+                href={buildLink({ status: filter.value })}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                  (status || "") === filter.value
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                {filter.label}
+              </Link>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-sm text-gray-500 whitespace-nowrap">结算状态</span>
+            <select
+              value={settlement}
+              onChange={(e) => {
+                const sp = new URLSearchParams();
+                if (type) sp.set("type", type);
+                if (tabsParam) sp.set("tabs", tabsParam);
+                if (status) sp.set("status", status);
+                if (keyword) sp.set("keyword", keyword);
+                if (e.target.value) sp.set("settlement", e.target.value);
+                const qs = sp.toString();
+                router.push(qs ? `/work-orders?${qs}` : "/work-orders");
+              }}
+              className="px-2 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {filter.label}
-            </Link>
-          ))}
+              {SETTLEMENT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1" />
+          <WorkOrderSearch />
         </div>
-        <div className="flex-1" />
-        <WorkOrderSearch />
-      </div>
+      )}
 
-      <div className="flex items-center gap-2 mb-6">
-        <Link
-          href={buildLink({})}
-          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200"
-        >
-          列表视图
-        </Link>
-        <Link
-          href="/work-orders/board"
-          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-        >
-          维修看板
-        </Link>
-      </div>
+      {type && (
+        <div className="flex items-center gap-3 mb-4 overflow-x-auto pb-1">
+          <div className="flex gap-2">
+            <Link
+              href={buildLink({ type: "" })}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+            >
+              ← 返回全部工单
+            </Link>
+          </div>
+          <div className="flex-1" />
+          <WorkOrderSearch />
+        </div>
+      )}
+
+      {!type && (
+        <div className="flex items-center gap-2 mb-6">
+          <Link
+            href={buildLink({})}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200"
+          >
+            列表视图
+          </Link>
+          <Link
+            href="/work-orders/board"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+          >
+            维修看板
+          </Link>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
@@ -251,7 +342,7 @@ export default function WorkOrdersContent() {
                 <th className="px-6 py-3 text-left font-medium text-gray-500">客户名称</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">电话</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">单位</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">状态</th>
+                {!type && <th className="px-6 py-3 text-left font-medium text-gray-500">状态</th>}
                 <th className="px-6 py-3 text-left font-medium text-gray-500">金额</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">创建时间</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">操作</th>
@@ -274,44 +365,62 @@ export default function WorkOrdersContent() {
                   <td className="px-6 py-4 text-gray-900">{order.customers?.name || "-"}</td>
                   <td className="px-6 py-4 text-gray-500">{order.customers?.phone || "-"}</td>
                   <td className="px-6 py-4 text-gray-500">{order.customers?.company || "-"}</td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        STAGE_COLORS[order.boardStage] || "bg-gray-100 text-gray-800"
-                      }`}
-                    >
-                      {STAGE_LABELS[order.boardStage] || order.boardStage}
-                    </span>
-                  </td>
+                  {!type && (
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          STAGE_COLORS[order.boardStage] || "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {STAGE_LABELS[order.boardStage] || order.boardStage}
+                      </span>
+                    </td>
+                  )}
                   <td className="px-6 py-4 text-gray-900">{formatCurrency(order.total_cost)}</td>
                   <td className="px-6 py-4 text-gray-500">{formatDate(order.created_at)}</td>
                   <td className="px-6 py-4">
-                    <button
-                      onClick={() => openOrderTab(order.id)}
-                      className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                      查看详情
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => openOrderTab(order.id)}
+                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        查看详情
+                      </button>
+                      <WorkOrderActionButtons
+                        workOrderId={order.id}
+                        orderNo={order.order_no}
+                        currentType={order.order_type}
+                        onSuccess={() => setRefreshKey((k) => k + 1)}
+                      />
+                      {type === "cancelled" && (
+                        <button
+                          onClick={() => handleDelete(order.id, order.order_no)}
+                          className="text-sm text-red-600 hover:text-red-700 font-medium"
+                        >
+                          删除
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
               {queryError && (
                 <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center text-red-500">
+                  <td colSpan={type ? 10 : 11} className="px-6 py-12 text-center text-red-500">
                     查询失败: {queryError}
                   </td>
                 </tr>
               )}
               {(!queryError && (!orders || orders.length === 0) && !loading) && (
                 <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
-                    暂无工单数据
+                  <td colSpan={type ? 10 : 11} className="px-6 py-12 text-center text-gray-400">
+                    {type ? `暂无${typeLabelMap[type] || ""}数据` : "暂无工单数据"}
                   </td>
                 </tr>
               )}
               {loading && (
                 <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={type ? 10 : 11} className="px-6 py-12 text-center text-gray-400">
                     加载中...
                   </td>
                 </tr>

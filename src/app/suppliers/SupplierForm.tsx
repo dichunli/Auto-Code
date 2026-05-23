@@ -253,15 +253,17 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
 
   async function uploadWechatGroupQr(file: File) {
     try {
-      const ext = file.name.split(".").pop() || "jpg";
-      const fileName = `supplier_group_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("supplier-media").upload(fileName, file, {
-        contentType: file.type,
-        upsert: false,
+      const formData = new FormData();
+      formData.append("file", file, file.name);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
       });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from("supplier-media").getPublicUrl(fileName);
-      setWechatGroupQr(urlData?.publicUrl || fileName);
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "上传失败");
+
+      setWechatGroupQr(result.path);
     } catch (err: any) {
       alert("上传失败: " + err.message);
     }

@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 
+interface PaymentMethod {
+  code: string;
+  name: string;
+}
+
 interface Props {
   orderId: string;
   advancePayment: number;
@@ -12,39 +17,50 @@ interface Props {
   records?: any[];
 }
 
-const METHOD_OPTIONS = [
-  { value: "cash", label: "现金" },
-  { value: "wechat", label: "微信" },
-  { value: "alipay", label: "支付宝" },
-  { value: "bank_transfer", label: "银行转账" },
-];
-
-const METHOD_LABEL: Record<string, string> = {
-  cash: "现金",
-  wechat: "微信",
-  alipay: "支付宝",
-  bank_transfer: "银行转账",
-};
-
 export default function AdvancePaymentDropdown({ orderId, advancePayment, totalCost, records = [] }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState("cash");
+  const [method, setMethod] = useState("");
+  const [methods, setMethods] = useState<PaymentMethod[]>([]);
+  const [collectorName, setCollectorName] = useState("");
   const [loading, setLoading] = useState(false);
   const [refundingId, setRefundingId] = useState<string | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
-  const [refundMethod, setRefundMethod] = useState("cash");
+  const [refundMethod, setRefundMethod] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
-  const REFUND_METHOD_OPTIONS = [
-    { value: "cash", label: "现金" },
-    { value: "wechat", label: "微信" },
-    { value: "alipay", label: "支付宝" },
-    { value: "bank_transfer", label: "银行转账" },
-  ];
+  /* 加载收款方式和当前操作员 */
+  useEffect(() => {
+    async function init() {
+      const { data: mData } = await supabase
+        .from("payment_methods")
+        .select("code, name")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+      const loadedMethods = (mData || []) as PaymentMethod[];
+      setMethods(loadedMethods);
+      if (loadedMethods.length > 0 && !method) {
+        setMethod(loadedMethods[0].code);
+      }
+      if (loadedMethods.length > 0 && !refundMethod) {
+        setRefundMethod(loadedMethods[0].code);
+      }
+
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", userData.user.id)
+          .single();
+        setCollectorName(profile?.full_name || "");
+      }
+    }
+    init();
+  }, [supabase]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -56,6 +72,8 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  const methodLabel = (code: string) => methods.find((m) => m.code === code)?.name || code;
 
   async function handleRefund(record: any) {
     const val = parseFloat(refundAmount);
@@ -101,7 +119,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
 
     setRefundingId(null);
     setRefundAmount("");
-    setRefundMethod("cash");
+    if (methods.length > 0) setRefundMethod(methods[0].code);
     router.refresh();
   }
 
@@ -111,18 +129,21 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
       alert("请输入有效金额");
       return;
     }
+    if (!method) {
+      alert("请选择收款方式");
+      return;
+    }
     setLoading(true);
 
-    // 获取当前用户作为收款人
     const { data: userData } = await supabase.auth.getUser();
     const collectorId = userData?.user?.id || null;
 
-    // 1. 插入预收款记录
     const { error: insertErr } = await supabase.from("advance_payment_records").insert({
       work_order_id: orderId,
       amount: val,
       method,
       collector_id: collectorId,
+      collector_name: collectorName.trim() || null,
       paid_at: new Date().toISOString(),
     });
 
@@ -132,7 +153,6 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
       return;
     }
 
-    // 2. 同步更新工单上的预收款合计（冗余字段，便于快速查询）
     const { error: updateErr } = await supabase
       .from("work_orders")
       .update({ advance_payment: (advancePayment || 0) + val })
@@ -145,7 +165,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
     }
 
     setAmount("");
-    setMethod("cash");
+    if (methods.length > 0) setMethod(methods[0].code);
     setEditing(false);
     router.refresh();
   }
@@ -193,7 +213,8 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-gray-500">
                             {new Date(r.paid_at).toLocaleDateString("zh-CN")}
-                            {" · "}{METHOD_LABEL[r.method] || r.method}
+                            {" · "}{methodLabel(r.method)}
+                            {r.collector_name && ` · ${r.collector_name}`}
                           </span>
                           <div className="flex items-center gap-1.5">
                             <span className={net <= 0 ? "text-gray-400 line-through" : "text-gray-700"}>
@@ -219,7 +240,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
                         </div>
                         {(r.refunded_amount || 0) > 0 && (
                           <div className="flex justify-between text-[10px] text-gray-400 pl-2">
-                            <span>已退款 · {METHOD_LABEL[r.refund_method] || r.refund_method || "未知方式"}</span>
+                            <span>已退款 · {methodLabel(r.refund_method) || "未知方式"}</span>
                             <span className="text-orange-500">-{formatCurrency(r.refunded_amount)}</span>
                           </div>
                         )}
@@ -240,8 +261,8 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
                               onChange={(e) => setRefundMethod(e.target.value)}
                               className="px-1 py-0.5 border border-orange-200 rounded text-xs"
                             >
-                              {REFUND_METHOD_OPTIONS.map((m) => (
-                                <option key={m.value} value={m.value}>{m.label}</option>
+                              {methods.map((m) => (
+                                <option key={m.code} value={m.code}>{m.name}</option>
                               ))}
                             </select>
                             <button
@@ -254,7 +275,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
                             </button>
                             <button
                               type="button"
-                              onClick={() => { setRefundingId(null); setRefundAmount(""); setRefundMethod("cash"); }}
+                              onClick={() => { setRefundingId(null); setRefundAmount(""); if (methods.length > 0) setRefundMethod(methods[0].code); }}
                               className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
                             >
                               取消
@@ -270,7 +291,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
                 type="button"
                 onClick={() => {
                   setAmount("");
-                  setMethod("cash");
+                  if (methods.length > 0) setMethod(methods[0].code);
                   setEditing(true);
                 }}
                 className="w-full mt-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -281,7 +302,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
           ) : (
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">预收金额</label>
+                <label className="block text-xs text-gray-500 mb-1">预收金额 *</label>
                 <input
                   type="number"
                   step="0.01"
@@ -293,22 +314,36 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">收款方式</label>
+                <label className="block text-xs text-gray-500 mb-1">收款方式 *</label>
                 <select
                   value={method}
                   onChange={(e) => setMethod(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {METHOD_OPTIONS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
+                  {methods.map((m) => (
+                    <option key={m.code} value={m.code}>{m.name}</option>
                   ))}
+                  {methods.length === 0 && <option value="">暂无收款方式</option>}
                 </select>
+                {methods.length === 0 && (
+                  <p className="text-[10px] text-orange-600 mt-1">请先到「财务管理 → 收款方式」中预设</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">收款人</label>
+                <input
+                  type="text"
+                  value={collectorName}
+                  onChange={(e) => setCollectorName(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="默认当前登录用户"
+                />
               </div>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={loading}
+                  disabled={loading || methods.length === 0}
                   className="flex-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
                   {loading ? "保存中..." : "保存"}

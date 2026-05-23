@@ -31,11 +31,16 @@ export function WorkOrderTabBar({ tabs: tabsProp }: WorkOrderTabBarProps) {
     const missing = tabs.filter((id) => !loadedRef.current.has(id));
     if (missing.length === 0) return;
 
+    /* 过滤掉非法 UUID，避免 PostgREST 返回 400 */
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const validIds = missing.filter((id) => uuidRegex.test(id));
+    if (validIds.length === 0) return;
+
     const supabase = createClient();
     supabase
       .from("work_orders")
       .select("id, order_no, vehicles(plate_number)")
-      .in("id", missing)
+      .in("id", validIds)
       .then(({ data }) => {
         if (!data) return;
         data.forEach((raw: any) => loadedRef.current.add(raw.id));

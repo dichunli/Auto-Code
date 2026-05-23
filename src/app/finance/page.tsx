@@ -210,8 +210,8 @@ export default async function FinancePage() {
         <Link href="/finance/payroll" className="bg-gray-50 text-gray-700 rounded-xl border border-gray-100 p-4 text-sm font-medium hover:bg-gray-100 transition-colors text-center">
           工资提成
         </Link>
-        <Link href="/supplier-transactions" className="bg-gray-50 text-gray-700 rounded-xl border border-gray-100 p-4 text-sm font-medium hover:bg-gray-100 transition-colors text-center">
-          供应商往来
+        <Link href="/finance/payment-methods" className="bg-gray-50 text-gray-700 rounded-xl border border-gray-100 p-4 text-sm font-medium hover:bg-gray-100 transition-colors text-center">
+          收款方式
         </Link>
         <Link href="/reports" className="bg-purple-50 text-purple-700 rounded-xl border border-purple-100 p-4 text-sm font-medium hover:bg-purple-100 transition-colors text-center">
           报表统计

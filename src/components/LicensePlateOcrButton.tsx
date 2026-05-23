@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, ReactNode } from "react";
 import { recognizeLicensePlate } from "@/lib/baidu-ocr/client";
 
 interface Props {
   onRecognize: (plateNumber: string) => void;
   className?: string;
-  buttonText?: string;
-  loadingText?: string;
+  buttonText?: ReactNode;
+  loadingText?: ReactNode;
 }
 
 export default function LicensePlateOcrButton({

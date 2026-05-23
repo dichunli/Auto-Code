@@ -8,9 +8,10 @@ interface Props {
   workOrderId: string;
   orderNo: string;
   currentType?: string;
+  onSuccess?: () => void;
 }
 
-export default function WorkOrderActionButtons({ workOrderId, orderNo, currentType }: Props) {
+export default function WorkOrderActionButtons({ workOrderId, orderNo, currentType, onSuccess }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [open, setOpen] = useState(false);
@@ -20,6 +21,7 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
   const [reason, setReason] = useState("");
 
   const actions = [
+    { key: "normal", label: "转回正常工单", desc: "将工单恢复为正常维修状态" },
     { key: "appointment", label: "转预约单", desc: "将工单转为预约状态，等待客户到店" },
     { key: "quote", label: "转历史报价单", desc: "将工单保存为历史报价记录" },
     { key: "cancelled", label: "转作废单", desc: "工单作废，不再继续处理" },
@@ -38,6 +40,9 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
     const updates: Record<string, any> = {};
 
     switch (type) {
+      case "normal":
+        updates.order_type = "normal";
+        break;
       case "appointment":
         updates.order_type = "appointment";
         updates.appointment_at = new Date().toISOString();
@@ -69,7 +74,12 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
       new_values: updates,
     });
 
-    router.refresh();
+    window.dispatchEvent(new Event("work-order-counts-update"));
+    if (onSuccess) {
+      onSuccess();
+    } else {
+      router.refresh();
+    }
   }
 
   async function handleCancelConfirm() {
@@ -100,7 +110,12 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
     });
 
     setReason("");
-    router.refresh();
+    window.dispatchEvent(new Event("work-order-counts-update"));
+    if (onSuccess) {
+      onSuccess();
+    } else {
+      router.refresh();
+    }
   }
 
   return (

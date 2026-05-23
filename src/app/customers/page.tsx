@@ -4,6 +4,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { SubNav } from "./SubNav";
 import { DeleteButton } from "./DeleteButton";
+import { MergeButton } from "./MergeButton";
 import CustomerImportExport from "./CustomerImportExport";
 
 export default async function CustomersPage(props: { searchParams?: Promise<Record<string, string | undefined>> | Record<string, string | undefined> }) {
@@ -133,7 +134,8 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
         </div>
       </form>
 
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex justify-end gap-2">
+        <MergeButton />
         <CustomerImportExport customers={customers || []} />
       </div>
 

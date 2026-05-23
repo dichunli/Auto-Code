@@ -4,29 +4,15 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
-import { FuelGauge } from "@/components/FuelGauge";
 import VinDecodeInput from "@/components/VinDecodeInput";
-import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
-
-interface Customer {
-  id: string;
-  name: string;
-  phone: string;
-  company?: string;
-}
-
-interface Requirement {
-  description: string;
-  assigned_to: string;
-}
+import { CustomerSearchDropdown, Customer } from "@/components/CustomerSearchDropdown";
 
 export default function NewWorkOrderPage() {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
   const [currentUserId, setCurrentUserId] = useState("");
-  const [mechanics, setMechanics] = useState<any[]>([]);
 
   // 车辆搜索
   const [vehicleQuery, setVehicleQuery] = useState("");
@@ -45,10 +31,7 @@ export default function NewWorkOrderPage() {
   });
 
   // 客户搜索（新建车辆时关联客户）
-  const [customerQuery, setCustomerQuery] = useState("");
-  const [customerResults, setCustomerResults] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [showCustomerResults, setShowCustomerResults] = useState(false);
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
     name: "",
@@ -57,24 +40,20 @@ export default function NewWorkOrderPage() {
   });
 
   // 工单其他信息
-  const [requirements, setRequirements] = useState<Requirement[]>([
-    { description: "", assigned_to: "" },
-  ]);
-  const [fuelLevel, setFuelLevel] = useState("50");
-  const [inspectionNotes, setInspectionNotes] = useState("");
+  const [mileageIn, setMileageIn] = useState("");
   const [senderName, setSenderName] = useState("");
   const [senderPhone, setSenderPhone] = useState("");
+
+  // 主管授权码
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [authCode, setAuthCode] = useState("");
+  const [authVerifying, setAuthVerifying] = useState(false);
+  const [pendingOrderNo, setPendingOrderNo] = useState("");
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) setCurrentUserId(data.user.id);
     });
-    supabase
-      .from("profiles")
-      .select("id, full_name")
-      .eq("is_active", true)
-      .order("full_name")
-      .then(({ data }) => setMechanics(data || []));
   }, [supabase]);
 
   // 搜索车辆（含关联客户）
@@ -99,39 +78,19 @@ export default function NewWorkOrderPage() {
     return () => clearTimeout(timer);
   }, [vehicleQuery, searchVehicles]);
 
-  // 搜索客户
-  const searchCustomers = useCallback(
-    async (query: string) => {
-      if (!query.trim()) {
-        setCustomerResults([]);
-        return;
-      }
-      const { data } = await supabase
-        .from("customers")
-        .select("id, name, phone, company")
-        .or(`name.ilike.%${query}%,phone.ilike.%${query}%`)
-        .limit(10);
-      setCustomerResults(data || []);
-    },
-    [supabase]
-  );
-
-  useEffect(() => {
-    const timer = setTimeout(() => searchCustomers(customerQuery), 300);
-    return () => clearTimeout(timer);
-  }, [customerQuery, searchCustomers]);
-
   function handleSelectVehicle(v: any) {
     setSelectedVehicle(v);
     setVehicleQuery("");
     setShowVehicleResults(false);
     setIsNewVehicle(false);
+    setMileageIn(v?.mileage ? String(v.mileage) : "");
   }
 
   function handleStartNewVehicle() {
     setIsNewVehicle(true);
     setSelectedVehicle(null);
     setShowVehicleResults(false);
+    setMileageIn("");
     setNewVehicle({
       plate_number: vehicleQuery.trim(),
       brand: "",
@@ -144,27 +103,55 @@ export default function NewWorkOrderPage() {
     setNewCustomer({ name: "", phone: "", company: "" });
   }
 
-  function addRequirement() {
-    setRequirements([...requirements, { description: "", assigned_to: "" }]);
+  /* 检查是否有未完成工单 */
+  async function checkDuplicateWorkOrder(plate: string) {
+    const { data: vehicle } = await supabase
+      .from("vehicles")
+      .select("id")
+      .eq("plate_number", plate.trim().toUpperCase())
+      .single();
+    if (!vehicle) return { hasDuplicate: false };
+
+    const { data: orders } = await supabase
+      .from("work_orders")
+      .select("id, order_no, status")
+      .eq("vehicle_id", vehicle.id)
+      .not("status", "in", "('settled','delivered')")
+      .limit(1);
+
+    if (orders && orders.length > 0) {
+      return { hasDuplicate: true, orderNo: orders[0].order_no };
+    }
+    return { hasDuplicate: false };
   }
 
-  function updateRequirement(index: number, field: string, value: string) {
-    const next = [...requirements];
-    (next[index] as any)[field] = value;
-    setRequirements(next);
+  /* 验证主管授权码 */
+  async function verifySupervisorCode(code: string): Promise<boolean> {
+    const { data } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "supervisor_code")
+      .single();
+    return data?.value === code.trim();
   }
 
-  function removeRequirement(index: number) {
-    if (requirements.length <= 1) return;
-    setRequirements(requirements.filter((_, i) => i !== index));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent, skipDuplicateCheck = false) {
     e.preventDefault();
 
     if (!selectedVehicle && !isNewVehicle) {
       alert("请先搜索并选择车辆");
       return;
+    }
+
+    /* 重复开单检查 */
+    const plate = isNewVehicle ? newVehicle.plate_number : selectedVehicle?.plate_number;
+    if (!skipDuplicateCheck && plate) {
+      const dup = await checkDuplicateWorkOrder(plate);
+      if (dup.hasDuplicate) {
+        setPendingOrderNo(dup.orderNo || "");
+        setShowAuthDialog(true);
+        return;
+      }
     }
 
     let customerId = "";
@@ -174,10 +161,10 @@ export default function NewWorkOrderPage() {
       // 场景1：已有车辆
       if (selectedVehicle) {
         vehicleId = selectedVehicle.id;
-        customerId = selectedVehicle.customer_id;
+        customerId = selectedVehicle.customer_id || "";
       }
 
-      // 场景2：新建车辆
+      // 场景2：新建车辆 — 先保存客户和车辆
       if (isNewVehicle) {
         if (!newVehicle.plate_number.trim()) {
           alert("请输入车牌号");
@@ -188,15 +175,15 @@ export default function NewWorkOrderPage() {
         if (selectedCustomer) {
           customerId = selectedCustomer.id;
         } else if (isNewCustomer) {
-          if (!newCustomer.name.trim() || !newCustomer.phone.trim()) {
-            alert("请输入客户姓名和电话");
+          if (!newCustomer.name.trim()) {
+            alert("请输入客户姓名");
             return;
           }
           const { data: cData, error: cError } = await supabase
             .from("customers")
             .insert({
               name: newCustomer.name.trim(),
-              phone: newCustomer.phone.trim(),
+              phone: newCustomer.phone.trim() || null,
               company: newCustomer.company.trim() || null,
             })
             .select("id")
@@ -218,7 +205,7 @@ export default function NewWorkOrderPage() {
             brand: newVehicle.brand.trim() || null,
             model: newVehicle.model.trim() || null,
             vin: newVehicle.vin.trim() || null,
-            mileage: newVehicle.mileage ? parseInt(newVehicle.mileage) : null,
+            mileage: mileageIn ? parseInt(mileageIn) : null,
           })
           .select("id")
           .single();
@@ -229,28 +216,23 @@ export default function NewWorkOrderPage() {
 
       setLoading(true);
 
-      const reqPayload = requirements
-        .filter((r) => r.description.trim())
-        .map((r) => ({
-          description: r.description.trim(),
-          assigned_to: r.assigned_to || "",
-        }));
-
-      const mileageIn = isNewVehicle
-        ? parseInt(newVehicle.mileage) || 0
-        : selectedVehicle?.mileage || 0;
+      let mileageInNum = 0;
+      if (mileageIn.trim()) {
+        const parsed = parseInt(mileageIn, 10);
+        mileageInNum = isNaN(parsed) ? 0 : parsed;
+      }
 
       const { data: result, error: rpcErr } = await supabase.rpc(
         "create_work_order",
         {
           p_customer_id: customerId,
           p_vehicle_id: vehicleId,
-          p_mileage_in: mileageIn,
-          p_fuel_level: parseInt(fuelLevel) || 50,
-          p_customer_complaint: requirements.map((r) => r.description).join("; "),
-          p_inspection_notes: inspectionNotes,
+          p_mileage_in: mileageInNum,
+          p_fuel_level: 50,
+          p_customer_complaint: "",
+          p_inspection_notes: "",
           p_receptionist_id: currentUserId || null,
-          p_requirements: reqPayload,
+          p_requirements: [],
           p_sender_name: senderName.trim() || null,
           p_sender_phone: senderPhone.trim() || null,
         }
@@ -288,23 +270,15 @@ export default function NewWorkOrderPage() {
             <h2 className="text-base font-semibold text-gray-900 mb-4">搜索车辆 *</h2>
             {!selectedVehicle && !isNewVehicle ? (
               <div className="relative">
-                <div className="flex gap-2">
-                  <LicensePlateKeyboard
-                    value={vehicleQuery}
-                    onChange={(val) => {
-                      setVehicleQuery(val);
-                      setShowVehicleResults(true);
-                    }}
-                    placeholder="输入车牌号搜索，如：京A12345"
-                    className="flex-1"
-                  />
-                  <LicensePlateOcrButton
-                    onRecognize={(plate) => {
-                      setVehicleQuery(plate);
-                      setShowVehicleResults(true);
-                    }}
-                  />
-                </div>
+                <LicensePlateKeyboard
+                  value={vehicleQuery}
+                  onChange={(val) => {
+                    setVehicleQuery(val);
+                    setShowVehicleResults(true);
+                  }}
+                  placeholder="输入车牌号搜索，如：京A12345"
+                  className="w-full"
+                />
                 {showVehicleResults && vehicleResults.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     {vehicleResults.map((v) => (
@@ -351,6 +325,7 @@ export default function NewWorkOrderPage() {
                     onClick={() => {
                       setSelectedVehicle(null);
                       setVehicleQuery("");
+                      setMileageIn("");
                     }}
                     className="text-sm text-blue-600 hover:text-blue-700"
                   >
@@ -377,18 +352,13 @@ export default function NewWorkOrderPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">车牌号 *</label>
-                  <div className="flex gap-2">
-                    <input
-                      required
-                      type="text"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={newVehicle.plate_number}
-                      onChange={(e) => setNewVehicle({ ...newVehicle, plate_number: e.target.value })}
-                    />
-                    <LicensePlateOcrButton
-                      onRecognize={(plate) => setNewVehicle((prev) => ({ ...prev, plate_number: plate }))}
-                    />
-                  </div>
+                  <input
+                    required
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={newVehicle.plate_number}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, plate_number: e.target.value })}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">品牌</label>
@@ -428,70 +398,27 @@ export default function NewWorkOrderPage() {
                     buttonClassName="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap shrink-0"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">当前里程</label>
-                  <input
-                    type="number"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={newVehicle.mileage}
-                    onChange={(e) => setNewVehicle({ ...newVehicle, mileage: e.target.value })}
-                  />
-                </div>
               </div>
 
               {/* 关联客户 */}
               <div className="border-t border-gray-100 pt-6">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">关联客户 *</h2>
                 {!selectedCustomer && !isNewCustomer ? (
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="搜索客户姓名或手机号"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={customerQuery}
-                      onChange={(e) => {
-                        setCustomerQuery(e.target.value);
-                        setShowCustomerResults(true);
-                      }}
-                      onFocus={() => setShowCustomerResults(true)}
-                    />
-                    {showCustomerResults && customerResults.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                        {customerResults.map((c) => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedCustomer(c);
-                              setCustomerQuery("");
-                              setShowCustomerResults(false);
-                            }}
-                            className="w-full text-left px-4 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-0"
-                          >
-                            <div className="text-sm font-medium text-gray-900">{c.name}</div>
-                            <div className="text-xs text-gray-500">
-                              {c.phone} {c.company ? `· ${c.company}` : ""}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {showCustomerResults && customerQuery && customerResults.length === 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg px-4 py-3 text-sm text-gray-500">
+                  <CustomerSearchDropdown
+                    onSelect={(c) => setSelectedCustomer(c)}
+                    emptyRender={
+                      <span>
                         未找到客户
                         <button
                           type="button"
-                          onClick={() => {
-                            setIsNewCustomer(true);
-                            setShowCustomerResults(false);
-                          }}
+                          onClick={() => setIsNewCustomer(true)}
                           className="ml-2 text-blue-600 hover:underline font-medium"
                         >
                           新建客户
                         </button>
-                      </div>
-                    )}
-                  </div>
+                      </span>
+                    }
+                  />
                 ) : selectedCustomer ? (
                   <div className="flex items-center justify-between bg-green-50 px-4 py-3 rounded-lg">
                     <div>
@@ -502,7 +429,6 @@ export default function NewWorkOrderPage() {
                       type="button"
                       onClick={() => {
                         setSelectedCustomer(null);
-                        setCustomerQuery("");
                         setIsNewCustomer(false);
                       }}
                       className="text-sm text-blue-600 hover:text-blue-700"
@@ -562,11 +488,22 @@ export default function NewWorkOrderPage() {
             </div>
           )}
 
-          {/* 油量 */}
-          <div className="border-t border-gray-100 pt-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">油量/电量</label>
-            <FuelGauge value={fuelLevel} onChange={setFuelLevel} />
-          </div>
+          {/* 本次接车里程 */}
+          {(selectedVehicle || isNewVehicle) && (
+            <div className="border-t border-gray-100 pt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">本次接车里程</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  className="w-48 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  placeholder="请输入当前里程"
+                  value={mileageIn}
+                  onChange={(e) => setMileageIn(e.target.value)}
+                />
+                <span className="text-sm text-gray-500">km</span>
+              </div>
+            </div>
+          )}
 
           {/* 送修人信息 */}
           <div className="border-t border-gray-100 pt-6">
@@ -595,59 +532,6 @@ export default function NewWorkOrderPage() {
             </div>
           </div>
 
-          {/* 客户需求 */}
-          <div className="border-t border-gray-100 pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-gray-900">客户需求（逐条录入）</h2>
-              <button type="button" onClick={addRequirement} className="text-sm text-blue-600 hover:text-blue-700 font-medium">
-                + 添加需求
-              </button>
-            </div>
-            <div className="space-y-3">
-              {requirements.map((req, i) => (
-                <div key={i} className="flex gap-2 items-start">
-                  <span className="text-sm text-gray-500 pt-2 w-8">{i + 1}.</span>
-                  <div className="flex-1 space-y-2">
-                    <input
-                      type="text"
-                      placeholder="如：发动机异响、空调不冷..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={req.description}
-                      onChange={(e) => updateRequirement(i, "description", e.target.value)}
-                    />
-                    <div className="flex gap-2">
-                      <select
-                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
-                        value={req.assigned_to}
-                        onChange={(e) => updateRequirement(i, "assigned_to", e.target.value)}
-                      >
-                        <option value="">指派技师（可选）</option>
-                        {mechanics.map((m) => (
-                          <option key={m.id} value={m.id}>{m.full_name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  {requirements.length > 1 && (
-                    <button type="button" onClick={() => removeRequirement(i)} className="text-sm text-red-500 hover:text-red-600 px-2 pt-2">
-                      删除
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 初步检查 */}
-          <div className="border-t border-gray-100 pt-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">初步检查记录</h2>
-            <textarea
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={inspectionNotes}
-              onChange={(e) => setInspectionNotes(e.target.value)}
-            />
-          </div>
         </div>
 
         <div className="mt-8 flex gap-3 justify-end">
@@ -659,6 +543,66 @@ export default function NewWorkOrderPage() {
           </button>
         </div>
       </form>
+
+      {/* 主管授权码弹窗 */}
+      {showAuthDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm p-6 space-y-4">
+            <div className="text-center">
+              <div className="text-lg font-semibold text-gray-900">需要主管授权</div>
+              <div className="text-sm text-gray-500 mt-1">
+                该车牌已有未完成工单
+                {pendingOrderNo && <span className="text-orange-600">（{pendingOrderNo}）</span>}
+              </div>
+              <div className="text-sm text-gray-500">请输入主管授权码继续开单</div>
+            </div>
+            <input
+              type="password"
+              inputMode="numeric"
+              placeholder="请输入授权码"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-center tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={authCode}
+              onChange={(e) => setAuthCode(e.target.value.replace(/\D/g, ""))}
+              maxLength={6}
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setShowAuthDialog(false); setAuthCode(""); }}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!authCode.trim()) {
+                    alert("请输入授权码");
+                    return;
+                  }
+                  setAuthVerifying(true);
+                  const ok = await verifySupervisorCode(authCode);
+                  if (ok) {
+                    setShowAuthDialog(false);
+                    setAuthCode("");
+                    /* 构造一个假的 submit event 以兼容 handleSubmit 签名 */
+                    const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+                    handleSubmit(fakeEvent, true);
+                  } else {
+                    alert("授权码错误");
+                  }
+                  setAuthVerifying(false);
+                }}
+                disabled={authVerifying}
+                className="flex-1 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {authVerifying ? "验证中..." : "确认"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

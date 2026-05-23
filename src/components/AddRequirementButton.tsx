@@ -1,14 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import RequirementBatchModal from "./RequirementBatchModal";
 
 interface Props {
   orderId: string;
+  autoOpen?: boolean;
 }
 
-export default function AddRequirementButton({ orderId }: Props) {
+export default function AddRequirementButton({ orderId, autoOpen }: Props) {
   const [open, setOpen] = useState(false);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (autoOpen || searchParams.get("newReq") === "1") {
+      setOpen(true);
+    }
+  }, [autoOpen, searchParams]);
 
   return (
     <>
@@ -17,7 +26,7 @@ export default function AddRequirementButton({ orderId }: Props) {
         onClick={() => setOpen(true)}
         className="text-sm text-blue-600 hover:text-blue-700"
       >
-        + 添加客户需求
+        +需求
       </button>
       <RequirementBatchModal open={open} onClose={() => setOpen(false)} orderId={orderId} />
     </>

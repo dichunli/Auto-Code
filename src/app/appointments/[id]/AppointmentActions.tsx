@@ -39,7 +39,7 @@ export function AppointmentActions({ appointment }: { appointment: any }) {
       } else {
         const { data: newCustomer, error: cErr } = await supabase
           .from("customers")
-          .insert({ name: appointment.customer_name, phone: appointment.customer_phone })
+          .insert({ name: appointment.customer_name, phone: appointment.customer_phone || null })
           .select("id")
           .single();
         if (cErr) throw cErr;

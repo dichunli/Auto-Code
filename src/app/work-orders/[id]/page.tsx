@@ -24,11 +24,13 @@ import { WorkOrderActions } from "@/components/WorkOrderActions";
 import { AdvancePaymentCard } from "@/components/AdvancePaymentCard";
 import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
 import RequirementActions from "@/components/RequirementActions";
+import RequirementTitle from "@/components/RequirementTitle";
 import WorkOrderFloatingSidebar from "@/components/WorkOrderFloatingSidebar";
 import { ItemNotesEditor } from "@/components/ItemNotesEditor";
 import AddItemPartButton from "@/components/AddItemPartButton";
 import AddRequirementButton from "@/components/AddRequirementButton";
 import AddRequirementItemsButton from "@/components/AddRequirementItemsButton";
+import DeleteRequirementButton from "@/components/DeleteRequirementButton";
 import PartBranchEditor from "@/components/PartBranchEditor";
 import { PartBranchImages } from "@/components/PartBranchImages";
 import PartGroupHeader from "@/components/PartGroupHeader";
@@ -79,6 +81,30 @@ export default async function WorkOrderDetailPage({
     .select("*", { count: "exact", head: true })
     .eq("vehicle_id", order.vehicle_id)
     .neq("id", id);
+
+  // 查询该车各类型工单数量（排除当前工单）
+  const { data: otherOrdersByType } = await supabaseServer
+    .from("work_orders")
+    .select("id, order_no, order_type")
+    .eq("vehicle_id", order.vehicle_id)
+    .neq("id", id);
+
+  const typeCountMap: Record<string, { count: number; orders: { id: string; order_no: string }[] }> = {};
+  const typeLabelMapForDisplay: Record<string, string> = {
+    appointment: "预约工单",
+    quote: "历史报价单",
+    cancelled: "作废工单",
+    maintenance: "保养工单",
+  };
+  (otherOrdersByType || []).forEach((o: any) => {
+    const t = o.order_type || "normal";
+    if (t === "normal") return; // 正常工单不显示
+    if (!typeCountMap[t]) {
+      typeCountMap[t] = { count: 0, orders: [] };
+    }
+    typeCountMap[t].count++;
+    typeCountMap[t].orders.push({ id: o.id, order_no: o.order_no });
+  });
 
   // 查询该客户消费次数
   const { count: customerOrderCount } = await supabaseServer
@@ -287,7 +313,39 @@ export default async function WorkOrderDetailPage({
         <div className="flex items-center gap-3">
           <h1 className="text-xs md:text-base font-semibold text-gray-900">工单 {order.order_no}</h1>
         </div>
-        <div className="flex items-center gap-3">
+
+        {/* 移动端：折叠操作菜单 */}
+        <details className="md:hidden">
+          <summary className="cursor-pointer list-none">
+            <span className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg bg-white text-gray-600 hover:bg-gray-50 select-none">
+              更多操作
+            </span>
+          </summary>
+          <div className="absolute right-4 z-40 mt-2 bg-white rounded-xl border border-gray-200 shadow-lg p-3 flex flex-col gap-2 min-w-[160px]">
+            {order.vehicle_id && (
+              <Link
+                href={`/work-orders?vehicle_id=${order.vehicle_id}`}
+                className="text-sm text-blue-600 hover:text-blue-700 py-1"
+              >
+                维修记录{historyOrderCount ? `(${historyOrderCount})` : ""}
+              </Link>
+            )}
+            <AdvancePaymentDropdown
+              orderId={id}
+              advancePayment={advancePaymentTotal}
+              totalCost={order.total_cost || 0}
+              records={advancePaymentRecords || []}
+            />
+            <WorkOrderToggleBar />
+            <WorkOrderActionButtons
+              workOrderId={id}
+              orderNo={order.order_no}
+            />
+          </div>
+        </details>
+
+        {/* PC端：横向展开 */}
+        <div className="hidden md:flex items-center gap-3">
           {order.vehicle_id && (
             <Link
               href={`/work-orders?vehicle_id=${order.vehicle_id}`}
@@ -296,16 +354,17 @@ export default async function WorkOrderDetailPage({
               维修记录{historyOrderCount ? `(${historyOrderCount})` : ""}
             </Link>
           )}
-          <WorkOrderActionButtons
-            workOrderId={id}
-            orderNo={order.order_no}
-          />
-          <WorkOrderToggleBar />
           <AdvancePaymentDropdown
             orderId={id}
             advancePayment={advancePaymentTotal}
             totalCost={order.total_cost || 0}
             records={advancePaymentRecords || []}
+          />
+          <WorkOrderToggleBar />
+          <WorkOrderActionButtons
+            workOrderId={id}
+            orderNo={order.order_no}
+            currentType={order.order_type || "normal"}
           />
           <div className="hidden md:block">
             <PrintDropdown orderId={id} />
@@ -323,7 +382,7 @@ export default async function WorkOrderDetailPage({
               const vinValid = /^[A-HJ-NPR-Z0-9]{17}$/.test(vin);
               const modelInfo = [order.vehicles?.brand, order.vehicles?.model].filter(Boolean).join(" ");
               return (
-                <div className="flex items-center justify-between gap-4 flex-wrap text-sm mb-2 pb-2 border-b border-gray-100">
+                <div className="flex items-start gap-4 flex-wrap text-sm mb-2 pb-2 border-b border-gray-100">
                   <div className="flex items-center gap-4 flex-wrap">
                     <span>
                       <span className="text-gray-500">车牌:</span>{' '}
@@ -361,9 +420,6 @@ export default async function WorkOrderDetailPage({
                       <span className="text-gray-800">{modelInfo || "-"}</span>
                     </span>
                     <span><span className="text-gray-500">接车里程:</span> {order.mileage_in ? `${order.mileage_in} km` : "-"}</span>
-                    <span><span className="text-gray-500">油量:</span> {order.fuel_level != null ? `${order.fuel_level}%` : "-"}</span>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
                     <span className="text-gray-400 text-xs">创建于 {formatDate(order.created_at)}</span>
                     <div className="md:hidden">
                       <ReceptionInfoEditor
@@ -376,6 +432,21 @@ export default async function WorkOrderDetailPage({
                       />
                     </div>
                   </div>
+                  {/* 车辆其他状态工单提示 */}
+                  {Object.keys(typeCountMap).length > 0 && (
+                    <div className="flex items-center gap-3 flex-wrap text-xs mt-1">
+                      <span className="text-gray-400">该车辆还有:</span>
+                      {Object.entries(typeCountMap).map(([t, info]) => (
+                        <Link
+                          key={t}
+                          href={`/work-orders?type=${t}&vehicle_id=${order.vehicle_id}`}
+                          className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+                        >
+                          {typeLabelMapForDisplay[t] || t}({info.count})
+                        </Link>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -521,6 +592,16 @@ export default async function WorkOrderDetailPage({
               <div className="flex items-center gap-3">
                 {!isLocked && (
                   <>
+                    <AddRequirementButton orderId={id} autoOpen={sp.newReq === "1"} />
+                  </>
+                )}
+                <Link href={`/work-orders/${id}/reception/new`} className="text-sm text-orange-600 hover:text-orange-700">+ 接车检查</Link>
+                <Link href={`/work-orders/${id}/inspection/new`} className="text-sm text-green-600 hover:text-green-700">+ 车况检查</Link>
+                {!isLocked && (
+                  <>
+                    {order.vehicle_id && (
+                      <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />
+                    )}
                     <BatchEditWrapper
                       orderId={id}
                       items={items || []}
@@ -528,22 +609,16 @@ export default async function WorkOrderDetailPage({
                       suppliers={suppliers || []}
                       logisticsCompanies={logisticsCompanies || []}
                     />
-                    {order.vehicle_id && (
-                      <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />
-                    )}
-                    <AddRequirementButton orderId={id} />
                   </>
                 )}
-                <Link href={`/work-orders/${id}/reception/new`} className="text-sm text-orange-600 hover:text-orange-700">+ 接车检查</Link>
-                <Link href={`/work-orders/${id}/inspection/new`} className="text-sm text-green-600 hover:text-green-700">+ 车况检查</Link>
               </div>
             </div>
-            {/* 移动端按钮栏（无标题，添加客户需求在前，批量修改在后） */}
+            {/* 移动端按钮栏（无标题，+需求、接车检查、车况检查、保养模板、批量修改） */}
             <div className="md:hidden px-4 py-3 border-b border-gray-100 flex items-center flex-wrap gap-2">
-              {!isLocked && <AddRequirementButton orderId={id} />}
-              {!isLocked && order.vehicle_id && <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />}
+              {!isLocked && <AddRequirementButton orderId={id} autoOpen={sp.newReq === "1"} />}
               <Link href={`/work-orders/${id}/reception/new`} className="text-xs text-orange-600 hover:text-orange-700">+ 接车检查</Link>
               <Link href={`/work-orders/${id}/inspection/new`} className="text-xs text-green-600 hover:text-green-700">+ 车况检查</Link>
+              {!isLocked && order.vehicle_id && <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />}
               {!isLocked && (
                 <BatchEditWrapper
                   orderId={id}
@@ -556,67 +631,38 @@ export default async function WorkOrderDetailPage({
             </div>
             <div className="divide-y divide-gray-300">
               {requirements?.map((req: any) => (
-                <div key={req.id} className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-4 flex-wrap">
-                        <p className="text-gray-900 font-medium"><span className="text-blue-600 mr-1">需求{req.seq}</span>{req.description}</p>
-                        {/* 提交人与指派信息 */}
-                        <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
-                          <span>提交: {req.submitted_by_profile?.full_name || "-"}</span>
-                          {req.dispatcher_profile && req.assignment_type === 'assigned' && (
-                            <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700">
-                              派单人: {req.dispatcher_profile.full_name}
-                            </span>
-                          )}
-                          {req.assigned_to_profile && req.assignment_type === 'claimed' && (
-                            <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700">
-                              领单人: {req.assigned_to_profile.full_name}
-                            </span>
-                          )}
-                          {req.assigned_to_profile && req.assignment_type === 'assigned' && (
-                            <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
-                              指派给: {req.assigned_to_profile.full_name}
-                            </span>
-                          )}
-                        </div>
-                        {/* 需求操作 */}
-                        {!isLocked && (
-                          <div className="flex items-center gap-2">
-                            <RequirementActions
-                              requirement={req}
-                              profiles={profiles || []}
-                              orderId={id}
-                            />
-                            <AddRequirementItemsButton orderId={id} requirementId={req.id} />
-                          </div>
-                        )}
+                <div key={req.id} className="px-4 py-3 md:px-6 md:py-4">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} />
+                    {req.assigned_to_profile && req.assignment_type === 'claimed' && (
+                      <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px]">
+                        领单: {req.assigned_to_profile.full_name}
+                      </span>
+                    )}
+                    {req.assigned_to_profile && req.assignment_type === 'assigned' && (
+                      <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px]">
+                        指派: {req.assigned_to_profile.full_name}
+                      </span>
+                    )}
+                    <span className="hidden md:inline text-xs text-gray-400">
+                      提交: {(profiles || []).find((p: any) => p.id === req.submitted_by)?.full_name || "-"}
+                    </span>
+                    {!isLocked && (
+                      <div className="flex items-center gap-2 ml-auto">
+                        <RequirementActions
+                          requirement={req}
+                          profiles={profiles || []}
+                        />
+                        <AddRequirementItemsButton orderId={id} requirementId={req.id} />
                       </div>
-                      {(req.diagnosis || req.remarks) && (
-                        <div className="flex items-center gap-4 flex-wrap mt-1 text-sm">
-                          {req.diagnosis && (
-                            <span className="text-gray-600"><span className="text-gray-400">诊断:</span> {req.diagnosis}</span>
-                          )}
-                          {req.remarks && (
-                            <span className="text-gray-500"><span className="text-gray-400">备注:</span> {req.remarks}</span>
-                          )}
-                        </div>
-                      )}
-                      {/* 需求图片 */}
-                      {mediaByRequirement[req.id]?.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {mediaByRequirement[req.id].map((m: any) => (
-                            <img loading="lazy" key={m.id} src={m.storage_path} alt="" className="w-16 h-16 object-cover rounded border border-gray-200" />
-                          ))}
-                        </div>
-                      )}
-                      {/* 该需求下的项目 */}
-                      {itemsError && (
-                        <div className="mt-3 text-xs text-red-600 bg-red-50 rounded p-2">
-                          项目加载失败: {itemsError.message}
-                        </div>
-                      )}
-                      <div className="mt-3">
+                    )}
+                  </div>
+                  {itemsError && (
+                    <div className="mt-2 text-xs text-red-600 bg-red-50 rounded p-2">
+                      项目加载失败: {itemsError.message}
+                    </div>
+                  )}
+                  <div className="mt-2">
                         {(() => {
                           const reqItems = itemsByRequirement.get(req.id) || [];
                           return (
@@ -913,8 +959,6 @@ export default async function WorkOrderDetailPage({
                           );
                         })()}
                       </div>
-                    </div>
-                  </div>
                 </div>
               ))}
               {(!requirements || requirements.length === 0) && (
@@ -1088,8 +1132,8 @@ export default async function WorkOrderDetailPage({
                     <div key={insp.id} className="px-6 py-4 text-sm space-y-4">
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
                         <span className="text-gray-500">检查时间: {formatDate(insp.created_at)}</span>
-                        {insp.inspection_mileage != null && (
-                          <span className="text-gray-500">检查里程: <span className="font-medium text-gray-700">{insp.inspection_mileage} km</span></span>
+                        {(insp.inspection_mileage != null || order.mileage_in != null) && (
+                          <span className="text-gray-500">检查里程: <span className="font-medium text-gray-700">{insp.inspection_mileage ?? order.mileage_in} km</span></span>
                         )}
                         {(() => {
                           const submitter = profiles?.find((p: any) => p.id === insp.submitter_id);
@@ -1099,7 +1143,7 @@ export default async function WorkOrderDetailPage({
                       </div>
 
                       {/* 仪表检查 */}
-                      {(dashboardPhotos.length > 0 || insp.dashboard_fuel_level || (insp.dashboard_fault_lights && insp.dashboard_fault_lights.length > 0)) && (
+                      {(dashboardPhotos.length > 0 || (insp.dashboard_fault_lights && insp.dashboard_fault_lights.length > 0)) && (
                         <div className="space-y-2">
                           {dashboardPhotos.length > 0 && (
                             <div>
@@ -1112,9 +1156,6 @@ export default async function WorkOrderDetailPage({
                             </div>
                           )}
                           <div className="flex flex-wrap items-center gap-2">
-                            {insp.dashboard_fuel_level !== null && (
-                              <span className="text-sm">燃油存量: <span className="font-medium">{insp.dashboard_fuel_level}%</span></span>
-                            )}
                             {insp.dashboard_fault_lights && insp.dashboard_fault_lights.length > 0 && (
                               <div className="flex flex-wrap gap-1">
                                 {insp.dashboard_fault_lights.map((light: string, idx: number) => {

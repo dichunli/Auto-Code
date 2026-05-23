@@ -6,7 +6,7 @@ export function WorkOrderToggleBar() {
   const { showCommission, showTimer, setShowCommission, setShowTimer } = useWorkOrderToggle();
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-col md:flex-row items-start gap-2">
       <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
         <input
           type="checkbox"

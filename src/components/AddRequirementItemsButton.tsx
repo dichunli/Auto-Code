@@ -18,7 +18,7 @@ export default function AddRequirementItemsButton({ orderId, requirementId }: Pr
         onClick={() => setOpen(true)}
         className="text-xs text-blue-600 hover:text-blue-700"
       >
-        + 添加项目
+        +项目
       </button>
       <ItemBatchPickerModal
         open={open}

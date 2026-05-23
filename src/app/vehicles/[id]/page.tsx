@@ -28,7 +28,7 @@ export default async function VehicleDetailPage({
   /* 查询该车辆历史工单 */
   const { data: workOrders } = await supabase
     .from("work_orders")
-    .select("id, order_no, status, mileage_in, created_at, total_amount")
+    .select("id, order_no, status, mileage_in, created_at, total_cost")
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false });
 
@@ -276,7 +276,7 @@ export default async function VehicleDetailPage({
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">{wo.mileage_in ? `${wo.mileage_in} km` : "-"}</td>
-                      <td className="px-4 py-3 text-right">{formatCurrency(wo.total_amount || 0)}</td>
+                      <td className="px-4 py-3 text-right">{formatCurrency(wo.total_cost || 0)}</td>
                       <td className="px-4 py-3">{formatDate(wo.created_at)}</td>
                     </tr>
                   ))}

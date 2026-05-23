@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
@@ -10,6 +10,7 @@ import Link from "next/link";
 export default function EditCustomerPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = params.id as string;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -37,8 +38,12 @@ export default function EditCustomerPage() {
   const [customerPhotos, setCustomerPhotos] = useState<string[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [originalPhone, setOriginalPhone] = useState("");
+  const [hasPhone, setHasPhone] = useState(true);
   const [contacts, setContacts] = useState<ContactForm[]>([]);
   const [customerPhones, setCustomerPhones] = useState<{ id: string; phone: string; label: string }[]>([]);
+  const [starLevel, setStarLevel] = useState<number>(0);
+  const [allTags, setAllTags] = useState<{ id: string; name: string; color: string | null }[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const contactIdCounterRef = useRef(0);
   const phoneIdCounterRef = useRef(0);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -49,6 +54,7 @@ export default function EditCustomerPage() {
       const { data } = await supabase.from("customers").select("*").eq("id", id).single();
       if (data) {
         setOriginalPhone(data.phone || "");
+        setHasPhone(!!data.phone);
         setForm({
           name: data.name || "",
           phone: data.phone || "",
@@ -74,6 +80,11 @@ export default function EditCustomerPage() {
         setCustomerPhones(
           (phoneData || []).map((p: any) => ({ id: p.id, phone: p.phone || "", label: p.label || "" }))
         );
+        setStarLevel(data.star_level || 0);
+        const { data: tagData } = await supabase.from("tags").select("id, name, color").order("name", { ascending: true });
+        setAllTags((tagData || []).map((t: any) => ({ id: t.id, name: t.name, color: t.color })));
+        const { data: customerTagData } = await supabase.from("customer_tags").select("tag_id").eq("customer_id", id);
+        setSelectedTagIds((customerTagData || []).map((t: any) => t.tag_id));
       }
       const { data: photoData } = await supabase
         .from("customer_photos")
@@ -95,9 +106,17 @@ export default function EditCustomerPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.name.trim()) {
+      alert("请填写客户姓名");
+      return;
+    }
+    if (hasPhone && !form.phone.trim()) {
+      alert("请填写手机号");
+      return;
+    }
 
     // 手机号唯一性校验（变更时才检查）
-    if (form.phone.trim() !== originalPhone.trim()) {
+    if (hasPhone && form.phone.trim() && form.phone.trim() !== originalPhone.trim()) {
       const supabaseCheck = createClient();
       const { data: existingPhone } = await supabaseCheck
         .from("customers")
@@ -116,12 +135,13 @@ export default function EditCustomerPage() {
     const supabase = createClient();
     const { error } = await supabase.from("customers").update({
       name: form.name.trim(),
-      phone: form.phone.trim(),
+      phone: hasPhone ? form.phone.trim() : null,
       gender: form.gender || null,
       address: form.address.trim() || null,
       company: form.company.trim() || null,
       id_card: form.id_card.trim() || null,
       notes: form.notes.trim() || null,
+      star_level: starLevel || null,
     }).eq("id", id);
 
     if (error) { alert("保存失败: " + error.message); setSaving(false); return; }
@@ -167,7 +187,22 @@ export default function EditCustomerPage() {
       await supabase.from("customer_photos").insert(photoInserts);
     }
 
-    router.push("/customers");
+    // 保存客户标签：删除旧记录，插入新记录
+    const { error: delTagError } = await supabase.from("customer_tags").delete().eq("customer_id", id);
+    if (delTagError) { alert("删除旧标签失败: " + delTagError.message); setSaving(false); return; }
+    if (selectedTagIds.length > 0) {
+      const { error: insTagError } = await supabase.from("customer_tags").insert(
+        selectedTagIds.map((tagId) => ({ customer_id: id, tag_id: tagId }))
+      );
+      if (insTagError) { alert("标签保存失败: " + insTagError.message); setSaving(false); return; }
+    }
+
+    const returnTo = searchParams.get("returnTo");
+    if (returnTo) {
+      router.push(returnTo);
+    } else {
+      router.push("/customers");
+    }
     router.refresh();
   }
 
@@ -239,8 +274,22 @@ export default function EditCustomerPage() {
             <input required type="text" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">联系电话 *</label>
-            <input required type="tel" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            <div className="flex items-center gap-2 mb-1">
+              <input
+                type="checkbox"
+                id="hasPhone"
+                checked={hasPhone}
+                onChange={(e) => {
+                  setHasPhone(e.target.checked);
+                  if (!e.target.checked) setForm({ ...form, phone: "" });
+                }}
+                className="w-4 h-4 text-blue-600 rounded"
+              />
+              <label htmlFor="hasPhone" className="text-sm text-gray-700">有手机号</label>
+            </div>
+            {hasPhone && (
+              <input type="tel" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            )}
           </div>
           <div className="sm:col-span-2">
             <div className="flex items-center justify-between mb-2">
@@ -296,6 +345,54 @@ export default function EditCustomerPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">地址</label>
             <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">客户星级</label>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setStarLevel(star === starLevel ? 0 : star)}
+                  className={`text-2xl leading-none transition-colors ${star <= starLevel ? "text-yellow-400" : "text-gray-300 hover:text-yellow-300"}`}
+                >
+                  ★
+                </button>
+              ))}
+              {starLevel > 0 && (
+                <span className="ml-2 text-sm text-gray-500">{starLevel} 星</span>
+              )}
+            </div>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">客户标签</label>
+            {allTags.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {allTags.map((tag) => {
+                  const selected = selectedTagIds.includes(tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTagIds((prev) =>
+                          selected ? prev.filter((id) => id !== tag.id) : [...prev, tag.id]
+                        );
+                      }}
+                      className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                        selected
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"
+                      }`}
+                    >
+                      {tag.name}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">暂无可用标签</p>
+            )}
           </div>
         </div>
         <div className="mt-4">

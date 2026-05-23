@@ -20,7 +20,7 @@ export function TemplateImportWrapper({ vehicleId, orderId }: Props) {
         onClick={() => setShow(true)}
         className="text-sm text-green-600 hover:text-green-700 font-medium"
       >
-        导入保养模板
+        保养模板
       </button>
       {show && (
         <TemplateImportModal

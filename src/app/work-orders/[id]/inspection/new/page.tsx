@@ -247,7 +247,6 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
       battery_voltage: batteryVoltage ? parseFloat(batteryVoltage) : null,
       drive_belt_status: driveBeltStatus || null,
       tire_checks: tireChecks,
-      inspection_mileage: inspectionMileage ? parseFloat(inspectionMileage) : null,
       notes: notes || null,
     };
 
@@ -278,6 +277,15 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
           .single();
         if (inspectionError || !inspection) throw inspectionError || new Error("创建检查记录失败");
         inspectionId = inspection.id;
+      }
+
+      /* 统一更新工单里程（唯一的里程数据源） */
+      if (inspectionMileage) {
+        const { error: orderErr } = await supabase
+          .from("work_orders")
+          .update({ mileage_in: parseFloat(inspectionMileage) })
+          .eq("id", orderId);
+        if (orderErr) throw orderErr;
       }
 
       const mediaRecords: any[] = [];

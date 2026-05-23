@@ -36,7 +36,6 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -48,7 +47,7 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
     async function loadData() {
       setLoading(true);
       try {
-        const [{ data: items }, { data: cats }, { data: { user } }] = await Promise.all([
+        const [{ data: items }, { data: cats }] = await Promise.all([
           supabase
             .from("service_items")
             .select(`
@@ -58,11 +57,9 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
             `)
             .order("name"),
           supabase.from("service_categories").select("id, name").order("name"),
-          supabase.auth.getUser(),
         ]);
         setAllServiceItems((items as any) || []);
         setCategories((cats as any) || []);
-        setCurrentUserId(user?.id || null);
       } catch (err: any) {
         alert("加载项目失败: " + (err.message || err));
       } finally {
@@ -97,7 +94,7 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
     });
   }, [allServiceItems, query, categoryFilter]);
 
-  const listToShow = filteredList.slice(0, 200);
+  const listToShow = filteredList.slice(0, 100);
 
   if (!open) return null;
 
@@ -167,10 +164,11 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto py-8">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-4 flex flex-col" style={{ maxHeight: "85vh" }}>
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">批量选择维修项目</h2>
+    <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50">
+      <div className="bg-white rounded-t-xl md:rounded-xl shadow-2xl w-full md:max-w-3xl md:mx-4 flex flex-col h-[85vh] md:h-auto md:max-h-[85vh]">
+        {/* 标题栏 */}
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+          <h2 className="text-base font-semibold text-gray-900">批量选择维修项目</h2>
           <button
             type="button"
             onClick={handleClose}
@@ -181,114 +179,129 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
           </button>
         </div>
 
-        <div className="px-6 py-3 border-b border-gray-100 bg-gray-50 flex flex-wrap items-center gap-3">
+        {/* 筛选栏 */}
+        <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex flex-col gap-2 flex-shrink-0">
           <input
             type="text"
-            placeholder="搜索项目名称、搜索字段、备注..."
+            placeholder="搜索项目名称..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             autoFocus
           />
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            <option value="">全部分类</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <select
-            value={defaultType}
-            onChange={(e) => setDefaultType(e.target.value as any)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-            title="新增行的默认类型"
-          >
-            <option value="labor">默认类型: 工时</option>
-            <option value="part">默认类型: 配件</option>
-            <option value="other">默认类型: 其他</option>
-          </select>
+          <div className="flex gap-2">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+            >
+              <option value="">全部分类</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <select
+              value={defaultType}
+              onChange={(e) => setDefaultType(e.target.value as any)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+            >
+              <option value="labor">工时</option>
+              <option value="part">配件</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 py-2">
+        {/* 列表 - 卡片布局 */}
+        <div className="flex-1 overflow-y-auto px-3 py-2">
           {loading ? (
             <div className="text-center text-gray-400 text-sm py-12">加载中...</div>
           ) : listToShow.length === 0 ? (
             <div className="text-center text-gray-400 text-sm py-12">未找到匹配的项目</div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0">
-                <tr>
-                  <th className="px-3 py-2 text-left w-10">选</th>
-                  <th className="px-3 py-2 text-left">项目名称</th>
-                  <th className="px-3 py-2 text-left w-24">分类</th>
-                  <th className="px-3 py-2 text-left w-28">名称库</th>
-                  <th className="px-3 py-2 text-left w-16">类型</th>
-                  <th className="px-3 py-2 text-right w-20">单价</th>
-                  <th className="px-3 py-2 text-left">备注</th>
-                </tr>
-              </thead>
-              <tbody>
-                {listToShow.map((si) => {
-                  const checked = selectedIds.includes(si.id);
-                  return (
-                    <tr
-                      key={si.id}
-                      className={`border-b border-gray-100 cursor-pointer ${checked ? "bg-blue-50" : "hover:bg-gray-50"}`}
-                      onClick={() => toggle(si.id)}
-                    >
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggle(si.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="rounded"
-                        />
-                      </td>
-                      <td className="px-3 py-2 font-medium text-gray-900">{si.name}</td>
-                      <td className="px-3 py-2 text-gray-600">{si.service_categories?.name || "-"}</td>
-                      <td className="px-3 py-2 text-gray-600">{si.service_names?.name || "-"}</td>
-                      <td className="px-3 py-2 text-gray-600">工时</td>
-                      <td className="px-3 py-2 text-right text-blue-600">
-                        {si.default_price != null ? `${si.default_price}` : "-"}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-gray-500 truncate max-w-xs" title={si.description || ""}>
-                        {si.description || "-"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="space-y-2">
+              {listToShow.map((si) => {
+                const checked = selectedIds.includes(si.id);
+                return (
+                  <div
+                    key={si.id}
+                    onClick={() => toggle(si.id)}
+                    className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                      checked ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="pt-0.5 flex-shrink-0">
+                        <div
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                            checked
+                              ? "bg-blue-600 border-blue-600"
+                              : "border-gray-300 bg-white"
+                          }`}
+                        >
+                          {checked && (
+                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-gray-900 text-sm">{si.name}</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                            {si.service_categories?.name || "-"}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
+                          {si.service_names?.name && (
+                            <span>名称库: {si.service_names.name}</span>
+                          )}
+                          <span className="text-blue-600 font-medium">
+                            {si.default_price != null ? `¥${si.default_price}` : "-"}
+                          </span>
+                          {si.standard_hours && (
+                            <span>{si.standard_hours}工时</span>
+                          )}
+                        </div>
+                        {si.description && (
+                          <p className="mt-1 text-xs text-gray-400 line-clamp-2">{si.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
-          {filteredList.length > 200 && (
+          {filteredList.length > 100 && (
             <div className="text-center text-xs text-gray-400 py-2">
-              共 {filteredList.length} 项，仅显示前 200 项，请输入关键词缩小范围
+              共 {filteredList.length} 项，仅显示前 100 项，请输入关键词缩小范围
             </div>
           )}
         </div>
 
-        <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50">
+        {/* 底部操作栏 */}
+        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50 flex-shrink-0">
           <div className="text-sm text-gray-600">
             已选 <span className="font-semibold text-blue-600">{selectedIds.length}</span> 项
           </div>
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() => setSelectedIds([])}
-              disabled={selectedIds.length === 0 || saving}
-              className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-            >
-              清空选择
-            </button>
+          <div className="flex gap-2">
+            {selectedIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedIds([])}
+                disabled={saving}
+                className="px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                清空
+              </button>
+            )}
             <button
               type="button"
               onClick={handleClose}
               disabled={saving}
-              className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              className="px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
             >
               取消
             </button>
@@ -296,9 +309,9 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
               type="button"
               onClick={handleBatchAdd}
               disabled={selectedIds.length === 0 || saving}
-              className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {saving ? "添加中..." : `批量添加 (${selectedIds.length})`}
+              {saving ? "添加中..." : `添加 (${selectedIds.length})`}
             </button>
           </div>
         </div>

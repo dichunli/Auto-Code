@@ -111,8 +111,15 @@ export default function VinDecodeInput({
         return;
       }
 
-      /* 先回填识别到的 VIN */
-      const detectedVin = res.data.vin || res.data.VIN || "";
+      /* 先回填识别到的 VIN — 尝试多个可能的字段位置 */
+      const detectedVin =
+        res.data?.vin ||
+        res.data?.VIN ||
+        res.data?.Vin ||
+        res.vin ||
+        res.VIN ||
+        res.Vin ||
+        "";
       if (detectedVin) {
         onChange(detectedVin.toUpperCase());
       }

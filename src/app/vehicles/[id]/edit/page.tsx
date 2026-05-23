@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { VehicleModelSearch } from "@/components/VehicleModelSearch";
@@ -14,6 +14,7 @@ type OwnerMode = "existing" | "new";
 export default function EditVehiclePage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = params.id as string;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -149,13 +150,13 @@ export default function EditVehiclePage() {
     let finalCustomerId = customerId;
 
     if (ownerMode === "new") {
-      if (!newCustomer.name.trim() || !newCustomer.phone.trim()) {
-        alert("请填写新车主的姓名和电话");
+      if (!newCustomer.name.trim()) {
+        alert("请填写新车主的姓名");
         return;
       }
       const { data: cust, error: custErr } = await supabase
         .from("customers")
-        .insert({ name: newCustomer.name.trim(), phone: newCustomer.phone.trim(), gender: newCustomer.gender || null })
+        .insert({ name: newCustomer.name.trim(), phone: newCustomer.phone.trim() || null, gender: newCustomer.gender || null })
         .select("id")
         .single();
       if (custErr || !cust) {
@@ -216,8 +217,8 @@ export default function EditVehiclePage() {
       transmission_type: form.transmission_type.trim() || null,
       transmission_code: form.transmission_code.trim() || null,
       color: form.color.trim() || null,
-      year: form.year ? parseInt(form.year) : null,
-      mileage: form.mileage ? parseInt(form.mileage) : null,
+      year: form.year && /^\d+$/.test(form.year) ? parseInt(form.year) : null,
+      mileage: form.mileage && /^\d+$/.test(form.mileage) ? parseInt(form.mileage) : null,
       notes: form.notes.trim() || null,
     }).eq("id", id);
 
@@ -233,7 +234,12 @@ export default function EditVehiclePage() {
       await supabase.from("vehicle_photos").insert(photoInserts);
     }
 
-    router.push("/vehicles");
+    const returnTo = searchParams.get("returnTo");
+    if (returnTo) {
+      router.push(returnTo);
+    } else {
+      router.push("/vehicles");
+    }
     router.refresh();
   }
 
@@ -268,6 +274,13 @@ export default function EditVehiclePage() {
                 />
                 <LicensePlateOcrButton
                   onRecognize={(plate) => setForm((prev) => ({ ...prev, plate_number: plate }))}
+                  buttonText={
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  }
+                  className="flex items-center justify-center w-10 h-10 text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 shrink-0"
                 />
                 <button
                   type="button"
