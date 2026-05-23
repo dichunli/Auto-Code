@@ -40,6 +40,7 @@ export default function EditServiceNamePage() {
   const [partSearching, setPartSearching] = useState(false);
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -173,6 +174,53 @@ export default function EditServiceNamePage() {
 
   function handleDragEnd() {
     setDragIndex(null);
+  }
+
+  async function handleSyncCommission() {
+    if (!confirm("确定要把当前名称库的提成设置同步到所有关联的维修项目中吗？此操作会覆盖这些维修项目现有的提成设置。")) return;
+
+    setSyncing(true);
+    try {
+      const { data: items, error: fetchError } = await supabase
+        .from("service_items")
+        .select("id")
+        .eq("service_name_id", id);
+
+      if (fetchError) {
+        alert("查询关联维修项目失败: " + fetchError.message);
+        return;
+      }
+
+      if (!items || items.length === 0) {
+        alert("当前名称库没有关联任何维修项目，无需同步");
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from("service_items")
+        .update({
+          sales_commission_type: form.sales_type || null,
+          sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
+          diagnosis_commission_type: form.diagnosis_type || null,
+          diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
+          repair_commission_type: form.repair_type || null,
+          repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
+          qc_commission_type: form.qc_type || null,
+          qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
+        })
+        .eq("service_name_id", id);
+
+      if (updateError) {
+        alert("同步失败: " + updateError.message);
+        return;
+      }
+
+      alert(`已成功同步到 ${items.length} 个维修项目`);
+    } catch (err: any) {
+      alert("同步异常: " + (err.message || String(err)));
+    } finally {
+      setSyncing(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -448,6 +496,14 @@ export default function EditServiceNamePage() {
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             取消
+          </button>
+          <button
+            type="button"
+            onClick={handleSyncCommission}
+            disabled={syncing}
+            className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-50"
+          >
+            {syncing ? "同步中..." : "同步提成到维修项目"}
           </button>
           <button
             type="submit"

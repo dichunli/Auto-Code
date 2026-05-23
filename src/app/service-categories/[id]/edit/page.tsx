@@ -98,7 +98,8 @@ export default function EditServiceCategoryPage() {
     if (!confirm("确定要将当前分类的提成规则同步到所有使用该分类的项目名称和项目实例吗？此操作会覆盖这些记录的现有提成设置。")) return;
     setSyncing(true);
 
-    const updateData = {
+    /* service_names 和 service_items 表目前只有这4种提成字段 */
+    const commissionData = {
       sales_commission_type: form.sales_type || null,
       sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
       diagnosis_commission_type: form.diagnosis_type || null,
@@ -107,19 +108,25 @@ export default function EditServiceCategoryPage() {
       repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
       qc_commission_type: form.qc_type || null,
       qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-      dispatch_commission_type: form.dispatch_type || null,
-      dispatch_commission_value: form.dispatch_value ? parseFloat(form.dispatch_value) : null,
-      claim_commission_type: form.claim_type || null,
-      claim_commission_value: form.claim_value ? parseFloat(form.claim_value) : null,
     };
 
-    const { error: nameError } = await supabase.from("service_names").update(updateData).eq("category_id", id);
+    const { data: nameData, error: nameError } = await supabase
+      .from("service_names")
+      .update(commissionData)
+      .eq("category_id", id)
+      .select("id");
     if (nameError) { alert("同步项目名称失败: " + nameError.message); setSyncing(false); return; }
 
-    const { error: itemError } = await supabase.from("service_items").update(updateData).eq("category_id", id);
+    const { data: itemData, error: itemError } = await supabase
+      .from("service_items")
+      .update(commissionData)
+      .eq("category_id", id)
+      .select("id");
     if (itemError) { alert("同步项目实例失败: " + itemError.message); setSyncing(false); return; }
 
-    alert("同步成功");
+    const nameCount = nameData?.length ?? 0;
+    const itemCount = itemData?.length ?? 0;
+    alert(`同步成功：已更新 ${nameCount} 个项目名称，${itemCount} 个维修项目`);
     setSyncing(false);
   }
 
