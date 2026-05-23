@@ -283,7 +283,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
         }
         seenCodeInFile.set(pnStr, rowNum);
 
-        let partNameId = partNameMap.get(nameStr);
+        const partNameId = partNameMap.get(nameStr);
         if (!partNameId) {
           if (!newPartNames.some((p) => p.name === nameStr)) {
             newPartNames.push({ name: nameStr });
@@ -635,8 +635,8 @@ export default function InventoryTable({ items }: { items: any[] }) {
       case "actions":
         return (
           <div className="space-x-3 whitespace-nowrap">
-            <Link href={`/parts/${item.id}`} className="text-xs text-blue-600 hover:text-blue-700">
-              查看
+            <Link href={`/parts/${item.id}/edit`} className="text-xs text-blue-600 hover:text-blue-700">
+              编辑
             </Link>
             <button onClick={() => printSingle(item)} className="text-xs text-gray-600 hover:text-gray-900">
               打印条码
