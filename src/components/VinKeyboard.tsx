@@ -17,10 +17,15 @@ function isMobile() {
 
 /* VIN 可用字符（不含 I、O、Q） */
 const VIN_NUMBERS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
-const VIN_LETTERS = [
-  "A", "B", "C", "D", "E", "F", "G", "H", "J", "K",
-  "L", "M", "N", "P", "R", "S", "T", "U", "V", "W",
-  "X", "Y", "Z",
+
+/* VIN 中不可用的字母（要显示但变灰） */
+const VIN_INVALID_LETTERS = new Set(["I", "O", "Q"]);
+
+/* QWERTY 布局 */
+const QWERTY_ROWS = [
+  ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+  ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+  ["Z", "X", "C", "V", "B", "N", "M"],
 ];
 
 export default function VinKeyboard({
@@ -35,20 +40,6 @@ export default function VinKeyboard({
 
   const displayValue = value.toUpperCase();
   const maxLength = 17;
-
-  /* PC 端使用普通输入框 */
-  if (!isMobile()) {
-    return (
-      <input
-        type="text"
-        value={displayValue}
-        onChange={(e) => onChange(e.target.value.toUpperCase())}
-        placeholder={placeholder}
-        maxLength={17}
-        className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${className}`}
-      />
-    );
-  }
 
   /* 点击外部关闭键盘 */
   useEffect(() => {
@@ -99,6 +90,20 @@ export default function VinKeyboard({
   const handleDone = useCallback(() => {
     setShow(false);
   }, []);
+
+  /* PC 端使用普通输入框 */
+  if (!isMobile()) {
+    return (
+      <input
+        type="text"
+        value={displayValue}
+        onChange={(e) => onChange(e.target.value.toUpperCase())}
+        placeholder={placeholder}
+        maxLength={17}
+        className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${className}`}
+      />
+    );
+  }
 
   return (
     <div className="relative">
@@ -157,7 +162,7 @@ export default function VinKeyboard({
             )}
           </div>
 
-          {/* 字符面板 */}
+          {/* 字符面板 — QWERTY 布局 */}
           <div className="touch-none select-none space-y-1.5">
             {/* 数字行 */}
             <div className="grid grid-cols-10 gap-1.5">
@@ -173,41 +178,56 @@ export default function VinKeyboard({
                 </button>
               ))}
             </div>
-            {/* 字母行 */}
-            <div className="grid grid-cols-7 gap-1.5">
-              {VIN_LETTERS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => handleAppend(c)}
-                  disabled={displayValue.length >= maxLength}
-                  className="h-10 rounded text-sm font-medium bg-white text-gray-800 border border-gray-200 active:bg-gray-100 active:scale-95 transition-transform disabled:opacity-30 disabled:active:scale-100"
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
+            {/* QWERTY 字母行 */}
+            {QWERTY_ROWS.map((row, rowIdx) => (
+              <div key={rowIdx} className="grid grid-cols-10 gap-1.5">
+                {row.map((c) => {
+                  const isInvalid = VIN_INVALID_LETTERS.has(c);
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => !isInvalid && handleAppend(c)}
+                      disabled={isInvalid || displayValue.length >= maxLength}
+                      className={`h-10 rounded text-sm font-medium border transition-transform active:scale-95 ${
+                        isInvalid
+                          ? "bg-gray-100 text-gray-300 border-gray-100 cursor-not-allowed"
+                          : "bg-white text-gray-800 border-gray-200 active:bg-gray-100 disabled:opacity-30 disabled:active:scale-100"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  );
+                })}
+                {/* 第三行补满：Z-M 只有7个，后面放退格 */}
+                {rowIdx === 2 && (
+                  <>
+                    <div />
+                    <div />
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      disabled={displayValue.length === 0}
+                      className="h-10 rounded text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200 active:bg-amber-100 disabled:opacity-40 disabled:active:scale-100 active:scale-95 transition-transform flex items-center justify-center"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
+                        <line x1="10" y1="9" x2="16" y2="15" />
+                        <line x1="16" y1="9" x2="10" y2="15" />
+                      </svg>
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
           </div>
 
           {/* 底部操作栏 */}
           <div className="flex gap-2 mt-2">
             <button
               type="button"
-              onClick={handleDelete}
-              disabled={displayValue.length === 0}
-              className="flex-1 h-10 rounded text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200 active:bg-amber-100 disabled:opacity-40 disabled:active:scale-100 active:scale-95 transition-transform flex items-center justify-center gap-1"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
-                <line x1="10" y1="9" x2="16" y2="15" />
-                <line x1="16" y1="9" x2="10" y2="15" />
-              </svg>
-              退格
-            </button>
-            <button
-              type="button"
               onClick={handleDone}
-              className="flex-[2] h-10 rounded text-sm font-medium bg-blue-600 text-white active:bg-blue-700 active:scale-95 transition-transform"
+              className="flex-1 h-10 rounded text-sm font-medium bg-blue-600 text-white active:bg-blue-700 active:scale-95 transition-transform"
             >
               完成
             </button>

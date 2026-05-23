@@ -428,14 +428,12 @@ export default function MobileReceptionNewPage() {
           {!selectedVehicle && !isNewVehicle && (
             <>
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  lang="en"
-                  autoCapitalize="characters"
+                <LicensePlateKeyboard
+                  variant="simple"
                   value={vehicleQuery}
-                  onChange={(e) => setVehicleQuery(e.target.value.toUpperCase())}
+                  onChange={(val) => setVehicleQuery(val)}
                   placeholder="输入车牌号搜索"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1"
                 />
                 <LicensePlateOcrButton
                   onRecognize={(plate) => setVehicleQuery(plate)}
