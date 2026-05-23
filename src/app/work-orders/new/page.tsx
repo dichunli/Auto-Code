@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import VinDecodeInput from "@/components/VinDecodeInput";
@@ -19,6 +20,15 @@ export default function NewWorkOrderPage() {
   const [vehicleResults, setVehicleResults] = useState<any[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<any | null>(null);
   const [showVehicleResults, setShowVehicleResults] = useState(false);
+
+  // 车辆关联工单统计
+  const [vehicleOrderStats, setVehicleOrderStats] = useState<{
+    active: number;
+    quotes: number;
+    cancelled: number;
+    appointments: number;
+    orders: { id: string; order_no: string; order_type: string; status: string }[];
+  } | null>(null);
 
   // 新建车辆
   const [isNewVehicle, setIsNewVehicle] = useState(false);
@@ -77,6 +87,31 @@ export default function NewWorkOrderPage() {
     const timer = setTimeout(() => searchVehicles(vehicleQuery), 300);
     return () => clearTimeout(timer);
   }, [vehicleQuery, searchVehicles]);
+
+  // 选中车辆后加载关联工单统计
+  useEffect(() => {
+    if (!selectedVehicle) {
+      setVehicleOrderStats(null);
+      return;
+    }
+    async function load() {
+      const { data } = await supabase
+        .from("work_orders")
+        .select("id, order_no, status, order_type")
+        .eq("vehicle_id", selectedVehicle.id)
+        .order("created_at", { ascending: false });
+      if (data) {
+        const active = data.filter(
+          (o) => o.order_type === "normal" && !["settled", "delivered"].includes(o.status)
+        ).length;
+        const quotes = data.filter((o) => o.order_type === "quote").length;
+        const cancelled = data.filter((o) => o.order_type === "cancelled").length;
+        const appointments = data.filter((o) => o.order_type === "appointment").length;
+        setVehicleOrderStats({ active, quotes, cancelled, appointments, orders: data });
+      }
+    }
+    load();
+  }, [selectedVehicle, supabase]);
 
   function handleSelectVehicle(v: any) {
     setSelectedVehicle(v);
@@ -348,6 +383,36 @@ export default function NewWorkOrderPage() {
                 )}
               </div>
             ) : null}
+
+            {/* 该车关联工单统计 */}
+            {selectedVehicle && vehicleOrderStats && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                <Link
+                  href={`/work-orders?type=normal&keyword=${encodeURIComponent(selectedVehicle.plate_number)}`}
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
+                >
+                  在修工单（{vehicleOrderStats.active}）
+                </Link>
+                <Link
+                  href={`/work-orders?type=quote&keyword=${encodeURIComponent(selectedVehicle.plate_number)}`}
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                >
+                  历史报价单（{vehicleOrderStats.quotes}）
+                </Link>
+                <Link
+                  href={`/work-orders?type=cancelled&keyword=${encodeURIComponent(selectedVehicle.plate_number)}`}
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100"
+                >
+                  作废工单（{vehicleOrderStats.cancelled}）
+                </Link>
+                <Link
+                  href={`/work-orders?type=appointment&keyword=${encodeURIComponent(selectedVehicle.plate_number)}`}
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                >
+                  预约工单（{vehicleOrderStats.appointments}）
+                </Link>
+              </div>
+            )}
           </div>
 
           {/* 新建车辆 + 关联客户 */}
