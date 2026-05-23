@@ -51,6 +51,14 @@ export default function MobileReceptionNewPage() {
   const [newVin, setNewVin] = useState("");
   const vehicleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  /* ---------- 车辆关联工单统计 ---------- */
+  const [vehicleOrderStats, setVehicleOrderStats] = useState<{
+    active: number;
+    quotes: number;
+    cancelled: number;
+    appointments: number;
+  } | null>(null);
+
   /* ---------- 客户 ---------- */
   const [customerQuery, setCustomerQuery] = useState("");
   const [customerResults, setCustomerResults] = useState<Customer[]>([]);
@@ -128,6 +136,34 @@ export default function MobileReceptionNewPage() {
       if (vehicleTimeoutRef.current) clearTimeout(vehicleTimeoutRef.current);
     };
   }, [vehicleQuery, supabase]);
+
+  /* ============================================================
+     选中车辆后加载关联工单统计
+     ============================================================ */
+  useEffect(() => {
+    if (!selectedVehicle) {
+      setVehicleOrderStats(null);
+      return;
+    }
+    const vehicleId = selectedVehicle.id;
+    async function load() {
+      const { data } = await supabase
+        .from("work_orders")
+        .select("id, order_no, status, order_type")
+        .eq("vehicle_id", vehicleId)
+        .order("created_at", { ascending: false });
+      if (data) {
+        const active = data.filter(
+          (o) => o.order_type === "normal" && !["settled", "delivered"].includes(o.status)
+        ).length;
+        const quotes = data.filter((o) => o.order_type === "quote").length;
+        const cancelled = data.filter((o) => o.order_type === "cancelled").length;
+        const appointments = data.filter((o) => o.order_type === "appointment").length;
+        setVehicleOrderStats({ active, quotes, cancelled, appointments });
+      }
+    }
+    load();
+  }, [selectedVehicle, supabase]);
 
   /* ============================================================
      客户搜索
@@ -474,6 +510,41 @@ export default function MobileReceptionNewPage() {
                   </button>
                 </div>
               </div>
+
+              {/* 车辆关联工单统计 */}
+              {vehicleOrderStats && (
+                <div className="flex flex-wrap gap-2"
+                >
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/work-orders?type=normal&keyword=${encodeURIComponent(selectedVehicle.plate_number)}`)}
+                    className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border bg-orange-50 text-orange-700 border-orange-200"
+                  >
+                    在修工单（{vehicleOrderStats.active}）
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/work-orders?type=quote&keyword=${encodeURIComponent(selectedVehicle.plate_number)}`)}
+                    className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border bg-purple-50 text-purple-700 border-purple-200"
+                  >
+                    历史报价单（{vehicleOrderStats.quotes}）
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/work-orders?type=cancelled&keyword=${encodeURIComponent(selectedVehicle.plate_number)}`)}
+                    className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border bg-gray-50 text-gray-700 border-gray-200"
+                  >
+                    作废工单（{vehicleOrderStats.cancelled}）
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/work-orders?type=appointment&keyword=${encodeURIComponent(selectedVehicle.plate_number)}`)}
+                    className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border bg-blue-50 text-blue-700 border-blue-200"
+                  >
+                    预约工单（{vehicleOrderStats.appointments}）
+                  </button>
+                </div>
+              )}
 
               {/* 关联客户 */}
               {getVehicleCustomer(selectedVehicle) && !showCustomerSelect && (
