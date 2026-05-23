@@ -210,7 +210,7 @@ export default function MobileReceptionNewPage() {
       .from("work_orders")
       .select("id, order_no, status")
       .eq("vehicle_id", vehicle.id)
-      .not("status", "in", ["settled", "delivered"])
+      .not("status", "in", "(settled,delivered)")
       .limit(1);
 
     if (orders && orders.length > 0) {
