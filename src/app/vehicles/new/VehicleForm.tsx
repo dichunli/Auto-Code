@@ -297,7 +297,10 @@ export default function VehicleForm() {
                         <div>
                           <span className="font-medium">{v.plate_number}</span>
                           <span className="text-gray-500 ml-2">{v.brand || ""} {v.model || ""}</span>
-                          {v.customers?.name && <span className="text-gray-500 ml-2">车主：{v.customers.name}</span>}
+                          {(() => {
+                          const c = Array.isArray(v.customers) ? v.customers[0] : v.customers;
+                          return c?.name ? <span className="text-gray-500 ml-2">车主：{c.name}</span> : null;
+                        })()}
                         </div>
                         {isCurrent ? (
                           <span className="text-xs text-green-600">已属于当前客户</span>
@@ -627,7 +630,7 @@ export default function VehicleForm() {
             <p className="text-sm text-gray-600 mb-4">
               车辆 <span className="font-medium">{transferVehicle.plate_number}</span>
               {transferVehicle.brand || transferVehicle.model ? `（${transferVehicle.brand || ""} ${transferVehicle.model || ""}）` : ""}
-              当前车主为 <span className="font-medium">{transferVehicle.customers?.name || "未知"}</span>。
+              当前车主为 <span className="font-medium">{(() => { const c = Array.isArray(transferVehicle.customers) ? transferVehicle.customers[0] : transferVehicle.customers; return c?.name || "未知"; })()}</span>。
               确认将其车主变更为当前客户吗？
             </p>
             <div className="flex gap-3 justify-end">

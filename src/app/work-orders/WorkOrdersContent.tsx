@@ -8,6 +8,7 @@ import Link from "next/link";
 import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
 import WorkOrderSearch from "@/components/WorkOrderSearch";
 import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
+import { logAction } from "@/lib/operationLog";
 
 interface Order {
   id: string;
@@ -130,6 +131,10 @@ export default function WorkOrdersContent() {
   const [loading, setLoading] = useState(true);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; orderNo: string } | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -229,14 +234,39 @@ export default function WorkOrdersContent() {
 
   const pageTitle = type ? typeLabelMap[type] || "工单管理" : "工单管理";
 
-  async function handleDelete(orderId: string, orderNo: string) {
-    if (!confirm(`确定删除工单「${orderNo}」吗？此操作不可恢复。`)) return;
-    const { error } = await supabase.from("work_orders").delete().eq("id", orderId);
+  function handleDelete(orderId: string, orderNo: string) {
+    setDeleteTarget({ id: orderId, orderNo });
+    setDeleteReason("");
+    setDeleteModalOpen(true);
+  }
+
+  async function handleDeleteConfirm() {
+    if (!deleteTarget) return;
+    if (!deleteReason.trim()) {
+      alert("请填写删除原因");
+      return;
+    }
+    setDeleteLoading(true);
+    const { error } = await supabase.from("work_orders").delete().eq("id", deleteTarget.id);
     if (error) {
+      setDeleteLoading(false);
       alert("删除失败: " + error.message);
       return;
     }
-    setOrders((prev) => prev.filter((o) => o.id !== orderId));
+
+    await logAction({
+      actionType: "work_order_delete",
+      targetTable: "work_orders",
+      targetId: deleteTarget.id,
+      targetName: deleteTarget.orderNo,
+      description: `删除工单 ${deleteTarget.orderNo}，原因: ${deleteReason.trim()}`,
+    });
+
+    setDeleteLoading(false);
+    setDeleteModalOpen(false);
+    setDeleteTarget(null);
+    setDeleteReason("");
+    setOrders((prev) => prev.filter((o) => o.id !== deleteTarget.id));
   }
 
   return (
@@ -429,6 +459,38 @@ export default function WorkOrdersContent() {
           </table>
         </div>
       </div>
+
+      {/* 删除原因弹窗 */}
+      {deleteModalOpen && deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-sm mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">删除工单</h3>
+            <p className="text-sm text-gray-500 mb-4">工单号：{deleteTarget.orderNo}</p>
+            <textarea
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+              placeholder="请输入删除原因..."
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => { setDeleteModalOpen(false); setDeleteTarget(null); setDeleteReason(""); }}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={deleteLoading}
+                className="px-4 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteLoading ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

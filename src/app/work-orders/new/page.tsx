@@ -116,7 +116,7 @@ export default function NewWorkOrderPage() {
       .from("work_orders")
       .select("id, order_no, status")
       .eq("vehicle_id", vehicle.id)
-      .not("status", "in", "('settled','delivered')")
+      .not("status", "in", ["settled", "delivered"])
       .limit(1);
 
     if (orders && orders.length > 0) {
@@ -257,7 +257,9 @@ export default function NewWorkOrderPage() {
     }
   }
 
-  const customerInfo = selectedVehicle?.customers;
+  const customerInfo = selectedVehicle?.customers
+    ? (Array.isArray(selectedVehicle.customers) ? selectedVehicle.customers[0] : selectedVehicle.customers)
+    : null;
 
   return (
     <div>
@@ -292,7 +294,10 @@ export default function NewWorkOrderPage() {
                           {v.plate_number} {v.brand && v.model ? `(${v.brand} ${v.model})` : ""}
                         </div>
                         <div className="text-xs text-gray-500">
-                          车主：{v.customers?.name || "-"} {v.customers?.phone || ""}
+                          {(() => {
+                            const c = Array.isArray(v.customers) ? v.customers[0] : v.customers;
+                            return `车主：${c?.name || "-"} ${c?.phone || ""}`;
+                          })()}
                         </div>
                       </button>
                     ))}

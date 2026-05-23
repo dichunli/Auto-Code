@@ -27,7 +27,12 @@ interface Vehicle {
   model: string;
   vin: string;
   customer_id: string | null;
-  customers: Customer[] | null;
+  customers: Customer | Customer[] | null;
+}
+
+function getVehicleCustomer(v: Vehicle | null): Customer | null {
+  if (!v || !v.customers) return null;
+  return Array.isArray(v.customers) ? v.customers[0] : v.customers;
 }
 
 export default function MobileReceptionNewPage() {
@@ -160,7 +165,7 @@ export default function MobileReceptionNewPage() {
     if (selectedVehicle) {
       const hasCustomer = isNewCustomer
         ? newCustomerName.trim()
-        : !!(selectedCustomer || selectedVehicle.customers?.[0]);
+        : !!(selectedCustomer || getVehicleCustomer(selectedVehicle));
       return hasCustomer;
     }
     return false;
@@ -205,7 +210,7 @@ export default function MobileReceptionNewPage() {
       .from("work_orders")
       .select("id, order_no, status")
       .eq("vehicle_id", vehicle.id)
-      .not("status", "in", "('settled','delivered')")
+      .not("status", "in", ["settled", "delivered"])
       .limit(1);
 
     if (orders && orders.length > 0) {
@@ -280,28 +285,29 @@ export default function MobileReceptionNewPage() {
         customerId = c.id;
       } else if (selectedCustomer) {
         customerId = selectedCustomer.id;
-      } else if (selectedVehicle?.customers?.[0]) {
-        customerId = selectedVehicle.customers[0].id;
+      } else if (getVehicleCustomer(selectedVehicle)) {
+        customerId = getVehicleCustomer(selectedVehicle)!.id;
       } else {
         throw new Error("请选择或新建客户");
       }
 
       /* 3. 关联车辆和客户 */
-      if (!isNewVehicle && selectedVehicle) {
-        await supabase.from("vehicles").update({ customer_id: customerId }).eq("id", vehicleId);
-      } else if (isNewVehicle) {
-        await supabase.from("vehicles").update({ customer_id: customerId }).eq("id", vehicleId);
-      }
+      const { error: linkErr } = await supabase
+        .from("vehicles")
+        .update({ customer_id: customerId })
+        .eq("id", vehicleId);
+      if (linkErr) throw new Error("关联车辆客户失败: " + linkErr.message);
 
       /* 4. 生成工单号 */
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       const prefix = `WO${dateStr}`;
-      const { data: last } = await supabase
+      const { data: last, error: lastErr } = await supabase
         .from("work_orders")
         .select("order_no")
         .ilike("order_no", `${prefix}%`)
         .order("order_no", { ascending: false })
         .limit(1);
+      if (lastErr) throw new Error("生成工单号失败: " + lastErr.message);
       let seq = 1;
       if (last && last.length > 0 && last[0].order_no) {
         const suffix = last[0].order_no.slice(prefix.length);
@@ -356,6 +362,7 @@ export default function MobileReceptionNewPage() {
       /* 成功跳转后保持 submitting=true，防止重复点击 */
       return;
     } catch (err: any) {
+      console.error("接车提交异常:", err);
       showToast(err.message || "提交失败", "error");
       setSubmitting(false);
     }
@@ -399,8 +406,9 @@ export default function MobileReceptionNewPage() {
                         setVehicleQuery("");
                         setVehicleResults([]);
                         setShowCustomerSelect(false);
-                        if (v.customers?.[0]) {
-                          setSelectedCustomer(v.customers[0]);
+                        const vc = getVehicleCustomer(v as any);
+                        if (vc) {
+                          setSelectedCustomer(vc);
                           setShowCustomerSelect(false);
                         } else {
                           setSelectedCustomer(null);
@@ -409,8 +417,8 @@ export default function MobileReceptionNewPage() {
                     >
                       <div className="font-medium">{v.plate_number}</div>
                       <div className="text-gray-500 text-xs">{v.brand} {v.model} {v.vin && `· VIN:${v.vin}`}</div>
-                      {v.customers?.[0] ? (
-                        <div className="text-blue-600 text-xs mt-0.5">车主: {v.customers[0].name} · {v.customers[0].phone}</div>
+                      {getVehicleCustomer(v as any) ? (
+                        <div className="text-blue-600 text-xs mt-0.5">车主: {getVehicleCustomer(v as any)!.name} · {getVehicleCustomer(v as any)!.phone}</div>
                       ) : (
                         <div className="text-orange-500 text-xs mt-0.5">未关联客户</div>
                       )}
@@ -468,18 +476,18 @@ export default function MobileReceptionNewPage() {
               </div>
 
               {/* 关联客户 */}
-              {selectedVehicle.customers?.[0] && !showCustomerSelect && (
+              {getVehicleCustomer(selectedVehicle) && !showCustomerSelect && (
                 <div className="flex items-start justify-between bg-blue-50 rounded-lg px-3 py-2">
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium">{selectedVehicle.customers[0].name}</div>
-                    <div className="text-xs text-gray-500">{selectedVehicle.customers[0].phone}</div>
+                    <div className="text-sm font-medium">{getVehicleCustomer(selectedVehicle)!.name}</div>
+                    <div className="text-xs text-gray-500">{getVehicleCustomer(selectedVehicle)!.phone}</div>
                   </div>
                   <div className="flex items-center gap-2 ml-2 shrink-0">
                     <button
                       type="button"
                       onClick={() => {
                         saveDraft();
-                        router.push(`/customers/${selectedVehicle.customers![0].id}/edit?returnTo=/m/reception/new`);
+                        router.push(`/customers/${getVehicleCustomer(selectedVehicle)!.id}/edit?returnTo=/m/reception/new`);
                       }}
                       className="text-xs text-blue-600"
                     >
@@ -501,7 +509,7 @@ export default function MobileReceptionNewPage() {
               )}
 
               {/* 车辆无关联客户提示 */}
-              {selectedVehicle && !selectedVehicle.customers?.[0] && !showCustomerSelect && (
+              {selectedVehicle && !getVehicleCustomer(selectedVehicle) && !showCustomerSelect && (
                 <div className="text-sm text-orange-600 bg-orange-50 rounded-lg px-3 py-2">
                   该车辆未关联客户，请选择或新建客户
                 </div>
@@ -568,7 +576,7 @@ export default function MobileReceptionNewPage() {
         </div>
 
         {/* 客户（新建车辆、车辆无客户、或主动更换客户时显示） */}
-        {(isNewVehicle || (selectedVehicle && (!selectedVehicle.customers?.[0] || showCustomerSelect))) && (
+        {(isNewVehicle || (selectedVehicle && (!getVehicleCustomer(selectedVehicle) || showCustomerSelect))) && (
           <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
             <div className="text-sm font-medium text-gray-900">客户信息</div>
 
@@ -684,7 +692,7 @@ export default function MobileReceptionNewPage() {
         )}
 
         {/* 本次送修人 */}
-        {(selectedCustomer || (selectedVehicle?.customers?.[0] && !showCustomerSelect) || isNewCustomer) && (
+        {(selectedCustomer || (getVehicleCustomer(selectedVehicle) && !showCustomerSelect) || isNewCustomer) && (
           <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
             <div className="text-sm font-medium text-gray-900">本次送修人</div>
             <input

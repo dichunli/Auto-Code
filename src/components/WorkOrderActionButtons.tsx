@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { logAction } from "@/lib/operationLog";
 
 interface Props {
   workOrderId: string;
@@ -19,6 +20,31 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
   const [modalOpen, setModalOpen] = useState(false);
   const [modalType, setModalType] = useState<"appointment" | "quote" | "cancelled" | "maintenance" | null>(null);
   const [reason, setReason] = useState("");
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
+  const buttonRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setDropdownPos(null);
+      return;
+    }
+    function updatePos() {
+      if (buttonRef.current) {
+        const rect = buttonRef.current.getBoundingClientRect();
+        setDropdownPos({
+          top: rect.bottom + 4,
+          left: rect.right - 224,
+        });
+      }
+    }
+    updatePos();
+    window.addEventListener("scroll", updatePos, true);
+    window.addEventListener("resize", updatePos);
+    return () => {
+      window.removeEventListener("scroll", updatePos, true);
+      window.removeEventListener("resize", updatePos);
+    };
+  }, [open]);
 
   const actions = [
     { key: "normal", label: "转回正常工单", desc: "将工单恢复为正常维修状态" },
@@ -65,13 +91,13 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
     }
 
     // 记录操作日志
-    await supabase.from("operation_logs").insert({
-      action_type: "work_order_convert",
-      target_table: "work_orders",
-      target_id: workOrderId,
-      target_name: orderNo,
+    await logAction({
+      actionType: "work_order_convert",
+      targetTable: "work_orders",
+      targetId: workOrderId,
+      targetName: orderNo,
       description: `工单 ${orderNo} 转为${actions.find((a) => a.key === type)?.label}`,
-      new_values: updates,
+      newValues: updates,
     });
 
     window.dispatchEvent(new Event("work-order-counts-update"));
@@ -100,13 +126,13 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
       return;
     }
 
-    await supabase.from("operation_logs").insert({
-      action_type: "work_order_convert",
-      target_table: "work_orders",
-      target_id: workOrderId,
-      target_name: orderNo,
+    await logAction({
+      actionType: "work_order_convert",
+      targetTable: "work_orders",
+      targetId: workOrderId,
+      targetName: orderNo,
       description: `工单 ${orderNo} 转为作废单，原因: ${reason.trim()}`,
-      new_values: { order_type: "cancelled", cancelled_reason: reason.trim() },
+      newValues: { order_type: "cancelled", cancelled_reason: reason.trim() },
     });
 
     setReason("");
@@ -119,7 +145,7 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
   }
 
   return (
-    <div className="relative">
+    <div ref={buttonRef} className="relative inline-block">
       <button
         onClick={() => setOpen(!open)}
         disabled={loading}
@@ -134,7 +160,13 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg border border-gray-200 shadow-lg z-30 py-1">
+          <div
+            className="fixed w-56 bg-white rounded-lg border border-gray-200 shadow-lg z-30 py-1"
+            style={{
+              top: dropdownPos?.top ?? 0,
+              left: Math.max(8, dropdownPos?.left ?? 0),
+            }}
+          >
             {actions.map((action) => (
               <button
                 key={action.key}

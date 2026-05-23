@@ -116,6 +116,12 @@ export default function VinDecodeInput({
         res.data?.vin ||
         res.data?.VIN ||
         res.data?.Vin ||
+        res.data?.vin_no ||
+        res.data?.vin_code ||
+        res.data?.vehicle?.vin ||
+        res.data?.vehicle?.VIN ||
+        res.data?.vehicle_info?.vin ||
+        res.data?.ocr_result?.vin ||
         res.vin ||
         res.VIN ||
         res.Vin ||
