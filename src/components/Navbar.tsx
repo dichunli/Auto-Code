@@ -49,9 +49,15 @@ const navItems: NavItem[] = [
     ],
   },
   { href: "/logistics", label: "物流运单" },
-  { href: "/service-items", label: "维修项目" },
-  { href: "/service-categories", label: "项目分类" },
-  { href: "/service-names", label: "项目名称" },
+  {
+    href: "/service-items",
+    label: "维修项目",
+    children: [
+      { href: "/service-items", label: "维修项目" },
+      { href: "/service-names", label: "项目名称库" },
+      { href: "/service-categories", label: "项目分类" },
+    ],
+  },
   { href: "/knowledge", label: "知识库" },
   { href: "/employees", label: "员工管理" },
   {
