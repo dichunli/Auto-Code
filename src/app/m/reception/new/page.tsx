@@ -394,8 +394,8 @@ export default function MobileReceptionNewPage() {
       }
 
       showToast("接车登记成功", "success");
-      router.push(`/work-orders/${order.id}?newReq=1`);
-      /* 成功跳转后保持 submitting=true，防止重复点击 */
+      /* 移动端某些环境（PWA/WebView）下 router.push 不可靠，使用硬跳转 */
+      window.location.href = `/work-orders/${order.id}?newReq=1`;
       return;
     } catch (err: any) {
       console.error("接车提交异常:", err);
