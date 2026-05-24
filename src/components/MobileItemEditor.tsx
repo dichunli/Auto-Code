@@ -715,7 +715,7 @@ export default function MobileItemEditor({
   function addPartNameFromSearch(part: PartNameResult) {
     const exists = selectedPartNames.some((sp) => sp.part_name_id === part.id);
     if (exists) {
-      alert("该配件已选择");
+      removeSelectedPartName(part.id);
       return;
     }
     setSelectedPartNames((prev) => [
@@ -734,7 +734,7 @@ export default function MobileItemEditor({
   function addPresetPart(preset: PresetPart) {
     const exists = selectedPartNames.some((sp) => sp.part_name_id === preset.part_name_id);
     if (exists) {
-      alert("该配件已选择");
+      removeSelectedPartName(preset.part_name_id);
       return;
     }
     setSelectedPartNames((prev) => [
@@ -1657,16 +1657,15 @@ export default function MobileItemEditor({
                                 <button
                                   key={preset.part_name_id}
                                   type="button"
-                                  onClick={() => !alreadySelected && addPresetPart(preset)}
-                                  disabled={alreadySelected}
+                                  onClick={() => addPresetPart(preset)}
                                   className={`w-full text-left px-3 py-2 text-sm rounded-lg border border-amber-200 ${
-                                    alreadySelected ? "text-gray-400 bg-gray-50 cursor-not-allowed" : "bg-amber-50 hover:bg-amber-100"
+                                    alreadySelected ? "bg-blue-50 border-blue-300 hover:bg-blue-100" : "bg-amber-50 hover:bg-amber-100"
                                   }`}
                                 >
                                   <span className="font-medium">{preset.name}</span>
                                   <span className="text-xs text-gray-400 ml-2">单位: {preset.unit}</span>
                                   {preset.quantity != null && <span className="text-xs text-gray-400 ml-2">默认数量: {preset.quantity}</span>}
-                                  {alreadySelected && <span className="text-xs text-blue-600 ml-2">已选择</span>}
+                                  {alreadySelected && <span className="text-xs text-blue-600 ml-2">已选择 · 点击取消</span>}
                                 </button>
                               );
                             })}
@@ -1685,15 +1684,14 @@ export default function MobileItemEditor({
                             <button
                               key={part.id}
                               type="button"
-                              onClick={() => !alreadySelected && addPartNameFromSearch(part)}
-                              disabled={alreadySelected}
+                              onClick={() => addPartNameFromSearch(part)}
                               className={`w-full text-left px-3 py-2 text-sm rounded-lg border-b border-gray-100 last:border-0 ${
-                                alreadySelected ? "text-gray-400 bg-gray-50 cursor-not-allowed" : "hover:bg-blue-50"
+                                alreadySelected ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-blue-50"
                               }`}
                             >
                               <span className="font-medium">{part.name}</span>
                               <span className="text-xs text-gray-400 ml-2">单位: {part.unit || "件"}</span>
-                              {alreadySelected && <span className="text-xs text-blue-600 ml-2">已选择</span>}
+                              {alreadySelected && <span className="text-xs text-blue-600 ml-2">已选择 · 点击取消</span>}
                             </button>
                           );
                         })}
