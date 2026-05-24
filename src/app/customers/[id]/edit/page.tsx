@@ -36,7 +36,18 @@ export default function EditCustomerPage() {
   });
 
   const [customerPhotos, setCustomerPhotos] = useState<string[]>([]);
-  const [vehicles, setVehicles] = useState<any[]>([]);
+  interface 车辆 {
+    id: string;
+    plate_number: string;
+    brand: string | null;
+    model: string | null;
+    vin: string | null;
+    color: string | null;
+    year: number | null;
+    mileage: number | null;
+  }
+
+  const [vehicles, setVehicles] = useState<车辆[]>([]);
   const [originalPhone, setOriginalPhone] = useState("");
   const [hasPhone, setHasPhone] = useState(true);
   const [contacts, setContacts] = useState<ContactForm[]>([]);
@@ -70,7 +81,7 @@ export default function EditCustomerPage() {
           .eq("customer_id", id)
           .order("created_at", { ascending: true });
         setContacts(
-          (contactData || []).map((c: any) => ({ ...c, isExisting: true }))
+          (contactData || []).map((c: ContactForm) => ({ ...c, isExisting: true }))
         );
         const { data: phoneData } = await supabase
           .from("customer_phones")
@@ -78,13 +89,13 @@ export default function EditCustomerPage() {
           .eq("customer_id", id)
           .order("created_at", { ascending: true });
         setCustomerPhones(
-          (phoneData || []).map((p: any) => ({ id: p.id, phone: p.phone || "", label: p.label || "" }))
+          (phoneData || []).map((p: { id: string; phone: string | null; label: string | null }) => ({ id: p.id, phone: p.phone || "", label: p.label || "" }))
         );
         setStarLevel(data.star_level || 0);
         const { data: tagData } = await supabase.from("tags").select("id, name, color").order("name", { ascending: true });
-        setAllTags((tagData || []).map((t: any) => ({ id: t.id, name: t.name, color: t.color })));
+        setAllTags((tagData || []).map((t: { id: string; name: string; color: string | null }) => ({ id: t.id, name: t.name, color: t.color })));
         const { data: customerTagData } = await supabase.from("customer_tags").select("tag_id").eq("customer_id", id);
-        setSelectedTagIds((customerTagData || []).map((t: any) => t.tag_id));
+        setSelectedTagIds((customerTagData || []).map((t: { tag_id: string }) => t.tag_id));
       }
       const { data: photoData } = await supabase
         .from("customer_photos")

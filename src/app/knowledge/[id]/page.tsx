@@ -3,6 +3,21 @@ import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+interface 车型关联 {
+  vehicle_models: {
+    brand: string;
+    series: string;
+    model_name: string | null;
+    year_start: number | null;
+    year_end: number | null;
+  } | null;
+}
+
+interface 维修项目关联 {
+  service_names: { name: string } | null;
+  service_items: { name: string } | null;
+}
+
 export default async function KnowledgeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
@@ -79,7 +94,7 @@ export default async function KnowledgeDetailPage({ params }: { params: Promise<
           <div className="mt-8 pt-6 border-t border-gray-100">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">关联车型</h3>
             <div className="flex flex-wrap gap-2">
-              {vehicleLinks.map((vlink: any, i: number) => {
+              {vehicleLinks.map((vlink: 车型关联, i: number) => {
                 const vm = vlink.vehicle_models;
                 const label = vm ? `${vm.brand} ${vm.series} ${vm.model_name || ""} ${vm.year_start ? vm.year_start + "款" : ""}`.trim() : "-";
                 return (
@@ -99,7 +114,7 @@ export default async function KnowledgeDetailPage({ params }: { params: Promise<
           <div className="mt-8 pt-6 border-t border-gray-100">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">关联维修项目</h3>
             <div className="flex flex-wrap gap-2">
-              {links.map((link: any, i: number) => (
+              {links.map((link: 维修项目关联, i: number) => (
                 <span
                   key={i}
                   className="px-2 py-1 rounded bg-gray-50 text-gray-600 text-xs border border-gray-200"

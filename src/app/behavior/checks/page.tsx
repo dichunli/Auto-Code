@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
@@ -12,10 +12,25 @@ const CHECK_TYPES = [
   { key: "other", label: "其他" },
 ];
 
+interface 检查记录 {
+  id: string;
+  check_type: string;
+  score: number;
+  notes: string | null;
+  checked_at: string;
+  employee: { full_name: string } | null;
+  checker: { full_name: string } | null;
+}
+
+interface 员工 {
+  id: string;
+  full_name: string;
+}
+
 export default function BehaviorChecksPage() {
   const supabase = createClient();
-  const [checks, setChecks] = useState<any[]>([]);
-  const [employees, setEmployees] = useState<any[]>([]);
+  const [checks, setChecks] = useState<检查记录[]>([]);
+  const [employees, setEmployees] = useState<员工[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -25,21 +40,21 @@ export default function BehaviorChecksPage() {
     notes: "",
   });
 
-  useEffect(() => {
-    fetchChecks();
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => {
-      setEmployees(data || []);
-    });
-  }, [supabase]);
-
-  async function fetchChecks() {
+  const fetchChecks = useCallback(async () => {
     const { data } = await supabase
       .from("behavior_checks")
       .select("*, employee:profiles!behavior_checks_employee_id_fkey(full_name), checker:profiles!behavior_checks_checker_id_fkey(full_name)")
       .order("checked_at", { ascending: false })
       .limit(100);
-    setChecks((data || []) as any);
-  }
+    setChecks((data || []) as 检查记录[]);
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchChecks();
+    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => {
+      setEmployees(data || []);
+    });
+  }, [fetchChecks, supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -55,8 +70,8 @@ export default function BehaviorChecksPage() {
       setShowForm(false);
       setForm({ check_type: "appearance", employee_id: "", score: "0", notes: "" });
       fetchChecks();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
@@ -127,7 +142,7 @@ export default function BehaviorChecksPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {checks.map((c: any) => (
+              {checks.map((c) => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">{CHECK_TYPES.find((t) => t.key === c.check_type)?.label || c.check_type}</td>
                   <td className="px-4 py-3">{c.employee?.full_name}</td>

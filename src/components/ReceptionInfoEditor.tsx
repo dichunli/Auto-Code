@@ -38,7 +38,7 @@ export function ReceptionInfoEditor({ orderId, mileageIn, fuelLevel, estimatedCo
 
   async function handleSave() {
     setSaving(true);
-    const payload: any = {};
+    const payload: Record<string, string | number | null> = {};
     if (mileage.trim() !== "") payload.mileage_in = Number(mileage);
     else payload.mileage_in = null;
 

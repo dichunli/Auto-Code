@@ -45,6 +45,16 @@
   9. VIP价
   10. 标准价
 
+## TypeScript 类型规范（重要）
+
+- **严禁使用 `any` 类型**。所有数据必须定义具体接口：
+  - Supabase 查询返回的数据 → 在文件顶部定义接口（如 `interface 配件分类 { id: string; name: string }`）
+  - `useState` 数组状态 → 使用 `useState<配件分类[]>([])` 而非 `useState<any[]>([])`
+  - `.map()` / `.filter()` 回调参数 → 使用具体类型而非 `(item: any)`
+  - 错误捕获 → 使用 `catch (err: unknown)` + `err instanceof Error` 判断，严禁 `catch (err: any)`
+- **禁止 `as any` 类型断言**。如必须断言，使用 `as 具体类型` 或 `as unknown as 目标类型`
+- 工具函数中的泛型参数默认使用 `unknown` 而非 `any`（如 `function fn<T = unknown>()`）
+
 ## 代码书写规范
 
 ### 基本规则
@@ -57,7 +67,9 @@
 - 客户端组件（含交互、useState、useEffect 等）文件**顶部必须加 `"use client"`**
 - Server Action 文件**顶部必须加 `"use server"`**
 - 页面组件默认使用 Server Component，仅将需要交互的部分提取为 Client Component
-- 组件 props 优先使用具体 TypeScript 类型，尽量避免 `any`
+- 组件 props 优先使用具体 TypeScript 类型，**严禁使用 `any`**
+- **禁止在组件函数内部定义子组件**（会导致每次渲染重新创建组件，违反 React 规则）。子组件必须定义在父组件外部、同一文件内
+- **禁止条件调用 Hook**：所有 `useState`/`useEffect`/`useCallback`/`useMemo` 等 Hook 必须在组件函数顶部调用，不能放在 `if` 条件分支或提前 `return` 之后
 
 ### 样式规范
 - **全部使用 Tailwind CSS 工具类**，不手写 `.css` 文件
@@ -68,6 +80,12 @@
 - 表单中的价格、数量等数字字段，前端用**字符串**存储，提交时转换为 number
 - 搜索功能统一使用 **300ms 防抖**（`setTimeout` + `clearTimeout` 模式）
 - 弹窗/模态框使用固定定位（`fixed inset-0`）+ 半透明遮罩（`bg-black/50`）
+
+### ESLint 红线规则（必须保持为 error，严禁降级）
+以下规则已配置在 `eslint.config.mjs` 中，**禁止降级为 warn 或关闭**：
+- `@typescript-eslint/no-explicit-any` — 禁止使用 `any` 类型
+- `react-hooks/rules-of-hooks` — Hook 必须在组件顶部无条件调用
+- `react-hooks/static-components` — 禁止在渲染时创建组件
 
 ### 交互与错误处理
 - 用户操作失败（如保存、删除）使用 `alert()` 提示错误信息
@@ -97,6 +115,57 @@
 - 车牌号：必填，`trim()` + `toUpperCase()`
 - VIN 码：可选填，`trim()` + `toUpperCase()`，非空时校验全局唯一性
 - 客户手机号：必填，`trim()`，校验全局唯一性
+
+## Git 工作流规范
+
+- **禁止直接推送 `main` 分支**。所有改动通过功能分支 + Pull Request 合并
+- 功能分支命名格式：`feat/功能描述`（如 `feat/commission-report`）、`fix/问题描述`（如 `fix/part-search`）
+- 提交信息（commit message）使用中文，格式：`类型: 描述`。常用类型：
+  - `feat:` 新功能
+  - `fix:` 修复 bug
+  - `refactor:` 重构（不改功能）
+  - `chore:` 杂项（配置、依赖等）
+  - `docs:` 文档更新
+- **不要每次小修改都提交**。等一个功能点完成后再统一提交，减少提交噪音
+- 合并前确保 `npm run build` 无报错，`npm run lint` 无 error
+
+## 安全开发规范
+
+### 前端安全
+- **禁止直接拼接用户输入到 URL 或 HTML**：防止 XSS 攻击。使用框架的转义机制（如 React 默认转义 JSX 内容），不要手动操作 `innerHTML`
+- **敏感操作必须二次确认**：金额修改、批量删除、数据导出等操作必须弹出 `confirm()` 或专用确认弹窗，不能一触即发
+- **权限校验双保险**：前端根据角色隐藏按钮/菜单，但后端 API 也必须做权限校验（RLS + 服务端校验），不能依赖前端隐藏
+
+### 数据安全
+- **禁止在客户端暴露敏感密钥**：Supabase service_role key、第三方 API 密钥等只能用在服务端（Server Action / API Route）
+- **文件上传类型白名单**：只允许图片（jpg/png/webp）和视频（mp4），禁止上传可执行文件
+- **SQL 注入防护**：手写 SQL 时使用参数化查询（`$1, $2` 占位符），严禁字符串拼接 SQL
+
+## 性能规范
+
+- **列表页必须分页**：数据量超过 50 条的表格/列表必须实现分页，禁止一次性加载全部数据
+- **图片懒加载**：页面中非首屏图片使用 `loading="lazy"`，减少初始加载时间
+- **大数据表格虚拟滚动**：数据量超过 200 行的表格考虑使用虚拟滚动，避免 DOM 节点过多导致卡顿
+- **避免在 `useEffect` 中频繁触发全量重渲染**：大数据计算使用 `useMemo`，事件回调使用 `useCallback`
+
+## API 与数据交互规范
+
+- **统一服务端响应格式**：Server Action 和 API Route 返回的结构保持一致：
+  ```typescript
+  { success: boolean; data?: T; error?: string }
+  ```
+- **错误码约定**：
+  - 业务校验失败 → 返回 `{ success: false, error: "具体错误原因" }`，不抛异常
+  - 系统异常 → 记录日志后返回用户友好提示，不暴露堆栈信息
+- **网络请求超时处理**：Supabase 查询超过 10 秒需加 loading 提示，避免用户以为页面卡死
+- **乐观更新谨慎使用**：涉及金额、库存的更新必须等待服务端确认后再更新 UI，不能用乐观更新
+
+## 测试规范
+
+- **工具函数必须有单元测试**：`src/lib/` 和 `src/utils/` 下的纯函数必须编写 Vitest 测试用例
+- **核心业务流程覆盖**：客户创建、工单开单、库存出入库等核心业务至少有一条端到端或集成测试路径
+- **测试文件命名**：与被测文件同名 + `.test.ts`（如 `formatCurrency.ts` 对应 `formatCurrency.test.ts`）
+- **提交前自检**：运行 `npm run test:unit` 确保测试通过，运行 `npm run build` 确保构建无报错
 
 ## 部署与运维
 

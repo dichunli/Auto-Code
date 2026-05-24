@@ -5,12 +5,23 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 
+interface 账户 {
+  id: string;
+  name: string;
+}
+
+interface 分类 {
+  id: string;
+  name: string;
+  type: string;
+}
+
 export default function NewTransactionPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<账户[]>([]);
+  const [categories, setCategories] = useState<分类[]>([]);
   const [type, setType] = useState("income");
   const [accountId, setAccountId] = useState("");
   const [categoryId, setCategoryId] = useState("");

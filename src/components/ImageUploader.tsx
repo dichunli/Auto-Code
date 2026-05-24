@@ -11,9 +11,11 @@ interface Props {
   folder?: string;
 }
 
-export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, bucket: _bucket, folder: _folder }: Props) {
+export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraId = useRef(`img-camera-${Math.random().toString(36).slice(2)}`).current;
+  const fileId = useRef(`img-file-${Math.random().toString(36).slice(2)}`).current;
   const [uploading, setUploading] = useState(false);
   const [images, setImages] = useState<string[]>(existingImages);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
@@ -22,25 +24,6 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, bu
   useEffect(() => {
     setImages(existingImages);
   }, [existingImages]);
-
-  const uploadSingle = useCallback(
-    async (file: File): Promise<string> => {
-      if (!file.type.startsWith("image/")) throw new Error("不是图片文件");
-
-      const compressed = await compressImage(file, 150);
-      const formData = new FormData();
-      formData.append("file", compressed, file.name);
-
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "上传失败");
-      return result.path;
-    },
-    []
-  );
 
   const handleFiles = useCallback(
     async (files: FileList) => {
@@ -83,8 +66,8 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, bu
         const next = [...images, ...paths];
         setImages(next);
         onUpload(next);
-      } catch (err: any) {
-        alert("图片上传失败: " + err.message);
+      } catch (err: unknown) {
+        alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
       } finally {
         setUploading(false);
         setUploadProgress("");
@@ -134,11 +117,10 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, bu
         ))}
         {images.length < maxImages && (
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => cameraInputRef.current?.click()}
-              disabled={uploading}
-              className="md:hidden w-20 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
+            {/* 移动端：用 label 关联 input，比 ref.click() 更可靠 */}
+            <label
+              htmlFor={cameraId}
+              className={`md:hidden w-20 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
             >
               {uploading ? (
                 <span className="text-xs">{uploadProgress || "上传中..."}</span>
@@ -152,12 +134,10 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, bu
                   <span className="text-[10px]">{images.length}/{maxImages}</span>
                 </>
               )}
-            </button>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="hidden md:flex w-20 h-20 rounded border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-50"
+            </label>
+            <label
+              htmlFor={fileId}
+              className={`hidden md:flex w-20 h-20 rounded border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
             >
               {uploading ? (
                 <span className="text-xs">{uploadProgress || "上传中..."}</span>
@@ -169,11 +149,12 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, bu
                   <span className="text-[10px]">相册</span>
                 </>
               )}
-            </button>
+            </label>
           </div>
         )}
       </div>
       <input
+        id={cameraId}
         ref={cameraInputRef}
         type="file"
         accept="image/*"
@@ -182,6 +163,7 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, bu
         onChange={handleFileChange}
       />
       <input
+        id={fileId}
         ref={fileInputRef}
         type="file"
         accept="image/*"

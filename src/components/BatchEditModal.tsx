@@ -6,12 +6,37 @@ import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/log
 
 interface BatchEditModalProps {
   orderId: string;
-  items: any[];
-  itemParts: any[];
-  suppliers: any[];
-  logisticsCompanies: any[];
+  items: WorkOrderItem[];
+  itemParts: WorkOrderItemPart[];
+  suppliers: Supplier[];
+  logisticsCompanies: LogisticsCompany[];
   onClose: () => void;
   onSuccess: () => void;
+}
+
+interface WorkOrderItem {
+  id: string;
+  name: string;
+  item_type: string;
+}
+
+interface WorkOrderItemPart {
+  id: string;
+  work_order_item_id: string;
+  parts?: { name?: string } | null;
+  name?: string;
+  part_names?: { name?: string } | null;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+  region?: string | null;
+}
+
+interface LogisticsCompany {
+  id: string;
+  name: string;
 }
 
 export function BatchEditModal({ orderId, items, itemParts, suppliers, logisticsCompanies, onClose, onSuccess }: BatchEditModalProps) {
@@ -20,10 +45,10 @@ export function BatchEditModal({ orderId, items, itemParts, suppliers, logistics
 
   // 构建可选项：项目 + 分支
   const options: { id: string; type: "item" | "part"; label: string; parentLabel?: string }[] = [];
-  items?.forEach((item: any) => {
+  items?.forEach((item: WorkOrderItem) => {
     options.push({ id: item.id, type: "item", label: `${item.name} (${item.item_type === "labor" ? "工时" : item.item_type === "part" ? "配件" : "其他"})` });
-    const parts = itemParts?.filter((p: any) => p.work_order_item_id === item.id) || [];
-    parts.forEach((p: any) => {
+    const parts = itemParts?.filter((p: WorkOrderItemPart) => p.work_order_item_id === item.id) || [];
+    parts.forEach((p: WorkOrderItemPart) => {
       options.push({
         id: p.id,
         type: "part",
@@ -72,7 +97,7 @@ export function BatchEditModal({ orderId, items, itemParts, suppliers, logistics
 
       // 批量更新项目
       if (selectedItems.length > 0) {
-        const itemUpdates: any = {};
+        const itemUpdates: Record<string, unknown> = {};
         if (batchValues.customer_opinion) itemUpdates.customer_opinion = batchValues.customer_opinion;
         if (batchValues.business_type) itemUpdates.business_type = batchValues.business_type;
         if (batchValues.alias_name) itemUpdates.alias_name = batchValues.alias_name;
@@ -84,7 +109,7 @@ export function BatchEditModal({ orderId, items, itemParts, suppliers, logistics
 
       // 批量更新分支
       if (selectedParts.length > 0) {
-        const partUpdates: any = {};
+        const partUpdates: Record<string, unknown> = {};
         if (batchValues.customer_opinion) partUpdates.customer_opinion = batchValues.customer_opinion;
         if (batchValues.is_purchased !== "") partUpdates.is_purchased = batchValues.is_purchased === "true";
         if (batchValues.is_arrived !== "") partUpdates.is_arrived = batchValues.is_arrived === "true";
@@ -99,8 +124,8 @@ export function BatchEditModal({ orderId, items, itemParts, suppliers, logistics
       }
 
       onSuccess();
-    } catch (err: any) {
-      alert("批量更新失败: " + err.message);
+    } catch (err: unknown) {
+      alert("批量更新失败: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
     }
   }

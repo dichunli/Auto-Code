@@ -27,7 +27,7 @@ export function PermissionGate({ permission, children, fallback }: PermissionGat
         .select("roles(name)")
         .eq("profile_id", userData.user.id);
 
-      const names = (data || []).map((d: any) => d.roles?.name).filter(Boolean);
+      const names = (data || []).map((d: { roles?: { name?: string } | null }) => d.roles?.name).filter(Boolean);
       setRoles(names);
       setLoading(false);
     }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -14,23 +13,118 @@ interface TransactionForm {
   description: string;
 }
 
+interface Supplier {
+  id: string;
+  name: string;
+  contact: string | null;
+  phone: string | null;
+  address: string | null;
+  region: "local" | "harbin" | "outside" | null;
+  wrong_shipment_count: number | null;
+  quality_return_count: number | null;
+  recommendation_level: number | null;
+  notes: string | null;
+  wechat_id: string | null;
+  wechat_group_qr: string | null;
+}
+
+interface SupplierContact {
+  id: string;
+  name: string;
+  phone: string | null;
+  title: string | null;
+  notes: string | null;
+  is_primary: boolean | null;
+}
+
+interface PurchaseOrder {
+  id: string;
+  order_no: string | null;
+  status: string | null;
+  total_amount: number | null;
+  created_at: string;
+}
+
+interface ReturnRecord {
+  id: string;
+  return_reason: string | null;
+  quantity: number | null;
+  status: string | null;
+  created_at: string;
+  work_order_item_parts: { supplier_id: string } | null;
+}
+
+interface InboundOrder {
+  id: string;
+  inbound_no: string;
+  total_quantity: number | null;
+  total_amount: number | null;
+  freight_amount: number | null;
+  status: string | null;
+  created_at: string;
+}
+
+interface ReturnOrder {
+  id: string;
+  return_no: string;
+  total_quantity: number | null;
+  status: string | null;
+  logistics_company: string | null;
+  tracking_no: string | null;
+  return_shipping_fee: number | null;
+  shipping_fee_payer: string | null;
+  created_at: string;
+}
+
+interface Transaction {
+  id: string;
+  transaction_type: "payment" | "refund" | "credit" | "debit";
+  amount: number | null;
+  description: string | null;
+  reference_type: string | null;
+  reference_id: string | null;
+  created_at: string;
+  profiles: { full_name: string } | null;
+}
+
+interface VehicleModel {
+  厂商: string | null;
+  品牌: string | null;
+  车系: string | null;
+}
+
+interface SupplierVehicleLink {
+  vehicle_models: VehicleModel | null;
+}
+
+interface CategoryLink {
+  part_categories: { name: string } | null;
+}
+
+interface PartNameLink {
+  part_names: { name: string } | null;
+}
+
+interface BrandLink {
+  part_brands: { name: string } | null;
+}
+
 export default function SupplierDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const router = useRouter();
   const supabase = createClient();
   const [supplierId, setSupplierId] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const [supplier, setSupplier] = useState<any>(null);
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [partNames, setPartNames] = useState<any[]>([]);
-  const [brands, setBrands] = useState<any[]>([]);
-  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
-  const [returnRecords, setReturnRecords] = useState<any[]>([]);
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [supplier, setSupplier] = useState<Supplier | null>(null);
+  const [contacts, setContacts] = useState<SupplierContact[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [partNames, setPartNames] = useState<string[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [returnRecords, setReturnRecords] = useState<ReturnRecord[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [vehicles, setVehicles] = useState<string[]>([]);
-  const [inboundOrders, setInboundOrders] = useState<any[]>([]);
-  const [returnOrders, setReturnOrders] = useState<any[]>([]);
+  const [inboundOrders, setInboundOrders] = useState<InboundOrder[]>([]);
+  const [returnOrders, setReturnOrders] = useState<ReturnOrder[]>([]);
 
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [transactionForm, setTransactionForm] = useState<TransactionForm>({
@@ -47,7 +141,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
 
       // 供应商基本信息
       const { data: sData } = await supabase.from("suppliers").select("*").eq("id", id).single();
-      setSupplier(sData);
+      setSupplier(sData as Supplier);
 
       // 联系人
       const { data: cData } = await supabase
@@ -55,7 +149,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
         .select("*")
         .eq("supplier_id", id)
         .order("is_primary", { ascending: false });
-      setContacts(cData || []);
+      setContacts((cData as SupplierContact[]) || []);
 
       // 关联分类（表可能不存在时忽略错误）
       try {
@@ -63,7 +157,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           .from("supplier_part_categories")
           .select("part_categories(name)")
           .eq("supplier_id", id);
-        setCategories((catData || []).map((c: any) => c.part_categories?.name).filter(Boolean));
+        setCategories((catData as CategoryLink[] || []).map((c) => c.part_categories?.name).filter(Boolean) as string[]);
       } catch { setCategories([]); }
 
       // 关联配件名称
@@ -72,7 +166,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           .from("supplier_part_names")
           .select("part_names(name)")
           .eq("supplier_id", id);
-        setPartNames((pnData || []).map((p: any) => p.part_names?.name).filter(Boolean));
+        setPartNames((pnData as PartNameLink[] || []).map((p) => p.part_names?.name).filter(Boolean) as string[]);
       } catch { setPartNames([]); }
 
       // 关联品牌
@@ -81,7 +175,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           .from("supplier_part_brands")
           .select("part_brands(name)")
           .eq("supplier_id", id);
-        setBrands((bData || []).map((b: any) => b.part_brands?.name).filter(Boolean));
+        setBrands((bData as BrandLink[] || []).map((b) => b.part_brands?.name).filter(Boolean) as string[]);
       } catch { setBrands([]); }
 
       // 关联车型
@@ -90,7 +184,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           .from("supplier_vehicle_models")
           .select("vehicle_models(厂商,品牌,车系)")
           .eq("supplier_id", id);
-        setVehicles((vData || []).map((v: any) => {
+        setVehicles((vData as SupplierVehicleLink[] || []).map((v) => {
           const vm = v.vehicle_models;
           const parts = [vm?.厂商, vm?.品牌, vm?.车系].filter(Boolean);
           return parts.join(" ") || "-";
@@ -103,7 +197,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
         .select("*, purchase_order_items(*)")
         .eq("supplier_id", id)
         .order("created_at", { ascending: false });
-      setPurchaseOrders(poData || []);
+      setPurchaseOrders((poData as PurchaseOrder[]) || []);
 
       // 退货记录（通过 work_order_item_parts 关联到 supplier）
       const { data: rData } = await supabase
@@ -111,7 +205,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
         .select("*, work_order_item_parts(supplier_id)")
         .order("created_at", { ascending: false });
       // 过滤出该供应商的退货记录
-      setReturnRecords((rData || []).filter((r: any) => r.work_order_item_parts?.supplier_id === id));
+      setReturnRecords((rData as ReturnRecord[] || []).filter((r) => r.work_order_item_parts?.supplier_id === id));
 
       // 入库单记录
       const { data: inboundData } = await supabase
@@ -119,7 +213,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
         .select("id, inbound_no, total_quantity, total_amount, freight_amount, status, created_at")
         .eq("supplier_id", id)
         .order("created_at", { ascending: false });
-      setInboundOrders(inboundData || []);
+      setInboundOrders((inboundData as InboundOrder[]) || []);
 
       // 采退单记录
       const { data: returnOrderData } = await supabase
@@ -127,7 +221,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
         .select("id, return_no, total_quantity, status, logistics_company, tracking_no, return_shipping_fee, shipping_fee_payer, created_at")
         .eq("supplier_id", id)
         .order("created_at", { ascending: false });
-      setReturnOrders(returnOrderData || []);
+      setReturnOrders((returnOrderData as ReturnOrder[]) || []);
 
       // 往来款项
       const { data: tData } = await supabase
@@ -135,7 +229,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
         .select("*, profiles(full_name)")
         .eq("supplier_id", id)
         .order("created_at", { ascending: false });
-      setTransactions(tData || []);
+      setTransactions((tData as Transaction[]) || []);
 
       setLoading(false);
     }
@@ -169,7 +263,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
       .select("*, profiles(full_name)")
       .eq("supplier_id", supplierId)
       .order("created_at", { ascending: false });
-    setTransactions(data || []);
+    setTransactions((data as Transaction[]) || []);
   }
 
   /* 财务统计 */
@@ -194,24 +288,24 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
     inboundOrders
       .filter((o) => o.created_at?.slice(0, 7) === thisMonth)
       .reduce((sum, o) => sum + (o.total_amount || 0), 0),
-    [inboundOrders]
+    [inboundOrders, thisMonth]
   );
 
   const thisYearInbound = useMemo(() =>
     inboundOrders
       .filter((o) => o.created_at?.startsWith(thisYear))
       .reduce((sum, o) => sum + (o.total_amount || 0), 0),
-    [inboundOrders]
+    [inboundOrders, thisYear]
   );
 
   const thisMonthReturnCount = useMemo(() =>
     returnOrders.filter((o) => o.created_at?.slice(0, 7) === thisMonth).length,
-    [returnOrders]
+    [returnOrders, thisMonth]
   );
 
   const thisYearReturnCount = useMemo(() =>
     returnOrders.filter((o) => o.created_at?.startsWith(thisYear)).length,
-    [returnOrders]
+    [returnOrders, thisYear]
   );
 
   const monthlyTrend = useMemo(() => {
@@ -438,7 +532,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                       <tr key={po.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-gray-900">{po.order_no || "-"}</td>
                         <td className="px-4 py-3">
-                          <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">{statusMap[po.status] || po.status}</span>
+                          <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">{statusMap[po.status || ""] || po.status}</span>
                         </td>
                         <td className="px-4 py-3 text-gray-600">{formatCurrency(po.total_amount)}</td>
                         <td className="px-4 py-3 text-gray-500 text-xs">{new Date(po.created_at).toLocaleString("zh-CN")}</td>
@@ -469,7 +563,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                   <tbody className="divide-y divide-gray-100">
                     {returnRecords.map((r) => (
                       <tr key={r.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-900">{returnReasonMap[r.return_reason] || r.return_reason}</td>
+                        <td className="px-4 py-3 text-gray-900">{returnReasonMap[r.return_reason || ""] || r.return_reason}</td>
                         <td className="px-4 py-3 text-gray-600">{r.quantity}</td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 rounded text-xs ${r.status === "completed" ? "bg-green-50 text-green-600" : "bg-yellow-50 text-yellow-600"}`}>
@@ -698,7 +792,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
                   <select
                     className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
                     value={transactionForm.transaction_type}
-                    onChange={(e) => setTransactionForm({ ...transactionForm, transaction_type: e.target.value as any })}
+                    onChange={(e) => setTransactionForm({ ...transactionForm, transaction_type: e.target.value as TransactionForm["transaction_type"] })}
                   >
                     <option value="payment">付款</option>
                     <option value="refund">退款</option>

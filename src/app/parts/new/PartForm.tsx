@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -42,6 +42,104 @@ interface VehicleModelPriceItem {
   standard_price: string;
 }
 
+/* 搜索下拉结果项的基础类型 */
+interface IdNameItem {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+/* 配件名称库查询结果（含嵌套分类） */
+interface PartNameItem {
+  id: string;
+  name: string;
+  unit?: string;
+  part_categories?: Record<string, unknown> | Record<string, unknown>[];
+  auto_link_vehicle_model?: boolean;
+  is_consumable?: boolean;
+  sales_commission_type?: string;
+  sales_commission_value?: number;
+  diagnosis_commission_type?: string;
+  diagnosis_commission_value?: number;
+  repair_commission_type?: string;
+  repair_commission_value?: number;
+  qc_commission_type?: string;
+  qc_commission_value?: number;
+  picking_commission_type?: string;
+  picking_commission_value?: number;
+  [key: string]: unknown;
+}
+
+/* 供应商查询结果 */
+interface SupplierItem {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+/* 仓库查询结果 */
+interface WarehouseItem {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+/* 配件编码搜索结果 */
+interface PartSearchResult {
+  id: string;
+  part_number: string;
+  name: string;
+}
+
+/* 仓位查询结果 */
+interface LocationItem {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+function CommissionField({
+  label,
+  typeValue,
+  valueValue,
+  onTypeChange,
+  onValueChange,
+}: {
+  label: string;
+  typeValue: string;
+  valueValue: string;
+  onTypeChange: (v: string) => void;
+  onValueChange: (v: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
+        <select
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={typeValue}
+          onChange={(e) => onTypeChange(e.target.value)}
+        >
+          <option value="">无提成</option>
+          <option value="revenue_pct">按产值(%)</option>
+          <option value="profit_pct">按毛利(%)</option>
+          <option value="fixed">固定金额</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
+        <input
+          type="number"
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={valueValue}
+          onChange={(e) => onValueChange(e.target.value)}
+          disabled={!typeValue}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function PartForm({
   editId,
   onSaved,
@@ -70,7 +168,7 @@ export default function PartForm({
 
   // Part number search
   const [partNumber, setPartNumber] = useState("");
-  const [pnResults, setPnResults] = useState<any[] | null>(null);
+  const [pnResults, setPnResults] = useState<PartSearchResult[] | null>(null);
   const [pnSearching, setPnSearching] = useState(false);
   const pnTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -82,22 +180,22 @@ export default function PartForm({
 
   // Supplier search
   const [supplierQuery, setSupplierQuery] = useState("");
-  const [supplierResults, setSupplierResults] = useState<any[] | null>(null);
+  const [supplierResults, setSupplierResults] = useState<SupplierItem[] | null>(null);
   const [supplierSearching, setSupplierSearching] = useState(false);
-  const [selectedSupplier, setSelectedSupplier] = useState<any | null>(null);
+  const [selectedSupplier, setSelectedSupplier] = useState<SupplierItem | null>(null);
   const spTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Part name search
   const [partNameQuery, setPartNameQuery] = useState("");
-  const [partNameResults, setPartNameResults] = useState<any[] | null>(null);
+  const [partNameResults, setPartNameResults] = useState<PartNameItem[] | null>(null);
   const [partNameSearching, setPartNameSearching] = useState(false);
-  const [selectedPartName, setSelectedPartName] = useState<any | null>(null);
+  const [selectedPartName, setSelectedPartName] = useState<PartNameItem | null>(null);
   const [highlightedNameIndex, setHighlightedNameIndex] = useState(-1);
   const pnNameTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Brand search
   const [brandQuery, setBrandQuery] = useState("");
-  const [brandResults, setBrandResults] = useState<any[] | null>(null);
+  const [brandResults, setBrandResults] = useState<IdNameItem[] | null>(null);
   const [brandSearching, setBrandSearching] = useState(false);
   const [selectedBrand, setSelectedBrand] = useState<LinkedItem | null>(null);
   const [brandFocus, setBrandFocus] = useState(false);
@@ -106,7 +204,7 @@ export default function PartForm({
 
   // Specification search (multiple)
   const [specQuery, setSpecQuery] = useState("");
-  const [specResults, setSpecResults] = useState<any[] | null>(null);
+  const [specResults, setSpecResults] = useState<IdNameItem[] | null>(null);
   const [specSearching, setSpecSearching] = useState(false);
   const [selectedSpecs, setSelectedSpecs] = useState<LinkedItem[]>([]);
   const [highlightedSpecIndex, setHighlightedSpecIndex] = useState(-1);
@@ -121,10 +219,9 @@ export default function PartForm({
   ]);
 
 
-  const [allWarehouses, setAllWarehouses] = useState<any[]>([]);
-  const [whResultsMap, setWhResultsMap] = useState<Record<string, any[]>>({});
-  const [locResultsMap, setLocResultsMap] = useState<Record<string, any[]>>({});
-  const [warehouseLocationMap, setWarehouseLocationMap] = useState<Record<string, any[]>>({});
+  const [allWarehouses, setAllWarehouses] = useState<WarehouseItem[]>([]);
+  const [whResultsMap, setWhResultsMap] = useState<Record<string, WarehouseItem[]>>({});
+  const [warehouseLocationMap, setWarehouseLocationMap] = useState<Record<string, LocationItem[]>>({});
 
   const [barcode, setBarcode] = useState("");
   const [interchangeCode, setInterchangeCode] = useState("");
@@ -163,21 +260,21 @@ export default function PartForm({
 
   // Company search for special pricing
   const [spCompanyQuery, setSpCompanyQuery] = useState('');
-  const [spCompanyResults, setSpCompanyResults] = useState<any[]>([]);
+  const [spCompanyResults, setSpCompanyResults] = useState<IdNameItem[]>([]);
   const [spCompanySearching, setSpCompanySearching] = useState(false);
   const [spCompanySelected, setSpCompanySelected] = useState<{ id: string; name: string } | null>(null);
   const spCompanyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Customer search for special pricing
   const [spCustomerQuery, setSpCustomerQuery] = useState('');
-  const [spCustomerResults, setSpCustomerResults] = useState<any[]>([]);
+  const [spCustomerResults, setSpCustomerResults] = useState<IdNameItem[]>([]);
   const [spCustomerSearching, setSpCustomerSearching] = useState(false);
   const [spCustomerSelected, setSpCustomerSelected] = useState<{ id: string; name: string } | null>(null);
   const spCustomerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Vehicle search for special pricing
   const [spVehicleQuery, setSpVehicleQuery] = useState('');
-  const [spVehicleResults, setSpVehicleResults] = useState<any[]>([]);
+  const [spVehicleResults, setSpVehicleResults] = useState<IdNameItem[]>([]);
   const [spVehicleSearching, setSpVehicleSearching] = useState(false);
   const [spVehicleSelected, setSpVehicleSelected] = useState<{ id: string; name: string } | null>(null);
   const spVehicleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -205,7 +302,7 @@ export default function PartForm({
 
   // Vehicle model search for pricing
   const [vmPriceQuery, setVmPriceQuery] = useState('');
-  const [vmPriceResults, setVmPriceResults] = useState<any[]>([]);
+  const [vmPriceResults, setVmPriceResults] = useState<IdNameItem[]>([]);
   const [vmPriceSearching, setVmPriceSearching] = useState(false);
   const [vmPriceSelected, setVmPriceSelected] = useState<{
     id: string;
@@ -269,8 +366,6 @@ export default function PartForm({
         { data: supplier },
         { data: specs },
         { data: vms },
-        { data: images },
-        { data: stocks },
       ] = await Promise.all([
         part.part_name_id
           ? supabase.from("part_names").select("*, part_categories(*)").eq("id", part.part_name_id).single()
@@ -283,25 +378,23 @@ export default function PartForm({
           : Promise.resolve({ data: null }),
         supabase.from("parts_specifications").select("specification_id, specifications(*)").eq("part_id", copyFromId),
         supabase.from("part_vehicle_models").select("vehicle_model_id, vehicle_models(厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准, 前轮胎规格, 后轮胎规格), notes, fitment_position, source").eq("part_id", copyFromId),
-        supabase.from("part_images").select("*").eq("part_id", copyFromId).order("sort_order", { ascending: true }),
-        supabase.from("part_stock_locations").select("*, warehouses(name)").eq("part_id", copyFromId),
       ]);
 
       if (partName) setSelectedPartName(partName);
       if (brand) setSelectedBrand({ id: brand.id, name: brand.name });
       if (supplier) setSelectedSupplier(supplier);
-      if (specs) setSelectedSpecs(specs.map((s: any) => ({ id: s.specification_id, name: s.specifications?.name })).filter((s: any) => s.name));
+      if (specs) setSelectedSpecs(specs.map((s: unknown) => ({ id: (s as Record<string, unknown>).specification_id as string, name: ((s as Record<string, unknown>).specifications as Record<string, unknown> | undefined)?.name as string | undefined })).filter((s: { id: string; name?: string }) => s.name) as LinkedItem[]);
       if (vms) {
-        const mapped = vms.map((v: any) => {
-          const vm = v.vehicle_models;
+        const mapped = (vms as unknown[]).map((v: unknown) => {
+          const vm = ((v as Record<string, unknown>).vehicle_models as Record<string, unknown> | undefined);
           if (!vm) return null;
-          const brand = vm.品牌 || "";
-          const series = vm.车系 || "";
-          const model_name = vm.车型 || "";
+          const brand = (vm.品牌 as string) || "";
+          const series = (vm.车系 as string) || "";
+          const model_name = (vm.车型 as string) || "";
           const name = `${brand} ${series} ${model_name}`.trim();
           if (!name) return null;
-          return { id: String(v.vehicle_model_id), name, manufacturer: vm.厂商, brand, series, model_name, sales_version: vm.销售版本, year_start: vm.年款, year_end: vm.年款, displacement: vm.排量, engine: vm.发动机型号, fuel_type: vm.燃油类型, intake_form: vm.进气形式, chassis_code: vm.底盘代号, transmission_type: vm.变速箱类型, transmission_code: vm.变速箱代号, drive_type: vm.驱动方式, body_type: vm.车身类型, emission_standard: vm.排放标准, front_tire: vm.前轮胎规格, rear_tire: vm.后轮胎规格, fitment_position: v.fitment_position || "", source: v.source || "manual" };
-        }).filter((v: any) => v !== null);
+          return { id: String((v as Record<string, unknown>).vehicle_model_id), name, manufacturer: vm.厂商, brand, series, model_name, sales_version: vm.销售版本, year_start: vm.年款, year_end: vm.年款, displacement: vm.排量, engine: vm.发动机型号, fuel_type: vm.燃油类型, intake_form: vm.进气形式, chassis_code: vm.底盘代号, transmission_type: vm.变速箱类型, transmission_code: vm.变速箱代号, drive_type: vm.驱动方式, body_type: vm.车身类型, emission_standard: vm.排放标准, front_tire: vm.前轮胎规格, rear_tire: vm.后轮胎规格, fitment_position: (v as Record<string, unknown>).fitment_position as string || "", source: (v as Record<string, unknown>).source as string || "manual" };
+        }).filter((v: unknown) => v !== null);
         setSelectedVehicleModels(mapped as LinkedItem[]);
       }
 
@@ -393,30 +486,34 @@ export default function PartForm({
           setSupplierQuery(supplier.name);
         }
         if (specs) {
-          setSelectedSpecs(specs.map((s: any) => ({ id: s.specification_id, name: s.part_specifications?.name })).filter((s: any) => s.name));
+          setSelectedSpecs(specs.map((s: unknown) => ({ id: (s as Record<string, unknown>).specification_id as string, name: ((s as Record<string, unknown>).part_specifications as Record<string, unknown> | undefined)?.name as string | undefined })).filter((s: { id: string; name?: string }) => s.name) as LinkedItem[]);
         }
         if (vms) {
-          setSelectedVehicleModels(vms.map((v: any) => {
-            const vm = v.vehicle_models;
-            const brand = vm?.品牌 || "";
-            const series = vm?.车系 || "";
-            const model_name = vm?.车型 || "";
+          setSelectedVehicleModels((vms as unknown[]).map((v: unknown) => {
+            const vm = ((v as Record<string, unknown>).vehicle_models as Record<string, unknown> | undefined);
+            const brand = (vm?.品牌 as string) || "";
+            const series = (vm?.车系 as string) || "";
+            const model_name = (vm?.车型 as string) || "";
             const name = `${brand} ${series} ${model_name}`.trim();
-            return { id: String(v.vehicle_model_id), name, manufacturer: vm?.厂商, brand, series, model_name, sales_version: vm?.销售版本, year_start: vm?.年款, year_end: vm?.年款, displacement: vm?.排量, engine: vm?.发动机型号, fuel_type: vm?.燃油类型, intake_form: vm?.进气形式, chassis_code: vm?.底盘代号, transmission_type: vm?.变速箱类型, transmission_code: vm?.变速箱代号, drive_type: vm?.驱动方式, body_type: vm?.车身类型, emission_standard: vm?.排放标准, notes: v.notes || "", fitment_position: v.fitment_position || "", source: v.source || "manual" };
-          }));
+            return { id: String((v as Record<string, unknown>).vehicle_model_id), name, manufacturer: vm?.厂商 as string | undefined, brand, series, model_name, sales_version: vm?.销售版本 as string | undefined, year_start: vm?.年款 as number | undefined, year_end: vm?.年款 as number | undefined, displacement: vm?.排量 as string | undefined, engine: vm?.发动机型号 as string | undefined, fuel_type: vm?.燃油类型 as string | undefined, intake_form: vm?.进气形式 as string | undefined, chassis_code: vm?.底盘代号 as string | undefined, transmission_type: vm?.变速箱类型 as string | undefined, transmission_code: vm?.变速箱代号 as string | undefined, drive_type: vm?.驱动方式 as string | undefined, body_type: vm?.车身类型 as string | undefined, emission_standard: vm?.排放标准 as string | undefined, notes: (v as Record<string, unknown>).notes as string || "", fitment_position: (v as Record<string, unknown>).fitment_position as string || "", source: (v as Record<string, unknown>).source as string || "manual" };
+          }) as LinkedItem[]);
         }
         if (images) {
-          setPartImages(images.map((img: any) => img.storage_path));
+          setPartImages(images.map((img: unknown) => (img as Record<string, unknown>).storage_path as string));
         }
         if (stocks && stocks.length > 0) {
-          setStockLocations(stocks.map((s: any) => ({
-            id: s.id,
-            warehouseName: s.warehouses?.name || "",
-            location: s.location || "",
-            quantity: String(s.quantity || 0),
-            min_stock: String(s.min_stock || 0),
-            max_stock: s.max_stock ? String(s.max_stock) : "",
-          })));
+          setStockLocations(stocks.map((s: unknown) => {
+            const row = s as Record<string, unknown>;
+            const wh = row.warehouses as Record<string, unknown> | undefined;
+            return {
+              id: row.id as string,
+              warehouseName: wh?.name as string || "",
+              location: row.location as string || "",
+              quantity: String(row.quantity || 0),
+              min_stock: String(row.min_stock || 0),
+              max_stock: row.max_stock ? String(row.max_stock) : "",
+            };
+          }));
         }
 
         setPartNumber(part.part_number || "");
@@ -453,42 +550,49 @@ export default function PartForm({
         });
 
         if (specialData) {
-          setSpecialPrices(specialData.map((s: any) => ({
-            id: s.id,
-            company_id: s.company_id || undefined,
-            company_name: s.companies?.name || undefined,
-            customer_id: s.customer_id || undefined,
-            customer_name: s.customers?.name || undefined,
-            vehicle_id: s.vehicle_id || undefined,
-            vehicle_name: s.vehicles ? `${s.vehicles.plate_number || ""}`.trim() : undefined,
-            price: String(s.price),
-          })));
+          setSpecialPrices(specialData.map((s: unknown) => {
+            const row = s as Record<string, unknown>;
+            const companies = row.companies as Record<string, unknown> | undefined;
+            const customers = row.customers as Record<string, unknown> | undefined;
+            const vehicles = row.vehicles as Record<string, unknown> | undefined;
+            return {
+              id: row.id as string,
+              company_id: row.company_id as string | undefined || undefined,
+              company_name: companies?.name as string | undefined || undefined,
+              customer_id: row.customer_id as string | undefined || undefined,
+              customer_name: customers?.name as string | undefined || undefined,
+              vehicle_id: row.vehicle_id as string | undefined || undefined,
+              vehicle_name: vehicles ? `${vehicles.plate_number || ""}`.trim() : undefined,
+              price: String(row.price),
+            };
+          }));
         }
 
         if (vehiclePriceData) {
-          setVehicleModelPrices(vehiclePriceData.map((v: any) => {
-            const vm = v.vehicle_models;
-            const brand = vm?.品牌 || "";
-            const series = vm?.车系 || "";
-            const model_name = vm?.车型 || "";
+          setVehicleModelPrices(vehiclePriceData.map((v: unknown) => {
+            const row = v as Record<string, unknown>;
+            const vm = row.vehicle_models as Record<string, unknown> | undefined;
+            const brand = (vm?.品牌 as string) || "";
+            const series = (vm?.车系 as string) || "";
+            const model_name = (vm?.车型 as string) || "";
             const name = `${brand} ${series} ${model_name}`.trim();
             return {
-              vehicle_model_id: String(v.vehicle_model_id),
+              vehicle_model_id: String(row.vehicle_model_id),
               vehicle_name: name,
               brand,
               series,
               model_name,
-              year_start: vm?.年款,
-              year_end: vm?.年款,
-              engine: vm?.发动机型号,
-              sales_price: v.sales_price ? String(v.sales_price) : "",
-              vip_price: v.vip_price ? String(v.vip_price) : "",
-              standard_price: v.standard_price ? String(v.standard_price) : "",
+              year_start: vm?.年款 as number | undefined,
+              year_end: vm?.年款 as number | undefined,
+              engine: vm?.发动机型号 as string | undefined,
+              sales_price: row.sales_price ? String(row.sales_price) : "",
+              vip_price: row.vip_price ? String(row.vip_price) : "",
+              standard_price: row.standard_price ? String(row.standard_price) : "",
             };
           }));
         }
-      } catch (err: any) {
-        alert("加载配件数据失败: " + (err.message || "未知错误"));
+      } catch (err: unknown) {
+        alert("加载配件数据失败: " + ((err as Error).message || "未知错误"));
       } finally {
         setLoading(false);
       }
@@ -511,7 +615,7 @@ export default function PartForm({
         .limit(10)
         .then(({ data }) => {
           if (data && data.length > 0) {
-            const exact = data.find((p: any) => p.name === prefillData.name);
+            const exact = data.find((p: unknown) => (p as Record<string, unknown>).name === prefillData.name);
             setSelectedPartName(exact || data[0]);
           }
         });
@@ -554,19 +658,19 @@ export default function PartForm({
         notes: data.notes || prev.notes,
         auto_link_vehicle_model: data.auto_link_vehicle_model || false,
         is_consumable: data.is_consumable || false,
-        sales_type: (data.sales_commission_type as any) || "",
+        sales_type: (data.sales_commission_type as "" | "revenue_pct" | "profit_pct" | "fixed") || "",
         sales_value: data.sales_commission_value != null ? String(data.sales_commission_value) : "",
-        diagnosis_type: (data.diagnosis_commission_type as any) || "",
+        diagnosis_type: (data.diagnosis_commission_type as "" | "revenue_pct" | "profit_pct" | "fixed") || "",
         diagnosis_value: data.diagnosis_commission_value != null ? String(data.diagnosis_commission_value) : "",
-        repair_type: (data.repair_commission_type as any) || "",
+        repair_type: (data.repair_commission_type as "" | "revenue_pct" | "profit_pct" | "fixed") || "",
         repair_value: data.repair_commission_value != null ? String(data.repair_commission_value) : "",
-        qc_type: (data.qc_commission_type as any) || "",
+        qc_type: (data.qc_commission_type as "" | "revenue_pct" | "profit_pct" | "fixed") || "",
         qc_value: data.qc_commission_value != null ? String(data.qc_commission_value) : "",
-        picking_type: (data.picking_commission_type as any) || "",
+        picking_type: (data.picking_commission_type as "" | "revenue_pct" | "profit_pct" | "fixed") || "",
         picking_value: data.picking_commission_value != null ? String(data.picking_commission_value) : "",
       }));
       if (data.part_images?.length > 0) {
-        setPartImages(data.part_images.map((img: any) => img.image_path).filter(Boolean));
+        setPartImages(data.part_images.map((img: unknown) => (img as Record<string, unknown>).image_path as string).filter(Boolean));
       }
       if (data.part_brands) {
         const pb = Array.isArray(data.part_brands) ? data.part_brands[0] : data.part_brands;
@@ -577,7 +681,7 @@ export default function PartForm({
         if (ps) setSelectedSpecs([{ id: ps.id, name: ps.name }]);
       }
       if (data.part_categories) {
-        setSelectedPartName((prev: any) =>
+        setSelectedPartName((prev: PartNameItem | null) =>
           prev
             ? { ...prev, part_categories: data.part_categories }
             : { id: "", name: data.name, part_categories: data.part_categories }
@@ -585,19 +689,23 @@ export default function PartForm({
       }
       if (data.supplier_id) {
         supabase.from("suppliers").select("id, name").eq("id", data.supplier_id).single().then(({ data: s }) => {
-          if (s) setSelectedSupplier(s);
+          if (s) setSelectedSupplier(s as SupplierItem);
         });
       }
       if (data.part_stock_locations?.length > 0) {
         setStockLocations(
-          data.part_stock_locations.map((loc: any) => ({
-            id: crypto.randomUUID(),
-            warehouseName: loc.warehouses?.name || "",
-            location: loc.location || "",
-            quantity: String(loc.quantity || 0),
-            min_stock: String(loc.min_stock || 0),
-            max_stock: loc.max_stock != null ? String(loc.max_stock) : "",
-          }))
+          data.part_stock_locations.map((loc: unknown) => {
+            const l = loc as Record<string, unknown>;
+            const wh = l.warehouses as Record<string, unknown> | undefined;
+            return {
+              id: crypto.randomUUID(),
+              warehouseName: wh?.name as string || "",
+              location: l.location as string || "",
+              quantity: String(l.quantity || 0),
+              min_stock: String(l.min_stock || 0),
+              max_stock: l.max_stock != null ? String(l.max_stock) : "",
+            };
+          })
         );
       }
     }, 500);
@@ -699,7 +807,7 @@ export default function PartForm({
         .not("document_name", "is", null)
         .ilike("document_name", "%" + value + "%")
         .limit(10);
-      const names = Array.from(new Set((data || []).map((d: any) => d.document_name).filter(Boolean)));
+      const names = Array.from(new Set((data || []).map((d: unknown) => (d as Record<string, unknown>).document_name).filter(Boolean))) as string[];
       setDocNameResults(names as string[]);
       setDocNameSearching(false);
     }, 300);
@@ -736,7 +844,7 @@ export default function PartForm({
   useEffect(() => {
     if (pnNameTimeoutRef.current) clearTimeout(pnNameTimeoutRef.current);
     const value = partNameQuery.trim();
-    if (selectedPartName && value === selectedPartName.name) {
+    if (selectedPartName && value === (selectedPartName as Record<string, unknown>).name) {
       setPartNameResults(null);
       setPartNameSearching(false);
       return;
@@ -778,7 +886,7 @@ export default function PartForm({
     };
   }, [partNameQuery, supabase, selectedPartName]);
 
-  function selectPartName(item: any) {
+  function selectPartName(item: PartNameItem) {
     setSelectedPartName(item);
     setPartNameQuery(item.name);
     setPartNameResults(null);
@@ -789,29 +897,29 @@ export default function PartForm({
 
     // 优先取配件名称自身的设置，如果没有则取分类设置
     // 注意：布尔字段使用 || 而非 ??，因为数据库默认值为 false，需要允许分类的 true 覆盖
-    const autoLink = item.auto_link_vehicle_model || cat.auto_link_vehicle_model || false;
-    const consumable = item.is_consumable || cat.is_consumable || false;
+    const autoLink = item.auto_link_vehicle_model || (cat as Record<string, unknown>).auto_link_vehicle_model || false;
+    const consumable = item.is_consumable || (cat as Record<string, unknown>).is_consumable || false;
 
-    const pick = (nameVal: any, catVal: any) =>
+    const pick = (nameVal: unknown, catVal: unknown) =>
       nameVal !== null && nameVal !== undefined ? nameVal : catVal;
 
     setForm((prev) => ({
       ...prev,
       name: item.name,
       unit: item.unit || "件",
-      categoryName: cat.name || "",
-      auto_link_vehicle_model: autoLink,
-      is_consumable: consumable,
-      sales_type: pick(item.sales_commission_type, cat.sales_commission_type) || "",
-      sales_value: pick(item.sales_commission_value, cat.sales_commission_value)?.toString() || "",
-      diagnosis_type: pick(item.diagnosis_commission_type, cat.diagnosis_commission_type) || "",
-      diagnosis_value: pick(item.diagnosis_commission_value, cat.diagnosis_commission_value)?.toString() || "",
-      repair_type: pick(item.repair_commission_type, cat.repair_commission_type) || "",
-      repair_value: pick(item.repair_commission_value, cat.repair_commission_value)?.toString() || "",
-      qc_type: pick(item.qc_commission_type, cat.qc_commission_type) || "",
-      qc_value: pick(item.qc_commission_value, cat.qc_commission_value)?.toString() || "",
-      picking_type: pick(item.picking_commission_type, cat.picking_commission_type) || "",
-      picking_value: pick(item.picking_commission_value, cat.picking_commission_value)?.toString() || "",
+      categoryName: (cat as Record<string, unknown>).name as string || "",
+      auto_link_vehicle_model: autoLink as boolean,
+      is_consumable: consumable as boolean,
+      sales_type: pick(item.sales_commission_type, (cat as Record<string, unknown>).sales_commission_type) as "" | "revenue_pct" | "profit_pct" | "fixed" || "",
+      sales_value: pick(item.sales_commission_value, (cat as Record<string, unknown>).sales_commission_value)?.toString() || "",
+      diagnosis_type: pick(item.diagnosis_commission_type, (cat as Record<string, unknown>).diagnosis_commission_type) as "" | "revenue_pct" | "profit_pct" | "fixed" || "",
+      diagnosis_value: pick(item.diagnosis_commission_value, (cat as Record<string, unknown>).diagnosis_commission_value)?.toString() || "",
+      repair_type: pick(item.repair_commission_type, (cat as Record<string, unknown>).repair_commission_type) as "" | "revenue_pct" | "profit_pct" | "fixed" || "",
+      repair_value: pick(item.repair_commission_value, (cat as Record<string, unknown>).repair_commission_value)?.toString() || "",
+      qc_type: pick(item.qc_commission_type, (cat as Record<string, unknown>).qc_commission_type) as "" | "revenue_pct" | "profit_pct" | "fixed" || "",
+      qc_value: pick(item.qc_commission_value, (cat as Record<string, unknown>).qc_commission_value)?.toString() || "",
+      picking_type: pick(item.picking_commission_type, (cat as Record<string, unknown>).picking_commission_type) as "" | "revenue_pct" | "profit_pct" | "fixed" || "",
+      picking_value: pick(item.picking_commission_value, (cat as Record<string, unknown>).picking_commission_value)?.toString() || "",
     }));
   }
 
@@ -831,8 +939,8 @@ export default function PartForm({
     }
     setBrandSearching(true);
     brandTimeoutRef.current = setTimeout(async () => {
-      let linked: any[] = [];
-      let others: any[] = [];
+      let linked: IdNameItem[] = [];
+      let others: IdNameItem[] = [];
 
       if (selectedPartName) {
         let linkedQuery = supabase
@@ -843,7 +951,7 @@ export default function PartForm({
           linkedQuery = linkedQuery.ilike("name", `%${value}%`);
         }
         const { data: linkedData } = await linkedQuery.limit(10);
-        linked = (linkedData || []).map((b: any) => ({ id: b.id, name: b.name, linked: true }));
+        linked = (linkedData || []).map((b: unknown) => ({ id: (b as Record<string, unknown>).id as string, name: (b as Record<string, unknown>).name as string, linked: true }));
       }
 
       if (value) {
@@ -851,7 +959,7 @@ export default function PartForm({
         let otherQuery = supabase.from("part_brands").select("id, name").ilike("name", `%${value}%`);
         if (excludeIds.length > 0) otherQuery = otherQuery.not("id", "in", `(${excludeIds.join(",")})`);
         const { data: otherData } = await otherQuery.limit(10);
-        others = (otherData || []).map((b: any) => ({ id: b.id, name: b.name, linked: false }));
+        others = (otherData || []).map((b: unknown) => ({ id: (b as Record<string, unknown>).id as string, name: (b as Record<string, unknown>).name as string, linked: false }));
       }
 
       setBrandResults([...linked, ...others]);
@@ -888,7 +996,7 @@ export default function PartForm({
     }
   }
 
-  function selectBrand(item: any) {
+  function selectBrand(item: IdNameItem) {
     setSelectedBrand({ id: item.id, name: item.name });
     setBrandQuery(item.name);
     setBrandResults(null);
@@ -901,12 +1009,6 @@ export default function PartForm({
           if (error && !error.message.includes("duplicate")) console.error(error);
         });
     }
-  }
-
-  function removeBrand() {
-    setSelectedBrand(null);
-    setBrandQuery("");
-    setHighlightedBrandIndex(-1);
   }
 
   // Specification debounced search (only linked to part name)
@@ -927,8 +1029,8 @@ export default function PartForm({
         .eq("part_name_specifications.part_name_id", selectedPartName.id)
         .limit(10);
       const linked = (linkedData || [])
-        .map((s: any) => ({ id: s.id, name: s.name }))
-        .filter((s: any) => !selectedSpecs.some((sel) => sel.id === s.id));
+        .map((s: unknown) => ({ id: (s as Record<string, unknown>).id as string, name: (s as Record<string, unknown>).name as string }))
+        .filter((s: { id: string; name: string }) => !selectedSpecs.some((sel) => sel.id === s.id));
 
       setSpecResults(linked);
       setSpecSearching(false);
@@ -971,7 +1073,7 @@ export default function PartForm({
     if (selectedPartName) {
       supabase
         .from("part_name_specifications")
-        .insert({ part_name_id: selectedPartName.id, specification_id: item.id })
+        .insert({ part_name_id: (selectedPartName as Record<string, unknown>).id, specification_id: item.id })
         .then(({ error }) => {
           if (error && !error.message.includes("duplicate")) console.error(error);
         });
@@ -1045,14 +1147,14 @@ export default function PartForm({
         .limit(10);
       if (excludeIds.length > 0) query = query.not('id', 'in', '(' + excludeIds.join(',') + ')');
       const { data } = await query;
-      const mapped = (data || []).map((v: any) => ({
-        id: String(v.id),
-        brand: v.品牌 || '',
-        series: v.车系 || '',
-        model_name: v.车型 || '',
-        year_start: v.年款,
-        year_end: v.年款,
-        engine: v.发动机型号,
+      const mapped = (data || []).map((v: unknown) => ({
+        id: String((v as Record<string, unknown>).id),
+        brand: (v as Record<string, unknown>).品牌 as string || '',
+        series: (v as Record<string, unknown>).车系 as string || '',
+        model_name: (v as Record<string, unknown>).车型 as string || '',
+        year_start: (v as Record<string, unknown>).年款,
+        year_end: (v as Record<string, unknown>).年款,
+        engine: (v as Record<string, unknown>).发动机型号,
       }));
       setVmPriceResults(mapped);
       setVmPriceSearching(false);
@@ -1170,10 +1272,6 @@ export default function PartForm({
     setVmNewStandardPrice('');
   }
 
-  function removeVehicleModelPrice(vehicleModelId: string) {
-    setVehicleModelPrices((prev) => prev.filter((p) => p.vehicle_model_id !== vehicleModelId));
-  }
-
   function removeVehicleModelPriceGroup(salesPrice: string, vipPrice: string, standardPrice: string) {
     setVehicleModelPrices((prev) => prev.filter((p) =>
       p.sales_price !== salesPrice || p.vip_price !== vipPrice || p.standard_price !== standardPrice
@@ -1220,7 +1318,7 @@ export default function PartForm({
           part_name_id: selectedPartName.id,
           name: form.name.trim(),
           brand_id: selectedBrand?.id || null,
-          category_id: selectedPartName.part_categories?.id || null,
+          category_id: (Array.isArray(selectedPartName.part_categories) ? selectedPartName.part_categories[0]?.id : selectedPartName.part_categories?.id) || null,
           unit: form.unit || "件",
           quantity: totalQuantity,
           min_stock: parseInt(form.min_stock) || 10,
@@ -1319,7 +1417,7 @@ export default function PartForm({
         part_name_id: selectedPartName.id,
         name: form.name.trim(),
         brand_id: selectedBrand?.id || null,
-        category_id: selectedPartName.part_categories?.id || null,
+        category_id: (Array.isArray(selectedPartName.part_categories) ? selectedPartName.part_categories[0]?.id : selectedPartName.part_categories?.id) || null,
         unit: form.unit || "件",
         quantity: totalQuantity,
         min_stock: parseInt(form.min_stock) || 10,
@@ -1460,48 +1558,6 @@ export default function PartForm({
 
   const hasDuplicatePartNumber =
     pnResults !== null && pnResults.some((r) => r.part_number.toUpperCase() === partNumber.trim().toUpperCase() && r.id !== editId);
-
-  function CommissionField({
-    label,
-    typeValue,
-    valueValue,
-    onTypeChange,
-    onValueChange,
-  }: {
-    label: string;
-    typeValue: string;
-    valueValue: string;
-    onTypeChange: (v: string) => void;
-    onValueChange: (v: string) => void;
-  }) {
-    return (
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
-          <select
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={typeValue}
-            onChange={(e) => onTypeChange(e.target.value)}
-          >
-            <option value="">无提成</option>
-            <option value="revenue_pct">按产值(%)</option>
-            <option value="profit_pct">按毛利(%)</option>
-            <option value="fixed">固定金额</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
-          <input
-            type="number"
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={valueValue}
-            onChange={(e) => onValueChange(e.target.value)}
-            disabled={!typeValue}
-          />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className={isEmbedded ? "relative" : ""}>
@@ -1689,7 +1745,7 @@ export default function PartForm({
                     >
                       <div className="font-medium text-gray-900">{item.name}</div>
                       <div className="text-xs text-gray-400">
-                        {item.part_categories?.name || "-"} · {item.unit || "件"}
+                        {String((Array.isArray(item.part_categories) ? item.part_categories[0]?.name : item.part_categories?.name) || "-")} · {item.unit || "件"}
                       </div>
                     </button>
                   ))}
@@ -2142,35 +2198,35 @@ export default function PartForm({
               label="销售提成"
               typeValue={form.sales_type}
               valueValue={form.sales_value}
-              onTypeChange={(v) => setForm((prev) => ({ ...prev, sales_type: v as any, sales_value: v ? prev.sales_value : "" }))}
+              onTypeChange={(v) => setForm((prev) => ({ ...prev, sales_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", sales_value: v ? prev.sales_value : "" }))}
               onValueChange={(v) => setForm((prev) => ({ ...prev, sales_value: v }))}
             />
             <CommissionField
               label="诊断提成"
               typeValue={form.diagnosis_type}
               valueValue={form.diagnosis_value}
-              onTypeChange={(v) => setForm((prev) => ({ ...prev, diagnosis_type: v as any, diagnosis_value: v ? prev.diagnosis_value : "" }))}
+              onTypeChange={(v) => setForm((prev) => ({ ...prev, diagnosis_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", diagnosis_value: v ? prev.diagnosis_value : "" }))}
               onValueChange={(v) => setForm((prev) => ({ ...prev, diagnosis_value: v }))}
             />
             <CommissionField
               label="施工提成"
               typeValue={form.repair_type}
               valueValue={form.repair_value}
-              onTypeChange={(v) => setForm((prev) => ({ ...prev, repair_type: v as any, repair_value: v ? prev.repair_value : "" }))}
+              onTypeChange={(v) => setForm((prev) => ({ ...prev, repair_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", repair_value: v ? prev.repair_value : "" }))}
               onValueChange={(v) => setForm((prev) => ({ ...prev, repair_value: v }))}
             />
             <CommissionField
               label="质检提成"
               typeValue={form.qc_type}
               valueValue={form.qc_value}
-              onTypeChange={(v) => setForm((prev) => ({ ...prev, qc_type: v as any, qc_value: v ? prev.qc_value : "" }))}
+              onTypeChange={(v) => setForm((prev) => ({ ...prev, qc_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", qc_value: v ? prev.qc_value : "" }))}
               onValueChange={(v) => setForm((prev) => ({ ...prev, qc_value: v }))}
             />
             <CommissionField
               label="领料提成"
               typeValue={form.picking_type}
               valueValue={form.picking_value}
-              onTypeChange={(v) => setForm((prev) => ({ ...prev, picking_type: v as any, picking_value: v ? prev.picking_value : "" }))}
+              onTypeChange={(v) => setForm((prev) => ({ ...prev, picking_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", picking_value: v ? prev.picking_value : "" }))}
               onValueChange={(v) => setForm((prev) => ({ ...prev, picking_value: v }))}
             />
           </div>
@@ -2236,7 +2292,7 @@ export default function PartForm({
                       value={row.location}
                       onChange={(e) => updateStockLocation(row.id, "location", e.target.value)}
                       onFocus={() => { if (row.warehouseName) loadLocationsForWarehouse(row.warehouseName); }}
-                      onBlur={() => setTimeout(() => setLocResultsMap((prev) => { const next = { ...prev }; delete next[row.id]; return next; }), 200)}
+                      onBlur={() => setTimeout(() => {}, 200)}
                     />
                     {showLocDropdown && (
                       <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-32 overflow-y-auto">
@@ -2246,7 +2302,6 @@ export default function PartForm({
                             type="button"
                             onClick={() => {
                               updateStockLocation(row.id, "location", l.name);
-                              setLocResultsMap((prev) => { const next = { ...prev }; delete next[row.id]; return next; });
                             }}
                             className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0"
                           >
@@ -2513,25 +2568,25 @@ export default function PartForm({
                       onClick={() => {
                         setVmPriceSelected({
                           id: String(v.id),
-                          name: v.brand + ' ' + v.series + ' ' + v.model_name,
-                          brand: v.brand,
-                          series: v.series,
-                          model_name: v.model_name,
-                          year_start: v.year_start,
-                          year_end: v.year_end,
-                          engine: v.engine,
+                          name: String(v.brand) + ' ' + String(v.series) + ' ' + String(v.model_name),
+                          brand: String(v.brand),
+                          series: String(v.series),
+                          model_name: String(v.model_name),
+                          year_start: v.year_start as number | undefined,
+                          year_end: v.year_end as number | undefined,
+                          engine: v.engine as string | undefined,
                         });
                         setVmPriceQuery("");
                         setVmPriceResults([]);
                       }}
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0"
                     >
-                      <span className="font-medium">{v.brand} {v.series}</span>
-                      {v.model_name && <span className="text-gray-500 ml-1">{v.model_name}</span>}
+                      <span className="font-medium">{String(v.brand)} {String(v.series)}</span>
+                      {v.model_name && <span className="text-gray-500 ml-1">{String(v.model_name)}</span>}
                       {v.year_start && (
-                        <span className="text-gray-400 text-xs ml-1">({v.year_start}-{v.year_end || '今'})</span>
+                        <span className="text-gray-400 text-xs ml-1">({String(v.year_start)}-{v.year_end ? String(v.year_end) : '今'})</span>
                       )}
-                      {v.engine && <span className="text-gray-400 text-xs ml-1">· 发动机:{v.engine}</span>}
+                      {v.engine && <span className="text-gray-400 text-xs ml-1">· 发动机:{String(v.engine)}</span>}
                     </button>
                   ))}
                 </div>

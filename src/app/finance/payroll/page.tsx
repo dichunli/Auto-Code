@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 
 export default async function PayrollPage() {
   const supabase = await createClient();
@@ -57,7 +57,7 @@ export default async function PayrollPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {records?.map((r: any) => {
+              {records?.map((r: Record<string, unknown>) => {
                 const s = statusMap[r.status] || { label: r.status, class: "bg-gray-50 text-gray-600" };
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">

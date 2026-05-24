@@ -5,8 +5,94 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
-interface Line {
-  x1: number; y1: number; x2: number; y2: number;
+interface ServiceCategory {
+  id: string;
+  name: string;
+}
+
+interface ServiceName {
+  id: string;
+  name: string;
+  category_id: string;
+}
+
+interface ServiceItem {
+  id: string;
+  name: string;
+  default_price: number | null;
+  standard_hours: string | null;
+}
+
+interface PartName {
+  id: string;
+  name: string;
+}
+
+interface PartBrand {
+  name: string;
+}
+
+interface Part {
+  id: string;
+  part_brands: PartBrand | null;
+  specification_text: string | null;
+  unit_cost: number | null;
+  unit_price: number | null;
+}
+
+interface Mechanic {
+  id: string;
+  full_name: string;
+}
+
+interface TemplatePart {
+  part_name_id: string;
+  part_id: string;
+  quantity: string;
+  name: string;
+  brand: string;
+  specification: string;
+  unit_cost: string;
+  unit_price: string;
+}
+
+interface TemplateItem {
+  category_id: string;
+  service_name_id: string;
+  service_item_id: string;
+  name: string;
+  item_type: "labor" | "part" | "other";
+  quantity: string;
+  unit_price: string;
+  mechanic_id: string;
+  standard_hours: string;
+  parts: TemplatePart[];
+}
+
+interface TemplateItemRow {
+  service_item_id: string | null;
+  name: string;
+  item_type: "labor" | "part" | "other";
+  quantity: number | null;
+  unit_price: number | null;
+  standard_hours: string | null;
+  mechanic_id: string | null;
+  vehicle_maintenance_template_parts: {
+    part_name_id: string | null;
+    part_id: string | null;
+    quantity: number | null;
+    name: string | null;
+    brand: string | null;
+    specification: string | null;
+    unit_cost: number | null;
+    unit_price: number | null;
+  }[] | null;
+}
+
+interface Template {
+  name: string;
+  previous_cost: number | null;
+  customer_notes: string | null;
 }
 
 export default function NewTemplateContent({ params }: { params: Promise<{ id: string }> }) {
@@ -17,25 +103,25 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
   const [vehicleId, setVehicleId] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const [categories, setCategories] = useState<any[]>([]);
-  const [serviceNames, setServiceNames] = useState<any[]>([]);
-  const [serviceItems, setServiceItems] = useState<any[]>([]);
-  const [partNames, setPartNames] = useState<any[]>([]);
-  const [partsByName, setPartsByName] = useState<Record<string, any[]>>({});
-  const [mechanics, setMechanics] = useState<any[]>([]);
+  const [, setCategories] = useState<ServiceCategory[]>([]);
+  const [, setServiceNames] = useState<ServiceName[]>([]);
+  const [serviceItems] = useState<ServiceItem[]>([]);
+  const [partNames, setPartNames] = useState<PartName[]>([]);
+  const [partsByName, setPartsByName] = useState<Record<string, Part[]>>({});
+  const [mechanics, setMechanics] = useState<Mechanic[]>([]);
 
   const [name, setName] = useState("");
   const [previousCost, setPreviousCost] = useState("");
   const [customerNotes, setCustomerNotes] = useState("");
-  const [items, setItems] = useState<any[]>([
-    { category_id: "", service_name_id: "", service_item_id: "", name: "", item_type: "labor", quantity: "1", unit_price: "", mechanic_id: "", standard_hours: "", parts: [] as any[] },
+  const [items, setItems] = useState<TemplateItem[]>([
+    { category_id: "", service_name_id: "", service_item_id: "", name: "", item_type: "labor", quantity: "1", unit_price: "", mechanic_id: "", standard_hours: "", parts: [] },
   ]);
 
   useEffect(() => {
     params.then((p) => setVehicleId(p.id));
-    supabase.from("service_categories").select("*").order("name").then(({ data }) => setCategories(data || []));
-    supabase.from("part_names").select("*").order("name").then(({ data }) => setPartNames(data || []));
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setMechanics(data || []));
+    supabase.from("service_categories").select("*").order("name").then(({ data }) => setCategories((data as ServiceCategory[]) || []));
+    supabase.from("part_names").select("*").order("name").then(({ data }) => setPartNames((data as PartName[]) || []));
+    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setMechanics((data as Mechanic[]) || []));
   }, [params, supabase]);
 
   // 复制现有模板
@@ -48,9 +134,10 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
         .eq("id", copyFromId)
         .single();
       if (template) {
-        setName(template.name + " (副本)");
-        setPreviousCost(template.previous_cost?.toString() || "");
-        setCustomerNotes(template.customer_notes || "");
+        const t = template as Template;
+        setName(t.name + " (副本)");
+        setPreviousCost(t.previous_cost?.toString() || "");
+        setCustomerNotes(t.customer_notes || "");
       }
 
       const { data: templateItems } = await supabase
@@ -61,7 +148,7 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
 
       if (templateItems && templateItems.length > 0) {
         setItems(
-          templateItems.map((it: any) => ({
+          (templateItems as TemplateItemRow[]).map((it) => ({
             category_id: "",
             service_name_id: "",
             service_item_id: it.service_item_id || "",
@@ -71,7 +158,7 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
             unit_price: it.unit_price?.toString() || "",
             mechanic_id: it.mechanic_id || "",
             standard_hours: it.standard_hours?.toString() || "",
-            parts: (it.vehicle_maintenance_template_parts || []).map((p: any) => ({
+            parts: (it.vehicle_maintenance_template_parts || []).map((p) => ({
               part_name_id: p.part_name_id || "",
               part_id: p.part_id || "",
               quantity: p.quantity?.toString() || "1",
@@ -87,7 +174,7 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
     })();
   }, [copyFromId, supabase]);
 
-  const emptyPart = () => ({
+  const emptyPart = (): TemplatePart => ({
     part_name_id: "",
     part_id: "",
     quantity: "1",
@@ -108,16 +195,16 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
     setItems(next);
   }
 
-  function updateItem(index: number, field: string, value: any) {
+  function updateItem(index: number, field: keyof TemplateItem, value: string) {
     const next = [...items];
-    (next[index] as any)[field] = value;
+    next[index][field] = value as never;
 
     if (field === "category_id") {
       next[index].service_name_id = "";
       next[index].service_item_id = "";
       if (value) {
         supabase.from("service_names").select("id, name").eq("category_id", value).order("name").then(({ data }) => {
-          setServiceNames(data || []);
+          setServiceNames((data as ServiceName[]) || []);
         });
       }
     }
@@ -127,16 +214,16 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
       if (item) {
         next[index].name = item.name;
         next[index].unit_price = item.default_price?.toString() || "";
-        next[index].standard_hours = item.standard_hours;
+        next[index].standard_hours = item.standard_hours || "";
       }
     }
 
     setItems(next);
   }
 
-  function updatePart(itemIndex: number, partIndex: number, field: string, value: any) {
+  function updatePart(itemIndex: number, partIndex: number, field: keyof TemplatePart, value: string) {
     const next = [...items];
-    next[itemIndex].parts[partIndex][field] = value;
+    next[itemIndex].parts[partIndex][field] = value as never;
 
     if (field === "part_name_id") {
       next[itemIndex].parts[partIndex].part_id = "";
@@ -146,13 +233,13 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
       }
       if (value) {
         supabase.from("parts").select("*, part_brands(name)").eq("part_name_id", value).order("created_at").then(({ data }) => {
-          setPartsByName((prev) => ({ ...prev, [value]: data || [] }));
+          setPartsByName((prev) => ({ ...prev, [value]: (data as Part[]) || [] }));
         });
       }
     }
 
     if (field === "part_id" && value) {
-      const part = (partsByName[next[itemIndex].parts[partIndex].part_name_id] || []).find((p: any) => p.id === value);
+      const part = (partsByName[next[itemIndex].parts[partIndex].part_name_id] || []).find((p) => p.id === value);
       if (part) {
         next[itemIndex].parts[partIndex].brand = part.part_brands?.name || "";
         next[itemIndex].parts[partIndex].specification = part.specification_text || "";
@@ -232,8 +319,9 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
 
       router.push(`/vehicles/${vehicleId}/templates`);
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert("保存失败: " + message);
       setLoading(false);
     }
   }
@@ -343,7 +431,7 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
                     <button type="button" onClick={() => addPart(i)} className="text-xs text-blue-600 hover:text-blue-700">+ 添加配件</button>
                   </div>
                   <div className="space-y-2">
-                    {item.parts.map((part: any, pi: number) => (
+                    {item.parts.map((part, pi) => (
                       <div key={pi} className="bg-white p-2 rounded border border-gray-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
                         <div className="sm:col-span-3">
                           <label className="block text-[10px] text-gray-400 mb-0.5">配件名称</label>
@@ -366,7 +454,7 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
                             onChange={(e) => updatePart(i, pi, "part_id", e.target.value)}
                           >
                             <option value="">空分支</option>
-                            {(partsByName[part.part_name_id] || []).map((p: any) => (
+                            {(partsByName[part.part_name_id] || []).map((p) => (
                               <option key={p.id} value={p.id}>{p.part_brands?.name || "无品牌"} {p.specification_text || ""}</option>
                             ))}
                           </select>

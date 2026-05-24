@@ -10,11 +10,21 @@ interface PaymentMethod {
   name: string;
 }
 
+interface AdvancePaymentRecord {
+  id: string;
+  amount: number;
+  refunded_amount: number | null;
+  method: string;
+  refund_method: string | null;
+  collector_name: string | null;
+  paid_at: string;
+}
+
 interface Props {
   orderId: string;
   advancePayment: number;
   totalCost: number;
-  records?: any[];
+  records?: AdvancePaymentRecord[];
 }
 
 export default function AdvancePaymentDropdown({ orderId, advancePayment, totalCost, records = [] }: Props) {
@@ -75,7 +85,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
 
   const methodLabel = (code: string) => methods.find((m) => m.code === code)?.name || code;
 
-  async function handleRefund(record: any) {
+  async function handleRefund(record: AdvancePaymentRecord) {
     const val = parseFloat(refundAmount);
     const maxRefund = (record.amount || 0) - (record.refunded_amount || 0);
     if (isNaN(val) || val <= 0) {
@@ -205,7 +215,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
               {/* 预收款记录列表 */}
               {records.length > 0 && (
                 <div className="border-t border-gray-100 pt-2 space-y-1.5 max-h-40 overflow-y-auto">
-                  {records.map((r: any) => {
+                  {records.map((r: AdvancePaymentRecord) => {
                     const net = (r.amount || 0) - (r.refunded_amount || 0);
                     const isRefunding = refundingId === r.id;
                     return (

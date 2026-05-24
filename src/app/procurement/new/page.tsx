@@ -50,9 +50,16 @@ export default function NewPurchaseOrderPage() {
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [parts, setParts] = useState<any[]>([]);
-  const [partNames, setPartNames] = useState<any[]>([]);
-  const [brands, setBrands] = useState<any[]>([]);
+  interface PartOption {
+    id: string;
+    name: string;
+    part_number: string;
+    part_name_id: string;
+    part_brands?: { name: string } | null;
+    specification_text?: string | null;
+    unit_cost?: number | null;
+  }
+  const [parts, setParts] = useState<PartOption[]>([]);
   const [pendingBranches, setPendingBranches] = useState<PendingBranch[]>([]);
 
   const [supplierId, setSupplierId] = useState("");
@@ -79,7 +86,12 @@ export default function NewPurchaseOrderPage() {
     // 加载供应商（带关联信息）
     async function loadSuppliers() {
       const { data } = await supabase.from("suppliers").select("*").order("name");
-      const baseList = (data || []).map((s: any) => ({
+      interface SupplierRow {
+        id: string;
+        name: string;
+        recommendation_level?: number | null;
+      }
+      const baseList = (data || []).map((s: SupplierRow) => ({
         id: s.id,
         name: s.name,
         recommendation_level: s.recommendation_level || 0,
@@ -103,7 +115,23 @@ export default function NewPurchaseOrderPage() {
           supabase.from("supplier_part_brands").select("supplier_id, part_brands(name)"),
         ]);
 
-        (vData || []).forEach((r: any) => {
+        interface VehicleModelLink {
+          supplier_id: string;
+          vehicle_models?: { 厂商?: string; 品牌?: string; 车系?: string } | null;
+        }
+        interface CategoryLink {
+          supplier_id: string;
+          part_categories?: { name?: string } | null;
+        }
+        interface PartNameLink {
+          supplier_id: string;
+          part_names?: { name?: string } | null;
+        }
+        interface BrandLink {
+          supplier_id: string;
+          part_brands?: { name?: string } | null;
+        }
+        (vData || []).forEach((r: VehicleModelLink) => {
           const s = map.get(r.supplier_id);
           const vm = r.vehicle_models;
           if (s && vm) {
@@ -112,17 +140,17 @@ export default function NewPurchaseOrderPage() {
             if (vm.车系 && !s.vehicleSeries.includes(vm.车系)) s.vehicleSeries.push(vm.车系);
           }
         });
-        (catData || []).forEach((r: any) => {
+        (catData || []).forEach((r: CategoryLink) => {
           const s = map.get(r.supplier_id);
           const name = r.part_categories?.name;
           if (s && name && !s.categoryNames.includes(name)) s.categoryNames.push(name);
         });
-        (pnData || []).forEach((r: any) => {
+        (pnData || []).forEach((r: PartNameLink) => {
           const s = map.get(r.supplier_id);
           const name = r.part_names?.name;
           if (s && name && !s.partNameList.includes(name)) s.partNameList.push(name);
         });
-        (bData || []).forEach((r: any) => {
+        (bData || []).forEach((r: BrandLink) => {
           const s = map.get(r.supplier_id);
           const name = r.part_brands?.name;
           if (s && name && !s.brandNames.includes(name)) s.brandNames.push(name);
@@ -137,8 +165,6 @@ export default function NewPurchaseOrderPage() {
     loadSuppliers();
 
     supabase.from("parts").select("*, part_names(name, unit)").order("name").then(({ data }) => setParts(data || []));
-    supabase.from("part_names").select("*").order("name").then(({ data }) => setPartNames(data || []));
-    supabase.from("part_brands").select("*").order("name").then(({ data }) => setBrands(data || []));
 
     // 获取待采购的工单配件分支（含车辆厂商、品牌、车系）
     supabase
@@ -146,14 +172,30 @@ export default function NewPurchaseOrderPage() {
       .select("id, name, part_number, brand, specification, quantity, work_order_items!inner(work_orders!inner(plate_number, vehicles(vehicle_models(厂商,品牌,车系))))")
       .is("part_id", null)
       .then(({ data }) => {
-        const branches: PendingBranch[] = (data || []).map((b: any) => {
+        interface BranchRow {
+          id: string;
+          name: string;
+          part_number: string | null;
+          brand: string | null;
+          specification: string | null;
+          quantity: number;
+          work_order_items?: {
+            work_orders?: {
+              plate_number?: string | null;
+              vehicles?: {
+                vehicle_models?: { 厂商?: string; 品牌?: string; 车系?: string } | null;
+              } | null;
+            } | null;
+          } | null;
+        }
+        const branches: PendingBranch[] = (data || []).map((b: BranchRow) => {
           const vm = b.work_order_items?.work_orders?.vehicles?.vehicle_models;
           return {
             id: b.id,
             name: b.name,
-            part_number: b.part_number,
-            brand: b.brand,
-            specification: b.specification,
+            part_number: b.part_number || "",
+            brand: b.brand || "",
+            specification: b.specification || "",
             quantity: b.quantity,
             plate_number: b.work_order_items?.work_orders?.plate_number || "",
             vehicle_maker: vm?.厂商 || "",
@@ -309,8 +351,9 @@ export default function NewPurchaseOrderPage() {
 
       router.push("/procurement");
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("保存失败: " + msg);
       setLoading(false);
     }
   }

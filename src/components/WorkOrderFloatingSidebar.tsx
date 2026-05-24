@@ -20,6 +20,20 @@ const statusIcons: Record<string, { label: string; next: string; color: string; 
   delivered: [],
 };
 
+interface Order {
+  total_cost?: number;
+  parts_cost?: number;
+  labor_cost?: number;
+  other_cost?: number;
+  discount_amount?: number;
+}
+
+interface Payment {
+  id: string;
+  method?: string;
+  amount?: number;
+}
+
 export default function WorkOrderFloatingSidebar({
   orderId,
   status,
@@ -29,8 +43,8 @@ export default function WorkOrderFloatingSidebar({
 }: {
   orderId: string;
   status: string;
-  order: any;
-  payments: any[];
+  order: Order;
+  payments: Payment[];
   advancePaymentTotal?: number;
 }) {
   const router = useRouter();
@@ -142,7 +156,7 @@ export default function WorkOrderFloatingSidebar({
           <h3 className="text-sm font-semibold text-gray-900 mb-3">支付记录</h3>
           {payments && payments.length > 0 ? (
             <div className="space-y-1.5 text-xs">
-              {payments.map((p: any) => (
+              {payments.map((p: Payment) => (
                 <div key={p.id} className="flex justify-between">
                   <span className="text-gray-600">
                     {p.method === 'cash' ? '现金' : p.method === 'wechat' ? '微信' : p.method === 'alipay' ? '支付宝' : p.method === 'credit' ? '挂账' : p.method === 'member' ? '会员' : '银行'}

@@ -3,6 +3,22 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 
+interface 账户 {
+  id: string;
+  name: string;
+}
+
+interface 交易记录 {
+  id: string;
+  type: string;
+  amount: number;
+  description: string | null;
+  transaction_date: string;
+  finance_accounts: { name: string } | null;
+  finance_categories: { name: string } | null;
+  profiles: { full_name: string } | null;
+}
+
 export default async function TransactionsPage({ searchParams }: { searchParams?: Promise<{ type?: string; account?: string }> }) {
   const params = await searchParams;
   const supabase = await createClient();
@@ -45,7 +61,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams?
         >
           支出
         </Link>
-        {accounts?.map((a: any) => (
+        {accounts?.map((a: 账户) => (
           <Link
             key={a.id}
             href={`/finance/transactions?account=${a.id}`}
@@ -71,7 +87,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams?
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {transactions?.map((t: any) => (
+              {transactions?.map((t: 交易记录) => (
                 <tr key={t.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-gray-600">{formatDate(t.transaction_date)}</td>
                   <td className="px-6 py-4">

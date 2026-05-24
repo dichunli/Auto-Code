@@ -4,6 +4,81 @@ import { formatCurrency } from "@/lib/utils";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import Link from "next/link";
 
+interface PartSpecification {
+  id: string;
+  part_specifications?: {
+    name?: string | null;
+  } | null;
+}
+
+interface StockLocation {
+  id: string;
+  location?: string | null;
+  quantity: number;
+  min_stock?: number | null;
+  max_stock?: number | null;
+  warehouses?: {
+    name?: string | null;
+  } | null;
+}
+
+interface VehicleModelRow {
+  vehicle_models?: {
+    厂商?: string | null;
+    品牌?: string | null;
+    车系?: string | null;
+    车型?: string | null;
+    销售版本?: string | null;
+    年款?: string | null;
+    排量?: string | null;
+    发动机型号?: string | null;
+    燃油类型?: string | null;
+    进气形式?: string | null;
+    变速箱类型?: string | null;
+    变速箱代号?: string | null;
+    底盘代号?: string | null;
+    驱动方式?: string | null;
+    车身类型?: string | null;
+    排放标准?: string | null;
+  } | null;
+  notes?: string | null;
+}
+
+interface VehiclePriceRow {
+  id: string;
+  sales_price?: number | null;
+  vip_price?: number | null;
+  standard_price?: number | null;
+  vehicle_models?: {
+    品牌?: string | null;
+    车系?: string | null;
+    车型?: string | null;
+    年款?: string | null;
+    发动机型号?: string | null;
+  } | null;
+}
+
+interface SpecialPriceRow {
+  id: string;
+  price?: number | null;
+  companies?: {
+    name?: string | null;
+  } | null;
+  customers?: {
+    name?: string | null;
+    phone?: string | null;
+  } | null;
+  vehicles?: {
+    plate_number?: string | null;
+    vin?: string | null;
+  } | null;
+}
+
+interface PartImage {
+  id: string;
+  storage_path: string;
+}
+
 export default async function PartDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
@@ -85,7 +160,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">规格</h2>
           <div className="flex flex-wrap gap-2">
-            {specs.map((s: any) => (
+            {specs.map((s: PartSpecification) => (
               <span key={s.id} className="px-2 py-1 bg-gray-100 rounded text-sm text-gray-700">
                 {s.part_specifications?.name || "-"}
               </span>
@@ -123,7 +198,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {stockLocations.map((row: any) => (
+              {stockLocations.map((row: StockLocation) => (
                 <tr key={row.id}>
                   <td className="px-4 py-2">{row.warehouses?.name || "-"}</td>
                   <td className="px-4 py-2">{row.location || "-"}</td>
@@ -167,7 +242,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {vehicleModels.map((vm: any, idx: number) => {
+                {vehicleModels.map((vm: VehicleModelRow, idx: number) => {
                   const v = vm.vehicle_models;
                   return (
                     <tr key={idx}>
@@ -213,7 +288,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {vehiclePrices.map((vp: any) => {
+              {vehiclePrices.map((vp: VehiclePriceRow) => {
                 const v = vp.vehicle_models;
                 const name = v ? `${v.品牌 || ""} ${v.车系 || ""} ${v.车型 || ""}`.trim() : "-";
                 return (
@@ -242,7 +317,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {specialPrices.map((sp: any) => {
+              {specialPrices.map((sp: SpecialPriceRow) => {
                 let label = "";
                 if (sp.companies?.name) label += `单位：${sp.companies.name} `;
                 if (sp.customers?.name) label += `客户：${sp.customers.name} `;
@@ -265,7 +340,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">配件图片</h2>
           <div className="flex flex-wrap gap-4">
-            {images.map((img: any) => (
+            {images.map((img: PartImage) => (
               <img
                 key={img.id}
                 src={img.storage_path}

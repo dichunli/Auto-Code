@@ -18,6 +18,7 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileId = useRef(`item-img-${Math.random().toString(36).slice(2)}`).current;
 
   useEffect(() => {
     setImages(existingImages);
@@ -52,8 +53,8 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
         if (dbError) throw dbError;
 
         setImages((prev) => [...prev, result.path]);
-      } catch (err: any) {
-        alert("图片上传失败: " + err.message);
+      } catch (err: unknown) {
+        alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
       } finally {
         setSaving(false);
       }
@@ -113,11 +114,9 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
       {!isLocked && images.length < 5 && (
         <>
           <span className="text-xs text-gray-500 ml-1">添加图片</span>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={saving}
-            className="w-8 h-8 rounded border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-50"
+          <label
+            htmlFor={fileId}
+            className={`w-8 h-8 rounded border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${saving ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
             title="上传/粘贴/拍照"
           >
             {saving ? (
@@ -127,8 +126,9 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
             )}
-          </button>
+          </label>
           <input
+            id={fileId}
             ref={fileInputRef}
             type="file"
             accept="image/*"

@@ -1,6 +1,25 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
+interface 车辆信息 {
+  plate_number: string;
+  brand: string;
+  model: string;
+}
+
+interface 客户信息 {
+  name: string;
+  phone: string;
+}
+
+interface 工单 {
+  id: string;
+  order_no: string;
+  status: string;
+  vehicles: 车辆信息 | null;
+  customers: 客户信息 | null;
+}
+
 export default async function MobileAssignmentListPage() {
   const supabase = await createClient();
 
@@ -40,7 +59,7 @@ export default async function MobileAssignmentListPage() {
           </div>
           {availableOrders && availableOrders.length > 0 ? (
             <div className="space-y-3">
-              {availableOrders.map((order: any) => (
+              {availableOrders.map((order: 工单) => (
                 <Link
                   key={order.id}
                   href={`/work-orders/${order.id}`}
@@ -78,7 +97,7 @@ export default async function MobileAssignmentListPage() {
           </div>
           {activeOrders && activeOrders.length > 0 ? (
             <div className="space-y-3">
-              {activeOrders.map((order: any) => (
+              {activeOrders.map((order: 工单) => (
                 <Link
                   key={order.id}
                   href={`/work-orders/${order.id}`}

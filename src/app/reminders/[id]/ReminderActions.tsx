@@ -4,7 +4,19 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export function ReminderActions({ reminder }: { reminder: any }) {
+interface 提醒 {
+  id: string;
+  customer_id: string;
+  title: string;
+  reminder_type: "time" | "mileage";
+  status: string;
+  notes?: string | null;
+  vehicles?: {
+    plate_number?: string | null;
+  } | null;
+}
+
+export function ReminderActions({ reminder }: { reminder: 提醒 }) {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);

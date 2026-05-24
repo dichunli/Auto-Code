@@ -71,7 +71,7 @@ export default async function RemindersPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {reminders?.map((r: any) => {
+              {reminders?.map((r) => {
                 const s = statusMap[r.status];
                 const isOverdue =
                   r.status === "pending" &&

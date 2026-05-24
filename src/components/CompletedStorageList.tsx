@@ -106,10 +106,15 @@ export function CompletedStorageList() {
         .select("work_order_item_part_id")
         .eq("order_id", orderId);
       const workOrderItemPartIds = (poiList || [])
-        .map((p: any) => p.work_order_item_part_id)
+        .map((p: { work_order_item_part_id: string | null }) => p.work_order_item_part_id)
         .filter(Boolean);
 
-      let returnRecords: any[] = [];
+      interface ReturnRecord {
+        id: string;
+        return_reason: string;
+        quantity: number;
+      }
+      let returnRecords: ReturnRecord[] = [];
       if (workOrderItemPartIds.length > 0) {
         const { data: retList } = await supabase
           .from("supplier_return_records")
@@ -235,8 +240,8 @@ export function CompletedStorageList() {
       if (stErr) throw stErr;
 
       loadData();
-    } catch (err: any) {
-      alert("退回失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      alert("退回失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSubmitting(null);
     }

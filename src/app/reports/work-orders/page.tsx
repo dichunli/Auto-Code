@@ -13,7 +13,7 @@ export default async function WorkOrderReportPage() {
   const statusAmounts: Record<string, number> = {};
   let totalAmount = 0;
 
-  allOrders?.forEach((o: any) => {
+  allOrders?.forEach((o) => {
     statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
     statusAmounts[o.status] = (statusAmounts[o.status] || 0) + (o.total_cost || 0);
     totalAmount += o.total_cost || 0;

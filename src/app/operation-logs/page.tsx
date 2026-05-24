@@ -2,6 +2,19 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
 
+interface 操作日志 {
+  id: string;
+  user_name: string | null;
+  action_type: string;
+  target_table: string | null;
+  target_name: string | null;
+  description: string | null;
+  old_values: unknown;
+  new_values: unknown;
+  ip_address: string | null;
+  created_at: string;
+}
+
 export default async function OperationLogsPage({
   searchParams,
 }: {
@@ -119,7 +132,7 @@ export default async function OperationLogsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {logs?.map((log: any) => (
+              {logs?.map((log: 操作日志) => (
                 <tr key={log.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{formatDate(log.created_at)}</td>
                   <td className="px-4 py-3 text-gray-900">{log.user_name || "-"}</td>

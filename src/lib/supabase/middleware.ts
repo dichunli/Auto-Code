@@ -34,7 +34,7 @@ export async function updateSession(request: NextRequest) {
     const timeoutPromise = new Promise((_resolve, reject) =>
       setTimeout(() => reject(new Error("getUser timeout")), 5000)
     );
-    const result = (await Promise.race([getUserPromise, timeoutPromise])) as any;
+    const result = (await Promise.race([getUserPromise, timeoutPromise])) as { data?: { user?: unknown } | null };
     user = result.data?.user || null;
   } catch {
     user = null;

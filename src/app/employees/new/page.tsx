@@ -15,9 +15,26 @@ export default function NewEmployeePage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [groups, setGroups] = useState<any[]>([]);
-  const [roles, setRoles] = useState<any[]>([]);
-  const [levels, setLevels] = useState<any[]>([]);
+  interface 员工分组 {
+    id: string;
+    name: string;
+  }
+
+  interface 角色 {
+    id: string;
+    name: string;
+    label: string;
+  }
+
+  interface 技师等级 {
+    id: string;
+    name: string;
+    level_code: string | null;
+  }
+
+  const [groups, setGroups] = useState<员工分组[]>([]);
+  const [roles, setRoles] = useState<角色[]>([]);
+  const [levels, setLevels] = useState<技师等级[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [accountPhone, setAccountPhone] = useState("");
@@ -76,7 +93,11 @@ export default function NewEmployeePage() {
 
   function updateContact(index: number, field: string, value: string | boolean) {
     const next = [...contacts];
-    (next[index] as any)[field] = value;
+    if (field === "is_primary") {
+      next[index].is_primary = value as boolean;
+    } else {
+      next[index][field as "name" | "phone" | "relationship"] = value as string;
+    }
     if (field === "is_primary" && value === true) {
       next.forEach((c, i) => { if (i !== index) c.is_primary = false; });
     }
@@ -132,8 +153,8 @@ export default function NewEmployeePage() {
 
       router.push("/employees");
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败：" + err.message);
+    } catch (err: unknown) {
+      alert("保存失败：" + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
     }
   }

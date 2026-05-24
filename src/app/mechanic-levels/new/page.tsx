@@ -46,8 +46,8 @@ export default function NewMechanicLevelPage() {
 
       router.push("/mechanic-levels");
       router.refresh();
-    } catch (err: any) {
-      const raw = err?.message || err?.error_description || (typeof err === "object" ? JSON.stringify(err) : String(err));
+    } catch (err: unknown) {
+      const raw = err instanceof Error ? err.message : (typeof err === "object" && err !== null ? JSON.stringify(err) : String(err));
       let msg = raw;
       if (raw.includes("mechanic_levels_level_code_key")) {
         msg = `等级编码「${levelCode}」已存在，请换一个`;

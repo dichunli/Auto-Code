@@ -17,17 +17,28 @@ export default function VehicleForm() {
   const queryCustomerId = searchParams.get("customer_id");
   const [loading, setLoading] = useState(false);
   const [ownerMode, setOwnerMode] = useState<OwnerMode>("existing");
-  const [preloadingCustomer, setPreloadingCustomer] = useState(!!queryCustomerId);
+  const [, setPreloadingCustomer] = useState(!!queryCustomerId);
 
   const [customerQuery, setCustomerQuery] = useState("");
-  const [customerResults, setCustomerResults] = useState<any[]>([]);
+  interface CustomerResult {
+    id: string;
+    name: string;
+    phone: string;
+  }
+
+  const [customerResults, setCustomerResults] = useState<CustomerResult[]>([]);
   const [searching, setSearching] = useState(false);
 
   const [existingCustomerId, setExistingCustomerId] = useState("");
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", gender: "" });
 
   const [companyQuery, setCompanyQuery] = useState("");
-  const [companyResults, setCompanyResults] = useState<any[]>([]);
+  interface CompanyResult {
+    id: string;
+    name: string;
+  }
+
+  const [companyResults, setCompanyResults] = useState<CompanyResult[]>([]);
   const [companySearching, setCompanySearching] = useState(false);
   const [companyId, setCompanyId] = useState("");
 
@@ -54,9 +65,22 @@ export default function VehicleForm() {
 
   // 车牌号逐字检索
   const plateSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [plateSearchResults, setPlateSearchResults] = useState<any[] | null>(null);
+  interface VehicleResult {
+    id: string;
+    plate_number: string;
+    brand: string | null;
+    model: string | null;
+    vin: string | null;
+    color: string | null;
+    year: number | null;
+    mileage: number | null;
+    customer_id: string | null;
+    customers: { id: string; name: string } | { id: string; name: string }[] | null;
+  }
+
+  const [plateSearchResults, setPlateSearchResults] = useState<VehicleResult[] | null>(null);
   const [plateSearching, setPlateSearching] = useState(false);
-  const [transferVehicle, setTransferVehicle] = useState<any | null>(null);
+  const [transferVehicle, setTransferVehicle] = useState<VehicleResult | null>(null);
   const [savingTransfer, setSavingTransfer] = useState(false);
 
   // 自动带入 customer_id 对应的客户

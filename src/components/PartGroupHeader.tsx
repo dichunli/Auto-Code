@@ -8,10 +8,40 @@ import { formatCurrency } from "@/lib/utils";
 import { PartPickerModal } from "./PartPickerModal";
 import { ImageViewer } from "./ImageViewer";
 
+interface PartBranch {
+  id: string;
+  part_name_id?: string | null;
+  name?: string | null;
+  unit?: string | null;
+  quantity?: number | null;
+  unit_price?: number | null;
+  notes?: string | null;
+  is_selected?: boolean | null;
+  part_id?: string | null;
+  parts?: {
+    id?: string;
+    name?: string | null;
+    part_number?: string | null;
+    part_brands?: { name?: string | null } | null;
+    quantity?: number | null;
+    unit?: string | null;
+    unit_cost?: number | null;
+    unit_price?: number | null;
+    part_categories?: { name?: string | null } | null;
+    part_specifications?: { name?: string | null } | null;
+    specification_text?: string | null;
+    part_name_id?: string | null;
+  } | null;
+  part_names?: {
+    unit?: string | null;
+    part_categories?: { name?: string | null } | null;
+  } | null;
+}
+
 interface Props {
   seqLabel: string;
   name: string;
-  parts: any[];
+  parts: PartBranch[];
   isLocked: boolean;
   itemId?: string;
   existingImages?: string[];
@@ -22,22 +52,43 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileId = useRef(`part-group-img-${Math.random().toString(36).slice(2)}`).current;
 
   // 配件名称替换弹窗
   const [showModal, setShowModal] = useState(false);
   const [nameQuery, setNameQuery] = useState("");
-  const [nameResults, setNameResults] = useState<any[]>([]);
+  interface NameResult {
+    id: string;
+    name: string;
+    unit?: string | null;
+    part_categories?: { name?: string | null } | null;
+  }
+  const [nameResults, setNameResults] = useState<NameResult[]>([]);
   const [nameSearching, setNameSearching] = useState(false);
   const nameTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // 配件选择器弹窗
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  interface RealPart {
+    id: string;
+    name: string;
+    part_number?: string | null;
+    part_name_id?: string | null;
+    unit?: string | null;
+    part_brands?: { name?: string | null } | null;
+    specification_text?: string | null;
+    part_specifications?: { name?: string | null } | null;
+    unit_cost?: number | null;
+    unit_price?: number | null;
+    quantity?: number | null;
+  }
+
   // 已选库存配件（编辑弹窗中）
-  const [selectedRealPart, setSelectedRealPart] = useState<any | null>(null);
+  const [selectedRealPart, setSelectedRealPart] = useState<RealPart | null>(null);
 
   // 待替换的配件名称（延迟到保存时执行）
-  const [pendingName, setPendingName] = useState<any | null>(null);
+  const [pendingName, setPendingName] = useState<NameResult | null>(null);
 
   const unit = parts[0]?.unit || parts[0]?.part_names?.unit || parts[0]?.parts?.unit || "件";
   const category = parts[0]?.part_names?.part_categories?.name || parts[0]?.parts?.part_categories?.name;
@@ -211,8 +262,9 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         if (dbError) throw dbError;
 
         setImages((prev) => [...prev, result.path]);
-      } catch (err: any) {
-        alert("图片上传失败: " + err.message);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        alert("图片上传失败: " + msg);
       } finally {
         setSaving(false);
       }
@@ -264,7 +316,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   }, [nameQuery, supabase]);
 
   // 选择待替换的配件名称（延迟到保存时执行）
-  function handleSelectPendingName(selected: any) {
+  function handleSelectPendingName(selected: NameResult) {
     setPendingName(selected);
     setNameQuery("");
     setNameResults([]);
@@ -277,7 +329,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   }
 
   // 处理从配件选择器返回的配件
-  function handlePickerConfirm(partsList: any[]) {
+  function handlePickerConfirm(partsList: RealPart[]) {
     if (partsList.length === 0) return;
     const part = partsList[0];
     setSelectedRealPart(part);
@@ -316,7 +368,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
 
     // 2. 如果选择了库存配件，更新所有分支的 part_id 及相关信息
     if (selectedRealPart) {
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         part_id: selectedRealPart.id,
         part_name_id: selectedRealPart.part_name_id,
         part_number: selectedRealPart.part_number || "",
@@ -447,11 +499,9 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
                 </div>
               ))}
               {!isLocked && images.length < 5 && (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={saving}
-                  className="w-8 h-8 rounded border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-50"
+                <label
+                  htmlFor={fileId}
+                  className={`w-8 h-8 rounded border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${saving ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
                   title="上传/粘贴/拍照"
                 >
                   {saving ? (
@@ -461,9 +511,10 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
                   )}
-                </button>
+                </label>
               )}
               <input
+                id={fileId}
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"

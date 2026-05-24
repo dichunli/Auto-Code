@@ -5,13 +5,32 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
+interface PartName {
+  id: string;
+  name: string;
+  unit: string | null;
+  part_categories: { name: string } | null;
+}
+
+interface PartBrand {
+  id: string;
+  name: string;
+  usage_count: number;
+}
+
+interface PartSpecification {
+  id: string;
+  name: string;
+  usage_count: number;
+}
+
 export default function NewPartPage() {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
-  const [partNames, setPartNames] = useState<any[]>([]);
-  const [brands, setBrands] = useState<any[]>([]);
-  const [specifications, setSpecifications] = useState<any[]>([]);
+  const [partNames, setPartNames] = useState<PartName[]>([]);
+  const [brands, setBrands] = useState<PartBrand[]>([]);
+  const [specifications, setSpecifications] = useState<PartSpecification[]>([]);
 
   const [form, setForm] = useState({
     part_number: "",
@@ -28,7 +47,7 @@ export default function NewPartPage() {
     notes: "",
   });
 
-  const [selectedName, setSelectedName] = useState<any>(null);
+  const [selectedName, setSelectedName] = useState<PartName | null>(null);
 
   useEffect(() => {
     supabase.from("part_names").select("*, part_categories(name)").order("name").then(({ data }) => setPartNames(data || []));

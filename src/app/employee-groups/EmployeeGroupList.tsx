@@ -58,7 +58,7 @@ export function EmployeeGroupList({ groups }: Props) {
         .eq("id", b.id);
       if (e2) throw e2;
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       alert("排序失败：" + (err instanceof Error ? err.message : String(err)));
     } finally {
       setBusy(null);
@@ -76,7 +76,7 @@ export function EmployeeGroupList({ groups }: Props) {
         .eq("id", id);
       if (error) throw error;
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       alert("排序失败：" + (err instanceof Error ? err.message : String(err)));
     } finally {
       setBusy(null);

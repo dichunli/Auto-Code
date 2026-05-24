@@ -11,6 +11,23 @@ interface LinkedItem {
   name: string;
 }
 
+interface CommissionFieldProps {
+  label: string;
+  typeValue: string;
+  valueValue: string;
+  onTypeChange: (value: string) => void;
+  onValueChange: (value: string) => void;
+}
+
+function CommissionField({ label, typeValue, valueValue, onTypeChange, onValueChange }: CommissionFieldProps) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div><label className="block text-xs text-gray-500 mb-1">{label}方式</label><select className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm" value={typeValue} onChange={(e) => onTypeChange(e.target.value)}><option value="">无提成</option><option value="revenue_pct">按产值(%)</option><option value="profit_pct">按毛利(%)</option><option value="fixed">固定金额</option></select></div>
+      <div><label className="block text-xs text-gray-500 mb-1">{label}数值</label><input type="number" className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm" value={valueValue} onChange={(e) => onValueChange(e.target.value)} disabled={!typeValue} /></div>
+    </div>
+  );
+}
+
 export default function EditPartNamePage() {
   const router = useRouter();
   const params = useParams();
@@ -18,7 +35,23 @@ export default function EditPartNamePage() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [categories, setCategories] = useState<any[]>([]);
+  interface Category {
+    id: string;
+    name: string;
+    auto_link_vehicle_model?: boolean;
+    is_consumable?: boolean;
+    sales_commission_type?: string | null;
+    sales_commission_value?: number | null;
+    diagnosis_commission_type?: string | null;
+    diagnosis_commission_value?: number | null;
+    repair_commission_type?: string | null;
+    repair_commission_value?: number | null;
+    qc_commission_type?: string | null;
+    qc_commission_value?: number | null;
+    picking_commission_type?: string | null;
+    picking_commission_value?: number | null;
+  }
+  const [categories, setCategories] = useState<Category[]>([]);
 
   const [form, setForm] = useState({
     name: "",
@@ -44,11 +77,19 @@ export default function EditPartNamePage() {
   const [linkedSpecs, setLinkedSpecs] = useState<LinkedItem[]>([]);
 
   const [brandQuery, setBrandQuery] = useState("");
-  const [brandResults, setBrandResults] = useState<any[] | null>(null);
+  interface BrandResult {
+    id: string;
+    name: string;
+  }
+  const [brandResults, setBrandResults] = useState<BrandResult[] | null>(null);
   const [brandSearching, setBrandSearching] = useState(false);
 
   const [specQuery, setSpecQuery] = useState("");
-  const [specResults, setSpecResults] = useState<any[] | null>(null);
+  interface SpecResult {
+    id: string;
+    name: string;
+  }
+  const [specResults, setSpecResults] = useState<SpecResult[] | null>(null);
   const [specSearching, setSpecSearching] = useState(false);
 
   useEffect(() => {
@@ -85,8 +126,16 @@ export default function EditPartNamePage() {
         picking_type: part.picking_commission_type || "",
         picking_value: part.picking_commission_value?.toString() || "",
       });
-      setLinkedBrands((brandLinks || []).map((l: any) => ({ id: l.brand_id, name: l.part_brands?.name })).filter((x: any) => x.name));
-      setLinkedSpecs((specLinks || []).map((l: any) => ({ id: l.specification_id, name: l.part_specifications?.name })).filter((x: any) => x.name));
+      interface BrandLink {
+        brand_id: string;
+        part_brands?: { name?: string } | null;
+      }
+      interface SpecLink {
+        specification_id: string;
+        part_specifications?: { name?: string } | null;
+      }
+      setLinkedBrands((brandLinks || []).map((l: BrandLink) => ({ id: l.brand_id, name: l.part_brands?.name })).filter((x: LinkedItem) => x.name));
+      setLinkedSpecs((specLinks || []).map((l: SpecLink) => ({ id: l.specification_id, name: l.part_specifications?.name })).filter((x: LinkedItem) => x.name));
       setLoading(false);
     }
     load();
@@ -193,7 +242,8 @@ export default function EditPartNamePage() {
 
     // 同步品牌关联
     const { data: existingBrands } = await supabase.from("part_name_brands").select("brand_id").eq("part_name_id", id);
-    const existingBrandIds = new Set((existingBrands || []).map((b: any) => b.brand_id));
+    interface ExistingBrand { brand_id: string; }
+    const existingBrandIds = new Set((existingBrands || []).map((b: ExistingBrand) => b.brand_id));
     const newBrandIds = new Set(linkedBrands.map((b) => b.id));
     const brandsToDelete = Array.from(existingBrandIds).filter((bid) => !newBrandIds.has(bid));
     const brandsToInsert = Array.from(newBrandIds).filter((bid) => !existingBrandIds.has(bid));
@@ -202,7 +252,8 @@ export default function EditPartNamePage() {
 
     // 同步规格关联
     const { data: existingSpecs } = await supabase.from("part_name_specifications").select("specification_id").eq("part_name_id", id);
-    const existingSpecIds = new Set((existingSpecs || []).map((s: any) => s.specification_id));
+    interface ExistingSpec { specification_id: string; }
+    const existingSpecIds = new Set((existingSpecs || []).map((s: ExistingSpec) => s.specification_id));
     const newSpecIds = new Set(linkedSpecs.map((s) => s.id));
     const specsToDelete = Array.from(existingSpecIds).filter((sid) => !newSpecIds.has(sid));
     const specsToInsert = Array.from(newSpecIds).filter((sid) => !existingSpecIds.has(sid));
@@ -211,15 +262,6 @@ export default function EditPartNamePage() {
 
     router.push("/part-names");
     router.refresh();
-  }
-
-  function CommissionField({ label, typeValue, valueValue, onTypeChange, onValueChange }: any) {
-    return (
-      <div className="grid grid-cols-2 gap-3">
-        <div><label className="block text-xs text-gray-500 mb-1">{label}方式</label><select className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm" value={typeValue} onChange={(e) => onTypeChange(e.target.value)}><option value="">无提成</option><option value="revenue_pct">按产值(%)</option><option value="profit_pct">按毛利(%)</option><option value="fixed">固定金额</option></select></div>
-        <div><label className="block text-xs text-gray-500 mb-1">{label}数值</label><input type="number" className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm" value={valueValue} onChange={(e) => onValueChange(e.target.value)} disabled={!typeValue} /></div>
-      </div>
-    );
   }
 
   if (loading) {
@@ -297,11 +339,11 @@ export default function EditPartNamePage() {
             </label>
           </div>
           <div className="space-y-4">
-            <CommissionField label="销售提成" typeValue={form.sales_type} valueValue={form.sales_value} onTypeChange={(v: string) => setForm({ ...form, sales_type: v as any, sales_value: v ? form.sales_value : "" })} onValueChange={(v: string) => setForm({ ...form, sales_value: v })} />
-            <CommissionField label="诊断提成" typeValue={form.diagnosis_type} valueValue={form.diagnosis_value} onTypeChange={(v: string) => setForm({ ...form, diagnosis_type: v as any, diagnosis_value: v ? form.diagnosis_value : "" })} onValueChange={(v: string) => setForm({ ...form, diagnosis_value: v })} />
-            <CommissionField label="施工提成" typeValue={form.repair_type} valueValue={form.repair_value} onTypeChange={(v: string) => setForm({ ...form, repair_type: v as any, repair_value: v ? form.repair_value : "" })} onValueChange={(v: string) => setForm({ ...form, repair_value: v })} />
-            <CommissionField label="质检提成" typeValue={form.qc_type} valueValue={form.qc_value} onTypeChange={(v: string) => setForm({ ...form, qc_type: v as any, qc_value: v ? form.qc_value : "" })} onValueChange={(v: string) => setForm({ ...form, qc_value: v })} />
-            <CommissionField label="领料提成" typeValue={form.picking_type} valueValue={form.picking_value} onTypeChange={(v: string) => setForm({ ...form, picking_type: v as any, picking_value: v ? form.picking_value : "" })} onValueChange={(v: string) => setForm({ ...form, picking_value: v })} />
+            <CommissionField label="销售提成" typeValue={form.sales_type} valueValue={form.sales_value} onTypeChange={(v: string) => setForm({ ...form, sales_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", sales_value: v ? form.sales_value : "" })} onValueChange={(v: string) => setForm({ ...form, sales_value: v })} />
+            <CommissionField label="诊断提成" typeValue={form.diagnosis_type} valueValue={form.diagnosis_value} onTypeChange={(v: string) => setForm({ ...form, diagnosis_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", diagnosis_value: v ? form.diagnosis_value : "" })} onValueChange={(v: string) => setForm({ ...form, diagnosis_value: v })} />
+            <CommissionField label="施工提成" typeValue={form.repair_type} valueValue={form.repair_value} onTypeChange={(v: string) => setForm({ ...form, repair_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", repair_value: v ? form.repair_value : "" })} onValueChange={(v: string) => setForm({ ...form, repair_value: v })} />
+            <CommissionField label="质检提成" typeValue={form.qc_type} valueValue={form.qc_value} onTypeChange={(v: string) => setForm({ ...form, qc_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", qc_value: v ? form.qc_value : "" })} onValueChange={(v: string) => setForm({ ...form, qc_value: v })} />
+            <CommissionField label="领料提成" typeValue={form.picking_type} valueValue={form.picking_value} onTypeChange={(v: string) => setForm({ ...form, picking_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", picking_value: v ? form.picking_value : "" })} onValueChange={(v: string) => setForm({ ...form, picking_value: v })} />
           </div>
         </div>
 

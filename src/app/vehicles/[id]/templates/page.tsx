@@ -39,7 +39,7 @@ export default async function VehicleTemplatesPage({
           <span className="text-sm text-gray-500">共 {templates?.length || 0} 个模板</span>
         </div>
         <div className="divide-y divide-gray-100">
-          {templates?.map((t: any) => (
+          {templates?.map((t) => (
             <div key={t.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50">
               <div className="flex-1">
                 <div className="font-medium text-gray-900">{t.name}</div>

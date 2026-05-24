@@ -5,12 +5,21 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
+interface 盘点项 {
+  part_id: string;
+  part_number: string;
+  name: string;
+  system_qty: number;
+  actual_qty: string;
+  diff_qty?: number;
+  notes: string;
+}
+
 export default function NewInventoryCheckPage() {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
-  const [parts, setParts] = useState<any[]>([]);
-  const [checkItems, setCheckItems] = useState<any[]>([]);
+  const [checkItems, setCheckItems] = useState<盘点项[]>([]);
 
   const [form, setForm] = useState({
     check_no: "",
@@ -24,7 +33,6 @@ export default function NewInventoryCheckPage() {
       .select("id, part_number, name, quantity, location")
       .order("name")
       .then(({ data }) => {
-        setParts(data || []);
         setCheckItems(
           (data || []).map((p) => ({
             part_id: p.id,
@@ -86,8 +94,9 @@ export default function NewInventoryCheckPage() {
 
       router.push("/inventory/checks");
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("保存失败: " + msg);
       setLoading(false);
     }
   }

@@ -68,7 +68,7 @@ export default async function EmployeesPage({ searchParams }: { searchParams?: P
 
       <EmployeeTree
         groups={groups || []}
-        employees={(employees as any) || []}
+        employees={(employees as Record<string, unknown>[]) || []}
       />
     </div>
   );

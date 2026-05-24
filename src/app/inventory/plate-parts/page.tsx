@@ -39,7 +39,7 @@ export default async function PlatePartsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items?.map((item: any) => {
+              {items?.map((item: Record<string, unknown>) => {
                 const vehicle = item.work_order_items?.work_orders?.vehicles;
                 const vehicleModel = vehicle?.vehicle_models;
                 return (

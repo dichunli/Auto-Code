@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -16,7 +16,13 @@ export default function EditPartSpecificationPage() {
   const [name, setName] = useState("");
 
   const [pnQuery, setPnQuery] = useState("");
-  const [pnResults, setPnResults] = useState<any[]>([]);
+  interface PartNameResult {
+    id: string;
+    name: string;
+    part_categories: { name: string } | null;
+  }
+
+  const [pnResults, setPnResults] = useState<PartNameResult[]>([]);
   const [pnSearching, setPnSearching] = useState(false);
   const [linkedNames, setLinkedNames] = useState<{ id: string; name: string; category_name?: string }[]>([]);
 
@@ -37,8 +43,12 @@ export default function EditPartSpecificationPage() {
       }
 
       setName(spec.name || "");
+      interface LinkRow {
+        part_name_id: string;
+        part_names: { name: string; part_categories: { name: string } | null } | null;
+      }
       setLinkedNames(
-        (links || []).map((l: any) => ({
+        (links || []).map((l: LinkRow) => ({
           id: l.part_name_id,
           name: l.part_names?.name,
           category_name: l.part_names?.part_categories?.name,
@@ -68,7 +78,7 @@ export default function EditPartSpecificationPage() {
     return () => clearTimeout(t);
   }, [pnQuery, supabase]);
 
-  function addLinkedName(pn: any) {
+  function addLinkedName(pn: PartNameResult) {
     if (linkedNames.some((n) => n.id === pn.id)) return;
     setLinkedNames((prev) => [
       ...prev,
@@ -106,7 +116,7 @@ export default function EditPartSpecificationPage() {
       .select("part_name_id")
       .eq("specification_id", id);
 
-    const existingIds = new Set((existing || []).map((x: any) => x.part_name_id));
+    const existingIds = new Set((existing || []).map((x: { part_name_id: string }) => x.part_name_id));
     const newIds = new Set(linkedNames.map((n) => n.id));
 
     const toDelete = Array.from(existingIds).filter((pid) => !newIds.has(pid));

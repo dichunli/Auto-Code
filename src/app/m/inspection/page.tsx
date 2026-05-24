@@ -27,7 +27,7 @@ export default async function MobileInspectionListPage() {
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {orders && orders.length > 0 ? (
-          orders.map((order: any) => (
+          orders.map((order: Record<string, unknown>) => (
             <Link
               key={order.id}
               href={`/work-orders/${order.id}/inspection/new`}

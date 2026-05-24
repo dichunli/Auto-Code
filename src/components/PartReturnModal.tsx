@@ -44,7 +44,7 @@ export function PartReturnModal({ open, partName, workOrderItemPartId, onClose, 
       .order("picked_at", { ascending: true })
       .then(({ data, error }) => {
         if (error) console.error(error);
-        setRecords((data || []) as any);
+        setRecords((data || []) as PickingRecord[]);
         setSelectedId("");
         setFetching(false);
       });
@@ -79,8 +79,8 @@ export function PartReturnModal({ open, partName, workOrderItemPartId, onClose, 
 
       onSuccess();
       onClose();
-    } catch (err: any) {
-      alert("退库失败: " + err.message);
+    } catch (err: unknown) {
+      alert("退库失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }

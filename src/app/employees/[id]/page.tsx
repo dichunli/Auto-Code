@@ -5,6 +5,56 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EmployeeDeleteButton } from "./EmployeeDeleteButton";
 
+interface ProfileRole {
+  role_id: string;
+  roles: {
+    name: string;
+    label: string;
+  } | null;
+}
+
+interface Employee {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  is_active: boolean;
+  gender: string | null;
+  entry_date: string | null;
+  created_at: string;
+  id_card: string | null;
+  address: string | null;
+  notes: string | null;
+  id_card_front_url: string | null;
+  id_card_back_url: string | null;
+  employee_groups: { name: string } | null;
+  mechanic_levels: { name: string } | null;
+  profile_roles: ProfileRole[] | null;
+}
+
+interface Contact {
+  id: string;
+  name: string;
+  relationship: string;
+  phone: string | null;
+  is_primary: boolean;
+}
+
+interface WorkOrder {
+  id: string;
+  order_no: string;
+  status: string;
+  total_cost: number | null;
+  settled_at: string | null;
+}
+
+interface MechanicItem {
+  id: string;
+  work_order_id: string;
+  name: string;
+  total_price: number | null;
+  status: string;
+}
+
 export default async function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
@@ -16,6 +66,8 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     .single();
 
   if (!employee) notFound();
+
+  const typedEmployee = employee as unknown as Employee;
 
   const [{ data: workOrders }, { data: mechanicItems }, { data: contacts }] = await Promise.all([
     supabase
@@ -145,12 +197,12 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <div className="mt-4">
           <span className="text-sm text-gray-500">角色:</span>{" "}
           <div className="inline-flex flex-wrap gap-1 mt-1">
-            {employee.profile_roles?.map((pr: any) => (
+            {typedEmployee.profile_roles?.map((pr) => (
               <span key={pr.role_id} className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700">
                 {pr.roles?.label || pr.roles?.name}
               </span>
             ))}
-            {(!employee.profile_roles || employee.profile_roles.length === 0) && (
+            {(!typedEmployee.profile_roles || typedEmployee.profile_roles.length === 0) && (
               <span className="text-sm text-gray-400">未分配角色</span>
             )}
           </div>
@@ -162,7 +214,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <h3 className="font-semibold text-gray-900 mb-4">联系人</h3>
         {contacts && contacts.length > 0 ? (
           <div className="space-y-3">
-            {contacts.map((c: any) => (
+            {contacts.map((c: Contact) => (
               <div key={c.id} className="flex items-center justify-between text-sm p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-3">
                   <span className="font-medium text-gray-900">{c.name}</span>
@@ -185,7 +237,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="font-semibold text-gray-900 mb-3">接待工单（最近10条）</h3>
           <div className="space-y-2">
-            {workOrders?.map((wo: any) => (
+            {workOrders?.map((wo: WorkOrder) => (
               <Link
                 key={wo.id}
                 href={`/work-orders/${wo.id}`}
@@ -204,7 +256,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="font-semibold text-gray-900 mb-3">维修项目（最近10条）</h3>
           <div className="space-y-2">
-            {mechanicItems?.map((item: any) => (
+            {mechanicItems?.map((item: MechanicItem) => (
               <Link
                 key={item.id}
                 href={`/work-orders/${item.work_order_id}`}

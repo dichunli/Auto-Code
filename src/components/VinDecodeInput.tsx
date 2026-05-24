@@ -43,6 +43,7 @@ export default function VinDecodeInput({
   const [ocrLoading, setOcrLoading] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileId = useRef(`vin-pc-${Math.random().toString(36).slice(2)}`).current;
 
   /* 判断是否移动端 */
   const isMobile =
@@ -78,8 +79,8 @@ export default function VinDecodeInput({
         factory: m.Factory || m.factory || "",
         modelId: m.Id || m.id || undefined,
       });
-    } catch (err: any) {
-      alert("解析失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      alert("解析失败: " + (err instanceof Error ? err.message : String(err)));
       onDecode(null);
     } finally {
       setDecoding(false);
@@ -160,8 +161,8 @@ export default function VinDecodeInput({
         factory: m.Factory || m.factory || "",
         modelId: m.Id || m.id || undefined,
       });
-    } catch (err: any) {
-      alert("图片识别失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      alert("图片识别失败: " + (err instanceof Error ? err.message : String(err)));
       onDecode(null);
     } finally {
       setOcrLoading(false);
@@ -174,9 +175,8 @@ export default function VinDecodeInput({
   function handlePhotoClick() {
     if (isMobile) {
       setCameraOpen(true);
-    } else {
-      fileInputRef.current?.click();
     }
+    /* PC 端由 label 自动触发文件选择 */
   }
 
   return (
@@ -199,15 +199,18 @@ export default function VinDecodeInput({
         >
           {decoding ? "解析中..." : "解析"}
         </button>
-        <button
-          type="button"
-          onClick={handlePhotoClick}
-          disabled={ocrLoading}
-          className="px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 whitespace-nowrap shrink-0"
+        <label
+          htmlFor={isMobile ? undefined : fileId}
+          onClick={isMobile ? handlePhotoClick : undefined}
+          className={
+            "px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 whitespace-nowrap shrink-0 inline-block cursor-pointer select-none" +
+            (ocrLoading ? " opacity-50 pointer-events-none" : "")
+          }
         >
           {ocrLoading ? "识别中..." : "拍照"}
-        </button>
+        </label>
         <input
+          id={fileId}
           ref={fileInputRef}
           type="file"
           accept="image/*"

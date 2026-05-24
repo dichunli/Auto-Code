@@ -14,6 +14,11 @@ export interface CommissionSet {
   picking?: CommissionData;
 }
 
+/** 带有提成字段的数据对象 */
+export interface CommissionSource {
+  [key: string]: string | number | null | undefined;
+}
+
 /** 根据类型和数值计算提成金额 */
 export function calculateCommission(
   commissionType: string | null | undefined,
@@ -37,7 +42,7 @@ export function calculateCommission(
 
 /** 从对象中提取 commission 数据 */
 export function extractCommission(
-  obj: any,
+  obj: CommissionSource | null | undefined,
   prefix: string
 ): CommissionData | undefined {
   if (!obj) return undefined;
@@ -51,10 +56,10 @@ export function extractCommission(
 
 /** 计算维修项目的各项提成 */
 export function calculateItemCommission(
-  item: any,
-  serviceItem: any,
-  serviceName: any,
-  category: any,
+  item: CommissionSource | null | undefined,
+  serviceItem: CommissionSource | null | undefined,
+  serviceName: CommissionSource | null | undefined,
+  category: CommissionSource | null | undefined,
   revenue: number,
   cost: number = 0
 ): { diagnosis: number; repair: number; sales: number; qc: number } {
@@ -80,8 +85,8 @@ export function calculateItemCommission(
 
 /** 计算配件的各项提成 */
 export function calculatePartCommission(
-  part: any,
-  partName: any,
+  part: CommissionSource | null | undefined,
+  partName: CommissionSource | null | undefined,
   revenue: number,
   cost: number = 0
 ): { sales: number; repair: number; diagnosis: number; qc: number; picking: number } {
@@ -126,7 +131,7 @@ export function calculateDispatchClaimCommission(
 
 /** 查找派单/领单提成（优先级：service_item → service_name → category） */
 export function getDispatchClaimCommission(
-  obj: any,
+  obj: CommissionSource | null | undefined,
   prefix: string,
   revenue: number
 ): number {

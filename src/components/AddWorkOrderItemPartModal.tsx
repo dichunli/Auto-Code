@@ -38,6 +38,40 @@ interface SelectedRealPart {
   quantity: number | null;
 }
 
+interface ExistingPartRow {
+  part_name_id: string | null;
+  part_id: string | null;
+}
+
+interface PickerPart {
+  id: string;
+  part_name_id: string | null;
+  name: string;
+  part_number: string | null;
+  unit: string | null;
+  part_brands: { name: string } | { name: string }[] | null;
+  specification_text: string | null;
+  part_specifications: { name: string } | null;
+  unit_cost: number | null;
+  unit_price: number | null;
+  selectedQuantity?: number | null;
+}
+
+interface InsertPartRow {
+  work_order_item_id: string;
+  part_name_id?: string;
+  part_id?: string;
+  part_number?: string;
+  name?: string;
+  unit?: string;
+  brand?: string;
+  specification?: string;
+  unit_cost?: number | null;
+  unit_price?: number | null;
+  quantity?: number | null;
+  customer_opinion: string;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -111,14 +145,14 @@ export function AddWorkOrderItemPartModal({
           .eq("work_order_item_id", itemId)
           .not("part_name_id", "is", null),
       ]).then(([{ data: presetData }, { data: existingData }]) => {
-        const existingNameIds = new Set((existingData || []).filter((r: any) => r.part_name_id).map((row: any) => row.part_name_id as string));
-        const existingIds = new Set((existingData || []).filter((r: any) => r.part_id).map((row: any) => row.part_id as string));
+        const existingNameIds = new Set((existingData || []).filter((r: ExistingPartRow) => r.part_name_id).map((row: ExistingPartRow) => row.part_name_id as string));
+        const existingIds = new Set((existingData || []).filter((r: ExistingPartRow) => r.part_id).map((row: ExistingPartRow) => row.part_id as string));
         setExistingPartNameIds(existingNameIds);
         setExistingPartIds(existingIds);
         setPresetParts(
           (presetData || [])
-            .filter((row: any) => !existingNameIds.has(row.part_name_id))
-            .map((row: any) => ({
+            .filter((row: { part_name_id: string }) => !existingNameIds.has(row.part_name_id))
+            .map((row: { part_name_id: string; quantity: number | null; part_names: PartName | null }) => ({
               part_name_id: row.part_name_id,
               quantity: row.quantity ?? row.part_names?.default_quantity ?? null,
               part_names: row.part_names,
@@ -134,8 +168,8 @@ export function AddWorkOrderItemPartModal({
         .select("part_name_id, part_id")
         .eq("work_order_item_id", itemId)
         .then(({ data }) => {
-          const existingNameIds = new Set((data || []).filter((r: any) => r.part_name_id).map((row: any) => row.part_name_id as string));
-          const existingIds = new Set((data || []).filter((r: any) => r.part_id).map((row: any) => row.part_id as string));
+          const existingNameIds = new Set((data || []).filter((r: ExistingPartRow) => r.part_name_id).map((row: ExistingPartRow) => row.part_name_id as string));
+          const existingIds = new Set((data || []).filter((r: ExistingPartRow) => r.part_id).map((row: ExistingPartRow) => row.part_id as string));
           setExistingPartNameIds(existingNameIds);
           setExistingPartIds(existingIds);
           setLoading(false);
@@ -222,19 +256,21 @@ export function AddWorkOrderItemPartModal({
   }
 
   // 处理从配件选择器返回的配件
-  function handlePickerConfirm(parts: any[]) {
+  function handlePickerConfirm(parts: PickerPart[]) {
     setSelectedRealParts((prev) => {
       const next = [...prev];
       for (const part of parts) {
         if (next.some((p) => p.part_id === part.id)) continue;
         if (existingPartIds.has(part.id)) continue;
+        const pb = part.part_brands;
+        const brandName = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
         next.push({
           part_id: part.id,
           part_name_id: part.part_name_id,
           name: part.name,
           part_number: part.part_number || "",
           unit: part.unit || "件",
-          brand: part.part_brands?.name || "",
+          brand: brandName,
           specification: part.specification_text || part.part_specifications?.name || "",
           unit_cost: part.unit_cost,
           unit_price: part.unit_price,
@@ -268,7 +304,7 @@ export function AddWorkOrderItemPartModal({
 
     setSaving(true);
 
-    const inserts: any[] = [];
+    const inserts: InsertPartRow[] = [];
 
     // 配件名称类
     for (const sp of selectedPartNames) {

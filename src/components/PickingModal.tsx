@@ -91,8 +91,8 @@ export function PickingModal({
 
       onSuccess();
       onClose();
-    } catch (err: any) {
-      alert("领料失败: " + err.message);
+    } catch (err: unknown) {
+      alert("领料失败: " + (err instanceof Error ? err.message : "未知错误"));
     } finally {
       setLoading(false);
     }

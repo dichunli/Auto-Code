@@ -191,8 +191,7 @@ export function OutsourceModal({
     orderNo: string,
     supplierId: string,
     totalAmount: number,
-    paid: boolean,
-    method: string
+    paid: boolean
   ) {
     if (paid) {
       const { error } = await supabase.from("supplier_transactions").insert({
@@ -332,14 +331,19 @@ export function OutsourceModal({
         .eq("id", workOrderItemId);
       if (woErr) throw new Error("更新工单项目失败: " + woErr.message);
 
-      // 重新计算订单总额
+    interface OutsourceOrderItemRow {
+  amount: number | string;
+  work_order_item_id: string;
+}
+
+  // 重新计算订单总额
       const { data: allItems } = await supabase
         .from("outsource_order_items")
         .select("amount, work_order_item_id")
         .eq("outsource_order_id", orderId);
 
-      const newTotal = (allItems || []).reduce(
-        (sum, it: any) => sum + (parseFloat(it.amount) || 0),
+      const newTotal = (allItems as OutsourceOrderItemRow[] | null || []).reduce(
+        (sum, it) => sum + (parseFloat(String(it.amount)) || 0),
         0
       );
 
@@ -354,9 +358,9 @@ export function OutsourceModal({
         existingOrder &&
         selectedSupplier.id !== existingOrder.supplier_id
       ) {
-        const otherItemIds = (allItems || [])
-          .map((it: any) => it.work_order_item_id)
-          .filter((wid: string) => wid !== workOrderItemId);
+        const otherItemIds = (allItems as OutsourceOrderItemRow[] | null || [])
+          .map((it) => it.work_order_item_id)
+          .filter((wid) => wid !== workOrderItemId);
         if (otherItemIds.length > 0) {
           await supabase
             .from("work_order_items")
@@ -367,13 +371,13 @@ export function OutsourceModal({
 
       // 重建财务记录（先删后建，金额取最新合计）
       await clearFinanceRecords(orderNo);
-      await createFinanceRecords(orderNo, selectedSupplier.id, newTotal, isPaid, paymentMethod);
+      await createFinanceRecords(orderNo, selectedSupplier.id, newTotal, isPaid);
 
       setLoading(false);
       onSuccess();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLoading(false);
-      alert(err.message);
+      alert(err instanceof Error ? err.message : "操作失败");
     }
   }
 
@@ -424,8 +428,8 @@ export function OutsourceModal({
           .from("outsource_order_items")
           .select("amount")
           .eq("outsource_order_id", existingOrder.id);
-        const newTotal = (remaining || []).reduce(
-          (sum, it: any) => sum + (parseFloat(it.amount) || 0),
+        const newTotal = (remaining as Array<{ amount: number | string }> | null || []).reduce(
+          (sum, it) => sum + (parseFloat(String(it.amount)) || 0),
           0
         );
         await supabase
@@ -437,17 +441,16 @@ export function OutsourceModal({
             existingOrder.order_no,
             existingOrder.supplier_id,
             newTotal,
-            existingOrder.is_paid,
-            existingOrder.payment_method || ""
+            existingOrder.is_paid
           );
         }
       }
 
       setCancelLoading(false);
       onSuccess();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setCancelLoading(false);
-      alert(err.message);
+      alert(err instanceof Error ? err.message : "操作失败");
     }
   }
 

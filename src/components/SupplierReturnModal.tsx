@@ -70,8 +70,8 @@ export function SupplierReturnModal({
 
       onSuccess();
       onClose();
-    } catch (err: any) {
-      alert("退货失败: " + err.message);
+    } catch (err: unknown) {
+      alert("退货失败: " + (err instanceof Error ? err.message : "未知错误"));
     } finally {
       setLoading(false);
     }

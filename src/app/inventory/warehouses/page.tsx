@@ -1,10 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { QRCodeSVG } from "qrcode.react";
+
+interface Warehouse {
+  id: string;
+  name: string;
+  address?: string | null;
+  created_at: string;
+}
+
+interface WarehouseLocation {
+  id: string;
+  name: string;
+  warehouse_id: string;
+}
 
 function normalizeLocationName(value: string): string {
   return value
@@ -15,12 +28,12 @@ function normalizeLocationName(value: string): string {
 export default function WarehousesPage() {
   const router = useRouter();
   const supabase = createClient();
-  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [qrModal, setQrModal] = useState<{ open: boolean; name: string; id: string } | null>(null);
 
   const [locationModal, setLocationModal] = useState<{ open: boolean; warehouseId: string; warehouseName: string } | null>(null);
-  const [locations, setLocations] = useState<any[]>([]);
+  const [locations, setLocations] = useState<WarehouseLocation[]>([]);
   const [newLocation, setNewLocation] = useState("");
   const [batchMode, setBatchMode] = useState(false);
   const [batchText, setBatchText] = useState("");
@@ -35,15 +48,11 @@ export default function WarehousesPage() {
   const [editingLoc, setEditingLoc] = useState<string | null>(null);
   const [editLocName, setEditLocName] = useState("");
 
-  useEffect(() => {
-    fetchWarehouses();
-  }, []);
-
-  async function fetchWarehouses() {
+  const fetchWarehouses = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase.from("warehouses").select("*").order("created_at", { ascending: false });
     const list = data || [];
-    list.sort((a: any, b: any) => {
+    list.sort((a: Warehouse, b: Warehouse) => {
       const aMain = a.name === "主仓库" || a.name.includes("主") ? -1 : 0;
       const bMain = b.name === "主仓库" || b.name.includes("主") ? -1 : 0;
       if (aMain !== bMain) return aMain - bMain;
@@ -51,7 +60,11 @@ export default function WarehousesPage() {
     });
     setWarehouses(list);
     setLoading(false);
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchWarehouses();
+  }, [fetchWarehouses]);
 
   async function handleDelete(id: string) {
     if (!confirm("确定删除该仓库？关联的库存分布将一并清除。")) return;
@@ -59,7 +72,7 @@ export default function WarehousesPage() {
     fetchWarehouses();
   }
 
-  function startEditWh(w: any) {
+  function startEditWh(w: Warehouse) {
     setEditingWh(w.id);
     setEditWhName(w.name);
     setEditWhAddress(w.address || "");
@@ -156,7 +169,7 @@ export default function WarehousesPage() {
     }
   }
 
-  function startEditLoc(loc: any) {
+  function startEditLoc(loc: WarehouseLocation) {
     setEditingLoc(loc.id);
     setEditLocName(loc.name);
   }

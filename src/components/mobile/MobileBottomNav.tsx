@@ -89,8 +89,11 @@ export function MobileBottomNav() {
         .from("profile_roles")
         .select("roles(name)")
         .eq("profile_id", user.id);
+      interface 角色关联 {
+        roles?: { name?: string } | null;
+      }
       const names = (data || [])
-        .map((r: any) => r.roles?.name)
+        .map((r: 角色关联) => r.roles?.name)
         .filter(Boolean) as string[];
       setRoles(names);
     }

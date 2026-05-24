@@ -212,7 +212,7 @@ export function Navbar() {
       let active = 0;
       let history = 0;
 
-      rows.forEach((o: any) => {
+      rows.forEach((o: { status: string; order_type?: string }) => {
         if (o.status === "settled" || o.status === "delivered") {
           history++;
         } else {

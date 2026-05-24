@@ -111,9 +111,9 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
       const [
         { data: orderData, error: orderErr },
         { data: itemsData, error: itemsErr },
-        { data: paymentsData, error: payErr },
-        { data: accountsData, error: accErr },
-        { data: membersData, error: memErr },
+        { data: paymentsData },
+        { data: accountsData },
+        { data: membersData },
       ] = await Promise.all([
         supabase
           .from("work_orders")

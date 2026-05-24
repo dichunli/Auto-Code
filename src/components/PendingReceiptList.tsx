@@ -79,15 +79,6 @@ const ACTION_LABELS: Record<string, { text: string; color: string }> = {
   short_discard: { text: "少发弃货", color: "bg-red-100 text-red-700" },
 };
 
-/* 哪些 action 在入库后要生成"待退货" */
-const ACTION_TO_RETURN_REASON: Record<string, string> = {
-  broken_exchange: "damaged",
-  broken_discard: "damaged",
-  wrong_exchange: "wrong_ship",
-  wrong_discard: "wrong_ship",
-  excess_return: "excess",
-};
-
 /* 哪些 action 需要生成新的"待采购"行(写回 work_order_item_parts) */
 const ACTION_TO_PURCHASE_REASON: Record<string, string> = {
   broken_exchange: "broken_resupply",
@@ -393,14 +384,15 @@ export function PendingReceiptList() {
               await supabase.from("purchase_orders").delete().eq("id", receiveOrder.id);
             } else {
               /* 还有明细,重新判断状态 */
-              const anyUnhandled = remainingItems.some((it: any) => !it.handle_action);
-              const anyHandled = remainingItems.some((it: any) => !!it.handle_action);
+              const anyUnhandled = remainingItems.some((it: { handle_action: string | null }) => !it.handle_action);
+              const anyHandled = remainingItems.some((it: { handle_action: string | null }) => !!it.handle_action);
               const newStatus = anyHandled && anyUnhandled ? "partial_received" : anyHandled ? "pending_storage" : "submitted";
               await supabase.from("purchase_orders").update({ status: newStatus }).eq("id", receiveOrder.id);
             }
             loadData();
-          } catch (err: any) {
-            alert("删除失败: " + (err.message || String(err)));
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            alert("删除失败: " + msg);
           } finally {
             setSubmitting(null);
           }
@@ -433,7 +425,7 @@ export function PendingReceiptList() {
   ) {
     setSubmitting(`item-${item.id}`);
     try {
-      const updates: Record<string, any> = {
+      const updates: Record<string, string | number | string[] | null> = {
         handle_action: payload.handle_action,
         received_qty: payload.received_qty,
       };
@@ -457,7 +449,7 @@ export function PendingReceiptList() {
         .select("id, handle_action")
         .eq("order_id", order.id);
       if (freshErr) throw freshErr;
-      const allHandled = (freshItems || []).every((it: any) => !!it.handle_action);
+      const allHandled = (freshItems || []).every((it: { handle_action: string | null }) => !!it.handle_action);
 
       if (allHandled) {
         const { error: statusErr } = await supabase
@@ -483,8 +475,9 @@ export function PendingReceiptList() {
       }
 
       loadData();
-    } catch (err: any) {
-      alert("收货失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("收货失败: " + msg);
     } finally {
       setSubmitting(null);
     }
@@ -535,7 +528,7 @@ export function PendingReceiptList() {
         .from("purchase_order_items")
         .select("handle_action")
         .eq("order_id", order.id);
-      const anyHandled = (freshItems || []).some((it: any) => !!it.handle_action);
+      const anyHandled = (freshItems || []).some((it: { handle_action: string | null }) => !!it.handle_action);
       const newStatus = anyHandled ? "partial_received" : "submitted";
 
       const { error: stErr } = await supabase
@@ -561,8 +554,9 @@ export function PendingReceiptList() {
       }
 
       loadData();
-    } catch (err: any) {
-      alert("撤销失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("撤销失败: " + msg);
     } finally {
       setSubmitting(null);
     }
@@ -592,15 +586,15 @@ export function PendingReceiptList() {
         .single();
 
       /* 2. 更新采购单明细 */
-      const poiUpdates: Record<string, any> = {
+      const poiUpdates: Record<string, string | number | null> = {
         part_id: partId,
       };
       if (part) {
         if (part.part_number != null) poiUpdates.part_number = part.part_number;
         if (part.name != null) poiUpdates.name = part.name;
         if (part.unit != null) poiUpdates.unit = part.unit;
-        const pc = part.part_categories as any;
-        const pb = part.part_brands as any;
+        const pc = part.part_categories as { name: string } | { name: string }[] | null;
+        const pb = part.part_brands as { name: string } | { name: string }[] | null;
         const catName = Array.isArray(pc) ? pc[0]?.name : pc?.name;
         const brandName = Array.isArray(pb) ? pb[0]?.name : pb?.name;
         if (catName != null) poiUpdates.category = catName;
@@ -618,13 +612,13 @@ export function PendingReceiptList() {
 
       /* 3. 同步更新工单配件表（不更新售价） */
       if (editItem.work_order_item_part_id) {
-        const woiUpdates: Record<string, any> = {};
+        const woiUpdates: Record<string, string | number | null> = {};
         if (part) {
           if (part.part_number != null) woiUpdates.part_number = part.part_number;
           if (part.name != null) woiUpdates.name = part.name;
           if (part.unit != null) woiUpdates.unit = part.unit;
           if (part.brand_id != null) {
-            const pb = part.part_brands as any;
+            const pb = part.part_brands as { name: string } | { name: string }[] | null;
             woiUpdates.brand = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || null;
           }
           if (part.specification_text != null) woiUpdates.specification = part.specification_text;
@@ -643,19 +637,34 @@ export function PendingReceiptList() {
 
       closeEditModal();
       loadData();
-    } catch (err: any) {
-      alert("同步配件信息失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("同步配件信息失败: " + msg);
     } finally {
       setSubmitting(null);
     }
   }
 
+  interface InlinePart {
+    id: string;
+    part_number: string | null;
+    barcode: string | null;
+    name: string | null;
+    unit: string | null;
+    unit_cost: number | null;
+    unit_price: number | null;
+    part_names?: { name: string | null; unit: string | null } | null;
+    part_brands?: { name: string | null } | null;
+    part_specifications?: { name: string | null } | null;
+    part_categories?: { name: string | null } | null;
+  }
+
   /* 行内搜索选中配件（待收货阶段不更新售价） */
-  async function handleInlinePartSelect(item: PurchaseOrderItem, part: any) {
+  async function handleInlinePartSelect(item: PurchaseOrderItem, part: InlinePart) {
     setSubmitting(`inline-${item.id}`);
     try {
       /* 已有内容保留，为空才按配件填充 */
-      const poiUpdates: Record<string, any> = { part_id: part.id };
+      const poiUpdates: Record<string, string | number | null> = { part_id: part.id };
       if (part.part_number != null) poiUpdates.part_number = part.part_number;
       if (part.barcode != null && !part.part_number) poiUpdates.part_number = part.barcode;
       if (!item.name) {
@@ -685,7 +694,7 @@ export function PendingReceiptList() {
           .eq("id", item.work_order_item_part_id)
           .single();
 
-        const woiUpdates: Record<string, any> = {};
+        const woiUpdates: Record<string, string | number | null> = {};
         if (part.part_number != null) woiUpdates.part_number = part.part_number;
         if (!woiCurrent?.name) {
           if (part.name != null) woiUpdates.name = part.name;
@@ -716,8 +725,9 @@ export function PendingReceiptList() {
       }
 
       loadData();
-    } catch (err: any) {
-      alert("更新配件信息失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("更新配件信息失败: " + msg);
     } finally {
       setSubmitting(null);
     }
@@ -741,8 +751,9 @@ export function PendingReceiptList() {
       }
 
       loadData();
-    } catch (err: any) {
-      alert("清除配件关联失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("清除配件关联失败: " + msg);
     } finally {
       setSubmitting(null);
     }
@@ -776,7 +787,7 @@ export function PendingReceiptList() {
       if (qty <= 0) return;
     }
 
-    const newRow: Record<string, any> = {
+    const newRow: Record<string, unknown> = {
       work_order_item_id: original.work_order_item_id,
       part_name_id: original.part_name_id,
       part_id: original.part_id,
@@ -887,24 +898,6 @@ export function PendingReceiptList() {
     return `YD-${dateStr}-${randomStr}`;
   }
 
-  async function openCreateWaybillModal(order: PurchaseOrder) {
-    setCreateWaybillOrder(order);
-    setWbTrackingNo(generateTrackingNo());
-    setWbCompanyId(order.logistics_company_id || "");
-    setWbPhone(order.suppliers?.phone || "");
-    setWbPackageCount("");
-    setWbFreight("");
-    setWbCod("");
-    setWbPhotos([]);
-    setShowCreateWaybillModal(true);
-    const { data } = await supabase
-      .from("logistics_companies")
-      .select("id, name, scopes")
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
-    setWbCompanies(data || []);
-  }
-
   function closeCreateWaybillModal() {
     setShowCreateWaybillModal(false);
     setCreateWaybillOrder(null);
@@ -985,8 +978,9 @@ export function PendingReceiptList() {
 
       closeCreateWaybillModal();
       loadData();
-    } catch (err: any) {
-      alert("创建运单失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("创建运单失败: " + msg);
     } finally {
       setSubmitting(null);
     }

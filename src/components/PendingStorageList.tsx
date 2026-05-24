@@ -7,14 +7,6 @@ import { PriceValue } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import PartForm from "@/app/parts/new/PartForm";
 
-function resolveImageUrl(path: string): string {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!base) return path;
-  return `${base}/storage/v1/object/public/work-order-media/${path}`;
-}
-
 interface PurchaseOrderItem {
   id: string;
   name: string;
@@ -225,7 +217,7 @@ export function PendingStorageList() {
         .eq("id", order.waybill_id)
         .single();
       if (wb) {
-        setWaybillInfo(wb as any);
+        setWaybillInfo(wb as { logistics_company_name: string | null; tracking_no: string | null; freight_amount: number | null });
         setFreightAmount(wb.freight_amount != null ? String(wb.freight_amount) : "");
       } else {
         setWaybillInfo(null);
@@ -519,8 +511,9 @@ export function PendingStorageList() {
 
       closeInboundModal();
       loadData();
-    } catch (err: any) {
-      alert("操作失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      alert("操作失败: " + (e.message || String(err)));
     } finally {
       setSubmitting(null);
     }
@@ -542,7 +535,7 @@ export function PendingStorageList() {
             itemsWithPartId.map((it) => it.work_order_item_part_id!)
           );
         const workOrderItemIds = (originals || [])
-          .map((o: any) => o.work_order_item_id)
+          .map((o: unknown) => (o as Record<string, unknown>).work_order_item_id as string)
           .filter(Boolean);
         if (workOrderItemIds.length > 0) {
           /* 删除 purchase_reason 分支 */
@@ -606,8 +599,9 @@ export function PendingStorageList() {
       }
 
       loadData();
-    } catch (err: any) {
-      alert("退回失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      alert("退回失败: " + (e.message || String(err)));
     } finally {
       setSubmitting(null);
     }
@@ -634,21 +628,22 @@ export function PendingStorageList() {
         .eq("id", partId)
         .single();
 
-      const poiUpdates: Record<string, any> = { part_id: partId };
+      const poiUpdates: Record<string, unknown> = { part_id: partId };
       if (part) {
-        if (part.part_number != null) poiUpdates.part_number = part.part_number;
-        if (part.name != null) poiUpdates.name = part.name;
-        if (part.unit != null) poiUpdates.unit = part.unit;
-        const pc = part.part_categories as any;
-        const pb = part.part_brands as any;
+        const p = part as Record<string, unknown>;
+        if (p.part_number != null) poiUpdates.part_number = p.part_number;
+        if (p.name != null) poiUpdates.name = p.name;
+        if (p.unit != null) poiUpdates.unit = p.unit;
+        const pc = p.part_categories as { name?: string }[] | { name?: string } | null | undefined;
+        const pb = p.part_brands as { name?: string }[] | { name?: string } | null | undefined;
         const catName = Array.isArray(pc) ? pc[0]?.name : pc?.name;
         const brandName = Array.isArray(pb) ? pb[0]?.name : pb?.name;
         if (catName != null) poiUpdates.category = catName;
-        if (part.brand_id != null) poiUpdates.brand = brandName || null;
-        if (part.specification_text != null) poiUpdates.specification = part.specification_text;
-        if (part.purchase_price != null) poiUpdates.unit_cost = part.purchase_price;
-        if (part.notes != null) poiUpdates.notes = part.notes;
-        if (part.document_name != null) poiUpdates.supplier_part_name = part.document_name;
+        if (p.brand_id != null) poiUpdates.brand = brandName || null;
+        if (p.specification_text != null) poiUpdates.specification = p.specification_text;
+        if (p.purchase_price != null) poiUpdates.unit_cost = p.purchase_price;
+        if (p.notes != null) poiUpdates.notes = p.notes;
+        if (p.document_name != null) poiUpdates.supplier_part_name = p.document_name;
       }
       const { error: poiErr } = await supabase
         .from("purchase_order_items")
@@ -657,19 +652,20 @@ export function PendingStorageList() {
       if (poiErr) throw poiErr;
 
       if (editItem.work_order_item_part_id) {
-        const woiUpdates: Record<string, any> = {};
+        const woiUpdates: Record<string, unknown> = {};
         if (part) {
-          if (part.part_number != null) woiUpdates.part_number = part.part_number;
-          if (part.name != null) woiUpdates.name = part.name;
-          if (part.unit != null) woiUpdates.unit = part.unit;
-          if (part.brand_id != null) {
-            const pb = part.part_brands as any;
+          const p = part as Record<string, unknown>;
+          if (p.part_number != null) woiUpdates.part_number = p.part_number;
+          if (p.name != null) woiUpdates.name = p.name;
+          if (p.unit != null) woiUpdates.unit = p.unit;
+          if (p.brand_id != null) {
+            const pb = p.part_brands as { name?: string }[] | { name?: string } | null | undefined;
             woiUpdates.brand = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || null;
           }
-          if (part.specification_text != null) woiUpdates.specification = part.specification_text;
-          if (part.purchase_price != null) woiUpdates.unit_cost = part.purchase_price;
-          if (part.notes != null) woiUpdates.notes = part.notes;
-          if (part.document_name != null) woiUpdates.document_name = part.document_name;
+          if (p.specification_text != null) woiUpdates.specification = p.specification_text;
+          if (p.purchase_price != null) woiUpdates.unit_cost = p.purchase_price;
+          if (p.notes != null) woiUpdates.notes = p.notes;
+          if (p.document_name != null) woiUpdates.document_name = p.document_name;
         }
         if (Object.keys(woiUpdates).length > 0) {
           const { error: woiErr } = await supabase
@@ -682,19 +678,34 @@ export function PendingStorageList() {
 
       closeEditModal();
       loadData();
-    } catch (err: any) {
-      alert("同步配件信息失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      alert("同步配件信息失败: " + (e.message || String(err)));
     } finally {
       setSubmitting(null);
     }
   }
 
+  interface InlinePart {
+    id: string;
+    part_number?: string | null;
+    barcode?: string | null;
+    name?: string | null;
+    unit?: string | null;
+    unit_cost?: number | null;
+    unit_price?: number | null;
+    part_names?: { name?: string | null; unit?: string | null } | null;
+    part_brands?: { name?: string | null } | null;
+    part_specifications?: { name?: string | null } | null;
+    part_categories?: { name?: string | null } | null;
+  }
+
   /* 行内搜索选中配件（待入库阶段不更新售价） */
-  async function handleInlinePartSelect(item: PurchaseOrderItem, part: any) {
+  async function handleInlinePartSelect(item: PurchaseOrderItem, part: InlinePart) {
     setSubmitting(`inline-${item.id}`);
     try {
       /* 已有内容保留，为空才按配件填充 */
-      const poiUpdates: Record<string, any> = { part_id: part.id };
+      const poiUpdates: Record<string, unknown> = { part_id: part.id };
       if (part.part_number != null) poiUpdates.part_number = part.part_number;
       if (part.barcode != null && !part.part_number) poiUpdates.part_number = part.barcode;
       if (!item.name) {
@@ -723,7 +734,7 @@ export function PendingStorageList() {
           .eq("id", item.work_order_item_part_id)
           .single();
 
-        const woiUpdates: Record<string, any> = {};
+        const woiUpdates: Record<string, unknown> = {};
         if (part.part_number != null) woiUpdates.part_number = part.part_number;
         if (!woiCurrent?.name) {
           if (part.name != null) woiUpdates.name = part.name;
@@ -754,8 +765,9 @@ export function PendingStorageList() {
       }
 
       loadData();
-    } catch (err: any) {
-      alert("更新配件信息失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      alert("更新配件信息失败: " + (e.message || String(err)));
     } finally {
       setSubmitting(null);
     }
@@ -779,8 +791,9 @@ export function PendingStorageList() {
       }
 
       loadData();
-    } catch (err: any) {
-      alert("清除配件关联失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      alert("清除配件关联失败: " + (e.message || String(err)));
     } finally {
       setSubmitting(null);
     }

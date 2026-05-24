@@ -10,7 +10,7 @@ const tabs = [
   { href: "/companies", label: "单位管理" },
 ];
 
-export function SubNav({ active }: { active?: string }) {
+export function SubNav() {
   const pathname = usePathname();
 
   return (

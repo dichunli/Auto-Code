@@ -12,7 +12,7 @@ interface Props {
   children: React.ReactNode;
 }
 
-export default function SortableList({ ids, groupKey, tableName, extraIdMap, children }: Props) {
+export default function SortableList({ ids, tableName, extraIdMap, children }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const [orderedIds, setOrderedIds] = useState<string[]>(ids);
@@ -117,7 +117,7 @@ export default function SortableList({ ids, groupKey, tableName, extraIdMap, chi
           >
             <div className="flex items-start gap-1.5">
               <div
-                className="mt-0.5 cursor-move text-gray-300 hover:text-gray-500 select-none shrink-0"
+                className="hidden md:block mt-0.5 cursor-move text-gray-300 hover:text-gray-500 select-none shrink-0"
                 title="拖动排序"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">

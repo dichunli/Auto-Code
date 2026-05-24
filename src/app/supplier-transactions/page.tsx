@@ -12,6 +12,22 @@ const transactionTypeMap: Record<string, string> = {
   debit: "应付",
 };
 
+interface Supplier {
+  id: string;
+  name: string;
+}
+
+interface TransactionRecord {
+  id: string;
+  supplier_id: string;
+  transaction_type: string;
+  amount: number;
+  description: string | null;
+  created_at: string;
+  suppliers: { name: string } | null;
+  profiles: { full_name: string } | null;
+}
+
 interface TransactionForm {
   supplier_id: string;
   transaction_type: "payment" | "refund" | "credit" | "debit";
@@ -21,14 +37,14 @@ interface TransactionForm {
 
 export default function SupplierTransactionsPage() {
   const supabase = createClient();
-  const [records, setRecords] = useState<any[]>([]);
-  const [allRecords, setAllRecords] = useState<any[]>([]);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [records, setRecords] = useState<TransactionRecord[]>([]);
+  const [allRecords, setAllRecords] = useState<TransactionRecord[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<string>("");
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<TransactionForm>({
@@ -60,7 +76,7 @@ export default function SupplierTransactionsPage() {
       return;
     }
 
-    const result = data || [];
+    const result = (data || []) as TransactionRecord[];
     setAllRecords(result);
     filterRecords(result, query);
     setLoading(false);
@@ -71,10 +87,10 @@ export default function SupplierTransactionsPage() {
       .from("suppliers")
       .select("id, name")
       .order("name");
-    setSuppliers(data || []);
+    setSuppliers((data || []) as Supplier[]);
   }
 
-  function filterRecords(source: any[], search: string) {
+  function filterRecords(source: TransactionRecord[], search: string) {
     if (!search.trim()) {
       setRecords(source);
       return;
@@ -236,7 +252,7 @@ export default function SupplierTransactionsPage() {
               <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 value={form.transaction_type}
-                onChange={(e) => setForm({ ...form, transaction_type: e.target.value as any })}
+                onChange={(e) => setForm({ ...form, transaction_type: e.target.value as TransactionForm["transaction_type"] })}
               >
                 <option value="payment">付款</option>
                 <option value="refund">退款</option>

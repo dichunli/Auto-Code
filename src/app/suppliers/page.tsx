@@ -54,7 +54,7 @@ export default function SuppliersPage() {
       console.error("供应商加载失败:", error);
       alert("加载失败: " + error.message);
     }
-    setSuppliers((data as Supplier[]) || []);
+    setSuppliers((data as unknown as Supplier[]) || []);
     setLoading(false);
   }
 
@@ -143,7 +143,7 @@ export default function SuppliersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {suppliers?.map((s: any) => {
+              {suppliers?.map((s) => {
                 const partCount = s.parts?.[0]?.count || 0;
                 return (
                   <tr key={s.id} className="hover:bg-gray-50">

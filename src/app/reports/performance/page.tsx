@@ -2,6 +2,43 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 
+interface MechanicRow {
+  id: string;
+  full_name: string;
+  mechanic_levels: {
+    name: string;
+    share_coefficient: number;
+  } | null;
+}
+
+interface CommissionRow {
+  mechanic_id: string;
+  share_pct: number | null;
+  work_order_items: {
+    total_price: number | null;
+    status: string | null;
+  } | null;
+}
+
+interface WoItemRow {
+  id: string;
+  work_order_id: string;
+  mechanic_id: string | null;
+}
+
+interface MechanicWoRow {
+  mechanic_id: string;
+  work_order_item_id: {
+    work_order_id: string;
+  } | null;
+}
+
+interface ConstructionLogRow {
+  mechanic_id: string;
+  duration_seconds: number | null;
+  action: string;
+}
+
 export default async function PerformanceReportPage() {
   const supabase = await createClient();
 
@@ -33,7 +70,7 @@ export default async function PerformanceReportPage() {
     woSet: Set<string>;
   }> = {};
 
-  mechanics?.forEach((m: any) => {
+  (mechanics as MechanicRow[] | null)?.forEach((m) => {
     mechanicStats[m.id] = {
       name: m.full_name,
       level: m.mechanic_levels?.name || "",
@@ -47,7 +84,7 @@ export default async function PerformanceReportPage() {
   });
 
   // 按 share_pct 计算业绩
-  (mechanicCommissions || []).forEach((row: any) => {
+  (mechanicCommissions as CommissionRow[] | null || []).forEach((row) => {
     const stats = mechanicStats[row.mechanic_id];
     if (stats && row.work_order_items) {
       const price = row.work_order_items.total_price || 0;
@@ -67,7 +104,7 @@ export default async function PerformanceReportPage() {
     .from("work_order_item_mechanics")
     .select("mechanic_id, work_order_item_id(work_order_id)");
 
-  (mechanicWos || []).forEach((row: any) => {
+  (mechanicWos as MechanicWoRow[] | null || []).forEach((row) => {
     const stats = mechanicStats[row.mechanic_id];
     if (stats && row.work_order_item_id?.work_order_id) {
       stats.woSet.add(row.work_order_item_id.work_order_id);
@@ -75,7 +112,7 @@ export default async function PerformanceReportPage() {
   });
 
   // 单人施工的工单（兼容旧数据）
-  (woItems || []).forEach((item: any) => {
+  (woItems as WoItemRow[] | null || []).forEach((item) => {
     if (item.mechanic_id) {
       const stats = mechanicStats[item.mechanic_id];
       if (stats) {
@@ -85,7 +122,7 @@ export default async function PerformanceReportPage() {
   });
 
   // 工时统计
-  (constructionLogs || []).forEach((log: any) => {
+  (constructionLogs as ConstructionLogRow[] | null || []).forEach((log) => {
     const stats = mechanicStats[log.mechanic_id];
     if (stats) {
       stats.totalHours += (log.duration_seconds || 0) / 3600;

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { hasPermission, type Permission } from "@/lib/permissions";
+import { MobileLogoutButton } from "@/components/mobile/MobileLogoutButton";
 
 interface MenuItem {
   label: string;
@@ -65,8 +66,11 @@ export default async function MobileHomePage() {
       .from("profile_roles")
       .select("roles(name)")
       .eq("profile_id", user.id);
+    interface 角色关联 {
+      roles: { name: string } | null;
+    }
     roles = (data || [])
-      .map((r: any) => r.roles?.name)
+      .map((r: 角色关联) => r.roles?.name)
       .filter(Boolean) as string[];
   }
 
@@ -103,6 +107,10 @@ export default async function MobileHomePage() {
         <Link href="/?desktop=1" className="text-sm text-blue-600 hover:text-blue-700">
           返回电脑版首页
         </Link>
+      </div>
+
+      <div className="pt-2">
+        <MobileLogoutButton />
       </div>
     </div>
   );

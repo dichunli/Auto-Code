@@ -5,7 +5,20 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
-export function AppointmentActions({ appointment }: { appointment: any }) {
+interface Appointment {
+  id: string;
+  customer_phone: string | null;
+  customer_name: string;
+  plate_number: string | null;
+  vehicle_brand: string | null;
+  vehicle_model: string | null;
+  service_type: string | null;
+  notes: string | null;
+  status: string;
+  work_order_id: string | null;
+}
+
+export function AppointmentActions({ appointment }: { appointment: Appointment }) {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
@@ -97,8 +110,8 @@ export function AppointmentActions({ appointment }: { appointment: any }) {
 
       router.push(`/work-orders/${workOrder.id}`);
       router.refresh();
-    } catch (err: any) {
-      alert("转工单失败: " + err.message);
+    } catch (err: unknown) {
+      alert("转工单失败: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
     }
   }

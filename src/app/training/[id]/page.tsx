@@ -76,7 +76,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {assignments?.map((a: any) => (
+              {assignments?.map((a) => (
                 <tr key={a.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">{a.profiles?.full_name}</td>
                   <td className="px-4 py-3">

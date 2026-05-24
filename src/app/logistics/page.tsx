@@ -412,8 +412,9 @@ export default function LogisticsPage() {
       }
       closeSingleCreateModal();
       loadWaybills();
-    } catch (err: any) {
-      alert((editingWaybill ? "保存" : "创建") + "运单失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert((editingWaybill ? "保存" : "创建") + "运单失败: " + message);
     } finally {
       setSingleSaving(false);
     }
@@ -469,7 +470,7 @@ export default function LogisticsPage() {
 
   /* 行内保存某个字段 */
   async function saveInlineField(waybillId: string, field: keyof Waybill, value: string) {
-    let payload: any = {};
+    let payload: Record<string, string | number | null> = {};
     if (field === "phone") {
       payload = { phone: value.trim() || null };
     } else if (field === "package_count") {
@@ -508,7 +509,7 @@ export default function LogisticsPage() {
     loadWaybills();
   }
 
-  function startInlineEdit(waybillId: string, field: keyof Waybill, currentValue: any) {
+  function startInlineEdit(waybillId: string, field: keyof Waybill, currentValue: string | number | null) {
     setInlineEditing((prev) => ({
       ...prev,
       [waybillId]: {

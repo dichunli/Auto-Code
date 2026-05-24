@@ -10,12 +10,6 @@ import { PartSearchDropdown } from "./PartSearchDropdown";
 import { resolvePartSellingPrice } from "@/lib/partPriceResolver";
 import PartForm from "@/app/parts/new/PartForm";
 
-const OPINION_LABELS: Record<string, { text: string; cls: string }> = {
-  agree: { text: "同意", cls: "bg-green-50 text-green-700" },
-  reject: { text: "否决", cls: "bg-red-50 text-red-600" },
-  pending: { text: "未确定", cls: "bg-gray-50 text-gray-600" },
-};
-
 const STATUS_TITLES: Record<string, string> = {
   pending_inquiry: "待询价",
   pending_quote: "待报价",
@@ -125,14 +119,12 @@ export function PartBranchStatusList({ status }: Props) {
   /* 供应商自定义下拉 */
   const [openSupplierRowId, setOpenSupplierRowId] = useState<string | null>(null);
   const supplierDropdownRef = useRef<HTMLDivElement>(null);
-  const supplierButtonRef = useRef<HTMLButtonElement>(null);
   const [supplierDropdownPos, setSupplierDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [partMediaMap, setPartMediaMap] = useState<Record<string, { id: string; storage_path: string }[]>>({});
 
   /* 批量选择 */
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchSupplier, setBatchSupplier] = useState<string>("");
-  const [showBatchBar, setShowBatchBar] = useState(false);
 
   /* 编辑配件弹窗 */
   const [editRow, setEditRow] = useState<PartBranchRow | null>(null);
@@ -251,7 +243,7 @@ export function PartBranchStatusList({ status }: Props) {
       ? await supabase.from("work_order_item_part_media").select("id, work_order_item_part_id, storage_path").in("work_order_item_part_id", partIds)
       : { data: [] };
     const mediaMap: Record<string, { id: string; storage_path: string }[]> = {};
-    partMediaData?.forEach((m: any) => {
+    partMediaData?.forEach((m: { id: string; work_order_item_part_id: string; storage_path: string }) => {
       const pid = m.work_order_item_part_id;
       if (!mediaMap[pid]) mediaMap[pid] = [];
       mediaMap[pid].push({ id: m.id, storage_path: m.storage_path });
@@ -267,10 +259,10 @@ export function PartBranchStatusList({ status }: Props) {
         supabase.from("vehicle_models").select("id, 厂商, 品牌, 车系").in("id", vehicleModelIds),
         supabase.from("supplier_vehicle_models").select("supplier_id, vehicle_model_id").in("vehicle_model_id", vehicleModelIds),
       ]);
-      (vmList || []).forEach((v: any) => {
+      (vmList || []).forEach((v: { id: string; 厂商?: string; 品牌?: string; 车系?: string }) => {
         vmMap.set(String(v.id), { 厂商: v.厂商, 品牌: v.品牌, 车系: v.车系 });
       });
-      (svmList || []).forEach((r: any) => {
+      (svmList || []).forEach((r: { supplier_id: string; vehicle_model_id: string }) => {
         const set = svmMap.get(r.supplier_id) || new Set();
         set.add(String(r.vehicle_model_id));
         svmMap.set(r.supplier_id, set);
@@ -285,15 +277,15 @@ export function PartBranchStatusList({ status }: Props) {
     setReplacePartIds({});
 
     /* 品牌/规格搜索建议 */
-    setAvailableBrands((brandList || []).map((b: any) => b.name).filter(Boolean));
-    setAvailableSpecs([...new Set((specList || []).map((s: any) => s.name).filter(Boolean))]);
+    setAvailableBrands((brandList || []).map((b: { name: string }) => b.name).filter(Boolean));
+    setAvailableSpecs([...new Set((specList || []).map((s: { name: string }) => s.name).filter(Boolean))]);
 
     /* 品牌名 -> ID 映射 */
-    setPartBrandsMap(new Map((brandList || []).map((b: any) => [b.name, String(b.id)])));
+    setPartBrandsMap(new Map((brandList || []).map((b: { name: string; id: string }) => [b.name, String(b.id)])));
 
     /* 供应商关联数据 */
     const spnMap = new Map<string, Set<string>>();
-    (spn || []).forEach((r: any) => {
+    (spn || []).forEach((r: { supplier_id: string; part_name_id: string }) => {
       const set = spnMap.get(r.supplier_id) || new Set();
       set.add(String(r.part_name_id));
       spnMap.set(r.supplier_id, set);
@@ -301,7 +293,7 @@ export function PartBranchStatusList({ status }: Props) {
     setSupplierPartNameIds(spnMap);
 
     const spcMap = new Map<string, Set<string>>();
-    (spc || []).forEach((r: any) => {
+    (spc || []).forEach((r: { supplier_id: string; part_category_id: string }) => {
       const set = spcMap.get(r.supplier_id) || new Set();
       set.add(String(r.part_category_id));
       spcMap.set(r.supplier_id, set);
@@ -309,7 +301,7 @@ export function PartBranchStatusList({ status }: Props) {
     setSupplierCategoryIds(spcMap);
 
     const spbMap = new Map<string, Set<string>>();
-    (spb || []).forEach((r: any) => {
+    (spb || []).forEach((r: { supplier_id: string; part_brand_id: string }) => {
       const set = spbMap.get(r.supplier_id) || new Set();
       set.add(String(r.part_brand_id));
       spbMap.set(r.supplier_id, set);
@@ -401,6 +393,31 @@ export function PartBranchStatusList({ status }: Props) {
     setEditRow(null);
   }
 
+  interface PartDetail {
+    part_number: string | null;
+    name: string | null;
+    unit: string | null;
+    category_id: string | null;
+    brand_id: string | null;
+    specification_id: string | null;
+    unit_cost: number | null;
+    unit_price: number | null;
+    purchase_price: number | null;
+    notes: string | null;
+    document_name: string | null;
+    part_brands: { name: string | null } | { name: string | null }[] | null;
+    part_specifications: { name: string | null } | { name: string | null }[] | null;
+    part_categories: { name: string | null } | { name: string | null }[] | null;
+  }
+
+  function extractName(
+    val: { name: string | null } | { name: string | null }[] | null
+  ): string | null {
+    if (!val) return null;
+    if (Array.isArray(val)) return val[0]?.name ?? null;
+    return val.name ?? null;
+  }
+
   async function handlePartSaved(partId: string) {
     if (!editRow) return;
     setSavingId(editRow.id);
@@ -413,20 +430,19 @@ export function PartBranchStatusList({ status }: Props) {
         .eq("id", partId)
         .single();
 
-      const updates: Record<string, any> = { part_id: partId };
-      if (part) {
-        if (part.part_number != null) updates.part_number = part.part_number;
-        if (part.name != null) updates.name = part.name;
-        if (part.unit != null) updates.unit = part.unit;
-        const pb = part.part_brands as any;
-        const ps = part.part_specifications as any;
-        const brandName = Array.isArray(pb) ? pb[0]?.name : pb?.name;
-        const specName = Array.isArray(ps) ? ps[0]?.name : ps?.name;
+      const p = part as unknown as PartDetail | null;
+      const updates: Record<string, string | number | null> = { part_id: partId };
+      if (p) {
+        if (p.part_number != null) updates.part_number = p.part_number;
+        if (p.name != null) updates.name = p.name;
+        if (p.unit != null) updates.unit = p.unit;
+        const brandName = extractName(p.part_brands);
+        const specName = extractName(p.part_specifications);
         if (brandName != null) updates.brand = brandName;
         if (specName != null) updates.specification = specName;
-        if (part.purchase_price != null) updates.unit_cost = part.purchase_price;
-        if (part.notes != null) updates.notes = part.notes;
-        if (part.document_name != null) updates.document_name = part.document_name;
+        if (p.purchase_price != null) updates.unit_cost = p.purchase_price;
+        if (p.notes != null) updates.notes = p.notes;
+        if (p.document_name != null) updates.document_name = p.document_name;
       }
 
       const { error } = await supabase
@@ -440,12 +456,12 @@ export function PartBranchStatusList({ status }: Props) {
         .from("purchase_order_items")
         .update({
           part_id: partId,
-          part_number: part?.part_number || updates.part_number || null,
-          name: part?.name || updates.name || null,
-          unit: part?.unit || updates.unit || null,
-          brand: (Array.isArray((part as any)?.part_brands) ? (part as any)?.part_brands[0]?.name : (part as any)?.part_brands?.name) || updates.brand || null,
-          specification: (Array.isArray((part as any)?.part_specifications) ? (part as any)?.part_specifications[0]?.name : (part as any)?.part_specifications?.name) || updates.specification || null,
-          category: (Array.isArray((part as any)?.part_categories) ? (part as any)?.part_categories[0]?.name : (part as any)?.part_categories?.name) || null,
+          part_number: p?.part_number || updates.part_number || null,
+          name: p?.name || updates.name || null,
+          unit: p?.unit || updates.unit || null,
+          brand: extractName(p?.part_brands) || updates.brand || null,
+          specification: extractName(p?.part_specifications) || updates.specification || null,
+          category: extractName(p?.part_categories) || null,
         })
         .eq("work_order_item_part_id", editRow.id);
       if (poiErr) console.warn("同步采购单配件信息失败:", poiErr);
@@ -453,15 +469,30 @@ export function PartBranchStatusList({ status }: Props) {
       closeEditModal();
       lastSelfUpdate.current = Date.now();
       loadData();
-    } catch (err: any) {
-      alert("同步配件信息失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("同步配件信息失败: " + msg);
     } finally {
       setSavingId(null);
     }
   }
 
+  interface InlinePart {
+    id: string;
+    part_number: string | null;
+    barcode: string | null;
+    name: string | null;
+    unit: string | null;
+    unit_cost: number | null;
+    unit_price: number | null;
+    part_names?: { name: string | null; unit: string | null } | null;
+    part_brands?: { name: string | null } | null;
+    part_specifications?: { name: string | null } | null;
+    part_categories?: { name: string | null } | null;
+  }
+
   /* 行内搜索选中配件 */
-  async function handleInlinePartSelect(row: PartBranchRow, part: any) {
+  async function handleInlinePartSelect(row: PartBranchRow, part: InlinePart) {
     const currentName = edits[row.id]?.name ?? row.name ?? "";
     const currentBrand = edits[row.id]?.brand ?? row.brand ?? "";
     const currentSpec = edits[row.id]?.specification ?? row.specification ?? "";
@@ -548,7 +579,14 @@ export function PartBranchStatusList({ status }: Props) {
       .or(`part_number.eq.${pn},barcode.eq.${pn}`)
       .limit(5);
 
-    const matched = (data || []) as any[];
+    const matched = (data || []) as unknown as Array<{
+      id: string;
+      part_number: string | null;
+      unit_cost: number | null;
+      unit_price: number | null;
+      part_brands: { name: string | null } | null;
+      part_specifications: { name: string | null } | null;
+    }>;
     if (matched.length === 0) return;
 
     const p = matched[0];
@@ -582,7 +620,7 @@ export function PartBranchStatusList({ status }: Props) {
     if (!confirm(`确定将选中的 ${selectedIds.size} 条配件撤销到「${prevStatus}」状态吗？`)) return;
 
     setSubmitting(true);
-    let updateData: Record<string, any> = {};
+    let updateData: Record<string, string | number | null> = {};
     if (status === "pending_quote") {
       updateData = { unit_cost: null };
     } else if (status === "pending_confirm") {
@@ -847,8 +885,7 @@ export function PartBranchStatusList({ status }: Props) {
   ];
 
   function renderRow(row: PartBranchRow, isNewBranch = false, branchColorIndex = 0) {
-    const wo = row.work_order_items?.work_orders!;
-    const opinion = OPINION_LABELS[row.customer_opinion || "pending"];
+    const wo = row.work_order_items?.work_orders;
     const isSaving = savingId === row.id;
     const partNumberDraft = edits[row.id]?.part_number;
     const nameDraft = edits[row.id]?.name;
@@ -886,9 +923,13 @@ export function PartBranchStatusList({ status }: Props) {
           />
         </td>
         <td className="px-3 py-3">
-          <Link href={`/work-orders/${wo.id}`} className="text-blue-600 hover:text-blue-700 font-medium">
-            {wo.order_no}
-          </Link>
+          {wo ? (
+            <Link href={`/work-orders/${wo.id}`} className="text-blue-600 hover:text-blue-700 font-medium">
+              {wo.order_no}
+            </Link>
+          ) : (
+            <span className="text-gray-400">-</span>
+          )}
         </td>
         {/* 编码 */}
         <td className="px-3 py-3">
@@ -1068,9 +1109,11 @@ export function PartBranchStatusList({ status }: Props) {
         </td>
         <td className="px-3 py-3 sticky right-0 bg-white z-10">
           <div className="flex items-center gap-2">
-            <Link href={`/work-orders/${wo.id}`} className="text-xs text-blue-600 hover:text-blue-700">
-              处理
-            </Link>
+            {wo && (
+              <Link href={`/work-orders/${wo.id}`} className="text-xs text-blue-600 hover:text-blue-700">
+                处理
+              </Link>
+            )}
             <button
               type="button"
               onClick={() => openEditModal(row)}

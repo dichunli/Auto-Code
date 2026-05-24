@@ -194,7 +194,7 @@ export default function VehicleModelsPage() {
 
   function handleExport() {
     const headers = detailFields.map((f) => f.label);
-    const rows = models.map((m: any) => detailFields.map((f) => m[f.key] ?? ""));
+    const rows = models.map((m: VehicleModel) => detailFields.map((f) => m[f.key] ?? ""));
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "车型库");
@@ -224,7 +224,7 @@ export default function VehicleModelsPage() {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
       if (rows.length < 2) {
         setImportMsg("文件中没有数据");
         setImporting(false);
@@ -233,13 +233,13 @@ export default function VehicleModelsPage() {
       const headers: string[] = rows[0];
       const dataRows = rows.slice(1);
 
-      const allRecords: any[] = [];
+      const allRecords: Record<string, unknown>[] = [];
       const allIds: number[] = [];
       for (const row of dataRows) {
-        const record: any = {};
+        const record: Record<string, unknown> = {};
         for (let j = 0; j < headers.length; j++) {
           const key = headers[j];
-          let value = row[j];
+          let value: unknown = row[j];
           if (value === undefined || value === "") value = null;
           if (key === "开始日期" || key === "结束日期") {
             if (value && typeof value === "number") {
@@ -252,7 +252,7 @@ export default function VehicleModelsPage() {
           record[key] = value;
         }
         allRecords.push(record);
-        if (record.id != null) allIds.push(record.id);
+        if (record.id != null) allIds.push(record.id as number);
       }
 
       setImportMsg("正在验证数据唯一性...");
@@ -264,7 +264,7 @@ export default function VehicleModelsPage() {
             .from("vehicle_models")
             .select("id")
             .in("id", batchIds);
-          data?.forEach((r: any) => existingIds.add(r.id));
+          data?.forEach((r: { id: number }) => existingIds.add(r.id));
         }
       }
 
@@ -296,8 +296,8 @@ export default function VehicleModelsPage() {
           (skippedCount > 0 ? `，跳过 ${skippedCount} 条（ID已存在）` : "")
       );
       loadModels();
-    } catch (err: any) {
-      setImportMsg("导入出错: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      setImportMsg("导入出错: " + (err instanceof Error ? err.message : String(err)));
     }
     setImporting(false);
   }

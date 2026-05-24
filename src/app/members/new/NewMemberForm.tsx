@@ -10,7 +10,13 @@ export default function NewMemberForm() {
   const searchParams = useSearchParams();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
-  const [customers, setCustomers] = useState<any[]>([]);
+  interface Customer {
+    id: string;
+    name: string;
+    phone: string | null;
+  }
+
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   const [cardNo, setCardNo] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -27,7 +33,7 @@ export default function NewMemberForm() {
       // 从URL参数自动填充
       const cid = searchParams.get("customer_id");
       if (cid) {
-        const c = list.find((x: any) => x.id === cid);
+        const c = list.find((x: Customer) => x.id === cid);
         if (c) {
           setCustomerId(cid);
           setName(c.name);
@@ -89,8 +95,9 @@ export default function NewMemberForm() {
 
       router.push("/members");
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert("保存失败: " + message);
       setLoading(false);
     }
   }

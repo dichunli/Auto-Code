@@ -3,6 +3,11 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 
+interface 关联项 {
+  id: string;
+  name: string;
+}
+
 interface Props {
   open: boolean;
   type: "brand" | "specification";
@@ -14,7 +19,7 @@ interface Props {
 export function BatchLinkDialog({ open, type, selectedIds, onClose, onSuccess }: Props) {
   const supabase = createClient();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<关联项[]>([]);
   const [searching, setSearching] = useState(false);
   const [linking, setLinking] = useState(false);
 

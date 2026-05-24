@@ -41,8 +41,28 @@ const ORDER_STATUS_COLORS: Record<string, string> = {
   delivered: "bg-slate-100 text-slate-700",
 };
 
+interface BoardItem {
+  id: string;
+  name: string;
+  alias_name?: string | null;
+  status?: string | null;
+  mechanic_id?: string | null;
+  item_type?: string | null;
+  profiles?: { full_name?: string | null } | null;
+}
+
+interface BoardOrder {
+  id: string;
+  order_no: string;
+  status: string;
+  estimated_completion_at?: string | null;
+  created_at: string;
+  vehicles?: { plate_number?: string | null; brand?: string | null; model?: string | null } | null;
+  work_order_items?: BoardItem[] | null;
+}
+
 // 单个维修项目（labor）按"项目状态 + 工单状态"判断归属看板列
-function getItemColumnKey(item: any, orderStatus: string): string {
+function getItemColumnKey(item: BoardItem, orderStatus: string): string {
   if (SETTLED_STATUSES.includes(orderStatus)) return "settled";
   if (orderStatus === "pending_quality_check") return "pending_qc";
 
@@ -76,8 +96,8 @@ function formatDeliveryDate(date: string | null) {
 }
 
 type Group = {
-  order: any;
-  items: any[]; // 该列下该工单的项目；可能为空（如已结单工单）
+  order: BoardOrder;
+  items: BoardItem[]; // 该列下该工单的项目；可能为空（如已结单工单）
   isPlaceholder: boolean; // 是否是"待添加维修项目"占位
 };
 
@@ -102,8 +122,8 @@ export default async function WorkOrderBoardPage() {
   const columnGroups: Record<string, Group[]> = {};
   COLUMNS.forEach((c) => (columnGroups[c.key] = []));
 
-  (orders || []).forEach((order: any) => {
-    const labors = (order.work_order_items || []).filter((it: any) => it.item_type === "labor");
+  (orders || []).forEach((order: BoardOrder) => {
+    const labors = (order.work_order_items || []).filter((it: BoardItem) => it.item_type === "labor");
 
     // 已结单 — 整张工单作为一个分区进入"已结单"列，不展开项目
     if (SETTLED_STATUSES.includes(order.status)) {
@@ -119,8 +139,8 @@ export default async function WorkOrderBoardPage() {
     }
 
     // 把项目按所属列汇总同一工单的项目
-    const itemsByColumn: Record<string, any[]> = {};
-    labors.forEach((it: any) => {
+    const itemsByColumn: Record<string, BoardItem[]> = {};
+    labors.forEach((it: BoardItem) => {
       const key = getItemColumnKey(it, order.status);
       if (!itemsByColumn[key]) itemsByColumn[key] = [];
       itemsByColumn[key].push(it);
@@ -224,7 +244,7 @@ export default async function WorkOrderBoardPage() {
                       </div>
                     ) : (
                       <div className="mt-1.5 pt-1.5 border-t border-gray-100 space-y-1">
-                        {g.items.map((it: any) => (
+                        {g.items.map((it: BoardItem) => (
                           <div key={it.id} className="text-xs">
                             <div className="text-gray-900 truncate">{it.alias_name || it.name}</div>
                             <div className="text-[10px] text-gray-500 truncate">

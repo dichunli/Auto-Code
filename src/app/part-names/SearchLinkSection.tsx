@@ -7,11 +7,16 @@ interface LinkedItem {
   name: string;
 }
 
+interface 搜索结果项 {
+  id: string;
+  name: string;
+}
+
 interface Props {
   label: string;
   query: string;
   setQuery: (q: string) => void;
-  results: any[] | null;
+  results: 搜索结果项[] | null;
   searching: boolean;
   linked: LinkedItem[];
   onAdd: (item: LinkedItem) => void;
@@ -69,7 +74,7 @@ export function SearchLinkSection({
         {searching && <div className="text-xs text-gray-400 mt-1">搜索中...</div>}
         {results && results.length > 0 && (
           <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-            {results.map((r: any) => {
+            {results.map((r: 搜索结果项) => {
               const isLinked = alreadyLinkedIds.has(r.id);
               const isSelected = selectedIds.has(r.id);
               return (

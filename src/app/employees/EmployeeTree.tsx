@@ -100,23 +100,6 @@ export function EmployeeTree({ groups, employees }: Props) {
     );
   }
 
-  function renderGroupHeaderRow(key: string, label: string, count: number, isCollapsed: boolean) {
-    return (
-      <tr
-        className="bg-purple-50/40 hover:bg-purple-50 cursor-pointer border-t-2 border-purple-100"
-        onClick={() => toggle(key)}
-      >
-        <td className="pl-4 pr-2 py-3 text-purple-600 w-10">
-          <span className="inline-block w-4 text-center select-none">{isCollapsed ? "▶" : "▼"}</span>
-        </td>
-        <td className="px-6 py-3 font-semibold text-purple-900" colSpan={6}>
-          {label}
-          <span className="ml-2 text-xs font-normal text-purple-600">{count} 人</span>
-        </td>
-      </tr>
-    );
-  }
-
   const rows: React.ReactElement[] = [];
 
   sortedGroups.forEach((g) => {

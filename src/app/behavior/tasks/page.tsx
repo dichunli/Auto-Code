@@ -1,14 +1,29 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
-import { formatDate } from "@/lib/utils";
+
+interface 行为任务 {
+  id: string;
+  title: string;
+  description: string | null;
+  score_reward: number;
+  status: string;
+  created_at: string;
+  assignee: { full_name: string } | null;
+  assigned_by_profile: { full_name: string } | null;
+}
+
+interface 员工 {
+  id: string;
+  full_name: string;
+}
 
 export default function BehaviorTasksPage() {
   const supabase = createClient();
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [employees, setEmployees] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<行为任务[]>([]);
+  const [employees, setEmployees] = useState<员工[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -18,21 +33,21 @@ export default function BehaviorTasksPage() {
     score_reward: "5",
   });
 
-  useEffect(() => {
-    fetchTasks();
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => {
-      setEmployees(data || []);
-    });
-  }, [supabase]);
-
-  async function fetchTasks() {
+  const fetchTasks = useCallback(async () => {
     const { data } = await supabase
       .from("behavior_tasks")
       .select("*, assignee:profiles!behavior_tasks_assignee_id_fkey(full_name), assigned_by_profile:profiles!behavior_tasks_assigned_by_fkey(full_name)")
       .order("created_at", { ascending: false })
       .limit(100);
-    setTasks((data || []) as any);
-  }
+    setTasks((data || []) as 行为任务[]);
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchTasks();
+    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => {
+      setEmployees(data || []);
+    });
+  }, [fetchTasks, supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,8 +63,8 @@ export default function BehaviorTasksPage() {
       setShowForm(false);
       setForm({ title: "", description: "", assignee_id: "", score_reward: "5" });
       fetchTasks();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
@@ -127,7 +142,7 @@ export default function BehaviorTasksPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {tasks.map((t: any) => (
+              {tasks.map((t) => (
                 <tr key={t.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900">{t.title}</div>

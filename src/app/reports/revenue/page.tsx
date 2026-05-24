@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 
 export default async function RevenueReportPage() {
   const supabase = await createClient();
@@ -52,7 +52,7 @@ export default async function RevenueReportPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {dailyData?.map((d: any) => (
+              {dailyData?.map((d) => (
                 <tr key={d.date} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-gray-900 font-medium">{d.date}</td>
                   <td className="px-6 py-4 text-gray-600">{d.order_count}</td>

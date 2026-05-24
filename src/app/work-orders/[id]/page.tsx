@@ -1,6 +1,4 @@
 import { getWorkOrderData } from "@/lib/workOrderData";
-import { PageHeader } from "@/components/PageHeader";
-import { StatusBadge } from "@/components/StatusBadge";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import FaultLightIcon from "@/components/FaultLightIcon";
@@ -19,18 +17,14 @@ import { WorkOrderItemActions } from "@/components/WorkOrderItemActions";
 import { ItemPersonSelectors } from "@/components/ItemPersonSelectors";
 import { CustomerOpinionToggle } from "@/components/CustomerOpinionToggle";
 import { ItemFlagsToggle } from "@/components/ItemFlagsToggle";
-import { ItemMechanicAssigner } from "@/components/ItemMechanicAssigner";
 import { WorkOrderActions } from "@/components/WorkOrderActions";
-import { AdvancePaymentCard } from "@/components/AdvancePaymentCard";
 import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
 import RequirementActions from "@/components/RequirementActions";
 import RequirementTitle from "@/components/RequirementTitle";
-import WorkOrderFloatingSidebar from "@/components/WorkOrderFloatingSidebar";
 import { ItemNotesEditor } from "@/components/ItemNotesEditor";
 import AddItemPartButton from "@/components/AddItemPartButton";
 import AddRequirementButton from "@/components/AddRequirementButton";
 import AddRequirementItemsButton from "@/components/AddRequirementItemsButton";
-import DeleteRequirementButton from "@/components/DeleteRequirementButton";
 import PartBranchEditor from "@/components/PartBranchEditor";
 import { PartBranchImages } from "@/components/PartBranchImages";
 import PartGroupHeader from "@/components/PartGroupHeader";
@@ -44,6 +38,7 @@ import AdvancePaymentList from "@/components/AdvancePaymentList";
 import SortableList from "@/components/SortableList";
 import ItemImageUploader from "@/components/ItemImageUploader";
 import { WorkOrderRealtimeSync } from "@/components/WorkOrderRealtimeSync";
+import MobileItemEditor from "@/components/MobileItemEditor";
 
 export default async function WorkOrderDetailPage({
   params,
@@ -67,7 +62,7 @@ export default async function WorkOrderDetailPage({
 
   // 预收款净额（从记录表实时计算，扣除已退款）
   const advancePaymentTotal = (advancePaymentRecords || []).reduce(
-    (sum: number, r: any) => sum + (r.amount || 0) - (r.refunded_amount || 0),
+    (sum: number, r: { amount?: number; refunded_amount?: number }) => sum + (r.amount || 0) - (r.refunded_amount || 0),
     0
   );
 
@@ -96,7 +91,7 @@ export default async function WorkOrderDetailPage({
     cancelled: "作废工单",
     maintenance: "保养工单",
   };
-  (otherOrdersByType || []).forEach((o: any) => {
+  (otherOrdersByType || []).forEach((o: { order_type?: string; id: string; order_no: string }) => {
     const t = o.order_type || "normal";
     if (t === "normal") return; // 正常工单不显示
     if (!typeCountMap[t]) {
@@ -113,10 +108,10 @@ export default async function WorkOrderDetailPage({
     .eq("customer_id", order.customer_id);
 
   // 查询未关联具体配件但已到货的分支，用于入库自动填写
-  const pendingInboundParts = itemParts?.filter((p: any) => p.is_arrived && !p.part_id) || [];
+  const pendingInboundParts = itemParts?.filter((p: { is_arrived?: boolean; part_id?: string | null }) => p.is_arrived && !p.part_id) || [];
 
   // 按项目分组施工人
-  const mechanicsByItem: Record<string, any[]> = {};
+  const mechanicsByItem: Record<string, unknown[]> = {};
   if (itemMechanics) {
     for (const m of itemMechanics) {
       const itemId = m.work_order_item_id;
@@ -125,74 +120,109 @@ export default async function WorkOrderDetailPage({
     }
   }
 
+  interface ItemPart {
+    work_order_item_id: string;
+    sort_order?: number;
+    [key: string]: unknown;
+  }
   // 按项目分组配件，并按 sort_order 排序
-  const partsByItem: Record<string, any[]> = {};
-  itemParts?.forEach((p: any) => {
+  const partsByItem: Record<string, ItemPart[]> = {};
+  itemParts?.forEach((p: ItemPart) => {
     if (!partsByItem[p.work_order_item_id]) partsByItem[p.work_order_item_id] = [];
     partsByItem[p.work_order_item_id].push(p);
   });
   Object.values(partsByItem).forEach((arr) => {
-    arr.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
+    arr.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
   });
 
+  interface SortableRecord {
+    sort_order?: number;
+    [key: string]: unknown;
+  }
   // items 按 sort_order 排序（兼容未执行迁移的情况）
-  const sortedItems = (items || []).slice().sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
+  const sortedItems = (items || []).slice().sort((a: SortableRecord, b: SortableRecord) => (a.sort_order || 0) - (b.sort_order || 0));
 
+  interface MediaRecord {
+    requirement_id?: string;
+    work_order_item_id?: string;
+    work_order_item_part_id?: string;
+    inspection_id?: string;
+    storage_path?: string;
+    media_type?: string;
+    [key: string]: unknown;
+  }
   // 按需求分组多媒体
-  const mediaByRequirement: Record<string, any[]> = {};
-  requirementMedia?.forEach((m: any) => {
-    if (!mediaByRequirement[m.requirement_id]) mediaByRequirement[m.requirement_id] = [];
-    mediaByRequirement[m.requirement_id].push(m);
+  const mediaByRequirement: Record<string, MediaRecord[]> = {};
+  requirementMedia?.forEach((m: MediaRecord) => {
+    if (!mediaByRequirement[m.requirement_id!]) mediaByRequirement[m.requirement_id!] = [];
+    mediaByRequirement[m.requirement_id!].push(m);
   });
 
   // 按项目分组图片
-  const imagesByItem: Record<string, any[]> = {};
-  itemMedia?.forEach((m: any) => {
-    if (!imagesByItem[m.work_order_item_id]) imagesByItem[m.work_order_item_id] = [];
-    imagesByItem[m.work_order_item_id].push(m);
+  const imagesByItem: Record<string, MediaRecord[]> = {};
+  itemMedia?.forEach((m: MediaRecord) => {
+    if (!imagesByItem[m.work_order_item_id!]) imagesByItem[m.work_order_item_id!] = [];
+    imagesByItem[m.work_order_item_id!].push(m);
   });
 
   // 按配件分支分组图片
-  const imagesByPart: Record<string, any[]> = {};
-  partMedia?.forEach((m: any) => {
-    if (!imagesByPart[m.work_order_item_part_id]) imagesByPart[m.work_order_item_part_id] = [];
-    imagesByPart[m.work_order_item_part_id].push(m);
+  const imagesByPart: Record<string, MediaRecord[]> = {};
+  partMedia?.forEach((m: MediaRecord) => {
+    if (!imagesByPart[m.work_order_item_part_id!]) imagesByPart[m.work_order_item_part_id!] = [];
+    imagesByPart[m.work_order_item_part_id!].push(m);
   });
 
   // 按检查记录分组媒体
-  const mediaByInspection: Record<string, any[]> = {};
-  inspectionMedia?.forEach((m: any) => {
-    if (!mediaByInspection[m.inspection_id]) mediaByInspection[m.inspection_id] = [];
-    mediaByInspection[m.inspection_id].push(m);
+  const mediaByInspection: Record<string, MediaRecord[]> = {};
+  inspectionMedia?.forEach((m: MediaRecord) => {
+    if (!mediaByInspection[m.inspection_id!]) mediaByInspection[m.inspection_id!] = [];
+    mediaByInspection[m.inspection_id!].push(m);
   });
+
+  interface BatchRecord { part_id?: string; quantity?: number; [key: string]: unknown }
+  interface PickingRecord { work_order_item_part_id?: string; quantity?: number; [key: string]: unknown }
+  interface ReturnRecord { work_order_item_part_id?: string; quantity?: number; [key: string]: unknown }
+  interface SupplierReturnRecord { work_order_item_part_id?: string; status?: string; [key: string]: unknown }
 
   // 配件库存聚合
   const inventoryByPart: Record<string, number> = {};
-  partBatches?.forEach((b: any) => {
-    inventoryByPart[b.part_id] = (inventoryByPart[b.part_id] || 0) + b.quantity;
+  partBatches?.forEach((b: BatchRecord) => {
+    inventoryByPart[b.part_id!] = (inventoryByPart[b.part_id!] || 0) + (b.quantity || 0);
   });
 
   // 领料 / 退库 / 退货聚合
   const pickingByPart: Record<string, number> = {};
-  pickingRecords?.forEach((r: any) => {
-    pickingByPart[r.work_order_item_part_id] = (pickingByPart[r.work_order_item_part_id] || 0) + r.quantity;
+  pickingRecords?.forEach((r: PickingRecord) => {
+    pickingByPart[r.work_order_item_part_id!] = (pickingByPart[r.work_order_item_part_id!] || 0) + (r.quantity || 0);
   });
 
   const returnByPart: Record<string, number> = {};
-  returnRecords?.forEach((r: any) => {
-    returnByPart[r.work_order_item_part_id] = (returnByPart[r.work_order_item_part_id] || 0) + r.quantity;
+  returnRecords?.forEach((r: ReturnRecord) => {
+    returnByPart[r.work_order_item_part_id!] = (returnByPart[r.work_order_item_part_id!] || 0) + (r.quantity || 0);
   });
 
   const pendingSupplierReturnByPart: Record<string, boolean> = {};
-  supplierReturnRecords?.forEach((r: any) => {
-    if (r.status === "pending") pendingSupplierReturnByPart[r.work_order_item_part_id] = true;
+  supplierReturnRecords?.forEach((r: SupplierReturnRecord) => {
+    if (r.status === "pending") pendingSupplierReturnByPart[r.work_order_item_part_id!] = true;
   });
 
+  interface KnowledgeLink {
+    service_item_id?: string;
+    service_name_id?: string;
+    knowledge_articles?: { id?: string } | null;
+    [key: string]: unknown;
+  }
+  interface WorkOrderItem {
+    id: string;
+    service_item_id?: string | null;
+    service_items?: { service_name_id?: string | null } | null;
+    [key: string]: unknown;
+  }
   // 按项目分组知识库文章（先建索引 + Set 去重，O(n+k)）
-  const knowledgeByItem: Record<string, any[]> = {};
+  const knowledgeByItem: Record<string, KnowledgeLink[]> = {};
   const itemIdsByServiceItemId: Record<string, string[]> = {};
   const itemIdsByServiceNameId: Record<string, string[]> = {};
-  items?.forEach((item: any) => {
+  items?.forEach((item: WorkOrderItem) => {
     if (item.service_item_id) {
       (itemIdsByServiceItemId[item.service_item_id] ||= []).push(item.id);
     }
@@ -201,7 +231,7 @@ export default async function WorkOrderDetailPage({
     }
   });
   const knowledgeSeen = new Set<string>();
-  knowledgeLinks?.forEach((link: any) => {
+  knowledgeLinks?.forEach((link: KnowledgeLink) => {
     const matchedItemIds = new Set<string>();
     if (link.service_item_id) {
       (itemIdsByServiceItemId[link.service_item_id] || []).forEach((id) => matchedItemIds.add(id));
@@ -221,9 +251,14 @@ export default async function WorkOrderDetailPage({
 
   // ========== 预计算：消除渲染时重复遍历和 O(m×n) 匹配 ==========
 
+  interface RequirementItem {
+    id: string;
+    requirement_id?: string | null;
+    [key: string]: unknown;
+  }
   // 1. 需求→项目映射（避免 requirements.map 内部反复 filter sortedItems）
-  const itemsByRequirement = new Map<string, any[]>();
-  for (const item of sortedItems) {
+  const itemsByRequirement = new Map<string, RequirementItem[]>();
+  for (const item of sortedItems as RequirementItem[]) {
     if (item.requirement_id) {
       const arr = itemsByRequirement.get(item.requirement_id);
       if (arr) arr.push(item);
@@ -231,21 +266,36 @@ export default async function WorkOrderDetailPage({
     }
   }
 
+  interface InspectionRecord {
+    id: string;
+    inspection_type?: string;
+    [key: string]: unknown;
+  }
   // 2. inspections 预分组（避免重复 filter 4 次）
-  const receptionInspections: any[] = [];
-  const conditionInspections: any[] = [];
-  for (const insp of inspections || []) {
+  const receptionInspections: InspectionRecord[] = [];
+  const conditionInspections: InspectionRecord[] = [];
+  for (const insp of (inspections || []) as InspectionRecord[]) {
     if (insp.inspection_type === 'reception') receptionInspections.push(insp);
     else if (insp.inspection_type === 'inspection') conditionInspections.push(insp);
   }
 
   // 3. 未关联需求的项目（避免重复 filter）
-  const orphanItems = sortedItems.filter((item: any) => !item.requirement_id);
+  const orphanItems = (sortedItems as RequirementItem[]).filter((item) => !item.requirement_id);
 
+  interface PartBranch {
+    id: string;
+    part_name_id?: string | null;
+    alias_name?: string;
+    parts?: { name?: string } | null;
+    name?: string;
+    part_names?: { name?: string } | null;
+    sort_order?: number;
+    [key: string]: unknown;
+  }
   // 4. 配件按项目预分组 + 预排序 + 预计算 extraIdMap（避免渲染时重复计算）
   interface PartGroupInfo {
     name: string;
-    parts: any[];
+    parts: PartBranch[];
     repId: string;
     repSort: number;
     extraIds: string[];
@@ -253,8 +303,8 @@ export default async function WorkOrderDetailPage({
   }
   const partGroupsByItem = new Map<string, PartGroupInfo[]>();
   for (const itemId of Object.keys(partsByItem)) {
-    const parts = partsByItem[itemId];
-    const groups: Record<string, { name: string; parts: any[] }> = {};
+    const parts = partsByItem[itemId] as PartBranch[];
+    const groups: Record<string, { name: string; parts: PartBranch[] }> = {};
     for (const p of parts) {
       const key = p.part_name_id || `no_name_${p.id}`;
       if (!groups[key]) {
@@ -267,11 +317,11 @@ export default async function WorkOrderDetailPage({
     }
     const groupList: PartGroupInfo[] = [];
     for (const group of Object.values(groups)) {
-      group.parts.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
+      group.parts.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
       const rep = group.parts[0];
       if (!rep) continue;
-      const extraIds = group.parts.map((p: any) => p.id);
-      const images = extraIds.flatMap((pid: string) => imagesByPart[pid]?.map((m: any) => m.storage_path) || []);
+      const extraIds = group.parts.map((p) => p.id);
+      const images = extraIds.flatMap((pid) => imagesByPart[pid]?.map((m) => m.storage_path).filter(Boolean) as string[] || []);
       groupList.push({
         name: group.name,
         parts: group.parts,
@@ -630,7 +680,7 @@ export default async function WorkOrderDetailPage({
               )}
             </div>
             <div className="divide-y divide-gray-300">
-              {requirements?.map((req: any) => (
+              {requirements?.map((req: { id: string; seq: number; submitted_by?: string; assigned_to_profile?: { full_name?: string } | null; assignment_type?: string; notes?: string }) => (
                 <div key={req.id} className="px-4 py-3 md:px-6 md:py-4">
                   <div className="flex items-center gap-2 flex-wrap">
                     <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} />
@@ -645,7 +695,7 @@ export default async function WorkOrderDetailPage({
                       </span>
                     )}
                     <span className="hidden md:inline text-xs text-gray-400">
-                      提交: {(profiles || []).find((p: any) => p.id === req.submitted_by)?.full_name || "-"}
+                      提交: {(profiles || []).find((p: { id?: string; full_name?: string }) => p.id === req.submitted_by)?.full_name || "-"}
                     </span>
                     {!isLocked && (
                       <div className="flex items-center gap-2 ml-auto">
@@ -665,15 +715,53 @@ export default async function WorkOrderDetailPage({
                   <div className="mt-2">
                         {(() => {
                           const reqItems = itemsByRequirement.get(req.id) || [];
+                          interface ReqItem {
+                            id: string;
+                            alias_name?: string;
+                            name?: string;
+                            item_type?: string;
+                            submitter_id?: string;
+                            mechanic_id?: string;
+                            inspector_id?: string;
+                            customer_opinion?: string;
+                            business_type?: string;
+                            is_outsourced?: boolean;
+                            is_customer_part?: boolean;
+                            service_item_id?: string | null;
+                            service_items?: { service_name_id?: string | null } | null;
+                            total_price?: number;
+                            description?: string;
+                            rework_reason?: string;
+                            rework_loss_amount?: number;
+                            rework_source_item_id?: string | null;
+                            outsource_order_items?: unknown[];
+                            [key: string]: unknown;
+                          }
                           return (
                             <SortableList
-                              ids={reqItems.map((it: any) => it.id)}
+                              ids={reqItems.map((it: ReqItem) => it.id)}
                               groupKey={req.id}
                               tableName="work_order_items"
                             >
-                              {reqItems.map((item: any, itemIdx: number) => (
+                              {reqItems.map((item: ReqItem, itemIdx: number) => (
                                 <div key={item.id} className={`rounded-lg px-3 py-1 text-sm ${item.item_type === 'labor' ? 'bg-blue-50' : 'bg-gray-50'}`}>
-                            <div className="overflow-x-auto relative">
+                            {/* 移动端项目卡片 */}
+                            <MobileItemEditor
+                              item={item}
+                              orderId={id}
+                              orderStatus={order.status}
+                              profiles={profiles || []}
+                              existingMechanics={mechanicsByItem[item.id] || []}
+                              images={imagesByItem[item.id]?.map((m) => m.storage_path).filter(Boolean) as string[] || []}
+                              knowledgeUrl={
+                                knowledgeByItem[item.id]?.[0]?.knowledge_articles?.id
+                                  ? `/knowledge/${knowledgeByItem[item.id][0].knowledge_articles.id}`
+                                  : undefined
+                              }
+                              isLocked={isLocked}
+                            />
+                            {/* 桌面端横向布局 */}
+                            <div className="hidden md:block overflow-x-auto relative">
                               <div className="flex items-center min-w-max">
                                 <div className="flex items-center gap-2 flex-shrink-0">
                                   <span className="text-xs text-gray-400 font-mono">{req.seq}.{itemIdx + 1}</span>
@@ -687,7 +775,7 @@ export default async function WorkOrderDetailPage({
                                     mechanicId={item.mechanic_id}
                                     inspectorId={item.inspector_id}
                                     profiles={profiles || []}
-                                    mechanicGroups={(mechanicGroups || []).map((g: any) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
+                                    mechanicGroups={(mechanicGroups || []).map((g: { id: string; name: string; mechanic_group_members?: unknown[] }) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
                                     existingMechanics={mechanicsByItem[item.id] || []}
                                   />
                                   <div className="ml-6">
@@ -713,7 +801,7 @@ export default async function WorkOrderDetailPage({
                                       existingOrder={outsourceOrder}
                                       existingItem={
                                         outsourceOrder?.outsource_order_items?.find(
-                                          (oi: any) => oi.work_order_item_id === item.id
+                                          (oi: { work_order_item_id?: string }) => oi.work_order_item_id === item.id
                                         ) || null
                                       }
                                     />
@@ -735,7 +823,7 @@ export default async function WorkOrderDetailPage({
                                   <div className="ml-[10ch]">
                                     <ItemImageUploader
                                       itemId={item.id}
-                                      existingImages={imagesByItem[item.id]?.map((m: any) => m.storage_path) || []}
+                                      existingImages={imagesByItem[item.id]?.map((m) => m.storage_path).filter(Boolean) as string[] || []}
                                       isLocked={isLocked}
                                     />
                                   </div>
@@ -781,7 +869,7 @@ export default async function WorkOrderDetailPage({
                             <ItemSubtotalDisplay
                               itemId={item.id}
                               itemTotalPrice={item.total_price || 0}
-                              parts={(partsByItem[item.id] || []).map((p: any) => ({
+                              parts={(partsByItem[item.id] || []).map((p: { id: string; unit_price?: number; quantity?: number; is_selected?: boolean }) => ({
                                 id: p.id,
                                 unit_price: p.unit_price || 0,
                                 quantity: p.quantity || 1,
@@ -801,7 +889,7 @@ export default async function WorkOrderDetailPage({
                                 );
                                 if (comm.diagnosis === 0 && comm.repair === 0 && comm.sales === 0 && comm.qc === 0) return null;
                                 return (
-                                  <div className="flex flex-wrap gap-2 text-xs">
+                                  <div className="hidden md:flex flex-wrap gap-2 text-xs">
                                     <span className="text-gray-400">提成:</span>
                                     {comm.diagnosis > 0 && <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">诊断 {comm.diagnosis.toFixed(2)}元</span>}
                                     {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
@@ -814,7 +902,7 @@ export default async function WorkOrderDetailPage({
                             {/* 施工状态控制 */}
                             {item.item_type === 'labor' && !isLocked && (
                               <ShowTimer>
-                                <div>
+                                <div className="hidden md:block">
                                   <ConstructionControls
                                     itemId={item.id}
                                     workOrderId={id}
@@ -827,7 +915,7 @@ export default async function WorkOrderDetailPage({
                                     vehicleEngine={order.vehicles?.vehicle_models?.发动机型号 || order.vehicles?.engine_no}
                                     vehicleChassis={order.vehicles?.vin}
                                     vehicleTransmission={order.vehicles?.vehicle_models?.变速箱类型 || order.vehicles?.vehicle_models?.变速箱详情}
-                                    mechanics={(mechanicsByItem[item.id] || []).map((m: any) => ({ mechanic_id: m.mechanic_id, full_name: m.profiles?.full_name || "-" }))}
+                                    mechanics={(mechanicsByItem[item.id] || []).map((m: { mechanic_id?: string; profiles?: { full_name?: string } | null }) => ({ mechanic_id: m.mechanic_id || "", full_name: m.profiles?.full_name || "-" }))}
                                   />
                                 </div>
                               </ShowTimer>
@@ -858,7 +946,7 @@ export default async function WorkOrderDetailPage({
                                             existingImages={group.images}
                                           />
                                           <div className="space-y-2 pl-2">
-                                            {group.parts.map((p: any, branchIdx: number) => {
+                                            {group.parts.map((p: PartBranch, branchIdx: number) => {
                                           const pPickedQty = pickingByPart[p.id] || 0;
                                           const pReturnQty = returnByPart[p.id] || 0;
                                           const pNetPicked = pPickedQty - pReturnQty;
@@ -886,7 +974,7 @@ export default async function WorkOrderDetailPage({
                                               suppliers={suppliers || []}
                                               seqLabel={`${req.seq}.${itemIdx + 1}.${groupIdx + 1}.${branchIdx + 1}`}
                                               canDelete={group.parts.length > 1}
-                                              siblingIds={group.parts.filter((sp: any) => sp.id !== p.id).map((sp: any) => sp.id)}
+                                              siblingIds={group.parts.filter((sp: PartBranch) => sp.id !== p.id).map((sp: PartBranch) => sp.id)}
                                               vehicleModelId={vehicleModelId}
                                               isLocked={isLocked}
                                             >
@@ -976,8 +1064,8 @@ export default async function WorkOrderDetailPage({
               <div>
                 {(() => {
                   return (
-                    <SortableList ids={orphanItems.map((it: any) => it.id)} groupKey={`orphan_${id}`} tableName="work_order_items">
-                      {orphanItems.map((item: any) => (
+                    <SortableList ids={orphanItems.map((it) => it.id)} groupKey={`orphan_${id}`} tableName="work_order_items">
+                      {orphanItems.map((item) => (
                         <div key={item.id} className={`px-6 py-4 text-sm flex items-center justify-between ${item.item_type === 'labor' ? 'bg-blue-50' : ''}`}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-gray-900">{item.alias_name || item.name}</span>
@@ -1003,9 +1091,9 @@ export default async function WorkOrderDetailPage({
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">外包</span>
                       )}
                       {/* 外包单信息（来自 outsource_order_items） */}
-                      {item.outsource_order_items && item.outsource_order_items.length > 0 && outsourceOrder && (
+                      {item.outsource_order_items && Array.isArray(item.outsource_order_items) && item.outsource_order_items.length > 0 && outsourceOrder && (
                         <div className="text-[10px] text-gray-500 mt-1">
-                          {item.outsource_order_items.map((oi: any) => (
+                          {item.outsource_order_items.map((oi: { id: string; service_name?: string; amount?: number }) => (
                             <span key={oi.id} className="inline-flex items-center gap-1">
                               <span className="text-gray-400">{outsourceOrder.order_no}</span>
                               <span className="text-gray-600">{oi.service_name}</span>
@@ -1071,10 +1159,10 @@ export default async function WorkOrderDetailPage({
                 <h2 className="text-base font-semibold text-gray-900">接车检查</h2>
               </div>
               <div className="divide-y divide-gray-300">
-                {receptionInspections.map((insp: any) => {
+                {receptionInspections.map((insp) => {
                   const media = mediaByInspection[insp.id] || [];
-                  const receptionVideos = media.filter((m: any) => m.media_type === 'reception_video');
-                  const exteriorPhotos = media.filter((m: any) => m.media_type === 'exterior');
+                  const receptionVideos = media.filter((m) => m.media_type === 'reception_video');
+                  const exteriorPhotos = media.filter((m) => m.media_type === 'exterior');
 
                   return (
                     <div key={insp.id} className="px-6 py-4 text-sm space-y-4">
@@ -1087,7 +1175,7 @@ export default async function WorkOrderDetailPage({
                         <div>
                           <div className="text-xs text-gray-500 mb-1">环车检查视频</div>
                           <div className="flex flex-wrap gap-2">
-                            {receptionVideos.map((m: any, idx: number) => (
+                            {receptionVideos.map((m, idx: number) => (
                               <video key={idx} src={m.storage_path} className="w-48 h-32 rounded border border-gray-200 object-cover" controls preload="metadata" />
                             ))}
                           </div>
@@ -1098,7 +1186,7 @@ export default async function WorkOrderDetailPage({
                         <div>
                           <div className="text-xs text-gray-500 mb-1">外观照片</div>
                           <div className="flex flex-wrap gap-2">
-                            {exteriorPhotos.map((m: any, idx: number) => (
+                            {exteriorPhotos.map((m, idx: number) => (
                               <img loading="lazy" key={idx} src={m.storage_path} alt="" className="w-20 h-20 object-cover rounded border border-gray-200" />
                             ))}
                           </div>
@@ -1118,15 +1206,15 @@ export default async function WorkOrderDetailPage({
                 <h2 className="text-base font-semibold text-gray-900">车况检查</h2>
               </div>
               <div className="divide-y divide-gray-300">
-                {conditionInspections.map((insp: any) => {
+                {conditionInspections.map((insp) => {
                   const media = mediaByInspection[insp.id] || [];
-                  const oilBefore = media.find((m: any) => m.media_type === 'engine_oil_before');
-                  const oilAfter = media.find((m: any) => m.media_type === 'engine_oil_after');
-                  const fluidPhotos = media.filter((m: any) => m.media_type === 'fluid');
-                  const exteriorPhotos = media.filter((m: any) => m.media_type === 'exterior');
-                  const dashboardPhotos = media.filter((m: any) => m.media_type === 'dashboard');
-                  const driveBeltPhotos = media.filter((m: any) => m.media_type === 'drive_belt');
-                  const tirePhotos = media.filter((m: any) => m.media_type === 'tire');
+                  const oilBefore = media.find((m) => m.media_type === 'engine_oil_before');
+                  const oilAfter = media.find((m) => m.media_type === 'engine_oil_after');
+                  const fluidPhotos = media.filter((m) => m.media_type === 'fluid');
+                  const exteriorPhotos = media.filter((m) => m.media_type === 'exterior');
+                  const dashboardPhotos = media.filter((m) => m.media_type === 'dashboard');
+                  const driveBeltPhotos = media.filter((m) => m.media_type === 'drive_belt');
+                  const tirePhotos = media.filter((m) => m.media_type === 'tire');
 
                   return (
                     <div key={insp.id} className="px-6 py-4 text-sm space-y-4">
@@ -1136,7 +1224,7 @@ export default async function WorkOrderDetailPage({
                           <span className="text-gray-500">检查里程: <span className="font-medium text-gray-700">{insp.inspection_mileage ?? order.mileage_in} km</span></span>
                         )}
                         {(() => {
-                          const submitter = profiles?.find((p: any) => p.id === insp.submitter_id);
+                          const submitter = profiles?.find((p: { id?: string; full_name?: string }) => p.id === insp.submitter_id);
                           return submitter ? <span className="text-gray-500">提交人: <span className="font-medium text-gray-700">{submitter.full_name}</span></span> : null;
                         })()}
                         {insp.notes && <span className="text-gray-400">备注: {insp.notes}</span>}
@@ -1149,7 +1237,7 @@ export default async function WorkOrderDetailPage({
                             <div>
                               <div className="text-xs text-gray-500 mb-1">仪表照片</div>
                               <div className="flex flex-wrap gap-2">
-                                {dashboardPhotos.map((m: any, idx: number) => (
+                                {dashboardPhotos.map((m, idx: number) => (
                                   <img loading="lazy" key={idx} src={m.storage_path} alt="" className="w-24 h-24 object-cover rounded border border-gray-200" />
                                 ))}
                               </div>
@@ -1249,7 +1337,7 @@ export default async function WorkOrderDetailPage({
                                 <img loading="lazy" src={oilBefore.storage_path} alt="机油施工前" className="w-full object-contain" />
                                 {oilBefore.annotations && oilBefore.annotations.length > 0 && (
                                   <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                                    {oilBefore.annotations.map((line: any, idx: number) => (
+                                    {oilBefore.annotations.map((line: { x1: number; y1: number; x2: number; y2: number }, idx: number) => (
                                       <line key={idx}
                                         x1={`${line.x1 * 100}%`} y1={`${line.y1 * 100}%`}
                                         x2={`${line.x2 * 100}%`} y2={`${line.y2 * 100}%`}
@@ -1268,7 +1356,7 @@ export default async function WorkOrderDetailPage({
                                 <img loading="lazy" src={oilAfter.storage_path} alt="机油施工后" className="w-full object-contain" />
                                 {oilAfter.annotations && oilAfter.annotations.length > 0 && (
                                   <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                                    {oilAfter.annotations.map((line: any, idx: number) => (
+                                    {oilAfter.annotations.map((line: { x1: number; y1: number; x2: number; y2: number }, idx: number) => (
                                       <line key={idx}
                                         x1={`${line.x1 * 100}%`} y1={`${line.y1 * 100}%`}
                                         x2={`${line.x2 * 100}%`} y2={`${line.y2 * 100}%`}
@@ -1288,7 +1376,7 @@ export default async function WorkOrderDetailPage({
                         <div>
                           <div className="text-xs text-gray-500 mb-1">其它油液</div>
                           <div className="flex flex-wrap gap-2">
-                            {fluidPhotos.map((m: any, idx: number) => (
+                            {fluidPhotos.map((m, idx: number) => (
                               <img loading="lazy" key={idx} src={m.storage_path} alt="" className="w-20 h-20 object-cover rounded border border-gray-200" />
                             ))}
                           </div>
@@ -1301,7 +1389,7 @@ export default async function WorkOrderDetailPage({
                           <div className="text-xs text-gray-500 mb-1">传动皮带</div>
                           {driveBeltPhotos.length > 0 && (
                             <div className="flex flex-wrap gap-2 mb-2">
-                              {driveBeltPhotos.map((m: any, idx: number) => (
+                              {driveBeltPhotos.map((m, idx: number) => (
                                 <img loading="lazy" key={idx} src={m.storage_path} alt="" className="w-20 h-20 object-cover rounded border border-gray-200" />
                               ))}
                             </div>
@@ -1327,7 +1415,7 @@ export default async function WorkOrderDetailPage({
                           <div className="text-xs text-gray-500 mb-1">轮胎检查</div>
                           {tirePhotos.length > 0 && (
                             <div className="flex flex-wrap gap-2 mb-2">
-                              {tirePhotos.map((m: any, idx: number) => (
+                              {tirePhotos.map((m, idx: number) => (
                                 <img loading="lazy" key={idx} src={m.storage_path} alt="" className="w-20 h-20 object-cover rounded border border-gray-200" />
                               ))}
                             </div>
@@ -1524,7 +1612,7 @@ export default async function WorkOrderDetailPage({
                         <div>
                           <div className="text-xs text-gray-500 mb-1">外检照片</div>
                           <div className="flex flex-wrap gap-2">
-                            {exteriorPhotos.map((m: any, idx: number) => (
+                            {exteriorPhotos.map((m, idx: number) => (
                               <img loading="lazy" key={idx} src={m.storage_path} alt="" className="w-20 h-20 object-cover rounded border border-gray-200" />
                             ))}
                           </div>
@@ -1541,7 +1629,7 @@ export default async function WorkOrderDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">质检记录</h2>
             <div className="space-y-3">
-              {qualityChecks?.map((qc: any) => (
+              {qualityChecks?.map((qc: { id: string; result?: string; profiles?: { full_name?: string } | null; created_at?: string; notes?: string }) => (
                 <div key={qc.id} className="flex items-start gap-3 text-sm">
                   <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${qc.result === 'passed' ? 'bg-green-500' : 'bg-red-500'}`} />
                   <div>
@@ -1570,7 +1658,7 @@ export default async function WorkOrderDetailPage({
                 待入库配件
               </h2>
               <div className="space-y-2">
-                {pendingInboundParts.map((p: any) => (
+                {pendingInboundParts.map((p: PartBranch) => (
                   <div key={p.id} className="text-sm">
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-gray-800">{p.name || p.part_names?.name || "未命名"}</span>
@@ -1638,7 +1726,7 @@ export default async function WorkOrderDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">支付记录</h2>
             <div className="space-y-2">
-              {payments?.map((p: any) => (
+              {payments?.map((p: { id: string; method?: string; amount?: number }) => (
                 <div key={p.id} className="flex justify-between text-sm">
                   <span className="text-gray-600">
                     {p.method === 'cash' ? '现金' : p.method === 'wechat' ? '微信' : p.method === 'alipay' ? '支付宝' : p.method === 'credit' ? '挂账' : p.method === 'member' ? '会员' : '银行转账'}
@@ -1654,7 +1742,7 @@ export default async function WorkOrderDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">回访记录</h2>
             <div className="space-y-3">
-              {followUps?.map((fu: any) => {
+              {followUps?.map((fu: { id: string; completed_at?: string | null; scheduled_at?: string; method?: string; result?: string; notes?: string }) => {
                 const isCompleted = !!fu.completed_at;
                 const isOverdue = !isCompleted && fu.scheduled_at <= new Date().toISOString();
                 return (
@@ -1693,7 +1781,7 @@ export default async function WorkOrderDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">状态变更</h2>
             <div className="space-y-3">
-              {history?.map((h: any) => (
+              {history?.map((h: { id: string; from_status?: string | null; to_status?: string; created_at?: string }) => (
                 <div key={h.id} className="flex gap-3 text-sm">
                   <div className="w-2 h-2 mt-1.5 rounded-full bg-blue-500 shrink-0" />
                   <div>
@@ -1707,8 +1795,8 @@ export default async function WorkOrderDetailPage({
         </div>
       </div>
       <WorkOrderTotalFooter
-        items={(items || []).map((it: any) => ({ id: it.id, total_price: it.total_price || 0 }))}
-        parts={(itemParts || []).map((p: any) => ({
+        items={(items || []).map((it: { id: string; total_price?: number }) => ({ id: it.id, total_price: it.total_price || 0 }))}
+        parts={(itemParts || []).map((p: { id: string; work_order_item_id?: string; unit_price?: number; quantity?: number; is_selected?: boolean }) => ({
           id: p.id,
           itemId: p.work_order_item_id,
           unit_price: p.unit_price || 0,
@@ -1717,7 +1805,7 @@ export default async function WorkOrderDetailPage({
         }))}
         advancePaymentTotal={advancePaymentTotal}
       />
-      <WorkOrderRealtimeSync itemIds={items?.map((i: any) => i.id) || []} />
+      <WorkOrderRealtimeSync itemIds={items?.map((i: { id: string }) => i.id) || []} />
     </WorkOrderToggleProvider>
   );
 }

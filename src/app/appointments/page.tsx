@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
-import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 
 export default async function AppointmentsPage({
@@ -83,7 +82,7 @@ export default async function AppointmentsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {appointments?.map((a: any) => {
+              {appointments?.map((a: { id: string; customer_name: string; customer_phone: string; plate_number?: string; vehicle_brand?: string; vehicle_model?: string; appointment_date: string; appointment_time?: string; service_type?: string; status: string }) => {
                 const s = statusMap[a.status];
                 return (
                   <tr key={a.id} className="hover:bg-gray-50">

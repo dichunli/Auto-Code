@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
@@ -12,7 +12,7 @@ interface ServiceName {
   name: string;
   search_keywords: string | null;
   service_categories: { name: string } | null;
-  service_name_part_names: any[];
+  service_name_part_names: { count?: number }[];
 }
 
 const importFields = [
@@ -21,11 +21,14 @@ const importFields = [
   { key: "搜索关键词", required: false },
 ];
 
+const pageSize = 20;
+
 export default function ServiceNamesPage() {
   const supabase = createClient();
   const [items, setItems] = useState<ServiceName[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchName, setSearchName] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -51,6 +54,14 @@ export default function ServiceNamesPage() {
     loadItems();
   }, [loadItems]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchName]);
+
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedItems = items.slice((safePage - 1) * pageSize, safePage * pageSize);
+
   function handleDownloadTemplate() {
     const headers = importFields.map((f) => f.key);
     const example = ["更换机油", "常规保养", "机油 保养 小保养"];
@@ -66,7 +77,7 @@ export default function ServiceNamesPage() {
       n.name,
       n.service_categories?.name || "",
       n.search_keywords || "",
-      (n.service_name_part_names as any)?.[0]?.count ?? 0,
+      n.service_name_part_names?.[0]?.count ?? 0,
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     const wb = XLSX.utils.book_new();
@@ -81,28 +92,29 @@ export default function ServiceNamesPage() {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
       if (rows.length < 2) {
         setImportMsg("文件中没有数据");
         setImporting(false);
         return;
       }
 
-      const headers: string[] = rows[0];
+      const headers: string[] = rows[0] as string[];
       const dataRows = rows.slice(1);
 
       setImportMsg("正在加载分类数据...");
+      interface CategoryRow { id: string; name: string; }
       const { data: categories } = await supabase.from("service_categories").select("id, name");
-      const categoryMap = new Map((categories || []).map((c: any) => [c.name, c.id]));
+      const categoryMap = new Map((categories as CategoryRow[] || []).map((c) => [c.name, c.id]));
 
-      const records: any[] = [];
+      const records: Record<string, unknown>[] = [];
       const errors: string[] = [];
       const seenInFile = new Map<string, number>();
       let duplicateInFile = 0;
 
       for (let i = 0; i < dataRows.length; i++) {
-        const row = dataRows[i];
-        const record: any = {};
+        const row = dataRows[i] as unknown[];
+        const record: Record<string, unknown> = {};
         for (let j = 0; j < headers.length; j++) {
           const key = headers[j];
           let value = row[j];
@@ -154,11 +166,12 @@ export default function ServiceNamesPage() {
       const queryBatchSize = 200;
       for (let i = 0; i < allNames.length; i += queryBatchSize) {
         const namesBatch = allNames.slice(i, i + queryBatchSize);
+        interface ExistingRow { name: string; }
         const { data: existing } = await supabase
           .from("service_names")
           .select("name")
           .in("name", namesBatch);
-        (existing || []).forEach((row: any) => existingNames.add(row.name));
+        (existing as ExistingRow[] || []).forEach((row) => existingNames.add(row.name));
       }
 
       const toInsert = records.filter((r) => !existingNames.has(r.name));
@@ -198,8 +211,8 @@ export default function ServiceNamesPage() {
       if (otherErrors > 0) msg += `，${otherErrors} 条有错误`;
       setImportMsg(msg);
       loadItems();
-    } catch (err: any) {
-      setImportMsg("导入出错: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      setImportMsg("导入出错: " + (err instanceof Error ? err.message : String(err)));
     }
     setImporting(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -285,12 +298,12 @@ export default function ServiceNamesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items?.map((n: any) => (
+              {paginatedItems?.map((n: ServiceName) => (
                 <tr key={n.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{n.name}</td>
                   <td className="px-6 py-4 text-gray-600">{n.service_categories?.name || "-"}</td>
                   <td className="px-6 py-4 text-gray-500">{n.search_keywords || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{(n.service_name_part_names as any)?.[0]?.count ?? 0}</td>
+                  <td className="px-6 py-4 text-gray-600">{n.service_name_part_names?.[0]?.count ?? 0}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <Link href={`/service-names/${n.id}/edit`} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">编辑</Link>
@@ -299,13 +312,49 @@ export default function ServiceNamesPage() {
                   </td>
                 </tr>
               ))}
-              {(!items || items.length === 0) && (
+              {(!paginatedItems || paginatedItems.length === 0) && (
                 <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400">{loading ? "加载中..." : "暂无数据"}</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* 分页 */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-sm text-gray-500">
+            共 {items.length} 条，第 {safePage}/{totalPages} 页
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              上一页
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`px-3 py-1.5 text-sm rounded-lg ${
+                  page === safePage ? "bg-blue-600 text-white" : "border border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

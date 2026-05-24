@@ -54,6 +54,7 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileId = useRef(`lp-album-${Math.random().toString(36).slice(2)}`).current;
 
   const [hasCamera, setHasCamera] = useState(true);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -161,8 +162,9 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
             : await fileToBase64(file);
         setPreviewImage(base64);
         await doRecognize(base64);
-      } catch (err: any) {
-        setErrorMsg("图片处理失败: " + (err.message || String(err)));
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        setErrorMsg("图片处理失败: " + errorMsg);
       } finally {
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
@@ -178,8 +180,8 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
     try {
       const plate = await recognizeLicensePlate(base64);
       setRecognizedPlate(plate.toUpperCase());
-    } catch (err: any) {
-      setErrorMsg(err.message || "识别失败");
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "识别失败");
     } finally {
       setRecognizing(false);
     }
@@ -314,10 +316,9 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
           {!previewImage ? (
             <>
               {/* 相册按钮 */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center gap-1 text-white/70 active:text-white"
+              <label
+                htmlFor={fileId}
+                className="flex flex-col items-center gap-1 text-white/70 active:text-white cursor-pointer select-none"
               >
                 <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,7 +331,7 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
                   </svg>
                 </div>
                 <span className="text-[10px]">相册</span>
-              </button>
+              </label>
 
               {/* 拍照按钮 */}
               {hasCamera && (
@@ -384,6 +385,7 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
 
       {/* 隐藏的 file input */}
       <input
+        id={fileId}
         ref={fileInputRef}
         type="file"
         accept="image/*"

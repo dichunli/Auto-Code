@@ -116,8 +116,8 @@ export function CompletedReturnList() {
       }
 
       loadData();
-    } catch (err: any) {
-      alert("退回失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      alert("退回失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSubmitting(null);
     }

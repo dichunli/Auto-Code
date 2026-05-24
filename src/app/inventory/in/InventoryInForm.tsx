@@ -5,15 +5,63 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
+interface Part {
+  id: string;
+  part_number: string | null;
+  name: string | null;
+  barcode: string | null;
+  quantity: number;
+}
+
+interface PartName {
+  id: string;
+  name: string;
+  part_categories: { name: string } | null;
+}
+
+interface Brand {
+  id: string;
+  name: string;
+}
+
+interface Specification {
+  id: string;
+  name: string;
+}
+
+interface LogisticsCompany {
+  id: string;
+  name: string;
+  scopes: string[] | null;
+}
+
+interface PendingWaybill {
+  id: string;
+  tracking_no: string;
+  logistics_companies: { name: string } | null;
+  logistics_company_name: string | null;
+  freight_amount: number;
+  cod_amount: number;
+}
+
+interface AutoFillForm {
+  part_number: string;
+  supplier: string;
+  unit_cost: string;
+  specification_text: string;
+  part_name_id?: string;
+  brand_id?: string;
+}
+
 export default function InventoryInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
-  const [parts, setParts] = useState<any[]>([]);
-  const [partNames, setPartNames] = useState<any[]>([]);
-  const [brands, setBrands] = useState<any[]>([]);
-  const [specifications, setSpecifications] = useState<any[]>([]);
+  const [parts, setParts] = useState<Part[]>([]);
+  const [partNames, setPartNames] = useState<PartName[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [specifications, setSpecifications] = useState<Specification[]>([]);
   const [newPartMode, setNewPartMode] = useState(false);
 
   const [selectedPartId, setSelectedPartId] = useState("");
@@ -21,8 +69,8 @@ export default function InventoryInForm() {
   const [branchId, setBranchId] = useState("");
 
   // 物流运单
-  const [logisticsCompanies, setLogisticsCompanies] = useState<any[]>([]);
-  const [pendingWaybills, setPendingWaybills] = useState<any[]>([]);
+  const [logisticsCompanies, setLogisticsCompanies] = useState<LogisticsCompany[]>([]);
+  const [pendingWaybills, setPendingWaybills] = useState<PendingWaybill[]>([]);
   const [waybillMode, setWaybillMode] = useState<"none" | "existing" | "new">("none");
   const [selectedWaybillId, setSelectedWaybillId] = useState("");
   const [newWaybill, setNewWaybill] = useState({
@@ -65,7 +113,7 @@ export default function InventoryInForm() {
     setBranchId(branch_id);
     setNewPartMode(true);
 
-    const next: any = {
+    const next: AutoFillForm = {
       part_number: searchParams.get("part_number") || "",
       supplier: searchParams.get("supplier") || "",
       unit_cost: searchParams.get("unit_cost") || "",
@@ -238,8 +286,8 @@ export default function InventoryInForm() {
 
       router.push("/inventory");
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
     }
   }

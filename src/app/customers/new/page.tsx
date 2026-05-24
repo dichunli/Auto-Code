@@ -285,7 +285,7 @@ export default function NewCustomerPage() {
 
       router.push("/customers");
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       alert(err instanceof Error ? err.message : String(err));
       setLoading(false);
     }
@@ -572,7 +572,7 @@ export default function NewCustomerPage() {
             </div>
 
             {vehicles.length === 0 && (
-              <p className="text-sm text-gray-400">点击"添加车辆"按钮为客户添加车辆</p>
+              <p className="text-sm text-gray-400">点击&ldquo;添加车辆&rdquo;按钮为客户添加车辆</p>
             )}
 
             <div className="space-y-4">

@@ -43,10 +43,15 @@ export function WorkOrderTabBar({ tabs: tabsProp }: WorkOrderTabBarProps) {
       .in("id", validIds)
       .then(({ data }) => {
         if (!data) return;
-        data.forEach((raw: any) => loadedRef.current.add(raw.id));
+        interface RawRow {
+          id: string;
+          order_no: string | null;
+          vehicles: { plate_number: string } | { plate_number: string }[] | null;
+        }
+        data.forEach((raw: RawRow) => loadedRef.current.add(raw.id));
         setTabInfo((prev) => {
           const next = { ...prev };
-          data.forEach((raw: any) => {
+          data.forEach((raw: RawRow) => {
             const v = raw.vehicles;
             const vehicle = Array.isArray(v) ? v[0] : v;
             next[raw.id] = {

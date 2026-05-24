@@ -82,7 +82,7 @@ export default async function ProcurementOrdersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {orders?.map((o: any) => (
+              {orders?.map((o) => (
                 <tr key={o.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <Link href={`/procurement/${o.id}`} className="font-medium text-blue-600 hover:text-blue-700">

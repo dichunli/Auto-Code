@@ -56,7 +56,7 @@ export default async function PayablePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items?.map((r: any) => {
+              {items?.map((r: Record<string, unknown>) => {
                 const s = statusMap[r.status] || { label: r.status, class: "bg-gray-50 text-gray-600" };
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">

@@ -7,9 +7,30 @@ import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
 
 export default function PartBrandsPage() {
+interface PartBrand {
+  id: string;
+  name: string;
+  usage_count?: number | null;
+  part_name_brands?: PartNameBrand[];
+}
+
+interface PartNameBrand {
+  part_names?: {
+    name?: string | null;
+  } | null;
+}
+
+interface PartName {
+  id: string;
+  name: string;
+  part_categories?: {
+    name?: string | null;
+  } | null;
+}
+
   const supabase = createClient();
   const [query, setQuery] = useState("");
-  const [brands, setBrands] = useState<any[]>([]);
+  const [brands, setBrands] = useState<PartBrand[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -17,7 +38,7 @@ export default function PartBrandsPage() {
 
   const [name, setName] = useState("");
   const [pnQuery, setPnQuery] = useState("");
-  const [pnResults, setPnResults] = useState<any[]>([]);
+  const [pnResults, setPnResults] = useState<PartName[]>([]);
   const [pnSearching, setPnSearching] = useState(false);
   const [linkedNames, setLinkedNames] = useState<{ id: string; name: string; category_name?: string }[]>([]);
 
@@ -72,7 +93,7 @@ export default function PartBrandsPage() {
     setShowForm(true);
   }
 
-  function addLinkedName(pn: any) {
+  function addLinkedName(pn: PartName) {
     if (linkedNames.some((n) => n.id === pn.id)) return;
     setLinkedNames((prev) => [
       ...prev,
@@ -134,10 +155,10 @@ export default function PartBrandsPage() {
     setSaving(false);
   }
 
-  function formatLinkedNames(brand: any) {
+  function formatLinkedNames(brand: PartBrand) {
     const list = brand.part_name_brands
-      ?.map((bn: any) => bn.part_names?.name)
-      .filter(Boolean);
+      ?.map((bn: PartNameBrand) => bn.part_names?.name)
+      .filter((name): name is string => Boolean(name));
     if (!list || list.length === 0) return "-";
     return list.join("、");
   }
@@ -175,7 +196,7 @@ export default function PartBrandsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {brands?.map((b: any) => (
+              {brands?.map((b) => (
                 <tr key={b.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{b.name}</td>
                   <td className="px-6 py-4 text-gray-600 max-w-xs truncate">{formatLinkedNames(b)}</td>

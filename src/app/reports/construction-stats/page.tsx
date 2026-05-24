@@ -3,6 +3,43 @@ import { PageHeader } from "@/components/PageHeader";
 import { ConstructionStatsFilter } from "./ConstructionStatsFilter";
 import Link from "next/link";
 
+interface ConstructionStat {
+  id: string;
+  item_name: string;
+  vehicle_brand: string | null;
+  vehicle_series: string | null;
+  vehicle_model_name: string | null;
+  vehicle_displacement: string | null;
+  vehicle_engine: string | null;
+  vehicle_chassis: string | null;
+  vehicle_transmission: string | null;
+  mechanic_name: string;
+  work_order_id: string;
+  construction_seconds: number | null;
+  pause_seconds: number | null;
+  total_seconds: number | null;
+  completed_at: string | null;
+  created_at: string;
+  status: string;
+}
+
+interface GroupedStat {
+  item_name: string;
+  vehicle_brand: string | null;
+  vehicle_series: string | null;
+  vehicle_model_name: string | null;
+  vehicle_displacement: string | null;
+  mechanic_name: string;
+  count: number;
+  total_construction_seconds: number;
+  total_pause_seconds: number;
+  total_total_seconds: number;
+  work_order_ids: string[];
+  avg_construction_seconds: number;
+  avg_pause_seconds: number;
+  avg_total_seconds: number;
+}
+
 function formatDuration(totalSeconds: number) {
   if (!totalSeconds || totalSeconds <= 0) return "-";
   const h = Math.floor(totalSeconds / 3600);
@@ -46,12 +83,12 @@ export default async function ConstructionStatsPage({
     .eq("status", "completed");
 
   const allMechanics = Array.from(
-    new Set((mechanicList || []).map((s: any) => s.mechanic_name).filter(Boolean))
+    new Set((mechanicList || []).map((s: { mechanic_name: string | null }) => s.mechanic_name).filter(Boolean))
   ).sort();
 
   // 按维修项目+车型+施工人分组聚合
-  const groupedMap = new Map<string, any>();
-  for (const s of stats || []) {
+  const groupedMap = new Map<string, GroupedStat>();
+  for (const s of (stats || []) as ConstructionStat[]) {
     const key = [s.item_name, s.vehicle_brand || "", s.vehicle_series || "", s.vehicle_model_name || "", s.mechanic_name].join("|");
     if (!groupedMap.has(key)) {
       groupedMap.set(key, {
@@ -79,12 +116,12 @@ export default async function ConstructionStatsPage({
   const groupedStats = Array.from(groupedMap.values())
     .map((g) => ({
       ...g,
-      work_order_ids: Array.from(g.work_order_ids) as string[],
+      work_order_ids: Array.from(g.work_order_ids),
       avg_construction_seconds: g.count > 0 ? Math.round(g.total_construction_seconds / g.count) : 0,
       avg_pause_seconds: g.count > 0 ? Math.round(g.total_pause_seconds / g.count) : 0,
       avg_total_seconds: g.count > 0 ? Math.round(g.total_total_seconds / g.count) : 0,
     }))
-    .sort((a, b) => b.count - a.count);
+    .sort((a: GroupedStat, b: GroupedStat) => b.count - a.count);
 
   return (
     <div className="space-y-6">
@@ -102,13 +139,13 @@ export default async function ConstructionStatsPage({
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="text-sm text-gray-500">总施工时长</div>
           <div className="text-2xl font-bold text-gray-900 mt-1">
-            {formatDuration(stats?.reduce((sum: number, s: any) => sum + (s.construction_seconds || 0), 0) || 0)}
+            {formatDuration(stats?.reduce((sum: number, s: ConstructionStat) => sum + (s.construction_seconds || 0), 0) || 0)}
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="text-sm text-gray-500">总中断时长</div>
           <div className="text-2xl font-bold text-gray-900 mt-1">
-            {formatDuration(stats?.reduce((sum: number, s: any) => sum + (s.pause_seconds || 0), 0) || 0)}
+            {formatDuration(stats?.reduce((sum: number, s: ConstructionStat) => sum + (s.pause_seconds || 0), 0) || 0)}
           </div>
         </div>
       </div>
@@ -133,7 +170,7 @@ export default async function ConstructionStatsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {groupedStats.map((g: any, idx: number) => (
+              {groupedStats.map((g: GroupedStat, idx: number) => (
                 <tr key={idx} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">{g.item_name}</td>
                   <td className="px-4 py-3 text-gray-600">
@@ -200,7 +237,7 @@ export default async function ConstructionStatsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {stats?.map((s: any) => (
+              {stats?.map((s: ConstructionStat) => (
                 <tr key={s.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">{s.item_name}</td>
                   <td className="px-4 py-3 text-gray-600">

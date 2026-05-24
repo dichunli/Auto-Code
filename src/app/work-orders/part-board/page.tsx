@@ -3,6 +3,56 @@ import { getPartWorkflowStatus, WORKFLOW_STATUS_LABELS, type PartWorkflowStatus 
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 
+interface WorkOrderItemPart {
+  id: string;
+  unit_cost: number | null;
+  unit_price: number | null;
+  customer_opinion: string | null;
+  is_purchased: boolean;
+  is_arrived: boolean;
+  part_id: string | null;
+  quantity: number;
+  name: string | null;
+  alias_name: string | null;
+  part_number: string | null;
+  brand: string | null;
+  work_order_items: {
+    id: string;
+    name: string;
+    work_order_id: string;
+    work_orders: {
+      id: string;
+      order_no: string;
+      vehicles: { plate_number: string } | null;
+    } | null;
+  } | null;
+  part_names: { name: string; unit: string } | null;
+  parts: {
+    name: string;
+    part_brands: { name: string } | null;
+  } | null;
+}
+
+interface PickingRecord {
+  work_order_item_part_id: string;
+  quantity: number;
+}
+
+interface ReturnRecord {
+  work_order_item_part_id: string;
+  quantity: number;
+}
+
+interface SupplierReturnRecord {
+  work_order_item_part_id: string;
+  status: string;
+}
+
+interface PartBatch {
+  part_id: string;
+  quantity: number;
+}
+
 export default async function PartBoardPage({
   searchParams,
 }: {
@@ -23,8 +73,8 @@ export default async function PartBoardPage({
     .order("created_at", { ascending: false })
     .limit(300);
 
-  const partIds = parts?.map((p: any) => p.id) || [];
-  const relatedPartIds = parts?.map((p: any) => p.part_id).filter(Boolean) || [];
+  const partIds = parts?.map((p: WorkOrderItemPart) => p.id) || [];
+  const relatedPartIds = parts?.map((p: WorkOrderItemPart) => p.part_id).filter(Boolean) || [];
 
   const [{ data: pickingRecords }, { data: returnRecords }, { data: supplierReturnRecords }, { data: partBatches }] =
     await Promise.all([
@@ -37,22 +87,22 @@ export default async function PartBoardPage({
     ]);
 
   const inventoryByPart: Record<string, number> = {};
-  partBatches?.forEach((b: any) => {
+  partBatches?.forEach((b: PartBatch) => {
     inventoryByPart[b.part_id] = (inventoryByPart[b.part_id] || 0) + b.quantity;
   });
 
   const pickingByPart: Record<string, number> = {};
-  pickingRecords?.forEach((r: any) => {
+  pickingRecords?.forEach((r: PickingRecord) => {
     pickingByPart[r.work_order_item_part_id] = (pickingByPart[r.work_order_item_part_id] || 0) + r.quantity;
   });
 
   const returnByPart: Record<string, number> = {};
-  returnRecords?.forEach((r: any) => {
+  returnRecords?.forEach((r: ReturnRecord) => {
     returnByPart[r.work_order_item_part_id] = (returnByPart[r.work_order_item_part_id] || 0) + r.quantity;
   });
 
   const pendingSupplierReturnByPart: Record<string, boolean> = {};
-  supplierReturnRecords?.forEach((r: any) => {
+  supplierReturnRecords?.forEach((r: SupplierReturnRecord) => {
     if (r.status === "pending") pendingSupplierReturnByPart[r.work_order_item_part_id] = true;
   });
 
@@ -69,7 +119,7 @@ export default async function PartBoardPage({
     { key: "picked", label: "已领料" },
   ];
 
-  const processedParts = (parts || []).map((p: any) => {
+  const processedParts = (parts || []).map((p: WorkOrderItemPart) => {
     const pPickedQty = pickingByPart[p.id] || 0;
     const pReturnQty = returnByPart[p.id] || 0;
     const pNetPicked = pPickedQty - pReturnQty;
@@ -91,7 +141,7 @@ export default async function PartBoardPage({
     });
 
     return { ...p, status };
-  }).filter((p: any) => !filterStatus || p.status === filterStatus);
+  }).filter((p: { status: string }) => !filterStatus || p.status === filterStatus);
 
   return (
     <div>
@@ -137,7 +187,7 @@ export default async function PartBoardPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {processedParts.map((p: any) => (
+              {processedParts.map((p: WorkOrderItemPart & { status: string }) => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="font-medium text-gray-900">

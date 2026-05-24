@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export type ProcurementTab =
@@ -35,6 +35,41 @@ interface Props {
   currentTab: ProcurementTab;
 }
 
+interface PartRow {
+  id: string;
+  unit_cost: number | null;
+  unit_price: number | null;
+  customer_opinion: string | null;
+  is_purchased: boolean;
+  is_arrived: boolean;
+  part_id: string | null;
+  work_order_items: {
+    work_orders: {
+      settled_at: string | null;
+      order_type: string | null;
+    } | null;
+  } | null;
+  parts: {
+    quantity: number | null;
+  } | null;
+}
+
+interface PurchaseOrderItem {
+  quantity: number | null;
+  handle_action: string | null;
+}
+
+interface PurchaseOrderRow {
+  id: string;
+  status: string;
+  purchase_order_items: PurchaseOrderItem[] | null;
+}
+
+interface ReturnRecordRow {
+  id: string;
+  status: string;
+}
+
 export function ProcurementTabBar({ currentTab }: Props) {
   const supabase = createClient();
   const [counts, setCounts] = useState<Record<ProcurementTab, number>>({
@@ -50,6 +85,107 @@ export function ProcurementTabBar({ currentTab }: Props) {
     inbound_orders: 0,
     return_orders: 0,
   });
+
+  const loadCounts = useCallback(async () => {
+    const { data: parts } = await supabase
+      .from("work_order_item_parts")
+      .select(
+        `
+        id, unit_cost, unit_price, customer_opinion, is_purchased, is_arrived, part_id,
+        work_order_items(
+          work_orders(settled_at, order_type)
+        ),
+        parts(quantity)
+      `
+      )
+      .order("created_at", { ascending: false })
+      .limit(2000);
+
+    const rows = (parts || []) as PartRow[];
+
+    let pendingInquiry = 0;
+    let pendingQuote = 0;
+    let pendingConfirm = 0;
+    let pendingPurchase = 0;
+
+    for (const r of rows) {
+      const wo = r.work_order_items?.work_orders;
+      if (!wo) continue;
+      if (wo.settled_at) continue;
+      if (wo.order_type === "cancelled") continue;
+      if (r.is_purchased || r.is_arrived) continue;
+
+      const cost = Number(r.unit_cost || 0);
+      const price = Number(r.unit_price || 0);
+      const opinion = r.customer_opinion || "pending";
+
+      if (cost <= 0) {
+        pendingInquiry++;
+      } else if (cost > 0 && price <= 0) {
+        pendingQuote++;
+      } else if (cost > 0 && price > 0 && opinion === "pending") {
+        pendingConfirm++;
+      }
+
+      if (cost > 0 && price > 0 && opinion === "agree") {
+        const inventoryQty = Number(r.parts?.quantity || 0);
+        if (!r.part_id || inventoryQty <= 0) {
+          pendingPurchase++;
+        }
+      }
+    }
+
+    const { data: poData } = await supabase
+      .from("purchase_orders")
+      .select("id, status, purchase_order_items(quantity, handle_action)")
+      .in("status", ["submitted", "approved", "partial_received"]);
+
+    const pendingReceipt = (poData as PurchaseOrderRow[] | null || []).filter((o) => {
+      const items = o.purchase_order_items || [];
+      return items.some((it) => !it.handle_action);
+    }).length;
+
+    const { data: storageData } = await supabase
+      .from("purchase_orders")
+      .select("id")
+      .eq("status", "pending_storage");
+
+    const pendingStorage = storageData?.length || 0;
+
+    const { data: completedData } = await supabase
+      .from("purchase_orders")
+      .select("id")
+      .eq("status", "completed");
+
+    const completedStorage = completedData?.length || 0;
+
+    const { data: returnData } = await supabase
+      .from("supplier_return_records")
+      .select("id, status");
+
+    const pendingReturn = (returnData as ReturnRecordRow[] | null || []).filter((r) => r.status === "pending").length;
+    const completedReturn = (returnData as ReturnRecordRow[] | null || []).filter((r) => r.status === "completed").length;
+
+    const { data: inboundData } = await supabase.from("inbound_orders").select("id");
+    const inboundOrdersCount = inboundData?.length || 0;
+
+    const { data: returnOrderData } = await supabase.from("purchase_return_orders").select("id");
+    const returnOrdersCount = returnOrderData?.length || 0;
+
+    setCounts({
+      pending_inquiry: pendingInquiry,
+      pending_quote: pendingQuote,
+      pending_confirm: pendingConfirm,
+      pending_purchase: pendingPurchase,
+      pending_receipt: pendingReceipt,
+      pending_storage: pendingStorage,
+      completed_storage: completedStorage,
+      pending_return: pendingReturn,
+      completed_return: completedReturn,
+      inbound_orders: inboundOrdersCount,
+      return_orders: returnOrdersCount,
+    });
+  }, [supabase]);
 
   useEffect(() => {
     loadCounts();
@@ -95,109 +231,7 @@ export function ProcurementTabBar({ currentTab }: Props) {
       supabase.removeChannel(poChannel);
       supabase.removeChannel(retChannel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase]);
-
-  async function loadCounts() {
-    const { data: parts } = await supabase
-      .from("work_order_item_parts")
-      .select(
-        `
-        id, unit_cost, unit_price, customer_opinion, is_purchased, is_arrived, part_id,
-        work_order_items(
-          work_orders(settled_at, order_type)
-        ),
-        parts(quantity)
-      `
-      )
-      .order("created_at", { ascending: false })
-      .limit(2000);
-
-    const rows = (parts || []) as any[];
-
-    let pendingInquiry = 0;
-    let pendingQuote = 0;
-    let pendingConfirm = 0;
-    let pendingPurchase = 0;
-
-    for (const r of rows) {
-      const wo = r.work_order_items?.work_orders;
-      if (!wo) continue;
-      if (wo.settled_at) continue;
-      if (wo.order_type === "cancelled") continue;
-      if (r.is_purchased || r.is_arrived) continue;
-
-      const cost = Number(r.unit_cost || 0);
-      const price = Number(r.unit_price || 0);
-      const opinion = r.customer_opinion || "pending";
-
-      if (cost <= 0) {
-        pendingInquiry++;
-      } else if (cost > 0 && price <= 0) {
-        pendingQuote++;
-      } else if (cost > 0 && price > 0 && opinion === "pending") {
-        pendingConfirm++;
-      }
-
-      if (cost > 0 && price > 0 && opinion === "agree") {
-        const inventoryQty = Number(r.parts?.quantity || 0);
-        if (!r.part_id || inventoryQty <= 0) {
-          pendingPurchase++;
-        }
-      }
-    }
-
-    const { data: poData } = await supabase
-      .from("purchase_orders")
-      .select("id, status, purchase_order_items(quantity, handle_action)")
-      .in("status", ["submitted", "approved", "partial_received"]);
-
-    const pendingReceipt = (poData || []).filter((o: any) => {
-      const items = o.purchase_order_items || [];
-      return items.some((it: any) => !it.handle_action);
-    }).length;
-
-    const { data: storageData } = await supabase
-      .from("purchase_orders")
-      .select("id")
-      .eq("status", "pending_storage");
-
-    const pendingStorage = storageData?.length || 0;
-
-    const { data: completedData } = await supabase
-      .from("purchase_orders")
-      .select("id")
-      .eq("status", "completed");
-
-    const completedStorage = completedData?.length || 0;
-
-    const { data: returnData } = await supabase
-      .from("supplier_return_records")
-      .select("id, status");
-
-    const pendingReturn = (returnData || []).filter((r: any) => r.status === "pending").length;
-    const completedReturn = (returnData || []).filter((r: any) => r.status === "completed").length;
-
-    const { data: inboundData } = await supabase.from("inbound_orders").select("id");
-    const inboundOrdersCount = inboundData?.length || 0;
-
-    const { data: returnOrderData } = await supabase.from("purchase_return_orders").select("id");
-    const returnOrdersCount = returnOrderData?.length || 0;
-
-    setCounts({
-      pending_inquiry: pendingInquiry,
-      pending_quote: pendingQuote,
-      pending_confirm: pendingConfirm,
-      pending_purchase: pendingPurchase,
-      pending_receipt: pendingReceipt,
-      pending_storage: pendingStorage,
-      completed_storage: completedStorage,
-      pending_return: pendingReturn,
-      completed_return: completedReturn,
-      inbound_orders: inboundOrdersCount,
-      return_orders: returnOrdersCount,
-    });
-  }
+  }, [supabase, loadCounts]);
 
   return (
     <div className="flex flex-wrap gap-1 mb-6 border-b border-gray-200">

@@ -8,8 +8,8 @@ export interface LogActionParams {
   targetTable?: string;
   targetId?: string;
   targetName?: string;
-  oldValues?: Record<string, any>;
-  newValues?: Record<string, any>;
+  oldValues?: Record<string, unknown>;
+  newValues?: Record<string, unknown>;
   description: string;
 }
 

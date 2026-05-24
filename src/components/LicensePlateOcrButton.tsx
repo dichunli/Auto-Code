@@ -25,6 +25,7 @@ export default function LicensePlateOcrButton({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileId = useRef(`lp-pc-${Math.random().toString(36).slice(2)}`).current;
 
   /* 判断是否移动端 */
   const isMobile =
@@ -34,10 +35,8 @@ export default function LicensePlateOcrButton({
   function handleClick() {
     if (isMobile) {
       setOpen(true);
-    } else {
-      /* PC 端直接调文件选择 */
-      fileInputRef.current?.click();
     }
+    /* PC 端由 label 自动触发文件选择 */
   }
 
   /* PC 端文件选择后识别 */
@@ -65,8 +64,8 @@ export default function LicensePlateOcrButton({
 
       const plateNumber = await recognizeLicensePlate(base64);
       onRecognize(plateNumber.toUpperCase());
-    } catch (err: any) {
-      alert("车牌识别失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      alert("车牌识别失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
       if (fileInputRef.current) {
@@ -77,17 +76,17 @@ export default function LicensePlateOcrButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={loading}
+      <label
+        htmlFor={isMobile ? undefined : fileId}
+        onClick={isMobile ? handleClick : undefined}
         className={
-          className ||
-          "px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 whitespace-nowrap shrink-0"
+          (className ||
+            "px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 whitespace-nowrap shrink-0 inline-block cursor-pointer select-none") +
+          (loading ? " opacity-50 pointer-events-none" : "")
         }
       >
         {loading ? loadingText : buttonText}
-      </button>
+      </label>
 
       {/* 移动端相机弹窗 */}
       {isMobile && (
@@ -101,6 +100,7 @@ export default function LicensePlateOcrButton({
       {/* PC 端兜底 file input */}
       {!isMobile && (
         <input
+          id={fileId}
           ref={fileInputRef}
           type="file"
           accept="image/*"

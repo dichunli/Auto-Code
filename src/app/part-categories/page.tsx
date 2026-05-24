@@ -6,10 +6,70 @@ import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
 
+interface 配件分类 {
+  id: string;
+  name: string;
+  auto_link_vehicle_model: boolean;
+  is_consumable: boolean;
+  sales_commission_type: string | null;
+  sales_commission_value: number | null;
+  diagnosis_commission_type: string | null;
+  diagnosis_commission_value: number | null;
+  repair_commission_type: string | null;
+  repair_commission_value: number | null;
+  qc_commission_type: string | null;
+  qc_commission_value: number | null;
+  picking_commission_type: string | null;
+  picking_commission_value: number | null;
+  created_at: string;
+}
+
+function CommissionField({
+  label,
+  typeValue,
+  valueValue,
+  onTypeChange,
+  onValueChange,
+}: {
+  label: string;
+  typeValue: string;
+  valueValue: string;
+  onTypeChange: (v: string) => void;
+  onValueChange: (v: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
+        <select
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={typeValue}
+          onChange={(e) => onTypeChange(e.target.value)}
+        >
+          <option value="">无提成</option>
+          <option value="revenue_pct">按产值(%)</option>
+          <option value="profit_pct">按毛利(%)</option>
+          <option value="fixed">固定金额</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
+        <input
+          type="number"
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={valueValue}
+          onChange={(e) => onValueChange(e.target.value)}
+          disabled={!typeValue}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function PartCategoriesPage() {
   const supabase = createClient();
   const [query, setQuery] = useState("");
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<配件分类[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -121,48 +181,6 @@ export default function PartCategoriesPage() {
     setSaving(false);
   }
 
-  function CommissionField({
-    label,
-    typeValue,
-    valueValue,
-    onTypeChange,
-    onValueChange,
-  }: {
-    label: string;
-    typeValue: string;
-    valueValue: string;
-    onTypeChange: (v: string) => void;
-    onValueChange: (v: string) => void;
-  }) {
-    return (
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
-          <select
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={typeValue}
-            onChange={(e) => onTypeChange(e.target.value)}
-          >
-            <option value="">无提成</option>
-            <option value="revenue_pct">按产值(%)</option>
-            <option value="profit_pct">按毛利(%)</option>
-            <option value="fixed">固定金额</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
-          <input
-            type="number"
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={valueValue}
-            onChange={(e) => onValueChange(e.target.value)}
-            disabled={!typeValue}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <PageHeader
@@ -204,7 +222,7 @@ export default function PartCategoriesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {categories?.map((c: any) => (
+              {categories?.map((c: 配件分类) => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{c.name}</td>
                   <td className="px-6 py-4 text-gray-600">{c.auto_link_vehicle_model ? "是" : "否"}</td>
@@ -280,11 +298,11 @@ export default function PartCategoriesPage() {
             <div className="border-t border-gray-100 pt-4">
               <h3 className="text-base font-semibold text-gray-900 mb-4">提成标准配置</h3>
               <div className="space-y-4">
-                <CommissionField label="销售提成" typeValue={form.sales_type} valueValue={form.sales_value} onTypeChange={(v) => setForm({ ...form, sales_type: v as any, sales_value: v ? form.sales_value : "" })} onValueChange={(v) => setForm({ ...form, sales_value: v })} />
-                <CommissionField label="诊断提成" typeValue={form.diagnosis_type} valueValue={form.diagnosis_value} onTypeChange={(v) => setForm({ ...form, diagnosis_type: v as any, diagnosis_value: v ? form.diagnosis_value : "" })} onValueChange={(v) => setForm({ ...form, diagnosis_value: v })} />
-                <CommissionField label="施工提成" typeValue={form.repair_type} valueValue={form.repair_value} onTypeChange={(v) => setForm({ ...form, repair_type: v as any, repair_value: v ? form.repair_value : "" })} onValueChange={(v) => setForm({ ...form, repair_value: v })} />
-                <CommissionField label="质检提成" typeValue={form.qc_type} valueValue={form.qc_value} onTypeChange={(v) => setForm({ ...form, qc_type: v as any, qc_value: v ? form.qc_value : "" })} onValueChange={(v) => setForm({ ...form, qc_value: v })} />
-                <CommissionField label="领料提成" typeValue={form.picking_type} valueValue={form.picking_value} onTypeChange={(v) => setForm({ ...form, picking_type: v as any, picking_value: v ? form.picking_value : "" })} onValueChange={(v) => setForm({ ...form, picking_value: v })} />
+                <CommissionField label="销售提成" typeValue={form.sales_type} valueValue={form.sales_value} onTypeChange={(v) => setForm({ ...form, sales_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", sales_value: v ? form.sales_value : "" })} onValueChange={(v) => setForm({ ...form, sales_value: v })} />
+                <CommissionField label="诊断提成" typeValue={form.diagnosis_type} valueValue={form.diagnosis_value} onTypeChange={(v) => setForm({ ...form, diagnosis_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", diagnosis_value: v ? form.diagnosis_value : "" })} onValueChange={(v) => setForm({ ...form, diagnosis_value: v })} />
+                <CommissionField label="施工提成" typeValue={form.repair_type} valueValue={form.repair_value} onTypeChange={(v) => setForm({ ...form, repair_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", repair_value: v ? form.repair_value : "" })} onValueChange={(v) => setForm({ ...form, repair_value: v })} />
+                <CommissionField label="质检提成" typeValue={form.qc_type} valueValue={form.qc_value} onTypeChange={(v) => setForm({ ...form, qc_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", qc_value: v ? form.qc_value : "" })} onValueChange={(v) => setForm({ ...form, qc_value: v })} />
+                <CommissionField label="领料提成" typeValue={form.picking_type} valueValue={form.picking_value} onTypeChange={(v) => setForm({ ...form, picking_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", picking_value: v ? form.picking_value : "" })} onValueChange={(v) => setForm({ ...form, picking_value: v })} />
               </div>
             </div>
 

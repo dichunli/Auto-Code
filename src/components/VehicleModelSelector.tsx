@@ -65,10 +65,10 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
   const [vmModalMode, setVmModalMode] = useState<"add" | "edit" | "delete">("add");
   const [vmModalFilterInputs, setVmModalFilterInputs] = useState<Record<string, string>>({});
   const [vmModalFilters, setVmModalFilters] = useState<Record<string, string>>({});
-  const [vmModalList, setVmModalList] = useState<any[]>([]);
+  const [vmModalList, setVmModalList] = useState<LinkedItem[]>([]);
   const [vmModalLoading, setVmModalLoading] = useState(false);
   const [vmModalSelectAllLoading, setVmModalSelectAllLoading] = useState(false);
-  const [vmModalSelected, setVmModalSelected] = useState<Map<string, any>>(new Map());
+  const [vmModalSelected, setVmModalSelected] = useState<Map<string, LinkedItem>>(new Map());
   const [vmModalPage, setVmModalPage] = useState(1);
   const [vmModalTotal, setVmModalTotal] = useState(0);
 
@@ -112,15 +112,37 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
       const to = from + VM_MODAL_PAGE_SIZE - 1;
       const { data, count } = await query.range(from, to);
       if (cancelled) return;
-      const mapped = (data || []).map((v: any) => ({
+      interface VehicleModelRaw {
+        id: number | string;
+        厂商?: string | null;
+        品牌?: string | null;
+        车系?: string | null;
+        车型?: string | null;
+        销售版本?: string | null;
+        年款?: number | null;
+        排量?: string | null;
+        发动机型号?: string | null;
+        燃油类型?: string | null;
+        进气形式?: string | null;
+        变速箱类型?: string | null;
+        变速箱代号?: string | null;
+        底盘代号?: string | null;
+        驱动方式?: string | null;
+        车身类型?: string | null;
+        排放标准?: string | null;
+        前轮胎规格?: string | null;
+        后轮胎规格?: string | null;
+      }
+
+      const mapped: LinkedItem[] = (data || []).map((v: VehicleModelRaw) => ({
         id: String(v.id),
         manufacturer: v.厂商 || "",
         brand: v.品牌 || "",
         series: v.车系 || "",
         model_name: v.车型 || "",
         sales_version: v.销售版本 || "",
-        year_start: v.年款,
-        year_end: v.年款,
+        year_start: v.年款 ?? undefined,
+        year_end: v.年款 ?? undefined,
         displacement: v.排量 || "",
         engine: v.发动机型号 || "",
         fuel_type: v.燃油类型 || "",
@@ -154,7 +176,7 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
     setVmModalFilterInputs({});
     setVmModalFilters({});
     if (mode === "edit") {
-      const preselected = new Map<string, any>();
+      const preselected = new Map<string, LinkedItem>();
       value.forEach((v) => {
         preselected.set(v.id, v);
       });
@@ -166,7 +188,7 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
     setVmModalPage(1);
   }
 
-  function toggleVmModalSelection(v: any) {
+  function toggleVmModalSelection(v: LinkedItem) {
     setVmModalSelected((prev) => {
       const next = new Map(prev);
       if (next.has(v.id)) next.delete(v.id);
@@ -207,15 +229,15 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
     const { data } = await query;
     setVmModalSelectAllLoading(false);
     if (!data) return;
-    const mapped = data.map((v: any) => ({
+    const mapped: LinkedItem[] = data.map((v: VehicleModelRaw) => ({
       id: String(v.id),
       manufacturer: v.厂商 || "",
       brand: v.品牌 || "",
       series: v.车系 || "",
       model_name: v.车型 || "",
       sales_version: v.销售版本 || "",
-      year_start: v.年款,
-      year_end: v.年款,
+      year_start: v.年款 ?? undefined,
+      year_end: v.年款 ?? undefined,
       displacement: v.排量 || "",
       engine: v.发动机型号 || "",
       fuel_type: v.燃油类型 || "",
@@ -261,7 +283,7 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
     const { data } = await query;
     setVmModalSelectAllLoading(false);
     if (!data) return;
-    const idsToRemove = new Set(data.map((v: any) => String(v.id)));
+    const idsToRemove = new Set(data.map((v: { id: number | string }) => String(v.id)));
     setVmModalSelected((prev) => {
       const next = new Map(prev);
       idsToRemove.forEach((id) => next.delete(id));

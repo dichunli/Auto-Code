@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { logLogin } from "@/lib/operationLog";
 
@@ -10,19 +9,36 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const router = useRouter();
   const supabase = createClient();
+
+  /* 检测页面是否从浏览器缓存恢复（bfcache），如果是则强制刷新 */
+  useEffect(() => {
+    function handlePageShow(e: PageTransitionEvent) {
+      if (e.persisted) {
+        window.location.reload();
+      }
+    }
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
+
+  /* 注册PWA service worker */
+  useEffect(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  }, []);
 
   function isPhone(value: string) {
     return /^1[3-9]\d{9}$/.test(value);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(e: React.FormEvent | null) {
+    if (e) e.preventDefault();
     setLoading(true);
     setError("");
 
-    const credentials: any = { password };
+    const credentials: { password: string; email: string } = { password, email: "" };
     if (isPhone(account)) {
       credentials.email = "phone-" + account + "@auto.local";
     } else {
@@ -30,14 +46,12 @@ export default function LoginPage() {
     }
 
     try {
-      console.log("[登录] 开始调用 signInWithPassword...");
       const { data, error } = await Promise.race([
         supabase.auth.signInWithPassword(credentials),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("登录请求超时，请检查网络连接或刷新页面重试")), 10000)
         ),
       ]);
-      console.log("[登录] signInWithPassword 返回", { hasSession: !!data?.session, error: error?.message });
 
       if (error) {
         setError(error.message);
@@ -56,78 +70,105 @@ export default function LoginPage() {
         userId: data.user?.id || "",
         userName: data.user?.email || account,
         description: `用户 ${account} 登录系统`,
-      }).catch(() => {
-        console.log("[登录] 日志记录失败，不影响登录");
-      });
+      }).catch(() => {});
 
-      console.log("[登录] 开始跳转首页...");
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       window.location.href = isMobile ? "/m" : "/";
-      console.log("[登录] window.location.href 已设置", isMobile ? "跳转手机端 /m" : "跳转电脑端 /");
-    } catch (err: any) {
-      console.error("[登录] 异常:", err);
-      setError("登录请求失败: " + (err?.message || "网络错误或浏览器安全策略阻止了请求"));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "网络错误或浏览器安全策略阻止了请求";
+      setError("登录请求失败: " + message);
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md bg-white rounded-xl border border-gray-200 p-6 md:p-8 shadow-sm">
-        <div className="flex items-center justify-center gap-2 mb-6 md:mb-8">
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-lg">修</span>
-          </div>
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">汽修管家</h1>
+    <>
+      {/* 兜底样式：防止某些浏览器缓存旧CSS导致页面无样式 */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        .login-root { min-height:100vh; display:flex; align-items:center; justify-content:center; background:#f9fafb; padding:0 16px; font-family:system-ui,-apple-system,sans-serif; }
+        .login-card { width:100%; max-width:400px; background:#fff; border-radius:12px; border:1px solid #e5e7eb; padding:24px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+        @media (min-width:768px){ .login-card { padding:32px; } }
+        .login-logo { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:24px; }
+        @media (min-width:768px){ .login-logo { margin-bottom:32px; } }
+        .login-logo-box { width:40px; height:40px; background:#2563eb; border-radius:8px; display:flex; align-items:center; justify:center; flex-shrink:0; }
+        .login-logo-text { color:#fff; font-weight:700; font-size:18px; }
+        .login-title { font-size:20px; font-weight:700; color:#111827; }
+        @media (min-width:768px){ .login-title { font-size:24px; } }
+        .login-form { display:flex; flex-direction:column; gap:16px; }
+        .login-label { display:block; font-size:14px; font-weight:500; color:#374151; margin-bottom:4px; }
+        .login-input { width:100%; padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:16px; outline:none; box-sizing:border-box; }
+        .login-input:focus { border-color:#2563eb; box-shadow:0 0 0 2px rgba(37,99,235,0.2); }
+        .login-error { font-size:14px; color:#dc2626; background:#fef2f2; padding:10px 12px; border-radius:8px; }
+        .login-btn { width:100%; padding:12px; font-size:14px; font-weight:500; color:#fff; background:#2563eb; border:none; border-radius:8px; cursor:pointer; }
+        .login-btn:disabled { opacity:0.5; cursor:not-allowed; }
+        .login-hint { margin-top:24px; text-align:center; font-size:12px; color:#9ca3af; }
+        /* 移动端：内容靠上对齐，防止键盘弹出遮挡输入框 */
+        @media (max-width:767px){ .login-root { align-items:flex-start; padding-top:60px; } }
+      `}} />
+      <noscript>
+        <div style={{ padding: "20px", textAlign: "center", color: "#dc2626", background: "#fef2f2", borderRadius: "8px", margin: "20px" }}>
+          <strong>请启用JavaScript</strong><br/>
+          您的浏览器禁用了JavaScript，无法登录。请换用Chrome浏览器或开启JavaScript后刷新。
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              手机号 / 邮箱
-            </label>
-            <input
-              type="text"
-              required
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-              value={account}
-              onChange={(e) => setAccount(e.target.value)}
-              placeholder="请输入手机号或邮箱"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              密码
-            </label>
-            <input
-              type="password"
-              required
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="请输入密码"
-            />
-          </div>
-
-          {error && (
-            <div className="text-sm text-red-600 bg-red-50 px-3 py-2.5 rounded-lg">
-              {error}
+      </noscript>
+      <div className="login-root">
+        <div className="login-card">
+          <div className="login-logo">
+            <div className="login-logo-box">
+              <span className="login-logo-text">修</span>
             </div>
-          )}
+            <h1 className="login-title">汽修管家</h1>
+          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            {loading ? "登录中..." : "登录"}
-          </button>
-        </form>
+          <form onSubmit={handleSubmit} className="login-form">
+            <div>
+              <label className="login-label">
+                手机号 / 邮箱
+              </label>
+              <input
+                type="text"
+                required
+                className="login-input"
+                value={account}
+                onChange={(e) => setAccount(e.target.value)}
+                placeholder="请输入手机号或邮箱"
+              />
+            </div>
+            <div>
+              <label className="login-label">
+                密码
+              </label>
+              <input
+                type="password"
+                required
+                className="login-input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="请输入密码"
+              />
+            </div>
 
-        <div className="mt-6 text-center text-xs text-gray-400">
-          首次使用请在 Supabase 控制台创建用户
+            {error && (
+              <div className="login-error">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => handleSubmit(null)}
+              disabled={loading}
+              className="login-btn"
+            >
+              {loading ? "登录中..." : "登录"}
+            </button>
+          </form>
+
+          <div className="login-hint">
+            首次使用请在 Supabase 控制台创建用户
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

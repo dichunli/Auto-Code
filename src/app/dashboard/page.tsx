@@ -2,6 +2,41 @@ import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import { createServerClient } from "@supabase/ssr";
 import Link from "next/link";
 
+interface WorkOrderStatusRow {
+  status: string;
+}
+
+interface WorkOrderItemPart {
+  id: string;
+  unit_cost: number | null;
+  unit_price: number | null;
+  customer_opinion: string | null;
+  is_purchased: boolean;
+  is_arrived: boolean;
+  part_id: string | null;
+  quantity: number;
+}
+
+interface PartBatch {
+  part_id: string;
+  quantity: number;
+}
+
+interface PickingRecord {
+  work_order_item_part_id: string;
+  quantity: number;
+}
+
+interface ReturnRecord {
+  work_order_item_part_id: string;
+  quantity: number;
+}
+
+interface SupplierReturnRecord {
+  work_order_item_part_id: string;
+  status: string;
+}
+
 // 内存缓存：避免每次请求都查云端数据库
 let dashboardCache: {
   orderCounts: Record<string, number>;
@@ -33,7 +68,7 @@ async function getDashboardStats() {
     .not("status", "in", "(settled,delivered)");
 
   const orderCounts: Record<string, number> = {};
-  orderStatusCounts?.forEach((o: any) => {
+  orderStatusCounts?.forEach((o: WorkOrderStatusRow) => {
     orderCounts[o.status] = (orderCounts[o.status] || 0) + 1;
   });
 
@@ -47,8 +82,8 @@ async function getDashboardStats() {
   const partStatusCounts: Record<string, number> = {};
 
   if (parts && parts.length > 0) {
-    const partIds = parts.map((p: any) => p.id);
-    const relatedPartIds = [...new Set(parts.map((p: any) => p.part_id).filter(Boolean))];
+    const partIds = parts.map((p: WorkOrderItemPart) => p.id);
+    const relatedPartIds = [...new Set(parts.map((p: WorkOrderItemPart) => p.part_id).filter(Boolean))];
 
     const [{ data: pickingRecords }, { data: returnRecords }, { data: supplierReturnRecords }, { data: partBatches }] =
       await Promise.all([
@@ -61,26 +96,26 @@ async function getDashboardStats() {
       ]);
 
     const inventoryByPart: Record<string, number> = {};
-    partBatches?.forEach((b: any) => {
+    partBatches?.forEach((b: PartBatch) => {
       inventoryByPart[b.part_id] = (inventoryByPart[b.part_id] || 0) + b.quantity;
     });
 
     const pickingByPart: Record<string, number> = {};
-    pickingRecords?.forEach((r: any) => {
+    pickingRecords?.forEach((r: PickingRecord) => {
       pickingByPart[r.work_order_item_part_id] = (pickingByPart[r.work_order_item_part_id] || 0) + r.quantity;
     });
 
     const returnByPart: Record<string, number> = {};
-    returnRecords?.forEach((r: any) => {
+    returnRecords?.forEach((r: ReturnRecord) => {
       returnByPart[r.work_order_item_part_id] = (returnByPart[r.work_order_item_part_id] || 0) + r.quantity;
     });
 
     const pendingSupplierReturnByPart: Record<string, boolean> = {};
-    supplierReturnRecords?.forEach((r: any) => {
+    supplierReturnRecords?.forEach((r: SupplierReturnRecord) => {
       if (r.status === "pending") pendingSupplierReturnByPart[r.work_order_item_part_id] = true;
     });
 
-    parts.forEach((p: any) => {
+    parts.forEach((p: WorkOrderItemPart) => {
       const pPickedQty = pickingByPart[p.id] || 0;
       const pReturnQty = returnByPart[p.id] || 0;
       const pNetPicked = pPickedQty - pReturnQty;

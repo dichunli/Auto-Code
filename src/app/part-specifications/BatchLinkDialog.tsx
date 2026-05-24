@@ -10,11 +10,21 @@ interface Props {
   onSuccess: () => void;
 }
 
+interface 配件分类 {
+  id: string;
+  name: string;
+}
+
+interface 配件名称 {
+  id: string;
+  name: string;
+}
+
 export function BatchLinkDialog({ open, selectedSpecIds, onClose, onSuccess }: Props) {
   const supabase = createClient();
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<配件分类[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
-  const [partNames, setPartNames] = useState<any[]>([]);
+  const [partNames, setPartNames] = useState<配件名称[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingParts, setLoadingParts] = useState(false);
   const [linking, setLinking] = useState(false);

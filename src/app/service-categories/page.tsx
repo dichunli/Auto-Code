@@ -1,15 +1,74 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { DeleteButton } from "./DeleteButton";
 
+interface 维修分类 {
+  id: string;
+  name: string;
+  sales_commission_type: string | null;
+  sales_commission_value: number | null;
+  diagnosis_commission_type: string | null;
+  diagnosis_commission_value: number | null;
+  repair_commission_type: string | null;
+  repair_commission_value: number | null;
+  qc_commission_type: string | null;
+  qc_commission_value: number | null;
+  dispatch_commission_type: string | null;
+  dispatch_commission_value: number | null;
+  claim_commission_type: string | null;
+  claim_commission_value: number | null;
+  created_at: string;
+}
+
+function CommissionField({
+  label,
+  typeValue,
+  valueValue,
+  onTypeChange,
+  onValueChange,
+}: {
+  label: string;
+  typeValue: string;
+  valueValue: string;
+  onTypeChange: (v: string) => void;
+  onValueChange: (v: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
+        <select
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={typeValue}
+          onChange={(e) => onTypeChange(e.target.value)}
+        >
+          <option value="">无提成</option>
+          <option value="revenue_pct">按产值(%)</option>
+          <option value="profit_pct">按毛利(%)</option>
+          <option value="fixed">固定金额</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
+        <input
+          type="number"
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={valueValue}
+          onChange={(e) => onValueChange(e.target.value)}
+          disabled={!typeValue}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function ServiceCategoriesPage() {
   const supabase = createClient();
-  const [categories, setCategories] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<维修分类[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -29,18 +88,17 @@ export default function ServiceCategoriesPage() {
     claim_value: "",
   });
 
-  async function load() {
+  const load = useCallback(async () => {
     const { data } = await supabase
       .from("service_categories")
       .select("*")
       .order("created_at", { ascending: false });
     setCategories(data || []);
-    setLoading(false);
-  }
+  }, [supabase]);
 
   useEffect(() => {
     load();
-  }, [supabase]);
+  }, [load, supabase]);
 
   function formatCommission(type: string | null, value: number | null) {
     if (!type || value == null) return "-";
@@ -110,48 +168,6 @@ export default function ServiceCategoriesPage() {
     await load();
   }
 
-  function CommissionField({
-    label,
-    typeValue,
-    valueValue,
-    onTypeChange,
-    onValueChange,
-  }: {
-    label: string;
-    typeValue: string;
-    valueValue: string;
-    onTypeChange: (v: string) => void;
-    onValueChange: (v: string) => void;
-  }) {
-    return (
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
-          <select
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={typeValue}
-            onChange={(e) => onTypeChange(e.target.value)}
-          >
-            <option value="">无提成</option>
-            <option value="revenue_pct">按产值(%)</option>
-            <option value="profit_pct">按毛利(%)</option>
-            <option value="fixed">固定金额</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
-          <input
-            type="number"
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={valueValue}
-            onChange={(e) => onValueChange(e.target.value)}
-            disabled={!typeValue}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <PageHeader
@@ -188,42 +204,42 @@ export default function ServiceCategoriesPage() {
                   label="销售提成"
                   typeValue={form.sales_type}
                   valueValue={form.sales_value}
-                  onTypeChange={(v) => setForm({ ...form, sales_type: v as any })}
+                  onTypeChange={(v) => setForm({ ...form, sales_type: v as "" | "revenue_pct" | "profit_pct" | "fixed" })}
                   onValueChange={(v) => setForm({ ...form, sales_value: v })}
                 />
                 <CommissionField
                   label="诊断提成"
                   typeValue={form.diagnosis_type}
                   valueValue={form.diagnosis_value}
-                  onTypeChange={(v) => setForm({ ...form, diagnosis_type: v as any })}
+                  onTypeChange={(v) => setForm({ ...form, diagnosis_type: v as "" | "revenue_pct" | "profit_pct" | "fixed" })}
                   onValueChange={(v) => setForm({ ...form, diagnosis_value: v })}
                 />
                 <CommissionField
                   label="施工提成"
                   typeValue={form.repair_type}
                   valueValue={form.repair_value}
-                  onTypeChange={(v) => setForm({ ...form, repair_type: v as any })}
+                  onTypeChange={(v) => setForm({ ...form, repair_type: v as "" | "revenue_pct" | "profit_pct" | "fixed" })}
                   onValueChange={(v) => setForm({ ...form, repair_value: v })}
                 />
                 <CommissionField
                   label="质检提成"
                   typeValue={form.qc_type}
                   valueValue={form.qc_value}
-                  onTypeChange={(v) => setForm({ ...form, qc_type: v as any })}
+                  onTypeChange={(v) => setForm({ ...form, qc_type: v as "" | "revenue_pct" | "profit_pct" | "fixed" })}
                   onValueChange={(v) => setForm({ ...form, qc_value: v })}
                 />
                 <CommissionField
                   label="派单提成"
                   typeValue={form.dispatch_type}
                   valueValue={form.dispatch_value}
-                  onTypeChange={(v) => setForm({ ...form, dispatch_type: v as any })}
+                  onTypeChange={(v) => setForm({ ...form, dispatch_type: v as "" | "revenue_pct" | "profit_pct" | "fixed" })}
                   onValueChange={(v) => setForm({ ...form, dispatch_value: v })}
                 />
                 <CommissionField
                   label="领单提成"
                   typeValue={form.claim_type}
                   valueValue={form.claim_value}
-                  onTypeChange={(v) => setForm({ ...form, claim_type: v as any })}
+                  onTypeChange={(v) => setForm({ ...form, claim_type: v as "" | "revenue_pct" | "profit_pct" | "fixed" })}
                   onValueChange={(v) => setForm({ ...form, claim_value: v })}
                 />
               </div>
@@ -265,7 +281,7 @@ export default function ServiceCategoriesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {categories?.map((c: any) => (
+              {categories?.map((c: 维修分类) => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{c.name}</td>
                   <td className="px-6 py-4 text-gray-600">

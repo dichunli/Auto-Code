@@ -47,29 +47,48 @@ const STAGE_COLORS: Record<string, string> = {
   settled: "bg-emerald-100 text-emerald-700",
 };
 
+interface WorkOrderItem {
+  id: string;
+  status?: string | null;
+  mechanic_id?: string | null;
+  item_type?: string | null;
+}
+
+interface RawWorkOrder {
+  id: string;
+  order_no: string;
+  status: string;
+  order_type?: string | null;
+  total_cost?: number | null;
+  created_at: string;
+  vehicles?: { plate_number: string; brand: string; model: string; vin: string } | { plate_number: string; brand: string; model: string; vin: string }[] | null;
+  customers?: { name: string; phone: string; company: string } | { name: string; phone: string; company: string }[] | null;
+  work_order_items?: WorkOrderItem[] | null;
+}
+
 // 综合 work_orders.status + work_order_items 计算该工单的"代表看板阶段"
-function computeBoardStage(raw: any): string {
+function computeBoardStage(raw: RawWorkOrder): string {
   const orderStatus = raw.status;
   if (SETTLED_STATUSES.includes(orderStatus)) return "settled";
   if (orderStatus === "pending_quality_check") return "pending_qc";
 
-  const labors = (raw.work_order_items || []).filter((it: any) => it.item_type === "labor");
+  const labors = (raw.work_order_items || []).filter((it: WorkOrderItem) => it.item_type === "labor");
   if (labors.length === 0) return "pending_diagnosis";
 
   // 优先级（高→低）：已中断 → 施工中 → 已完工 → 待派工 → 待施工
-  if (labors.some((it: any) => it.status === "paused")) return "paused";
-  if (labors.some((it: any) => it.status === "in_progress")) return "in_progress";
-  if (labors.every((it: any) => it.status === "completed")) return "completed";
+  if (labors.some((it: WorkOrderItem) => it.status === "paused")) return "paused";
+  if (labors.some((it: WorkOrderItem) => it.status === "in_progress")) return "in_progress";
+  if (labors.every((it: WorkOrderItem) => it.status === "completed")) return "completed";
 
   const hasUnassigned = labors.some(
-    (it: any) => (it.status === "pending" || !it.status) && !it.mechanic_id
+    (it: WorkOrderItem) => (it.status === "pending" || !it.status) && !it.mechanic_id
   );
   if (hasUnassigned) return "pending_dispatch";
 
   return "pending_construction";
 }
 
-function normalizeOrder(raw: any): Order {
+function normalizeOrder(raw: RawWorkOrder): Order {
   const v = raw.vehicles;
   const c = raw.customers;
   return {
@@ -85,7 +104,6 @@ function normalizeOrder(raw: any): Order {
   };
 }
 
-const ACTIVE_STATUSES = ["received", "pending_diagnosis", "pending_repair", "repairing", "pending_quality_check", "pending_close", "pending_settlement"];
 const HISTORY_STATUSES = ["settled", "delivered"];
 
 const statusFilters = [
@@ -379,7 +397,7 @@ export default function WorkOrdersContent() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {orders?.map((order: any) => (
+              {orders?.map((order: Order) => (
                 <tr key={order.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">
                     <button

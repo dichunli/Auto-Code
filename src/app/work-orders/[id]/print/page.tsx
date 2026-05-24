@@ -13,6 +13,197 @@ const DOC_TITLES: Record<string, string> = {
   reimbursement: "报销单",
 };
 
+/* ============================================================
+   类型定义
+   ============================================================ */
+interface VehicleModel {
+  id: string;
+  brand: string;
+  series: string;
+  model_name: string | null;
+}
+
+interface Vehicle {
+  id: string;
+  plate_number: string;
+  brand: string | null;
+  model: string | null;
+  vin: string | null;
+  vehicle_model_id: string | null;
+  vehicle_models: VehicleModel | null;
+}
+
+interface Customer {
+  id: string;
+  name: string;
+  phone: string | null;
+}
+
+interface Profile {
+  id: string;
+  full_name: string | null;
+}
+
+interface WorkOrder {
+  id: string;
+  order_no: string;
+  vehicle_id: string;
+  customer_id: string;
+  receptionist_id: string | null;
+  mileage_in: number | null;
+  fuel_level: number | null;
+  customer_complaint: string | null;
+  inspection_notes: string | null;
+  parts_cost: number | null;
+  labor_cost: number | null;
+  other_cost: number | null;
+  total_cost: number;
+  discount_amount: number | null;
+  status: string;
+  received_at: string | null;
+  settled_at: string | null;
+  vehicles: Vehicle | null;
+  customers: Customer | null;
+  profiles: Profile | null;
+}
+
+interface WorkOrderInspectionMedia {
+  id: string;
+  inspection_id: string;
+  media_type: string;
+  storage_path: string;
+}
+
+interface WorkOrderInspection {
+  id: string;
+  work_order_id: string;
+  inspection_type: string;
+  notes: string | null;
+  created_at: string;
+  work_order_inspection_media: WorkOrderInspectionMedia[];
+}
+
+interface WorkOrderRequirement {
+  id: string;
+  work_order_id: string;
+  seq: number | null;
+  description: string;
+  diagnosis: string | null;
+  assigned_to_profile: Profile | null;
+}
+
+interface WorkOrderItem {
+  id: string;
+  work_order_id: string;
+  name: string;
+  alias_name: string | null;
+  item_type: string;
+  quantity: number | null;
+  unit_price: number;
+  total_price: number;
+  profiles: Profile | null;
+}
+
+interface PartBrand {
+  name: string | null;
+}
+
+interface PartName {
+  name: string | null;
+  unit: string | null;
+}
+
+interface Part {
+  id: string;
+  name: string | null;
+  part_number: string | null;
+  barcode: string | null;
+  unit: string | null;
+  part_brands: PartBrand | null;
+}
+
+interface WorkOrderItemPart {
+  id: string;
+  work_order_id: string;
+  work_order_item_id: string;
+  part_id: string | null;
+  name: string | null;
+  alias_name: string | null;
+  part_number: string | null;
+  quantity: number;
+  brand: string | null;
+  unit: string | null;
+  status: string;
+  parts: Part | null;
+  part_names: PartName | null;
+}
+
+interface PartPickingRecord {
+  id: string;
+  work_order_item_part_id: string;
+  quantity: number;
+  created_at: string;
+  profiles: Profile | null;
+}
+
+interface PartReturnRecord {
+  id: string;
+  work_order_item_part_id: string;
+  quantity: number;
+  reason: string | null;
+  created_at: string;
+  part_picking_records: {
+    profiles: Profile | null;
+  } | null;
+  work_order_item_parts: WorkOrderItemPart | null;
+}
+
+interface Payment {
+  id: string;
+  method: string;
+  amount: number;
+  paid_at: string | null;
+}
+
+interface MemberTransaction {
+  id: string;
+  amount: number;
+  members: {
+    card_no: string | null;
+    name: string | null;
+  } | null;
+}
+
+interface AdvancePaymentRecord {
+  id: string;
+  amount: number;
+  refunded_amount: number | null;
+  refund_method: string | null;
+  method: string;
+  paid_at: string | null;
+  profiles: Profile | null;
+}
+
+interface WorkOrderReimbursementItem {
+  id: string;
+  reimbursement_id: string;
+  name: string;
+  spec: string | null;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  sort_order: number | null;
+}
+
+interface WorkOrderReimbursement {
+  id: string;
+  work_order_id: string;
+  title: string | null;
+  company_name: string | null;
+  notes: string | null;
+  work_order_reimbursement_items: WorkOrderReimbursementItem[];
+}
+
 export default async function PrintPage({
   params,
   searchParams,
@@ -32,6 +223,7 @@ export default async function PrintPage({
 
   if (!order) notFound();
 
+  const typedOrder = order as unknown as WorkOrder;
   const title = DOC_TITLES[type] || "工单打印";
 
   return (
@@ -40,7 +232,7 @@ export default async function PrintPage({
       <div className="no-print flex items-center justify-between p-4 border-b border-gray-200 mb-6">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-bold text-gray-900">{title}</h1>
-          <span className="text-sm text-gray-500">{order.order_no}</span>
+          <span className="text-sm text-gray-500">{typedOrder.order_no}</span>
         </div>
         <div className="flex gap-2">
           <Link
@@ -66,12 +258,12 @@ export default async function PrintPage({
 
       {/* 单据内容 */}
       <div className="p-8 print:p-0">
-        {type === "reception" && <ReceptionDoc order={order} />}
-        {type === "dispatch" && <DispatchDoc order={order} />}
-        {type === "picking" && <PickingDoc order={order} />}
-        {type === "return" && <ReturnDoc order={order} />}
-        {type === "settlement" && <SettlementDoc order={order} />}
-        {type === "reimbursement" && <ReimbursementDoc order={order} />}
+        {type === "reception" && <ReceptionDoc order={typedOrder} />}
+        {type === "dispatch" && <DispatchDoc order={typedOrder} />}
+        {type === "picking" && <PickingDoc order={typedOrder} />}
+        {type === "return" && <ReturnDoc order={typedOrder} />}
+        {type === "settlement" && <SettlementDoc order={typedOrder} />}
+        {type === "reimbursement" && <ReimbursementDoc order={typedOrder} />}
       </div>
     </div>
   );
@@ -80,7 +272,7 @@ export default async function PrintPage({
 /* ============================================================
    接车单
    ============================================================ */
-async function ReceptionDoc({ order }: { order: any }) {
+async function ReceptionDoc({ order }: { order: WorkOrder }) {
   const supabase = await createClient();
 
   const { data: inspections } = await supabase
@@ -90,7 +282,8 @@ async function ReceptionDoc({ order }: { order: any }) {
     .eq("inspection_type", "reception")
     .order("created_at", { ascending: false });
 
-  const inspection = inspections?.[0];
+  const typedInspections = (inspections || []) as unknown as WorkOrderInspection[];
+  const inspection = typedInspections[0];
 
   return (
     <div className="space-y-6">
@@ -146,7 +339,7 @@ async function ReceptionDoc({ order }: { order: any }) {
 /* ============================================================
    派工单
    ============================================================ */
-async function DispatchDoc({ order }: { order: any }) {
+async function DispatchDoc({ order }: { order: WorkOrder }) {
   const supabase = await createClient();
 
   const { data: requirements } = await supabase
@@ -160,6 +353,9 @@ async function DispatchDoc({ order }: { order: any }) {
     .select("*, profiles!work_order_items_mechanic_id_fkey(full_name)")
     .eq("work_order_id", order.id)
     .order("created_at", { ascending: true });
+
+  const typedRequirements = (requirements || []) as unknown as WorkOrderRequirement[];
+  const typedItems = (items || []) as unknown as WorkOrderItem[];
 
   return (
     <div className="space-y-6">
@@ -191,7 +387,7 @@ async function DispatchDoc({ order }: { order: any }) {
             </tr>
           </thead>
           <tbody>
-            {requirements?.map((req: any) => (
+            {typedRequirements.map((req) => (
               <tr key={req.id} className="border-b border-gray-200">
                 <td className="py-2 px-2">{req.seq}</td>
                 <td className="py-2 px-2">{req.description}</td>
@@ -199,7 +395,7 @@ async function DispatchDoc({ order }: { order: any }) {
                 <td className="py-2 px-2">{req.assigned_to_profile?.full_name || "-"}</td>
               </tr>
             ))}
-            {(!requirements || requirements.length === 0) && (
+            {typedRequirements.length === 0 && (
               <tr><td colSpan={4} className="py-4 text-center text-gray-400">暂无需求记录</td></tr>
             )}
           </tbody>
@@ -220,7 +416,7 @@ async function DispatchDoc({ order }: { order: any }) {
             </tr>
           </thead>
           <tbody>
-            {items?.map((item: any) => (
+            {typedItems.map((item) => (
               <tr key={item.id} className="border-b border-gray-200">
                 <td className="py-2 px-2">{item.alias_name || item.name}</td>
                 <td className="py-2 px-2">{item.item_type === "labor" ? "工时" : item.item_type === "part" ? "配件" : "其他"}</td>
@@ -230,7 +426,7 @@ async function DispatchDoc({ order }: { order: any }) {
                 <td className="py-2 px-2">{item.profiles?.full_name || "-"}</td>
               </tr>
             ))}
-            {(!items || items.length === 0) && (
+            {typedItems.length === 0 && (
               <tr><td colSpan={6} className="py-4 text-center text-gray-400">暂无维修项目</td></tr>
             )}
           </tbody>
@@ -251,7 +447,7 @@ async function DispatchDoc({ order }: { order: any }) {
 /* ============================================================
    领料单
    ============================================================ */
-async function PickingDoc({ order }: { order: any }) {
+async function PickingDoc({ order }: { order: WorkOrder }) {
   const supabase = await createClient();
 
   const { data: itemParts } = await supabase
@@ -260,7 +456,8 @@ async function PickingDoc({ order }: { order: any }) {
     .eq("work_order_id", order.id)
     .eq("status", "out");
 
-  const partIds = itemParts?.map((p: any) => p.id) || [];
+  const typedItemParts = (itemParts || []) as unknown as WorkOrderItemPart[];
+  const partIds = typedItemParts.map((p) => p.id);
 
   const { data: pickingRecords } = partIds.length > 0
     ? await supabase
@@ -270,8 +467,10 @@ async function PickingDoc({ order }: { order: any }) {
         .order("created_at", { ascending: true })
     : { data: [] };
 
-  const pickingByPart: Record<string, any[]> = {};
-  pickingRecords?.forEach((r: any) => {
+  const typedPickingRecords = (pickingRecords || []) as unknown as PartPickingRecord[];
+
+  const pickingByPart: Record<string, PartPickingRecord[]> = {};
+  typedPickingRecords.forEach((r) => {
     if (!pickingByPart[r.work_order_item_part_id]) pickingByPart[r.work_order_item_part_id] = [];
     pickingByPart[r.work_order_item_part_id].push(r);
   });
@@ -304,7 +503,7 @@ async function PickingDoc({ order }: { order: any }) {
             </tr>
           </thead>
           <tbody>
-            {itemParts?.flatMap((p: any, idx: number) => {
+            {typedItemParts.flatMap((p, idx) => {
               const pickings = pickingByPart[p.id] || [];
               if (pickings.length === 0) {
                 return [
@@ -319,7 +518,7 @@ async function PickingDoc({ order }: { order: any }) {
                   </tr>
                 ];
               }
-              return pickings.map((pk: any, pIdx: number) => (
+              return pickings.map((pk, pIdx) => (
                 <tr key={`${p.id}-${pk.id}`} className="border-b border-gray-200">
                   <td className="py-2 px-2">{idx + 1}{pIdx > 0 ? "-" + (pIdx + 1) : ""}</td>
                   <td className="py-2 px-2">{p.alias_name || p.parts?.name || p.name || p.part_names?.name || "-"}</td>
@@ -331,7 +530,7 @@ async function PickingDoc({ order }: { order: any }) {
                 </tr>
               ));
             })}
-            {(!itemParts || itemParts.length === 0) && (
+            {typedItemParts.length === 0 && (
               <tr><td colSpan={7} className="py-4 text-center text-gray-400">暂无领料记录</td></tr>
             )}
           </tbody>
@@ -339,11 +538,11 @@ async function PickingDoc({ order }: { order: any }) {
       </div>
 
       {/* 配件条码 */}
-      {itemParts && itemParts.length > 0 && (
+      {typedItemParts.length > 0 && (
         <div className="border-t border-gray-300 pt-4">
           <h3 className="font-bold text-sm mb-3">配件条码</h3>
           <div className="grid grid-cols-2 gap-4">
-            {itemParts.map((p: any, idx: number) => {
+            {typedItemParts.map((p, idx) => {
               const code = p.parts?.barcode || p.parts?.part_number || "";
               return (
                 <div key={p.id} className="border border-gray-200 rounded p-3 text-center">
@@ -377,7 +576,7 @@ async function PickingDoc({ order }: { order: any }) {
 /* ============================================================
    退料单
    ============================================================ */
-async function ReturnDoc({ order }: { order: any }) {
+async function ReturnDoc({ order }: { order: WorkOrder }) {
   const supabase = await createClient();
 
   const { data: returnRecords } = await supabase
@@ -385,6 +584,8 @@ async function ReturnDoc({ order }: { order: any }) {
     .select("*, part_picking_records(work_order_item_part_id, profiles(full_name)), work_order_item_parts(name, part_names(name, unit), parts(*, part_brands(name)))")
     .eq("work_order_item_parts.work_order_id", order.id)
     .order("created_at", { ascending: true });
+
+  const typedReturnRecords = (returnRecords || []) as unknown as PartReturnRecord[];
 
   return (
     <div className="space-y-6">
@@ -415,7 +616,7 @@ async function ReturnDoc({ order }: { order: any }) {
             </tr>
           </thead>
           <tbody>
-            {returnRecords?.map((r: any, idx: number) => {
+            {typedReturnRecords.map((r, idx) => {
               const p = r.work_order_item_parts;
               return (
                 <tr key={r.id} className="border-b border-gray-200">
@@ -430,7 +631,7 @@ async function ReturnDoc({ order }: { order: any }) {
                 </tr>
               );
             })}
-            {(!returnRecords || returnRecords.length === 0) && (
+            {typedReturnRecords.length === 0 && (
               <tr><td colSpan={8} className="py-4 text-center text-gray-400">暂无退料记录</td></tr>
             )}
           </tbody>
@@ -438,11 +639,11 @@ async function ReturnDoc({ order }: { order: any }) {
       </div>
 
       {/* 配件条码 */}
-      {returnRecords && returnRecords.length > 0 && (
+      {typedReturnRecords.length > 0 && (
         <div className="border-t border-gray-300 pt-4">
           <h3 className="font-bold text-sm mb-3">配件条码</h3>
           <div className="grid grid-cols-2 gap-4">
-            {returnRecords.map((r: any, idx: number) => {
+            {typedReturnRecords.map((r, idx) => {
               const p = r.work_order_item_parts;
               const code = p?.parts?.barcode || p?.parts?.part_number || "";
               return (
@@ -477,7 +678,7 @@ async function ReturnDoc({ order }: { order: any }) {
 /* ============================================================
    结算单
    ============================================================ */
-async function SettlementDoc({ order }: { order: any }) {
+async function SettlementDoc({ order }: { order: WorkOrder }) {
   const supabase = await createClient();
 
   const { data: items } = await supabase
@@ -504,16 +705,21 @@ async function SettlementDoc({ order }: { order: any }) {
     .eq("work_order_id", order.id)
     .order("paid_at", { ascending: true });
 
+  const typedItems = (items || []) as unknown as WorkOrderItem[];
+  const typedPayments = (payments || []) as unknown as Payment[];
+  const typedMemberTxs = (memberTxs || []) as unknown as MemberTransaction[];
+  const typedAdvancePaymentRecords = (advancePaymentRecords || []) as unknown as AdvancePaymentRecord[];
+
   const methodLabels: Record<string, string> = {
     cash: "现金", wechat: "微信支付", alipay: "支付宝",
     credit: "挂账", member: "会员/储值卡", bank_transfer: "银行转账",
   };
 
-  const advancePaymentTotal = (advancePaymentRecords || []).reduce(
+  const advancePaymentTotal = typedAdvancePaymentRecords.reduce(
     (sum, r) => sum + (r.amount || 0) - (r.refunded_amount || 0),
     0
   );
-  const totalPaid = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+  const totalPaid = typedPayments.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
 
   return (
     <div className="space-y-6">
@@ -547,7 +753,7 @@ async function SettlementDoc({ order }: { order: any }) {
             </tr>
           </thead>
           <tbody>
-            {items?.map((item: any, idx: number) => (
+            {typedItems.map((item, idx) => (
               <tr key={idx} className="border-b border-gray-200">
                 <td className="py-2 px-2">{idx + 1}</td>
                 <td className="py-2 px-2">{item.alias_name || item.name}</td>
@@ -576,11 +782,11 @@ async function SettlementDoc({ order }: { order: any }) {
         </div>
       </div>
 
-      {advancePaymentRecords && advancePaymentRecords.length > 0 && (
+      {typedAdvancePaymentRecords.length > 0 && (
         <div className="border-t border-gray-300 pt-4">
           <h3 className="font-bold text-sm mb-2">预收款记录</h3>
           <div className="space-y-1 text-sm">
-            {advancePaymentRecords.map((r: any, idx: number) => {
+            {typedAdvancePaymentRecords.map((r, idx) => {
               const net = (r.amount || 0) - (r.refunded_amount || 0);
               return (
                 <div key={idx}>
@@ -593,7 +799,7 @@ async function SettlementDoc({ order }: { order: any }) {
                   </div>
                   {(r.refunded_amount || 0) > 0 && (
                     <div className="flex justify-between text-xs text-gray-400 pl-2">
-                      <span>已退款 · {methodLabels[r.refund_method] || r.refund_method || "未知方式"}</span>
+                      <span>已退款 · {methodLabels[r.refund_method || ""] || r.refund_method || "未知方式"}</span>
                       <span className="text-orange-500">-{formatCurrency(r.refunded_amount)}</span>
                     </div>
                   )}
@@ -607,18 +813,18 @@ async function SettlementDoc({ order }: { order: any }) {
         </div>
       )}
 
-      {payments && payments.length > 0 && (
+      {typedPayments.length > 0 && (
         <div className="border-t border-gray-300 pt-4">
           <h3 className="font-bold text-sm mb-2">支付记录</h3>
           <div className="space-y-1 text-sm">
-            {payments.map((p: any, idx: number) => {
-              const memberTx = p.method === "member" ? memberTxs?.find((mt: any) => Math.abs(mt.amount - p.amount) < 0.01) : null;
+            {typedPayments.map((p, idx) => {
+              const memberTx = p.method === "member" ? typedMemberTxs.find((mt) => Math.abs(mt.amount - p.amount) < 0.01) : null;
               return (
                 <div key={idx} className="flex justify-between">
                   <span className="text-gray-500">
                     {methodLabels[p.method] || p.method}
                     {memberTx && (
-                      <span className="text-gray-400 ml-1">({memberTx.members?.[0]?.card_no} {memberTx.members?.[0]?.name})</span>
+                      <span className="text-gray-400 ml-1">({memberTx.members?.card_no} {memberTx.members?.name})</span>
                     )}
                   </span>
                   <span>{formatCurrency(p.amount)}</span>
@@ -658,7 +864,7 @@ async function SettlementDoc({ order }: { order: any }) {
 /* ============================================================
    报销单
    ============================================================ */
-async function ReimbursementDoc({ order }: { order: any }) {
+async function ReimbursementDoc({ order }: { order: WorkOrder }) {
   const supabase = await createClient();
 
   const { data: reimbursement } = await supabase
@@ -667,22 +873,24 @@ async function ReimbursementDoc({ order }: { order: any }) {
     .eq("work_order_id", order.id)
     .single();
 
-  const items = (reimbursement?.work_order_reimbursement_items || [])
-    .sort((a: any, b: any) => a.sort_order - b.sort_order);
+  const typedReimbursement = reimbursement as unknown as WorkOrderReimbursement | null;
 
-  const total = items.reduce((sum: number, it: any) => sum + (Number(it.total_price) || 0), 0);
+  const items = (typedReimbursement?.work_order_reimbursement_items || [])
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+  const total = items.reduce((sum, it) => sum + (Number(it.total_price) || 0), 0);
 
   return (
     <div className="space-y-6">
       <div className="text-center border-b-2 border-gray-900 pb-4">
-        <h2 className="text-2xl font-bold tracking-widest">{reimbursement?.title || "报销单"}</h2>
+        <h2 className="text-2xl font-bold tracking-widest">{typedReimbursement?.title || "报销单"}</h2>
         <div className="mt-2 flex flex-col items-center">
           <Barcode value={order.order_no} height={40} fontSize={12} />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-        <div><span className="text-gray-500">报销单位：</span>{reimbursement?.company_name || "-"}</div>
+        <div><span className="text-gray-500">报销单位：</span>{typedReimbursement?.company_name || "-"}</div>
         <div><span className="text-gray-500">车牌号码：</span>{order.vehicles?.plate_number || "-"}</div>
         <div><span className="text-gray-500">客户姓名：</span>{order.customers?.name || "-"}</div>
         <div><span className="text-gray-500">联系电话：</span>{order.customers?.phone || "-"}</div>
@@ -703,7 +911,7 @@ async function ReimbursementDoc({ order }: { order: any }) {
             </tr>
           </thead>
           <tbody>
-            {items.map((it: any, idx: number) => (
+            {items.map((it, idx) => (
               <tr key={it.id} className="border-b border-gray-200">
                 <td className="py-2 px-2">{idx + 1}</td>
                 <td className="py-2 px-2">{it.name}</td>
@@ -726,10 +934,10 @@ async function ReimbursementDoc({ order }: { order: any }) {
         </table>
       </div>
 
-      {reimbursement?.notes && (
+      {typedReimbursement?.notes && (
         <div className="border-t border-gray-300 pt-4">
           <h3 className="font-bold text-sm mb-2">备注</h3>
-          <div className="text-sm border border-gray-300 rounded p-3">{reimbursement.notes}</div>
+          <div className="text-sm border border-gray-300 rounded p-3">{typedReimbursement.notes}</div>
         </div>
       )}
 

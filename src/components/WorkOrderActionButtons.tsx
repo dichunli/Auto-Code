@@ -63,7 +63,7 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
     }
 
     setLoading(true);
-    const updates: Record<string, any> = {};
+    const updates: Record<string, unknown> = {};
 
     switch (type) {
       case "normal":

@@ -71,6 +71,73 @@ export function PendingReturnList() {
     shippingFeePayer: string;
     shippingFee: string;
   }
+
+  interface RecordDetail {
+    id: string;
+    work_order_item_part_id: string | null;
+    quantity: number;
+    return_reason: string;
+    poi: PurchaseOrderItem | null;
+  }
+
+  interface PurchaseOrderItem {
+    id: string;
+    order_id: string;
+    handle_action: string | null;
+  }
+
+  interface InboundOrder {
+    id: string;
+    purchase_order_id: string;
+    inbound_no: string;
+  }
+
+  interface InboundOrderItem {
+    part_id: string | null;
+    quantity: number | null;
+    warehouse_id: string | null;
+    location: string | null;
+  }
+
+  interface PartQuantity {
+    quantity: number | null;
+  }
+
+  interface StockLocation {
+    id: string;
+    quantity: number;
+  }
+
+  interface FreshPurchaseItem {
+    handle_action: string | null;
+  }
+
+  interface PartBrandInfo {
+    name: string;
+  }
+
+  interface PartInfo {
+    part_number: string | null;
+    name: string | null;
+    unit: string | null;
+    brand_id: string | null;
+    part_brands: PartBrandInfo | PartBrandInfo[] | null;
+    specification_text: string | null;
+    purchase_price: number | null;
+    notes: string | null;
+  }
+
+  interface InlinePart {
+    id: string;
+    part_number: string | null;
+    barcode: string | null;
+    name: string | null;
+    unit: string | null;
+    part_names: { name: string } | null;
+    part_brands: { name: string } | null;
+    part_specifications: { name: string } | null;
+    purchase_price: number | null;
+  }
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [returnModalGroups, setReturnModalGroups] = useState<ReturnModalGroup[]>([]);
 
@@ -123,7 +190,7 @@ export function PendingReturnList() {
       const ids = Array.from(selectedIds);
 
       /* 1. 收集所有退货记录及关联的采购明细 */
-      const recordDetails: any[] = [];
+      const recordDetails: RecordDetail[] = [];
       const orderIdSet = new Set<string>();
 
       for (const id of ids) {
@@ -146,7 +213,7 @@ export function PendingReturnList() {
 
       /* 2. 查询涉及的采购单是否有入库单 */
       const orderIds = Array.from(orderIdSet);
-      let inboundOrders: any[] = [];
+      let inboundOrders: InboundOrder[] = [];
       if (orderIds.length > 0) {
         const { data: ioList } = await supabase
           .from("inbound_orders")
@@ -185,7 +252,7 @@ export function PendingReturnList() {
             .in("inbound_order_id", relatedInboundIds);
 
           /* 扣减库存 */
-          for (const it of inboundItemList || []) {
+          for (const it of (inboundItemList || []) as InboundOrderItem[]) {
             if (!it.part_id || !it.quantity) continue;
             const { data: part } = await supabase
               .from("parts")
@@ -193,13 +260,13 @@ export function PendingReturnList() {
               .eq("id", it.part_id)
               .single();
             if (part) {
-              const newQty = Math.max(0, (part.quantity || 0) - it.quantity);
+              const newQty = Math.max(0, ((part as PartQuantity).quantity || 0) - it.quantity);
               await supabase.from("parts").update({ quantity: newQty }).eq("id", it.part_id);
             }
           }
 
           /* 扣减仓位库存 */
-          for (const it of inboundItemList || []) {
+          for (const it of (inboundItemList || []) as InboundOrderItem[]) {
             if (!it.part_id || !it.quantity || !it.warehouse_id) continue;
             const { data: loc } = await supabase
               .from("part_stock_locations")
@@ -209,8 +276,8 @@ export function PendingReturnList() {
               .eq("location", it.location || "")
               .single();
             if (loc) {
-              const newQty = Math.max(0, loc.quantity - it.quantity);
-              await supabase.from("part_stock_locations").update({ quantity: newQty }).eq("id", loc.id);
+              const newQty = Math.max(0, (loc as StockLocation).quantity - it.quantity);
+              await supabase.from("part_stock_locations").update({ quantity: newQty }).eq("id", (loc as StockLocation).id);
             }
           }
 
@@ -281,7 +348,7 @@ export function PendingReturnList() {
               .from("purchase_order_items")
               .select("handle_action")
               .eq("order_id", orderId);
-            const anyHandled = (freshItems || []).some((it: any) => !!it.handle_action);
+            const anyHandled = (freshItems || []).some((it: FreshPurchaseItem) => !!it.handle_action);
             const newStatus = anyHandled ? "partial_received" : "submitted";
             await supabase.from("purchase_orders").update({ status: newStatus }).eq("id", orderId);
           }
@@ -297,8 +364,8 @@ export function PendingReturnList() {
 
       setSelectedIds(new Set());
       loadData();
-    } catch (err: any) {
-      alert("批量撤销失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      alert("批量撤销失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSubmitting(null);
     }
@@ -426,8 +493,8 @@ export function PendingReturnList() {
       setSelectedIds(new Set());
       closeReturnModal();
       loadData();
-    } catch (err: any) {
-      alert("批量提交失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      alert("批量提交失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSubmitting(null);
     }
@@ -456,18 +523,19 @@ export function PendingReturnList() {
         .eq("id", partId)
         .single();
 
-      const woiUpdates: Record<string, any> = { part_id: partId };
-      if (part) {
-        if (part.part_number != null) woiUpdates.part_number = part.part_number;
-        if (part.name != null) woiUpdates.name = part.name;
-        if (part.unit != null) woiUpdates.unit = part.unit;
-        if (part.brand_id != null) {
-          const pb = part.part_brands as any;
+      const woiUpdates: Record<string, string | number | null> = { part_id: partId };
+      const typedPart = part as PartInfo | null;
+      if (typedPart) {
+        if (typedPart.part_number != null) woiUpdates.part_number = typedPart.part_number;
+        if (typedPart.name != null) woiUpdates.name = typedPart.name;
+        if (typedPart.unit != null) woiUpdates.unit = typedPart.unit;
+        if (typedPart.brand_id != null) {
+          const pb = typedPart.part_brands;
           woiUpdates.brand = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || null;
         }
-        if (part.specification_text != null) woiUpdates.specification = part.specification_text;
-        if (part.purchase_price != null) woiUpdates.unit_cost = part.purchase_price;
-        if (part.notes != null) woiUpdates.notes = part.notes;
+        if (typedPart.specification_text != null) woiUpdates.specification = typedPart.specification_text;
+        if (typedPart.purchase_price != null) woiUpdates.unit_cost = typedPart.purchase_price;
+        if (typedPart.notes != null) woiUpdates.notes = typedPart.notes;
       }
 
       const { error: woiErr } = await supabase
@@ -478,20 +546,20 @@ export function PendingReturnList() {
 
       closeEditModal();
       loadData();
-    } catch (err: any) {
-      alert("同步配件信息失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      alert("同步配件信息失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSubmitting(null);
     }
   }
 
   /* 行内搜索选中配件 */
-  async function handleInlinePartSelect(item: ReturnRecord, part: any) {
+  async function handleInlinePartSelect(item: ReturnRecord, part: InlinePart) {
     if (!item.work_order_item_parts) return;
     setSubmitting(`inline-${item.id}`);
     try {
       const woi = item.work_order_item_parts;
-      const woiUpdates: Record<string, any> = { part_id: part.id };
+      const woiUpdates: Record<string, string | number | null> = { part_id: part.id };
       if (part.part_number != null) woiUpdates.part_number = part.part_number;
       if (part.barcode != null && !part.part_number) woiUpdates.part_number = part.barcode;
       if (!woi.name) {
@@ -515,8 +583,8 @@ export function PendingReturnList() {
       if (woiErr) throw woiErr;
 
       loadData();
-    } catch (err: any) {
-      alert("更新配件信息失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      alert("更新配件信息失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSubmitting(null);
     }
@@ -533,8 +601,8 @@ export function PendingReturnList() {
       if (woiErr) throw woiErr;
 
       loadData();
-    } catch (err: any) {
-      alert("清除配件关联失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      alert("清除配件关联失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSubmitting(null);
     }

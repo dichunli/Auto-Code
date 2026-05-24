@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
-import Link from "next/link";
 
 export default async function PurchaseReturnsPage() {
   const supabase = await createClient();
@@ -31,7 +30,7 @@ export default async function PurchaseReturnsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {returns?.map((r: any) => (
+              {returns?.map((r: Record<string, unknown>) => (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="font-medium text-gray-900">{r.parts?.name}</div>

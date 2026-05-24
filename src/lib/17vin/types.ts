@@ -1,6 +1,6 @@
 /* 17VIN API 返回类型（根据实际返回逐步完善） */
 
-export interface Vin17Response<T = any> {
+export interface Vin17Response<T = unknown> {
   code: number;
   message: string;
   data: T;
@@ -14,5 +14,5 @@ export interface VinDecodeResult {
   model?: string;
   year?: string;
   engine?: string;
-  [key: string]: any;
+  [key: string]: string | number | boolean | null | undefined;
 }

@@ -12,11 +12,18 @@ function generateTrackingNo(): string {
   return `YD-${dateStr}-${randomStr}`;
 }
 
+interface 物流公司 {
+  id: string;
+  name: string;
+  scopes: string[] | null;
+  sort_order: number;
+}
+
 export default function NewWaybillPage() {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
-  const [companies, setCompanies] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<物流公司[]>([]);
 
   const [trackingNo, setTrackingNo] = useState(generateTrackingNo());
   const [companyId, setCompanyId] = useState("");
@@ -58,8 +65,9 @@ export default function NewWaybillPage() {
       if (error) throw error;
       router.push("/logistics");
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "未知错误";
+      alert("保存失败: " + message);
       setLoading(false);
     }
   }

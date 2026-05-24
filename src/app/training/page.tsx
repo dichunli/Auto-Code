@@ -26,7 +26,7 @@ export default async function TrainingPage() {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {courses?.map((course: any) => (
+        {courses?.map((course: { id: string; category: string; is_required: boolean; title: string; description: string | null; duration_minutes: number | null; passing_score: number; profiles: { full_name: string } | null }) => (
           <Link
             key={course.id}
             href={`/training/${course.id}`}

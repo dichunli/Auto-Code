@@ -2,6 +2,43 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import AutoLinkedPartsReportTable from "./AutoLinkedPartsReportTable";
 
+interface 关联记录 {
+  id: string;
+  notes: string | null;
+  created_at: string;
+  parts?: {
+    id: string;
+    name?: string;
+    part_number?: string;
+    part_names?: {
+      name?: string;
+      auto_link_vehicle_model?: boolean;
+      part_categories?: {
+        name?: string;
+        auto_link_vehicle_model?: boolean;
+      };
+    };
+  };
+  vehicle_models?: {
+    厂商?: string;
+    品牌?: string;
+    车系?: string;
+    车型?: string;
+    销售版本?: string;
+    年款?: number;
+    排量?: string;
+    发动机型号?: string;
+    燃油类型?: string;
+    进气形式?: string;
+    变速箱类型?: string;
+    变速箱代号?: string;
+    底盘代号?: string;
+    驱动方式?: string;
+    车身类型?: string;
+    排放标准?: string;
+  };
+}
+
 export default async function AutoLinkedPartsReportPage() {
   const supabase = await createClient();
 
@@ -42,7 +79,7 @@ export default async function AutoLinkedPartsReportPage() {
     `)
     .order("created_at", { ascending: false });
 
-  const autoLinkedRows = ((rows as any[]) || []).filter((row: any) => {
+  const autoLinkedRows = ((rows as 关联记录[]) || []).filter((row: 关联记录) => {
     return (
       row.parts?.part_names?.auto_link_vehicle_model ||
       row.parts?.part_names?.part_categories?.auto_link_vehicle_model

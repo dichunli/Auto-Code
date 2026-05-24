@@ -17,8 +17,33 @@ export default function NewWorkOrderPage() {
 
   // 车辆搜索
   const [vehicleQuery, setVehicleQuery] = useState("");
-  const [vehicleResults, setVehicleResults] = useState<any[]>([]);
-  const [selectedVehicle, setSelectedVehicle] = useState<any | null>(null);
+  interface VehicleWithCustomer {
+    id: string;
+    plate_number: string;
+    brand: string | null;
+    model: string | null;
+    vin: string | null;
+    mileage: number | null;
+    customer_id: string | null;
+    customers: {
+      id: string;
+      name: string;
+      phone: string | null;
+      company: string | null;
+      star_level: number | null;
+      customer_tags: { tags: { id: string; name: string; color: string | null } | null }[] | null;
+    } | {
+      id: string;
+      name: string;
+      phone: string | null;
+      company: string | null;
+      star_level: number | null;
+      customer_tags: { tags: { id: string; name: string; color: string | null } | null }[] | null;
+    }[] | null;
+  }
+
+  const [vehicleResults, setVehicleResults] = useState<VehicleWithCustomer[]>([]);
+  const [selectedVehicle, setSelectedVehicle] = useState<VehicleWithCustomer | null>(null);
   const [showVehicleResults, setShowVehicleResults] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
@@ -119,7 +144,7 @@ export default function NewWorkOrderPage() {
     load();
   }, [selectedVehicle, supabase]);
 
-  function handleSelectVehicle(v: any) {
+  function handleSelectVehicle(v: VehicleWithCustomer) {
     setSelectedVehicle(v);
     setVehicleQuery("");
     setShowVehicleResults(false);
@@ -316,7 +341,7 @@ export default function NewWorkOrderPage() {
 
       router.push(`/work-orders/${rpcResult.order_id}`);
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
     }

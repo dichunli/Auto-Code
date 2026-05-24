@@ -236,7 +236,7 @@ export default function VehiclePriceEditModal({ open, onClose, onConfirm, prices
                         setLocalPrices((prev) =>
                           prev.map((p) => {
                             if (makePriceKey(p) !== key) return p;
-                            return { ...p, _expanded: !p._expanded } as any;
+                            return { ...p, _expanded: !p._expanded } as VehiclePrice;
                           })
                         )
                       }

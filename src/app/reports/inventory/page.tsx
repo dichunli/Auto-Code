@@ -9,10 +9,12 @@ export default async function InventoryReportPage() {
     .from("parts")
     .select("id, stock_quantity, average_cost, part_names(name), part_categories(name)");
 
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const { data: inventoryLogs } = await supabase
     .from("inventory_logs")
     .select("type, quantity, created_at")
-    .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+    .gte("created_at", thirtyDaysAgo.toISOString());
 
   const totalStock = parts?.reduce((sum, p) => sum + (p.stock_quantity || 0), 0) || 0;
   const totalValue = parts?.reduce((sum, p) => sum + (p.stock_quantity || 0) * (p.average_cost || 0), 0) || 0;
@@ -58,7 +60,7 @@ export default async function InventoryReportPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {parts?.map((p: any) => (
+              {parts?.map((p: Record<string, unknown>) => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{p.part_names?.name || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{p.part_categories?.name || "-"}</td>

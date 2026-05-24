@@ -12,11 +12,37 @@ function toFixed2(val: string | number | null | undefined): string {
   return num.toFixed(2);
 }
 
+interface PartData {
+  id: string;
+  is_selected?: boolean | null;
+  is_purchased?: boolean | null;
+  is_arrived?: boolean | null;
+  customer_opinion?: string | null;
+  part_number?: string | null;
+  brand?: string | null;
+  specification?: string | null;
+  unit_cost?: number | string | null;
+  cost_price?: number | string | null;
+  unit_price?: number | string | null;
+  supplier_name?: string | null;
+  quantity?: number | null;
+  document_name?: string | null;
+  part_name_id?: string | null;
+  part_names?: { category_id?: string | null } | null;
+  parts?: { document_name?: string | null } | null;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+  recommendation_level?: number | null;
+}
+
 interface Props {
-  part: any;
+  part: PartData;
   itemId: string;
   inventoryQty: number;
-  suppliers: any[];
+  suppliers: Supplier[];
   seqLabel: string;
   canDelete: boolean;
   isLocked: boolean;
@@ -103,16 +129,16 @@ export default function PartBranchEditor({
     if (!part.part_name_id) return;
     supabase.from("parts").select("part_number, brand_id, specification_id").eq("part_name_id", part.part_name_id).then(({ data }) => {
       if (!data) return;
-      const partNumbers = [...new Set(data.map((p: any) => p.part_number).filter(Boolean))];
-      const brandIds = [...new Set(data.map((p: any) => p.brand_id).filter(Boolean))];
-      const specIds = [...new Set(data.map((p: any) => p.specification_id).filter(Boolean))];
+      const partNumbers = [...new Set(data.map((p: { part_number: string | null; brand_id: string | null; specification_id: string | null }) => p.part_number).filter(Boolean))];
+      const brandIds = [...new Set(data.map((p) => p.brand_id).filter(Boolean))];
+      const specIds = [...new Set(data.map((p) => p.specification_id).filter(Boolean))];
       setAvailablePartNumbers(partNumbers);
       Promise.all([
         brandIds.length > 0 ? supabase.from("part_brands").select("name").in("id", brandIds) : Promise.resolve({ data: [] }),
         specIds.length > 0 ? supabase.from("part_specifications").select("name").in("id", specIds) : Promise.resolve({ data: [] }),
       ]).then(([brandsRes, specsRes]) => {
-        setAvailableBrands((brandsRes.data || []).map((b: any) => b.name));
-        setAvailableSpecs((specsRes.data || []).map((s: any) => s.name));
+        setAvailableBrands((brandsRes.data || []).map((b: { name: string }) => b.name));
+        setAvailableSpecs((specsRes.data || []).map((s: { name: string }) => s.name));
       });
     });
   }, [part.part_name_id, supabase]);
@@ -144,12 +170,12 @@ export default function PartBranchEditor({
       .then(([vehicleRes, linksRes, pnRes, pcRes]) => {
         // 车型信息
         if (vehicleRes.data) {
-          setVehicleInfo(vehicleRes.data as any);
+          setVehicleInfo(vehicleRes.data as { 厂商?: string; 品牌?: string; 车系?: string });
         }
 
         // 供应商车型关联映射
         const vmMap = new Map<string, Array<{ 厂商?: string; 品牌?: string; 车系?: string }>>();
-        (linksRes.data || []).forEach((r: any) => {
+        (linksRes.data || []).forEach((r: { supplier_id: string; vehicle_models: { 厂商?: string; 品牌?: string; 车系?: string } }) => {
           const list = vmMap.get(r.supplier_id) || [];
           list.push(r.vehicle_models);
           vmMap.set(r.supplier_id, list);
@@ -157,10 +183,10 @@ export default function PartBranchEditor({
         setSupplierVehicleMap(vmMap);
 
         // 配件名称匹配
-        setMatchedPartNameSupplierIds(new Set((pnRes.data || []).map((r: any) => r.supplier_id)));
+        setMatchedPartNameSupplierIds(new Set((pnRes.data || []).map((r: { supplier_id: string }) => r.supplier_id)));
 
         // 配件分类匹配
-        setMatchedCategorySupplierIds(new Set((pcRes.data || []).map((r: any) => r.supplier_id)));
+        setMatchedCategorySupplierIds(new Set((pcRes.data || []).map((r: { supplier_id: string }) => r.supplier_id)));
       });
   }, [vehicleModelId, part.part_name_id, part.part_names?.category_id, supabase]);
 
@@ -176,7 +202,7 @@ export default function PartBranchEditor({
       setBrandId(bid);
       if (bid) {
         supabase.from("supplier_part_brands").select("supplier_id").eq("part_brand_id", bid).then(({ data: bd }) => {
-          setMatchedBrandSupplierIds(new Set((bd || []).map((r: any) => r.supplier_id)));
+          setMatchedBrandSupplierIds(new Set((bd || []).map((r: { supplier_id: string }) => r.supplier_id)));
         });
       } else {
         setMatchedBrandSupplierIds(new Set());
@@ -221,7 +247,7 @@ export default function PartBranchEditor({
 
   async function saveField(field: string, value: string) {
     setSaving(true);
-    const updateData: Record<string, any> = {};
+    const updateData: Record<string, string | number | null> = {};
     if (field === "unit_cost" || field === "unit_price" || field === "cost_price") {
       updateData[field] = value === "" ? null : parseFloat(value);
     } else if (field === "quantity") {
@@ -272,8 +298,8 @@ export default function PartBranchEditor({
       .maybeSingle();
     if (!data) return;
 
-    const pb = data.part_brands as any;
-    const ps = data.part_specifications as any;
+    const pb = data.part_brands as { name: string } | { name: string }[] | null;
+    const ps = data.part_specifications as { name: string } | { name: string }[] | null;
     const newBrand = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
     const newSpec = (Array.isArray(ps) ? ps[0]?.name : ps?.name) || "";
     const newDocName = data.document_name || "";
@@ -338,9 +364,9 @@ export default function PartBranchEditor({
     if (!partsData || partsData.length === 0) return;
 
     // 过滤车型匹配的（无车型限制也算匹配）
-    const matched = partsData.find((p: any) =>
+    const matched = partsData.find((p: { part_vehicle_models?: Array<{ vehicle_model_id: string }> | null }) =>
       !p.part_vehicle_models || p.part_vehicle_models.length === 0 ||
-      p.part_vehicle_models.some((vm: any) => vm.vehicle_model_id === vehicleModelId)
+      p.part_vehicle_models.some((vm) => vm.vehicle_model_id === vehicleModelId)
     );
 
     if (matched) {
@@ -431,14 +457,14 @@ export default function PartBranchEditor({
     const categoryId = part.part_names?.category_id;
 
     return [...suppliers].sort((a, b) => {
-      const getScore = (s: any) => {
+      const getScore = (s: Supplier) => {
         let score = 0;
         const sid = s.id;
 
         // 车型匹配（厂商/品牌/车系任意一项匹配即可）
         if (vehicleInfo.厂商 || vehicleInfo.品牌 || vehicleInfo.车系) {
           const vmList = supplierVehicleMap.get(sid) || [];
-          const hasVehicleMatch = vmList.some((vm: any) =>
+          const hasVehicleMatch = vmList.some((vm) =>
             (vehicleInfo.厂商 && vm?.厂商 === vehicleInfo.厂商) ||
             (vehicleInfo.品牌 && vm?.品牌 === vehicleInfo.品牌) ||
             (vehicleInfo.车系 && vm?.车系 === vehicleInfo.车系)
@@ -480,13 +506,13 @@ export default function PartBranchEditor({
   ]);
 
   // 判断供应商是否匹配当前条件
-  function getSupplierMatchReasons(s: any): string[] {
+  function getSupplierMatchReasons(s: Supplier): string[] {
     const reasons: string[] = [];
     const sid = s.id;
 
     if (vehicleInfo.厂商 || vehicleInfo.品牌 || vehicleInfo.车系) {
       const vmList = supplierVehicleMap.get(sid) || [];
-      const hasVehicleMatch = vmList.some((vm: any) =>
+      const hasVehicleMatch = vmList.some((vm) =>
         (vehicleInfo.厂商 && vm?.厂商 === vehicleInfo.厂商) ||
         (vehicleInfo.品牌 && vm?.品牌 === vehicleInfo.品牌) ||
         (vehicleInfo.车系 && vm?.车系 === vehicleInfo.车系)

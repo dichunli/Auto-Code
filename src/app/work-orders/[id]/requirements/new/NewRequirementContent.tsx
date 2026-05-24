@@ -10,6 +10,184 @@ import { PriceValue } from "@/components/PriceVisibilityContext";
 import { calculateItemCommission, calculatePartCommission } from "@/lib/commission";
 import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
 
+/* ==================== 类型定义 ==================== */
+
+interface 服务分类 {
+  id: string;
+  name: string;
+}
+
+interface 配件名称 {
+  id: string;
+  name: string;
+  unit: string;
+}
+
+interface 配件品牌 {
+  name?: string | null;
+}
+
+interface 配件实例 {
+  id: string;
+  part_name_id: string;
+  part_number: string;
+  specification_text?: string | null;
+  unit_cost?: number | null;
+  unit_price?: number | null;
+  brand_id?: string | null;
+  part_brands?: 配件品牌 | null;
+}
+
+interface 维修项目名称库 {
+  id: string;
+  name: string;
+  category_id?: string | null;
+}
+
+interface 维修项目分类信息 {
+  name?: string | null;
+}
+
+interface 维修项目 {
+  id: string;
+  name: string;
+  category_id?: string | null;
+  service_name_id?: string | null;
+  standard_hours?: number | null;
+  default_price?: number | null;
+  customer_parts_price?: number | null;
+  description?: string | null;
+  service_names?: 维修项目名称库 | null;
+  service_categories?: 维修项目分类信息 | null;
+  sales_commission_type?: string | null;
+  sales_commission_value?: number | null;
+  diagnosis_commission_type?: string | null;
+  diagnosis_commission_value?: number | null;
+  repair_commission_type?: string | null;
+  repair_commission_value?: number | null;
+  qc_commission_type?: string | null;
+  qc_commission_value?: number | null;
+}
+
+interface 维修项目车型定价 {
+  service_item_id: string;
+  vehicle_model_id: string;
+  price?: number | null;
+  customer_parts_price?: number | null;
+}
+
+interface 供应商 {
+  id: string;
+  name: string;
+  region?: string | null;
+}
+
+interface 物流公司 {
+  id: string;
+  name: string;
+  scopes?: string[] | null;
+}
+
+interface 员工 {
+  id: string;
+  full_name: string | null;
+}
+
+interface 配件行 {
+  part_name_id: string;
+  part_id: string;
+  quantity: string;
+  notes: string;
+  part_number: string;
+  name: string;
+  alias_name: string;
+  unit: string;
+  brand: string;
+  specification: string;
+  unit_cost: string;
+  unit_price: string;
+  customer_opinion: string;
+  is_purchased: boolean;
+  is_arrived: boolean;
+  supplier_name: string;
+  logistics_agreement: string;
+}
+
+interface 项目行 {
+  category_id: string;
+  service_name_id: string;
+  service_item_id: string;
+  name: string;
+  alias_name: string;
+  item_type: string;
+  quantity: string;
+  unit_price: string;
+  mechanic_id: string;
+  submitter_id: string;
+  inspector_id: string;
+  standard_hours: string;
+  customer_opinion: string;
+  description: string;
+  is_outsourced: boolean;
+  is_customer_part: boolean;
+  outsourced_supplier_id: string;
+  business_type: string;
+  rework_source_item_id: string;
+  rework_reason: string;
+  rework_loss_amount: string;
+  parts: 配件行[];
+}
+
+interface 搜索下拉状态 {
+  query: string;
+  results: 维修项目[];
+  activeIndex: number;
+  show: boolean;
+}
+
+interface 新建项目弹窗数据 {
+  open: boolean;
+  itemIndex: number;
+  name: string;
+  category_id: string;
+  service_name_id: string;
+  standard_hours: string;
+  description: string;
+  default_price: string;
+  vip_price: string;
+  customer_parts_price: string;
+  sales_type: string;
+  sales_value: string;
+  diagnosis_type: string;
+  diagnosis_value: string;
+  repair_type: string;
+  repair_value: string;
+  qc_type: string;
+  qc_value: string;
+}
+
+interface 批量选择弹窗数据 {
+  open: boolean;
+  itemIndex: number;
+  query: string;
+  categoryFilter: string;
+  defaultType: string;
+  selectedIds: string[];
+}
+
+interface 配件匹配弹窗数据 {
+  itemIndex: number;
+  partIndex: number;
+  matchedPart: 配件实例;
+}
+
+interface 返工来源项目 {
+  id: string;
+  work_order_id: string;
+}
+
+/* ==================== 组件 ==================== */
+
 export default function NewRequirementContent({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -17,67 +195,35 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
   const [orderId, setOrderId] = useState("");
   const [loading, setLoading] = useState(false);
   const [existingRequirementId, setExistingRequirementId] = useState<string | null>(null);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [partNames, setPartNames] = useState<any[]>([]);
-  const [partsByName, setPartsByName] = useState<Record<string, any[]>>({});
-  const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [logisticsCompanies, setLogisticsCompanies] = useState<any[]>([]);
+  const [categories, setCategories] = useState<服务分类[]>([]);
+  const [partNames, setPartNames] = useState<配件名称[]>([]);
+  const [partsByName, setPartsByName] = useState<Record<string, 配件实例[]>>({});
+  const [suppliers, setSuppliers] = useState<供应商[]>([]);
+  const [logisticsCompanies, setLogisticsCompanies] = useState<物流公司[]>([]);
   const [vehicleId, setVehicleId] = useState("");
   const [vehicleModelId, setVehicleModelId] = useState("");
-  const [partMatchModal, setPartMatchModal] = useState<any>(null);
+  const [partMatchModal, setPartMatchModal] = useState<配件匹配弹窗数据 | null>(null);
   const [reworkModalIndex, setReworkModalIndex] = useState<number | null>(null);
-  const [allServiceItems, setAllServiceItems] = useState<any[]>([]);
-  const [serviceNames, setServiceNames] = useState<any[]>([]);
-  const [serviceItemPrices, setServiceItemPrices] = useState<any[]>([]);
-  const [profiles, setProfiles] = useState<any[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [searchDropdowns, setSearchDropdowns] = useState<Record<number, {
-    query: string;
-    results: any[];
-    activeIndex: number;
-    show: boolean;
-  }>>({});
+  const [allServiceItems, setAllServiceItems] = useState<维修项目[]>([]);
+  const [serviceNames, setServiceNames] = useState<维修项目名称库[]>([]);
+  const [serviceItemPrices, setServiceItemPrices] = useState<维修项目车型定价[]>([]);
+  const [profiles, setProfiles] = useState<员工[]>([]);
+  const [currentUser, setCurrentUser] = useState<员工 | null>(null);
+  const [searchDropdowns, setSearchDropdowns] = useState<Record<number, 搜索下拉状态>>({});
   const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const [dropdownPositions, setDropdownPositions] = useState<Record<number, { top: number; left: number }>>({});
-  const [newItemModal, setNewItemModal] = useState<{
-
-    open: boolean;
-    itemIndex: number;
-    name: string;
-    category_id: string;
-    service_name_id: string;
-    standard_hours: string;
-    description: string;
-    default_price: string;
-    vip_price: string;
-    customer_parts_price: string;
-    sales_type: string;
-    sales_value: string;
-    diagnosis_type: string;
-    diagnosis_value: string;
-    repair_type: string;
-    repair_value: string;
-    qc_type: string;
-    qc_value: string;
-  } | null>(null);
+  const [newItemModal, setNewItemModal] = useState<新建项目弹窗数据 | null>(null);
 
   // 批量选择项目弹窗
-  const [bulkPickerModal, setBulkPickerModal] = useState<{
-    open: boolean;
-    itemIndex: number;
-    query: string;
-    categoryFilter: string;
-    defaultType: string;
-    selectedIds: string[];
-  } | null>(null);
+  const [bulkPickerModal, setBulkPickerModal] = useState<批量选择弹窗数据 | null>(null);
 
   const [requirement, setRequirement] = useState({ description: "", diagnosis: "", remarks: "" });
   const [requirementImages, setRequirementImages] = useState<string[]>([]);
-  const [items, setItems] = useState([
-    { category_id: "", service_name_id: "", service_item_id: "", name: "", alias_name: "", item_type: "labor", quantity: "1", unit_price: "", mechanic_id: "", submitter_id: "", inspector_id: "", standard_hours: "", customer_opinion: "pending", description: "", is_outsourced: false, is_customer_part: false, outsourced_supplier_id: "", business_type: "normal", rework_source_item_id: "", rework_reason: "", rework_loss_amount: "", parts: [] as any[] },
+  const [items, setItems] = useState<项目行[]>([
+    { category_id: "", service_name_id: "", service_item_id: "", name: "", alias_name: "", item_type: "labor", quantity: "1", unit_price: "", mechanic_id: "", submitter_id: "", inspector_id: "", standard_hours: "", customer_opinion: "pending", description: "", is_outsourced: false, is_customer_part: false, outsourced_supplier_id: "", business_type: "normal", rework_source_item_id: "", rework_reason: "", rework_loss_amount: "", parts: [] },
   ]);
 
-  const emptyPart = () => ({
+  const emptyPart = (): 配件行 => ({
     part_name_id: "",
     part_id: "",
     quantity: "1",
@@ -99,23 +245,23 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
 
   useEffect(() => {
     params.then((p) => setOrderId(p.id));
-    supabase.from("service_categories").select("*").order("name").then(({ data }) => setCategories(data || []));
-    supabase.from("part_names").select("*").order("name").then(({ data }) => setPartNames(data || []));
-    supabase.from("suppliers").select("*").order("name").then(({ data }) => setSuppliers(data || []));
-    supabase.from("logistics_companies").select("*").order("name").then(({ data }) => setLogisticsCompanies(data || []));
+    supabase.from("service_categories").select("*").order("name").then(({ data }) => setCategories((data as 服务分类[]) || []));
+    supabase.from("part_names").select("*").order("name").then(({ data }) => setPartNames((data as 配件名称[]) || []));
+    supabase.from("suppliers").select("*").order("name").then(({ data }) => setSuppliers((data as 供应商[]) || []));
+    supabase.from("logistics_companies").select("*").order("name").then(({ data }) => setLogisticsCompanies((data as 物流公司[]) || []));
     // 加载所有标准项目（含分类和名称库信息）
-    supabase.from("service_items").select("*, service_names(id, name, category_id), service_categories(name)").order("name").then(({ data }) => setAllServiceItems(data || []));
+    supabase.from("service_items").select("*, service_names(id, name, category_id), service_categories(name)").order("name").then(({ data }) => setAllServiceItems((data as 维修项目[]) || []));
     // 加载名称库
-    supabase.from("service_names").select("*").order("name").then(({ data }) => setServiceNames(data || []));
+    supabase.from("service_names").select("*").order("name").then(({ data }) => setServiceNames((data as 维修项目名称库[]) || []));
     // 加载维修项目车型定价（含自带配件价）
-    supabase.from("service_item_prices").select("*").then(({ data }) => setServiceItemPrices(data || []));
+    supabase.from("service_item_prices").select("*").then(({ data }) => setServiceItemPrices((data as 维修项目车型定价[]) || []));
     // 加载员工列表
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setProfiles(data || []));
+    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setProfiles((data as 员工[]) || []));
     // 获取当前用户信息
     supabase.auth.getUser().then(({ data: authData }) => {
       if (authData?.user) {
         supabase.from("profiles").select("id, full_name").eq("id", authData.user.id).single().then(({ data: profile }) => {
-          setCurrentUser(profile);
+          setCurrentUser(profile as 员工 | null);
         });
       }
     });
@@ -134,9 +280,9 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
         .then(({ data }) => {
           if (data) {
             setRequirement({
-              description: data.description || "",
-              diagnosis: data.diagnosis || "",
-              remarks: data.remarks || "",
+              description: (data as { description?: string }).description || "",
+              diagnosis: (data as { diagnosis?: string }).diagnosis || "",
+              remarks: (data as { remarks?: string }).remarks || "",
             });
           }
         });
@@ -152,15 +298,18 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       .eq("id", orderId)
       .single()
       .then(({ data: wo }) => {
-        if (wo?.vehicle_id) {
-          setVehicleId(wo.vehicle_id);
+        if ((wo as { vehicle_id?: string } | null)?.vehicle_id) {
+          const vid = (wo as { vehicle_id: string }).vehicle_id;
+          setVehicleId(vid);
           supabase
             .from("vehicles")
             .select("vehicle_model_id")
-            .eq("id", wo.vehicle_id)
+            .eq("id", vid)
             .single()
             .then(({ data: v }) => {
-              if (v?.vehicle_model_id) setVehicleModelId(v.vehicle_model_id);
+              if ((v as { vehicle_model_id?: string } | null)?.vehicle_model_id) {
+                setVehicleModelId((v as { vehicle_model_id: string }).vehicle_model_id);
+              }
             });
         }
       });
@@ -176,9 +325,10 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     setItems(next);
   }
 
-  function updateItem(index: number, field: string, value: any) {
+  function updateItem(index: number, field: keyof 项目行, value: string | boolean) {
     const next = [...items];
-    (next[index] as any)[field] = value;
+     
+    (next[index] as Record<string, unknown>)[field] = value;
 
     if (field === "category_id") {
       next[index].service_name_id = "";
@@ -192,7 +342,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       if (item) {
         next[index].name = item.name;
         next[index].unit_price = item.default_price?.toString() || "";
-        next[index].standard_hours = item.standard_hours;
+        next[index].standard_hours = item.standard_hours?.toString() || "";
       }
     }
 
@@ -216,9 +366,10 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     setItems(next);
   }
 
-  function updatePart(itemIndex: number, partIndex: number, field: string, value: any) {
+  function updatePart(itemIndex: number, partIndex: number, field: keyof 配件行, value: string | boolean) {
     const next = [...items];
-    next[itemIndex].parts[partIndex][field] = value;
+     
+    (next[itemIndex].parts[partIndex] as Record<string, unknown>)[field] = value;
 
     if (field === "part_name_id") {
       next[itemIndex].parts[partIndex].part_id = "";
@@ -230,14 +381,14 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       }
       // 加载该配件名称下的具体配件
       if (value) {
-        supabase.from("parts").select("*, part_brands(name)").eq("part_name_id", value).order("created_at").then(({ data }) => {
-          setPartsByName((prev) => ({ ...prev, [value]: data || [] }));
+        supabase.from("parts").select("*, part_brands(name)").eq("part_name_id", value as string).order("created_at").then(({ data }) => {
+          setPartsByName((prev) => ({ ...prev, [value as string]: (data as 配件实例[]) || [] }));
         });
       }
     }
 
     if (field === "part_id" && value) {
-      const part = (partsByName[next[itemIndex].parts[partIndex].part_name_id] || []).find((p: any) => p.id === value);
+      const part = (partsByName[next[itemIndex].parts[partIndex].part_name_id] || []).find((p) => p.id === value);
       if (part) {
         next[itemIndex].parts[partIndex].brand = part.part_brands?.name || "";
         next[itemIndex].parts[partIndex].specification = part.specification_text || "";
@@ -268,21 +419,29 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       .single();
 
     if (matched) {
+      const m = matched as {
+        id: string;
+        part_names?: { id?: string; name?: string; unit?: string } | null;
+        part_brands?: { name?: string } | null;
+        specification_text?: string | null;
+        unit_cost?: number | null;
+        unit_price?: number | null;
+      };
       const next = [...items];
-      next[itemIndex].parts[partIndex].part_name_id = matched.part_names?.id || "";
-      next[itemIndex].parts[partIndex].part_id = matched.id;
-      next[itemIndex].parts[partIndex].name = matched.part_names?.name || "";
-      next[itemIndex].parts[partIndex].unit = matched.part_names?.unit || "";
-      next[itemIndex].parts[partIndex].brand = matched.part_brands?.name || "";
-      next[itemIndex].parts[partIndex].specification = matched.specification_text || "";
-      next[itemIndex].parts[partIndex].unit_cost = matched.unit_cost?.toString() || "";
-      next[itemIndex].parts[partIndex].unit_price = matched.unit_price?.toString() || "";
+      next[itemIndex].parts[partIndex].part_name_id = m.part_names?.id || "";
+      next[itemIndex].parts[partIndex].part_id = m.id;
+      next[itemIndex].parts[partIndex].name = m.part_names?.name || "";
+      next[itemIndex].parts[partIndex].unit = m.part_names?.unit || "";
+      next[itemIndex].parts[partIndex].brand = m.part_brands?.name || "";
+      next[itemIndex].parts[partIndex].specification = m.specification_text || "";
+      next[itemIndex].parts[partIndex].unit_cost = m.unit_cost?.toString() || "";
+      next[itemIndex].parts[partIndex].unit_price = m.unit_price?.toString() || "";
       next[itemIndex].parts[partIndex].part_number = partNumber.trim();
       setItems(next);
       // 加载该配件名称下的具体配件列表
-      if (matched.part_names?.id) {
-        supabase.from("parts").select("*, part_brands(name)").eq("part_name_id", matched.part_names.id).order("created_at").then(({ data }) => {
-          setPartsByName((prev) => ({ ...prev, [matched.part_names.id]: data || [] }));
+      if (m.part_names?.id) {
+        supabase.from("parts").select("*, part_brands(name)").eq("part_name_id", m.part_names.id).order("created_at").then(({ data }) => {
+          setPartsByName((prev) => ({ ...prev, [m.part_names!.id]: (data as 配件实例[]) || [] }));
         });
       }
     }
@@ -306,7 +465,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       .from("part_vehicle_models")
       .select("part_id")
       .eq("vehicle_model_id", vehicleModelId);
-    const partIds = modelLinks?.map((m) => m.part_id) || [];
+    const partIds = modelLinks?.map((m) => (m as { part_id: string }).part_id) || [];
     if (partIds.length === 0) return;
 
     // 3. 匹配相同名称、品牌的配件
@@ -314,14 +473,14 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       .from("parts")
       .select("*, part_brands(name)")
       .eq("part_name_id", part.part_name_id)
-      .eq("brand_id", brandData.id)
+      .eq("brand_id", (brandData as { id: string }).id)
       .in("id", partIds);
 
     if (matchedParts && matchedParts.length > 0) {
       setPartMatchModal({
         itemIndex,
         partIndex,
-        matchedPart: matchedParts[0],
+        matchedPart: matchedParts[0] as 配件实例,
       });
     }
   }
@@ -343,8 +502,8 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
   function cycleCustomerOpinion(itemIndex: number, partIndex: number) {
     const next = [...items];
     const current = next[itemIndex].parts[partIndex].customer_opinion;
-    const cycle = { pending: "agree", agree: "reject", reject: "pending" };
-    next[itemIndex].parts[partIndex].customer_opinion = (cycle as any)[current] || "pending";
+    const cycle: Record<string, string> = { pending: "agree", agree: "reject", reject: "pending" };
+    next[itemIndex].parts[partIndex].customer_opinion = cycle[current] || "pending";
     // 如果客户意见变为非同意，自动取消采购和到货
     if (next[itemIndex].parts[partIndex].customer_opinion !== "agree") {
       next[itemIndex].parts[partIndex].is_purchased = false;
@@ -487,22 +646,22 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
   }
 
   // 自带配件四级价格策略
-  function getCustomerPartPrice(serviceItemId: string, vehicleModelId: string): number | null {
+  function getCustomerPartPrice(serviceItemId: string, vModelId: string): number | null {
     if (!serviceItemId) return null;
     const serviceItem = allServiceItems.find((s) => s.id === serviceItemId);
 
     // 1. 维修项目中设置工单车型的自带配件价格
-    if (vehicleModelId) {
+    if (vModelId) {
       const vehicleCp = serviceItemPrices.find(
-        (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vehicleModelId
+        (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vModelId
       )?.customer_parts_price;
       if (vehicleCp != null) return vehicleCp;
     }
 
     // 2. 工单车型定价
-    if (vehicleModelId) {
+    if (vModelId) {
       const vehiclePrice = serviceItemPrices.find(
-        (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vehicleModelId
+        (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vModelId
       )?.price;
       if (vehiclePrice != null) return vehiclePrice;
     }
@@ -516,13 +675,13 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     return null;
   }
 
-  function selectServiceItem(index: number, serviceItem: any) {
+  function selectServiceItem(index: number, serviceItem: 维修项目) {
     const next = [...items];
     next[index].service_item_id = serviceItem.id;
     next[index].category_id = serviceItem.service_names?.category_id || "";
     next[index].service_name_id = serviceItem.service_names?.id || "";
     next[index].name = serviceItem.name || "";
-    next[index].standard_hours = serviceItem.standard_hours;
+    next[index].standard_hours = serviceItem.standard_hours?.toString() || "";
 
     // 自带配件时按四级策略定价，否则用默认销售价
     if (next[index].is_customer_part) {
@@ -579,7 +738,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     const existingNames = new Set(items.map((it) => it.name).filter(Boolean));
     const picked = selectedIds
       .map((id) => allServiceItems.find((s) => s.id === id))
-      .filter(Boolean) as any[];
+      .filter(Boolean) as 维修项目[];
 
     const filtered = picked.filter((si) => !existingNames.has(si.name) || (items[itemIndex]?.name === "" && items[itemIndex]?.service_item_id === ""));
     const duplicates = picked.filter((si) => existingNames.has(si.name) && !(items[itemIndex]?.name === "" && items[itemIndex]?.service_item_id === ""));
@@ -589,7 +748,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       return;
     }
 
-    const buildRow = (si: any) => {
+    const buildRow = (si: 维修项目): 项目行 => {
       const isCustomerPart = false; // 批量添加默认非自带配件
       const unitPrice = si.default_price?.toString() || "";
       return {
@@ -604,7 +763,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
         mechanic_id: "",
         submitter_id: currentUser?.id || "",
         inspector_id: "",
-        standard_hours: si.standard_hours || "",
+        standard_hours: si.standard_hours?.toString() || "",
         customer_opinion: "pending",
         description: si.description || "",
         is_outsourced: false,
@@ -614,7 +773,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
         rework_source_item_id: "",
         rework_reason: "",
         rework_loss_amount: "",
-        parts: [] as any[],
+        parts: [],
       };
     };
 
@@ -681,8 +840,8 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     }
 
     // 刷新列表并自动选中
-    setAllServiceItems((prev) => [...prev, data]);
-    selectServiceItem(m.itemIndex, data);
+    setAllServiceItems((prev) => [...prev, data as 维修项目]);
+    selectServiceItem(m.itemIndex, data as 维修项目);
     setNewItemModal(null);
   }
 
@@ -704,7 +863,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     const qty = parseFloat(part.quantity) || 1;
     const revenue = qty * (parseFloat(part.unit_price) || 0);
     const cost = qty * (parseFloat(part.unit_cost) || 0);
-    const partInstance = (partsByName[part.part_name_id] || []).find((p: any) => p.id === part.part_id);
+    const partInstance = (partsByName[part.part_name_id] || []).find((p) => p.id === part.part_id);
     const partName = partNames.find((pn) => pn.id === part.part_name_id);
     return calculatePartCommission(partInstance, partName, revenue, cost);
   }
@@ -729,7 +888,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
           .single();
 
         if (reqError || !req) throw reqError || new Error("创建需求失败");
-        reqId = req.id;
+        reqId = (req as { id: string }).id;
 
         // 保存需求图片
         if (requirementImages.length > 0) {
@@ -747,7 +906,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
         .from("work_order_items")
         .select("name")
         .eq("work_order_id", orderId);
-      const existingNames = new Set(existingItems?.map((i) => i.name) || []);
+      const existingNames = new Set((existingItems as { name: string }[] | null)?.map((i) => i.name) || []);
 
       // 检查本次添加的项目之间是否有重复
       const newNames = new Set<string>();
@@ -797,7 +956,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
         for (const part of item.parts) {
           if (!part.part_name_id) continue;
           const { error: partError } = await supabase.from("work_order_item_parts").insert({
-            work_order_item_id: createdItem.id,
+            work_order_item_id: (createdItem as { id: string }).id,
             part_name_id: part.part_name_id,
             part_id: part.part_id || null,
             quantity: parseInt(part.quantity) || 1,
@@ -822,8 +981,9 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
 
       router.push(`/work-orders/${orderId}`);
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("保存失败: " + msg);
       setLoading(false);
     }
   }
@@ -917,7 +1077,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                       />
                       {searchDropdowns[i]?.show && searchDropdowns[i]?.query?.trim().length > 0 && dropdownPositions[i] && (
                         <div className="fixed z-50 w-96 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto" style={{ top: dropdownPositions[i].top, left: dropdownPositions[i].left }}>
-                          {searchDropdowns[i].results.map((si: any, idx: number) => (
+                          {searchDropdowns[i].results.map((si, idx) => (
                             <div
                               key={si.id}
                               className={`px-3 py-2 text-sm cursor-pointer ${
@@ -1155,7 +1315,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                               <select className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs"
                                 value={part.part_id} onChange={(e) => updatePart(i, pi, "part_id", e.target.value)}>
                                 <option value="">空分支 / 待指定</option>
-                                {(partsByName[part.part_name_id] || []).map((p: any) => (
+                                {(partsByName[part.part_name_id] || []).map((p) => (
                                   <option key={p.id} value={p.id}>{p.part_brands?.name || "无品牌"} {p.specification_text || ""}</option>
                                 ))}
                               </select>
@@ -1349,13 +1509,13 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
           vehicleId={vehicleId}
           onSelect={(sourceItem, unlockOrder) => {
             const next = [...items];
-            next[reworkModalIndex].rework_source_item_id = sourceItem.id;
+            next[reworkModalIndex].rework_source_item_id = (sourceItem as 返工来源项目).id;
             if (unlockOrder) {
               // 解锁原工单：将其状态从 settled 改回 pending_settlement
               supabase
                 .from("work_orders")
                 .update({ status: "pending_settlement" })
-                .eq("id", sourceItem.work_order_id)
+                .eq("id", (sourceItem as 返工来源项目).work_order_id)
                 .then(() => {
                   // 静默更新即可
                 });
@@ -1518,7 +1678,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                         <label className="block text-xs text-gray-500 mb-1">{c.label}方式</label>
                         <select
                           className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-                          value={(newItemModal as any)[c.typeKey]}
+                          value={newItemModal[c.typeKey]}
                           onChange={(e) => setNewItemModal({ ...newItemModal, [c.typeKey]: e.target.value })}
                         >
                           <option value="">无提成</option>
@@ -1532,9 +1692,9 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                         <input
                           type="number"
                           className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-                          value={(newItemModal as any)[c.valKey]}
+                          value={newItemModal[c.valKey]}
                           onChange={(e) => setNewItemModal({ ...newItemModal, [c.valKey]: e.target.value })}
-                          disabled={!(newItemModal as any)[c.typeKey]}
+                          disabled={!newItemModal[c.typeKey]}
                         />
                       </div>
                     </div>
@@ -1611,7 +1771,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
             <div className="flex-1 overflow-y-auto px-2 py-2">
               {(() => {
                 const q = bulkPickerModal.query.trim().toLowerCase();
-                const filteredList = allServiceItems.filter((si: any) => {
+                const filteredList = allServiceItems.filter((si) => {
                   if (bulkPickerModal.categoryFilter) {
                     const catId = si.service_names?.category_id || si.category_id;
                     if (catId !== bulkPickerModal.categoryFilter) return false;
@@ -1649,7 +1809,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                       </tr>
                     </thead>
                     <tbody>
-                      {listToShow.map((si: any) => {
+                      {listToShow.map((si) => {
                         const checked = bulkPickerModal.selectedIds.includes(si.id);
                         return (
                           <tr
@@ -1685,7 +1845,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
               })()}
               {(() => {
                 const q = bulkPickerModal.query.trim().toLowerCase();
-                const filteredList = allServiceItems.filter((si: any) => {
+                const filteredList = allServiceItems.filter((si) => {
                   if (bulkPickerModal.categoryFilter) {
                     const catId = si.service_names?.category_id || si.category_id;
                     if (catId !== bulkPickerModal.categoryFilter) return false;

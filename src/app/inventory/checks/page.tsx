@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
-import Link from "next/link";
 
 export default async function InventoryChecksPage() {
   const supabase = await createClient();
@@ -31,7 +30,7 @@ export default async function InventoryChecksPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {checks?.map((c: any) => (
+              {checks?.map((c: Record<string, unknown>) => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{c.check_no || "-"}</td>
                   <td className="px-6 py-4">

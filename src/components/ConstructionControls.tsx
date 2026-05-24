@@ -150,7 +150,7 @@ export function ConstructionControls({
       .select("id, action, created_at, mechanic_id, profiles(full_name)")
       .eq("work_order_item_id", itemId)
       .order("created_at", { ascending: true });
-    setLogs((data || []) as any);
+    setLogs((data || []) as Log[]);
   }, [supabase, itemId]);
 
   const fetchStats = useCallback(async () => {
@@ -160,7 +160,7 @@ export function ConstructionControls({
       .eq("work_order_item_id", itemId)
       .eq("status", "in_progress");
     const map: Record<string, string> = {};
-    (data || []).forEach((row: any) => {
+    (data || []).forEach((row: { mechanic_name: string; id: string }) => {
       map[row.mechanic_name] = row.id;
     });
     setStatsIds(map);
@@ -297,7 +297,7 @@ export function ConstructionControls({
           }
         }, 120000);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);

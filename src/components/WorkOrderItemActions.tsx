@@ -58,7 +58,6 @@ export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, un
         currentAlias={aliasName || null}
         currentQuantity={quantity || 1}
         currentUnitPrice={unitPrice || 0}
-        currentServiceItemId={serviceItemId}
         onClose={() => setEditOpen(false)}
       />
     </>

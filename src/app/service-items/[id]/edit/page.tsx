@@ -9,6 +9,48 @@ import VehiclePriceEditModal from "@/components/VehiclePriceEditModal";
 import VehicleDeleteModal from "@/components/VehicleDeleteModal";
 import VehiclePriceViewModal from "@/components/VehiclePriceViewModal";
 
+function CommissionField({
+  label,
+  typeValue,
+  valueValue,
+  onTypeChange,
+  onValueChange,
+}: {
+  label: string;
+  typeValue: string;
+  valueValue: string;
+  onTypeChange: (v: string) => void;
+  onValueChange: (v: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
+        <select
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={typeValue}
+          onChange={(e) => onTypeChange(e.target.value)}
+        >
+          <option value="">无提成</option>
+          <option value="revenue_pct">按产值(%)</option>
+          <option value="profit_pct">按毛利(%)</option>
+          <option value="fixed">固定金额</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
+        <input
+          type="number"
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={valueValue}
+          onChange={(e) => onValueChange(e.target.value)}
+          disabled={!typeValue}
+        />
+      </div>
+    </div>
+  );
+}
+
 interface LinkedPart {
   id: string;
   name: string;
@@ -34,12 +76,25 @@ interface VehiclePrice {
   group_key?: string;
 }
 
+interface ServiceCategory {
+  id: string;
+  name: string;
+  sales_commission_type?: string | null;
+  sales_commission_value?: number | null;
+  diagnosis_commission_type?: string | null;
+  diagnosis_commission_value?: number | null;
+  repair_commission_type?: string | null;
+  repair_commission_value?: number | null;
+  qc_commission_type?: string | null;
+  qc_commission_value?: number | null;
+}
+
 interface ServiceNameResult {
   id: string;
   name: string;
   category_id: string;
   search_keywords: string | null;
-  service_categories: any;
+  service_categories: ServiceCategory | null;
   sales_commission_type?: string | null;
   sales_commission_value?: number | null;
   diagnosis_commission_type?: string | null;
@@ -66,7 +121,7 @@ export default function EditServiceItemPage() {
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<ServiceCategory[]>([]);
 
   // 项目名称搜索
   const [nameQuery, setNameQuery] = useState("");
@@ -177,8 +232,8 @@ export default function EditServiceItemPage() {
         }
       }
       alert("车型定价已保存");
-    } catch (err: any) {
-      alert("保存车型定价异常: " + (err?.message || String(err)));
+    } catch (err: unknown) {
+      alert("保存车型定价异常: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSavingPrices(false);
     }
@@ -199,11 +254,21 @@ export default function EditServiceItemPage() {
   }
   const [specialPrices, setSpecialPrices] = useState<SpecialPrice[]>([]);
   const [spCompanyQuery, setSpCompanyQuery] = useState("");
-  const [spCompanyResults, setSpCompanyResults] = useState<any[]>([]);
+  interface CompanyResult { id: string; name: string }
+  interface CustomerResult { id: string; name: string; phone?: string | null }
+  interface VehicleResult {
+    id: string;
+    plate_number: string;
+    brand?: string | null;
+    model?: string | null;
+    customer_id?: string | null;
+    customers?: { name?: string | null } | null;
+  }
+  const [spCompanyResults, setSpCompanyResults] = useState<CompanyResult[]>([]);
   const [spCustomerQuery, setSpCustomerQuery] = useState("");
-  const [spCustomerResults, setSpCustomerResults] = useState<any[]>([]);
+  const [spCustomerResults, setSpCustomerResults] = useState<CustomerResult[]>([]);
   const [spVehicleQuery, setSpVehicleQuery] = useState("");
-  const [spVehicleResults, setSpVehicleResults] = useState<any[]>([]);
+  const [spVehicleResults, setSpVehicleResults] = useState<VehicleResult[]>([]);
   const [spNewPrice, setSpNewPrice] = useState("");
   const [spSelectedCompany, setSpSelectedCompany] = useState<{ id: string; name: string } | null>(null);
   const [spSelectedCustomer, setSpSelectedCustomer] = useState<{ id: string; name: string } | null>(null);
@@ -232,7 +297,7 @@ export default function EditServiceItemPage() {
       if (!spVehicleQuery.trim()) { setSpVehicleResults([]); return; }
       const q = spVehicleQuery.trim();
       const { data } = await supabase.from("vehicles").select("id, plate_number, brand, model, customer_id, customers(name)").ilike("plate_number", `%${q}%`).limit(10);
-      setSpVehicleResults((data as any) || []);
+      setSpVehicleResults((data as VehicleResult[]) || []);
     }, 300);
     return () => clearTimeout(t);
   }, [spVehicleQuery, supabase]);
@@ -309,12 +374,12 @@ export default function EditServiceItemPage() {
             .eq("service_name_id", item.service_name_id)
             .order("sort_order", { ascending: true });
           if (partLinks && partLinks.length > 0) {
-            const partIds = partLinks.map((l: any) => l.part_name_id);
+            const partIds = partLinks.map((l) => l.part_name_id as string);
             const { data: partNamesData } = await supabase.from("part_names").select("id, name").in("id", partIds);
-            const nameMap = new Map((partNamesData || []).map((p: any) => [p.id, p.name]));
+            const nameMap = new Map((partNamesData || []).map((p: { id: string; name: string }) => [p.id, p.name]));
             const parts = partLinks
-              .map((l: any) => ({ id: l.part_name_id, name: nameMap.get(l.part_name_id), quantity: l.quantity ?? null }))
-              .filter((x: any) => x.name) as LinkedPart[];
+              .map((l) => ({ id: l.part_name_id as string, name: nameMap.get(l.part_name_id as string), quantity: l.quantity ?? null }))
+              .filter((x) => x.name) as LinkedPart[];
             setLinkedParts(parts);
           } else {
             setLinkedParts([]);
@@ -322,9 +387,28 @@ export default function EditServiceItemPage() {
         } else {
           setLinkedParts([]);
         }
-        setVehiclePrices((vehicleData || []).map((v: any) => {
+        interface VehicleDataRow {
+          id: string;
+          vehicle_model_id: number;
+          price: number;
+          vip_price: number | null;
+          customer_parts_price: number | null;
+          company_price: number | null;
+          group_key: string | null;
+          vehicle_models: {
+            品牌?: string | null;
+            车系?: string | null;
+            车型?: string | null;
+            年款?: number | null;
+            排量?: string | null;
+            发动机型号?: string | null;
+            底盘型号?: string | null;
+            变速箱型号?: string | null;
+          } | null;
+        }
+        setVehiclePrices((vehicleData || []).map((v: VehicleDataRow) => {
           const m = v.vehicle_models;
-          const parts = [m?.品牌, m?.车系, m?.车型].filter(Boolean);
+          const parts: (string | number)[] = [m?.品牌, m?.车系, m?.车型].filter(Boolean) as (string | number)[];
           if (m?.年款) parts.push(m.年款 + "款");
           if (m?.排量) parts.push(m.排量);
           return {
@@ -352,7 +436,16 @@ export default function EditServiceItemPage() {
           .from("service_item_special_prices")
           .select("company_id, customer_id, vehicle_id, price, companies(name), customers(name), vehicles(plate_number, brand, model)")
           .eq("service_item_id", id);
-        setSpecialPrices((specialData || []).map((s: any) => ({
+        interface SpecialDataRow {
+          company_id: string | null;
+          companies: { name?: string | null } | null;
+          customer_id: string | null;
+          customers: { name?: string | null } | null;
+          vehicle_id: string | null;
+          vehicles: { plate_number?: string | null; brand?: string | null; model?: string | null } | null;
+          price: number;
+        }
+        setSpecialPrices((specialData || []).map((s: SpecialDataRow) => ({
           company_id: s.company_id || undefined,
           company_name: s.companies?.name || undefined,
           customer_id: s.customer_id || undefined,
@@ -361,7 +454,7 @@ export default function EditServiceItemPage() {
           vehicle_info: s.vehicles ? `${s.vehicles.plate_number}${s.vehicles.brand ? ` · ${s.vehicles.brand}` : ""}${s.vehicles.model ? ` ${s.vehicles.model}` : ""}` : undefined,
           price: s.price,
         })));
-      } catch (err: any) { console.error("加载失败:", err); alert("加载数据失败: " + (err.message || "未知错误")); }
+      } catch (err: unknown) { console.error("加载失败:", err); alert("加载数据失败: " + (err instanceof Error ? err.message : "未知错误")); }
       finally { setLoading(false); }
     }
     load();
@@ -398,7 +491,7 @@ export default function EditServiceItemPage() {
           .from("service_name_part_names")
           .select("service_name_id")
           .in("part_name_id", partIds);
-        const linkedIds = [...new Set((linked || []).map((l: any) => l.service_name_id))];
+        const linkedIds = [...new Set((linked || []).map((l) => l.service_name_id as string))];
         if (linkedIds.length > 0) {
           const { data } = await supabase
             .from("service_names")
@@ -462,12 +555,12 @@ export default function EditServiceItemPage() {
       .order("sort_order", { ascending: true });
 
     if (partLinks && partLinks.length > 0) {
-      const partIds = partLinks.map((l: any) => l.part_name_id);
+      const partIds = partLinks.map((l) => l.part_name_id as string);
       const { data: partNamesData } = await supabase.from("part_names").select("id, name").in("id", partIds);
-      const nameMap = new Map((partNamesData || []).map((p: any) => [p.id, p.name]));
+      const nameMap = new Map((partNamesData || []).map((p: { id: string; name: string }) => [p.id, p.name]));
       const parts = partLinks
-        .map((l: any) => ({ id: l.part_name_id, name: nameMap.get(l.part_name_id), quantity: l.quantity ?? null }))
-        .filter((x: any) => x.name) as LinkedPart[];
+        .map((l) => ({ id: l.part_name_id as string, name: nameMap.get(l.part_name_id as string), quantity: l.quantity ?? null }))
+        .filter((x) => x.name) as LinkedPart[];
       setLinkedParts(parts);
     } else {
       setLinkedParts([]);
@@ -505,9 +598,16 @@ export default function EditServiceItemPage() {
     }
   }
 
-  function formatVehicleName(m: any): string {
+  interface VehicleModelInfo {
+    品牌?: string | null;
+    车系?: string | null;
+    车型?: string | null;
+    年款?: number | null;
+    排量?: string | null;
+  }
+  function formatVehicleName(m: VehicleModelInfo | null): string {
     if (!m) return "";
-    const parts = [m.品牌, m.车系, m.车型].filter(Boolean);
+    const parts: string[] = [m.品牌, m.车系, m.车型].filter((x): x is string => !!x);
     if (m.年款) parts.push(`${m.年款}款`);
     if (m.排量) parts.push(m.排量);
     return parts.join(" ");
@@ -532,6 +632,17 @@ export default function EditServiceItemPage() {
             setVehiclePrices((prev) => prev.filter((p) => makeGroupKey(p) !== editingGroupKey));
           }
         } else {
+          interface VehicleModelRow {
+            id: number;
+            品牌?: string | null;
+            车系?: string | null;
+            车型?: string | null;
+            年款?: number | null;
+            排量?: string | null;
+            发动机型号?: string | null;
+            底盘型号?: string | null;
+            变速箱型号?: string | null;
+          }
           const { data, error } = await supabase.from("vehicle_models").select("id,品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号").in("id", vehicleIds);
           if (error) {
             alert("加载车型信息失败: " + error.message);
@@ -543,7 +654,7 @@ export default function EditServiceItemPage() {
           }
           const groupPrice = appendMode && pendingGroupPrices ? pendingGroupPrices : { price: basePrice, vip_price: baseVip, customer_parts_price: baseCp, company_price: baseCo };
           const targetGroupKey = vehiclePrices.find((p) => getPriceKey(p) === editingGroupKey)?.group_key || editingGroupKey;
-          const newEntries = data.map((m: any) => ({
+          const newEntries = (data as VehicleModelRow[]).map((m) => ({
             vehicle_model_id: m.id,
             vehicle_name: formatVehicleName(m),
             price: groupPrice.price,
@@ -582,7 +693,7 @@ export default function EditServiceItemPage() {
           return;
         }
         const newGroupKey = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const newEntries = data.map((m: any) => ({
+        const newEntries = (data as VehicleModelRow[]).map((m) => ({
           vehicle_model_id: m.id,
           vehicle_name: formatVehicleName(m),
           price: basePrice,
@@ -603,9 +714,9 @@ export default function EditServiceItemPage() {
       }
       setVehicleModalOpen(false);
       setPendingGroupPrices(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("handleModalConfirm 异常:", err);
-      alert("添加车型定价时出错: " + (err?.message || String(err)));
+      alert("添加车型定价时出错: " + (err instanceof Error ? err.message : String(err)));
     }
   }
 
@@ -696,48 +807,6 @@ export default function EditServiceItemPage() {
 
     router.push("/service-items");
     router.refresh();
-  }
-
-  function CommissionField({
-    label,
-    typeValue,
-    valueValue,
-    onTypeChange,
-    onValueChange,
-  }: {
-    label: string;
-    typeValue: string;
-    valueValue: string;
-    onTypeChange: (v: string) => void;
-    onValueChange: (v: string) => void;
-  }) {
-    return (
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
-          <select
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={typeValue}
-            onChange={(e) => onTypeChange(e.target.value)}
-          >
-            <option value="">无提成</option>
-            <option value="revenue_pct">按产值(%)</option>
-            <option value="profit_pct">按毛利(%)</option>
-            <option value="fixed">固定金额</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
-          <input
-            type="number"
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={valueValue}
-            onChange={(e) => onValueChange(e.target.value)}
-            disabled={!typeValue}
-          />
-        </div>
-      </div>
-    );
   }
 
   if (loading) {
@@ -967,28 +1036,28 @@ export default function EditServiceItemPage() {
                   label="销售提成"
                   typeValue={form.sales_type}
                   valueValue={form.sales_value}
-                  onTypeChange={(v) => setForm({ ...form, sales_type: v as any, sales_value: v ? form.sales_value : "" })}
+                  onTypeChange={(v) => setForm({ ...form, sales_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", sales_value: v ? form.sales_value : "" })}
                   onValueChange={(v) => setForm({ ...form, sales_value: v })}
                 />
                 <CommissionField
                   label="诊断提成"
                   typeValue={form.diagnosis_type}
                   valueValue={form.diagnosis_value}
-                  onTypeChange={(v) => setForm({ ...form, diagnosis_type: v as any, diagnosis_value: v ? form.diagnosis_value : "" })}
+                  onTypeChange={(v) => setForm({ ...form, diagnosis_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", diagnosis_value: v ? form.diagnosis_value : "" })}
                   onValueChange={(v) => setForm({ ...form, diagnosis_value: v })}
                 />
                 <CommissionField
                   label="施工提成"
                   typeValue={form.repair_type}
                   valueValue={form.repair_value}
-                  onTypeChange={(v) => setForm({ ...form, repair_type: v as any, repair_value: v ? form.repair_value : "" })}
+                  onTypeChange={(v) => setForm({ ...form, repair_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", repair_value: v ? form.repair_value : "" })}
                   onValueChange={(v) => setForm({ ...form, repair_value: v })}
                 />
                 <CommissionField
                   label="质检提成"
                   typeValue={form.qc_type}
                   valueValue={form.qc_value}
-                  onTypeChange={(v) => setForm({ ...form, qc_type: v as any, qc_value: v ? form.qc_value : "" })}
+                  onTypeChange={(v) => setForm({ ...form, qc_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", qc_value: v ? form.qc_value : "" })}
                   onValueChange={(v) => setForm({ ...form, qc_value: v })}
                 />
               </div>
@@ -1058,7 +1127,7 @@ export default function EditServiceItemPage() {
                     />
                     {spVehicleResults.length > 0 && !spSelectedVehicle && (
                       <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                        {spVehicleResults.map((v: any) => (
+                        {spVehicleResults.map((v) => (
                           <button
                             key={v.id}
                             type="button"

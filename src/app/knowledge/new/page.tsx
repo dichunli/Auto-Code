@@ -16,7 +16,12 @@ export default function NewKnowledgePage() {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
-  const [categories, setCategories] = useState<any[]>([]);
+  interface Category {
+    id: string;
+    name: string;
+  }
+
+  const [categories, setCategories] = useState<Category[]>([]);
 
   const [form, setForm] = useState({
     title: "",
@@ -104,8 +109,9 @@ export default function NewKnowledgePage() {
 
       router.push("/knowledge");
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert("保存失败: " + message);
       setLoading(false);
     }
   }
@@ -131,7 +137,7 @@ export default function NewKnowledgePage() {
               <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as any })}
+                onChange={(e) => setForm({ ...form, type: e.target.value as "article" | "video" | "qa" | "guide" })}
               >
                 <option value="article">文章</option>
                 <option value="video">视频</option>

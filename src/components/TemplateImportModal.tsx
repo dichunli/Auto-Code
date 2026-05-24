@@ -11,13 +11,44 @@ interface Props {
   onSuccess: () => void;
 }
 
+interface TemplateItem {
+  id: string;
+  service_item_id: string | null;
+  name: string;
+  item_type: string;
+  quantity: number | null;
+  unit_price: number | null;
+  mechanic_id: string | null;
+  vehicle_maintenance_template_parts?: TemplatePart[];
+}
+
+interface TemplatePart {
+  id: string;
+  part_name_id: string | null;
+  part_id: string | null;
+  quantity: number | null;
+  name: string;
+  brand: string | null;
+  specification: string | null;
+  unit_cost: number | null;
+  unit_price: number | null;
+}
+
+interface Template {
+  id: string;
+  name: string;
+  previous_cost: number | null;
+  customer_notes: string | null;
+  vehicle_maintenance_template_items?: TemplateItem[];
+}
+
 export function TemplateImportModal({ vehicleId, orderId, onClose, onSuccess }: Props) {
   const supabase = createClient();
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<any>(null);
+  const [detail, setDetail] = useState<Template | null>(null);
 
   useEffect(() => {
     if (!vehicleId) return;
@@ -105,8 +136,8 @@ export function TemplateImportModal({ vehicleId, orderId, onClose, onSuccess }: 
       }
 
       onSuccess();
-    } catch (err: any) {
-      alert("导入失败: " + err.message);
+    } catch (err: unknown) {
+      alert("导入失败: " + (err instanceof Error ? err.message : String(err)));
       setImporting(false);
     }
   }
@@ -137,7 +168,7 @@ export function TemplateImportModal({ vehicleId, orderId, onClose, onSuccess }: 
               {templates.length === 0 && (
                 <p className="text-sm text-gray-400 p-2">暂无保养模板</p>
               )}
-              {templates.map((t: any) => (
+              {templates.map((t) => (
                 <button
                   key={t.id}
                   type="button"
@@ -180,7 +211,7 @@ export function TemplateImportModal({ vehicleId, orderId, onClose, onSuccess }: 
                     <div className="text-xs text-gray-500">客户嘱咐: {detail.customer_notes}</div>
                   )}
                   <div className="text-xs text-gray-400 border-t border-gray-100 pt-2">包含项目:</div>
-                  {(detail.vehicle_maintenance_template_items || []).map((item: any) => (
+                  {(detail.vehicle_maintenance_template_items || []).map((item) => (
                     <div key={item.id} className="text-sm bg-gray-50 rounded p-2">
                       <div className="font-medium text-gray-800">{item.name}</div>
                       <div className="text-xs text-gray-400">
@@ -189,7 +220,7 @@ export function TemplateImportModal({ vehicleId, orderId, onClose, onSuccess }: 
                       </div>
                       {(item.vehicle_maintenance_template_parts || []).length > 0 && (
                         <div className="text-xs text-gray-400 mt-1">
-                          配件: {(item.vehicle_maintenance_template_parts || []).map((p: any) => p.name || '未命名').join(', ')}
+                          配件: {(item.vehicle_maintenance_template_parts || []).map((p) => p.name || '未命名').join(', ')}
                         </div>
                       )}
                     </div>

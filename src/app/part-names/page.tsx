@@ -15,6 +15,54 @@ interface LinkedItem {
   name: string;
 }
 
+interface PartCategory {
+  id: string;
+  name: string;
+  auto_link_vehicle_model: boolean | null;
+  is_consumable: boolean | null;
+  sales_commission_type: string | null;
+  sales_commission_value: number | null;
+  diagnosis_commission_type: string | null;
+  diagnosis_commission_value: number | null;
+  repair_commission_type: string | null;
+  repair_commission_value: number | null;
+  qc_commission_type: string | null;
+  qc_commission_value: number | null;
+  picking_commission_type: string | null;
+  picking_commission_value: number | null;
+}
+
+interface PartBrand {
+  id: string;
+  name: string;
+}
+
+interface PartSpecification {
+  id: string;
+  name: string;
+}
+
+interface PartNameBrandLink {
+  part_brands: PartBrand | null;
+}
+
+interface PartNameSpecLink {
+  part_specifications: PartSpecification | null;
+}
+
+interface PartName {
+  id: string;
+  name: string;
+  unit: string | null;
+  default_quantity: number | null;
+  search_keywords: string | null;
+  auto_link_vehicle_model: boolean | null;
+  is_consumable: boolean | null;
+  part_categories: { name: string } | null;
+  part_name_brands: PartNameBrandLink[] | null;
+  part_name_specifications: PartNameSpecLink[] | null;
+}
+
 const importFields = [
   { key: "配件名称", required: true },
   { key: "分类名称", required: true },
@@ -24,10 +72,52 @@ const importFields = [
   { key: "是否耗材", required: false },
 ];
 
+function CommissionField({
+  label,
+  typeValue,
+  valueValue,
+  onTypeChange,
+  onValueChange,
+}: {
+  label: string;
+  typeValue: string;
+  valueValue: string;
+  onTypeChange: (v: string) => void;
+  onValueChange: (v: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
+        <select
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={typeValue}
+          onChange={(e) => onTypeChange(e.target.value)}
+        >
+          <option value="">无提成</option>
+          <option value="revenue_pct">按产值(%)</option>
+          <option value="profit_pct">按毛利(%)</option>
+          <option value="fixed">固定金额</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
+        <input
+          type="number"
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={valueValue}
+          onChange={(e) => onValueChange(e.target.value)}
+          disabled={!typeValue}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function PartNamesPage() {
   const supabase = createClient();
   const [query, setQuery] = useState("");
-  const [names, setNames] = useState<any[]>([]);
+  const [names, setNames] = useState<PartName[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -39,7 +129,7 @@ export default function PartNamesPage() {
   const [batchType, setBatchType] = useState<"brand" | "specification" | null>(null);
   const [showBatchMerge, setShowBatchMerge] = useState(false);
 
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<PartCategory[]>([]);
   const [form, setForm] = useState({
     name: "",
     category_id: "",
@@ -64,11 +154,11 @@ export default function PartNamesPage() {
   const [linkedSpecs, setLinkedSpecs] = useState<LinkedItem[]>([]);
 
   const [brandQuery, setBrandQuery] = useState("");
-  const [brandResults, setBrandResults] = useState<any[] | null>(null);
+  const [brandResults, setBrandResults] = useState<PartBrand[] | null>(null);
   const [brandSearching, setBrandSearching] = useState(false);
 
   const [specQuery, setSpecQuery] = useState("");
-  const [specResults, setSpecResults] = useState<any[] | null>(null);
+  const [specResults, setSpecResults] = useState<PartSpecification[] | null>(null);
   const [specSearching, setSpecSearching] = useState(false);
 
   const loadNames = useCallback(
@@ -85,7 +175,7 @@ export default function PartNamesPage() {
         q = q.or(`name.ilike.%${s}%,search_keywords.ilike.%${s}%`);
       }
       const { data } = await q;
-      setNames(data || []);
+      setNames((data as PartName[]) || []);
       setLoading(false);
       setSearching(false);
     },
@@ -100,7 +190,7 @@ export default function PartNamesPage() {
         "id, name, auto_link_vehicle_model, is_consumable, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value"
       )
       .order("name")
-      .then(({ data }) => setCategories(data || []));
+      .then(({ data }) => setCategories((data as PartCategory[]) || []));
   }, [supabase, loadNames]);
 
   useEffect(() => {
@@ -114,7 +204,7 @@ export default function PartNamesPage() {
       if (!brandQuery.trim()) return;
       setBrandSearching(true);
       const { data } = await supabase.from("part_brands").select("id, name").ilike("name", `%${brandQuery.trim()}%`).order("name").limit(10);
-      setBrandResults(data || []);
+      setBrandResults((data as PartBrand[]) || []);
       setBrandSearching(false);
     }, 300);
     return () => clearTimeout(t);
@@ -126,7 +216,7 @@ export default function PartNamesPage() {
       if (!specQuery.trim()) return;
       setSpecSearching(true);
       const { data } = await supabase.from("part_specifications").select("id, name").ilike("name", `%${specQuery.trim()}%`).order("name").limit(10);
-      setSpecResults(data || []);
+      setSpecResults((data as PartSpecification[]) || []);
       setSpecSearching(false);
     }, 300);
     return () => clearTimeout(t);
@@ -170,7 +260,7 @@ export default function PartNamesPage() {
 
   function handleExport() {
     const headers = ["配件名称", "分类", "关联品牌", "关联规格", "单位", "默认数量", "搜索关键词", "自动关联车型", "是否耗材"];
-    const rows = names.map((n: any) => [
+    const rows = names.map((n: PartName) => [
       n.name,
       n.part_categories?.name || "",
       formatLinkedBrands(n),
@@ -187,7 +277,7 @@ export default function PartNamesPage() {
     XLSX.writeFile(wb, `配件名称库_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
-  function parseBool(value: any): boolean {
+  function parseBool(value: unknown): boolean {
     if (value === undefined || value === null || value === "") return false;
     const s = String(value).trim().toLowerCase();
     return s === "是" || s === "yes" || s === "true" || s === "1" || s === "y";
@@ -200,31 +290,31 @@ export default function PartNamesPage() {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
       if (rows.length < 2) {
         setImportMsg("文件中没有数据");
         setImporting(false);
         return;
       }
 
-      const headers: string[] = rows[0];
+      const headers: string[] = rows[0] as string[];
       const dataRows = rows.slice(1);
 
       setImportMsg("正在加载分类数据...");
       const { data: categories } = await supabase.from("part_categories").select("id, name");
-      const categoryMap = new Map((categories || []).map((c: any) => [c.name, c.id]));
+      const categoryMap = new Map((categories as PartCategory[] || []).map((c) => [c.name, c.id]));
 
-      const records: any[] = [];
+      const records: { name: string; category_id: string; unit: string; search_keywords: string | null; auto_link_vehicle_model: boolean; is_consumable: boolean }[] = [];
       const errors: string[] = [];
       const seenInFile = new Map<string, number>(); // 文件内重名记录:name -> 首次出现的行号
       let duplicateInFile = 0;
 
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
-        const record: any = {};
+        const record: Record<string, unknown> = {};
         for (let j = 0; j < headers.length; j++) {
           const key = headers[j];
-          let value = row[j];
+          let value = (row as unknown[])[j];
           if (value === undefined || value === "") value = null;
           record[key] = value;
         }
@@ -239,7 +329,7 @@ export default function PartNamesPage() {
           continue;
         }
 
-        const categoryId = categoryMap.get(record["分类名称"]);
+        const categoryId = categoryMap.get(record["分类名称"] as string);
         if (!categoryId) {
           errors.push(`第 ${rowNum} 行: 分类"${record["分类名称"]}"不存在，请先创建该分类`);
           continue;
@@ -283,7 +373,7 @@ export default function PartNamesPage() {
           .from("part_names")
           .select("name")
           .in("name", namesBatch);
-        (existing || []).forEach((row: any) => existingNames.add(row.name));
+        (existing as { name: string }[] || []).forEach((row) => existingNames.add(row.name));
       }
 
       const toInsert = records.filter((r) => !existingNames.has(r.name));
@@ -323,8 +413,9 @@ export default function PartNamesPage() {
       if (otherErrors > 0) msg += `，${otherErrors} 条有错误`;
       setImportMsg(msg);
       loadNames(query);
-    } catch (err: any) {
-      setImportMsg("导入出错: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setImportMsg("导入出错: " + message);
     }
     setImporting(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -476,56 +567,14 @@ export default function PartNamesPage() {
     setSaving(false);
   }
 
-  function CommissionField({
-    label,
-    typeValue,
-    valueValue,
-    onTypeChange,
-    onValueChange,
-  }: {
-    label: string;
-    typeValue: string;
-    valueValue: string;
-    onTypeChange: (v: string) => void;
-    onValueChange: (v: string) => void;
-  }) {
-    return (
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
-          <select
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={typeValue}
-            onChange={(e) => onTypeChange(e.target.value)}
-          >
-            <option value="">无提成</option>
-            <option value="revenue_pct">按产值(%)</option>
-            <option value="profit_pct">按毛利(%)</option>
-            <option value="fixed">固定金额</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
-          <input
-            type="number"
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={valueValue}
-            onChange={(e) => onValueChange(e.target.value)}
-            disabled={!typeValue}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  function formatLinkedBrands(n: any) {
-    const list = n.part_name_brands?.map((b: any) => b.part_brands?.name).filter(Boolean);
+  function formatLinkedBrands(n: PartName) {
+    const list = n.part_name_brands?.map((b) => b.part_brands?.name).filter(Boolean);
     if (!list || list.length === 0) return "-";
     return list.join("、");
   }
 
-  function formatLinkedSpecs(n: any) {
-    const list = n.part_name_specifications?.map((s: any) => s.part_specifications?.name).filter(Boolean);
+  function formatLinkedSpecs(n: PartName) {
+    const list = n.part_name_specifications?.map((s) => s.part_specifications?.name).filter(Boolean);
     if (!list || list.length === 0) return "-";
     return list.join("、");
   }
@@ -637,7 +686,7 @@ export default function PartNamesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {names?.map((n: any) => (
+              {names?.map((n: PartName) => (
                 <tr key={n.id} className="hover:bg-gray-50">
                   <td className="px-4 py-4">
                     <input
@@ -806,35 +855,35 @@ export default function PartNamesPage() {
                   label="销售提成"
                   typeValue={form.sales_type}
                   valueValue={form.sales_value}
-                  onTypeChange={(v) => setForm({ ...form, sales_type: v as any, sales_value: v ? form.sales_value : "" })}
+                  onTypeChange={(v) => setForm({ ...form, sales_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", sales_value: v ? form.sales_value : "" })}
                   onValueChange={(v) => setForm({ ...form, sales_value: v })}
                 />
                 <CommissionField
                   label="诊断提成"
                   typeValue={form.diagnosis_type}
                   valueValue={form.diagnosis_value}
-                  onTypeChange={(v) => setForm({ ...form, diagnosis_type: v as any, diagnosis_value: v ? form.diagnosis_value : "" })}
+                  onTypeChange={(v) => setForm({ ...form, diagnosis_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", diagnosis_value: v ? form.diagnosis_value : "" })}
                   onValueChange={(v) => setForm({ ...form, diagnosis_value: v })}
                 />
                 <CommissionField
                   label="施工提成"
                   typeValue={form.repair_type}
                   valueValue={form.repair_value}
-                  onTypeChange={(v) => setForm({ ...form, repair_type: v as any, repair_value: v ? form.repair_value : "" })}
+                  onTypeChange={(v) => setForm({ ...form, repair_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", repair_value: v ? form.repair_value : "" })}
                   onValueChange={(v) => setForm({ ...form, repair_value: v })}
                 />
                 <CommissionField
                   label="质检提成"
                   typeValue={form.qc_type}
                   valueValue={form.qc_value}
-                  onTypeChange={(v) => setForm({ ...form, qc_type: v as any, qc_value: v ? form.qc_value : "" })}
+                  onTypeChange={(v) => setForm({ ...form, qc_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", qc_value: v ? form.qc_value : "" })}
                   onValueChange={(v) => setForm({ ...form, qc_value: v })}
                 />
                 <CommissionField
                   label="领料提成"
                   typeValue={form.picking_type}
                   valueValue={form.picking_value}
-                  onTypeChange={(v) => setForm({ ...form, picking_type: v as any, picking_value: v ? form.picking_value : "" })}
+                  onTypeChange={(v) => setForm({ ...form, picking_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", picking_value: v ? form.picking_value : "" })}
                   onValueChange={(v) => setForm({ ...form, picking_value: v })}
                 />
               </div>

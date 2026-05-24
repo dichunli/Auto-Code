@@ -4,12 +4,39 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BatchEditModal } from "./BatchEditModal";
 
+interface BatchItem {
+  id: string;
+  quantity: number;
+  unit_price: number | null;
+  status: string;
+  expected_delivery: string | null;
+}
+
+interface ItemPart {
+  id: string;
+  item_id: string;
+  part_id: string;
+  quantity: number;
+  unit_price: number | null;
+  status: string;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+}
+
+interface LogisticsCompany {
+  id: string;
+  name: string;
+}
+
 interface Props {
   orderId: string;
-  items: any[];
-  itemParts: any[];
-  suppliers: any[];
-  logisticsCompanies: any[];
+  items: BatchItem[];
+  itemParts: ItemPart[];
+  suppliers: Supplier[];
+  logisticsCompanies: LogisticsCompany[];
 }
 
 export function BatchEditWrapper({ orderId, items, itemParts, suppliers, logisticsCompanies }: Props) {

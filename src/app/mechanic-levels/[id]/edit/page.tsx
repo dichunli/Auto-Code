@@ -74,7 +74,7 @@ export default function EditMechanicLevelPage() {
 
       router.push("/mechanic-levels");
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       alert("保存失败：" + (err instanceof Error ? err.message : String(err)));
       setSaving(false);
     }

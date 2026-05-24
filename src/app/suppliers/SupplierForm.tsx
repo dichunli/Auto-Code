@@ -49,16 +49,16 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
   const [linkedBrands, setLinkedBrands] = useState<{ id: string; name: string }[]>([]);
 
   const [catQuery, setCatQuery] = useState("");
-  const [catResults, setCatResults] = useState<any[]>([]);
+  const [catResults, setCatResults] = useState<{ id: string; name: string }[]>([]);
   const [pnQuery, setPnQuery] = useState("");
-  const [pnResults, setPnResults] = useState<any[]>([]);
+  const [pnResults, setPnResults] = useState<{ id: string; name: string }[]>([]);
   const [brandQuery, setBrandQuery] = useState("");
-  const [brandResults, setBrandResults] = useState<any[]>([]);
+  const [brandResults, setBrandResults] = useState<{ id: string; name: string }[]>([]);
 
   // 车辆关联
   const [linkedVehicles, setLinkedVehicles] = useState<{ id: number; name: string }[]>([]);
   const [vehicleQuery, setVehicleQuery] = useState("");
-  const [vehicleResults, setVehicleResults] = useState<any[]>([]);
+  const [vehicleResults, setVehicleResults] = useState<{ id: number; 厂商?: string | null; 品牌?: string | null; 车系?: string | null }[]>([]);
 
   // 加载编辑数据
   useEffect(() => {
@@ -88,7 +88,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
         .order("created_at", { ascending: true });
       if (contactData) {
         setContacts(
-          contactData.map((c: any) => ({
+          contactData.map((c: { id: string; name?: string | null; phone?: string | null; title?: string | null; is_primary?: boolean | null; notes?: string | null }) => ({
             id: c.id,
             name: c.name || "",
             phone: c.phone || "",
@@ -106,9 +106,9 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
         supabase.from("supplier_part_brands").select("part_brand_id, part_brands(name)").eq("supplier_id", supplierId),
       ]);
 
-      setLinkedCategories(catRes.status === "fulfilled" ? (catRes.value.data || []).map((c: any) => ({ id: c.part_category_id, name: c.part_categories?.name || "" })) : []);
-      setLinkedPartNames(pnRes.status === "fulfilled" ? (pnRes.value.data || []).map((p: any) => ({ id: p.part_name_id, name: p.part_names?.name || "" })) : []);
-      setLinkedBrands(brandRes.status === "fulfilled" ? (brandRes.value.data || []).map((b: any) => ({ id: b.part_brand_id, name: b.part_brands?.name || "" })) : []);
+      setLinkedCategories(catRes.status === "fulfilled" ? (catRes.value.data || []).map((c: { part_category_id: string; part_categories?: { name?: string | null } | null }) => ({ id: c.part_category_id, name: c.part_categories?.name || "" })) : []);
+      setLinkedPartNames(pnRes.status === "fulfilled" ? (pnRes.value.data || []).map((p: { part_name_id: string; part_names?: { name?: string | null } | null }) => ({ id: p.part_name_id, name: p.part_names?.name || "" })) : []);
+      setLinkedBrands(brandRes.status === "fulfilled" ? (brandRes.value.data || []).map((b: { part_brand_id: string; part_brands?: { name?: string | null } | null }) => ({ id: b.part_brand_id, name: b.part_brands?.name || "" })) : []);
 
       // 加载关联车型
       try {
@@ -116,7 +116,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
           .from("supplier_vehicle_models")
           .select("vehicle_model_id, vehicle_models(品牌,车系,车型,年款,排量)")
           .eq("supplier_id", supplierId);
-        setLinkedVehicles((vData || []).map((v: any) => {
+        setLinkedVehicles((vData || []).map((v: { vehicle_model_id: number; vehicle_models?: { 品牌?: string | null; 车系?: string | null; 车型?: string | null; 年款?: number | null; 排量?: string | null } | null }) => {
           const vm = v.vehicle_models;
           const parts = [vm?.品牌, vm?.车系, vm?.车型].filter(Boolean);
           if (vm?.年款) parts.push(`${vm.年款}款`);
@@ -190,7 +190,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
     setContacts((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  function updateContact(idx: number, field: keyof Contact, value: any) {
+  function updateContact(idx: number, field: keyof Contact, value: string | boolean) {
     setContacts((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], [field]: value };
@@ -234,12 +234,12 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
     setLinkedBrands((prev) => prev.filter((x) => x.id !== id));
   }
 
-  function formatVehicleName(vm: any): string {
+  function formatVehicleName(vm: { id: number; 厂商?: string | null; 品牌?: string | null; 车系?: string | null }): string {
     const parts = [vm.厂商, vm.品牌, vm.车系].filter(Boolean);
     return parts.join(" ") || `车型ID:${vm.id}`;
   }
 
-  function addVehicle(vm: any) {
+  function addVehicle(vm: { id: number; 厂商?: string | null; 品牌?: string | null; 车系?: string | null }) {
     const id = Number(vm.id);
     if (linkedVehicles.some((x) => x.id === id)) return;
     setLinkedVehicles((prev) => [...prev, { id, name: formatVehicleName(vm) }]);
@@ -264,8 +264,9 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
       if (!res.ok) throw new Error(result.error || "上传失败");
 
       setWechatGroupQr(result.path);
-    } catch (err: any) {
-      alert("上传失败: " + err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "未知错误";
+      alert("上传失败: " + msg);
     }
   }
 
@@ -275,7 +276,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
     setSaving(true);
 
     // 基础字段（ suppliers 表一定存在）
-    const basePayload: any = {
+    const basePayload: Record<string, string | null> = {
       name: form.name.trim(),
       contact: form.contact.trim() || null,
       phone: form.phone.trim() || null,
@@ -284,7 +285,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
     };
 
     // 扩展字段（迁移后才有，不存在的字段会单独尝试）
-    const extPayload: any = {
+    const extPayload: Record<string, string | null | number> = {
       region: form.region || "harbin",
       wechat_id: form.wechat_id.trim() || null,
       wechat_group_qr: wechatGroupQr || null,

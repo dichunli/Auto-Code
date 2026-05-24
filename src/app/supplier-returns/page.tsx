@@ -18,10 +18,26 @@ const statusMap: Record<string, { label: string; class: string }> = {
   completed: { label: "已完成", class: "bg-green-50 text-green-700" },
 };
 
+interface SupplierReturnRecord {
+  id: string;
+  work_order_item_part_id: string;
+  return_reason: string;
+  quantity: number;
+  supplier_name: string | null;
+  logistics_company: string | null;
+  tracking_no: string | null;
+  photos: string[] | null;
+  status: string;
+  created_at: string;
+  work_order_item_parts: { name: string | null; part_number: string | null } | null;
+  profiles: { full_name: string | null } | null;
+  purchase_return_orders: { id: string; return_no: string } | null;
+}
+
 export default function SupplierReturnsPage() {
   const supabase = createClient();
-  const [records, setRecords] = useState<any[]>([]);
-  const [allRecords, setAllRecords] = useState<any[]>([]);
+  const [records, setRecords] = useState<SupplierReturnRecord[]>([]);
+  const [allRecords, setAllRecords] = useState<SupplierReturnRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -51,7 +67,7 @@ export default function SupplierReturnsPage() {
     setLoading(false);
   }
 
-  function filterRecords(source: any[], search: string) {
+  function filterRecords(source: SupplierReturnRecord[], search: string) {
     if (!search.trim()) {
       setRecords(source);
       return;

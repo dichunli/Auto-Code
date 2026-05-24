@@ -5,11 +5,16 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
+interface 规格项 {
+  id: string;
+  name: string;
+}
+
 export default function NewPartSpecificationPage() {
   const router = useRouter();
   const supabase = createClient();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<规格项[]>([]);
   const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);

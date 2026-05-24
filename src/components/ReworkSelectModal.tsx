@@ -4,18 +4,43 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
+interface SourceItem {
+  id: string;
+  name: string;
+  unit_price: number | null;
+  work_order_id: string;
+}
+
+interface WorkOrderRow {
+  id: string;
+  order_no: string;
+  status: string;
+  created_at: string;
+  customers: { name: string } | null;
+}
+
+interface WorkOrderItemRow {
+  id: string;
+  name: string;
+  item_type: string | null;
+  quantity: number | null;
+  total_price: number | null;
+  work_order_id: string;
+  profiles: { full_name: string } | null;
+}
+
 interface Props {
   vehicleId: string;
-  onSelect: (sourceItem: any, unlockOrder: boolean) => void;
+  onSelect: (sourceItem: SourceItem, unlockOrder: boolean) => void;
   onClose: () => void;
 }
 
 export function ReworkSelectModal({ vehicleId, onSelect, onClose }: Props) {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<WorkOrderRow[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [orderItems, setOrderItems] = useState<any[]>([]);
+  const [orderItems, setOrderItems] = useState<WorkOrderItemRow[]>([]);
   const [unlockOrder, setUnlockOrder] = useState(false);
 
   useEffect(() => {
@@ -27,7 +52,7 @@ export function ReworkSelectModal({ vehicleId, onSelect, onClose }: Props) {
       .in("status", ["completed", "settled", "delivered"])
       .order("created_at", { ascending: false })
       .then(({ data }) => {
-        setOrders(data || []);
+        setOrders((data || []) as WorkOrderRow[]);
         setLoading(false);
       });
   }, [vehicleId, supabase]);
@@ -43,7 +68,7 @@ export function ReworkSelectModal({ vehicleId, onSelect, onClose }: Props) {
       .eq("work_order_id", selectedOrderId)
       .order("created_at", { ascending: true })
       .then(({ data }) => {
-        setOrderItems(data || []);
+        setOrderItems((data || []) as WorkOrderItemRow[]);
       });
   }, [selectedOrderId, supabase]);
 
@@ -73,7 +98,7 @@ export function ReworkSelectModal({ vehicleId, onSelect, onClose }: Props) {
               {orders.length === 0 && (
                 <p className="text-sm text-gray-400 p-2">暂无已完工工单</p>
               )}
-              {orders.map((o: any) => (
+              {orders.map((o) => (
                 <button
                   key={o.id}
                   type="button"
@@ -105,7 +130,7 @@ export function ReworkSelectModal({ vehicleId, onSelect, onClose }: Props) {
               {selectedOrderId && orderItems.length === 0 && (
                 <p className="text-sm text-gray-400 p-2">该工单暂无项目</p>
               )}
-              {orderItems.map((it: any) => (
+              {orderItems.map((it) => (
                 <button
                   key={it.id}
                   type="button"

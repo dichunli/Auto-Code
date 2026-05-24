@@ -11,8 +11,22 @@ export default function NewPurchaseReturnPage() {
   const supabase = createClient();
   const { showPrices } = usePriceVisibility();
   const [loading, setLoading] = useState(false);
-  const [parts, setParts] = useState<any[]>([]);
-  const [batches, setBatches] = useState<any[]>([]);
+  interface Part {
+    id: string;
+    part_number: string;
+    name: string;
+    quantity: number;
+  }
+
+  interface Batch {
+    id: string;
+    batch_no: string | null;
+    remaining: number;
+    unit_cost: number | null;
+  }
+
+  const [parts, setParts] = useState<Part[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
 
   const [form, setForm] = useState({
     part_id: "",
@@ -105,8 +119,9 @@ export default function NewPurchaseReturnPage() {
 
       router.push("/inventory/returns");
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert("保存失败: " + message);
       setLoading(false);
     }
   }

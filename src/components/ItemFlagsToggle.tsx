@@ -5,6 +5,31 @@ import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { OutsourceModal } from "./OutsourceModal";
 
+interface ExistingOrder {
+  id: string;
+  order_no: string;
+  supplier_id: string;
+  total_amount: number;
+  is_paid: boolean;
+  payment_method?: string | null;
+  notes?: string | null;
+  suppliers?: { name: string } | null;
+  outsource_order_items?: Array<{
+    id: string;
+    work_order_item_id: string;
+    service_item_id: string;
+    service_name: string;
+    amount: number;
+  }>;
+}
+
+interface ExistingItem {
+  id: string;
+  service_item_id: string;
+  service_name: string;
+  amount: number;
+}
+
 interface Props {
   itemId: string;
   isOutsourced: boolean;
@@ -12,8 +37,8 @@ interface Props {
   serviceItemId?: string | null;
   workOrderId?: string;
   itemName?: string;
-  existingOrder?: any;
-  existingItem?: any;
+  existingOrder?: ExistingOrder | null;
+  existingItem?: ExistingItem | null;
 }
 
 export function ItemFlagsToggle({
@@ -35,7 +60,7 @@ export function ItemFlagsToggle({
     if (updating) return;
     setUpdating(true);
 
-    const updateData: Record<string, any> = { [field]: value };
+    const updateData: Record<string, boolean | number | null> = { [field]: value };
 
     // 自带配件开关时同步更新价格
     if (field === "is_customer_part" && serviceItemId) {

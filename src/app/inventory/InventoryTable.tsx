@@ -6,7 +6,6 @@ import JsBarcode from "jsbarcode";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import DeletePartButton from "./DeletePartButton";
-import { formatCurrency } from "@/lib/utils";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 
 interface ColumnDef {
@@ -66,7 +65,93 @@ const importFields = [
   { key: "备注", required: false },
 ];
 
-export default function InventoryTable({ items }: { items: any[] }) {
+interface PartCategory {
+  name: string | null;
+}
+
+interface PartName {
+  id: string;
+  name: string;
+  unit?: string | null;
+  part_categories?: PartCategory | null;
+}
+
+interface PartBrand {
+  id: string;
+  name: string;
+}
+
+interface PartSpecification {
+  id: string;
+  name: string;
+}
+
+interface PartsSpecificationLink {
+  part_specifications?: PartSpecification | null;
+}
+
+interface InventoryItem {
+  id: string;
+  part_number: string | null;
+  oe_number: string | null;
+  name: string;
+  document_name: string | null;
+  quantity: number;
+  min_stock: number | null;
+  purchase_price: number | null;
+  unit_cost: number | null;
+  unit_price: number | null;
+  location: string | null;
+  barcode: string | null;
+  part_names: PartName | null;
+  part_brands: PartBrand | null;
+  parts_specifications: PartsSpecificationLink[] | null;
+}
+
+interface ImportRecord {
+  rowNum: number;
+  name: string;
+  part_number: string;
+  oe_number: string | null;
+  part_name_id: string | null;
+  category_id: string | null;
+  brand_id: string | null;
+  brand_name: string | null;
+  spec_id: string | null;
+  spec_name: string | null;
+  unit: string;
+  quantity: number;
+  min_stock: number;
+  unit_cost: number | null;
+  unit_price: number | null;
+  supplier_id: string | null;
+  location: string | null;
+  notes: string | null;
+}
+
+interface InsertPartData {
+  name: string;
+  part_number: string;
+  oe_number: string | null;
+  part_name_id: string | undefined;
+  category_id: string | null;
+  unit: string;
+  quantity: number;
+  min_stock: number;
+  unit_cost: number | null;
+  unit_price: number | null;
+  supplier_id: string | null;
+  location: string | null;
+  notes: string | null;
+  brand_id?: string | null;
+}
+
+interface NamedRow {
+  id: string;
+  name: string;
+}
+
+export default function InventoryTable({ items }: { items: InventoryItem[] }) {
   const supabase = createClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
@@ -82,9 +167,9 @@ export default function InventoryTable({ items }: { items: any[] }) {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved);
+        const parsed = JSON.parse(saved) as ColumnDef[];
         return DEFAULT_COLUMNS.map((def) => {
-          const savedCol = parsed.find((c: ColumnDef) => c.key === def.key);
+          const savedCol = parsed.find((c) => c.key === def.key);
           return savedCol ? { ...def, ...savedCol } : def;
         });
       }
@@ -173,14 +258,6 @@ export default function InventoryTable({ items }: { items: any[] }) {
     });
   }
 
-  function toggleSelectAll() {
-    if (selectedIds.size === items.length && items.length > 0) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(items.map((i) => i.id)));
-    }
-  }
-
   function handleDownloadTemplate() {
     const headers = importFields.map((f) => f.key);
     const example = [
@@ -212,14 +289,14 @@ export default function InventoryTable({ items }: { items: any[] }) {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
       if (rows.length < 2) {
         setImportMsg("文件中没有数据");
         setImporting(false);
         return;
       }
 
-      const headers: string[] = rows[0];
+      const headers: string[] = rows[0] as string[];
       const dataRows = rows.slice(1);
 
       setImportMsg("正在加载关联数据...");
@@ -237,27 +314,27 @@ export default function InventoryTable({ items }: { items: any[] }) {
         supabase.from("suppliers").select("id, name"),
       ]);
 
-      const categoryMap = new Map((categories || []).map((c: any) => [c.name, c.id]));
-      const partNameMap = new Map((partNames || []).map((p: any) => [p.name, p.id]));
-      const brandMap = new Map((brands || []).map((b: any) => [b.name, b.id]));
-      const specMap = new Map((specs || []).map((s: any) => [s.name, s.id]));
-      const supplierMap = new Map((suppliers || []).map((s: any) => [s.name, s.id]));
+      const categoryMap = new Map((categories || []).map((c: NamedRow) => [c.name, c.id]));
+      const partNameMap = new Map((partNames || []).map((p: NamedRow) => [p.name, p.id]));
+      const brandMap = new Map((brands || []).map((b: NamedRow) => [b.name, b.id]));
+      const specMap = new Map((specs || []).map((s: NamedRow) => [s.name, s.id]));
+      const supplierMap = new Map((suppliers || []).map((s: NamedRow) => [s.name, s.id]));
 
       const newPartNames: { name: string }[] = [];
       const newBrands: { name: string }[] = [];
       const newSpecs: { name: string }[] = [];
 
-      const records: any[] = [];
+      const records: ImportRecord[] = [];
       const errors: string[] = [];
       const seenCodeInFile = new Map<string, number>(); // 文件内重复的配件编号:code -> 首次行号
       let duplicateInFile = 0;
 
       for (let i = 0; i < dataRows.length; i++) {
-        const row = dataRows[i];
-        const record: any = {};
+        const row = dataRows[i] as (string | number | undefined)[];
+        const record: Record<string, string | number | null> = {};
         for (let j = 0; j < headers.length; j++) {
           const key = headers[j];
-          let value = row[j];
+          let value: string | number | null = row[j] ?? null;
           if (value === undefined || value === "") value = null;
           record[key] = value;
         }
@@ -334,10 +411,10 @@ export default function InventoryTable({ items }: { items: any[] }) {
           spec_id: specId,
           spec_name: record["规格名称"] ? String(record["规格名称"]).trim() : null,
           unit: record["单位"] ? String(record["单位"]).trim() : "件",
-          quantity: record["库存数量"] ? parseInt(record["库存数量"]) : 0,
-          min_stock: record["最低库存"] ? parseInt(record["最低库存"]) : 10,
-          unit_cost: record["成本价"] ? parseFloat(record["成本价"]) : null,
-          unit_price: record["销售价"] ? parseFloat(record["销售价"]) : null,
+          quantity: record["库存数量"] ? parseInt(String(record["库存数量"])) : 0,
+          min_stock: record["最低库存"] ? parseInt(String(record["最低库存"])) : 10,
+          unit_cost: record["成本价"] ? parseFloat(String(record["成本价"])) : null,
+          unit_price: record["销售价"] ? parseFloat(String(record["销售价"])) : null,
           supplier_id: supplierId,
           location: record["存放位置"] ? String(record["存放位置"]).trim() : null,
           notes: record["备注"] ? String(record["备注"]).trim() : null,
@@ -361,7 +438,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
           .from("parts")
           .select("part_number")
           .in("part_number", codesBatch);
-        (existing || []).forEach((row: any) => existingCodes.add(row.part_number));
+        (existing || []).forEach((row: { part_number: string }) => existingCodes.add(row.part_number));
       }
 
       const filteredRecords = records.filter((r) => !existingCodes.has(r.part_number));
@@ -396,7 +473,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
           setImporting(false);
           return;
         }
-        (insertedNames || []).forEach((p: any) => partNameMap.set(p.name, p.id));
+        (insertedNames || []).forEach((p: NamedRow) => partNameMap.set(p.name, p.id));
       }
 
       // 创建缺失的品牌
@@ -410,7 +487,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
           setImporting(false);
           return;
         }
-        (insertedBrands || []).forEach((b: any) => brandMap.set(b.name, b.id));
+        (insertedBrands || []).forEach((b: NamedRow) => brandMap.set(b.name, b.id));
       }
 
       // 创建缺失的规格
@@ -424,18 +501,18 @@ export default function InventoryTable({ items }: { items: any[] }) {
           setImporting(false);
           return;
         }
-        (insertedSpecs || []).forEach((s: any) => specMap.set(s.name, s.id));
+        (insertedSpecs || []).forEach((s: NamedRow) => specMap.set(s.name, s.id));
       }
 
       // 构建最终插入数据
-      const insertData = records.map((r) => {
-        const data: any = {
+      const insertData: InsertPartData[] = records.map((r) => {
+        const data: InsertPartData = {
           name: r.name,
           part_number: r.part_number,
           oe_number: r.oe_number,
           part_name_id: typeof r.part_name_id === "string" && r.part_name_id.length === 36
             ? r.part_name_id
-            : partNameMap.get(r.part_name_id),
+            : partNameMap.get(r.part_name_id as string),
           category_id: r.category_id,
           unit: r.unit,
           quantity: r.quantity,
@@ -468,7 +545,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
           setImporting(false);
           return;
         }
-        (insertedParts || []).forEach((p: any) => insertedPartIds.push(p.id));
+        (insertedParts || []).forEach((p: { id: string }) => insertedPartIds.push(p.id));
         inserted += batch.length;
         setImportMsg(`已导入 ${inserted}/${insertData.length} 条...`);
       }
@@ -480,7 +557,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
           part_id: insertedPartIds[idx],
           specification_id: specMap.get(r.spec_name),
         }))
-        .filter((l) => l.specification_id);
+        .filter((l): l is { part_id: string; specification_id: string } => !!l.specification_id);
 
       if (specLinks.length > 0) {
         await supabase.from("parts_specifications").insert(specLinks);
@@ -493,14 +570,15 @@ export default function InventoryTable({ items }: { items: any[] }) {
       if (otherErrors > 0) msg += `，${otherErrors} 条有错误`;
       setImportMsg(msg);
       setTimeout(() => window.location.reload(), 1500);
-    } catch (err: any) {
-      setImportMsg("导入出错: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setImportMsg("导入出错: " + message);
     }
     setImporting(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function printSingle(part: any) {
+  function printSingle(part: InventoryItem) {
     const code = part.barcode || part.part_number || part.id;
     if (!canvasRef.current) return;
     try {
@@ -575,16 +653,16 @@ export default function InventoryTable({ items }: { items: any[] }) {
     printWindow.print();
   }
 
-  function getSpecsText(item: any) {
+  function getSpecsText(item: InventoryItem) {
     const specs = item.parts_specifications;
     if (!specs || specs.length === 0) return "-";
     return specs
-      .map((s: any) => s.part_specifications?.name || "")
+      .map((s) => s.part_specifications?.name || "")
       .filter(Boolean)
       .join(", ");
   }
 
-  function renderCell(item: any, col: ColumnDef) {
+  function renderCell(item: InventoryItem, col: ColumnDef) {
     switch (col.key) {
       case "checkbox":
         return (
@@ -614,10 +692,10 @@ export default function InventoryTable({ items }: { items: any[] }) {
       case "stock":
         return (
           <>
-            <span className={`font-medium ${item.quantity <= item.min_stock ? "text-red-600" : "text-gray-900"}`}>
+            <span className={`font-medium ${item.quantity <= (item.min_stock || 0) ? "text-red-600" : "text-gray-900"}`}>
               {item.quantity}
             </span>
-            {item.quantity <= item.min_stock && (
+            {item.quantity <= (item.min_stock || 0) && (
               <span className="ml-2 text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded">库存不足</span>
             )}
           </>
@@ -831,7 +909,7 @@ export default function InventoryTable({ items }: { items: any[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {paginatedItems.map((item: any) => (
+            {paginatedItems.map((item) => (
               <tr key={item.id} className="hover:bg-gray-50">
                 {visibleColumns.map((col) => {
                   const stickyLeft = col.sticky ? computeStickyLeft(columns, col.key) : undefined;

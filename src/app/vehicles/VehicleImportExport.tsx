@@ -109,7 +109,7 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      const rows: unknown[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
       if (rows.length < 2) {
         setImportMsg("文件中没有数据");
         setImporting(false);
@@ -202,14 +202,14 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
         for (let i = 0; i < allPlates.length; i += 500) {
           const batch = allPlates.slice(i, i + 500);
           const { data } = await supabase.from("vehicles").select("plate_number").in("plate_number", batch);
-          data?.forEach((r: any) => existingPlates.add(r.plate_number));
+          data?.forEach((r: unknown) => existingPlates.add((r as Record<string, unknown>).plate_number as string));
         }
       }
       if (allVins.length > 0) {
         for (let i = 0; i < allVins.length; i += 500) {
           const batch = allVins.slice(i, i + 500);
           const { data } = await supabase.from("vehicles").select("vin").in("vin", batch);
-          data?.forEach((r: any) => { if (r.vin) existingVins.add(r.vin); });
+          data?.forEach((r: unknown) => { const rv = (r as Record<string, unknown>).vin as string; if (rv) existingVins.add(rv); });
         }
       }
 
@@ -241,7 +241,7 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
         for (let i = 0; i < uniquePhones.length; i += 500) {
           const batch = uniquePhones.slice(i, i + 500);
           const { data } = await supabase.from("customers").select("id, phone").in("phone", batch);
-          data?.forEach((r: any) => phoneToCustomerId.set(r.phone, r.id));
+          data?.forEach((r: unknown) => { const rv = r as Record<string, unknown>; phoneToCustomerId.set(rv.phone as string, rv.id as string); });
         }
       }
 
@@ -253,8 +253,9 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
         for (let i = 0; i < unmatchedNames.length; i += 500) {
           const batch = unmatchedNames.slice(i, i + 500);
           const { data } = await supabase.from("customers").select("id, name").in("name", batch);
-          data?.forEach((r: any) => {
-            if (!nameToCustomerId.has(r.name)) nameToCustomerId.set(r.name, r.id);
+          data?.forEach((r: unknown) => {
+            const rv = r as Record<string, unknown>;
+            if (!nameToCustomerId.has(rv.name as string)) nameToCustomerId.set(rv.name as string, rv.id as string);
           });
         }
       }
@@ -264,7 +265,10 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
         for (let i = 0; i < uniqueCompanies.length; i += 500) {
           const batch = uniqueCompanies.slice(i, i + 500);
           const { data } = await supabase.from("companies").select("id, name").in("name", batch);
-          data?.forEach((r: any) => companyNameToId.set(r.name, r.id));
+          data?.forEach((r: unknown) => {
+            const rv = r as Record<string, unknown>;
+            companyNameToId.set(rv.name as string, rv.id as string);
+          });
         }
       }
 
@@ -293,7 +297,7 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
         // 先过滤掉 phone 已存在的（可能刚才查询时遗漏了）
         const phonesToCreate = customersToCreate.map((c) => c.phone);
         const { data: existingPhoneData } = await supabase.from("customers").select("id, phone").in("phone", phonesToCreate);
-        const existingPhoneSet = new Set(existingPhoneData?.map((r: any) => r.phone) || []);
+        const existingPhoneSet = new Set(existingPhoneData?.map((r: unknown) => (r as Record<string, unknown>).phone as string) || []);
         const filteredCreate = customersToCreate.filter((c) => !existingPhoneSet.has(c.phone));
 
         if (filteredCreate.length > 0) {
@@ -306,12 +310,16 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
             setImporting(false);
             return;
           }
-          insertedCustomers?.forEach((r: any) => {
-            createdPhoneToId.set(r.phone, r.id);
+          insertedCustomers?.forEach((r: unknown) => {
+            const rv = r as Record<string, unknown>;
+            createdPhoneToId.set(rv.phone as string, rv.id as string);
           });
         }
         // 把已有的也加入映射
-        existingPhoneData?.forEach((r: any) => createdPhoneToId.set(r.phone, r.id));
+        existingPhoneData?.forEach((r: unknown) => {
+          const rv = r as Record<string, unknown>;
+          createdPhoneToId.set(rv.phone as string, rv.id as string);
+        });
       }
 
       // 为找不到单位的行创建新单位
@@ -339,13 +347,14 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
           setImporting(false);
           return;
         }
-        insertedCompanies?.forEach((r: any) => {
-          createdCompanyToId.set(r.name, r.id);
+        insertedCompanies?.forEach((r: unknown) => {
+          const rv = r as Record<string, unknown>;
+          createdCompanyToId.set(rv.name as string, rv.id as string);
         });
       }
 
       // 组装车辆记录
-      const vehicleRecords: any[] = [];
+      const vehicleRecords: Record<string, unknown>[] = [];
       for (const row of newRows) {
         let customerId: string | null = null;
         if (row.ownerPhone) {
@@ -397,8 +406,9 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
           (skippedCount > 0 ? `，跳过 ${skippedCount} 条（车牌号或 VIN 已存在）` : "")
       );
       window.location.reload();
-    } catch (err: any) {
-      setImportMsg("导入出错: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      setImportMsg("导入出错: " + (e.message || String(err)));
     }
     setImporting(false);
   }

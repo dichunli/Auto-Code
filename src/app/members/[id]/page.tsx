@@ -1,19 +1,54 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 
+interface CustomerInfo {
+  name: string;
+  phone: string | null;
+}
+
+interface Member {
+  id: string;
+  name: string;
+  card_no: string;
+  phone: string | null;
+  status: string;
+  balance: number;
+  discount_rate: number;
+  customer_id: string | null;
+  notes: string | null;
+  customers: CustomerInfo | null;
+}
+
+interface MemberTransaction {
+  id: string;
+  type: string;
+  amount: number;
+  balance_after: number;
+  created_at: string;
+  notes: string | null;
+  work_order_id: string | null;
+  work_orders: { order_no: string } | null;
+}
+
+interface EditForm {
+  name?: string;
+  phone?: string;
+  discount_rate?: string;
+  status?: string;
+  notes?: string;
+}
+
 export default function MemberDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const router = useRouter();
   const supabase = createClient();
   const [memberId, setMemberId] = useState("");
 
-  const [member, setMember] = useState<any>(null);
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [member, setMember] = useState<Member | null>(null);
+  const [transactions, setTransactions] = useState<MemberTransaction[]>([]);
   const [loading, setLoading] = useState(true);
 
   // 充值弹窗
@@ -25,7 +60,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
 
   // 编辑
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState<any>({});
+  const [editForm, setEditForm] = useState<EditForm>({});
 
   useEffect(() => {
     params.then((p) => setMemberId(p.id));
@@ -79,7 +114,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
       setRechargeAmount("");
       setRechargeNotes("");
       loadData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       alert("充值失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setRechargeLoading(false);

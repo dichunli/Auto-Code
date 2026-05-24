@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState, Fragment } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import { filterLogisticsByRegion, supplierNeedsLogistics, REGION_LABELS } from "@/lib/logisticsFilter";
+import { filterLogisticsByRegion, REGION_LABELS } from "@/lib/logisticsFilter";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import PartForm from "@/app/parts/new/PartForm";
@@ -109,7 +108,6 @@ function getGroupKey(r: PartBranchRow, groupBy: GroupBy): string {
 }
 
 export function PendingPurchaseList() {
-  const router = useRouter();
   const supabase = createClient();
   const [rows, setRows] = useState<PartBranchRow[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -240,20 +238,21 @@ export function PendingPurchaseList() {
         .eq("id", partId)
         .single();
 
-      const updates: Record<string, any> = { part_id: partId };
+      const updates: Record<string, unknown> = { part_id: partId };
       if (part) {
-        if (part.part_number != null) updates.part_number = part.part_number;
-        if (part.name != null) updates.name = part.name;
-        if (part.unit != null) updates.unit = part.unit;
-        const pb = part.part_brands as any;
-        const ps = part.part_specifications as any;
+        const p = part as Record<string, unknown>;
+        if (p.part_number != null) updates.part_number = p.part_number;
+        if (p.name != null) updates.name = p.name;
+        if (p.unit != null) updates.unit = p.unit;
+        const pb = p.part_brands as { name?: string }[] | { name?: string } | null | undefined;
+        const ps = p.part_specifications as { name?: string }[] | { name?: string } | null | undefined;
         const brandName = Array.isArray(pb) ? pb[0]?.name : pb?.name;
         const specName = Array.isArray(ps) ? ps[0]?.name : ps?.name;
         if (brandName != null) updates.brand = brandName;
         if (specName != null) updates.specification = specName;
-        if (part.purchase_price != null) updates.unit_cost = part.purchase_price;
-        if (part.notes != null) updates.notes = part.notes;
-        if (part.document_name != null) updates.document_name = part.document_name;
+        if (p.purchase_price != null) updates.unit_cost = p.purchase_price;
+        if (p.notes != null) updates.notes = p.notes;
+        if (p.document_name != null) updates.document_name = p.document_name;
       }
 
       const { error } = await supabase
@@ -264,18 +263,32 @@ export function PendingPurchaseList() {
 
       closeEditModal();
       loadData();
-    } catch (err: any) {
-      alert("同步配件信息失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      alert("同步配件信息失败: " + (e.message || String(err)));
     } finally {
       setEditingId(null);
     }
   }
 
   /* 行内搜索选中配件（待采购阶段不更新售价） */
-  async function handleInlinePartSelect(row: PartBranchRow, part: any) {
+  interface InlinePart {
+    id: string;
+    part_number?: string | null;
+    barcode?: string | null;
+    name?: string | null;
+    unit?: string | null;
+    unit_cost?: number | null;
+    unit_price?: number | null;
+    part_names?: { name?: string | null; unit?: string | null } | null;
+    part_brands?: { name?: string | null } | null;
+    part_specifications?: { name?: string | null } | null;
+  }
+
+  async function handleInlinePartSelect(row: PartBranchRow, part: InlinePart) {
     setEditingId(row.id);
     try {
-      const updates: Record<string, any> = { part_id: part.id };
+      const updates: Record<string, unknown> = { part_id: part.id };
       if (part.part_number != null) updates.part_number = part.part_number;
       if (part.barcode != null && !part.part_number) updates.part_number = part.barcode;
 
@@ -307,8 +320,9 @@ export function PendingPurchaseList() {
         .eq("id", row.id);
       if (error) throw error;
       loadData();
-    } catch (err: any) {
-      alert("更新配件信息失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      alert("更新配件信息失败: " + (e.message || String(err)));
     } finally {
       setEditingId(null);
     }
@@ -323,8 +337,9 @@ export function PendingPurchaseList() {
         .eq("id", row.id);
       if (error) throw error;
       loadData();
-    } catch (err: any) {
-      alert("清除配件关联失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      alert("清除配件关联失败: " + (e.message || String(err)));
     } finally {
       setEditingId(null);
     }
@@ -496,10 +511,10 @@ export function PendingPurchaseList() {
       const [{ data: mediaData }, { data: pnData }] = await Promise.all([
         workOrderItemIds.length > 0
           ? supabase.from("work_order_item_media").select("work_order_item_id, storage_path").in("work_order_item_id", workOrderItemIds).eq("media_type", "image")
-          : Promise.resolve({ data: [] as any[] }),
+          : Promise.resolve({ data: [] as { work_order_item_id: string; storage_path: string }[] }),
         partNameIds.length > 0
           ? supabase.from("part_names").select("id, part_categories(name)").in("id", partNameIds)
-          : Promise.resolve({ data: [] as any[] }),
+          : Promise.resolve({ data: [] as { id: string; part_categories?: { name?: string | null } | null }[] }),
       ]);
 
       const mediaMap: Record<string, string[]> = {};
@@ -544,11 +559,26 @@ export function PendingPurchaseList() {
       setShowLogisticsModal(false);
       setSelected(new Set());
       loadData();
-    } catch (err: any) {
-      alert("发起采购失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      alert("发起采购失败: " + (e.message || String(err)));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  interface PartRow {
+    id: string;
+    part_number: string | null;
+    name: string;
+    part_brands?: { name?: string | null } | null;
+    part_specifications?: { name?: string | null } | null;
+    unit: string | null;
+    quantity: number | null;
+    min_stock: number | null;
+    unit_cost: number | null;
+    supplier_id: string | null;
+    suppliers?: { name?: string | null } | null;
   }
 
   async function loadLowStockParts() {
@@ -558,9 +588,9 @@ export function PendingPurchaseList() {
       .select("id, part_number, name, part_brands(name), part_specifications(name), unit, quantity, min_stock, unit_cost, supplier_id, suppliers(name)")
       .order("name");
 
-    const list: LowStockPart[] = (data || [])
-      .filter((p: any) => (p.quantity || 0) < (p.min_stock || 0))
-      .map((p: any) => ({
+    const list: LowStockPart[] = (data || [] as PartRow[])
+      .filter((p: PartRow) => (p.quantity || 0) < (p.min_stock || 0))
+      .map((p: PartRow) => ({
         id: p.id,
         part_number: p.part_number,
         name: p.name,
@@ -686,8 +716,9 @@ export function PendingPurchaseList() {
 
       alert(`已生成 ${createdCount} 张采购单(草稿状态),请到「采购订单」中审批并发出。`);
       setShowStockModal(false);
-    } catch (err: any) {
-      alert("发起采购失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      alert("发起采购失败: " + (e.message || String(err)));
     } finally {
       setSubmitting(false);
     }
@@ -730,8 +761,9 @@ export function PendingPurchaseList() {
       setShowRevokeModal(false);
       setSelected(new Set());
       loadData();
-    } catch (err: any) {
-      alert("撤销失败: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const e = err as Error;
+      alert("撤销失败: " + (e.message || String(err)));
     } finally {
       setSubmitting(false);
     }
@@ -841,7 +873,7 @@ export function PendingPurchaseList() {
                     if (rIdx === 0 || isNewBranch) {
                       branchColorIdx = (branchColorIdx + 1) % BRANCH_BG_COLORS.length;
                     }
-                    const wo = r.work_order_items?.work_orders!;
+                    const wo = r.work_order_items?.work_orders;
                     const isChecked = selected.has(r.id);
                     const branchBg = BRANCH_BG_COLORS[branchColorIdx % BRANCH_BG_COLORS.length];
                     return (
@@ -855,13 +887,17 @@ export function PendingPurchaseList() {
                           />
                         </td>
                         <td className="px-3 py-3">
-                          <Link href={`/work-orders/${wo.id}`} className="text-blue-600 hover:text-blue-700 font-medium">
-                            {wo.order_no}
-                          </Link>
+                          {wo ? (
+                            <Link href={`/work-orders/${wo.id}`} className="text-blue-600 hover:text-blue-700 font-medium">
+                              {wo.order_no}
+                            </Link>
+                          ) : (
+                            "-"
+                          )}
                         </td>
                         <td className="px-3 py-3 text-gray-700">
-                          <div>{wo.customers?.name || "-"}</div>
-                          <div className="text-xs text-gray-500">{wo.vehicles?.plate_number || "-"}</div>
+                          <div>{wo?.customers?.name || "-"}</div>
+                          <div className="text-xs text-gray-500">{wo?.vehicles?.plate_number || "-"}</div>
                         </td>
                         <td className="px-3 py-3 text-gray-700">{r.work_order_items?.name || "-"}</td>
                         <td className="px-3 py-3">

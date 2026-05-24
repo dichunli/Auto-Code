@@ -20,6 +20,19 @@ interface CustomerImportExportProps {
   customers: Customer[];
 }
 
+interface ImportRecord {
+  name: string;
+  phone: string;
+  gender?: string | null;
+  company?: string | null;
+  address?: string | null;
+  id_card?: string | null;
+  star_level?: number | null;
+  notes?: string | null;
+}
+
+type ExcelRow = (string | number | null | undefined)[];
+
 const exportHeaders = [
   { key: "name", label: "客户姓名" },
   { key: "phone", label: "电话" },
@@ -41,7 +54,7 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
     const headers = exportHeaders.map((h) => h.label);
     const rows = customers.map((c) =>
       exportHeaders.map((h) => {
-        const val = (c as any)[h.key];
+        const val = (c as Record<string, unknown>)[h.key];
         return val === null || val === undefined ? "" : String(val);
       })
     );
@@ -67,7 +80,7 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      const rows: ExcelRow[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
       if (rows.length < 2) {
         setImportMsg("文件中没有数据");
         setImporting(false);
@@ -91,7 +104,7 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
         return;
       }
 
-      const records: any[] = [];
+      const records: ImportRecord[] = [];
       const phones: string[] = [];
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
@@ -99,7 +112,7 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
         const phone = String(row[colMap["phone"]] || "").trim();
         if (!name || !phone) continue;
 
-        const record: any = { name, phone };
+        const record: ImportRecord = { name, phone };
         if (colMap["gender"] !== undefined) {
           const g = String(row[colMap["gender"]] || "").trim();
           if (g === "男" || g === "女") record.gender = g;
@@ -137,7 +150,7 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
       for (let i = 0; i < phones.length; i += 500) {
         const batch = phones.slice(i, i + 500);
         const { data } = await supabase.from("customers").select("phone").in("phone", batch);
-        data?.forEach((r: any) => existingPhones.add(r.phone));
+        data?.forEach((r: { phone: string }) => existingPhones.add(r.phone));
       }
 
       const newRecords = records.filter((r) => !existingPhones.has(r.phone));
@@ -170,8 +183,9 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
       );
       // 刷新页面
       window.location.reload();
-    } catch (err: any) {
-      setImportMsg("导入出错: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setImportMsg("导入出错: " + msg);
     }
     setImporting(false);
   }

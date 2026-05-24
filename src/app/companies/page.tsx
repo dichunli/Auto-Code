@@ -21,13 +21,29 @@ export default async function CompaniesPage(props: { searchParams?: Promise<Reco
 
   const { data: companies } = await query;
 
-  const companyIds = companies?.map((c: any) => c.id) || [];
+  interface CompanyRow {
+    id: string;
+    name: string;
+    contact: string | null;
+    phone: string | null;
+    address: string | null;
+    credit_limit: number | null;
+    payment_terms: string | null;
+    notes: string | null;
+    created_at: string;
+  }
+
+  const companyIds = (companies as CompanyRow[] | null)?.map((c) => c.id) || [];
   const { data: vehicleCounts } = companyIds.length > 0
     ? await supabase.from("vehicles").select("company_id").in("company_id", companyIds)
     : { data: [] };
 
+  interface VehicleCountRow {
+    company_id: string;
+  }
+
   const countByCompany: Record<string, number> = {};
-  vehicleCounts?.forEach((v: any) => {
+  (vehicleCounts as VehicleCountRow[] | null)?.forEach((v) => {
     countByCompany[v.company_id] = (countByCompany[v.company_id] || 0) + 1;
   });
 
@@ -107,7 +123,7 @@ export default async function CompaniesPage(props: { searchParams?: Promise<Reco
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {companies?.map((company: any) => (
+              {(companies as CompanyRow[] | null)?.map((company) => (
                 <tr key={company.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{company.name}</td>
                   <td className="px-6 py-4 text-gray-600">{company.contact || "-"}</td>

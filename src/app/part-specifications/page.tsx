@@ -14,8 +14,19 @@ function normalize(str: string) {
 export default function PartSpecificationsPage() {
   const supabase = createClient();
   const [query, setQuery] = useState("");
-  const [allSpecs, setAllSpecs] = useState<any[]>([]);
-  const [filteredSpecs, setFilteredSpecs] = useState<any[]>([]);
+  interface PartName {
+    id: string;
+    name: string;
+    part_categories?: { name?: string } | null;
+  }
+  interface Spec {
+    id: string;
+    name: string;
+    usage_count?: number | null;
+    part_name_specifications?: { part_names?: PartName | null }[] | null;
+  }
+  const [allSpecs, setAllSpecs] = useState<Spec[]>([]);
+  const [filteredSpecs, setFilteredSpecs] = useState<Spec[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -25,7 +36,7 @@ export default function PartSpecificationsPage() {
 
   const [name, setName] = useState("");
   const [pnQuery, setPnQuery] = useState("");
-  const [pnResults, setPnResults] = useState<any[]>([]);
+  const [pnResults, setPnResults] = useState<PartName[]>([]);
   const [pnSearching, setPnSearching] = useState(false);
   const [linkedNames, setLinkedNames] = useState<{ id: string; name: string; category_name?: string }[]>([]);
 
@@ -61,8 +72,8 @@ export default function PartSpecificationsPage() {
     const nq = normalize(query);
     const filtered = allSpecs.filter((s) => {
       const links = s.part_name_specifications || [];
-      const names = links.map((l: any) => l.part_names?.name).filter(Boolean);
-      const categories = links.map((l: any) => l.part_names?.part_categories?.name).filter(Boolean);
+      const names = links.map((l: { part_names?: PartName | null }) => l.part_names?.name).filter(Boolean);
+      const categories = links.map((l: { part_names?: PartName | null }) => l.part_names?.part_categories?.name).filter(Boolean);
       const searchable = [s.name, ...names, ...categories].join(" ");
       return normalize(searchable).includes(nq);
     });
@@ -108,7 +119,7 @@ export default function PartSpecificationsPage() {
     setShowForm(true);
   }
 
-  function addLinkedName(pn: any) {
+  function addLinkedName(pn: PartName) {
     if (linkedNames.some((n) => n.id === pn.id)) return;
     setLinkedNames((prev) => [
       ...prev,
@@ -166,13 +177,13 @@ export default function PartSpecificationsPage() {
     setSaving(false);
   }
 
-  function formatLinkedNames(s: any) {
-    const list = s.part_name_specifications?.map((l: any) => l.part_names?.name).filter(Boolean);
+  function formatLinkedNames(s: Spec) {
+    const list = s.part_name_specifications?.map((l: { part_names?: PartName | null }) => l.part_names?.name).filter(Boolean);
     if (!list || list.length === 0) return "-";
     return list.join("、");
   }
 
-  function formatLinkedCategories(s: any) {
+  function formatLinkedCategories(s: Spec) {
     const set = new Set<string>();
     for (const l of s.part_name_specifications || []) {
       const cat = l.part_names?.part_categories?.name;
@@ -303,7 +314,7 @@ export default function PartSpecificationsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredSpecs?.map((s: any) => (
+              {filteredSpecs?.map((s: Spec) => (
                 <tr key={s.id} className="hover:bg-gray-50">
                   <td className="px-4 py-4">
                     <input

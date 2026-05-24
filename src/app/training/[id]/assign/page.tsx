@@ -9,7 +9,11 @@ export default function AssignCoursePage({ params }: { params: Promise<{ id: str
   const router = useRouter();
   const supabase = createClient();
   const [courseId, setCourseId] = useState("");
-  const [employees, setEmployees] = useState<any[]>([]);
+  interface Employee {
+    id: string;
+    full_name: string;
+  }
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState("");
   const [loading, setLoading] = useState(false);
@@ -41,8 +45,9 @@ export default function AssignCoursePage({ params }: { params: Promise<{ id: str
 
       router.push(`/training/${courseId}`);
       router.refresh();
-    } catch (err: any) {
-      alert("分配失败: " + err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "未知错误";
+      alert("分配失败: " + msg);
       setLoading(false);
     }
   }

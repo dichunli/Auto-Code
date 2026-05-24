@@ -82,7 +82,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
         .select("id, full_name, mechanic_levels(commission_weight)")
         .in("id", ids);
 
-      const rows = (data || []).map((row: any) => ({
+      const rows = (data || []).map((row: { id: string; full_name: string; mechanic_levels?: { commission_weight: number } | null }) => ({
         id: row.id,
         name: row.full_name,
         coeff: row.mechanic_levels?.commission_weight || 1,
@@ -176,7 +176,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
     }
 
     // 计算分成比例
-    let ratios: Record<string, number> = {};
+    const ratios: Record<string, number> = {};
     if (commissionRule === "equal") {
       const ratio = 100 / mechanicIds.length;
       mechanicIds.forEach((id) => {
@@ -202,7 +202,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
         .in("id", mechanicIds);
       const coeffMap: Record<string, number> = {};
       let totalCoeff = 0;
-      (levelData || []).forEach((row: any) => {
+      (levelData || []).forEach((row: { id: string; mechanic_levels?: { commission_weight: number } | null }) => {
         const c = row.mechanic_levels?.commission_weight || 1;
         coeffMap[row.id] = c;
         totalCoeff += c;

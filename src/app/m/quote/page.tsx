@@ -1,6 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
+interface 工单 {
+  id: string;
+  order_no: string;
+  status: string;
+  total_cost: number | null;
+  vehicles: { plate_number: string; brand: string; model: string } | null;
+  customers: { name: string; phone: string } | null;
+}
+
 export default async function MobileQuoteListPage() {
   const supabase = await createClient();
 
@@ -27,7 +36,7 @@ export default async function MobileQuoteListPage() {
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {orders && orders.length > 0 ? (
-          orders.map((order: any) => (
+          orders.map((order: 工单) => (
             <Link
               key={order.id}
               href={`/work-orders/${order.id}`}

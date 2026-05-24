@@ -28,9 +28,13 @@ export default function EditEmployeePage() {
   const employeeId = params.id as string;
   const supabase = createClient();
 
-  const [groups, setGroups] = useState<any[]>([]);
-  const [roles, setRoles] = useState<any[]>([]);
-  const [levels, setLevels] = useState<any[]>([]);
+  interface EmployeeGroup { id: string; name: string }
+  interface Role { id: string; name: string; label: string }
+  interface MechanicLevel { id: string; name: string; level_code: string }
+
+  const [groups, setGroups] = useState<EmployeeGroup[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [levels, setLevels] = useState<MechanicLevel[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -91,7 +95,7 @@ export default function EditEmployeePage() {
         .from("profile_roles")
         .select("role_id")
         .eq("profile_id", employeeId);
-      setRoleIds((userRoles || []).map((ur: any) => ur.role_id));
+      setRoleIds((userRoles || []).map((ur: { role_id: string }) => ur.role_id));
 
       // 加载联系人
       const { data: userContacts } = await supabase
@@ -100,7 +104,7 @@ export default function EditEmployeePage() {
         .eq("profile_id", employeeId)
         .order("is_primary", { ascending: false });
       setContacts(
-        (userContacts || []).map((c: any) => ({
+        (userContacts || []).map((c: { id?: string; name?: string | null; phone?: string | null; relationship?: string | null; is_primary?: boolean | null }) => ({
           id: c.id,
           name: c.name || "",
           phone: c.phone || "",
@@ -124,9 +128,14 @@ export default function EditEmployeePage() {
     setContacts([...contacts, { name: "", phone: "", relationship: "", is_primary: false }]);
   }
 
-  function updateContact(index: number, field: string, value: string | boolean) {
+  function updateContact(index: number, field: "name" | "phone" | "relationship" | "is_primary", value: string | boolean) {
     const next = [...contacts];
-    (next[index] as any)[field] = value;
+    const contact = next[index];
+    if (field === "is_primary") {
+      contact.is_primary = value as boolean;
+    } else {
+      contact[field] = value as string;
+    }
     if (field === "is_primary" && value === true) {
       next.forEach((c, i) => { if (i !== index) c.is_primary = false; });
     }
@@ -195,7 +204,7 @@ export default function EditEmployeePage() {
 
       router.push(`/employees/${employeeId}`);
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       alert("保存失败：" + (err instanceof Error ? err.message : String(err)));
       setSaving(false);
     }

@@ -23,16 +23,31 @@ type ServiceItem = {
   service_names?: { id: string; name: string; search_keywords: string | null; category_id: string } | null;
 };
 
-type Category = { id: string; name: string };
+type ExistingItem = { name: string };
+
+/* 常用维修项目快捷标签 */
+const QUICK_TAGS = [
+  "机油",
+  "刹车油",
+  "变速箱油",
+  "滤清器",
+  "刹车片",
+  "火花塞",
+  "防冻液",
+  "四轮定位",
+  "差速器",
+  "助力油",
+  "底盘",
+  "电瓶",
+  "轮胎",
+];
 
 export default function ItemBatchPickerModal({ open, onClose, orderId, requirementId }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [allServiceItems, setAllServiceItems] = useState<ServiceItem[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [query, setQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [defaultType, setDefaultType] = useState<"labor" | "part" | "other">("labor");
+  const [defaultType] = useState<"labor" | "part" | "other">("labor");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -40,28 +55,22 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
   useEffect(() => {
     if (!open) return;
     setQuery("");
-    setCategoryFilter("");
-    setDefaultType("labor");
     setSelectedIds([]);
 
     async function loadData() {
       setLoading(true);
       try {
-        const [{ data: items }, { data: cats }] = await Promise.all([
-          supabase
-            .from("service_items")
-            .select(`
-              id, name, description, default_price, standard_hours, category_id, service_name_id,
-              service_categories(id, name),
-              service_names(id, name, search_keywords, category_id)
-            `)
-            .order("name"),
-          supabase.from("service_categories").select("id, name").order("name"),
-        ]);
-        setAllServiceItems((items as any) || []);
-        setCategories((cats as any) || []);
-      } catch (err: any) {
-        alert("加载项目失败: " + (err.message || err));
+        const { data: items } = await supabase
+          .from("service_items")
+          .select(`
+            id, name, description, default_price, standard_hours, category_id, service_name_id,
+            service_categories(id, name),
+            service_names(id, name, search_keywords, category_id)
+          `)
+          .order("name");
+        setAllServiceItems((items as unknown as ServiceItem[]) || []);
+      } catch (err: unknown) {
+        alert("加载项目失败: " + (err instanceof Error ? err.message : String(err)));
       } finally {
         setLoading(false);
       }
@@ -73,10 +82,6 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
   const filteredList = useMemo(() => {
     const q = query.trim().toLowerCase();
     return allServiceItems.filter((si) => {
-      if (categoryFilter) {
-        const catId = si.service_names?.category_id || si.category_id;
-        if (catId !== categoryFilter) return false;
-      }
       if (q) {
         const hay = [
           si.name,
@@ -92,7 +97,7 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
       }
       return true;
     });
-  }, [allServiceItems, query, categoryFilter]);
+  }, [allServiceItems, query]);
 
   const listToShow = filteredList.slice(0, 100);
 
@@ -121,7 +126,7 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
         .from("work_order_items")
         .select("name")
         .eq("work_order_id", orderId);
-      const existingNames = new Set((existingItems || []).map((it: any) => it.name));
+      const existingNames = new Set((existingItems || []).map((it: ExistingItem) => it.name));
 
       const selected = selectedIds
         .map((id) => allServiceItems.find((s) => s.id === id))
@@ -156,8 +161,8 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
 
       onClose();
       router.refresh();
-    } catch (err: any) {
-      alert("批量添加失败: " + (err.message || err));
+    } catch (err: unknown) {
+      alert("批量添加失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSaving(false);
     }
@@ -189,26 +194,29 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             autoFocus
           />
-          <div className="flex gap-2">
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          {/* 常用快捷标签 */}
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className={`px-2 py-1 rounded-full text-xs border transition-colors ${
+                query === "" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600"
+              }`}
             >
-              <option value="">全部分类</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-            <select
-              value={defaultType}
-              onChange={(e) => setDefaultType(e.target.value as any)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-            >
-              <option value="labor">工时</option>
-              <option value="part">配件</option>
-              <option value="other">其他</option>
-            </select>
+              全部
+            </button>
+            {QUICK_TAGS.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => setQuery(tag)}
+                className={`px-2 py-1 rounded-full text-xs border transition-colors ${
+                  query === tag ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600"
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
           </div>
         </div>
 

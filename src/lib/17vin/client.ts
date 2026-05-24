@@ -5,7 +5,7 @@ import { getToken } from "./auth";
 const BASE_URL = "http://api.17vin.com:8080";
 const USERNAME = process.env.VIN17_USERNAME || "";
 
-async function vin17Request(path: string, params: Record<string, string>): Promise<any> {
+async function vin17Request(path: string, params: Record<string, string>): Promise<unknown> {
   if (!USERNAME) {
     throw new Error("缺少环境变量 VIN17_USERNAME");
   }
@@ -87,7 +87,7 @@ export async function vin17SearchPartNumber(
 
 /* ==================== POST 请求辅助函数（用于 OCR 接口） ==================== */
 
-async function vin17PostRequest(params: Record<string, string>): Promise<any> {
+async function vin17PostRequest(params: Record<string, string>): Promise<unknown> {
   if (!USERNAME) {
     throw new Error("缺少环境变量 VIN17_USERNAME");
   }

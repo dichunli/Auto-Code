@@ -35,7 +35,8 @@ export async function POST(request: Request) {
     /* 返回相对路径，供前端通过 /api/media/... 访问 */
     const relativePath = `${dateDir}/${fileName}`;
     return NextResponse.json({ path: `/api/media/${relativePath}` });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || "上传失败" }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "上传失败";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

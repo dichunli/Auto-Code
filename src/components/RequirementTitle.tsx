@@ -3,11 +3,28 @@
 import { useState } from "react";
 import RequirementBatchModal from "./RequirementBatchModal";
 
+interface Profile {
+  id: string;
+  full_name?: string | null;
+}
+
+interface Requirement {
+  id: string;
+  seq: number;
+  description?: string | null;
+}
+
+interface MediaItem {
+  id?: string;
+  media_type: "image" | "video" | "audio";
+  storage_path: string;
+}
+
 interface Props {
-  req: any;
+  req: Requirement;
   orderId: string;
-  profiles: any[];
-  media: any[];
+  profiles: Profile[];
+  media: MediaItem[];
 }
 
 function MediaTypeIcon({ type }: { type: string }) {
@@ -35,7 +52,7 @@ function MediaTypeIcon({ type }: { type: string }) {
   return null;
 }
 
-export default function RequirementTitle({ req, orderId, profiles, media }: Props) {
+export default function RequirementTitle({ req, orderId, media }: Props) {
   const [open, setOpen] = useState(false);
   const hasImage = media.some((m) => m.media_type === "image");
   const hasVideo = media.some((m) => m.media_type === "video");

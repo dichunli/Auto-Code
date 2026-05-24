@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { PriceValue } from "@/components/PriceVisibilityContext";
@@ -24,12 +23,52 @@ const STATUS_CLASS: Record<string, string> = {
   cancelled: "bg-red-50 text-red-600",
 };
 
+interface Supplier {
+  name?: string | null;
+}
+
+interface PurchaseOrder {
+  id: string;
+  order_no?: string | null;
+  status: string;
+  supplier_id?: string | null;
+  total_amount?: number | null;
+  created_at: string;
+  notes?: string | null;
+  suppliers?: Supplier | null;
+}
+
+interface PurchaseOrderItem {
+  id: string;
+  name: string;
+  part_number?: string | null;
+  brand?: string | null;
+  specification?: string | null;
+  quantity: number;
+  unit_cost?: number | null;
+  received_qty?: number | null;
+  part_id?: string | null;
+  work_order_item_part_id?: string | null;
+  parts?: {
+    id?: string;
+    quantity?: number | null;
+  } | null;
+  work_order_item_parts?: {
+    id?: string;
+    is_arrived?: boolean | null;
+  } | null;
+}
+
+interface ItemQtyCheck {
+  quantity: number;
+  received_qty?: number | null;
+}
+
 export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const router = useRouter();
   const supabase = createClient();
   const [orderId, setOrderId] = useState("");
-  const [order, setOrder] = useState<any>(null);
-  const [items, setItems] = useState<any[]>([]);
+  const [order, setOrder] = useState<PurchaseOrder | null>(null);
+  const [items, setItems] = useState<PurchaseOrderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [receiveForm, setReceiveForm] = useState<Record<string, string>>({});
 
@@ -37,12 +76,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     params.then((p) => setOrderId(p.id));
   }, [params]);
 
-  useEffect(() => {
+  const fetchOrder = useCallback(async () => {
     if (!orderId) return;
-    fetchOrder();
-  }, [orderId]);
-
-  async function fetchOrder() {
     const { data: orderData } = await supabase
       .from("purchase_orders")
       .select("*, suppliers(*)")
@@ -56,11 +91,12 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       .eq("order_id", orderId)
       .order("created_at", { ascending: true });
     setItems(itemsData || []);
-  }
+  }, [orderId, supabase]);
 
-  function allReceived() {
-    return items.every((item) => item.received_qty >= item.quantity);
-  }
+  useEffect(() => {
+    if (!orderId) return;
+    fetchOrder();
+  }, [fetchOrder, orderId]);
 
   function canReceive() {
     return order && ["submitted", "approved", "partial_received"].includes(order.status);
@@ -95,7 +131,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       if (updateError) throw updateError;
 
       // 2. 入库处理
-      let partId = item.part_id;
+      const partId = item.part_id;
       const unitCost = item.unit_cost || 0;
 
       if (partId) {
@@ -137,8 +173,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         .select("quantity, received_qty")
         .eq("order_id", orderId);
 
-      const allDone = updatedItems?.every((i: any) => (i.received_qty || 0) >= i.quantity);
-      const anyReceived = updatedItems?.some((i: any) => (i.received_qty || 0) > 0);
+      const allDone = updatedItems?.every((i: ItemQtyCheck) => (i.received_qty || 0) >= i.quantity);
+      const anyReceived = updatedItems?.some((i: ItemQtyCheck) => (i.received_qty || 0) > 0);
 
       let newStatus = order.status;
       if (allDone) {
@@ -153,8 +189,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
       setReceiveForm((prev) => ({ ...prev, [itemId]: "" }));
       fetchOrder();
-    } catch (err: any) {
-      alert("收货失败: " + err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("收货失败: " + msg);
     } finally {
       setLoading(false);
     }
@@ -232,7 +269,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items.map((item: any) => {
+              {items.map((item: PurchaseOrderItem) => {
                 const isFullyReceived = (item.received_qty || 0) >= item.quantity;
                 const canReceiveItem = canReceive() && !isFullyReceived;
                 return (

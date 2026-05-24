@@ -2,6 +2,21 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 
+interface 知识分类 {
+  id: string;
+  name: string;
+}
+
+interface 知识文章 {
+  id: string;
+  title: string;
+  content: string;
+  type: string;
+  created_at: string;
+  knowledge_categories: { name: string } | null;
+  profiles: { full_name: string } | null;
+}
+
 export default async function KnowledgePage() {
   const supabase = await createClient();
   const { data: articles } = await supabase
@@ -34,7 +49,7 @@ export default async function KnowledgePage() {
               >
                 全部
               </Link>
-              {categories?.map((c: any) => (
+              {categories?.map((c: 知识分类) => (
                 <Link
                   key={c.id}
                   href={`/knowledge?category=${c.id}`}
@@ -49,7 +64,7 @@ export default async function KnowledgePage() {
 
         {/* 文章列表 */}
         <div className="lg:col-span-3 space-y-4">
-          {articles?.map((a: any) => (
+          {articles?.map((a: 知识文章) => (
             <Link
               key={a.id}
               href={`/knowledge/${a.id}`}

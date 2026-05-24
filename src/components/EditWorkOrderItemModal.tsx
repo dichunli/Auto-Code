@@ -19,7 +19,6 @@ interface Props {
   currentAlias: string | null;
   currentQuantity: number;
   currentUnitPrice: number;
-  currentServiceItemId?: string | null;
   onClose: () => void;
 }
 
@@ -30,7 +29,6 @@ export function EditWorkOrderItemModal({
   currentAlias,
   currentQuantity,
   currentUnitPrice,
-  currentServiceItemId,
   onClose,
 }: Props) {
   const router = useRouter();
@@ -90,7 +88,7 @@ export function EditWorkOrderItemModal({
   async function handleSave() {
     setLoading(true);
 
-    const updateData: Record<string, any> = {
+    const updateData: Record<string, unknown> = {
       alias_name: aliasName.trim() || null,
       quantity: parseFloat(quantity) || 1,
       unit_price: parseFloat(unitPrice) || 0,

@@ -1,9 +1,34 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+
+interface PartNameResult {
+  id: string;
+  name: string;
+  part_categories: { name: string } | null;
+}
+
+interface LinkedName {
+  id: string;
+  name: string;
+  category_name?: string;
+}
+
+interface PartNameBrandLink {
+  part_name_id: string;
+  part_names: {
+    id: string;
+    name: string;
+    part_categories: { name: string } | null;
+  } | null;
+}
+
+interface ExistingLink {
+  part_name_id: string;
+}
 
 export default function EditPartBrandPage() {
   const router = useRouter();
@@ -16,9 +41,9 @@ export default function EditPartBrandPage() {
   const [name, setName] = useState("");
 
   const [pnQuery, setPnQuery] = useState("");
-  const [pnResults, setPnResults] = useState<any[]>([]);
+  const [pnResults, setPnResults] = useState<PartNameResult[]>([]);
   const [pnSearching, setPnSearching] = useState(false);
-  const [linkedNames, setLinkedNames] = useState<{ id: string; name: string; category_name?: string }[]>([]);
+  const [linkedNames, setLinkedNames] = useState<LinkedName[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -38,9 +63,9 @@ export default function EditPartBrandPage() {
 
       setName(brand.name || "");
       setLinkedNames(
-        (links || []).map((l: any) => ({
+        (links || []).map((l: PartNameBrandLink) => ({
           id: l.part_name_id,
-          name: l.part_names?.name,
+          name: l.part_names?.name ?? "",
           category_name: l.part_names?.part_categories?.name,
         }))
       );
@@ -68,7 +93,7 @@ export default function EditPartBrandPage() {
     return () => clearTimeout(t);
   }, [pnQuery, supabase]);
 
-  function addLinkedName(pn: any) {
+  function addLinkedName(pn: PartNameResult) {
     if (linkedNames.some((n) => n.id === pn.id)) return;
     setLinkedNames((prev) => [
       ...prev,
@@ -106,7 +131,7 @@ export default function EditPartBrandPage() {
       .select("part_name_id")
       .eq("brand_id", id);
 
-    const existingIds = new Set((existing || []).map((x: any) => x.part_name_id));
+    const existingIds = new Set((existing || []).map((x: ExistingLink) => x.part_name_id));
     const newIds = new Set(linkedNames.map((n) => n.id));
 
     const toDelete = Array.from(existingIds).filter((pid) => !newIds.has(pid));

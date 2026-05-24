@@ -38,7 +38,12 @@ export default function EditVehiclePage() {
   const [currentCustomerName, setCurrentCustomerName] = useState("");
   const [ownerMode, setOwnerMode] = useState<OwnerMode>("existing");
   const [customerQuery, setCustomerQuery] = useState("");
-  const [customerResults, setCustomerResults] = useState<any[]>([]);
+  interface CustomerResult {
+    id: string;
+    name: string;
+    phone: string | null;
+  }
+  const [customerResults, setCustomerResults] = useState<CustomerResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", gender: "" });
   const [changingOwner, setChangingOwner] = useState(false);
@@ -47,7 +52,11 @@ export default function EditVehiclePage() {
   const [originalVin, setOriginalVin] = useState("");
 
   const [companyQuery, setCompanyQuery] = useState("");
-  const [companyResults, setCompanyResults] = useState<any[]>([]);
+  interface CompanyResult {
+    id: string;
+    name: string;
+  }
+  const [companyResults, setCompanyResults] = useState<CompanyResult[]>([]);
   const [companySearching, setCompanySearching] = useState(false);
   const [companyId, setCompanyId] = useState("");
 

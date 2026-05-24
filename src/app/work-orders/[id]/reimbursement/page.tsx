@@ -14,7 +14,13 @@ export default function ReimbursementPage({ params }: { params: Promise<{ id: st
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [order, setOrder] = useState<any>(null);
+  interface WorkOrder {
+    order_no?: string | null;
+    vehicles?: { plate_number?: string | null } | null;
+    customers?: { name?: string | null; phone?: string | null } | null;
+  }
+
+  const [order, setOrder] = useState<WorkOrder | null>(null);
 
   const [reimbursementId, setReimbursementId] = useState<string | null>(null);
   const [title, setTitle] = useState("维修费用报销单");
@@ -47,15 +53,26 @@ export default function ReimbursementPage({ params }: { params: Promise<{ id: st
       .eq("work_order_id", orderId)
       .single();
 
+    interface ReimbursementItemRaw {
+      id: string;
+      name: string;
+      spec?: string | null;
+      quantity: number | string;
+      unit_price: number | string;
+      total_price: number | string;
+      sort_order?: number;
+    }
+
     if (existing) {
       setReimbursementId(existing.id);
       setTitle(existing.title || "维修费用报销单");
       setCompanyName(existing.company_name || "");
       setNotes(existing.notes || "");
+      const itemsRaw: ReimbursementItemRaw[] = existing.work_order_reimbursement_items || [];
       setItems(
-        (existing.work_order_reimbursement_items || [])
-          .sort((a: any, b: any) => a.sort_order - b.sort_order)
-          .map((it: any) => ({
+        itemsRaw
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .map((it) => ({
             id: it.id,
             name: it.name,
             spec: it.spec || "",
@@ -72,7 +89,16 @@ export default function ReimbursementPage({ params }: { params: Promise<{ id: st
         .eq("work_order_id", orderId)
         .order("created_at", { ascending: true });
 
-      const mapped = (workItems || []).map((it: any, idx: number) => ({
+      interface WorkItemRaw {
+        name: string;
+        alias_name?: string | null;
+        item_type?: string | null;
+        quantity: number | string;
+        unit_price: number | string;
+        total_price: number | string;
+      }
+
+      const mapped = (workItems || []).map((it: WorkItemRaw) => ({
         name: it.alias_name || it.name,
         spec: it.item_type === "labor" ? "工时" : it.item_type === "part" ? "配件" : "",
         quantity: Number(it.quantity),
@@ -94,12 +120,21 @@ export default function ReimbursementPage({ params }: { params: Promise<{ id: st
     loadData();
   }, [loadData]);
 
-  function updateItem(index: number, field: string, value: string | number) {
+  function updateItem(index: number, field: "name" | "spec" | "quantity" | "unit_price", value: string | number) {
     setItems((prev) => {
       const next = [...prev];
-      (next[index] as any)[field] = value;
+      const item = next[index];
+      if (field === "name") {
+        item.name = value as string;
+      } else if (field === "spec") {
+        item.spec = value as string;
+      } else if (field === "quantity") {
+        item.quantity = value as number;
+      } else if (field === "unit_price") {
+        item.unit_price = value as number;
+      }
       if (field === "quantity" || field === "unit_price") {
-        next[index].total_price = next[index].quantity * next[index].unit_price;
+        item.total_price = item.quantity * item.unit_price;
       }
       return next;
     });
@@ -174,8 +209,8 @@ export default function ReimbursementPage({ params }: { params: Promise<{ id: st
       if (itemErr) throw itemErr;
 
       router.push(`/work-orders/${orderId}/print?type=reimbursement`);
-    } catch (err: any) {
-      alert("保存失败：" + err.message);
+    } catch (err: unknown) {
+      alert("保存失败：" + (err instanceof Error ? err.message : String(err)));
       setSaving(false);
     }
   }

@@ -5,11 +5,30 @@ import RequirementBatchModal from "./RequirementBatchModal";
 import RequirementActions from "./RequirementActions";
 import AddRequirementItemsButton from "./AddRequirementItemsButton";
 
+interface Profile {
+  id: string;
+  full_name?: string | null;
+}
+
+interface Requirement {
+  id: string;
+  seq: number;
+  description?: string | null;
+  assigned_to_profile?: { full_name?: string | null } | null;
+  assignment_type?: string | null;
+}
+
+interface MediaItem {
+  id?: string;
+  media_type: "image" | "video" | "audio";
+  storage_path: string;
+}
+
 interface Props {
-  req: any;
+  req: Requirement;
   orderId: string;
-  profiles: any[];
-  media: any[];
+  profiles: Profile[];
+  media: MediaItem[];
   isLocked: boolean;
   children?: React.ReactNode;
 }

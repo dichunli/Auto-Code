@@ -32,9 +32,54 @@ export default async function VehicleDetailPage({
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false });
 
-  const customer = vehicle.customers as any;
-  const company = vehicle.companies as any;
-  const model = (Array.isArray(vehicle.vehicle_models) ? vehicle.vehicle_models[0] : vehicle.vehicle_models) as any;
+  interface Customer {
+    id: string;
+    name: string;
+    phone: string | null;
+  }
+
+  interface Company {
+    id: string;
+    name: string;
+  }
+
+  interface VehicleModel {
+    厂商?: string | null;
+    车辆类型?: string | null;
+    年款?: number | null;
+    车系?: string | null;
+    车型?: string | null;
+    销售版本?: string | null;
+    销售名称?: string | null;
+    排量?: string | null;
+    发动机型号?: string | null;
+    燃油类型?: string | null;
+    燃油标号?: string | null;
+    进气形式?: string | null;
+    排放标准?: string | null;
+    功率?: number | null;
+    马力?: number | null;
+    驱动方式?: string | null;
+    变速箱类型?: string | null;
+    变速箱代号?: string | null;
+    档位数?: number | null;
+    底盘代号?: string | null;
+    车身类型?: string | null;
+    车门数?: string | null;
+    座位数?: number | null;
+    车身尺寸?: string | null;
+    轴距?: number | null;
+    前轮距?: number | null;
+    后轮距?: number | null;
+    整备质量?: number | null;
+    前轮胎规格?: string | null;
+    后轮胎规格?: string | null;
+    厂商指导价?: number | null;
+  }
+
+  const customer = vehicle.customers as unknown as Customer | null;
+  const company = vehicle.companies as unknown as Company | null;
+  const model = (Array.isArray(vehicle.vehicle_models) ? vehicle.vehicle_models[0] : vehicle.vehicle_models) as unknown as VehicleModel | null;
 
   return (
     <div>

@@ -1,7 +1,41 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-const cache: Record<string, { data: any; timestamp: number }> = {};
+interface CacheEntry {
+  data: WorkOrderDataResult;
+  timestamp: number;
+}
+
+interface WorkOrderDataResult {
+  order: unknown;
+  requirements: unknown[] | null;
+  profiles: unknown[] | null;
+  requirementMedia: unknown[];
+  items: unknown[] | null;
+  itemsError: unknown;
+  itemMedia: unknown[];
+  itemMechanics: unknown[];
+  mechanicGroups: unknown[] | null;
+  knowledgeLinks: unknown[];
+  itemParts: unknown[] | null;
+  partMedia: unknown[] | null;
+  pickingRecords: unknown[] | null;
+  returnRecords: unknown[] | null;
+  supplierReturnRecords: unknown[] | null;
+  partBatches: unknown[] | null;
+  qualityChecks: unknown[] | null;
+  payments: unknown[] | null;
+  advancePaymentRecords: unknown[] | null;
+  followUps: unknown[] | null;
+  history: unknown[] | null;
+  suppliers: unknown[] | null;
+  logisticsCompanies: unknown[] | null;
+  inspections: unknown[] | null;
+  inspectionMedia: unknown[];
+  outsourceOrder: unknown | null;
+}
+
+const cache: Record<string, CacheEntry> = {};
 const CACHE_TTL = 2000; // 2秒缓存，减少短时间内重复查询
 const MAX_CACHE_SIZE = 50; // 限制缓存条目数，防止内存泄漏
 
@@ -104,38 +138,41 @@ export async function getWorkOrderData(id: string) {
 
   // 从嵌套查询结果中提取关联数据，保持与原有数据结构一致
   // 从嵌套查询结果中提取关联数据
-  const requirementMedia: any[] = [];
-  const itemMedia: any[] = [];
-  const itemMechanics: any[] = [];
-  const inspectionMedia: any[] = [];
+  const requirementMedia: unknown[] = [];
+  const itemMedia: unknown[] = [];
+  const itemMechanics: unknown[] = [];
+  const inspectionMedia: unknown[] = [];
 
-  requirements?.forEach((req: any) => {
-    if (req.work_order_requirement_media) {
-      requirementMedia.push(...req.work_order_requirement_media);
-      delete req.work_order_requirement_media;
+  requirements?.forEach((req: unknown) => {
+    const r = req as Record<string, unknown>;
+    if (r.work_order_requirement_media) {
+      requirementMedia.push(...(r.work_order_requirement_media as unknown[]));
+      delete r.work_order_requirement_media;
     }
   });
 
-  items?.forEach((item: any) => {
-    if (item.work_order_item_media) {
-      itemMedia.push(...item.work_order_item_media);
-      delete item.work_order_item_media;
+  items?.forEach((item: unknown) => {
+    const it = item as Record<string, unknown>;
+    if (it.work_order_item_media) {
+      itemMedia.push(...(it.work_order_item_media as unknown[]));
+      delete it.work_order_item_media;
     }
-    if (item.work_order_item_mechanics) {
-      itemMechanics.push(...item.work_order_item_mechanics);
-      delete item.work_order_item_mechanics;
+    if (it.work_order_item_mechanics) {
+      itemMechanics.push(...(it.work_order_item_mechanics as unknown[]));
+      delete it.work_order_item_mechanics;
     }
   });
 
-  inspections?.forEach((insp: any) => {
-    if (insp.work_order_inspection_media) {
-      inspectionMedia.push(...insp.work_order_inspection_media);
-      delete insp.work_order_inspection_media;
+  inspections?.forEach((insp: unknown) => {
+    const i = insp as Record<string, unknown>;
+    if (i.work_order_inspection_media) {
+      inspectionMedia.push(...(i.work_order_inspection_media as unknown[]));
+      delete i.work_order_inspection_media;
     }
   });
 
   // 第三批：配件分支（从 items 查询中拆分，避免单次查询数据量过大）
-  const itemIds = items?.map((i: any) => i.id) || [];
+  const itemIds = items?.map((i: unknown) => (i as Record<string, unknown>).id as string) || [];
   const { data: itemParts } = itemIds.length > 0
     ? await supabase.from("work_order_item_parts").select(`
         *,
@@ -145,8 +182,8 @@ export async function getWorkOrderData(id: string) {
     : { data: [] };
 
   // 第四批：依赖 itemParts 的 ID（并行查询）
-  const itemPartIds = itemParts?.map((p: any) => p.id) || [];
-  const partIds = itemParts?.map((p: any) => p.part_id).filter(Boolean) || [];
+  const itemPartIds = itemParts?.map((p: unknown) => (p as Record<string, unknown>).id as string) || [];
+  const partIds = itemParts?.map((p: unknown) => (p as Record<string, unknown>).part_id as string).filter(Boolean) || [];
 
   const [
     { data: partMedia },
@@ -163,9 +200,9 @@ export async function getWorkOrderData(id: string) {
   ]);
 
   // knowledge links（依赖 items 的结果，合并为单次查询减少 HTTP 请求）
-  const serviceItemIds = [...new Set(items?.map((i: any) => i.service_item_id).filter(Boolean) || [])];
-  const serviceNameIds = [...new Set(items?.map((i: any) => i.service_items?.service_name_id).filter(Boolean) || [])];
-  let knowledgeLinks: any[] = [];
+  const serviceItemIds = [...new Set(items?.map((i: unknown) => (i as Record<string, unknown>).service_item_id as string).filter(Boolean) || [])];
+  const serviceNameIds = [...new Set(items?.map((i: unknown) => ((i as Record<string, unknown>).service_items as Record<string, unknown> | undefined)?.service_name_id as string).filter(Boolean) || [])];
+  let knowledgeLinks: unknown[] = [];
   const knowledgeConditions = [
     ...serviceItemIds.map((sid: string) => `service_item_id.eq.${sid}`),
     ...serviceNameIds.map((sid: string) => `service_name_id.eq.${sid}`),
@@ -179,21 +216,22 @@ export async function getWorkOrderData(id: string) {
   }
 
   // 获取车型关联的文章ID（维修指导类型需要同时匹配车型）
-  const vehicleModelId = order?.vehicles?.vehicle_model_id;
+  const vehicleModelId = (order as Record<string, unknown> | null)?.vehicles ? ((order as Record<string, unknown>).vehicles as Record<string, unknown> | undefined)?.vehicle_model_id as string | undefined : undefined;
   let guideArticleIds: string[] = [];
   if (vehicleModelId) {
     const { data: vlinks } = await supabase
       .from("knowledge_vehicle_links")
       .select("article_id")
       .eq("vehicle_model_id", vehicleModelId);
-    guideArticleIds = (vlinks || []).map((v: any) => v.article_id);
+    guideArticleIds = (vlinks || []).map((v: unknown) => (v as Record<string, unknown>).article_id as string);
   }
 
   // 过滤：维修指导类型(guide)需要同时匹配车型
-  knowledgeLinks = knowledgeLinks.filter((link: any) => {
-    const articleType = link.knowledge_articles?.type;
+  knowledgeLinks = knowledgeLinks.filter((link: unknown) => {
+    const l = link as Record<string, unknown>;
+    const articleType = (l.knowledge_articles as Record<string, unknown> | undefined)?.type;
     if (articleType !== "guide") return true; // 非维修指导类型不需要车型匹配
-    return guideArticleIds.includes(link.article_id);
+    return guideArticleIds.includes(l.article_id as string);
   });
 
   const result = {

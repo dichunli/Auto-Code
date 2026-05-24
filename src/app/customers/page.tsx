@@ -18,9 +18,9 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
       supabase.from("customer_phones").select("customer_id").ilike("phone", `%${searchParams.phone}%`),
       supabase.from("customer_contacts").select("customer_id").ilike("phone", `%${searchParams.phone}%`),
     ]);
-    const mainIds = mainRes.data?.map((c: any) => c.id) || [];
-    const extraIds = phoneRes.data?.map((p: any) => p.customer_id) || [];
-    const contactIds = contactRes.data?.map((c: any) => c.customer_id) || [];
+    const mainIds = mainRes.data?.map((c: { id: string }) => c.id) || [];
+    const extraIds = phoneRes.data?.map((p: { customer_id: string }) => p.customer_id) || [];
+    const contactIds = contactRes.data?.map((c: { customer_id: string }) => c.customer_id) || [];
     phoneCustomerIds = [...new Set([...mainIds, ...extraIds, ...contactIds])];
   }
 
@@ -51,10 +51,10 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
   const total = count || 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const customerIds = customers?.map((c: any) => c.id) || [];
+  const customerIds = customers?.map((c: { id: string }) => c.id) || [];
 
   const { data: memberMap } = customerIds.length > 0
-    ? await supabase.from("members").select("customer_id, card_no, balance").in("customer_id", customerIds)
+    ? await supabase.from("members").select("customer_id, card_no, balance, id").in("customer_id", customerIds)
     : { data: [] };
 
   const { data: allContacts } = customerIds.length > 0
@@ -65,13 +65,48 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
         .order("created_at", { ascending: true })
     : { data: [] };
 
-  const membersByCustomer: Record<string, any> = {};
-  memberMap?.forEach((m: any) => {
+  interface MemberInfo {
+    id: string;
+    customer_id: string;
+    card_no: string;
+    balance: number | null;
+  }
+
+  interface ContactInfo {
+    id: string;
+    customer_id: string;
+    name: string;
+    phone: string | null;
+    relationship: string | null;
+  }
+
+  interface VehicleInfo {
+    id: string;
+    plate_number: string;
+  }
+
+  interface CustomerRow {
+    id: string;
+    name: string;
+    phone: string | null;
+    gender: string | null;
+    company: string | null;
+    address: string | null;
+    star_level: number | null;
+    id_card: string | null;
+    notes: string | null;
+    total_spent: number | null;
+    created_at: string;
+    vehicles: VehicleInfo[] | null;
+  }
+
+  const membersByCustomer: Record<string, MemberInfo> = {};
+  memberMap?.forEach((m: MemberInfo) => {
     membersByCustomer[m.customer_id] = m;
   });
 
-  const contactsByCustomer: Record<string, any[]> = {};
-  allContacts?.forEach((c: any) => {
+  const contactsByCustomer: Record<string, ContactInfo[]> = {};
+  allContacts?.forEach((c: ContactInfo) => {
     if (!contactsByCustomer[c.customer_id]) contactsByCustomer[c.customer_id] = [];
     contactsByCustomer[c.customer_id].push(c);
   });
@@ -159,7 +194,7 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {customers?.map((customer: any, idx: number) => (
+              {customers?.map((customer: CustomerRow, idx: number) => (
                 <tr key={customer.id} className="hover:bg-gray-50">
                   <td className="px-4 py-4 text-gray-500 text-sm">{(page - 1) * pageSize + idx + 1}</td>
                   <td className="px-6 py-4 font-medium text-gray-900">
@@ -170,7 +205,7 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
                   <td className="px-6 py-4 text-gray-600">
                     {(contactsByCustomer[customer.id] || []).length > 0 ? (
                       <div className="space-y-1">
-                        {contactsByCustomer[customer.id].map((c: any) => (
+                        {contactsByCustomer[customer.id].map((c: ContactInfo) => (
                           <div key={c.id} className="text-xs">
                             <span className="font-medium">{c.name}</span>
                             <span className="text-gray-400 mx-1">·</span>
@@ -190,7 +225,7 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
                   <td className="px-6 py-4 text-gray-600">
                     {customer.vehicles?.length > 0 ? (
                       <div className="text-sm">
-                        {customer.vehicles.map((v: any, i: number) => (
+                        {customer.vehicles.map((v: VehicleInfo, i: number) => (
                           <span key={v.id}>
                             <Link
                               href={`/vehicles/${v.id}/edit`}

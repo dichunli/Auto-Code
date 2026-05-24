@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -67,11 +67,17 @@ export default async function DashboardPage({
       .limit(20),
   ]);
 
-  const todayTotal = todayRevenue?.reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
-  const todayRechargeTotal = todayRecharges?.reduce((sum: number, t: any) => sum + (t.amount || 0), 0) || 0;
+  const todayTotal = todayRevenue?.reduce((sum: number, p: { amount: number | null }) => sum + (p.amount || 0), 0) || 0;
+  const todayRechargeTotal = todayRecharges?.reduce((sum: number, t: { amount: number | null }) => sum + (t.amount || 0), 0) || 0;
+
+  interface 技师绩效原始数据 {
+    mechanic_id: string;
+    points: number;
+    profiles: { full_name: string | null } | null;
+  }
 
   const mechanicMap: Record<string, { name: string; score: number }> = {};
-  topMechanics?.forEach((m: any) => {
+  topMechanics?.forEach((m: 技师绩效原始数据) => {
     const id = m.mechanic_id;
     if (!mechanicMap[id]) mechanicMap[id] = { name: m.profiles?.full_name || "未知", score: 0 };
     mechanicMap[id].score += m.points;
@@ -124,7 +130,7 @@ export default async function DashboardPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {recentOrders?.map((order: any) => (
+                {recentOrders?.map((order: { id: string; order_no: string; status: string; total_cost: number | null; vehicles: { plate_number: string | null; brand: string | null; model: string | null } | null }) => (
                   <tr key={order.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 font-medium text-gray-900">
                       <Link href={`/work-orders/${order.id}`} className="hover:text-blue-600">{order.order_no}</Link>
@@ -167,7 +173,7 @@ export default async function DashboardPage({
           >今日生日客户 🎂</h2>
           <div className="flex flex-wrap gap-3"
           >
-            {birthdayCustomers.map((c: any) => (
+            {birthdayCustomers.map((c: { id: string; name: string; phone: string | null }) => (
               <div key={c.id} className="flex items-center gap-2 px-4 py-2 bg-pink-50 text-pink-700 rounded-lg text-sm"
               >
                 <span className="font-medium"

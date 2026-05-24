@@ -3,12 +3,22 @@
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+interface Requirement {
+  id: string;
+  assigned_to: string | null;
+}
+
+interface Profile {
+  id: string;
+  full_name: string;
+}
+
 export default function RequirementActions({
   requirement,
   profiles,
 }: {
-  requirement: any;
-  profiles: any[];
+  requirement: Requirement;
+  profiles: Profile[];
 }) {
   const router = useRouter();
   const supabase = createClient();

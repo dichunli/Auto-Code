@@ -22,11 +22,23 @@ interface Props {
 }
 
 export default function VehicleSearchAdd({ customerId, initialVehicles }: Props) {
-  const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
+  const [vehicles] = useState<Vehicle[]>(initialVehicles);
   const [searchPlate, setSearchPlate] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[] | null>(null);
-  const [transferVehicle, setTransferVehicle] = useState<any | null>(null);
+  interface SearchResult {
+    id: string;
+    plate_number: string;
+    brand: string | null;
+    model: string | null;
+    vin: string | null;
+    color: string | null;
+    year: number | null;
+    mileage: number | null;
+    customer_id: string | null;
+    customers: { name: string | null } | null;
+  }
+
+  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
+  const [transferVehicle, setTransferVehicle] = useState<SearchResult | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newVehicle, setNewVehicle] = useState({
     plate_number: "",
@@ -46,7 +58,6 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
       setShowNewForm(false);
       return;
     }
-    setSearching(true);
     setShowNewForm(false);
     const supabase = createClient();
     const { data } = await supabase
@@ -56,7 +67,6 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
       .limit(5);
     const results = data || [];
     setSearchResults(results);
-    setSearching(false);
     // 无结果时自动展开新建表单，并带入当前输入
     if (results.length === 0) {
       setShowNewForm(true);

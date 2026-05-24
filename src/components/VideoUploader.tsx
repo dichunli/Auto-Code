@@ -11,6 +11,8 @@ interface Props {
 export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraId = useRef(`vid-camera-${Math.random().toString(36).slice(2)}`).current;
+  const fileId = useRef(`vid-file-${Math.random().toString(36).slice(2)}`).current;
   const [uploading, setUploading] = useState(false);
   const [videos, setVideos] = useState<string[]>(existingVideos);
   const [progress, setProgress] = useState(0);
@@ -109,8 +111,8 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
             return next;
           });
         }
-      } catch (err: any) {
-        alert("视频上传失败: " + err.message);
+      } catch (err: unknown) {
+        alert("视频上传失败: " + (err instanceof Error ? err.message : String(err)));
       } finally {
         setUploading(false);
         setProgress(0);
@@ -149,16 +151,15 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
         ))}
         {videos.length < maxVideos && (
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => cameraInputRef.current?.click()}
-              disabled={uploading}
-              className="md:hidden w-32 h-24 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
+            {/* 移动端：用 label 关联 input，比 ref.click() 更可靠 */}
+            <label
+              htmlFor={cameraId}
+              className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
             >
               {uploading ? (
                 <div className="flex flex-col items-center">
                   <span className="text-xs">{progress}%</span>
-                  <div className="w-16 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
+                  <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
                     <div
                       className="h-full bg-blue-500 rounded transition-all"
                       style={{ width: `${progress}%` }}
@@ -174,12 +175,35 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
                   <span className="text-[10px]">{videos.length}/{maxVideos}</span>
                 </>
               )}
-            </button>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="hidden md:flex w-32 h-24 rounded border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-50"
+            </label>
+            <label
+              htmlFor={fileId}
+              className={`md:hidden w-24 h-20 rounded border border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+            >
+              {uploading ? (
+                <div className="flex flex-col items-center">
+                  <span className="text-xs">{progress}%</span>
+                  <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded transition-all"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  <span className="text-[10px]">选视频</span>
+                  <span className="text-[10px]">{videos.length}/{maxVideos}</span>
+                </>
+              )}
+            </label>
+            {/* PC端 */}
+            <label
+              htmlFor={fileId}
+              className={`hidden md:flex w-32 h-24 rounded border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
             >
               {uploading ? (
                 <div className="flex flex-col items-center">
@@ -199,19 +223,20 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
                   <span className="text-[10px]">选择文件</span>
                 </>
               )}
-            </button>
+            </label>
           </div>
         )}
       </div>
       <input
+        id={cameraId}
         ref={cameraInputRef}
         type="file"
         accept="video/*"
-        capture="environment"
         className="hidden"
         onChange={handleFileChange}
       />
       <input
+        id={fileId}
         ref={fileInputRef}
         type="file"
         accept="video/*"
@@ -219,7 +244,7 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
         className="hidden"
         onChange={handleFileChange}
       />
-      <p className="text-[10px] text-gray-400 md:hidden">支持相机录像。单个不超过 100MB。</p>
+      <p className="text-[10px] text-gray-400 md:hidden">点击后选择「相机」录像或从相册选视频。单个不超过 100MB。</p>
       <p className="text-[10px] text-gray-400 hidden md:block">支持文件上传。单个不超过 100MB。</p>
     </div>
   );

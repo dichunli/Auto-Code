@@ -11,6 +11,48 @@ interface LinkedItem {
   quantity: number | null;
 }
 
+function CommissionField({
+  label,
+  typeValue,
+  valueValue,
+  onTypeChange,
+  onValueChange,
+}: {
+  label: string;
+  typeValue: string;
+  valueValue: string;
+  onTypeChange: (v: string) => void;
+  onValueChange: (v: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
+        <select
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={typeValue}
+          onChange={(e) => onTypeChange(e.target.value)}
+        >
+          <option value="">无提成</option>
+          <option value="revenue_pct">按产值(%)</option>
+          <option value="profit_pct">按毛利(%)</option>
+          <option value="fixed">固定金额</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
+        <input
+          type="number"
+          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
+          value={valueValue}
+          onChange={(e) => onValueChange(e.target.value)}
+          disabled={!typeValue}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function EditServiceNamePage() {
   const router = useRouter();
   const params = useParams();
@@ -18,7 +60,19 @@ export default function EditServiceNamePage() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [categories, setCategories] = useState<any[]>([]);
+  interface Category {
+    id: string;
+    name: string;
+    sales_commission_type?: string | null;
+    sales_commission_value?: number | null;
+    diagnosis_commission_type?: string | null;
+    diagnosis_commission_value?: number | null;
+    repair_commission_type?: string | null;
+    repair_commission_value?: number | null;
+    qc_commission_type?: string | null;
+    qc_commission_value?: number | null;
+  }
+  const [categories, setCategories] = useState<Category[]>([]);
 
   const [form, setForm] = useState({
     category_id: "",
@@ -36,7 +90,12 @@ export default function EditServiceNamePage() {
 
   const [linkedParts, setLinkedParts] = useState<LinkedItem[]>([]);
   const [partQuery, setPartQuery] = useState("");
-  const [partResults, setPartResults] = useState<any[] | null>(null);
+  interface PartResult {
+    id: string;
+    name: string;
+    default_quantity?: number | null;
+  }
+  const [partResults, setPartResults] = useState<PartResult[] | null>(null);
   const [partSearching, setPartSearching] = useState(false);
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -77,22 +136,31 @@ export default function EditServiceNamePage() {
           qc_value: name.qc_commission_value?.toString() || "",
         });
 
+        interface PartLinkRow {
+          part_name_id: string;
+          quantity?: number | null;
+        }
+        interface PartNameRow {
+          id: string;
+          name: string;
+        }
         let parts: LinkedItem[] = [];
         if (partLinks && partLinks.length > 0) {
-          const partIds = partLinks.map((l: any) => l.part_name_id);
+          const partIds = partLinks.map((l: PartLinkRow) => l.part_name_id);
           const { data: partNamesData } = await supabase
             .from("part_names")
             .select("id, name")
             .in("id", partIds);
-          const nameMap = new Map((partNamesData || []).map((p: any) => [p.id, p.name]));
+          const nameMap = new Map((partNamesData || []).map((p: PartNameRow) => [p.id, p.name]));
           parts = partLinks
-            .map((l: any) => ({ id: l.part_name_id, name: nameMap.get(l.part_name_id), quantity: l.quantity ?? null }))
-            .filter((x: any) => x.name) as LinkedItem[];
+            .map((l: PartLinkRow) => ({ id: l.part_name_id, name: nameMap.get(l.part_name_id), quantity: l.quantity ?? null }))
+            .filter((x: { id: string; name: string | undefined; quantity: number | null }) => x.name) as LinkedItem[];
         }
         setLinkedParts(parts);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("加载失败:", err);
-        alert("加载数据失败: " + (err.message || "未知错误"));
+        const msg = err instanceof Error ? err.message : "未知错误";
+        alert("加载数据失败: " + msg);
       } finally {
         setLoading(false);
       }
@@ -216,8 +284,9 @@ export default function EditServiceNamePage() {
       }
 
       alert(`已成功同步到 ${items.length} 个维修项目`);
-    } catch (err: any) {
-      alert("同步异常: " + (err.message || String(err)));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("同步异常: " + msg);
     } finally {
       setSyncing(false);
     }
@@ -273,48 +342,6 @@ export default function EditServiceNamePage() {
 
     router.push("/service-names");
     router.refresh();
-  }
-
-  function CommissionField({
-    label,
-    typeValue,
-    valueValue,
-    onTypeChange,
-    onValueChange,
-  }: {
-    label: string;
-    typeValue: string;
-    valueValue: string;
-    onTypeChange: (v: string) => void;
-    onValueChange: (v: string) => void;
-  }) {
-    return (
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}方式</label>
-          <select
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={typeValue}
-            onChange={(e) => onTypeChange(e.target.value)}
-          >
-            <option value="">无提成</option>
-            <option value="revenue_pct">按产值(%)</option>
-            <option value="profit_pct">按毛利(%)</option>
-            <option value="fixed">固定金额</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{label}数值</label>
-          <input
-            type="number"
-            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm"
-            value={valueValue}
-            onChange={(e) => onValueChange(e.target.value)}
-            disabled={!typeValue}
-          />
-        </div>
-      </div>
-    );
   }
 
   if (loading) {
@@ -462,28 +489,28 @@ export default function EditServiceNamePage() {
               label="销售提成"
               typeValue={form.sales_type}
               valueValue={form.sales_value}
-              onTypeChange={(v) => setForm({ ...form, sales_type: v as any, sales_value: v ? form.sales_value : "" })}
+              onTypeChange={(v) => setForm({ ...form, sales_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", sales_value: v ? form.sales_value : "" })}
               onValueChange={(v) => setForm({ ...form, sales_value: v })}
             />
             <CommissionField
               label="诊断提成"
               typeValue={form.diagnosis_type}
               valueValue={form.diagnosis_value}
-              onTypeChange={(v) => setForm({ ...form, diagnosis_type: v as any, diagnosis_value: v ? form.diagnosis_value : "" })}
+              onTypeChange={(v) => setForm({ ...form, diagnosis_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", diagnosis_value: v ? form.diagnosis_value : "" })}
               onValueChange={(v) => setForm({ ...form, diagnosis_value: v })}
             />
             <CommissionField
               label="施工提成"
               typeValue={form.repair_type}
               valueValue={form.repair_value}
-              onTypeChange={(v) => setForm({ ...form, repair_type: v as any, repair_value: v ? form.repair_value : "" })}
+              onTypeChange={(v) => setForm({ ...form, repair_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", repair_value: v ? form.repair_value : "" })}
               onValueChange={(v) => setForm({ ...form, repair_value: v })}
             />
             <CommissionField
               label="质检提成"
               typeValue={form.qc_type}
               valueValue={form.qc_value}
-              onTypeChange={(v) => setForm({ ...form, qc_type: v as any, qc_value: v ? form.qc_value : "" })}
+              onTypeChange={(v) => setForm({ ...form, qc_type: v as "" | "revenue_pct" | "profit_pct" | "fixed", qc_value: v ? form.qc_value : "" })}
               onValueChange={(v) => setForm({ ...form, qc_value: v })}
             />
           </div>

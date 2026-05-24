@@ -51,6 +51,8 @@ supabase/.temp/
 
 # Claude 临时文件
 .claude/
+!.claude/settings.json
+!.claude/hook-post-edit.js
 
 # 测试脚本
 scripts/

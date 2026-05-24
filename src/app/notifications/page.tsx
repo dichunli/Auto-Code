@@ -3,6 +3,17 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 
+interface 通知 {
+  id: string;
+  type: string;
+  status: string;
+  title: string;
+  content: string | null;
+  sent_at: string | null;
+  customers: { name: string; phone: string } | null;
+  members: { card_no: string; name: string } | null;
+}
+
 export default async function NotificationsPage({
   searchParams,
 }: {
@@ -102,7 +113,7 @@ export default async function NotificationsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {notifications?.map((n: any) => {
+              {notifications?.map((n: 通知) => {
                 const s = statusMap[n.status];
                 return (
                   <tr key={n.id} className="hover:bg-gray-50">

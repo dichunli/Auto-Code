@@ -4,19 +4,33 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
-import Link from "next/link";
+
+interface 品牌搜索结果 {
+  id: string;
+  name: string;
+}
+
+interface 配件分类 {
+  name: string;
+}
+
+interface 配件名称 {
+  id: string;
+  name: string;
+  part_categories: 配件分类 | null;
+}
 
 export default function NewPartBrandPage() {
   const router = useRouter();
   const supabase = createClient();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<品牌搜索结果[]>([]);
   const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [name, setName] = useState("");
-  const [partNames, setPartNames] = useState<any[]>([]);
+  const [partNames, setPartNames] = useState<配件名称[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const search = useCallback(

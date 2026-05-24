@@ -3,6 +3,20 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 
+interface 回访记录 {
+  id: string;
+  completed_at: string | null;
+  scheduled_at: string;
+  work_order_id: string;
+  work_orders: {
+    order_no: string;
+    customers: { name: string; phone: string } | null;
+    vehicles: { plate_number: string; brand: string; model: string } | null;
+  } | null;
+  method: string | null;
+  result: string | null;
+}
+
 export default async function FollowUpsPage({
   searchParams,
 }: {
@@ -35,7 +49,7 @@ export default async function FollowUpsPage({
     { value: "completed", label: "已完成" },
   ];
 
-  function getStatus(fu: any) {
+  function getStatus(fu: 回访记录) {
     if (fu.completed_at) return { label: "已完成", color: "text-green-600 bg-green-50" };
     if (fu.scheduled_at <= now) return { label: "已逾期", color: "text-red-600 bg-red-50" };
     return { label: "待回访", color: "text-blue-600 bg-blue-50" };
@@ -77,7 +91,7 @@ export default async function FollowUpsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {followUps?.map((fu: any) => {
+              {followUps?.map((fu: 回访记录) => {
                 const s = getStatus(fu);
                 return (
                   <tr key={fu.id} className="hover:bg-gray-50">

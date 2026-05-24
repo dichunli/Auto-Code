@@ -137,7 +137,7 @@ export default async function FinancePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {accounts?.map((a: any) => (
+              {accounts?.map((a: { id: string; name: string; account_type: string; balance: number | null }) => (
                 <tr key={a.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{a.name}</td>
                   <td className="px-6 py-4 text-gray-600">{a.account_type}</td>
@@ -173,7 +173,7 @@ export default async function FinancePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {recentTransactions.data?.map((t: any) => (
+              {recentTransactions.data?.map((t: { id: string; type: string; amount: number | null; description: string | null; transaction_date: string; finance_categories: { name: string | null } | null; finance_accounts: { name: string | null } | null }) => (
                 <tr key={t.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-gray-600">{formatDate(t.transaction_date)}</td>
                   <td className="px-6 py-4">

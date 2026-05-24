@@ -28,8 +28,23 @@ export default function EditCompanyPage() {
     invoice_phone: "",
   });
 
-  const [contacts, setContacts] = useState<{ id: string; name: string; phone: string; title: string }[]>([]);
-  const [vehicles, setVehicles] = useState<any[]>([]);
+  interface Contact {
+    id: string;
+    name: string;
+    phone: string;
+    title: string;
+  }
+
+  interface Vehicle {
+    id: string;
+    plate_number: string;
+    brand: string | null;
+    model: string | null;
+    customers: { name: string | null } | null;
+  }
+
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -58,7 +73,7 @@ export default function EditCompanyPage() {
         .eq("company_id", id)
         .order("created_at", { ascending: true });
       if (contactData) {
-        setContacts(contactData.map((c: any) => ({ id: c.id, name: c.name || "", phone: c.phone || "", title: c.title || "" })));
+        setContacts(contactData.map((c: { id: string; name?: string | null; phone?: string | null; title?: string | null }) => ({ id: c.id, name: c.name || "", phone: c.phone || "", title: c.title || "" })));
       }
       const { data: vehicleData } = await supabase
         .from("vehicles")

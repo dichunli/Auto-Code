@@ -23,13 +23,8 @@ const DATABASE_URL =
 let client: Client;
 
 // 测试数据句柄
-let testCustomerId: string;
-let testVehicleId: string;
-let testWorkOrderId: string;
 let testMemberId: string;
 let testAccountId: string;
-let testMechanicId: string;
-let testServiceItemId: string;
 
 async function query(sql: string, values?: unknown[]) {
   const res = await client.query(sql, values);

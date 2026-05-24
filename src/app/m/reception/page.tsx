@@ -60,7 +60,7 @@ export default function MobileReceptionListPage() {
         )
         .not("status", "in", `(${SETTLED_STATUSES.join(",")})`)
         .order("created_at", { ascending: false });
-      setOrders(((data as any) || []) as Order[]);
+      setOrders((data || []) as Order[]);
       setLoading(false);
     }
     load();

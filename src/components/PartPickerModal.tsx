@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 
@@ -128,7 +128,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
       console.error("查询配件失败:", error);
       setParts([]);
     } else {
-      setParts((data as any[]) || []);
+      setParts((data as Part[]) || []);
     }
     setLoading(false);
   }, [supabase, partNumber, oeNumberQuery, nameQuery, specQuery, categoryId]);
