@@ -62,6 +62,11 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
     if (!orderId) return;
     setLoading(true);
 
+    const timeoutId = setTimeout(() => {
+      alert("保存超时，请检查网络连接后重试");
+      setLoading(false);
+    }, 15000);
+
     try {
       /* 统一更新工单里程（唯一的里程数据源） */
       if (mileage) {
@@ -78,13 +83,19 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
           work_order_id: orderId,
           inspection_type: "reception",
           notes: notes || null,
+          inspection_mileage: mileage ? parseFloat(mileage) : null,
         })
         .select("id")
         .single();
 
       if (inspectionError || !inspection) throw inspectionError || new Error("创建接车检查失败");
 
-      const mediaRecords: any[] = [];
+      interface MediaRecord {
+        inspection_id: string;
+        media_type: string;
+        storage_path: string;
+      }
+      const mediaRecords: MediaRecord[] = [];
       videoPaths.forEach((path) => {
         mediaRecords.push({
           inspection_id: inspection.id,
@@ -112,10 +123,13 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
         if (mediaError) throw mediaError;
       }
 
+      clearTimeout(timeoutId);
       router.push(`/work-orders/${orderId}`);
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      clearTimeout(timeoutId);
+      const msg = err instanceof Error ? err.message : "未知错误";
+      alert("保存失败: " + msg);
       setLoading(false);
     }
   }

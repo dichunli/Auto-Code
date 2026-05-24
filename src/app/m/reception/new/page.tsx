@@ -283,12 +283,18 @@ export default function MobileReceptionNewPage() {
     if (!canSubmit()) return;
     setSubmitting(true);
 
+    const timeoutId = setTimeout(() => {
+      showToast("提交超时，请检查网络连接后重试", "error");
+      setSubmitting(false);
+    }, 15000);
+
     try {
       /* 重复开单检查 */
       const plate = isNewVehicle ? newPlate : selectedVehicle?.plate_number;
       if (!skipDuplicateCheck && plate) {
         const dup = await checkDuplicateWorkOrder(plate);
         if (dup.hasDuplicate) {
+          clearTimeout(timeoutId);
           setPendingOrderNo(dup.orderNo || "");
           setShowAuthDialog(true);
           setSubmitting(false);
@@ -402,13 +408,15 @@ export default function MobileReceptionNewPage() {
         if (me) throw new Error("保存里程表照片失败: " + me.message);
       }
 
+      clearTimeout(timeoutId);
       showToast("接车登记成功", "success");
       /* 移动端某些环境（PWA/WebView）下 router.push 不可靠，使用硬跳转 */
       window.location.href = `/work-orders/${order.id}?newReq=1`;
       return;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      clearTimeout(timeoutId);
       console.error("接车提交异常:", err);
-      showToast(err.message || "提交失败", "error");
+      showToast(err instanceof Error ? err.message : "提交失败", "error");
       setSubmitting(false);
     }
   }
@@ -452,7 +460,7 @@ export default function MobileReceptionNewPage() {
                         setVehicleQuery("");
                         setVehicleResults([]);
                         setShowCustomerSelect(false);
-                        const vc = getVehicleCustomer(v as any);
+                        const vc = getVehicleCustomer(v);
                         if (vc) {
                           setSelectedCustomer(vc);
                           setShowCustomerSelect(false);
@@ -463,17 +471,20 @@ export default function MobileReceptionNewPage() {
                     >
                       <div className="font-medium">{v.plate_number}</div>
                       <div className="text-gray-500 text-xs">{v.brand} {v.model} {v.vin && `· VIN:${v.vin}`}</div>
-                      {getVehicleCustomer(v as any) ? (
-                        <div className="text-xs mt-0.5">
-                          <div className="flex items-center gap-1 text-blue-600">
-                            <span>车主: {getVehicleCustomer(v as any)!.name} · {getVehicleCustomer(v as any)!.phone}</span>
-                            <StarDisplay level={getVehicleCustomer(v as any)!.star_level} />
+                      {(() => {
+                        const vc = getVehicleCustomer(v);
+                        return vc ? (
+                          <div className="text-xs mt-0.5">
+                            <div className="flex items-center gap-1 text-blue-600">
+                              <span>车主: {vc.name} · {vc.phone}</span>
+                              <StarDisplay level={vc.star_level} />
+                            </div>
+                            <TagDisplay tags={vc.customer_tags} />
                           </div>
-                          <TagDisplay tags={getVehicleCustomer(v as any)!.customer_tags} />
-                        </div>
-                      ) : (
-                        <div className="text-orange-500 text-xs mt-0.5">未关联客户</div>
-                      )}
+                        ) : (
+                          <div className="text-orange-500 text-xs mt-0.5">未关联客户</div>
+                        );
+                      })()}
                     </button>
                   ))}
                 </div>

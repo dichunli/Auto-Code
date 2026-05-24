@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 
+/* 使用 Node.js 运行时，避免 Edge Runtime 的 4.5MB 请求体限制 */
+export const runtime = "nodejs";
+
 /* 本地附件存储根目录 */
 const UPLOAD_DIR = "E:/autorepair-uploads";
 

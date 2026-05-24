@@ -15,6 +15,40 @@ interface Line {
   y2: number;
 }
 
+interface InspectionMedia {
+  media_type: string;
+  storage_path: string;
+  annotations?: Line[];
+}
+
+interface InspectionRecord {
+  id: string;
+  created_at: string;
+  submitter_id: string;
+  inspection_mileage: number | null;
+  engine_oil_before_level: number | null;
+  engine_oil_after_level: number | null;
+  front_brake_pad_thickness: number | null;
+  rear_brake_pad_thickness: number | null;
+  exhaust_hc: number | null;
+  exhaust_co: number | null;
+  exhaust_no: number | null;
+  exhaust_co2: number | null;
+  exhaust_o2: number | null;
+  light_checks: Record<string, "normal" | "fault"> | null;
+  coolant_ph: number | null;
+  brake_fluid_water: number | null;
+  battery_health: number | null;
+  battery_voltage: number | null;
+  drive_belt_status: string | null;
+  tire_checks: Record<string, "" | "good" | "fair" | "replace"> | null;
+  notes: string | null;
+  work_order_inspection_media: InspectionMedia[] | null;
+}
+
+/* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+type _InspectionRecord = InspectionRecord;
+
 const LIGHT_ITEMS = [
   { key: "left_headlight", label: "左前大灯" },
   { key: "right_headlight", label: "右前大灯" },
@@ -198,8 +232,8 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
         setNotes(data.notes || "");
 
         const media = data.work_order_inspection_media || [];
-        const oilBeforeMedia = media.find((m: any) => m.media_type === "engine_oil_before");
-        const oilAfterMedia = media.find((m: any) => m.media_type === "engine_oil_after");
+        const oilBeforeMedia = media.find((m) => m.media_type === "engine_oil_before");
+        const oilAfterMedia = media.find((m) => m.media_type === "engine_oil_after");
         if (oilBeforeMedia) {
           setOilBeforePath(oilBeforeMedia.storage_path);
           setOilBeforeAnnotations(oilBeforeMedia.annotations || []);
@@ -208,11 +242,11 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
           setOilAfterPath(oilAfterMedia.storage_path);
           setOilAfterAnnotations(oilAfterMedia.annotations || []);
         }
-        setFluidPaths(media.filter((m: any) => m.media_type === "fluid").map((m: any) => m.storage_path));
-        setDashboardPaths(media.filter((m: any) => m.media_type === "dashboard").map((m: any) => m.storage_path));
-        setDriveBeltPaths(media.filter((m: any) => m.media_type === "drive_belt").map((m: any) => m.storage_path));
-        setTirePaths(media.filter((m: any) => m.media_type === "tire").map((m: any) => m.storage_path));
-        setExteriorPaths(media.filter((m: any) => m.media_type === "exterior").map((m: any) => m.storage_path));
+        setFluidPaths(media.filter((m) => m.media_type === "fluid").map((m) => m.storage_path));
+        setDashboardPaths(media.filter((m) => m.media_type === "dashboard").map((m) => m.storage_path));
+        setDriveBeltPaths(media.filter((m) => m.media_type === "drive_belt").map((m) => m.storage_path));
+        setTirePaths(media.filter((m) => m.media_type === "tire").map((m) => m.storage_path));
+        setExteriorPaths(media.filter((m) => m.media_type === "exterior").map((m) => m.storage_path));
 
         const { data: { user } } = await supabase.auth.getUser();
         setCanEdit(user?.id === data.submitter_id);
@@ -229,6 +263,11 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
     e.preventDefault();
     if (!orderId) return;
     setLoading(true);
+
+    const timeoutId = setTimeout(() => {
+      alert("保存超时，请检查网络连接后重试");
+      setLoading(false);
+    }, 15000);
 
     const inspectionData = {
       front_brake_pad_thickness: frontBrakePad ? parseFloat(frontBrakePad) : null,
@@ -247,6 +286,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
       battery_voltage: batteryVoltage ? parseFloat(batteryVoltage) : null,
       drive_belt_status: driveBeltStatus || null,
       tire_checks: tireChecks,
+      inspection_mileage: inspectionMileage ? parseFloat(inspectionMileage) : null,
       notes: notes || null,
     };
 
@@ -288,7 +328,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
         if (orderErr) throw orderErr;
       }
 
-      const mediaRecords: any[] = [];
+      const mediaRecords: { inspection_id: string | null; media_type: string; storage_path: string; annotations?: Line[] }[] = [];
       if (oilBeforePath) {
         mediaRecords.push({
           inspection_id: inspectionId,
@@ -346,10 +386,13 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
         if (mediaError) throw mediaError;
       }
 
+      clearTimeout(timeoutId);
       router.push(`/work-orders/${orderId}`);
       router.refresh();
-    } catch (err: any) {
-      alert("保存失败: " + err.message);
+    } catch (err: unknown) {
+      clearTimeout(timeoutId);
+      const msg = err instanceof Error ? err.message : "未知错误";
+      alert("保存失败: " + msg);
       setLoading(false);
     }
   }
@@ -605,7 +648,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
                   type="number"
                   step={item.step}
                   className="w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  value={(exhaust as any)[item.key]}
+                  value={exhaust[item.key as keyof typeof exhaust]}
                   onChange={(e) => setExhaust({ ...exhaust, [item.key]: e.target.value })}
                 />
                 <span className="text-xs text-gray-400 w-10">{item.unit}</span>
@@ -641,7 +684,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
                       <button
                         key={item.key}
                         type="button"
-                        onClick={() => setTireChecks((prev) => ({ ...prev, [tire.key]: item.key as any }))}
+                        onClick={() => setTireChecks((prev) => ({ ...prev, [tire.key]: item.key as "" | "good" | "fair" | "replace" }))}
                         className={`px-2 py-1.5 rounded border text-xs transition-colors ${
                           tireChecks[tire.key] === item.key ? item.class + " ring-1 ring-offset-1 ring-current" : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
                         }`}

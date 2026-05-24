@@ -40,6 +40,7 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
           }
         };
 
+        xhr.timeout = 60000;
         xhr.onerror = () => reject(new Error("上传失败"));
         xhr.ontimeout = () => reject(new Error("上传超时"));
 
@@ -52,10 +53,13 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
   const handleFiles = useCallback(
     async (files: FileList) => {
       const fileArray = Array.from(files)
-        .filter((f) => f.type.startsWith("video/"))
+        .filter((f) => f.type.startsWith("video/") || !f.type)
         .slice(0, maxVideos - videos.length);
 
-      if (fileArray.length === 0) return;
+      if (fileArray.length === 0) {
+        alert("未检测到视频文件，请重新选择");
+        return;
+      }
 
       if (fileArray.some((f) => f.size > 100 * 1024 * 1024)) {
         alert("视频大小不能超过 100MB");
@@ -67,11 +71,17 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
         const duration = await new Promise<number>((resolve, reject) => {
           const video = document.createElement("video");
           const url = URL.createObjectURL(file);
+          const timer = setTimeout(() => {
+            URL.revokeObjectURL(url);
+            reject(new Error("读取视频信息超时，请尝试选择文件上传"));
+          }, 5000);
           video.onloadedmetadata = () => {
+            clearTimeout(timer);
             URL.revokeObjectURL(url);
             resolve(video.duration);
           };
           video.onerror = () => {
+            clearTimeout(timer);
             URL.revokeObjectURL(url);
             reject(new Error("无法读取视频信息"));
           };
