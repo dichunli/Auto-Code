@@ -166,6 +166,7 @@ export default async function CustomerDetailPage({
                   key={i}
                   src={url}
                   alt={`客户照片 ${i + 1}`}
+                  loading="lazy"
                   className="w-32 h-24 object-cover rounded border border-gray-200"
                 />
               ))}

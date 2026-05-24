@@ -44,6 +44,7 @@ interface Props {
   workOrderId: string;
   workOrderItemId: string;
   currentItemName: string;
+  serviceItemId?: string | null;
   existingOrder?: ExistingOrder | null;
   existingItem?: ExistingItem | null;
   onClose: () => void;
@@ -55,6 +56,7 @@ export function OutsourceModal({
   workOrderId,
   workOrderItemId,
   currentItemName,
+  serviceItemId,
   existingOrder,
   existingItem,
   onClose,
@@ -63,13 +65,6 @@ export function OutsourceModal({
   const supabase = createClient();
   const isEditItem = !!existingItem;
   const hasExistingOrder = !!existingOrder;
-
-  // 外包项目（必须从搜索选择）
-  const [selectedServiceItem, setSelectedServiceItem] = useState<ServiceItem | null>(null);
-  const [searchKeyword, setSearchKeyword] = useState("");
-  const [searchResults, setSearchResults] = useState<ServiceItem[]>([]);
-  const [searching, setSearching] = useState(false);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 外包金额
   const [amount, setAmount] = useState("");
@@ -94,19 +89,12 @@ export function OutsourceModal({
   useEffect(() => {
     if (!open) return;
 
-    setSearchKeyword("");
-    setSearchResults([]);
     setSupplierKeyword("");
     setSupplierResults([]);
 
     if (existingItem) {
-      setSelectedServiceItem({
-        id: existingItem.service_item_id,
-        name: existingItem.service_name,
-      });
       setAmount(existingItem.amount != null ? String(existingItem.amount) : "");
     } else {
-      setSelectedServiceItem(null);
       setAmount("");
     }
 
@@ -125,36 +113,6 @@ export function OutsourceModal({
       setNotes("");
     }
   }, [open, existingOrder, existingItem]);
-
-  // 搜索服务项目
-  function handleSearchChange(val: string) {
-    setSearchKeyword(val);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(async () => {
-      if (!val.trim()) {
-        setSearchResults([]);
-        return;
-      }
-      setSearching(true);
-      const { data } = await supabase
-        .from("service_items")
-        .select("id, name, code")
-        .ilike("name", `%${val.trim()}%`)
-        .limit(20);
-      setSearchResults((data || []) as ServiceItem[]);
-      setSearching(false);
-    }, 300);
-  }
-
-  function handleSelectServiceItem(si: ServiceItem) {
-    setSelectedServiceItem(si);
-    setSearchKeyword("");
-    setSearchResults([]);
-  }
-
-  function handleClearServiceItem() {
-    setSelectedServiceItem(null);
-  }
 
   // 搜索供应商
   function handleSupplierSearch(val: string) {
@@ -215,8 +173,8 @@ export function OutsourceModal({
 
   async function handleSubmit() {
     // 校验
-    if (!selectedServiceItem) {
-      alert("请从搜索结果中选择外包项目");
+    if (!serviceItemId) {
+      alert("当前项目未关联服务项目，无法创建外包单");
       return;
     }
     const numAmount = parseFloat(amount);
@@ -302,8 +260,8 @@ export function OutsourceModal({
         const { error: itemErr } = await supabase
           .from("outsource_order_items")
           .update({
-            service_item_id: selectedServiceItem.id,
-            service_name: selectedServiceItem.name,
+            service_item_id: serviceItemId,
+            service_name: currentItemName,
             amount: numAmount,
           })
           .eq("id", existingItem.id);
@@ -314,8 +272,8 @@ export function OutsourceModal({
           .insert({
             outsource_order_id: orderId,
             work_order_item_id: workOrderItemId,
-            service_item_id: selectedServiceItem.id,
-            service_name: selectedServiceItem.name,
+            service_item_id: serviceItemId,
+            service_name: currentItemName,
             amount: numAmount,
           });
         if (itemErr) throw new Error("添加外包项目失败: " + itemErr.message);
@@ -461,93 +419,35 @@ export function OutsourceModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+    <div className="fixed inset-0 z-[110] flex flex-col justify-end md:flex-row md:items-center md:justify-center bg-black/50">
+      <div className="absolute inset-0" onClick={onClose} />
+      <div className="relative bg-white rounded-t-2xl md:rounded-xl md:border md:border-gray-200 md:p-6 md:w-full md:max-w-md mx-2 mb-2 md:mx-0 md:mb-0 max-h-[92vh] md:max-h-[90vh] flex flex-col animate-slide-up">
+        {/* 移动端头部 */}
+        <div className="md:hidden px-4 pt-4 pb-2 border-b border-gray-100 flex items-center justify-between shrink-0">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {hasExistingOrder ? "编辑外包单" : "创建外包单"}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* PC 端标题 */}
+        <h2 className="hidden md:block text-lg font-semibold text-gray-900 mb-4">
           {hasExistingOrder
             ? `编辑外包单 ${existingOrder?.order_no}`
             : "创建外包单"}
         </h2>
 
-        <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 py-3 md:px-0 md:py-0 space-y-4">
           {/* 当前项目 */}
-          <div className="p-3 bg-gray-50 rounded-lg">
-            <p className="text-xs text-gray-500">当前工单项目</p>
-            <p className="text-sm font-medium text-gray-900">{currentItemName}</p>
-          </div>
-
-          {/* 同外包单的其他项目（提示） */}
-          {otherItems.length > 0 && (
-            <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-              <p className="text-xs text-blue-700 mb-1">
-                本外包单已包含 {otherItems.length} 个其他项目：
-              </p>
-              <ul className="text-xs text-blue-600 list-disc pl-4 space-y-0.5">
-                {otherItems.map((it) => (
-                  <li key={it.id}>
-                    {it.service_name} · ¥{it.amount}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* 外包项目（必须从搜索选取） */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              外包项目 <span className="text-red-500">*</span>
-            </label>
-            {selectedServiceItem ? (
-              <div className="flex items-center justify-between px-3 py-2 border border-green-200 bg-green-50 rounded-lg">
-                <span className="text-sm text-green-700">
-                  {selectedServiceItem.name}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleClearServiceItem}
-                  className="text-xs text-gray-500 hover:text-red-600"
-                >
-                  重新选择
-                </button>
-              </div>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  value={searchKeyword}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  placeholder="搜索服务项目名称..."
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                />
-                {searching && (
-                  <p className="text-xs text-gray-400 mt-1">搜索中...</p>
-                )}
-                {searchResults.length > 0 && (
-                  <div className="mt-1 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
-                    {searchResults.map((si) => (
-                      <button
-                        key={si.id}
-                        type="button"
-                        onClick={() => handleSelectServiceItem(si)}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0"
-                      >
-                        <span className="font-medium">{si.name}</span>
-                        {si.code && (
-                          <span className="text-xs text-gray-400 ml-2">
-                            {si.code}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {!searching &&
-                  searchKeyword.trim() &&
-                  searchResults.length === 0 && (
-                    <p className="text-xs text-gray-400 mt-1">未找到匹配的服务项目</p>
-                  )}
-              </>
-            )}
+          <div className="px-3 py-2 border border-blue-200 bg-blue-50 rounded-lg">
+            <div className="text-xs text-blue-500 mb-0.5">当前工单项目</div>
+            <div className="text-sm font-medium text-blue-700">{currentItemName}</div>
           </div>
 
           {/* 外包金额 */}
@@ -685,7 +585,7 @@ export function OutsourceModal({
           </div>
         </div>
 
-        <div className="flex justify-between gap-2 mt-6">
+        <div className="shrink-0 px-4 py-3 md:px-0 md:py-0 md:mt-6 border-t border-gray-100 md:border-0 flex justify-between gap-2">
           {isEditItem && (
             <button
               type="button"

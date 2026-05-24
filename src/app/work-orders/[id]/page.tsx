@@ -751,6 +751,7 @@ export default async function WorkOrderDetailPage({
                               orderId={id}
                               orderStatus={order.status}
                               profiles={profiles || []}
+                              mechanicGroups={(mechanicGroups || []).map((g: { id: string; name: string; mechanic_group_members?: unknown[] }) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
                               existingMechanics={mechanicsByItem[item.id] || []}
                               images={imagesByItem[item.id]?.map((m) => m.storage_path).filter(Boolean) as string[] || []}
                               knowledgeUrl={
@@ -759,6 +760,28 @@ export default async function WorkOrderDetailPage({
                                   : undefined
                               }
                               isLocked={isLocked}
+                              parts={(partsByItem[item.id] || []).map((p: Record<string, unknown>) => ({
+                                id: p.id as string,
+                                name: (p.name as string) || (p.part_names as { name?: string } | null)?.name || "",
+                                part_number: (p.part_number as string) || (p.parts as { part_number?: string } | null)?.part_number || "",
+                                quantity: (p.quantity as number) || 1,
+                                unit_price: (p.unit_price as number) || 0,
+                                total_price: (p.total_price as number) || 0,
+                                unit: (p.unit as string) || (p.part_names as { unit?: string } | null)?.unit || "件",
+                                brand: (p.brand as string) || "",
+                                specification: (p.specification as string) || "",
+                              }))}
+                              vehicleModelId={order.vehicle_model_id}
+                              existingOrder={
+                                outsourceOrder?.outsource_order_items?.some(
+                                  (oi: { work_order_item_id?: string }) => oi.work_order_item_id === item.id
+                                ) ? outsourceOrder : null
+                              }
+                              existingItem={
+                                outsourceOrder?.outsource_order_items?.find(
+                                  (oi: { work_order_item_id?: string }) => oi.work_order_item_id === item.id
+                                ) || null
+                              }
                             />
                             {/* 桌面端横向布局 */}
                             <div className="hidden md:block overflow-x-auto relative">
@@ -798,7 +821,11 @@ export default async function WorkOrderDetailPage({
                                       serviceItemId={item.service_item_id}
                                       workOrderId={order.id}
                                       itemName={item.name}
-                                      existingOrder={outsourceOrder}
+                                      existingOrder={
+                                        outsourceOrder?.outsource_order_items?.some(
+                                          (oi: { work_order_item_id?: string }) => oi.work_order_item_id === item.id
+                                        ) ? outsourceOrder : null
+                                      }
                                       existingItem={
                                         outsourceOrder?.outsource_order_items?.find(
                                           (oi: { work_order_item_id?: string }) => oi.work_order_item_id === item.id

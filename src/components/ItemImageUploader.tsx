@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useId } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/imageCompress";
 import { ImageViewer } from "./ImageViewer";
@@ -18,7 +18,7 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const fileId = useRef(`item-img-${Math.random().toString(36).slice(2)}`).current;
+  const fileId = `item-img-${useId()}`;
 
   useEffect(() => {
     setImages(existingImages);
@@ -98,13 +98,13 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
   return (
     <div className="flex items-center gap-1" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
       {images.map((src, i) => (
-        <div key={i} className="relative w-8 h-8 rounded border border-gray-200 overflow-hidden group cursor-pointer">
+        <div key={i} className="relative w-14 h-14 rounded-lg border border-gray-200 overflow-hidden group cursor-pointer">
           <img src={src} alt="" className="w-full h-full object-cover" onClick={() => setViewerSrc(src)} />
           {!isLocked && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); removeImage(i); }}
-              className="absolute top-0 right-0 w-3 h-3 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shadow-sm"
             >
               ×
             </button>
@@ -116,13 +116,13 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
           <span className="text-xs text-gray-500 ml-1">添加图片</span>
           <label
             htmlFor={fileId}
-            className={`w-8 h-8 rounded border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${saving ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
+            className={`w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${saving ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
             title="上传/粘贴/拍照"
           >
             {saving ? (
-              <span className="text-[8px]">...</span>
+              <span className="text-xs">...</span>
             ) : (
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
             )}

@@ -90,7 +90,7 @@ export async function getWorkOrderData(id: string) {
     supabase.from("logistics_companies").select("*").order("name"),
     supabase
       .from("outsource_orders")
-      .select("*, suppliers(name), outsource_order_items(id, work_order_item_id, service_item_id, service_name, amount)")
+      .select("*, created_at, suppliers(name), outsource_order_items(id, work_order_item_id, service_item_id, service_name, amount)")
       .eq("work_order_id", id)
       .maybeSingle(),
   ]);
@@ -122,7 +122,7 @@ export async function getWorkOrderData(id: string) {
       work_order_item_media(*),
       work_order_item_mechanics(work_order_item_id, mechanic_id, share_pct, profiles(full_name)),
       outsource_order_items(*)
-    `).eq("work_order_id", id).order("sort_order", { ascending: true }),
+    `).eq("work_order_id", id).order("sort_order", { ascending: true }).order("created_at", { ascending: true }),
 
     supabase.from("work_order_inspections").select(`
       *,

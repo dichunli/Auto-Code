@@ -4,12 +4,20 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import ItemImageUploader from "./ItemImageUploader";
+import { PartPickerModal } from "./PartPickerModal";
+import { OutsourceModal } from "./OutsourceModal";
 
 /* ==================== 类型定义 ==================== */
 
 interface Profile {
   id: string;
   full_name: string;
+}
+
+interface MechanicGroup {
+  id: string;
+  name: string;
+  members: { mechanic_id: string; profiles?: { full_name?: string } | null }[];
 }
 
 interface ExistingMechanic {
@@ -23,6 +31,12 @@ interface ConstructionLog {
   action: "start" | "pause" | "resume" | "complete";
   created_at: string;
   mechanic_id: string | null;
+}
+
+interface OutsourceOrderItem {
+  id: string;
+  service_name?: string;
+  amount?: number;
 }
 
 interface ItemData {
@@ -43,6 +57,94 @@ interface ItemData {
   inspector_id?: string | null;
   service_item_id?: string | null;
   service_items?: { service_name_id?: string | null } | null;
+  outsourced_supplier?: { name?: string } | null;
+  outsource_order_items?: OutsourceOrderItem[] | null;
+}
+
+interface ItemPart {
+  id: string;
+  name: string;
+  part_number: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  unit: string;
+  brand: string;
+  specification: string;
+}
+
+interface PartNameResult {
+  id: string;
+  name: string;
+  unit: string | null;
+  default_quantity: number | null;
+}
+
+interface SelectedPartName {
+  part_name_id: string;
+  name: string;
+  unit: string;
+  quantity: number | null;
+}
+
+interface SelectedRealPart {
+  part_id: string;
+  part_name_id: string | null;
+  name: string;
+  part_number: string;
+  unit: string;
+  brand: string;
+  specification: string;
+  unit_cost: number | null;
+  unit_price: number | null;
+  quantity: number | null;
+}
+
+interface PresetPart {
+  part_name_id: string;
+  name: string;
+  unit: string;
+  quantity: number | null;
+}
+
+interface ExistingOrder {
+  id: string;
+  order_no: string;
+  supplier_id: string;
+  total_amount: number;
+  is_paid: boolean;
+  payment_method?: string | null;
+  notes?: string | null;
+  created_at?: string | null;
+  suppliers?: { name: string } | null;
+  outsource_order_items?: Array<{
+    id: string;
+    work_order_item_id: string;
+    service_item_id: string;
+    service_name: string;
+    amount: number;
+  }>;
+}
+
+interface ExistingItem {
+  id: string;
+  service_item_id: string;
+  service_name: string;
+  amount: number;
+}
+
+interface PickerPart {
+  id: string;
+  part_name_id: string | null;
+  name: string;
+  part_number: string | null;
+  unit: string | null;
+  part_brands: { name: string } | { name: string }[] | null;
+  specification_text: string | null;
+  part_specifications: { name: string } | null;
+  unit_cost: number | null;
+  unit_price: number | null;
+  selectedQuantity?: number | null;
 }
 
 interface Props {
@@ -50,10 +152,15 @@ interface Props {
   orderId: string;
   orderStatus: string;
   profiles: Profile[];
+  mechanicGroups: MechanicGroup[];
   existingMechanics: ExistingMechanic[];
   images: string[];
   knowledgeUrl?: string;
   isLocked: boolean;
+  parts: ItemPart[];
+  vehicleModelId?: string | null;
+  existingOrder?: ExistingOrder | null;
+  existingItem?: ExistingItem | null;
 }
 
 /* ==================== 工具函数 ==================== */
@@ -63,6 +170,10 @@ function formatDuration(totalSeconds: number) {
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = Math.floor(totalSeconds % 60);
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+function formatTime(d: Date) {
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 }
 
 function getConstructionStatus(logs: ConstructionLog[]): "idle" | "running" | "paused" | "completed" {
@@ -94,6 +205,15 @@ function calculateTotalSeconds(logs: ConstructionLog[], now: Date): number {
   return Math.max(0, total);
 }
 
+function canCancelLastStart(logs: ConstructionLog[]): boolean {
+  if (logs.length === 0) return false;
+  const last = logs[logs.length - 1];
+  if (last.action !== "start" && last.action !== "resume") return false;
+  const now = new Date();
+  const startTime = new Date(last.created_at);
+  return now.getTime() - startTime.getTime() < 60 * 1000;
+}
+
 /* ==================== 主组件 ==================== */
 
 export default function MobileItemEditor({
@@ -101,10 +221,15 @@ export default function MobileItemEditor({
   orderId,
   orderStatus,
   profiles,
+  mechanicGroups,
   existingMechanics,
   images,
   knowledgeUrl,
   isLocked,
+  parts,
+  vehicleModelId,
+  existingOrder,
+  existingItem,
 }: Props) {
   const router = useRouter();
   const supabase = createClient();
@@ -116,12 +241,57 @@ export default function MobileItemEditor({
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  /* 施工人选择 */
-  const [showMechanicSelect, setShowMechanicSelect] = useState(false);
-  const [selectedMechanicId, setSelectedMechanicId] = useState<string>("");
+  /* 批量草稿 */
+  const [draftOpinion, setDraftOpinion] = useState(item.customer_opinion || "pending");
+  const [draftCustomerPart, setDraftCustomerPart] = useState(!!item.is_customer_part);
 
   /* 备注 */
   const [notes, setNotes] = useState(item.description || "");
+
+  /* 施工人子弹窗 */
+  const [showMechanicModal, setShowMechanicModal] = useState(false);
+  const [mechanicMode, setMechanicMode] = useState<"person" | "group">("person");
+  const [selectedPersons, setSelectedPersons] = useState<string[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<string>("");
+  const [commissionRule, setCommissionRule] = useState<"equal" | "byLevel" | "manual">("equal");
+  const [manualRatios, setManualRatios] = useState<Record<string, string>>({});
+  const [showClaimChoice, setShowClaimChoice] = useState(false);
+  const [levelPreview, setLevelPreview] = useState<{ id: string; name: string; coeff: number; ratio: number }[]>([]);
+  const [mechanicSortAsc, setMechanicSortAsc] = useState(true);
+
+  /* 配件子弹窗 */
+  const [showPartModal, setShowPartModal] = useState(false);
+  const [partSearchQuery, setPartSearchQuery] = useState("");
+  const [partSearchResults, setPartSearchResults] = useState<PartNameResult[]>([]);
+  const [partSearching, setPartSearching] = useState(false);
+  const [selectedPartNames, setSelectedPartNames] = useState<SelectedPartName[]>([]);
+  const [selectedRealParts, setSelectedRealParts] = useState<SelectedRealPart[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [partTab, setPartTab] = useState<"name" | "inventory">("name");
+  const [presetParts, setPresetParts] = useState<PresetPart[]>([]);
+  const [presetLoading, setPresetLoading] = useState(false);
+  const partSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* 外包弹窗 */
+  const [showOutsourceModal, setShowOutsourceModal] = useState(false);
+
+  /* 弹窗内标签切换 */
+  const [activeTab, setActiveTab] = useState<"main" | "parts">("main");
+
+  /* 当前用户 */
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  /* 弹窗打开时同步草稿 */
+  useEffect(() => {
+    if (open) {
+      setDraftOpinion(item.customer_opinion || "pending");
+      setDraftCustomerPart(!!item.is_customer_part);
+      setNotes(item.description || "");
+      supabase.auth.getUser().then(({ data }) => {
+        setCurrentUserId(data.user?.id || null);
+      });
+    }
+  }, [open, item.customer_opinion, item.is_customer_part, item.description, supabase]);
 
   /* 加载计时记录 */
   useEffect(() => {
@@ -153,45 +323,126 @@ export default function MobileItemEditor({
     };
   }, [logs]);
 
+  /* 初始化施工人编辑状态 */
+  useEffect(() => {
+    if (showMechanicModal) {
+      setSelectedPersons(existingMechanics.map((m) => m.mechanic_id));
+      setSelectedGroup("");
+      setCommissionRule("equal");
+      setManualRatios({});
+      setLevelPreview([]);
+      setShowClaimChoice(false);
+      setMechanicMode("person");
+    }
+  }, [showMechanicModal, existingMechanics]);
+
+  const mechanicIds = mechanicMode === "group" && selectedGroup
+    ? (mechanicGroups.find((g) => g.id === selectedGroup)?.members.map((m) => m.mechanic_id) || [])
+    : selectedPersons;
+
+  const personCount = mechanicIds.length;
+  const isMulti = personCount > 1;
+
+  /* 初始化配件弹窗状态 */
+  useEffect(() => {
+    if (showPartModal) {
+      setPartTab("name");
+      setPartSearchQuery("");
+      setSelectedPartNames([]);
+      setSelectedRealParts([]);
+      setPresetParts([]);
+      doPartSearch("");
+
+      const serviceNameId = item.service_items?.service_name_id;
+      if (serviceNameId) {
+        setPresetLoading(true);
+        supabase
+          .from("service_name_part_names")
+          .select("part_name_id, quantity, part_names(id, name, unit, default_quantity)")
+          .eq("service_name_id", serviceNameId)
+          .order("sort_order", { ascending: true })
+          .then(({ data }) => {
+            const loaded = (data || [])
+              .filter((row: { part_names: { id: string; name: string; unit: string | null; default_quantity: number | null } | null }) => row.part_names)
+              .map((row: { part_name_id: string; quantity: number | null; part_names: { id: string; name: string; unit: string | null; default_quantity: number | null } | null }) => ({
+                part_name_id: row.part_name_id,
+                name: row.part_names!.name,
+                unit: row.part_names!.unit || "件",
+                quantity: row.quantity ?? row.part_names!.default_quantity ?? null,
+              }));
+            setPresetParts(loaded);
+            setPresetLoading(false);
+          });
+      }
+    }
+  }, [showPartModal, item.service_items?.service_name_id, supabase]);
+
+  /* 按技师等级分配预览 */
+  useEffect(() => {
+    async function calcPreview() {
+      if (commissionRule !== "byLevel" || personCount <= 1) {
+        setLevelPreview([]);
+        return;
+      }
+      const ids = mechanicIds;
+      if (ids.length === 0) return;
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, mechanic_levels(commission_weight)")
+        .in("id", ids);
+      const raw = (data || []) as unknown as { id: string; full_name: string; mechanic_levels?: { commission_weight: number } | null }[];
+      const rows = raw.map((row) => ({
+        id: row.id,
+        name: row.full_name,
+        coeff: row.mechanic_levels?.commission_weight || 1,
+      }));
+      const totalCoeff = rows.reduce((sum, r) => sum + r.coeff, 0);
+      const preview = rows.map((r) => ({
+        ...r,
+        ratio: Math.round((r.coeff / totalCoeff) * 100 * 100) / 100,
+      }));
+      const sumRatio = preview.reduce((s, p) => s + p.ratio, 0);
+      if (sumRatio !== 100 && preview.length > 0) {
+        preview[0].ratio = Math.round((preview[0].ratio + (100 - sumRatio)) * 100) / 100;
+      }
+      setLevelPreview(preview);
+    }
+    calcPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commissionRule, selectedPersons, selectedGroup, mechanicMode]);
+
   /* 通用刷新 */
   const refresh = useCallback(() => {
     router.refresh();
   }, [router]);
 
-  /* 更新客户意见 */
-  async function updateOpinion(opinion: string) {
-    if (loading) return;
-    setLoading(true);
-    const { error } = await supabase
-      .from("work_order_items")
-      .update({ customer_opinion: opinion })
-      .eq("id", item.id);
-    setLoading(false);
-    if (error) {
-      alert("更新失败: " + error.message);
-      return;
-    }
-    refresh();
+  function togglePerson(id: string) {
+    setSelectedPersons((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   }
 
-  /* 更新标记 */
-  async function toggleFlag(field: "is_outsourced" | "is_customer_part", value: boolean) {
+  /* 批量确认提交 */
+  async function handleConfirm() {
     if (loading || isLocked) return;
     setLoading(true);
 
-    const updateData: Record<string, boolean | number | null> = { [field]: value };
+    const updateData: Record<string, unknown> = {
+      customer_opinion: draftOpinion,
+      is_customer_part: draftCustomerPart,
+      description: notes.trim() || null,
+    };
 
-    /* 自带配件开关时同步更新价格 */
-    if (field === "is_customer_part" && item.service_item_id) {
+    if (draftCustomerPart !== !!item.is_customer_part && item.service_item_id) {
       const { data: si } = await supabase
         .from("service_items")
         .select("default_price, customer_parts_price")
         .eq("id", item.service_item_id)
         .single();
       if (si) {
-        if (value && si.customer_parts_price != null) {
+        if (draftCustomerPart && si.customer_parts_price != null) {
           updateData.unit_price = si.customer_parts_price;
-        } else if (!value && si.default_price != null) {
+        } else if (!draftCustomerPart && si.default_price != null) {
           updateData.unit_price = si.default_price;
         }
       }
@@ -199,55 +450,177 @@ export default function MobileItemEditor({
 
     const { error } = await supabase.from("work_order_items").update(updateData).eq("id", item.id);
     setLoading(false);
-    if (error) {
-      alert("更新失败: " + error.message);
-      return;
-    }
-    refresh();
-  }
 
-  /* 保存备注 */
-  async function saveNotes() {
-    if (loading) return;
-    setLoading(true);
-    const { error } = await supabase
-      .from("work_order_items")
-      .update({ description: notes.trim() || null })
-      .eq("id", item.id);
-    setLoading(false);
     if (error) {
       alert("保存失败: " + error.message);
       return;
     }
+
+    setOpen(false);
     refresh();
   }
 
-  /* 指派施工人 */
-  async function assignMechanic() {
-    if (!selectedMechanicId || loading) return;
-    setLoading(true);
+  /* 计算分成比例 */
+  function calculateRatios(): Record<string, number> | null {
+    const ids = mechanicIds;
+    if (ids.length === 0) return null;
+    const ratios: Record<string, number> = {};
 
-    /* 先删旧记录 */
+    if (commissionRule === "equal") {
+      const ratio = 100 / ids.length;
+      ids.forEach((id) => {
+        ratios[id] = Math.round(ratio * 100) / 100;
+      });
+    } else if (commissionRule === "manual") {
+      let total = 0;
+      ids.forEach((id) => {
+        const val = parseFloat(manualRatios[id]) || 0;
+        ratios[id] = val;
+        total += val;
+      });
+      if (Math.abs(total - 100) > 0.01) {
+        alert(`分成比例合计为 ${total.toFixed(2)}%，必须为 100%`);
+        return null;
+      }
+    } else {
+      if (levelPreview.length > 0) {
+        levelPreview.forEach((p) => {
+          ratios[p.id] = p.ratio;
+        });
+      } else {
+        const ratio = 100 / ids.length;
+        ids.forEach((id) => {
+          ratios[id] = Math.round(ratio * 100) / 100;
+        });
+      }
+    }
+
+    const sum = Object.values(ratios).reduce((a, b) => a + b, 0);
+    if (sum !== 100 && ids.length > 0) {
+      const diff = 100 - sum;
+      ratios[ids[0]] = Math.round((ratios[ids[0]] + diff) * 100) / 100;
+    }
+
+    return ratios;
+  }
+
+  /* 保存施工人指派 */
+  async function saveMechanics() {
+    if (loading) return;
+    const ids = mechanicIds;
+    if (ids.length === 0) {
+      alert("请选择施工人");
+      return;
+    }
+
+    const ratios = calculateRatios();
+    if (!ratios) return;
+
+    setLoading(true);
     await supabase.from("work_order_item_mechanics").delete().eq("work_order_item_id", item.id);
 
-    /* 插入新记录 */
+    const records = ids.map((id) => ({
+      work_order_item_id: item.id,
+      mechanic_id: id,
+      share_pct: ratios[id] ?? 100,
+    }));
+
+    const { error } = await supabase.from("work_order_item_mechanics").insert(records);
+    setLoading(false);
+
+    if (error) {
+      alert("保存失败: " + error.message);
+      return;
+    }
+
+    setShowMechanicModal(false);
+    refresh();
+  }
+
+  /* 清除施工人 */
+  async function clearMechanics() {
+    if (!confirm("确定取消施工指派？")) return;
+    setLoading(true);
+    const { error } = await supabase
+      .from("work_order_item_mechanics")
+      .delete()
+      .eq("work_order_item_id", item.id);
+    setLoading(false);
+    if (error) {
+      alert("取消失败: " + error.message);
+      return;
+    }
+    setShowMechanicModal(false);
+    refresh();
+  }
+
+  /* 领单 — 独立完成 */
+  async function handleSoloClaim() {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert("未登录，无法领单");
+      setLoading(false);
+      return;
+    }
+    await supabase.from("work_order_item_mechanics").delete().eq("work_order_item_id", item.id);
     const { error } = await supabase.from("work_order_item_mechanics").insert({
       work_order_item_id: item.id,
-      mechanic_id: selectedMechanicId,
+      mechanic_id: user.id,
       share_pct: 100,
     });
+    setLoading(false);
+    if (error) {
+      alert("领单失败: " + error.message);
+      return;
+    }
+    setShowMechanicModal(false);
+    refresh();
+  }
 
-    if (!error) {
-      /* 同步更新主表 mechanic_id */
-      await supabase.from("work_order_items").update({ mechanic_id: selectedMechanicId }).eq("id", item.id);
+  /* 领单 — 与人合作 */
+  async function handleCollaborateClaim() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert("未登录，无法领单");
+      return;
+    }
+    setMechanicMode("person");
+    setSelectedPersons((prev) =>
+      prev.includes(user.id) ? prev : [...prev, user.id]
+    );
+    setShowClaimChoice(false);
+  }
+
+  /* 放弃领单 */
+  async function abandonClaim() {
+    if (!currentUserId) return;
+    if (!confirm("确定放弃领单？")) return;
+    setLoading(true);
+
+    await supabase
+      .from("work_order_item_mechanics")
+      .delete()
+      .eq("work_order_item_id", item.id)
+      .eq("mechanic_id", currentUserId);
+
+    const { data: remaining } = await supabase
+      .from("work_order_item_mechanics")
+      .select("mechanic_id")
+      .eq("work_order_item_id", item.id);
+
+    if (remaining && remaining.length > 0) {
+      const ratio = 100 / remaining.length;
+      for (const r of remaining) {
+        await supabase
+          .from("work_order_item_mechanics")
+          .update({ share_pct: Math.round(ratio * 100) / 100 })
+          .eq("work_order_item_id", item.id)
+          .eq("mechanic_id", (r as { mechanic_id: string }).mechanic_id);
+      }
     }
 
     setLoading(false);
-    setShowMechanicSelect(false);
-    if (error) {
-      alert("指派失败: " + error.message);
-      return;
-    }
     refresh();
   }
 
@@ -266,7 +639,6 @@ export default function MobileItemEditor({
     });
 
     if (!error && action === "complete") {
-      /* 完工时同步更新项目状态 */
       await supabase.from("work_order_items").update({ status: "completed" }).eq("id", item.id);
     }
 
@@ -276,7 +648,6 @@ export default function MobileItemEditor({
       return;
     }
 
-    /* 刷新日志 */
     const { data } = await supabase
       .from("work_order_item_construction_logs")
       .select("id, action, created_at, mechanic_id")
@@ -288,12 +659,259 @@ export default function MobileItemEditor({
     refresh();
   }
 
+  /* 取消计时（删除最后一条 start/resume） */
+  async function cancelTimer() {
+    if (loading) return;
+    if (logs.length === 0) return;
+    const lastLog = logs[logs.length - 1];
+    if (lastLog.action !== "start" && lastLog.action !== "resume") return;
+
+    setLoading(true);
+    const { error } = await supabase
+      .from("work_order_item_construction_logs")
+      .delete()
+      .eq("id", lastLog.id);
+    setLoading(false);
+
+    if (error) {
+      alert("取消失败: " + error.message);
+      return;
+    }
+
+    const { data } = await supabase
+      .from("work_order_item_construction_logs")
+      .select("id, action, created_at, mechanic_id")
+      .eq("work_order_item_id", item.id)
+      .order("created_at", { ascending: true });
+    const loaded = (data || []) as ConstructionLog[];
+    setLogs(loaded);
+    setElapsed(calculateTotalSeconds(loaded, new Date()));
+    refresh();
+  }
+
+  /* ========== 配件相关 ========== */
+
+  async function doPartSearch(keyword: string) {
+    setPartSearching(true);
+    let query = supabase
+      .from("part_names")
+      .select("id, name, unit, default_quantity")
+      .order("name")
+      .limit(50);
+    if (keyword.trim()) {
+      query = query.ilike("name", `%${keyword.trim()}%`);
+    }
+    const { data } = await query;
+    setPartSearchResults(data || []);
+    setPartSearching(false);
+  }
+
+  function handlePartSearchChange(val: string) {
+    setPartSearchQuery(val);
+    if (partSearchTimer.current) clearTimeout(partSearchTimer.current);
+    partSearchTimer.current = setTimeout(() => doPartSearch(val), 300);
+  }
+
+  function addPartNameFromSearch(part: PartNameResult) {
+    const exists = selectedPartNames.some((sp) => sp.part_name_id === part.id);
+    if (exists) {
+      alert("该配件已选择");
+      return;
+    }
+    setSelectedPartNames((prev) => [
+      ...prev,
+      {
+        part_name_id: part.id,
+        name: part.name,
+        unit: part.unit || "件",
+        quantity: part.default_quantity ?? 1,
+      },
+    ]);
+    setPartSearchQuery("");
+    setPartSearchResults([]);
+  }
+
+  function addPresetPart(preset: PresetPart) {
+    const exists = selectedPartNames.some((sp) => sp.part_name_id === preset.part_name_id);
+    if (exists) {
+      alert("该配件已选择");
+      return;
+    }
+    setSelectedPartNames((prev) => [
+      ...prev,
+      {
+        part_name_id: preset.part_name_id,
+        name: preset.name,
+        unit: preset.unit,
+        quantity: preset.quantity ?? 1,
+      },
+    ]);
+  }
+
+  function removeSelectedPartName(partNameId: string) {
+    setSelectedPartNames((prev) => prev.filter((sp) => sp.part_name_id !== partNameId));
+  }
+
+  function updatePartNameQuantity(partNameId: string, qty: number | null) {
+    setSelectedPartNames((prev) =>
+      prev.map((sp) => (sp.part_name_id === partNameId ? { ...sp, quantity: qty } : sp))
+    );
+  }
+
+  function handlePickerConfirm(pickerParts: PickerPart[]) {
+    setSelectedRealParts((prev) => {
+      const next = [...prev];
+      for (const part of pickerParts) {
+        if (next.some((p) => p.part_id === part.id)) continue;
+        const pb = part.part_brands;
+        const brandName = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
+        next.push({
+          part_id: part.id,
+          part_name_id: part.part_name_id,
+          name: part.name,
+          part_number: part.part_number || "",
+          unit: part.unit || "件",
+          brand: brandName,
+          specification: part.specification_text || part.part_specifications?.name || "",
+          unit_cost: part.unit_cost,
+          unit_price: part.unit_price,
+          quantity: part.selectedQuantity ?? 1,
+        });
+      }
+      return next;
+    });
+    setPickerOpen(false);
+  }
+
+  function removeSelectedRealPart(partId: string) {
+    setSelectedRealParts((prev) => prev.filter((sp) => sp.part_id !== partId));
+  }
+
+  function updateRealPartQuantity(partId: string, qty: number | null) {
+    setSelectedRealParts((prev) =>
+      prev.map((sp) => (sp.part_id === partId ? { ...sp, quantity: qty } : sp))
+    );
+  }
+
+  async function saveParts() {
+    const totalCount = selectedPartNames.length + selectedRealParts.length;
+    if (totalCount === 0) {
+      alert("请至少选择一个配件");
+      return;
+    }
+    setLoading(true);
+
+    const inserts: Record<string, unknown>[] = [];
+    for (const sp of selectedPartNames) {
+      inserts.push({
+        work_order_item_id: item.id,
+        part_name_id: sp.part_name_id,
+        name: sp.name,
+        unit: sp.unit,
+        quantity: sp.quantity,
+        customer_opinion: "pending",
+      });
+    }
+    for (const sp of selectedRealParts) {
+      inserts.push({
+        work_order_item_id: item.id,
+        part_id: sp.part_id,
+        part_name_id: sp.part_name_id,
+        part_number: sp.part_number,
+        name: sp.name,
+        unit: sp.unit,
+        brand: sp.brand,
+        specification: sp.specification,
+        unit_cost: sp.unit_cost,
+        unit_price: sp.unit_price,
+        quantity: sp.quantity,
+        customer_opinion: "pending",
+      });
+    }
+
+    const { error } = await supabase.from("work_order_item_parts").insert(inserts);
+    setLoading(false);
+
+    if (error) {
+      alert("添加失败: " + error.message);
+      return;
+    }
+
+    setShowPartModal(false);
+    refresh();
+  }
+
+  /* 取消外包 */
+  async function cancelOutsource() {
+    if (!existingOrder || !existingItem) return;
+    const otherItemsCount = (existingOrder.outsource_order_items?.length || 0) - 1;
+    const willDeleteOrder = otherItemsCount <= 0;
+    const msg = willDeleteOrder
+      ? "本项目是外包单中最后一项，移除后将同时删除外包单和相关财务记录。确定吗？"
+      : "确定将本项目从外包单中移除吗？";
+    if (!confirm(msg)) return;
+
+    setLoading(true);
+    try {
+      // 清理旧财务记录
+      await supabase.from("supplier_transactions").delete().ilike("description", `%${existingOrder.order_no}%`);
+      await supabase.from("accounts_payable").delete().ilike("notes", `%${existingOrder.order_no}%`);
+
+      // 删除明细
+      const { error: delErr } = await supabase.from("outsource_order_items").delete().eq("id", existingItem.id);
+      if (delErr) throw new Error("移除外包项目失败: " + delErr.message);
+
+      // 清理工单项目标记
+      const { error: woErr } = await supabase.from("work_order_items").update({
+        is_outsourced: false,
+        outsourced_supplier_id: null,
+      }).eq("id", item.id);
+      if (woErr) throw new Error("更新工单项目失败: " + woErr.message);
+
+      if (willDeleteOrder) {
+        const { error: orderErr } = await supabase.from("outsource_orders").delete().eq("id", existingOrder.id);
+        if (orderErr) throw new Error("删除外包单失败: " + orderErr.message);
+      } else {
+        const { data: remaining } = await supabase.from("outsource_order_items").select("amount").eq("outsource_order_id", existingOrder.id);
+        const newTotal = (remaining as Array<{ amount: number | string }> | null || []).reduce(
+          (sum, it) => sum + (parseFloat(String(it.amount)) || 0), 0
+        );
+        await supabase.from("outsource_orders").update({ total_amount: newTotal }).eq("id", existingOrder.id);
+        if (newTotal > 0) {
+          if (existingOrder.is_paid) {
+            await supabase.from("supplier_transactions").insert({
+              supplier_id: existingOrder.supplier_id,
+              transaction_type: "payment",
+              amount: newTotal,
+              description: `外包服务单 ${existingOrder.order_no}`,
+            });
+          } else {
+            await supabase.from("accounts_payable").insert({
+              supplier_id: existingOrder.supplier_id,
+              amount: newTotal,
+              paid_amount: 0,
+              status: "pending",
+              notes: `外包服务单 ${existingOrder.order_no}`,
+            });
+          }
+        }
+      }
+
+      refresh();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "操作失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   /* ========== 渲染 ========== */
 
   const status = getConstructionStatus(logs);
   const mechanicNames = existingMechanics.map((m) => m.profiles?.full_name).filter(Boolean);
   const submitterName = profiles.find((p) => p.id === item.submitter_id)?.full_name;
   const inspectorName = profiles.find((p) => p.id === item.inspector_id)?.full_name;
+  const isClaimer = currentUserId ? existingMechanics.some((m) => m.mechanic_id === currentUserId) : false;
 
   const opinionLabel =
     item.customer_opinion === "agree" ? "同意" :
@@ -301,6 +919,12 @@ export default function MobileItemEditor({
   const opinionColor =
     item.customer_opinion === "agree" ? "text-green-600 bg-green-50" :
     item.customer_opinion === "reject" ? "text-red-600 bg-red-50" : "text-gray-600 bg-gray-100";
+
+  const lastPauseLog = status === "paused"
+    ? [...logs].reverse().find((l) => l.action === "pause") || null
+    : null;
+
+  const cancelable = canCancelLastStart(logs);
 
   return (
     <>
@@ -326,6 +950,9 @@ export default function MobileItemEditor({
         {mechanicNames.length > 0 && (
           <div className="text-xs text-gray-500 mt-1">施工人: {mechanicNames.join("、")}</div>
         )}
+        {parts.length > 0 && (
+          <div className="text-xs text-gray-500 mt-1">配件: {parts.length} 项</div>
+        )}
         {item.description && (
           <div className="text-xs text-gray-400 mt-1 line-clamp-1">备注: {item.description}</div>
         )}
@@ -338,88 +965,118 @@ export default function MobileItemEditor({
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
 
           {/* 底部面板 */}
-          <div className="relative bg-white rounded-t-2xl max-h-[85vh] flex flex-col animate-slide-up">
+          <div className="relative bg-white rounded-t-2xl mx-2 mb-4 max-h-[85dvh] flex flex-col animate-slide-up">
             {/* 头部 */}
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0">
-              <div>
-                <h3 className="text-base font-semibold text-gray-900">{item.alias_name || item.name}</h3>
+            <div className="px-4 pt-4 pb-2 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg font-bold text-gray-900 truncate">{item.alias_name || item.name}</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {item.item_type === "labor" ? "工时" : item.item_type === "part" ? "配件" : "其他"} ·
                   ¥{item.unit_price || 0} × {item.quantity || 1}
                 </p>
+                {/* 外包信息 */}
+                {item.is_outsourced && item.outsource_order_items && item.outsource_order_items.length > 0 && (
+                  <div className="mt-1.5 text-[11px] space-y-0.5">
+                    {item.outsource_order_items.map((oi) => (
+                      <div key={oi.id} className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">外包</span>
+                        <span className="text-gray-600">{oi.service_name}</span>
+                        <span className="text-gray-500">¥{oi.amount}</span>
+                        {item.outsourced_supplier?.name && (
+                          <span className="text-gray-400">{item.outsourced_supplier.name}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2 shrink-0 ml-2">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="text-xs text-gray-500 px-1"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  disabled={loading || isLocked}
+                  className="px-3 py-1.5 text-xs text-white bg-blue-600 rounded-lg disabled:opacity-50"
+                >
+                  {loading ? "保存中..." : "确认"}
+                </button>
+              </div>
             </div>
 
             {/* 可滚动内容 */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
               {/* 施工人 */}
               <section>
-                <h4 className="text-sm font-medium text-gray-700 mb-2">施工人</h4>
-                {mechanicNames.length > 0 ? (
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-medium text-gray-700">施工人</h4>
+                </div>
+                {existingMechanics.length > 0 ? (
                   <div className="flex items-center gap-2 flex-wrap">
-                    {mechanicNames.map((name, i) => (
-                      <span key={i} className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700">{name}</span>
+                    {existingMechanics.map((m, i) => (
+                      <span key={i} className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700">
+                        {m.profiles?.full_name || "-"}
+                        {m.share_pct != null && m.share_pct !== 100 ? ` ${m.share_pct}%` : ""}
+                      </span>
                     ))}
                     {!isLocked && (
-                      <button
-                        type="button"
-                        onClick={() => { setShowMechanicSelect(!showMechanicSelect); setSelectedMechanicId(""); }}
-                        className="text-xs text-blue-600 hover:text-blue-700"
-                      >
-                        更换
-                      </button>
+                      <>
+                        {isClaimer ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setShowMechanicModal(true)}
+                              className="text-xs text-green-600 hover:text-green-700"
+                            >
+                              添加施工人
+                            </button>
+                            <button
+                              type="button"
+                              onClick={abandonClaim}
+                              disabled={loading}
+                              className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                            >
+                              放弃领单
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setShowMechanicModal(true)}
+                            className="text-xs text-blue-600 hover:text-blue-700"
+                          >
+                            {existingMechanics.length > 0 ? "修改" : "指派"}
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 ) : (
-                  <div className="text-xs text-gray-400">
-                    {isLocked ? "未指派" : (
-                      <button
-                        type="button"
-                        onClick={() => setShowMechanicSelect(true)}
-                        className="text-blue-600 hover:text-blue-700"
-                      >
-                        + 指派施工人
-                      </button>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400">未指派</span>
+                    {!isLocked && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setShowMechanicModal(true)}
+                          className="text-xs text-blue-600 hover:text-blue-700"
+                        >
+                          指派
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setShowMechanicModal(true); setShowClaimChoice(true); }}
+                          className="text-xs text-green-600 hover:text-green-700"
+                        >
+                          领单
+                        </button>
+                      </>
                     )}
-                  </div>
-                )}
-
-                {showMechanicSelect && !isLocked && (
-                  <div className="mt-2 space-y-2">
-                    <select
-                      value={selectedMechanicId}
-                      onChange={(e) => setSelectedMechanicId(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    >
-                      <option value="">选择施工人</option>
-                      {profiles.map((p) => (
-                        <option key={p.id} value={p.id}>{p.full_name}</option>
-                      ))}
-                    </select>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={assignMechanic}
-                        disabled={!selectedMechanicId || loading}
-                        className="px-3 py-1.5 text-xs text-white bg-blue-600 rounded-lg disabled:opacity-50"
-                      >
-                        {loading ? "保存中..." : "确认"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowMechanicSelect(false)}
-                        className="px-3 py-1.5 text-xs text-gray-600 bg-gray-100 rounded-lg"
-                      >
-                        取消
-                      </button>
-                    </div>
                   </div>
                 )}
               </section>
@@ -436,9 +1093,9 @@ export default function MobileItemEditor({
               {item.item_type === "labor" && !isLocked && (
                 <section>
                   <h4 className="text-sm font-medium text-gray-700 mb-2">施工计时</h4>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <div className="text-xl font-mono font-semibold text-gray-900">{formatDuration(elapsed)}</div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       {status === "idle" && (
                         <button
                           type="button"
@@ -467,6 +1124,16 @@ export default function MobileItemEditor({
                           >
                             完工
                           </button>
+                          {cancelable && (
+                            <button
+                              type="button"
+                              onClick={cancelTimer}
+                              disabled={loading}
+                              className="px-3 py-1.5 text-xs text-gray-600 bg-gray-100 rounded-lg disabled:opacity-50"
+                            >
+                              取消
+                            </button>
+                          )}
                         </>
                       )}
                       {status === "paused" && (
@@ -494,6 +1161,12 @@ export default function MobileItemEditor({
                       )}
                     </div>
                   </div>
+                  {/* 中断状态 */}
+                  {status === "paused" && lastPauseLog && (
+                    <div className="mt-2 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                      已中断 · {formatTime(new Date(lastPauseLog.created_at))}
+                    </div>
+                  )}
                 </section>
               )}
 
@@ -505,10 +1178,10 @@ export default function MobileItemEditor({
                     <button
                       key={op}
                       type="button"
-                      onClick={() => updateOpinion(op)}
-                      disabled={loading || isLocked}
+                      onClick={() => setDraftOpinion(op)}
+                      disabled={isLocked}
                       className={`flex-1 py-2 text-xs rounded-lg border font-medium disabled:opacity-50 ${
-                        item.customer_opinion === op
+                        draftOpinion === op
                           ? op === "agree" ? "bg-green-600 text-white border-green-600" :
                             op === "reject" ? "bg-red-600 text-white border-red-600" :
                             "bg-gray-600 text-white border-gray-600"
@@ -521,31 +1194,82 @@ export default function MobileItemEditor({
                 </div>
               </section>
 
-              {/* 标记 */}
+              {/* 项目标记 */}
               <section>
                 <h4 className="text-sm font-medium text-gray-700 mb-2">项目标记</h4>
-                <div className="space-y-2">
-                  <label className="flex items-center justify-between py-2 border-b border-gray-100">
-                    <span className="text-sm text-gray-600">外包项目</span>
-                    <input
-                      type="checkbox"
-                      checked={!!item.is_outsourced}
-                      onChange={(e) => toggleFlag("is_outsourced", e.target.checked)}
-                      disabled={loading || isLocked}
-                      className="w-5 h-5 accent-blue-600 disabled:opacity-50"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between py-2">
-                    <span className="text-sm text-gray-600">自带配件</span>
-                    <input
-                      type="checkbox"
-                      checked={!!item.is_customer_part}
-                      onChange={(e) => toggleFlag("is_customer_part", e.target.checked)}
-                      disabled={loading || isLocked}
-                      className="w-5 h-5 accent-blue-600 disabled:opacity-50"
-                    />
-                  </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => !isLocked && setShowOutsourceModal(true)}
+                    disabled={isLocked}
+                    className={`flex-1 py-2 text-xs rounded-lg border font-medium disabled:opacity-50 transition-colors ${
+                      existingOrder
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-gray-600 border-gray-200"
+                    }`}
+                  >
+                    外包项目
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => !isLocked && setDraftCustomerPart((v) => !v)}
+                    disabled={isLocked}
+                    className={`flex-1 py-2 text-xs rounded-lg border font-medium disabled:opacity-50 transition-colors ${
+                      draftCustomerPart
+                        ? "bg-amber-500 text-white border-amber-500"
+                        : "bg-white text-gray-600 border-gray-200"
+                    }`}
+                  >
+                    自带配件
+                  </button>
                 </div>
+
+                {/* 外包单信息 */}
+                {existingOrder && (
+                  <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => !isLocked && setShowOutsourceModal(true)}
+                      disabled={isLocked}
+                      className="w-full text-left px-3 py-2 disabled:opacity-50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-blue-700">{existingOrder.suppliers?.name || "外包供应商"}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${existingOrder.is_paid ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+                          {existingOrder.is_paid ? "已支付" : "未支付"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between mt-1 text-blue-500">
+                        <span>
+                          {existingOrder.created_at
+                            ? new Date(existingOrder.created_at).toLocaleDateString("zh-CN")
+                            : ""}
+                        </span>
+                        <span className="font-medium">¥{existingOrder.total_amount}</span>
+                      </div>
+                    </button>
+                    {!isLocked && (
+                      <div className="flex border-t border-blue-100">
+                        <button
+                          type="button"
+                          onClick={() => setShowOutsourceModal(true)}
+                          className="flex-1 py-1.5 text-center text-blue-600 hover:bg-blue-100 transition-colors"
+                        >
+                          编辑
+                        </button>
+                        <div className="w-px bg-blue-100" />
+                        <button
+                          type="button"
+                          onClick={cancelOutsource}
+                          disabled={loading}
+                          className="flex-1 py-1.5 text-center text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                        >
+                          {loading ? "处理中..." : "取消外包"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
 
               {/* 项目备注 */}
@@ -559,16 +1283,6 @@ export default function MobileItemEditor({
                   placeholder="添加备注..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-50"
                 />
-                {notes !== (item.description || "") && !isLocked && (
-                  <button
-                    type="button"
-                    onClick={saveNotes}
-                    disabled={loading}
-                    className="mt-2 px-3 py-1.5 text-xs text-white bg-blue-600 rounded-lg disabled:opacity-50"
-                  >
-                    {loading ? "保存中..." : "保存备注"}
-                  </button>
-                )}
               </section>
 
               {/* 项目图片 */}
@@ -597,10 +1311,519 @@ export default function MobileItemEditor({
                   </a>
                 </section>
               )}
+
+              {/* 项目配件 — 移到底部并高亮 */}
+              <section
+                className={`bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-3 ${!isLocked ? "cursor-pointer active:bg-amber-100 transition-colors" : ""}`}
+                onClick={() => !isLocked && setShowPartModal(true)}
+              >
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-amber-800">项目配件 <span className="text-amber-600 font-normal">({parts.length} 项)</span></h4>
+                  {!isLocked && (
+                    <span className="text-xs text-blue-600 font-medium">+ 添加配件</span>
+                  )}
+                </div>
+                {parts.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {parts.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between text-xs py-1.5 border-b border-amber-200 last:border-0">
+                        <div className="min-w-0 flex-1">
+                          <span className="text-gray-900">{p.name}</span>
+                          {p.part_number && <span className="text-gray-500 ml-1">({p.part_number})</span>}
+                          {p.brand && <span className="text-gray-500 ml-1">{p.brand}</span>}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-2 text-gray-600">
+                          <span>x{p.quantity}</span>
+                          <span>¥{p.total_price || (p.unit_price * p.quantity)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500">暂无配件，点击上方按钮添加</p>
+                )}
+              </section>
             </div>
           </div>
         </div>
       )}
+
+      {/* 施工人选择子弹窗 */}
+      {showMechanicModal && (
+        <div className="fixed inset-0 z-[110] flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowMechanicModal(false)} />
+          <div className="relative bg-white rounded-t-2xl mx-2 mb-2 max-h-[85vh] flex flex-col animate-slide-up">
+            {/* 头部 */}
+            <div className="px-4 pt-4 pb-2 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <h3 className="text-base font-semibold text-gray-900">指派施工人</h3>
+              <button
+                type="button"
+                onClick={() => setShowMechanicModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 内容 */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+              {/* 领单选择 */}
+              {showClaimChoice && (
+                <div className="space-y-3 py-2">
+                  <p className="text-xs text-gray-500 text-center">请选择领单方式</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={handleSoloClaim}
+                      disabled={loading}
+                      className="px-3 py-4 text-sm font-medium text-white bg-green-600 rounded-xl disabled:opacity-50"
+                    >
+                      独立完成
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCollaborateClaim}
+                      disabled={loading}
+                      className="px-3 py-4 text-sm font-medium text-white bg-blue-600 rounded-xl disabled:opacity-50"
+                    >
+                      与人合作
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowClaimChoice(false)}
+                    className="w-full px-3 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg"
+                  >
+                    返回
+                  </button>
+                </div>
+              )}
+
+              {!showClaimChoice && (
+                <>
+                  {/* 模式切换 */}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMechanicMode("person")}
+                      className={`flex-1 px-3 py-1.5 text-xs rounded-lg border transition-colors ${mechanicMode === "person" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-200"}`}
+                    >
+                      按人派工
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMechanicMode("group")}
+                      className={`flex-1 px-3 py-1.5 text-xs rounded-lg border transition-colors ${mechanicMode === "group" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-200"}`}
+                    >
+                      按组派工
+                    </button>
+                  </div>
+
+                  {/* 按人派工 */}
+                  {mechanicMode === "person" && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs text-gray-500">共 {profiles.length} 人</span>
+                        <button
+                          type="button"
+                          onClick={() => setMechanicSortAsc((v) => !v)}
+                          className="text-xs text-blue-600 flex items-center gap-0.5"
+                        >
+                          {mechanicSortAsc ? "按姓名升序" : "按姓名降序"}
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={mechanicSortAsc ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="max-h-[55vh] overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
+                        {[...profiles].sort((a, b) => {
+                          const cmp = a.full_name.localeCompare(b.full_name, "zh-CN");
+                          return mechanicSortAsc ? cmp : -cmp;
+                        }).map((p) => (
+                          <label key={p.id} className="flex items-center gap-2.5 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedPersons.includes(p.id)}
+                              onChange={() => togglePerson(p.id)}
+                              className="w-4 h-4 accent-blue-600"
+                            />
+                            <span className="text-sm">{p.full_name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 按组派工 */}
+                  {mechanicMode === "group" && (
+                    <div className="max-h-[55vh] overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
+                      {mechanicGroups.length === 0 && (
+                        <p className="text-sm text-gray-400 text-center py-4">暂无施工组</p>
+                      )}
+                      {mechanicGroups.map((g) => (
+                        <label key={g.id} className="flex items-center gap-2 p-1.5 hover:bg-gray-50 rounded cursor-pointer">
+                          <input
+                            type="radio"
+                            name="group"
+                            checked={selectedGroup === g.id}
+                            onChange={() => setSelectedGroup(g.id)}
+                          />
+                          <div>
+                            <span className="text-sm font-medium">{g.name}</span>
+                            <span className="text-xs text-gray-400 ml-2">
+                              ({g.members.map((m) => m.profiles?.full_name || "-").join(", ")})
+                            </span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 多人分成 */}
+                  {isMulti && (
+                    <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <p className="text-xs font-medium text-yellow-800 mb-2">提成分配（共 {personCount} 人）</p>
+                      <div className="space-y-1.5">
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <input type="radio" name="commission" checked={commissionRule === "equal"} onChange={() => setCommissionRule("equal")} />
+                          <span>平均分配（每人 {Math.round(100 / personCount * 100) / 100}%）</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <input type="radio" name="commission" checked={commissionRule === "byLevel"} onChange={() => setCommissionRule("byLevel")} />
+                          <span>按技师等级分配</span>
+                        </label>
+                        {commissionRule === "byLevel" && levelPreview.length > 0 && (
+                          <div className="mt-1 ml-5 space-y-0.5 text-xs text-gray-600">
+                            {levelPreview.map((p) => (
+                              <div key={p.id} className="flex items-center gap-2">
+                                <span className="flex-1">{p.name}</span>
+                                <span className="text-gray-400">系数 {p.coeff}</span>
+                                <span className="text-blue-700 font-medium">{p.ratio}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <input type="radio" name="commission" checked={commissionRule === "manual"} onChange={() => setCommissionRule("manual")} />
+                          <span>手动输入比例</span>
+                        </label>
+                      </div>
+                      {commissionRule === "manual" && (
+                        <div className="mt-2 space-y-1.5">
+                          {(mechanicMode === "group" && selectedGroup
+                            ? mechanicGroups.find((g) => g.id === selectedGroup)?.members.map((m) => ({ id: m.mechanic_id, name: m.profiles?.full_name || "-" })) || []
+                            : profiles.filter((p) => selectedPersons.includes(p.id)).map((p) => ({ id: p.id, name: p.full_name }))
+                          ).map((m) => (
+                            <div key={m.id} className="flex items-center gap-2">
+                              <span className="text-xs flex-1">{m.name}</span>
+                              <input
+                                type="number"
+                                className="w-16 px-2 py-1 border border-gray-300 rounded text-xs"
+                                placeholder="%"
+                                value={manualRatios[m.id] || ""}
+                                onChange={(e) => setManualRatios((prev) => ({ ...prev, [m.id]: e.target.value }))}
+                              />
+                              <span className="text-xs text-gray-500">%</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 按钮 */}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowMechanicModal(false)}
+                      className="px-3 py-1.5 text-xs text-gray-600 bg-gray-100 rounded-lg"
+                    >
+                      取消
+                    </button>
+                    {existingMechanics.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={clearMechanics}
+                        disabled={loading}
+                        className="px-3 py-1.5 text-xs text-red-600 bg-red-50 rounded-lg disabled:opacity-50"
+                      >
+                        清空
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => { setShowClaimChoice(true); }}
+                      disabled={loading}
+                      className="px-3 py-1.5 text-xs text-white bg-green-600 rounded-lg disabled:opacity-50"
+                    >
+                      领单
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveMechanics}
+                      disabled={loading || mechanicIds.length === 0}
+                      className="flex-1 px-3 py-1.5 text-xs text-white bg-blue-600 rounded-lg disabled:opacity-50"
+                    >
+                      {loading ? "保存中..." : "确认"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 配件选择覆盖层（弹窗内滑动） */}
+      {showPartModal && (
+        <div className="fixed inset-0 z-[110] flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowPartModal(false)} />
+          <div className="relative bg-white rounded-t-2xl mx-2 mb-4 max-h-[80vh] flex flex-col animate-slide-up">
+            {/* 顶部固定：项目信息 */}
+            <div className="shrink-0 px-4 pt-4 pb-2 border-b border-gray-100 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowPartModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 shrink-0"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-bold text-gray-900 truncate">{item.alias_name || item.name}</h3>
+                <p className="text-xs text-gray-500">
+                  {item.item_type === "labor" ? "工时" : item.item_type === "part" ? "配件" : "其他"} ·
+                  ¥{item.unit_price || 0} × {item.quantity || 1} = ¥{(item.unit_price || 0) * (item.quantity || 1)}
+                </p>
+              </div>
+            </div>
+
+            {/* Tab 切换 */}
+            <div className="shrink-0 flex border-b border-gray-100">
+              <button
+                type="button"
+                onClick={() => setPartTab("name")}
+                className={`flex-1 py-2.5 text-xs font-medium text-center transition-colors ${
+                  partTab === "name"
+                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50/50"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                添加配件名称
+              </button>
+              <button
+                type="button"
+                onClick={() => setPartTab("inventory")}
+                className={`flex-1 py-2.5 text-xs font-medium text-center transition-colors ${
+                  partTab === "inventory"
+                    ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50/50"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                从配件库中选择
+              </button>
+            </div>
+
+            {/* 可滚动内容区：上半部分 Tab 内容 + 下半部分已选列表 */}
+            <div className="flex-1 overflow-y-auto">
+              {/* 上半：Tab 内容 */}
+              <div className="px-4 py-3">
+                {partTab === "name" && (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={partSearchQuery}
+                      onChange={(e) => handlePartSearchChange(e.target.value)}
+                      placeholder="搜索配件名称..."
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    />
+                    {partSearching && <p className="text-xs text-gray-400">搜索中...</p>}
+                    {partSearchQuery.trim() && !partSearching && partSearchResults.length === 0 && (
+                      <p className="text-xs text-gray-400">未找到匹配配件</p>
+                    )}
+
+                    {/* 推荐配件 */}
+                    {partSearchQuery.trim() === "" && (
+                      <div>
+                        {presetLoading ? (
+                          <p className="text-xs text-gray-400">加载推荐配件...</p>
+                        ) : presetParts.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <p className="text-xs text-gray-500">推荐配件</p>
+                            {presetParts.map((preset) => {
+                              const alreadySelected = selectedPartNames.some((sp) => sp.part_name_id === preset.part_name_id);
+                              return (
+                                <button
+                                  key={preset.part_name_id}
+                                  type="button"
+                                  onClick={() => !alreadySelected && addPresetPart(preset)}
+                                  disabled={alreadySelected}
+                                  className={`w-full text-left px-3 py-2 text-sm rounded-lg border border-amber-200 ${
+                                    alreadySelected ? "text-gray-400 bg-gray-50 cursor-not-allowed" : "bg-amber-50 hover:bg-amber-100"
+                                  }`}
+                                >
+                                  <span className="font-medium">{preset.name}</span>
+                                  <span className="text-xs text-gray-400 ml-2">单位: {preset.unit}</span>
+                                  {preset.quantity != null && <span className="text-xs text-gray-400 ml-2">默认数量: {preset.quantity}</span>}
+                                  {alreadySelected && <span className="text-xs text-blue-600 ml-2">已选择</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+
+                    {/* 全部配件 / 搜索结果 */}
+                    {partSearchResults.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-gray-500">{partSearchQuery.trim() ? "搜索结果" : "配件名称"}</p>
+                        {partSearchResults.map((part) => {
+                          const alreadySelected = selectedPartNames.some((sp) => sp.part_name_id === part.id);
+                          return (
+                            <button
+                              key={part.id}
+                              type="button"
+                              onClick={() => !alreadySelected && addPartNameFromSearch(part)}
+                              disabled={alreadySelected}
+                              className={`w-full text-left px-3 py-2 text-sm rounded-lg border-b border-gray-100 last:border-0 ${
+                                alreadySelected ? "text-gray-400 bg-gray-50 cursor-not-allowed" : "hover:bg-blue-50"
+                              }`}
+                            >
+                              <span className="font-medium">{part.name}</span>
+                              <span className="text-xs text-gray-400 ml-2">单位: {part.unit || "件"}</span>
+                              {alreadySelected && <span className="text-xs text-blue-600 ml-2">已选择</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {partSearchResults.length === 0 && !partSearching && partSearchQuery.trim() === "" && presetParts.length === 0 && (
+                      <div className="text-center py-6">
+                        <p className="text-xs text-gray-400">暂无配件名称</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {partTab === "inventory" && (
+                  <div className="py-4">
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen(true)}
+                      className="w-full py-3 border-2 border-dashed border-blue-300 rounded-xl text-blue-600 hover:bg-blue-50 hover:border-blue-400 transition-colors text-sm font-medium"
+                    >
+                      + 从库存选择配件
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 下半：已选配件列表 */}
+              {(selectedPartNames.length > 0 || selectedRealParts.length > 0) && (
+                <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
+                  <p className="text-xs text-gray-500 mb-2">
+                    已选择 ({selectedPartNames.length + selectedRealParts.length} 项)
+                  </p>
+                  <div className="space-y-1.5">
+                    {selectedPartNames.map((sp) => (
+                      <div key={sp.part_name_id} className="flex items-center gap-2 p-1.5 rounded border border-blue-200 bg-blue-50">
+                        <div className="flex-1 min-w-0 text-sm text-gray-900 truncate">{sp.name}</div>
+                        <input
+                          type="number"
+                          min={1}
+                          value={sp.quantity ?? ""}
+                          onChange={(e) => updatePartNameQuantity(sp.part_name_id, e.target.value === "" ? null : parseInt(e.target.value) || 1)}
+                          className="w-12 px-1 py-0.5 border border-gray-200 rounded text-xs text-center"
+                        />
+                        <span className="text-xs text-gray-500">{sp.unit}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeSelectedPartName(sp.part_name_id)}
+                          className="text-xs text-red-600 px-1"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    {selectedRealParts.map((sp) => (
+                      <div key={sp.part_id} className="flex items-center gap-2 p-1.5 rounded border border-green-200 bg-green-50">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-gray-900 truncate">{sp.name}</div>
+                          <div className="text-[10px] text-gray-500">
+                            {sp.part_number && <span>{sp.part_number} · </span>}
+                            {sp.brand}
+                          </div>
+                        </div>
+                        <input
+                          type="number"
+                          min={1}
+                          value={sp.quantity ?? ""}
+                          onChange={(e) => updateRealPartQuantity(sp.part_id, e.target.value === "" ? null : parseInt(e.target.value) || 1)}
+                          className="w-12 px-1 py-0.5 border border-gray-200 rounded text-xs text-center"
+                        />
+                        <span className="text-xs text-gray-500">{sp.unit}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeSelectedRealPart(sp.part_id)}
+                          className="text-xs text-red-600 px-1"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="shrink-0 px-4 py-3 border-t border-gray-100 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPartModal(false)}
+                className="px-4 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={saveParts}
+                disabled={loading || (selectedPartNames.length === 0 && selectedRealParts.length === 0)}
+                className="flex-1 px-4 py-2 text-xs text-white bg-blue-600 rounded-lg disabled:opacity-50"
+              >
+                {loading ? "保存中..." : "确认添加"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 外包弹窗 */}
+      {showOutsourceModal && (
+        <OutsourceModal
+          open={showOutsourceModal}
+          workOrderId={orderId}
+          workOrderItemId={item.id}
+          currentItemName={item.name}
+          serviceItemId={item.service_item_id}
+          existingOrder={existingOrder}
+          existingItem={existingItem}
+          onClose={() => setShowOutsourceModal(false)}
+          onSuccess={() => {
+            setShowOutsourceModal(false);
+            refresh();
+          }}
+        />
+      )}
+
+      {/* 库存配件选择器（三级弹窗） */}
+      <PartPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onConfirm={handlePickerConfirm}
+        vehicleModelId={vehicleModelId}
+      />
     </>
   );
 }

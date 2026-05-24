@@ -515,6 +515,7 @@ export default function VehicleModelsPage() {
                         <img
                           src={displayVal}
                           alt={detailModel.品牌 || "品牌图标"}
+                          loading="lazy"
                           className="h-8 object-contain"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                         />

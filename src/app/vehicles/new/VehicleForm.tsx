@@ -503,7 +503,7 @@ export default function VehicleForm() {
                     }}
                     className="mt-1 text-sm text-blue-600 hover:text-blue-800 hover:underline"
                   >
-                    + 使用"{customerQuery.trim()}"新建客户
+                    + 使用{'"'}{customerQuery.trim()}{'"'}新建客户
                   </button>
                 </div>
               )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useId } from "react";
 import { recognizeLicensePlate } from "@/lib/baidu-ocr/client";
 
 interface Props {
@@ -54,13 +54,40 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const fileId = useRef(`lp-album-${Math.random().toString(36).slice(2)}`).current;
+  const fileId = `lp-album-${useId()}`;
+  const captureFileId = `lp-capture-${useId()}`;
 
   const [hasCamera, setHasCamera] = useState(true);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [recognizing, setRecognizing] = useState(false);
   const [recognizedPlate, setRecognizedPlate] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  /* 关闭相机 */
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
+  /* 执行识别 */
+  const doRecognize = useCallback(async (base64: string) => {
+    setRecognizing(true);
+    setErrorMsg(null);
+    setRecognizedPlate(null);
+    try {
+      const plate = await recognizeLicensePlate(base64);
+      setRecognizedPlate(plate.toUpperCase());
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "识别失败");
+    } finally {
+      setRecognizing(false);
+    }
+  }, []);
 
   /* 打开相机 */
   useEffect(() => {
@@ -103,17 +130,7 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
     return () => {
       stopCamera();
     };
-  }, [open]);
-
-  function stopCamera() {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  }
+  }, [open, stopCamera]);
 
   /* 拍照 */
   const handleCapture = useCallback(() => {
@@ -139,7 +156,7 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
       "image/jpeg",
       0.8
     );
-  }, []);
+  }, [doRecognize]);
 
   /* 从相册选择 */
   const handleFileSelect = useCallback(
@@ -169,23 +186,8 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    []
+    [doRecognize]
   );
-
-  /* 执行识别 */
-  async function doRecognize(base64: string) {
-    setRecognizing(true);
-    setErrorMsg(null);
-    setRecognizedPlate(null);
-    try {
-      const plate = await recognizeLicensePlate(base64);
-      setRecognizedPlate(plate.toUpperCase());
-    } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : "识别失败");
-    } finally {
-      setRecognizing(false);
-    }
-  }
 
   /* 确认使用识别结果 */
   const handleConfirm = useCallback(() => {
@@ -333,19 +335,35 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
                 <span className="text-[10px]">相册</span>
               </label>
 
-              {/* 拍照按钮 */}
-              {hasCamera && (
+              {/* 打开系统相机（capture 方式，最可靠） */}
+              <label
+                htmlFor={captureFileId}
+                className="flex flex-col items-center gap-1 text-white active:text-white cursor-pointer select-none"
+              >
+                <div className="w-16 h-16 rounded-full border-4 border-white/80 flex items-center justify-center active:scale-95 transition-transform">
+                  <div className="w-12 h-12 rounded-full bg-white" />
+                </div>
+                <span className="text-[10px]">拍照</span>
+              </label>
+
+              {/* 应用内截图（getUserMedia 可用时显示） */}
+              {hasCamera ? (
                 <button
                   type="button"
                   onClick={handleCapture}
-                  className="w-16 h-16 rounded-full border-4 border-white/80 flex items-center justify-center active:scale-95 transition-transform"
+                  className="flex flex-col items-center gap-1 text-white/70 active:text-white"
                 >
-                  <div className="w-12 h-12 rounded-full bg-white" />
+                  <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <span className="text-[10px]">截图</span>
                 </button>
+              ) : (
+                <div className="w-16" />
               )}
-
-              {/* 占位让相册居中（无摄像头时） */}
-              {!hasCamera && <div className="w-16" />}
             </>
           ) : (
             <>
@@ -383,12 +401,21 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
         </div>
       </div>
 
-      {/* 隐藏的 file input */}
+      {/* 相册 file input */}
       <input
         id={fileId}
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+      {/* 系统相机 capture input */}
+      <input
+        id={captureFileId}
+        type="file"
+        accept="image/*"
+        capture="environment"
         onChange={handleFileSelect}
         className="hidden"
       />

@@ -59,6 +59,7 @@ export default function MobileReceptionListPage() {
           "id, order_no, status, received_at, mileage_in, fuel_level, vehicles(plate_number, brand, model), customers(name, phone)"
         )
         .not("status", "in", `(${SETTLED_STATUSES.join(",")})`)
+        .neq("order_type", "cancelled")
         .order("created_at", { ascending: false });
       setOrders((data || []) as Order[]);
       setLoading(false);

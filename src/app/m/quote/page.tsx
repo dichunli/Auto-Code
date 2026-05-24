@@ -17,6 +17,7 @@ export default async function MobileQuoteListPage() {
     .from("work_orders")
     .select("id, order_no, status, total_cost, vehicles(plate_number, brand, model), customers(name, phone)")
     .in("status", ["pending_diagnosis", "pending_repair", "repairing"])
+    .neq("order_type", "cancelled")
     .order("created_at", { ascending: false })
     .limit(50);
 

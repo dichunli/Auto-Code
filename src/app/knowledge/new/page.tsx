@@ -42,7 +42,7 @@ export default function NewKnowledgePage() {
   const [linkedVehicles, setLinkedVehicles] = useState<LinkedItem[]>([]);
 
   useEffect(() => {
-    supabase.from("knowledge_categories").select("*").order("sort_order").then(({ data }) => setCategories(data || []));
+    supabase.from("knowledge_categories").select("*").order("sort_order").limit(100).then(({ data }) => setCategories(data || []));
   }, [supabase]);
 
   async function doNameSearch(keyword: string) {

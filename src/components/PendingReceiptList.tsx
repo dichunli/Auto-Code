@@ -1383,6 +1383,7 @@ export function PendingReceiptList() {
                                         key={i}
                                         src={resolveImageUrl(p)}
                                         alt=""
+                                        loading="lazy"
                                         className="w-7 h-7 object-cover rounded border border-gray-100"
                                         onError={(e) => {
                                           (e.target as HTMLImageElement).style.display = "none";

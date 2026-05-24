@@ -226,7 +226,7 @@ export default function SupplierReturnsPage() {
                         <div className="flex gap-1">
                           {r.photos.slice(0, 3).map((url: string, i: number) => (
                             <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                              <img src={url} alt="" className="w-8 h-8 object-cover rounded border border-gray-200 hover:opacity-80" />
+                              <img src={url} alt="" loading="lazy" className="w-8 h-8 object-cover rounded border border-gray-200 hover:opacity-80" />
                             </a>
                           ))}
                           {r.photos.length > 3 && (

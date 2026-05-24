@@ -8,14 +8,16 @@ export default async function MechanicLevelsPage() {
   let { data: levels, error } = await supabase
     .from("mechanic_levels")
     .select("*")
-    .order("sort_order", { ascending: true });
+    .order("sort_order", { ascending: true })
+    .limit(100);
 
   if (error) {
     console.error("[mechanic-levels] order by sort_order failed:", error.message);
     const fallback = await supabase
       .from("mechanic_levels")
       .select("*")
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .limit(100);
     levels = fallback.data;
     error = fallback.error;
     if (error) console.error("[mechanic-levels] fallback also failed:", error.message);

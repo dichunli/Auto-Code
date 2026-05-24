@@ -60,9 +60,9 @@ export default function EditEmployeePage() {
     async function loadData() {
       setLoading(true);
       const [{ data: g }, { data: r }, { data: l }] = await Promise.all([
-        supabase.from("employee_groups").select("id, name").order("sort_order"),
-        supabase.from("roles").select("id, name, label").order("name"),
-        supabase.from("mechanic_levels").select("id, name, level_code").order("level_code"),
+        supabase.from("employee_groups").select("id, name").order("sort_order").limit(100),
+        supabase.from("roles").select("id, name, label").order("name").limit(100),
+        supabase.from("mechanic_levels").select("id, name, level_code").order("level_code").limit(100),
       ]);
       setGroups(g || []);
       setRoles(r || []);

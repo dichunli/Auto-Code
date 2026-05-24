@@ -85,7 +85,7 @@ export default function NewPurchaseOrderPage() {
   useEffect(() => {
     // 加载供应商（带关联信息）
     async function loadSuppliers() {
-      const { data } = await supabase.from("suppliers").select("*").order("name");
+      const { data } = await supabase.from("suppliers").select("*").order("name").limit(100);
       interface SupplierRow {
         id: string;
         name: string;
@@ -164,13 +164,14 @@ export default function NewPurchaseOrderPage() {
 
     loadSuppliers();
 
-    supabase.from("parts").select("*, part_names(name, unit)").order("name").then(({ data }) => setParts(data || []));
+    supabase.from("parts").select("*, part_names(name, unit)").order("name").limit(100).then(({ data }) => setParts(data || []));
 
     // 获取待采购的工单配件分支（含车辆厂商、品牌、车系）
     supabase
       .from("work_order_item_parts")
       .select("id, name, part_number, brand, specification, quantity, work_order_items!inner(work_orders!inner(plate_number, vehicles(vehicle_models(厂商,品牌,车系))))")
       .is("part_id", null)
+      .limit(100)
       .then(({ data }) => {
         interface BranchRow {
           id: string;
@@ -314,7 +315,7 @@ export default function NewPurchaseOrderPage() {
 
     try {
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const randomStr = Math.floor(1000 + Math.random() * 9000);
+      const randomStr = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
       const orderNo = `CG-${dateStr}-${randomStr}`;
 
       const { data: order, error: orderError } = await supabase

@@ -51,7 +51,7 @@ export default function BehaviorChecksPage() {
 
   useEffect(() => {
     fetchChecks();
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => {
+    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").limit(100).then(({ data }) => {
       setEmployees(data || []);
     });
   }, [fetchChecks, supabase]);

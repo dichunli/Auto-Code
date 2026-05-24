@@ -28,6 +28,7 @@ export default async function MobileAssignmentListPage() {
     .from("work_orders")
     .select("id, order_no, status, vehicles(plate_number, brand, model), customers(name, phone)")
     .eq("status", "pending_repair")
+    .neq("order_type", "cancelled")
     .order("created_at", { ascending: false })
     .limit(30);
 
@@ -36,6 +37,7 @@ export default async function MobileAssignmentListPage() {
     .from("work_orders")
     .select("id, order_no, status, vehicles(plate_number, brand, model), customers(name, phone)")
     .eq("status", "repairing")
+    .neq("order_type", "cancelled")
     .order("created_at", { ascending: false })
     .limit(30);
 

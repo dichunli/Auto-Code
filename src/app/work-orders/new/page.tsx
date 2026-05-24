@@ -130,7 +130,8 @@ export default function NewWorkOrderPage() {
         .from("work_orders")
         .select("id, order_no, status, order_type")
         .eq("vehicle_id", selectedVehicle.id)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(100);
       if (data) {
         const active = data.filter(
           (o) => o.order_type === "normal" && !["settled", "delivered"].includes(o.status)

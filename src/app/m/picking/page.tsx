@@ -16,6 +16,7 @@ export default async function MobilePickingListPage() {
     .from("work_orders")
     .select("id, order_no, status, vehicles(plate_number, brand, model), customers(name, phone)")
     .in("status", ["pending_repair", "repairing"])
+    .neq("order_type", "cancelled")
     .order("created_at", { ascending: false })
     .limit(50);
 

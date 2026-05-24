@@ -978,6 +978,7 @@ export function PendingStorageList() {
                                       key={i}
                                       src={url}
                                       alt=""
+                                      loading="lazy"
                                       className="w-8 h-8 rounded object-cover border border-gray-200"
                                     />
                                   ))}

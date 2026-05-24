@@ -345,6 +345,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
                 key={img.id}
                 src={img.storage_path}
                 alt="配件图片"
+                loading="lazy"
                 className="w-32 h-32 object-cover rounded-lg border border-gray-200"
               />
             ))}

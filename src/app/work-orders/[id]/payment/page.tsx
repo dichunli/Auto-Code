@@ -97,13 +97,6 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [discountAmount, setDiscountAmount] = useState("");
 
-  useEffect(() => {
-    params.then((p) => {
-      setOrderId(p.id);
-      loadData(p.id);
-    });
-  }, [params]);
-
   async function loadData(id: string) {
     setDataLoading(true);
     setError("");
@@ -150,6 +143,13 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
       setDataLoading(false);
     }
   }
+
+  useEffect(() => {
+    params.then((p) => {
+      setOrderId(p.id);
+      loadData(p.id);
+    });
+  }, [params]);
 
   function addPayment() {
     setPayments([...payments, { method: "cash", amount: "" }]);

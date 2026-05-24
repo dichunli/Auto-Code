@@ -116,7 +116,7 @@ export default function LogisticsPage() {
 
   useEffect(() => {
     loadCompanies();
-    supabase.from("suppliers").select("id, name").order("name").then(({ data }) => {
+    supabase.from("suppliers").select("id, name").order("name").limit(100).then(({ data }) => {
       setSuppliersList(data || []);
     });
   }, []);
@@ -760,7 +760,7 @@ export default function LogisticsPage() {
                           <div className="flex gap-1">
                             {w.photos.slice(0, 3).map((url, i) => (
                               <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                                <img src={url} alt="" className="w-8 h-8 object-cover rounded border border-gray-200 hover:opacity-80" />
+                                <img src={url} alt="" loading="lazy" className="w-8 h-8 object-cover rounded border border-gray-200 hover:opacity-80" />
                               </a>
                             ))}
                             {w.photos.length > 3 && (

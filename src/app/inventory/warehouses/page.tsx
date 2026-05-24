@@ -50,7 +50,7 @@ export default function WarehousesPage() {
 
   const fetchWarehouses = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("warehouses").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase.from("warehouses").select("*").order("created_at", { ascending: false }).limit(100);
     const list = data || [];
     list.sort((a: Warehouse, b: Warehouse) => {
       const aMain = a.name === "主仓库" || a.name.includes("主") ? -1 : 0;

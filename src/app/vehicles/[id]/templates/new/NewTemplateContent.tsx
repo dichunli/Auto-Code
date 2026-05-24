@@ -119,9 +119,9 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
 
   useEffect(() => {
     params.then((p) => setVehicleId(p.id));
-    supabase.from("service_categories").select("*").order("name").then(({ data }) => setCategories((data as ServiceCategory[]) || []));
-    supabase.from("part_names").select("*").order("name").then(({ data }) => setPartNames((data as PartName[]) || []));
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setMechanics((data as Mechanic[]) || []));
+    supabase.from("service_categories").select("*").order("name").limit(100).then(({ data }) => setCategories((data as ServiceCategory[]) || []));
+    supabase.from("part_names").select("*").order("name").limit(100).then(({ data }) => setPartNames((data as PartName[]) || []));
+    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").limit(100).then(({ data }) => setMechanics((data as Mechanic[]) || []));
   }, [params, supabase]);
 
   // 复制现有模板

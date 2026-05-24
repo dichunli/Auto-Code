@@ -92,7 +92,7 @@ export default function EditCustomerPage() {
           (phoneData || []).map((p: { id: string; phone: string | null; label: string | null }) => ({ id: p.id, phone: p.phone || "", label: p.label || "" }))
         );
         setStarLevel(data.star_level || 0);
-        const { data: tagData } = await supabase.from("tags").select("id, name, color").order("name", { ascending: true });
+        const { data: tagData } = await supabase.from("tags").select("id, name, color").order("name", { ascending: true }).limit(100);
         setAllTags((tagData || []).map((t: { id: string; name: string; color: string | null }) => ({ id: t.id, name: t.name, color: t.color })));
         const { data: customerTagData } = await supabase.from("customer_tags").select("tag_id").eq("customer_id", id);
         setSelectedTagIds((customerTagData || []).map((t: { tag_id: string }) => t.tag_id));

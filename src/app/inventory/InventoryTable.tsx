@@ -307,11 +307,11 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
         { data: specs },
         { data: suppliers },
       ] = await Promise.all([
-        supabase.from("part_categories").select("id, name"),
-        supabase.from("part_names").select("id, name"),
-        supabase.from("part_brands").select("id, name"),
-        supabase.from("part_specifications").select("id, name"),
-        supabase.from("suppliers").select("id, name"),
+        supabase.from("part_categories").select("id, name").limit(100),
+        supabase.from("part_names").select("id, name").limit(100),
+        supabase.from("part_brands").select("id, name").limit(100),
+        supabase.from("part_specifications").select("id, name").limit(100),
+        supabase.from("suppliers").select("id, name").limit(100),
       ]);
 
       const categoryMap = new Map((categories || []).map((c: NamedRow) => [c.name, c.id]));

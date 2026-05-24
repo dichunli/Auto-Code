@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, ReactNode } from "react";
+import { useState, useRef, ReactNode, useId, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { recognizeLicensePlate } from "@/lib/baidu-ocr/client";
 
@@ -25,12 +25,15 @@ export default function LicensePlateOcrButton({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const fileId = useRef(`lp-pc-${Math.random().toString(36).slice(2)}`).current;
+  const fileId = `lp-pc-${useId()}`;
 
-  /* 判断是否移动端 */
-  const isMobile =
-    typeof navigator !== "undefined" &&
-    /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  /* 判断是否移动端（客户端挂载后检测，避免 SSR 不匹配） */
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const ua = navigator.userAgent || "";
+    const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    setIsMobile(/Mobi|Android|iPhone|iPad|iPod/i.test(ua) || isTouch);
+  }, []);
 
   function handleClick() {
     if (isMobile) {

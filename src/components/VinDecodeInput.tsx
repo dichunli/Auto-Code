@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useId, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { vin17DecodeVin, vin17OcrAndDecode } from "@/lib/17vin/client";
 import VinKeyboard from "./VinKeyboard";
@@ -43,12 +43,15 @@ export default function VinDecodeInput({
   const [ocrLoading, setOcrLoading] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const fileId = useRef(`vin-pc-${Math.random().toString(36).slice(2)}`).current;
+  const fileId = `vin-pc-${useId()}`;
 
-  /* 判断是否移动端 */
-  const isMobile =
-    typeof navigator !== "undefined" &&
-    /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  /* 判断是否移动端（客户端挂载后检测，避免 SSR 不匹配） */
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const ua = navigator.userAgent || "";
+    const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    setIsMobile(/Mobi|Android|iPhone|iPad|iPod/i.test(ua) || isTouch);
+  }, []);
 
   async function handleDecode() {
     const vin = value.trim().toUpperCase();

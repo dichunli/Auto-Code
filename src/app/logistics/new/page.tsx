@@ -35,7 +35,7 @@ export default function NewWaybillPage() {
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
-    supabase.from("logistics_companies").select("*").order("sort_order").then(({ data }) => setCompanies(data || []));
+    supabase.from("logistics_companies").select("*").order("sort_order").limit(100).then(({ data }) => setCompanies(data || []));
   }, [supabase]);
 
   async function handleSubmit(e: React.FormEvent) {

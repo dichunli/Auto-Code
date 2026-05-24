@@ -186,7 +186,7 @@ export default function EditCompanyPage() {
             </button>
           </div>
           {contacts.length === 0 && (
-            <p className="text-sm text-gray-400">点击"添加联系人"按钮录入联系人</p>
+            <p className="text-sm text-gray-400">点击{'"'}添加联系人{'"'}按钮录入联系人</p>
           )}
           <div className="space-y-3">
             {contacts.map((c, idx) => (

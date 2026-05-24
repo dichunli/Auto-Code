@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, useId } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/imageCompress";
@@ -52,7 +52,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const fileId = useRef(`part-group-img-${Math.random().toString(36).slice(2)}`).current;
+  const fileId = `part-group-img-${useId()}`;
 
   // 配件名称替换弹窗
   const [showModal, setShowModal] = useState(false);

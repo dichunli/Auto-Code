@@ -49,6 +49,26 @@ supabase/.temp/
 # 数据表（Excel）
 *.xlsx
 
+# 构建与运行日志
+build.log
+build2.log
+build3.log
+server.log
+logs/
+
+# Android 签名密钥（严禁提交）
+android/app/my-release-key.jks
+
+# 大型数据文件
+model_for_api.sql
+
+# Service Worker 构建产物
+public/sw.js
+
+# 临时文件
+tmp_*.html
+EOF
+
 # Claude 临时文件
 .claude/
 !.claude/settings.json

@@ -703,7 +703,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
             {supplier.wechat_group_qr && (
               <div className="mt-4 pt-4 border-t border-gray-100 text-center">
                 <p className="text-sm text-gray-500 mb-2">微信群二维码</p>
-                <img src={supplier.wechat_group_qr} alt="微信群" className="w-40 h-40 object-cover rounded mx-auto" />
+                <img src={supplier.wechat_group_qr} alt="微信群" loading="lazy" className="w-40 h-40 object-cover rounded mx-auto" />
               </div>
             )}
           </div>

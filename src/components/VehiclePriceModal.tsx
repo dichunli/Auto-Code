@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface VehicleModel {
@@ -30,7 +30,8 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
   const [vipPrice, setVipPrice] = useState("");
   const [customerPartsPrice, setCustomerPartsPrice] = useState("");
   const [companyPrice, setCompanyPrice] = useState("");
-  const [allVehicles, setAllVehicles] = useState<VehicleModel[]>([]);
+  const [vehicles, setVehicles] = useState<VehicleModel[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -71,89 +72,62 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
     setFilters({ id: "", 品牌: "", 车系: "", 车型: "", 年款: "", 排量: "", 发动机型号: "", 底盘型号: "", 变速箱型号: "" });
   }, [open]);
 
-  // 加载全部车型（仅打开时触发一次）
+  // 服务端分页查询
   useEffect(() => {
     if (!open) return;
-    loadAllVehicles();
-  }, [open]);
-
-  async function loadAllVehicles() {
+    let cancelled = false;
     setLoading(true);
-    const all: VehicleModel[] = [];
-    let from = 0;
-    const batch = 1000;
-    while (true) {
-      const { data, error } = await supabase
+    (async () => {
+      let query = supabase
         .from("vehicle_models")
-        .select("id,品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号")
-        .order("id")
-        .range(from, from + batch - 1);
+        .select("id,品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号", { count: "exact" })
+        .order("id");
 
+      if (excludedIds && excludedIds.length > 0 && excludedIds.length <= 500) {
+        query = query.not("id", "in", `(${excludedIds.join(",")})`);
+      }
+
+      if (filters.id) {
+        const id = parseInt(filters.id);
+        if (!Number.isNaN(id)) query = query.eq("id", id);
+      }
+      if (filters.品牌) query = query.ilike("品牌", `%${filters.品牌}%`);
+      if (filters.车系) query = query.ilike("车系", `%${filters.车系}%`);
+      if (filters.车型) query = query.ilike("车型", `%${filters.车型}%`);
+      if (filters.年款) {
+        const year = parseInt(filters.年款);
+        if (!Number.isNaN(year)) query = query.eq("年款", year);
+      }
+      if (filters.排量) query = query.ilike("排量", `%${filters.排量}%`);
+      if (filters.发动机型号) query = query.ilike("发动机型号", `%${filters.发动机型号}%`);
+      if (filters.底盘型号) query = query.ilike("底盘型号", `%${filters.底盘型号}%`);
+      if (filters.变速箱型号) query = query.ilike("变速箱型号", `%${filters.变速箱型号}%`);
+
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+      const { data, error, count } = await query.range(from, to);
+
+      if (cancelled) return;
       if (error) {
         console.error("加载车型失败:", error);
-        break;
+        setVehicles([]);
+        setTotalCount(0);
+      } else {
+        let rows = (data as unknown as VehicleModel[]) || [];
+        if (excludedIds && excludedIds.length > 500) {
+          const excludedSet = new Set(excludedIds);
+          rows = rows.filter((v) => !excludedSet.has(v.id));
+        }
+        setVehicles(rows);
+        setTotalCount(count || 0);
       }
-      const rows = (data as unknown as VehicleModel[]) || [];
-      if (rows.length === 0) break;
-      all.push(...rows);
-      if (rows.length < batch) break;
-      from += batch;
-    }
-    setAllVehicles(all);
-    setLoading(false);
-  }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, supabase, excludedIds, filters, page, pageSize]);
 
-  // 客户端筛选 + 排除
-  const filteredVehicles = useMemo(() => {
-    let result = [...allVehicles];
-
-    const excludedSet = excludedIds && excludedIds.length > 0 ? new Set(excludedIds) : null;
-    if (excludedSet) {
-      result = result.filter((v) => !excludedSet.has(v.id));
-    }
-
-    if (filters.id) {
-      const id = parseInt(filters.id);
-      if (!Number.isNaN(id)) result = result.filter((v) => v.id === id);
-    }
-    if (filters.品牌) {
-      const q = filters.品牌.toLowerCase();
-      result = result.filter((v) => v.品牌?.toLowerCase().includes(q));
-    }
-    if (filters.车系) {
-      const q = filters.车系.toLowerCase();
-      result = result.filter((v) => v.车系?.toLowerCase().includes(q));
-    }
-    if (filters.车型) {
-      const q = filters.车型.toLowerCase();
-      result = result.filter((v) => v.车型?.toLowerCase().includes(q));
-    }
-    if (filters.年款) {
-      const year = parseInt(filters.年款);
-      if (!Number.isNaN(year)) result = result.filter((v) => v.年款 === year);
-    }
-    if (filters.排量) {
-      const q = filters.排量.toLowerCase();
-      result = result.filter((v) => v.排量?.toLowerCase().includes(q));
-    }
-    if (filters.发动机型号) {
-      const q = filters.发动机型号.toLowerCase();
-      result = result.filter((v) => v.发动机型号?.toLowerCase().includes(q));
-    }
-    if (filters.底盘型号) {
-      const q = filters.底盘型号.toLowerCase();
-      result = result.filter((v) => v.底盘型号?.toLowerCase().includes(q));
-    }
-    if (filters.变速箱型号) {
-      const q = filters.变速箱型号.toLowerCase();
-      result = result.filter((v) => v.变速箱型号?.toLowerCase().includes(q));
-    }
-
-    return result;
-  }, [allVehicles, excludedIds, filters]);
-
-  const totalCount = filteredVehicles.length;
-  const vehicles = filteredVehicles.slice((page - 1) * pageSize, page * pageSize);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   function toggleSelection(id: number) {
@@ -166,13 +140,21 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
   }
 
   function handleSelectAll() {
-    const allMatchingSelected = selectedIds.size === totalCount && totalCount > 0;
-    if (allMatchingSelected) {
-      setSelectedIds(new Set());
+    const currentPageIds = vehicles.map((v) => v.id);
+    const allCurrentPageSelected = currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
+    if (allCurrentPageSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        currentPageIds.forEach((id) => next.delete(id));
+        return next;
+      });
       return;
     }
-    const allIds = filteredVehicles.map((v) => v.id);
-    setSelectedIds(new Set(allIds));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      currentPageIds.forEach((id) => next.add(id));
+      return next;
+    });
   }
 
   function handleConfirm() {
@@ -273,8 +255,8 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
                 <th className="px-3 py-2 text-left w-10">
                   <input
                     type="checkbox"
-                    checked={totalCount > 0 && selectedIds.size === totalCount}
-                    ref={(el) => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size !== totalCount; }}
+                    checked={vehicles.length > 0 && vehicles.every((v) => selectedIds.has(v.id))}
+                    ref={(el) => { if (el) el.indeterminate = vehicles.some((v) => selectedIds.has(v.id)) && !vehicles.every((v) => selectedIds.has(v.id)); }}
                     onChange={handleSelectAll}
                     disabled={loading}
                     className="w-4 h-4"
@@ -419,7 +401,7 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
                       <div className="text-gray-500 text-sm">
                         <div className="mb-1">暂无未关联的车型</div>
                         <div className="text-xs text-gray-400">
-                          已加载 {allVehicles.length} 条，排除 {excludedIds.length} 条，剩余 {allVehicles.length - excludedIds.length} 条
+                          已排除 {excludedIds.length} 条已关联车型
                           {Object.values(filters).some(v => v) && "（当前有筛选条件）"}
                         </div>
                       </div>

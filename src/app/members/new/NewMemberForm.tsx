@@ -27,7 +27,7 @@ export default function NewMemberForm() {
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
-    supabase.from("customers").select("id, name, phone").order("name").then(({ data }) => {
+    supabase.from("customers").select("id, name, phone").order("name").limit(100).then(({ data }) => {
       const list = data || [];
       setCustomers(list);
       // 从URL参数自动填充

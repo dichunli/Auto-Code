@@ -22,12 +22,14 @@ export default async function KnowledgePage() {
   const { data: articles } = await supabase
     .from("knowledge_articles")
     .select("*, knowledge_categories(name), profiles(full_name)")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(100);
 
   const { data: categories } = await supabase
     .from("knowledge_categories")
     .select("*")
-    .order("sort_order", { ascending: true });
+    .order("sort_order", { ascending: true })
+    .limit(100);
 
   return (
     <div>

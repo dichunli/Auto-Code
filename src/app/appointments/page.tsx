@@ -16,7 +16,8 @@ export default async function AppointmentsPage({
     .from("appointments")
     .select("*")
     .order("appointment_date", { ascending: true })
-    .order("appointment_time", { ascending: true });
+    .order("appointment_time", { ascending: true })
+    .limit(100);
 
   if (date === "today") {
     query = query.eq("appointment_date", today);

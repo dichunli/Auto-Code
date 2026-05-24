@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useId, useRef, useState, useCallback } from "react";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -11,8 +11,8 @@ interface Props {
 export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraId = useRef(`vid-camera-${Math.random().toString(36).slice(2)}`).current;
-  const fileId = useRef(`vid-file-${Math.random().toString(36).slice(2)}`).current;
+  const cameraId = `vid-camera-${useId()}`;
+  const fileId = `vid-file-${useId()}`;
   const [uploading, setUploading] = useState(false);
   const [videos, setVideos] = useState<string[]>(existingVideos);
   const [progress, setProgress] = useState(0);

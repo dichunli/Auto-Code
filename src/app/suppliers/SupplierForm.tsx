@@ -611,7 +611,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
               <label className="block text-sm font-medium text-gray-700 mb-1">微信群二维码</label>
               {wechatGroupQr ? (
                 <div className="relative inline-block">
-                  <img src={wechatGroupQr} alt="微信群二维码" className="w-32 h-32 object-cover rounded border border-gray-200" />
+                  <img src={wechatGroupQr} alt="微信群二维码" loading="lazy" className="w-32 h-32 object-cover rounded border border-gray-200" />
                   <button type="button" onClick={() => setWechatGroupQr("")} className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center">×</button>
                 </div>
               ) : (

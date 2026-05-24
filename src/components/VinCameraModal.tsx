@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useId } from "react";
 import { vin17OcrAndDecode } from "@/lib/17vin/client";
 import { VinDecodeResult } from "./VinDecodeInput";
 
@@ -55,7 +55,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const fileId = useRef(`vin-album-${Math.random().toString(36).slice(2)}`).current;
+  const fileId = `vin-album-${useId()}`;
+  const captureFileId = `vin-capture-${useId()}`;
 
   const [hasCamera, setHasCamera] = useState(true);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -64,48 +65,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   const [decodeResult, setDecodeResult] = useState<VinDecodeResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  /* 打开相机 */
-  useEffect(() => {
-    if (!open) {
-      stopCamera();
-      setPreviewImage(null);
-      setRecognizedVin(null);
-      setDecodeResult(null);
-      setErrorMsg(null);
-      setRecognizing(false);
-      return;
-    }
-
-    setPreviewImage(null);
-    setRecognizedVin(null);
-    setDecodeResult(null);
-    setErrorMsg(null);
-    setRecognizing(false);
-
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices
-        .getUserMedia({ video: { facingMode: "environment" }, audio: false })
-        .then((stream) => {
-          streamRef.current = stream;
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.play().catch(() => {});
-          }
-          setHasCamera(true);
-        })
-        .catch(() => {
-          setHasCamera(false);
-        });
-    } else {
-      setHasCamera(false);
-    }
-
-    return () => {
-      stopCamera();
-    };
-  }, [open]);
-
-  function stopCamera() {
+  /* 关闭相机 */
+  const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -113,65 +74,10 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-  }
-
-  /* 拍照 */
-  const handleCapture = useCallback(() => {
-    const video = videoRef.current;
-    if (!video || video.videoWidth === 0) return;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
-
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        compressImage(blob, 1920, 0.85).then((base64) => {
-          setPreviewImage(base64);
-          doRecognize(base64);
-        });
-      },
-      "image/jpeg",
-      0.85
-    );
   }, []);
 
-  /* 从相册选择 */
-  const handleFileSelect = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      if (!file.type.startsWith("image/")) {
-        setErrorMsg("请选择图片文件");
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        setErrorMsg("图片大小不能超过 10MB");
-        return;
-      }
-
-      try {
-        const base64 =
-          file.size > 512 * 1024
-            ? await compressImage(file, 1920, 0.85)
-            : await fileToBase64(file);
-        setPreviewImage(base64);
-        await doRecognize(base64);
-      } catch (err: unknown) {
-        setErrorMsg("图片处理失败: " + (err instanceof Error ? err.message : String(err)));
-      } finally {
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    },
-    []
-  );
-
   /* 执行识别 */
-  async function doRecognize(base64: string) {
+  const doRecognize = useCallback(async (base64: string) => {
     setRecognizing(true);
     setErrorMsg(null);
     setRecognizedVin(null);
@@ -229,7 +135,103 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     } finally {
       setRecognizing(false);
     }
-  }
+  }, []);
+
+  /* 打开相机 */
+  useEffect(() => {
+    if (!open) {
+      stopCamera();
+      setPreviewImage(null);
+      setRecognizedVin(null);
+      setDecodeResult(null);
+      setErrorMsg(null);
+      setRecognizing(false);
+      return;
+    }
+
+    setPreviewImage(null);
+    setRecognizedVin(null);
+    setDecodeResult(null);
+    setErrorMsg(null);
+    setRecognizing(false);
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia({ video: { facingMode: "environment" }, audio: false })
+        .then((stream) => {
+          streamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(() => {});
+          }
+          setHasCamera(true);
+        })
+        .catch(() => {
+          setHasCamera(false);
+        });
+    } else {
+      setHasCamera(false);
+    }
+
+    return () => {
+      stopCamera();
+    };
+  }, [open, stopCamera]);
+
+  /* 拍照 */
+  const handleCapture = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        compressImage(blob, 1920, 0.85).then((base64) => {
+          setPreviewImage(base64);
+          doRecognize(base64);
+        });
+      },
+      "image/jpeg",
+      0.85
+    );
+  }, [doRecognize]);
+
+  /* 从相册选择 */
+  const handleFileSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        setErrorMsg("请选择图片文件");
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setErrorMsg("图片大小不能超过 10MB");
+        return;
+      }
+
+      try {
+        const base64 =
+          file.size > 512 * 1024
+            ? await compressImage(file, 1920, 0.85)
+            : await fileToBase64(file);
+        setPreviewImage(base64);
+        await doRecognize(base64);
+      } catch (err: unknown) {
+        setErrorMsg("图片处理失败: " + (err instanceof Error ? err.message : String(err)));
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    },
+    [doRecognize]
+  );
 
   /* 确认使用识别结果 */
   const handleConfirm = useCallback(() => {
@@ -382,19 +384,35 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
                 <span className="text-[10px]">相册</span>
               </label>
 
-              {/* 拍照按钮 */}
-              {hasCamera && (
+              {/* 打开系统相机（capture 方式，最可靠） */}
+              <label
+                htmlFor={captureFileId}
+                className="flex flex-col items-center gap-1 text-white active:text-white cursor-pointer select-none"
+              >
+                <div className="w-16 h-16 rounded-full border-4 border-white/80 flex items-center justify-center active:scale-95 transition-transform">
+                  <div className="w-12 h-12 rounded-full bg-white" />
+                </div>
+                <span className="text-[10px]">拍照</span>
+              </label>
+
+              {/* 应用内截图（getUserMedia 可用时显示） */}
+              {hasCamera ? (
                 <button
                   type="button"
                   onClick={handleCapture}
-                  className="w-16 h-16 rounded-full border-4 border-white/80 flex items-center justify-center active:scale-95 transition-transform"
+                  className="flex flex-col items-center gap-1 text-white/70 active:text-white"
                 >
-                  <div className="w-12 h-12 rounded-full bg-white" />
+                  <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <span className="text-[10px]">截图</span>
                 </button>
+              ) : (
+                <div className="w-16" />
               )}
-
-              {/* 占位让相册居中（无摄像头时） */}
-              {!hasCamera && <div className="w-16" />}
             </>
           ) : (
             <>
@@ -432,12 +450,21 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
         </div>
       </div>
 
-      {/* 隐藏的 file input */}
+      {/* 相册 file input */}
       <input
         id={fileId}
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+      {/* 系统相机 capture input */}
+      <input
+        id={captureFileId}
+        type="file"
+        accept="image/*"
+        capture="environment"
         onChange={handleFileSelect}
         className="hidden"
       />

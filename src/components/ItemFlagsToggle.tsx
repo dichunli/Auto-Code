@@ -126,6 +126,7 @@ export function ItemFlagsToggle({
           workOrderId={workOrderId}
           workOrderItemId={itemId}
           currentItemName={itemName || ""}
+          serviceItemId={serviceItemId}
           existingOrder={existingOrder}
           existingItem={existingItem}
           onClose={() => setOutsourceModalOpen(false)}

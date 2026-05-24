@@ -96,12 +96,12 @@ export default function InventoryInForm() {
   });
 
   useEffect(() => {
-    supabase.from("parts").select("*, part_names(name)").order("name").then(({ data }) => setParts(data || []));
-    supabase.from("part_names").select("*, part_categories(name)").order("name").then(({ data }) => setPartNames(data || []));
-    supabase.from("part_brands").select("*").order("name").then(({ data }) => setBrands(data || []));
-    supabase.from("part_specifications").select("*").order("name").then(({ data }) => setSpecifications(data || []));
-    supabase.from("logistics_companies").select("*").order("name").then(({ data }) => setLogisticsCompanies(data || []));
-    supabase.from("logistics_waybills").select("*, logistics_companies(name)").eq("status", "pending").order("created_at", { ascending: false }).then(({ data }) => setPendingWaybills(data || []));
+    supabase.from("parts").select("*, part_names(name)").order("name").limit(100).then(({ data }) => setParts(data || []));
+    supabase.from("part_names").select("*, part_categories(name)").order("name").limit(100).then(({ data }) => setPartNames(data || []));
+    supabase.from("part_brands").select("*").order("name").limit(100).then(({ data }) => setBrands(data || []));
+    supabase.from("part_specifications").select("*").order("name").limit(100).then(({ data }) => setSpecifications(data || []));
+    supabase.from("logistics_companies").select("*").order("name").limit(100).then(({ data }) => setLogisticsCompanies(data || []));
+    supabase.from("logistics_waybills").select("*, logistics_companies(name)").eq("status", "pending").order("created_at", { ascending: false }).limit(100).then(({ data }) => setPendingWaybills(data || []));
   }, [supabase]);
 
   // 自动填写：来自工单空分支的入库登记

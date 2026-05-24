@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useId, useRef, useState, useCallback, useEffect } from "react";
 import { compressImage } from "@/lib/imageCompress";
 
 interface Props {
@@ -14,8 +14,8 @@ interface Props {
 export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraId = useRef(`img-camera-${Math.random().toString(36).slice(2)}`).current;
-  const fileId = useRef(`img-file-${Math.random().toString(36).slice(2)}`).current;
+  const cameraId = `img-camera-${useId()}`;
+  const fileId = `img-file-${useId()}`;
   const [uploading, setUploading] = useState(false);
   const [images, setImages] = useState<string[]>(existingImages);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);

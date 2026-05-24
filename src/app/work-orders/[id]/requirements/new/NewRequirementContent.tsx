@@ -245,18 +245,18 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
 
   useEffect(() => {
     params.then((p) => setOrderId(p.id));
-    supabase.from("service_categories").select("*").order("name").then(({ data }) => setCategories((data as 服务分类[]) || []));
-    supabase.from("part_names").select("*").order("name").then(({ data }) => setPartNames((data as 配件名称[]) || []));
-    supabase.from("suppliers").select("*").order("name").then(({ data }) => setSuppliers((data as 供应商[]) || []));
-    supabase.from("logistics_companies").select("*").order("name").then(({ data }) => setLogisticsCompanies((data as 物流公司[]) || []));
+    supabase.from("service_categories").select("*").order("name").limit(100).then(({ data }) => setCategories((data as 服务分类[]) || []));
+    supabase.from("part_names").select("*").order("name").limit(100).then(({ data }) => setPartNames((data as 配件名称[]) || []));
+    supabase.from("suppliers").select("*").order("name").limit(100).then(({ data }) => setSuppliers((data as 供应商[]) || []));
+    supabase.from("logistics_companies").select("*").order("name").limit(100).then(({ data }) => setLogisticsCompanies((data as 物流公司[]) || []));
     // 加载所有标准项目（含分类和名称库信息）
-    supabase.from("service_items").select("*, service_names(id, name, category_id), service_categories(name)").order("name").then(({ data }) => setAllServiceItems((data as 维修项目[]) || []));
+    supabase.from("service_items").select("*, service_names(id, name, category_id), service_categories(name)").order("name").limit(100).then(({ data }) => setAllServiceItems((data as 维修项目[]) || []));
     // 加载名称库
-    supabase.from("service_names").select("*").order("name").then(({ data }) => setServiceNames((data as 维修项目名称库[]) || []));
+    supabase.from("service_names").select("*").order("name").limit(100).then(({ data }) => setServiceNames((data as 维修项目名称库[]) || []));
     // 加载维修项目车型定价（含自带配件价）
-    supabase.from("service_item_prices").select("*").then(({ data }) => setServiceItemPrices((data as 维修项目车型定价[]) || []));
+    supabase.from("service_item_prices").select("*").limit(100).then(({ data }) => setServiceItemPrices((data as 维修项目车型定价[]) || []));
     // 加载员工列表
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setProfiles((data as 员工[]) || []));
+    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").limit(100).then(({ data }) => setProfiles((data as 员工[]) || []));
     // 获取当前用户信息
     supabase.auth.getUser().then(({ data: authData }) => {
       if (authData?.user) {

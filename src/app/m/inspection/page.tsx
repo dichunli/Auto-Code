@@ -8,6 +8,7 @@ export default async function MobileInspectionListPage() {
     .from("work_orders")
     .select("id, order_no, status, mileage_in, vehicles(plate_number, brand, model), customers(name, phone)")
     .in("status", ["received", "pending_diagnosis"])
+    .neq("order_type", "cancelled")
     .order("created_at", { ascending: false })
     .limit(50);
 

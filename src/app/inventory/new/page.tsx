@@ -50,9 +50,9 @@ export default function NewPartPage() {
   const [selectedName, setSelectedName] = useState<PartName | null>(null);
 
   useEffect(() => {
-    supabase.from("part_names").select("*, part_categories(name)").order("name").then(({ data }) => setPartNames(data || []));
-    supabase.from("part_brands").select("*").order("usage_count", { ascending: false }).then(({ data }) => setBrands(data || []));
-    supabase.from("part_specifications").select("*").order("usage_count", { ascending: false }).then(({ data }) => setSpecifications(data || []));
+    supabase.from("part_names").select("*, part_categories(name)").order("name").limit(100).then(({ data }) => setPartNames(data || []));
+    supabase.from("part_brands").select("*").order("usage_count", { ascending: false }).limit(100).then(({ data }) => setBrands(data || []));
+    supabase.from("part_specifications").select("*").order("usage_count", { ascending: false }).limit(100).then(({ data }) => setSpecifications(data || []));
   }, [supabase]);
 
   function handleNameChange(nameId: string) {

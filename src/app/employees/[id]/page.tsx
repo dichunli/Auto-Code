@@ -172,6 +172,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
                     <img
                       src={employee.id_card_front_url}
                       alt="身份证正面"
+                      loading="lazy"
                       className="w-40 h-24 object-cover rounded border border-gray-200 hover:opacity-80 transition-opacity"
                     />
                   </a>
@@ -184,6 +185,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
                     <img
                       src={employee.id_card_back_url}
                       alt="身份证反面"
+                      loading="lazy"
                       className="w-40 h-24 object-cover rounded border border-gray-200 hover:opacity-80 transition-opacity"
                     />
                   </a>
