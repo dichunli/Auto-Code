@@ -54,6 +54,13 @@ const MENU_ITEMS: MenuItem[] = [
     desc: "领取工单、开始/完工施工",
     color: "bg-teal-500",
   },
+  {
+    label: "知识库",
+    href: "/knowledge",
+    permission: "knowledge:read",
+    desc: "维修指导、常见问题、资料查阅",
+    color: "bg-cyan-500",
+  },
 ];
 
 export default async function MobileHomePage() {

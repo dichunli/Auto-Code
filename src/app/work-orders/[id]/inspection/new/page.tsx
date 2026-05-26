@@ -243,13 +243,22 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
           setOilAfterAnnotations(oilAfterMedia.annotations || []);
         }
         setFluidPaths(media.filter((m) => m.media_type === "fluid").map((m) => m.storage_path));
-        setDashboardPaths(media.filter((m) => m.media_type === "dashboard").map((m) => m.storage_path));
         setDriveBeltPaths(media.filter((m) => m.media_type === "drive_belt").map((m) => m.storage_path));
         setTirePaths(media.filter((m) => m.media_type === "tire").map((m) => m.storage_path));
         setExteriorPaths(media.filter((m) => m.media_type === "exterior").map((m) => m.storage_path));
 
         const { data: { user } } = await supabase.auth.getUser();
         setCanEdit(user?.id === data.submitter_id);
+      }
+
+      /* 从工单表读取共享的仪表照片 */
+      const { data: orderData } = await supabase
+        .from("work_orders")
+        .select("dashboard_photos")
+        .eq("id", orderId)
+        .single();
+      if (orderData?.dashboard_photos) {
+        setDashboardPaths(orderData.dashboard_photos);
       }
     }
     loadExisting();
@@ -319,14 +328,15 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
         inspectionId = inspection.id;
       }
 
-      /* 统一更新工单里程（唯一的里程数据源） */
-      if (inspectionMileage) {
-        const { error: orderErr } = await supabase
-          .from("work_orders")
-          .update({ mileage_in: parseFloat(inspectionMileage) })
-          .eq("id", orderId);
-        if (orderErr) throw orderErr;
-      }
+      /* 统一更新工单里程和共享仪表照片 */
+      const orderUpdate: Record<string, string | number | string[] | null> = {};
+      if (inspectionMileage) orderUpdate.mileage_in = parseFloat(inspectionMileage);
+      orderUpdate.dashboard_photos = dashboardPaths.length > 0 ? dashboardPaths : null;
+      const { error: orderErr } = await supabase
+        .from("work_orders")
+        .update(orderUpdate)
+        .eq("id", orderId);
+      if (orderErr) throw orderErr;
 
       const mediaRecords: { inspection_id: string | null; media_type: string; storage_path: string; annotations?: Line[] }[] = [];
       if (oilBeforePath) {
@@ -352,17 +362,11 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
           storage_path: path,
         });
       });
+      /* 仪表照片已保存到工单表，此处只保存检查记录专属媒体 */
       exteriorPaths.forEach((path) => {
         mediaRecords.push({
           inspection_id: inspectionId,
           media_type: "exterior",
-          storage_path: path,
-        });
-      });
-      dashboardPaths.forEach((path) => {
-        mediaRecords.push({
-          inspection_id: inspectionId,
-          media_type: "dashboard",
           storage_path: path,
         });
       });

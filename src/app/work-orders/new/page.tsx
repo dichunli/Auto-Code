@@ -319,7 +319,7 @@ export default function NewWorkOrderPage() {
           p_customer_id: customerId,
           p_vehicle_id: vehicleId,
           p_mileage_in: mileageInNum,
-          p_fuel_level: 50,
+          p_fuel_level: null,
           p_customer_complaint: "",
           p_inspection_notes: "",
           p_receptionist_id: currentUserId || null,

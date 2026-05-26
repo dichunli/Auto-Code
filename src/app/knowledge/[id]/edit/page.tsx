@@ -18,14 +18,17 @@ interface NamedItem {
   name: string;
 }
 
-export default function NewKnowledgePage() {
+interface Category {
+  id: string;
+  name: string;
+}
+
+export default function EditKnowledgePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
-  interface Category {
-    id: string;
-    name: string;
-  }
+  const [pageLoading, setPageLoading] = useState(true);
+  const [articleId, setArticleId] = useState<string>("");
 
   const [categories, setCategories] = useState<Category[]>([]);
 
@@ -38,19 +41,98 @@ export default function NewKnowledgePage() {
     video_url: "",
   });
 
-  // 搜索添加维修项目名称
+  /* 搜索添加维修项目名称 */
   const [nameSearch, setNameSearch] = useState("");
   const [nameResults, setNameResults] = useState<NamedItem[]>([]);
   const [nameSearching, setNameSearching] = useState(false);
   const [linkedNames, setLinkedNames] = useState<NamedItem[]>([]);
   const nameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 适用车型
+  /* 适用车型 */
   const [linkedVehicles, setLinkedVehicles] = useState<LinkedItem[]>([]);
 
+  /* 加载文章数据和分类 */
   useEffect(() => {
-    supabase.from("knowledge_categories").select("*").order("sort_order").limit(100).then(({ data }) => setCategories(data || []));
-  }, [supabase]);
+    async function load() {
+      const { id } = await params;
+      setArticleId(id);
+
+      /* 加载分类 */
+      const { data: cats } = await supabase
+        .from("knowledge_categories")
+        .select("*")
+        .order("sort_order")
+        .limit(100);
+      setCategories(cats || []);
+
+      /* 加载文章 */
+      const { data: article } = await supabase
+        .from("knowledge_articles")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (!article) {
+        alert("文章不存在");
+        router.push("/knowledge");
+        return;
+      }
+
+      setForm({
+        title: article.title || "",
+        type: (article.type as "article" | "video" | "qa" | "guide") || "article",
+        category_id: article.category_id || "",
+        content: article.content || "",
+        content_blocks: article.content_blocks
+          ? JSON.stringify(article.content_blocks)
+          : "",
+        video_url: article.video_url || "",
+      });
+
+      /* 加载关联维修项目名称 */
+      const { data: nameLinks } = await supabase
+        .from("knowledge_service_links")
+        .select("service_name_id, service_names(name)")
+        .eq("article_id", id);
+
+      if (nameLinks) {
+        setLinkedNames(
+          nameLinks
+            .filter((l) => l.service_name_id)
+            .map((l) => ({
+              id: l.service_name_id as string,
+              name: (l.service_names as { name: string } | null)?.name || "",
+            }))
+        );
+      }
+
+      /* 加载关联车型 */
+      const { data: vehicleLinks } = await supabase
+        .from("knowledge_vehicle_links")
+        .select("vehicle_models(id, brand, series, model_name, year_start, year_end)")
+        .eq("article_id", id);
+
+      if (vehicleLinks) {
+        setLinkedVehicles(
+          vehicleLinks.map((v) => {
+            const vm = (v as { vehicle_models: { id: number; brand: string; series: string; model_name: string | null; year_start: number | null; year_end: number | null } | null }).vehicle_models;
+            return {
+              id: String(vm?.id || ""),
+              brand: vm?.brand || "",
+              series: vm?.series || "",
+              model: vm?.model_name || "",
+              yearStart: vm?.year_start || undefined,
+              yearEnd: vm?.year_end || undefined,
+            };
+          })
+        );
+      }
+
+      setPageLoading(false);
+    }
+
+    load();
+  }, [params, router, supabase]);
 
   async function doNameSearch(keyword: string) {
     if (!keyword.trim()) { setNameResults([]); return; }
@@ -84,6 +166,7 @@ export default function NewKnowledgePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!articleId) return;
     setLoading(true);
 
     try {
@@ -93,9 +176,10 @@ export default function NewKnowledgePage() {
         contentBlocks = await 处理外部图片(contentBlocks);
       }
 
-      const { data: article, error } = await supabase
+      /* 更新文章 */
+      const { error: updateError } = await supabase
         .from("knowledge_articles")
-        .insert({
+        .update({
           title: form.title,
           type: form.type,
           category_id: form.category_id || null,
@@ -103,27 +187,32 @@ export default function NewKnowledgePage() {
           content_blocks: contentBlocks,
           video_url: form.type === "video" ? form.video_url || null : null,
         })
-        .select("id")
-        .single();
+        .eq("id", articleId);
 
-      if (error || !article) throw error || new Error("创建失败");
+      if (updateError) throw updateError;
+
+      /* 删除旧的关联，重新插入 */
+      const { error: delNameError } = await supabase.from("knowledge_service_links").delete().eq("article_id", articleId);
+      if (delNameError) throw delNameError;
+      const { error: delVehicleError } = await supabase.from("knowledge_vehicle_links").delete().eq("article_id", articleId);
+      if (delVehicleError) throw delVehicleError;
 
       if (linkedNames.length > 0) {
-        const nameLinks = linkedNames.map((n) => ({ article_id: article.id, service_name_id: n.id }));
+        const nameLinks = linkedNames.map((n) => ({ article_id: articleId, service_name_id: n.id }));
         const { error: insertNameError } = await supabase.from("knowledge_service_links").insert(nameLinks);
         if (insertNameError) throw insertNameError;
       }
 
       if (linkedVehicles.length > 0) {
         const vehicleLinks = linkedVehicles.map((v) => ({
-          article_id: article.id,
+          article_id: articleId,
           vehicle_model_id: Number(v.id),
         }));
         const { error: insertVehicleError } = await supabase.from("knowledge_vehicle_links").insert(vehicleLinks);
         if (insertVehicleError) throw insertVehicleError;
       }
 
-      router.push("/knowledge");
+      router.push(`/knowledge/${articleId}`);
       router.refresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -132,9 +221,20 @@ export default function NewKnowledgePage() {
     }
   }
 
+  if (pageLoading) {
+    return (
+      <div>
+        <PageHeader title="编辑知识库内容" />
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
+          加载中...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <PageHeader title="新建知识库内容" />
+      <PageHeader title="编辑知识库内容" />
       <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6 max-w-3xl">
         <div className="space-y-6">
           <div>
@@ -238,7 +338,7 @@ export default function NewKnowledgePage() {
             )}
           </div>
 
-          {/* 关联车型 - 使用适用车型模块 */}
+          {/* 关联车型 */}
           <div className="border-t border-gray-100 pt-4">
             <VehicleModelSelector value={linkedVehicles} onChange={setLinkedVehicles} />
           </div>
@@ -257,7 +357,7 @@ export default function NewKnowledgePage() {
             disabled={loading}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            保存
+            {loading ? "保存中..." : "保存"}
           </button>
         </div>
       </form>

@@ -10,7 +10,6 @@ interface Order {
   status: string;
   received_at: string;
   mileage_in: number | null;
-  fuel_level: number | null;
   vehicles: { plate_number: string; brand: string; model: string } | null;
   customers: { name: string; phone: string } | null;
 }
@@ -56,7 +55,7 @@ export default function MobileReceptionListPage() {
       const { data } = await supabase
         .from("work_orders")
         .select(
-          "id, order_no, status, received_at, mileage_in, fuel_level, vehicles(plate_number, brand, model), customers(name, phone)"
+          "id, order_no, status, received_at, mileage_in, vehicles(plate_number, brand, model), customers(name, phone)"
         )
         .not("status", "in", `(${SETTLED_STATUSES.join(",")})`)
         .neq("order_type", "cancelled")
@@ -170,7 +169,6 @@ export default function MobileReceptionListPage() {
               </div>
               <div className="text-xs text-gray-400 flex items-center gap-3">
                 <span>里程: {order.mileage_in} km</span>
-                {order.fuel_level != null && <span>油量: {order.fuel_level}%</span>}
               </div>
             </Link>
           ))

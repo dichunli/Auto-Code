@@ -152,7 +152,7 @@ function SimpleKeyboard({
       {show && (
         <div
           ref={keyboardRef}
-          className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100 border-t border-gray-200 p-3 pb-safe"
+          className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100 border-t border-gray-200 p-3 pb-16"
         >
           {/* 顶部栏 */}
           <div className="flex items-center justify-between mb-2">
@@ -179,11 +179,22 @@ function SimpleKeyboard({
             </div>
           </div>
 
-          {/* 当前输入预览 */}
-          <div className="bg-white rounded-lg px-3 py-2 mb-2 text-center">
-            <span className="text-lg font-bold text-gray-900 tracking-wider">
-              {value || "—"}
-            </span>
+          {/* 当前输入预览 — 点击字符删除该位及之后 */}
+          <div className="bg-white rounded-lg px-3 py-2 mb-2 text-center flex items-center justify-center gap-0.5 min-h-[40px]">
+            {value.length > 0 ? (
+              value.split("").map((char, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => onChange(value.slice(0, idx))}
+                  className="text-lg font-bold text-gray-900 tracking-wider px-0.5 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                >
+                  {char}
+                </button>
+              ))
+            ) : (
+              <span className="text-lg font-bold text-gray-300 tracking-wider">—</span>
+            )}
           </div>
 
           {/* 键盘面板 */}
@@ -451,7 +462,7 @@ function FullKeyboard({
       {show && (
         <div
           ref={keyboardRef}
-          className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100 border-t border-gray-200 p-3 pb-safe"
+          className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100 border-t border-gray-200 p-3 pb-16"
         >
           {/* 顶部栏 */}
           <div className="flex items-center justify-between mb-2">
@@ -482,14 +493,27 @@ function FullKeyboard({
             </div>
           </div>
 
-          {/* 当前输入预览 */}
-          <div className="bg-white rounded-lg px-3 py-2 mb-2 text-center">
-            <span className="text-lg font-bold text-gray-900 tracking-wider">
-              {value || "—"}
-            </span>
-            <span className="text-xs text-gray-400 ml-2">
-              {value.length > 0 ? `${value.length} 位` : ""}
-            </span>
+          {/* 当前输入预览 — 点击字符删除该位及之后 */}
+          <div className="bg-white rounded-lg px-3 py-2 mb-2 text-center flex items-center justify-center gap-0.5 min-h-[40px]">
+            {value.length > 0 ? (
+              value.split("").map((char, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => onChange(value.slice(0, idx))}
+                  className="text-lg font-bold text-gray-900 tracking-wider px-0.5 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                >
+                  {char}
+                </button>
+              ))
+            ) : (
+              <span className="text-lg font-bold text-gray-300 tracking-wider">—</span>
+            )}
+            {value.length > 0 && (
+              <span className="text-xs text-gray-400 ml-2">
+                {value.length} 位
+              </span>
+            )}
           </div>
 
           {/* 键盘面板 */}

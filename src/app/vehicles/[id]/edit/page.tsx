@@ -588,7 +588,7 @@ export default function EditVehiclePage() {
         {/* 照片管理 */}
         <div className="border-t border-gray-100 mt-6 pt-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">车辆照片</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="grid grid-cols-2 gap-3 sm:gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">外观照片</label>
               <ImageUploader

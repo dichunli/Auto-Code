@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { FuelGauge } from "./FuelGauge";
+import { ImageUploader } from "./ImageUploader";
 
 function toDatetimeLocal(isoString: string | null | undefined): string {
   if (!isoString) return "";
@@ -19,37 +19,47 @@ function fromDatetimeLocal(localString: string): string {
 interface Props {
   orderId: string;
   mileageIn: number | null;
-  fuelLevel: number | null;
+  dashboardPhotos?: string[] | null;
+  rejectionMarkPhotos?: string[] | null;
   estimatedCompletionAt: string | null;
   senderName?: string | null;
   senderPhone?: string | null;
 }
 
-export function ReceptionInfoEditor({ orderId, mileageIn, fuelLevel, estimatedCompletionAt, senderName, senderPhone }: Props) {
+export function ReceptionInfoEditor({
+  orderId,
+  mileageIn,
+  dashboardPhotos,
+  rejectionMarkPhotos,
+  estimatedCompletionAt,
+  senderName,
+  senderPhone,
+}: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [open, setOpen] = useState(false);
   const [mileage, setMileage] = useState(mileageIn != null ? String(mileageIn) : "");
-  const [fuel, setFuel] = useState(fuelLevel != null ? String(fuelLevel) : "");
   const [delivery, setDelivery] = useState(toDatetimeLocal(estimatedCompletionAt));
   const [sName, setSName] = useState(senderName || "");
   const [sPhone, setSPhone] = useState(senderPhone || "");
   const [saving, setSaving] = useState(false);
 
+  const [dashPaths, setDashPaths] = useState<string[]>(dashboardPhotos || []);
+  const [rejectPaths, setRejectPaths] = useState<string[]>(rejectionMarkPhotos || []);
+
   async function handleSave() {
     setSaving(true);
-    const payload: Record<string, string | number | null> = {};
+    const payload: Record<string, string | number | string[] | null> = {};
     if (mileage.trim() !== "") payload.mileage_in = Number(mileage);
     else payload.mileage_in = null;
-
-    if (fuel.trim() !== "") payload.fuel_level = Number(fuel);
-    else payload.fuel_level = null;
 
     if (delivery.trim() !== "") payload.estimated_completion_at = fromDatetimeLocal(delivery);
     else payload.estimated_completion_at = null;
 
     payload.sender_name = sName.trim() || null;
     payload.sender_phone = sPhone.trim() || null;
+    payload.dashboard_photos = dashPaths.length > 0 ? dashPaths : null;
+    payload.rejection_mark_photos = rejectPaths.length > 0 ? rejectPaths : null;
 
     const { error } = await supabase.from("work_orders").update(payload).eq("id", orderId);
     setSaving(false);
@@ -73,7 +83,7 @@ export function ReceptionInfoEditor({ orderId, mileageIn, fuelLevel, estimatedCo
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
-          <div className="relative bg-white rounded-xl border border-gray-200 p-6 w-full max-w-md shadow-lg">
+          <div className="relative bg-white rounded-xl border border-gray-200 p-6 w-full max-w-md shadow-lg max-h-[90vh] overflow-y-auto">
             <h3 className="text-base font-semibold text-gray-900 mb-4">编辑接车信息</h3>
             <div className="space-y-4">
               <div>
@@ -87,8 +97,20 @@ export function ReceptionInfoEditor({ orderId, mileageIn, fuelLevel, estimatedCo
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">油量/电量</label>
-                <FuelGauge value={fuel} onChange={setFuel} />
+                <label className="block text-sm text-gray-600 mb-1">排异标照片</label>
+                <ImageUploader
+                  onUpload={setRejectPaths}
+                  existingImages={rejectPaths}
+                  maxImages={3}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">仪表照片</label>
+                <ImageUploader
+                  onUpload={setDashPaths}
+                  existingImages={dashPaths}
+                  maxImages={3}
+                />
               </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">约定交车时间</label>

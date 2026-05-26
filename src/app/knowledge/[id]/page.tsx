@@ -2,6 +2,10 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
+import { BlockNoteTOC } from "@/components/BlockNoteTOC";
+import { PresentationView } from "@/components/PresentationView";
+import { KnowledgeDeleteButton } from "@/components/KnowledgeDeleteButton";
 
 interface 车型关联 {
   vehicle_models: {
@@ -18,8 +22,24 @@ interface 维修项目关联 {
   service_items: { name: string } | null;
 }
 
-export default async function KnowledgeDetailPage({ params }: { params: Promise<{ id: string }> }) {
+interface BlockItem {
+  id: string;
+  type: string;
+  props: Record<string, unknown>;
+  content?: unknown[];
+  children?: BlockItem[];
+}
+
+export default async function KnowledgeDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const { id } = await params;
+  const sp = await searchParams;
+  const autoPresent = sp.present === "1";
   const supabase = await createClient();
 
   const { data: article } = await supabase
@@ -45,26 +65,40 @@ export default async function KnowledgeDetailPage({ params }: { params: Promise<
       <PageHeader title={article.title} />
 
       <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-4xl">
-        <div className="flex items-center gap-3 mb-4">
-          <span
-            className={`text-xs px-2 py-0.5 rounded ${
-              article.type === "video"
-                ? "bg-red-50 text-red-700"
-                : article.type === "qa"
-                ? "bg-green-50 text-green-700"
-                : article.type === "guide"
-                ? "bg-orange-50 text-orange-700"
-                : "bg-blue-50 text-blue-700"
-            }`}
-          >
-            {article.type === "video" ? "视频" : article.type === "qa" ? "问答" : article.type === "guide" ? "维修指导" : "文章"}
-          </span>
-          {article.knowledge_categories?.name && (
-            <span className="text-xs text-gray-500">{article.knowledge_categories.name}</span>
-          )}
-          <span className="text-xs text-gray-400">
-            {article.profiles?.full_name || "系统"} · {new Date(article.created_at).toLocaleDateString()}
-          </span>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span
+              className={`text-xs px-2 py-0.5 rounded ${
+                article.type === "video"
+                  ? "bg-red-50 text-red-700"
+                  : article.type === "qa"
+                  ? "bg-green-50 text-green-700"
+                  : article.type === "guide"
+                  ? "bg-orange-50 text-orange-700"
+                  : "bg-blue-50 text-blue-700"
+              }`}
+            >
+              {article.type === "video" ? "视频" : article.type === "qa" ? "问答" : article.type === "guide" ? "维修指导" : "文章"}
+            </span>
+            {article.knowledge_categories?.name && (
+              <span className="text-xs text-gray-500">{article.knowledge_categories.name}</span>
+            )}
+            <span className="text-xs text-gray-400">
+              {article.profiles?.full_name || "系统"} · {new Date(article.created_at).toLocaleDateString()}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {article.content_blocks && Array.isArray(article.content_blocks) && (
+              <PresentationView blocks={article.content_blocks as BlockItem[]} title={article.title} autoOpen={autoPresent} />
+            )}
+            <Link
+              href={`/knowledge/${id}/edit`}
+              className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+            >
+              编辑
+            </Link>
+            <KnowledgeDeleteButton articleId={id} />
+          </div>
         </div>
 
         {article.type === "video" && article.video_url && (
@@ -83,12 +117,39 @@ export default async function KnowledgeDetailPage({ params }: { params: Promise<
           </div>
         )}
 
-        {article.content && (
+        {/* 移动端目录 */}
+        {article.content_blocks && Array.isArray(article.content_blocks) && (
+          <div className="lg:hidden mb-4">
+            <details className="bg-white rounded-xl border border-gray-200">
+              <summary className="px-4 py-3 text-sm font-medium text-gray-700 cursor-pointer select-none">
+                查看目录
+              </summary>
+              <div className="px-4 pb-4 border-t border-gray-100">
+                <BlockNoteTOC blocks={article.content_blocks as BlockItem[]} />
+              </div>
+            </details>
+          </div>
+        )}
+
+        {/* 块级内容渲染 */}
+        {article.content_blocks && Array.isArray(article.content_blocks) ? (
+          <div className="flex gap-6">
+            <div className="flex-1 min-w-0">
+              <BlockNoteRenderer blocks={article.content_blocks as BlockItem[]} />
+            </div>
+            {/* 桌面端目录 */}
+            <div className="hidden lg:block w-52 flex-shrink-0">
+              <div className="sticky top-20 bg-white rounded-xl border border-gray-200 p-4 max-h-[calc(100vh-8rem)] overflow-y-auto">
+                <BlockNoteTOC blocks={article.content_blocks as BlockItem[]} />
+              </div>
+            </div>
+          </div>
+        ) : article.content ? (
           <div
             className="prose prose-sm max-w-none text-gray-700"
             dangerouslySetInnerHTML={{ __html: article.content }}
           />
-        )}
+        ) : null}
 
         {vehicleLinks && vehicleLinks.length > 0 && (
           <div className="mt-8 pt-6 border-t border-gray-100">

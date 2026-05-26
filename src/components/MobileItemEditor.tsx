@@ -3,9 +3,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { compressImage } from "@/lib/imageCompress";
 import ItemImageUploader from "./ItemImageUploader";
 import { PartPickerModal } from "./PartPickerModal";
 import { OutsourceModal } from "./OutsourceModal";
+import BarcodeScanModal from "./BarcodeScanModal";
 
 /* ==================== 类型定义 ==================== */
 
@@ -71,6 +73,17 @@ interface ItemPart {
   unit: string;
   brand: string;
   specification: string;
+  unit_cost?: number | null;
+  customer_opinion?: string | null;
+  notes?: string | null;
+  part_id?: string | null;
+  part_name_id?: string | null;
+  category?: string | null;
+}
+
+interface PartImageRecord {
+  storage_path?: string;
+  media_type?: string;
 }
 
 interface PartNameResult {
@@ -161,6 +174,8 @@ interface Props {
   vehicleModelId?: string | null;
   existingOrder?: ExistingOrder | null;
   existingItem?: ExistingItem | null;
+  partInventory?: Record<string, number>;
+  partImages?: Record<string, PartImageRecord[]>;
 }
 
 /* ==================== 工具函数 ==================== */
@@ -230,6 +245,8 @@ export default function MobileItemEditor({
   vehicleModelId,
   existingOrder,
   existingItem,
+  partInventory,
+  partImages,
 }: Props) {
   const router = useRouter();
   const supabase = createClient();
@@ -270,13 +287,50 @@ export default function MobileItemEditor({
   const [partTab, setPartTab] = useState<"name" | "inventory">("name");
   const [presetParts, setPresetParts] = useState<PresetPart[]>([]);
   const [presetLoading, setPresetLoading] = useState(false);
+
+  /* 配件库选择 */
+  interface InventoryPart {
+    id: string;
+    part_number: string | null;
+    name: string;
+    quantity: number;
+    unit_price: number | null;
+    part_name_id: string | null;
+  }
+  const [inventoryParts, setInventoryParts] = useState<InventoryPart[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [activeFilterTag, setActiveFilterTag] = useState<string | null>(null);
+  const [linkedPartIds, setLinkedPartIds] = useState<Set<string>>(new Set());
+
+  /* 配件库列表搜索 */
+  const [inventorySearchQuery, setInventorySearchQuery] = useState("");
+  const [inventorySearchResults, setInventorySearchResults] = useState<InventoryPart[]>([]);
+  const [inventorySearching, setInventorySearching] = useState(false);
+  const [commonTags, setCommonTags] = useState<{ part_name_id: string; name: string }[]>([]);
+  const inventorySearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const partSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* 外包弹窗 */
   const [showOutsourceModal, setShowOutsourceModal] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
 
   /* 弹窗内标签切换 */
   const [activeTab, setActiveTab] = useState<"main" | "parts">("main");
+
+  /* 配件列表展开状态 */
+  const [partsExpanded, setPartsExpanded] = useState(false);
+
+  /* 配件详情弹窗 */
+  const [selectedPartForDetail, setSelectedPartForDetail] = useState<ItemPart | null>(null);
+  const [detailActiveBranchId, setDetailActiveBranchId] = useState<string | null>(null);
+  const [detailEditing, setDetailEditing] = useState(false);
+
+  /* 替换配件弹窗 */
+  const [replacePartTarget, setReplacePartTarget] = useState<ItemPart | null>(null);
+
+  /* 配件详情弹窗图片上传 */
+  const detailFileInputRef = useRef<HTMLInputElement>(null);
 
   /* 当前用户 */
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -374,8 +428,63 @@ export default function MobileItemEditor({
             setPresetLoading(false);
           });
       }
+
+      /* 加载配件库列表（默认搜索空关键词，展示有库存优先） */
+      setInventorySearching(true);
+      supabase
+        .from("parts")
+        .select("id, part_number, name, quantity, unit_price, part_name_id")
+        .limit(100)
+        .then(({ data }) => {
+          const results = (data || []) as InventoryPart[];
+          results.sort((a, b) => {
+            const aStock = (a.quantity || 0) > 0;
+            const bStock = (b.quantity || 0) > 0;
+            if (aStock && !bStock) return -1;
+            if (!aStock && bStock) return 1;
+            return a.name.localeCompare(b.name, "zh-CN");
+          });
+          setInventorySearchResults(results);
+          setInventorySearching(false);
+        });
+
+      /* 加载通用常用配件标签（从工单配件记录统计） */
+      supabase
+        .from("work_order_item_parts")
+        .select("part_name_id, name")
+        .not("part_name_id", "is", null)
+        .limit(200)
+        .then(({ data }) => {
+          const counts: Record<string, { part_name_id: string; name: string; count: number }> = {};
+          for (const row of (data || [])) {
+            const id = row.part_name_id as string;
+            const name = row.name as string;
+            if (!id) continue;
+            if (!counts[id]) {
+              counts[id] = { part_name_id: id, name, count: 0 };
+            }
+            counts[id].count++;
+          }
+          const sorted = Object.values(counts)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+          setCommonTags(sorted.map((s) => ({ part_name_id: s.part_name_id, name: s.name })));
+        });
+
+      /* 加载与当前车型关联的配件ID */
+      if (vehicleModelId) {
+        supabase
+          .from("part_vehicle_models")
+          .select("part_id")
+          .eq("vehicle_model_id", vehicleModelId)
+          .then(({ data }) => {
+            setLinkedPartIds(new Set((data || []).map((d: { part_id: string }) => d.part_id)));
+          });
+      } else {
+        setLinkedPartIds(new Set());
+      }
     }
-  }, [showPartModal, item.service_items?.service_name_id, supabase]);
+  }, [showPartModal, item.service_items?.service_name_id, vehicleModelId, supabase]);
 
   /* 按技师等级分配预览 */
   useEffect(() => {
@@ -787,10 +896,272 @@ export default function MobileItemEditor({
     setSelectedRealParts((prev) => prev.filter((sp) => sp.part_id !== partId));
   }
 
+  /* 配件库搜索 */
+  async function doInventorySearch(keyword: string) {
+    setInventorySearching(true);
+    let query = supabase
+      .from("parts")
+      .select("id, part_number, name, quantity, unit_price, part_name_id")
+      .limit(100);
+    if (keyword.trim()) {
+      query = query.or(`name.ilike.%${keyword.trim()}%,part_number.ilike.%${keyword.trim()}%`);
+    }
+    const { data } = await query;
+    const results = (data || []) as InventoryPart[];
+    results.sort((a, b) => {
+      const aStock = (a.quantity || 0) > 0;
+      const bStock = (b.quantity || 0) > 0;
+      if (aStock && !bStock) return -1;
+      if (!aStock && bStock) return 1;
+      return a.name.localeCompare(b.name, "zh-CN");
+    });
+    setInventorySearchResults(results);
+    setInventorySearching(false);
+  }
+
+  function handleInventorySearchChange(val: string) {
+    setInventorySearchQuery(val);
+    if (inventorySearchTimer.current) clearTimeout(inventorySearchTimer.current);
+    inventorySearchTimer.current = setTimeout(() => doInventorySearch(val), 300);
+  }
+
+  /* 扫码成功回调 */
+  async function handleBarcodeScan(barcode: string) {
+    setShowBarcodeScanner(false);
+    const trimmed = barcode.trim();
+    if (!trimmed) return;
+
+    setInventorySearchQuery(trimmed);
+    setInventorySearching(true);
+
+    /* 按编码精确匹配优先 */
+    const query = supabase
+      .from("parts")
+      .select("id, part_number, name, quantity, unit_price, part_name_id")
+      .or(`part_number.ilike.%${trimmed}%,name.ilike.%${trimmed}%`)
+      .limit(20);
+
+    const { data } = await query;
+    const results = (data || []) as InventoryPart[];
+
+    /* 有库存的排在前面 */
+    results.sort((a, b) => {
+      const aStock = (a.quantity || 0) > 0;
+      const bStock = (b.quantity || 0) > 0;
+      if (aStock && !bStock) return -1;
+      if (!aStock && bStock) return 1;
+      return a.name.localeCompare(b.name, "zh-CN");
+    });
+
+    setInventorySearchResults(results);
+    setInventorySearching(false);
+
+    /* 如果只有一条结果且未添加，自动选中 */
+    if (results.length === 1) {
+      const part = results[0];
+      const alreadySelected = selectedRealParts.some((sp) => sp.part_id === part.id);
+      if (!alreadySelected) {
+        addInventoryPart(part);
+      }
+    }
+  }
+
+  function addInventoryPart(part: InventoryPart) {
+    const exists = selectedRealParts.some((sp) => sp.part_id === part.id);
+    if (exists) return;
+    setSelectedRealParts((prev) => [
+      ...prev,
+      {
+        part_id: part.id,
+        part_name_id: part.part_name_id,
+        name: part.name,
+        part_number: part.part_number || "",
+        unit: "件",
+        brand: "",
+        specification: "",
+        unit_cost: null,
+        unit_price: part.unit_price,
+        quantity: 1,
+      },
+    ]);
+  }
+
   function updateRealPartQuantity(partId: string, qty: number | null) {
     setSelectedRealParts((prev) =>
       prev.map((sp) => (sp.part_id === partId ? { ...sp, quantity: qty } : sp))
     );
+  }
+
+  /* 删除已有配件 */
+  async function deletePart(partId: string, partName: string) {
+    if (!confirm(`确定删除配件「${partName}」？`)) return;
+    setLoading(true);
+    const { error } = await supabase.from("work_order_item_parts").delete().eq("id", partId);
+    setLoading(false);
+    if (error) {
+      alert("删除失败: " + error.message);
+      return;
+    }
+    setSelectedPartForDetail(null);
+    refresh();
+  }
+
+  /* 保存配件数量 */
+  async function savePartQuantity(partId: string, qty: number) {
+    if (qty < 1) {
+      alert("数量至少为 1");
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.from("work_order_item_parts").update({ quantity: qty }).eq("id", partId);
+    setLoading(false);
+    if (error) {
+      alert("保存失败: " + error.message);
+      return;
+    }
+    if (selectedPartForDetail) {
+      setSelectedPartForDetail({ ...selectedPartForDetail, quantity: qty });
+    }
+    refresh();
+  }
+
+  /* 保存配件客户意见 */
+  async function savePartOpinion(partId: string, opinion: string) {
+    setLoading(true);
+    const { error } = await supabase.from("work_order_item_parts").update({ customer_opinion: opinion }).eq("id", partId);
+    setLoading(false);
+    if (error) {
+      alert("保存失败: " + error.message);
+      return;
+    }
+    if (selectedPartForDetail) {
+      setSelectedPartForDetail({ ...selectedPartForDetail, customer_opinion: opinion });
+    }
+  }
+
+  /* 保存配件备注 */
+  async function savePartNotes(partId: string, notes: string) {
+    setLoading(true);
+    const { error } = await supabase.from("work_order_item_parts").update({ notes: notes.trim() || null }).eq("id", partId);
+    setLoading(false);
+    if (error) {
+      alert("保存失败: " + error.message);
+      return;
+    }
+    if (selectedPartForDetail) {
+      setSelectedPartForDetail({ ...selectedPartForDetail, notes: notes.trim() || null });
+    }
+  }
+
+  /* 通用保存配件字段 */
+  async function savePartField(partId: string, field: string, value: unknown) {
+    setLoading(true);
+    const { error } = await supabase.from("work_order_item_parts").update({ [field]: value }).eq("id", partId);
+    setLoading(false);
+    if (error) {
+      alert("保存失败: " + error.message);
+      return;
+    }
+    if (selectedPartForDetail) {
+      setSelectedPartForDetail({ ...selectedPartForDetail, [field]: value });
+    }
+    // 价格/数量变更时刷新工单金额
+    if (field === "unit_price" || field === "unit_cost") {
+      refresh();
+    }
+  }
+
+  /* 替换配件 */
+  async function handleReplacePart(oldPartId: string, newPart: PickerPart) {
+    if (!confirm(`确定将配件替换为「${newPart.name}」？`)) return;
+    setLoading(true);
+
+    const pb = newPart.part_brands;
+    const brandName = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
+
+    const { error } = await supabase.from("work_order_item_parts").update({
+      part_id: newPart.id,
+      part_name_id: newPart.part_name_id,
+      name: newPart.name,
+      part_number: newPart.part_number || "",
+      unit: newPart.unit || "件",
+      brand: brandName,
+      specification: newPart.specification_text || "",
+      unit_cost: newPart.unit_cost,
+      unit_price: newPart.unit_price,
+    }).eq("id", oldPartId);
+
+    setLoading(false);
+    setReplacePartTarget(null);
+
+    if (error) {
+      alert("替换失败: " + error.message);
+      return;
+    }
+
+    setSelectedPartForDetail(null);
+    refresh();
+  }
+
+  /* 上传配件图片 */
+  async function uploadPartImage(file: File, branchId: string) {
+    if (!file.type.startsWith("image/")) {
+      alert("请选择图片文件");
+      return;
+    }
+    setLoading(true);
+    try {
+      const compressed = await compressImage(file, 300);
+      const formData = new FormData();
+      formData.append("file", compressed, file.name);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "上传失败");
+
+      const { error: dbError } = await supabase.from("work_order_item_part_media").insert({
+        work_order_item_part_id: branchId,
+        media_type: "image",
+        storage_path: result.path,
+      });
+      if (dbError) throw dbError;
+
+      // 更新本地图片缓存
+      if (partImages && result.path) {
+        const updated = { ...partImages };
+        if (!updated[branchId]) updated[branchId] = [];
+        updated[branchId] = [...updated[branchId], { storage_path: result.path, media_type: "image" }];
+      }
+    } catch (err: unknown) {
+      alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* 删除配件图片 */
+  async function removePartImage(branchId: string, storagePath: string, index: number) {
+    setLoading(true);
+    const { error } = await supabase
+      .from("work_order_item_part_media")
+      .delete()
+      .eq("work_order_item_part_id", branchId)
+      .eq("storage_path", storagePath);
+    setLoading(false);
+    if (error) {
+      alert("删除失败: " + error.message);
+      return;
+    }
+    // 更新本地图片缓存
+    if (partImages) {
+      const updated = { ...partImages };
+      if (updated[branchId]) {
+        updated[branchId] = updated[branchId].filter((_, i) => i !== index);
+      }
+    }
   }
 
   async function saveParts() {
@@ -950,8 +1321,86 @@ export default function MobileItemEditor({
         {mechanicNames.length > 0 && (
           <div className="text-xs text-gray-500 mt-1">施工人: {mechanicNames.join("、")}</div>
         )}
-        {parts.length > 0 && (
-          <div className="text-xs text-gray-500 mt-1">配件: {parts.length} 项</div>
+        {parts.length > 0 ? (
+          <div className="mt-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPartsExpanded((v) => !v);
+              }}
+              className="text-xs text-gray-500 flex items-center gap-1"
+            >
+              <span>配件: {parts.length} 项</span>
+              <svg
+                className={`w-3 h-3 transition-transform ${partsExpanded ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {partsExpanded && (
+              <div className="mt-1.5 space-y-1 pl-2 border-l-2 border-gray-200">
+                {parts.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedPartForDetail(p);
+                      setDetailActiveBranchId(p.id);
+                    }}
+                    className="w-full flex items-center justify-between text-xs py-0.5 text-left"
+                  >
+                    <div className="min-w-0 flex-1 truncate text-gray-700">
+                      {p.name}
+                      {p.part_number && <span className="text-gray-400 ml-1">({p.part_number})</span>}
+                      {p.brand && <span className="text-gray-400 ml-1">{p.brand}</span>}
+                      {p.specification && <span className="text-gray-400 ml-1">{p.specification}</span>}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      {p.customer_opinion && (
+                        <span className={`text-[10px] px-1 py-0.5 rounded ${
+                          p.customer_opinion === 'agree' ? 'bg-green-50 text-green-600' :
+                          p.customer_opinion === 'reject' ? 'bg-red-50 text-red-600' :
+                          'bg-gray-100 text-gray-500'
+                        }`}>
+                          {p.customer_opinion === 'agree' ? '同意' : p.customer_opinion === 'reject' ? '拒绝' : '待确认'}
+                        </span>
+                      )}
+                      <span className="text-gray-500">x{p.quantity}</span>
+                      <span className="text-gray-500">¥{p.total_price || (p.unit_price * p.quantity)}</span>
+                    </div>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpen(true);
+                    setShowPartModal(true);
+                  }}
+                  className="w-full text-left text-xs text-green-600 font-medium py-1"
+                >
+                  + 配件
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(true);
+              setShowPartModal(true);
+            }}
+            className="mt-1 text-xs text-gray-400 hover:text-blue-600"
+          >
+            配件：无（点击添加）
+          </button>
         )}
         {item.description && (
           <div className="text-xs text-gray-400 mt-1 line-clamp-1">备注: {item.description}</div>
@@ -970,10 +1419,14 @@ export default function MobileItemEditor({
             <div className="px-4 pt-4 pb-2 border-b border-gray-100 flex items-center justify-between shrink-0">
               <div className="min-w-0 flex-1">
                 <h3 className="text-lg font-bold text-gray-900 truncate">{item.alias_name || item.name}</h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {item.item_type === "labor" ? "工时" : item.item_type === "part" ? "配件" : "其他"} ·
-                  ¥{item.unit_price || 0} × {item.quantity || 1}
-                </p>
+                <div className="flex items-center justify-between text-xs text-gray-500 mt-0.5">
+                  <span>
+                    {item.item_type === "labor" ? "工时" : item.item_type === "part" ? "配件" : "其他"} · ¥{item.unit_price || 0}
+                  </span>
+                  <span className="font-medium text-gray-700">
+                    小计 ¥{item.total_price || (item.unit_price || 0) * (item.quantity || 1)}
+                  </span>
+                </div>
                 {/* 外包信息 */}
                 {item.is_outsourced && item.outsource_order_items && item.outsource_order_items.length > 0 && (
                   <div className="mt-1.5 text-[11px] space-y-0.5">
@@ -1313,14 +1766,17 @@ export default function MobileItemEditor({
               )}
 
               {/* 项目配件 — 移到底部并高亮 */}
-              <section
-                className={`bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-3 ${!isLocked ? "cursor-pointer active:bg-amber-100 transition-colors" : ""}`}
-                onClick={() => !isLocked && setShowPartModal(true)}
-              >
+              <section className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-bold text-amber-800">项目配件 <span className="text-amber-600 font-normal">({parts.length} 项)</span></h4>
                   {!isLocked && (
-                    <span className="text-xs text-blue-600 font-medium">+ 添加配件</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowPartModal(true)}
+                      className="text-xs text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-100 transition-colors"
+                    >
+                      + 添加配件
+                    </button>
                   )}
                 </div>
                 {parts.length > 0 ? (
@@ -1332,9 +1788,19 @@ export default function MobileItemEditor({
                           {p.part_number && <span className="text-gray-500 ml-1">({p.part_number})</span>}
                           {p.brand && <span className="text-gray-500 ml-1">{p.brand}</span>}
                         </div>
-                        <div className="flex items-center gap-2 shrink-0 ml-2 text-gray-600">
-                          <span>x{p.quantity}</span>
-                          <span>¥{p.total_price || (p.unit_price * p.quantity)}</span>
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          <span className="text-gray-600">x{p.quantity}</span>
+                          <span className="text-gray-600">¥{p.total_price || (p.unit_price * p.quantity)}</span>
+                          {!isLocked && (
+                            <button
+                              type="button"
+                              onClick={() => deletePart(p.id, p.name)}
+                              disabled={loading}
+                              className="text-[10px] text-red-500 hover:text-red-600 px-1 py-0.5 rounded hover:bg-red-50 disabled:opacity-50"
+                            >
+                              删除
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1578,7 +2044,7 @@ export default function MobileItemEditor({
       {showPartModal && (
         <div className="fixed inset-0 z-[110] flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowPartModal(false)} />
-          <div className="relative bg-white rounded-t-2xl mx-2 mb-4 max-h-[80vh] flex flex-col animate-slide-up">
+          <div className="relative bg-white rounded-t-2xl mx-2 mb-2 max-h-[92dvh] flex flex-col animate-slide-up">
             {/* 顶部固定：项目信息 */}
             <div className="shrink-0 px-4 pt-4 pb-2 border-b border-gray-100 flex items-center gap-3">
               <button
@@ -1635,6 +2101,11 @@ export default function MobileItemEditor({
                       type="text"
                       value={partSearchQuery}
                       onChange={(e) => handlePartSearchChange(e.target.value)}
+                      onFocus={(e) => {
+                        setTimeout(() => {
+                          e.target.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }, 300);
+                      }}
                       placeholder="搜索配件名称..."
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                     />
@@ -1705,14 +2176,114 @@ export default function MobileItemEditor({
                   </div>
                 )}
                 {partTab === "inventory" && (
-                  <div className="py-4">
-                    <button
-                      type="button"
-                      onClick={() => setPickerOpen(true)}
-                      className="w-full py-3 border-2 border-dashed border-blue-300 rounded-xl text-blue-600 hover:bg-blue-50 hover:border-blue-400 transition-colors text-sm font-medium"
-                    >
-                      + 从库存选择配件
-                    </button>
+                  <div className="space-y-3">
+                    {/* 搜索框 + 扫码 */}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={inventorySearchQuery}
+                        onChange={(e) => handleInventorySearchChange(e.target.value)}
+                        onFocus={(e) => {
+                          setTimeout(() => {
+                            e.target.scrollIntoView({ behavior: "smooth", block: "center" });
+                          }, 300);
+                        }}
+                        placeholder="搜索配件编码或名称..."
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowBarcodeScanner(true)}
+                        className="px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 whitespace-nowrap shrink-0"
+                      >
+                        扫码
+                      </button>
+                    </div>
+
+                    {/* 快捷标签 */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {(presetParts.length > 0 ? presetParts : commonTags).map((tag) => (
+                        <button
+                          key={tag.part_name_id}
+                          type="button"
+                          onClick={() => {
+                            if (inventorySearchQuery === tag.name) {
+                              setInventorySearchQuery("");
+                              doInventorySearch("");
+                            } else {
+                              setInventorySearchQuery(tag.name);
+                              doInventorySearch(tag.name);
+                            }
+                          }}
+                          className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                            inventorySearchQuery === tag.name
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
+                          }`}
+                        >
+                          {tag.name}
+                        </button>
+                      ))}
+                      {presetParts.length === 0 && commonTags.length === 0 && (
+                        <span className="text-xs text-gray-400">加载常用标签...</span>
+                      )}
+                    </div>
+
+                    {/* 配件列表 */}
+                    {inventorySearching ? (
+                      <p className="text-xs text-gray-400 text-center py-4">加载中...</p>
+                    ) : inventorySearchResults.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-4">未找到配件</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {inventorySearchResults.map((part) => {
+                          const isLinked = linkedPartIds.has(part.id);
+                          const hasStock = (part.quantity || 0) > 0;
+                          const alreadySelected = selectedRealParts.some((sp) => sp.part_id === part.id);
+                          return (
+                            <button
+                              key={part.id}
+                              type="button"
+                              onClick={() => !alreadySelected && addInventoryPart(part)}
+                              disabled={alreadySelected}
+                              className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                                alreadySelected
+                                  ? "bg-gray-100 border-gray-200 opacity-50"
+                                  : isLinked
+                                    ? "bg-blue-50 border-blue-200 hover:bg-blue-100"
+                                    : "bg-white border-gray-100 hover:bg-gray-50"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-sm font-medium text-gray-900 truncate">
+                                    {part.name}
+                                    {isLinked && (
+                                      <span className="ml-1 text-xs text-blue-600 font-normal">(匹配车型)</span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    {part.part_number && <span>编码: {part.part_number} · </span>}
+                                    库存:{" "}
+                                    <span className={hasStock ? "text-green-600 font-medium" : "text-red-500"}>
+                                      {part.quantity || 0}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="shrink-0 ml-3 text-right">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    ¥{part.unit_price || 0}
+                                  </div>
+                                  {alreadySelected && (
+                                    <div className="text-[10px] text-gray-400">已添加</div>
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1821,6 +2392,469 @@ export default function MobileItemEditor({
         onClose={() => setPickerOpen(false)}
         onConfirm={handlePickerConfirm}
         vehicleModelId={vehicleModelId}
+      />
+
+      {/* 配件详情弹窗 */}
+      {selectedPartForDetail && (() => {
+        const branchParts = selectedPartForDetail.part_name_id
+          ? parts.filter((p) => p.part_name_id === selectedPartForDetail.part_name_id)
+          : [selectedPartForDetail];
+        const activeBranch = branchParts.find((p) => p.id === detailActiveBranchId) || branchParts[0];
+        return (
+          <div className="fixed inset-0 z-[110] flex flex-col justify-end">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setSelectedPartForDetail(null)} />
+            <div className="relative bg-white rounded-t-2xl mx-2 mb-4 max-h-[85dvh] flex flex-col animate-slide-up">
+              {/* 头部 */}
+              <div className="px-4 pt-4 pb-2 border-b border-gray-100 flex items-center justify-between shrink-0">
+                <h3 className="text-base font-bold text-gray-900 truncate">{activeBranch.name}</h3>
+                <div className="flex items-center gap-2">
+                  {!isLocked && !detailEditing && (
+                    <button
+                      type="button"
+                      onClick={() => setDetailEditing(true)}
+                      className="text-xs text-blue-600 px-2 py-1 rounded hover:bg-blue-50"
+                    >
+                      编辑
+                    </button>
+                  )}
+                  {!isLocked && detailEditing && (
+                    <button
+                      type="button"
+                      onClick={() => setDetailEditing(false)}
+                      className="text-xs text-gray-600 px-2 py-1 rounded hover:bg-gray-100"
+                    >
+                      取消
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setDetailEditing(false); setSelectedPartForDetail(null); }}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+              {/* 内容 */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 text-sm">
+                {/* 分支选择（多分支时显示） */}
+                {branchParts.length > 1 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2">选择分支 ({branchParts.length} 个)</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {branchParts.map((bp, idx) => (
+                        <button
+                          key={bp.id}
+                          type="button"
+                          onClick={() => setDetailActiveBranchId(bp.id)}
+                          className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                            bp.id === activeBranch.id
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                          }`}
+                        >
+                          分支 {idx + 1}
+                          {bp.part_number && <span className="ml-1 opacity-80">({bp.part_number})</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 基本信息 */}
+                <div className="space-y-2">
+                  {/* 编码 */}
+                  {detailEditing ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 text-xs">编码</span>
+                      <input
+                        type="text"
+                        key={activeBranch.id + "-pn"}
+                        defaultValue={activeBranch.part_number || ""}
+                        onBlur={(e) => {
+                          const val = e.target.value.trim() || null;
+                          if (val !== (activeBranch.part_number || null)) {
+                            savePartField(activeBranch.id, "part_number", val);
+                          }
+                        }}
+                        className="w-32 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 text-xs">编码</span>
+                      <span className="text-gray-900 font-mono text-xs">{activeBranch.part_number || "-"}</span>
+                    </div>
+                  )}
+                  {/* 分类 + 单位 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 text-xs">分类</span>
+                      <span className="text-gray-900 text-xs">{activeBranch.category || "-"}</span>
+                    </div>
+                    {detailEditing ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">单位</span>
+                        <input
+                          type="text"
+                          key={activeBranch.id + "-unit"}
+                          defaultValue={activeBranch.unit || ""}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim() || null;
+                            if (val !== (activeBranch.unit || null)) {
+                              savePartField(activeBranch.id, "unit", val);
+                            }
+                          }}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">单位</span>
+                        <span className="text-gray-900 text-xs">{activeBranch.unit || "-"}</span>
+                      </div>
+                    )}
+                  </div>
+                  {/* 品牌 + 规格 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {detailEditing ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">品牌</span>
+                        <input
+                          type="text"
+                          key={activeBranch.id + "-brand"}
+                          defaultValue={activeBranch.brand || ""}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim() || null;
+                            if (val !== (activeBranch.brand || null)) {
+                              savePartField(activeBranch.id, "brand", val);
+                            }
+                          }}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">品牌</span>
+                        <span className="text-gray-900 text-xs">{activeBranch.brand || "-"}</span>
+                      </div>
+                    )}
+                    {detailEditing ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">规格</span>
+                        <input
+                          type="text"
+                          key={activeBranch.id + "-spec"}
+                          defaultValue={activeBranch.specification || ""}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim() || null;
+                            if (val !== (activeBranch.specification || null)) {
+                              savePartField(activeBranch.id, "specification", val);
+                            }
+                          }}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">规格</span>
+                        <span className="text-gray-900 text-xs">{activeBranch.specification || "-"}</span>
+                      </div>
+                    )}
+                  </div>
+                  {/* 库存 + 采购价 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 text-xs">库存</span>
+                      <span className={`font-medium text-xs ${activeBranch.part_id && partInventory && (partInventory[activeBranch.part_id] || 0) > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                        {activeBranch.part_id && partInventory ? (partInventory[activeBranch.part_id] || 0) : "-"}
+                      </span>
+                    </div>
+                    {detailEditing ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">采购价</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          key={activeBranch.id + "-cost"}
+                          defaultValue={activeBranch.unit_cost ?? ""}
+                          onBlur={(e) => {
+                            const val = e.target.value === "" ? null : parseFloat(e.target.value);
+                            if (val !== activeBranch.unit_cost) {
+                              savePartField(activeBranch.id, "unit_cost", val);
+                            }
+                          }}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">采购价</span>
+                        <span className="text-gray-900 text-xs">{activeBranch.unit_cost != null ? `¥${activeBranch.unit_cost}` : "-"}</span>
+                      </div>
+                    )}
+                  </div>
+                  {/* 销售价 + 数量 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {detailEditing ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">销售价</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          key={activeBranch.id + "-price"}
+                          defaultValue={activeBranch.unit_price}
+                          onBlur={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val) && val !== activeBranch.unit_price) {
+                              savePartField(activeBranch.id, "unit_price", val);
+                            }
+                          }}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">销售价</span>
+                        <span className="text-gray-900 text-xs">¥{activeBranch.unit_price}</span>
+                      </div>
+                    )}
+                    {detailEditing ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">数量</span>
+                        <input
+                          type="number"
+                          min={1}
+                          key={activeBranch.id + "-qty"}
+                          defaultValue={activeBranch.quantity}
+                          onBlur={(e) => {
+                            const val = parseInt(e.target.value);
+                            if (!isNaN(val) && val !== activeBranch.quantity) {
+                              savePartQuantity(activeBranch.id, val);
+                            }
+                          }}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-center"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">数量</span>
+                        <span className="text-gray-900 text-xs">x{activeBranch.quantity}</span>
+                      </div>
+                    )}
+                  </div>
+                  {/* 小计 */}
+                  <div className="border-t border-gray-100 pt-1.5 flex justify-between"
+                  >
+                    <span className="font-medium text-gray-700 text-xs"
+                    >小计</span>
+                    <span className="font-bold text-gray-900 text-sm"
+                    >¥{activeBranch.total_price || (activeBranch.unit_price * activeBranch.quantity)}</span>
+                  </div>
+                </div>
+
+                {/* 图片上传 */}
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">图片</p>
+                  {/* 已上传图片 */}
+                  {activeBranch.id && partImages && partImages[activeBranch.id] && partImages[activeBranch.id].length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {partImages[activeBranch.id].map((img, idx) => (
+                        <div key={idx} className="relative w-16 h-16 rounded border border-gray-200 overflow-hidden group">
+                          <img
+                            src={img.storage_path}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                          {detailEditing && (
+                            <button
+                              type="button"
+                              onClick={() => removePartImage(activeBranch.id, img.storage_path || "", idx)}
+                              disabled={loading}
+                              className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* 上传按钮 */}
+                  {detailEditing && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => detailFileInputRef.current?.click()}
+                        disabled={loading}
+                        className={`inline-flex items-center justify-center w-16 h-16 rounded border border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-50 disabled:pointer-events-none`}
+                      >
+                        {loading ? (
+                          <span className="text-[10px]">...</span>
+                        ) : (
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                        )}
+                      </button>
+                      <input
+                        ref={detailFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          const files = e.target.files;
+                          if (!files) return;
+                          Array.from(files).forEach((f) => uploadPartImage(f, activeBranch.id));
+                          e.target.value = "";
+                        }}
+                      />
+                    </>
+                  )}
+                </div>
+
+                {/* 客户意见（可编辑） */}
+                {detailEditing && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2">客户意见</p>
+                    <div className="flex gap-2">
+                      {(["agree", "pending", "reject"] as const).map((op) => (
+                        <button
+                          key={op}
+                          type="button"
+                          onClick={() => savePartOpinion(activeBranch.id, op)}
+                          disabled={loading}
+                          className={`flex-1 py-2 text-xs rounded-lg border font-medium disabled:opacity-50 ${
+                            (activeBranch.customer_opinion || "pending") === op
+                              ? op === "agree" ? "bg-green-600 text-white border-green-600" :
+                                op === "reject" ? "bg-red-600 text-white border-red-600" :
+                                "bg-gray-600 text-white border-gray-600"
+                              : "bg-white text-gray-600 border-gray-200"
+                          }`}
+                        >
+                          {op === "agree" ? "同意" : op === "reject" ? "拒绝" : "待确认"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {isLocked && activeBranch.customer_opinion && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">客户意见</span>
+                    <span className={`text-xs px-2 py-0.5 rounded ${
+                      activeBranch.customer_opinion === 'agree' ? 'bg-green-50 text-green-600' :
+                      activeBranch.customer_opinion === 'reject' ? 'bg-red-50 text-red-600' :
+                      'bg-gray-100 text-gray-500'
+                    }`}>
+                      {activeBranch.customer_opinion === 'agree' ? '同意' : activeBranch.customer_opinion === 'reject' ? '拒绝' : '待确认'}
+                    </span>
+                  </div>
+                )}
+
+                {/* 备注（可编辑） */}
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">备注</p>
+                  {!isLocked ? (
+                    <textarea
+                      key={activeBranch.id + "-notes"}
+                      defaultValue={activeBranch.notes || ""}
+                      onBlur={(e) => {
+                        const val = e.target.value;
+                        if (val !== (activeBranch.notes || "")) {
+                          savePartNotes(activeBranch.id, val);
+                        }
+                      }}
+                      rows={2}
+                      placeholder="添加备注..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  ) : (
+                    <p className="text-sm text-gray-700">{activeBranch.notes || "无备注"}</p>
+                  )}
+                </div>
+
+                {/* 图片 */}
+                {activeBranch.id && partImages && partImages[activeBranch.id] && partImages[activeBranch.id].length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2">图片</p>
+                    <div className="flex flex-wrap gap-2">
+                      {partImages[activeBranch.id].map((img, idx) => (
+                        <img
+                          key={idx}
+                          src={img.storage_path}
+                          alt=""
+                          className="w-20 h-20 object-cover rounded border border-gray-200"
+                          loading="lazy"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 操作按钮 */}
+                {detailEditing && (
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReplacePartTarget(activeBranch);
+                        setSelectedPartForDetail(null);
+                      }}
+                      disabled={loading}
+                      className="flex-1 px-3 py-2 text-xs text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 disabled:opacity-50"
+                    >
+                      替换配件
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deletePart(activeBranch.id, activeBranch.name)}
+                      disabled={loading}
+                      className="flex-1 px-3 py-2 text-xs text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                    >
+                      删除
+                    </button>
+                  </div>
+                )}
+              </div>
+              {/* 底部关闭按钮 */}
+              <div className="shrink-0 px-4 py-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPartForDetail(null)}
+                  className="w-full px-4 py-2.5 text-sm text-white bg-blue-600 rounded-lg"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 替换配件选择器 */}
+      {replacePartTarget && (
+        <PartPickerModal
+          open={true}
+          onClose={() => setReplacePartTarget(null)}
+          onConfirm={(parts) => {
+            if (parts.length > 0) {
+              handleReplacePart(replacePartTarget.id, parts[0]);
+            }
+          }}
+          vehicleModelId={vehicleModelId}
+        />
+      )}
+
+      {/* 扫码弹窗 */}
+      <BarcodeScanModal
+        open={showBarcodeScanner}
+        onClose={() => setShowBarcodeScanner(false)}
+        onScan={handleBarcodeScan}
       />
     </>
   );

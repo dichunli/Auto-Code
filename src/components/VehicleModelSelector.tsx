@@ -71,6 +71,8 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
   const [vmModalSelected, setVmModalSelected] = useState<Map<string, LinkedItem>>(new Map());
   const [vmModalPage, setVmModalPage] = useState(1);
   const [vmModalTotal, setVmModalTotal] = useState(0);
+  const [showAll, setShowAll] = useState(false);
+  const 初始显示数量 = 5;
 
   // 弹窗数据查询
   useEffect(() => {
@@ -381,7 +383,7 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
 
       {value.length > 0 && (
         <div className="space-y-1.5">
-          {value.map((v) => (
+          {(showAll ? value : value.slice(0, 初始显示数量)).map((v) => (
             <div key={v.id} className="bg-gray-50 rounded px-2 py-1.5 text-xs">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -505,11 +507,20 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
               </div>
             </div>
           ))}
-          {value.length > 0 && (
-            <div className="text-xs text-gray-500 text-center py-1 border-t border-gray-100 mt-1">
-              共匹配 {value.length} 个车型
-            </div>
+          {value.length > 初始显示数量 && (
+            <button
+              type="button"
+              onClick={() => setShowAll(!showAll)}
+              className="w-full text-center text-xs text-blue-600 hover:text-blue-700 py-1.5 border-t border-gray-100 hover:bg-gray-50 rounded transition-colors"
+            >
+              {showAll
+                ? "收起"
+                : `展开剩余 ${value.length - 初始显示数量} 个车型`}
+            </button>
           )}
+          <div className="text-xs text-gray-500 text-center py-1 border-t border-gray-100 mt-1">
+            共匹配 {value.length} 个车型
+          </div>
         </div>
       )}
       {value.length === 0 && (

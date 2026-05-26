@@ -132,7 +132,13 @@ export default async function WorkOrderDetailPage({
     partsByItem[p.work_order_item_id].push(p);
   });
   Object.values(partsByItem).forEach((arr) => {
-    arr.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    arr.sort((a, b) => {
+      const sortDiff = (a.sort_order || 0) - (b.sort_order || 0);
+      if (sortDiff !== 0) return sortDiff;
+      const timeA = a.created_at ? new Date(a.created_at as string).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at as string).getTime() : 0;
+      return (timeA || 0) - (timeB || 0);
+    });
   });
 
   interface SortableRecord {
@@ -475,7 +481,8 @@ export default async function WorkOrderDetailPage({
                       <ReceptionInfoEditor
                         orderId={id}
                         mileageIn={order.mileage_in}
-                        fuelLevel={order.fuel_level}
+                        dashboardPhotos={order.dashboard_photos}
+                        rejectionMarkPhotos={order.rejection_mark_photos}
                         estimatedCompletionAt={order.estimated_completion_at}
                         senderName={order.sender_name}
                         senderPhone={order.sender_phone}
@@ -534,7 +541,8 @@ export default async function WorkOrderDetailPage({
                   <ReceptionInfoEditor
                     orderId={id}
                     mileageIn={order.mileage_in}
-                    fuelLevel={order.fuel_level}
+                    dashboardPhotos={order.dashboard_photos}
+                    rejectionMarkPhotos={order.rejection_mark_photos}
                     estimatedCompletionAt={order.estimated_completion_at}
                     senderName={order.sender_name}
                     senderPhone={order.sender_phone}
@@ -597,7 +605,8 @@ export default async function WorkOrderDetailPage({
                 <ReceptionInfoEditor
                   orderId={id}
                   mileageIn={order.mileage_in}
-                  fuelLevel={order.fuel_level}
+                  dashboardPhotos={order.dashboard_photos}
+                  rejectionMarkPhotos={order.rejection_mark_photos}
                   estimatedCompletionAt={order.estimated_completion_at}
                   senderName={order.sender_name}
                   senderPhone={order.sender_phone}
@@ -770,7 +779,15 @@ export default async function WorkOrderDetailPage({
                                 unit: (p.unit as string) || (p.part_names as { unit?: string } | null)?.unit || "件",
                                 brand: (p.brand as string) || "",
                                 specification: (p.specification as string) || "",
+                                unit_cost: (p.unit_cost as number) || null,
+                                customer_opinion: (p.customer_opinion as string) || null,
+                                notes: (p.notes as string) || null,
+                                part_id: (p.part_id as string) || null,
+                                part_name_id: (p.part_name_id as string) || null,
+                                category: (p.part_names as { part_categories?: { name?: string } | null } | null)?.part_categories?.name || (p.parts as { part_categories?: { name?: string } | null } | null)?.part_categories?.name || null,
                               }))}
+                              partInventory={inventoryByPart}
+                              partImages={imagesByPart}
                               vehicleModelId={order.vehicle_model_id}
                               existingOrder={
                                 outsourceOrder?.outsource_order_items?.some(
@@ -947,9 +964,9 @@ export default async function WorkOrderDetailPage({
                                 </div>
                               </ShowTimer>
                             )}
-                            {/* 项目所用配件 */}
+                            {/* 项目所用配件（仅桌面端显示，移动端通过弹窗管理） */}
                             {(partGroupsByItem.get(item.id) || []).length > 0 && (
-                              <div className="mt-2 pt-3 border-t-2 border-dashed border-gray-400 text-xs space-y-2">
+                              <div className="hidden md:block mt-2 pt-3 border-t-2 border-dashed border-gray-400 text-xs space-y-2">
                                 <div className="inline-block text-[11px] font-medium text-gray-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded mb-1">所用配件</div>
                                 {(() => {
                                   const groups = partGroupsByItem.get(item.id) || [];
@@ -1175,6 +1192,37 @@ export default async function WorkOrderDetailPage({
               </SortableList>
                   );
                 })()}
+              </div>
+            </div>
+          )}
+
+          {/* 接车照片（排异标 + 仪表） */}
+          {(order.rejection_mark_photos?.length > 0 || order.dashboard_photos?.length > 0) && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h2 className="text-base font-semibold text-gray-900">接车照片</h2>
+              </div>
+              <div className="px-6 py-4 text-sm space-y-4">
+                {order.rejection_mark_photos?.length > 0 && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">排异标照片</div>
+                    <div className="flex flex-wrap gap-2">
+                      {order.rejection_mark_photos.map((path: string, idx: number) => (
+                        <img loading="lazy" key={idx} src={path} alt="" className="w-24 h-24 object-cover rounded border border-gray-200" />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {order.dashboard_photos?.length > 0 && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">仪表照片</div>
+                    <div className="flex flex-wrap gap-2">
+                      {order.dashboard_photos.map((path: string, idx: number) => (
+                        <img loading="lazy" key={idx} src={path} alt="" className="w-24 h-24 object-cover rounded border border-gray-200" />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -51,7 +51,8 @@ interface WorkOrder {
   customer_id: string;
   receptionist_id: string | null;
   mileage_in: number | null;
-  fuel_level: number | null;
+  dashboard_photos?: string[] | null;
+  rejection_mark_photos?: string[] | null;
   customer_complaint: string | null;
   inspection_notes: string | null;
   parts_cost: number | null;
@@ -301,10 +302,34 @@ async function ReceptionDoc({ order }: { order: WorkOrder }) {
         <div><span className="text-gray-500">车辆品牌：</span>{order.vehicles?.brand} {order.vehicles?.model}</div>
         <div><span className="text-gray-500">VIN码：</span>{order.vehicles?.vin || "-"}</div>
         <div><span className="text-gray-500">行驶里程：</span>{order.mileage_in} km</div>
-        <div><span className="text-gray-500">油量：</span>{order.fuel_level}%</div>
         <div><span className="text-gray-500">接车时间：</span>{formatDate(order.received_at)}</div>
         <div><span className="text-gray-500">接待人员：</span>{order.profiles?.full_name || "-"}</div>
       </div>
+
+      {(order.rejection_mark_photos?.length > 0 || order.dashboard_photos?.length > 0) && (
+        <div className="border-t border-gray-300 pt-4 space-y-3">
+          {order.rejection_mark_photos?.length > 0 && (
+            <div>
+              <h3 className="font-bold text-sm mb-2">排异标照片</h3>
+              <div className="flex flex-wrap gap-2">
+                {order.rejection_mark_photos.map((path, idx) => (
+                  <img key={idx} src={path} alt="" className="w-32 h-24 object-cover rounded border border-gray-200" />
+                ))}
+              </div>
+            </div>
+          )}
+          {order.dashboard_photos?.length > 0 && (
+            <div>
+              <h3 className="font-bold text-sm mb-2">仪表照片</h3>
+              <div className="flex flex-wrap gap-2">
+                {order.dashboard_photos.map((path, idx) => (
+                  <img key={idx} src={path} alt="" className="w-32 h-24 object-cover rounded border border-gray-200" />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="border-t border-gray-300 pt-4">
         <h3 className="font-bold text-sm mb-2">客户描述/故障现象</h3>
