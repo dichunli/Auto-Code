@@ -14,6 +14,7 @@ interface Requirement {
   id: string;
   seq: number;
   description?: string | null;
+  assigned_to?: string | null;
   assigned_to_profile?: { full_name?: string | null } | null;
   assignment_type?: string | null;
 }
@@ -85,6 +86,7 @@ export default function RequirementCard({ req, orderId, profiles, media, isLocke
         orderId={orderId}
         requirement={req}
         initialMedia={media || []}
+        profiles={profiles}
       />
     </>
   );

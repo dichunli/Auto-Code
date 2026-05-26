@@ -12,11 +12,19 @@ interface MediaItem {
   storage_path: string;
 }
 
+interface Profile {
+  id: string;
+  full_name?: string | null;
+}
+
 interface Requirement {
   id: string;
   description?: string | null;
   diagnosis?: string | null;
   remarks?: string | null;
+  assigned_to?: string | null;
+  assignment_type?: string | null;
+  assigned_to_profile?: { full_name?: string | null } | null;
 }
 
 interface Props {
@@ -25,9 +33,10 @@ interface Props {
   orderId: string;
   requirement?: Requirement; // 编辑模式时传入
   initialMedia?: MediaItem[]; // 编辑模式时传入现有媒体
+  profiles?: Profile[];
 }
 
-export default function RequirementBatchModal({ open, onClose, orderId, requirement, initialMedia = [] }: Props) {
+export default function RequirementBatchModal({ open, onClose, orderId, requirement, initialMedia = [], profiles = [] }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const isEdit = !!requirement;
@@ -236,44 +245,145 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
           </div>
         </div>
 
-        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-end gap-2">
-          {isEdit && (
+        <div className="px-4 py-3 border-t border-gray-200">
+          {isEdit && profiles.length > 0 && requirement && (
+            <div className="flex items-center gap-2 mb-3 pb-3 border-b border-gray-100">
+              <span className="text-xs text-gray-500 shrink-0">指派:</span>
+              {!requirement.assigned_to ? (
+                <>
+                  <select
+                    className="flex-1 min-w-0 text-xs px-2 py-1.5 border border-gray-300 rounded-lg bg-white"
+                    defaultValue=""
+                    onChange={async (e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      const name = profiles.find((p) => p.id === val)?.full_name || "";
+                      if (!confirm(`确定指派给 ${name} 吗？`)) {
+                        e.target.value = "";
+                        return;
+                      }
+                      const { data: authData } = await supabase.auth.getUser();
+                      const { error } = await supabase
+                        .from("work_order_requirements")
+                        .update({
+                          assigned_to: val,
+                          assignment_type: "assigned",
+                          dispatcher_id: authData.user?.id || null,
+                        })
+                        .eq("id", requirement.id);
+                      if (error) {
+                        alert("指派失败: " + error.message);
+                        e.target.value = "";
+                      } else {
+                        router.refresh();
+                      }
+                    }}
+                  >
+                    <option value="">选择人员...</option>
+                    {profiles.map((p) => (
+                      <option key={p.id} value={p.id}>{p.full_name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const { data: authData } = await supabase.auth.getUser();
+                      if (!authData.user) {
+                        alert("未登录，无法领单");
+                        return;
+                      }
+                      const { error } = await supabase
+                        .from("work_order_requirements")
+                        .update({
+                          assigned_to: authData.user.id,
+                          assignment_type: "claimed",
+                          dispatcher_id: null,
+                        })
+                        .eq("id", requirement.id);
+                      if (error) {
+                        alert("领单失败: " + error.message);
+                      } else {
+                        router.refresh();
+                      }
+                    }}
+                    disabled={saving}
+                    className="shrink-0 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 disabled:opacity-50"
+                  >
+                    领单
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="text-xs truncate">
+                    {requirement.assignment_type === "claimed" ? "领单" : "指派"}:
+                    <span className="font-medium ml-1">{requirement.assigned_to_profile?.full_name || "未知"}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!confirm("确定取消指派吗？")) return;
+                      const { error } = await supabase
+                        .from("work_order_requirements")
+                        .update({
+                          assigned_to: null,
+                          assignment_type: null,
+                          dispatcher_id: null,
+                        })
+                        .eq("id", requirement.id);
+                      if (error) {
+                        alert("取消失败: " + error.message);
+                      } else {
+                        router.refresh();
+                      }
+                    }}
+                    disabled={saving}
+                    className="ml-auto shrink-0 px-2 py-1 text-xs text-gray-500 hover:text-red-600 disabled:opacity-50"
+                  >
+                    取消
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2">
+            {isEdit && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!confirm("确定要删除这条需求吗？关联的媒体文件也会被删除。")) return;
+                  const { error } = await supabase
+                    .from("work_order_requirements")
+                    .delete()
+                    .eq("id", requirement.id);
+                  if (error) {
+                    alert("删除失败: " + error.message);
+                  } else {
+                    onClose();
+                    router.refresh();
+                  }
+                }}
+                className="mr-auto px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50"
+              >
+                删除
+              </button>
+            )}
             <button
               type="button"
-              onClick={async () => {
-                if (!confirm("确定要删除这条需求吗？关联的媒体文件也会被删除。")) return;
-                const { error } = await supabase
-                  .from("work_order_requirements")
-                  .delete()
-                  .eq("id", requirement.id);
-                if (error) {
-                  alert("删除失败: " + error.message);
-                } else {
-                  onClose();
-                  router.refresh();
-                }
-              }}
-              className="mr-auto px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50"
+              onClick={handleClose}
+              disabled={saving}
+              className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
             >
-              删除
+              取消
             </button>
-          )}
-          <button
-            type="button"
-            onClick={handleClose}
-            disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? "保存中..." : "保存"}
-          </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={saving}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? "保存中..." : "保存"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -52,7 +52,7 @@ function MediaTypeIcon({ type }: { type: string }) {
   return null;
 }
 
-export default function RequirementTitle({ req, orderId, media }: Props) {
+export default function RequirementTitle({ req, orderId, profiles, media }: Props) {
   const [open, setOpen] = useState(false);
   const hasImage = media.some((m) => m.media_type === "image");
   const hasVideo = media.some((m) => m.media_type === "video");
@@ -83,6 +83,7 @@ export default function RequirementTitle({ req, orderId, media }: Props) {
         orderId={orderId}
         requirement={req}
         initialMedia={media || []}
+        profiles={profiles}
       />
     </>
   );

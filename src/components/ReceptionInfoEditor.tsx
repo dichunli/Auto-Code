@@ -20,7 +20,6 @@ interface Props {
   orderId: string;
   mileageIn: number | null;
   dashboardPhotos?: string[] | null;
-  rejectionMarkPhotos?: string[] | null;
   estimatedCompletionAt: string | null;
   senderName?: string | null;
   senderPhone?: string | null;
@@ -30,7 +29,6 @@ export function ReceptionInfoEditor({
   orderId,
   mileageIn,
   dashboardPhotos,
-  rejectionMarkPhotos,
   estimatedCompletionAt,
   senderName,
   senderPhone,
@@ -45,7 +43,6 @@ export function ReceptionInfoEditor({
   const [saving, setSaving] = useState(false);
 
   const [dashPaths, setDashPaths] = useState<string[]>(dashboardPhotos || []);
-  const [rejectPaths, setRejectPaths] = useState<string[]>(rejectionMarkPhotos || []);
 
   async function handleSave() {
     setSaving(true);
@@ -59,7 +56,6 @@ export function ReceptionInfoEditor({
     payload.sender_name = sName.trim() || null;
     payload.sender_phone = sPhone.trim() || null;
     payload.dashboard_photos = dashPaths.length > 0 ? dashPaths : null;
-    payload.rejection_mark_photos = rejectPaths.length > 0 ? rejectPaths : null;
 
     const { error } = await supabase.from("work_orders").update(payload).eq("id", orderId);
     setSaving(false);
@@ -94,14 +90,6 @@ export function ReceptionInfoEditor({
                   value={mileage}
                   onChange={(e) => setMileage(e.target.value)}
                   placeholder="未输入"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">排异标照片</label>
-                <ImageUploader
-                  onUpload={setRejectPaths}
-                  existingImages={rejectPaths}
-                  maxImages={3}
                 />
               </div>
               <div>

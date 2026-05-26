@@ -482,7 +482,6 @@ export default async function WorkOrderDetailPage({
                         orderId={id}
                         mileageIn={order.mileage_in}
                         dashboardPhotos={order.dashboard_photos}
-                        rejectionMarkPhotos={order.rejection_mark_photos}
                         estimatedCompletionAt={order.estimated_completion_at}
                         senderName={order.sender_name}
                         senderPhone={order.sender_phone}
@@ -1196,23 +1195,13 @@ export default async function WorkOrderDetailPage({
             </div>
           )}
 
-          {/* 接车照片（排异标 + 仪表） */}
-          {(order.rejection_mark_photos?.length > 0 || order.dashboard_photos?.length > 0) && (
+          {/* 接车照片 */}
+          {order.dashboard_photos?.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-base font-semibold text-gray-900">接车照片</h2>
               </div>
               <div className="px-6 py-4 text-sm space-y-4">
-                {order.rejection_mark_photos?.length > 0 && (
-                  <div>
-                    <div className="text-xs text-gray-500 mb-1">排异标照片</div>
-                    <div className="flex flex-wrap gap-2">
-                      {order.rejection_mark_photos.map((path: string, idx: number) => (
-                        <img loading="lazy" key={idx} src={path} alt="" className="w-24 h-24 object-cover rounded border border-gray-200" />
-                      ))}
-                    </div>
-                  </div>
-                )}
                 {order.dashboard_photos?.length > 0 && (
                   <div>
                     <div className="text-xs text-gray-500 mb-1">仪表照片</div>
