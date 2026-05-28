@@ -74,7 +74,7 @@ export function PartSearchDropdown({
   }, []);
 
   const doSearch = useCallback(async (q: string) => {
-    const trimmed = q.trim().toUpperCase();
+    const trimmed = q.trim().toUpperCase().replace(/\s+/g, "");
     if (!trimmed || trimmed.length < 1) {
       setResults([]);
       setShowDropdown(false);

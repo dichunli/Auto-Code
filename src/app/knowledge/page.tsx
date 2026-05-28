@@ -30,8 +30,12 @@ interface 知识文章 {
   type: string;
   created_at: string;
   category_id: string | null;
-  knowledge_categories: { name: string } | null;
-  profiles: { full_name: string } | null;
+  knowledge_categories?: { name: string } | null;
+  profiles?: { full_name: string } | null;
+  /* RPC search_knowledge_articles 返回的字段 */
+  category_name?: string | null;
+  author_name?: string | null;
+  score?: number;
 }
 
 function extractTextFromInline(content: InlineContent[]): string {
@@ -85,43 +89,14 @@ function 高亮文本(text: string, keywords: string[]): React.ReactNode {
   );
 }
 
-/* 计算搜索相关性分数 */
-function 计算相关性分数(article: 知识文章, keywords: string[]): number {
-  if (keywords.length === 0) return 0;
-  const title = article.title.toLowerCase();
-  const summary = extractSummary(article).toLowerCase();
-  const categoryName = article.knowledge_categories?.name?.toLowerCase() || "";
-  let score = 0;
+/* 获取分类名，兼容 RPC 和常规查询两种数据结构 */
+function 获取分类名(a: 知识文章): string {
+  return a.knowledge_categories?.name || a.category_name || "";
+}
 
-  for (const kw of keywords) {
-    const kwLower = kw.toLowerCase();
-    if (!kwLower) continue;
-
-    /* 标题开头匹配（最高权重） */
-    if (title.startsWith(kwLower)) {
-      score += 100;
-    }
-    /* 标题包含 */
-    else if (title.includes(kwLower)) {
-      score += 50;
-    }
-    /* 分类名包含 */
-    else if (categoryName.includes(kwLower)) {
-      score += 30;
-    }
-    /* 内容摘要包含 */
-    else if (summary.includes(kwLower)) {
-      score += 10;
-    }
-  }
-
-  /* 额外加分：标题包含的关键词数量越多越靠前 */
-  const titleMatchCount = keywords.filter((kw) =>
-    kw ? title.includes(kw.toLowerCase()) : false
-  ).length;
-  score += titleMatchCount * 20;
-
-  return score;
+/* 获取作者名，兼容 RPC 和常规查询两种数据结构 */
+function 获取作者名(a: 知识文章): string {
+  return a.profiles?.full_name || a.author_name || "系统";
 }
 
 export default function KnowledgePage() {
@@ -135,14 +110,45 @@ export default function KnowledgePage() {
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /* 加载数据 */
+  /* 加载数据：有搜索词时调用 RPC，无搜索词时正常查询 */
   useEffect(() => {
     async function load() {
-      const { data: articlesData } = await supabase
-        .from("knowledge_articles")
-        .select("*, knowledge_categories(name), profiles(full_name)")
-        .order("created_at", { ascending: false })
-        .limit(100);
+      setLoading(true);
+
+      let articlesData: 知识文章[] = [];
+
+      if (debouncedKeyword.trim()) {
+        /* 分词搜索：调用数据库函数 */
+        interface 搜索结果行 {
+          id: string;
+          title: string;
+          content: string;
+          content_blocks: BlockItem[] | null;
+          type: string;
+          created_at: string;
+          category_id: string | null;
+          category_name: string | null;
+          author_name: string | null;
+          score: number;
+        }
+        const { data } = await supabase.rpc("search_knowledge_articles", {
+          search_query: debouncedKeyword.trim(),
+        });
+        const rows = (data || []) as 搜索结果行[];
+        articlesData = rows.map((row) => ({
+          ...row,
+          knowledge_categories: row.category_name ? { name: row.category_name } : null,
+          profiles: row.author_name ? { full_name: row.author_name } : null,
+        }));
+      } else {
+        /* 正常加载全部 */
+        const { data } = await supabase
+          .from("knowledge_articles")
+          .select("*, knowledge_categories(name), profiles(full_name)")
+          .order("created_at", { ascending: false })
+          .limit(100);
+        articlesData = (data || []) as 知识文章[];
+      }
 
       const { data: categoriesData } = await supabase
         .from("knowledge_categories")
@@ -150,12 +156,12 @@ export default function KnowledgePage() {
         .order("sort_order", { ascending: true })
         .limit(100);
 
-      setArticles(articlesData || []);
+      setArticles(articlesData);
       setCategories(categoriesData || []);
       setLoading(false);
     }
     load();
-  }, [supabase]);
+  }, [supabase, debouncedKeyword]);
 
   /* 搜索防抖 */
   function handleSearchChange(val: string) {
@@ -169,29 +175,14 @@ export default function KnowledgePage() {
     return debouncedKeyword.split(/\s+/).filter((k) => k.length > 0);
   }, [debouncedKeyword]);
 
-  /* 过滤文章 */
+  /* 过滤文章：分类过滤在前端做，搜索已交给数据库函数 */
   const filteredArticles = useMemo(() => {
     let result = articles;
-
-    /* 按分类过滤 */
     if (selectedCategory) {
       result = result.filter((a) => a.category_id === selectedCategory);
     }
-
-    /* 按关键词搜索 */
-    if (searchKeywords.length > 0) {
-      result = result
-        .map((a) => ({
-          article: a,
-          score: 计算相关性分数(a, searchKeywords),
-        }))
-        .filter((item) => item.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .map((item) => item.article);
-    }
-
     return result;
-  }, [articles, selectedCategory, searchKeywords]);
+  }, [articles, selectedCategory]);
 
   const 类型标签 = useCallback((type: string) => {
     const map: Record<string, { label: string; className: string }> = {
@@ -251,7 +242,7 @@ export default function KnowledgePage() {
         </div>
         {debouncedKeyword && (
           <p className="mt-2 text-xs text-gray-500">
-            搜索 "{debouncedKeyword}"，找到 {filteredArticles.length} 条结果
+            搜索 &quot;{debouncedKeyword}&quot;，找到 {filteredArticles.length} 条结果
           </p>
         )}
       </div>
@@ -341,8 +332,8 @@ export default function KnowledgePage() {
                         <span className={`text-xs px-2 py-0.5 rounded ${config.className}`}>
                           {config.label}
                         </span>
-                        {a.knowledge_categories?.name && (
-                          <span className="text-xs text-gray-500">{a.knowledge_categories.name}</span>
+                        {获取分类名(a) && (
+                          <span className="text-xs text-gray-500">{获取分类名(a)}</span>
                         )}
                       </div>
                       <h3 className="text-base font-semibold text-gray-900 mb-1">
@@ -356,7 +347,7 @@ export default function KnowledgePage() {
                           : extractSummary(a)}
                       </p>
                       <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
-                        <span>{a.profiles?.full_name || "系统"}</span>
+                        <span>{获取作者名(a)}</span>
                         <span>{new Date(a.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>

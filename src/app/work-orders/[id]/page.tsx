@@ -541,7 +541,6 @@ export default async function WorkOrderDetailPage({
                     orderId={id}
                     mileageIn={order.mileage_in}
                     dashboardPhotos={order.dashboard_photos}
-                    rejectionMarkPhotos={order.rejection_mark_photos}
                     estimatedCompletionAt={order.estimated_completion_at}
                     senderName={order.sender_name}
                     senderPhone={order.sender_phone}
@@ -605,7 +604,6 @@ export default async function WorkOrderDetailPage({
                   orderId={id}
                   mileageIn={order.mileage_in}
                   dashboardPhotos={order.dashboard_photos}
-                  rejectionMarkPhotos={order.rejection_mark_photos}
                   estimatedCompletionAt={order.estimated_completion_at}
                   senderName={order.sender_name}
                   senderPhone={order.sender_phone}

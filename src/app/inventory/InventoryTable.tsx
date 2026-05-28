@@ -233,9 +233,10 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) return items;
     const q = searchQuery.trim().toLowerCase();
+    const qNoSpace = q.replace(/\s+/g, "");
     return items.filter((item) =>
-      (item.part_number || "").toLowerCase().includes(q) ||
-      (item.oe_number || "").toLowerCase().includes(q) ||
+      (item.part_number || "").toLowerCase().replace(/\s+/g, "").includes(qNoSpace) ||
+      (item.oe_number || "").toLowerCase().replace(/\s+/g, "").includes(qNoSpace) ||
       (item.name || "").toLowerCase().includes(q) ||
       (item.barcode || "").toLowerCase().includes(q)
     );

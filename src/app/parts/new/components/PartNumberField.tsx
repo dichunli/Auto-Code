@@ -30,7 +30,7 @@ export default function PartNumberField({
   // Debounced search
   useEffect(() => {
     if (pnTimeoutRef.current) clearTimeout(pnTimeoutRef.current);
-    const searchValue = value.trim().toUpperCase();
+    const searchValue = value.trim().toUpperCase().replace(/\s+/g, "");
     if (!searchValue) {
       setPnResults(null);
       setPnSearching(false);
@@ -52,7 +52,7 @@ export default function PartNumberField({
       setPnResults(results);
       setPnSearching(false);
       if (onHasDuplicateChange) {
-        const hasDup = results.some((r) => r.part_number.toUpperCase() === searchValue);
+        const hasDup = results.some((r) => r.part_number.toUpperCase().replace(/\s+/g, "") === searchValue);
         onHasDuplicateChange(hasDup);
       }
     }, 300);
@@ -69,7 +69,7 @@ export default function PartNumberField({
 
   const hasDuplicate =
     pnResults !== null &&
-    pnResults.some((r) => r.part_number.toUpperCase() === value.trim().toUpperCase());
+    pnResults.some((r) => r.part_number.toUpperCase().replace(/\s+/g, "") === value.trim().toUpperCase().replace(/\s+/g, ""));
 
   return (
     <div className="relative">

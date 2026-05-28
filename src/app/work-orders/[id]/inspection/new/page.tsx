@@ -197,20 +197,59 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
   useEffect(() => {
     async function loadExisting() {
       if (!orderId) return;
-      const { data } = await supabase
-        .from("work_order_inspections")
-        .select("*, work_order_inspection_media(*)")
-        .eq("work_order_id", orderId)
-        .eq("inspection_type", "inspection")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+
+      /* 同时查询：
+         1. 车况检查记录
+         2. 工单基本信息（里程、PC端接车仪表照片）
+         3. 移动端接车登记的仪表照片（存于 inspection_media） */
+      const [{ data }, { data: orderData }, { data: receptionMedia }] = await Promise.all([
+        supabase
+          .from("work_order_inspections")
+          .select("*, work_order_inspection_media(*)")
+          .eq("work_order_id", orderId)
+          .eq("inspection_type", "inspection")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase.from("work_orders").select("mileage_in, dashboard_photos").eq("id", orderId).single(),
+        supabase
+          .from("work_order_inspection_media")
+          .select("storage_path")
+          .eq("media_type", "dashboard")
+          .in("inspection_id", (
+            await supabase
+              .from("work_order_inspections")
+              .select("id")
+              .eq("work_order_id", orderId)
+              .eq("inspection_type", "reception")
+          ).data?.map((r) => r.id) || []),
+      ]);
+
+      /* 合并所有来源的仪表照片 */
+      const allDashboardPaths: string[] = [];
+      if (orderData?.dashboard_photos) {
+        allDashboardPaths.push(...orderData.dashboard_photos);
+      }
+      if (receptionMedia && receptionMedia.length > 0) {
+        allDashboardPaths.push(...receptionMedia.map((m) => m.storage_path));
+      }
+      if (allDashboardPaths.length > 0) {
+        setDashboardPaths([...new Set(allDashboardPaths)]);
+      }
+
+      /* 填充接车时的里程 */
+      if (orderData?.mileage_in != null) {
+        setInspectionMileage(orderData.mileage_in.toString());
+      }
 
       if (data) {
         setExistingId(data.id);
         setMode("view");
         setInspectionTime(new Date(data.created_at).toLocaleString("zh-CN"));
-        setInspectionMileage(data.inspection_mileage?.toString() || "");
+        /* 如果有车况检查自己的里程，覆盖接车里程 */
+        if (data.inspection_mileage != null) {
+          setInspectionMileage(data.inspection_mileage.toString());
+        }
         setOilBeforeLevel(data.engine_oil_before_level ?? 50);
         setOilAfterLevel(data.engine_oil_after_level ?? 80);
         setFrontBrakePad(data.front_brake_pad_thickness?.toString() || "");
@@ -249,16 +288,6 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
 
         const { data: { user } } = await supabase.auth.getUser();
         setCanEdit(user?.id === data.submitter_id);
-      }
-
-      /* 从工单表读取共享的仪表照片 */
-      const { data: orderData } = await supabase
-        .from("work_orders")
-        .select("dashboard_photos")
-        .eq("id", orderId)
-        .single();
-      if (orderData?.dashboard_photos) {
-        setDashboardPaths(orderData.dashboard_photos);
       }
     }
     loadExisting();

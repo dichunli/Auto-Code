@@ -11,16 +11,149 @@ interface Props {
   folder?: string;
 }
 
+/* ============================================================
+   图片预览 — 支持双指缩放、滚轮缩放、拖动平移
+   ============================================================ */
+interface PreviewProps {
+  src: string;
+  index: number;
+  total: number;
+  onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}
+
+function ImagePreview({ src, index, total, onClose, onPrev, onNext }: PreviewProps) {
+  const [scale, setScale] = useState(1);
+  const [translate, setTranslate] = useState({ x: 0, y: 0 });
+  const pinchRef = useRef({ startDist: 0, startScale: 1 });
+  const panRef = useRef({ startX: 0, startY: 0, startTx: 0, startTy: 0 });
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  function getDistance(touches: TouchList) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function handleTouchStart(e: React.TouchEvent) {
+    if (e.touches.length === 2) {
+      pinchRef.current = { startDist: getDistance(e.touches), startScale: scale };
+    } else if (e.touches.length === 1 && scale > 1) {
+      panRef.current = {
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+        startTx: translate.x,
+        startTy: translate.y,
+      };
+    }
+  }
+
+  function handleTouchMove(e: React.TouchEvent) {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = getDistance(e.touches);
+      if (pinchRef.current.startDist > 0) {
+        const ratio = dist / pinchRef.current.startDist;
+        setScale(Math.max(1, Math.min(5, pinchRef.current.startScale * ratio)));
+      }
+    } else if (e.touches.length === 1 && scale > 1) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - panRef.current.startX;
+      const dy = e.touches[0].clientY - panRef.current.startY;
+      setTranslate({ x: panRef.current.startTx + dx, y: panRef.current.startTy + dy });
+    }
+  }
+
+  function handleTouchEnd() {
+    if (scale < 1) { setScale(1); setTranslate({ x: 0, y: 0 }); }
+  }
+
+  function handleWheel(e: React.WheelEvent) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setScale((s) => Math.max(1, Math.min(5, s * delta)));
+  }
+
+  function handleDoubleClick() {
+    setScale(1);
+    setTranslate({ x: 0, y: 0 });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80"
+      onClick={onClose}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      <img
+        src={src}
+        alt=""
+        className="max-w-[90vw] max-h-[90vh] object-contain rounded select-none"
+        style={{
+          transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
+          transition: scale === 1 ? "transform 0.2s ease" : "none",
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onWheel={handleWheel}
+        onDoubleClick={handleDoubleClick}
+        draggable={false}
+      />
+
+      {/* 关闭按钮 */}
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl leading-none z-10"
+      >
+        ✕
+      </button>
+
+      {/* 底部操作栏 */}
+      <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center gap-3 z-10">
+        {total > 1 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onPrev(); setScale(1); setTranslate({ x: 0, y: 0 }); }}
+            className="px-3 py-1 bg-white/20 text-white rounded hover:bg-white/30 text-sm"
+          >
+            上一张
+          </button>
+        )}
+        <span className="text-white/70 text-xs">
+          {index + 1} / {total} · {Math.round(scale * 100)}% · 双击重置
+        </span>
+        {total > 1 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onNext(); setScale(1); setTranslate({ x: 0, y: 0 }); }}
+            className="px-3 py-1 bg-white/20 text-white rounded hover:bg-white/30 text-sm"
+          >
+            下一张
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const idRef = useRef(`img-${Math.random().toString(36).slice(2, 9)}`);
-  const cameraId = `${idRef.current}-camera`;
-  const fileId = `${idRef.current}-file`;
   const [uploading, setUploading] = useState(false);
   const [images, setImages] = useState<string[]>(existingImages);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [uploadProgress, setUploadProgress] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     setImages(existingImages);
@@ -35,40 +168,80 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
       }
 
       setUploading(true);
+      setErrorMsg("");
       setUploadProgress(`0 / ${fileArray.length}`);
+      console.log(`[上传] 开始处理 ${fileArray.length} 个文件`);
 
       try {
         const results: string[] = [];
 
-        /* 先并行压缩所有图片 */
-        const compressedBlobs = await Promise.all(
-          fileArray.map(async (file) => {
-            const blob = await compressImage(file, 150);
-            return { blob, name: file.name };
-          })
-        );
+        /* 逐个处理（串行），移动端并行容易内存不足 */
+        for (let i = 0; i < fileArray.length; i++) {
+          const file = fileArray[i];
+          console.log(`[上传] 文件 ${i + 1}/${fileArray.length}: ${file.name}, 大小 ${Math.round(file.size / 1024)}KB, 类型 ${file.type}`);
+          setUploadProgress(`${i + 1} / ${fileArray.length} 压缩中...`);
 
-        /* 再并行上传 */
-        const uploadPromises = compressedBlobs.map(async ({ blob, name }, index) => {
+          let blob: Blob;
+          try {
+            blob = await compressImage(file, 150);
+            console.log(`[上传] 压缩完成: ${Math.round(blob.size / 1024)}KB`);
+          } catch (compressErr) {
+            console.error("[上传] 压缩失败,用原文件:", compressErr);
+            blob = file;
+          }
+
+          setUploadProgress(`${i + 1} / ${fileArray.length} 上传中...`);
+
           const formData = new FormData();
-          formData.append("file", blob, name);
-          const res = await fetch("/api/upload", {
-            method: "POST",
-            body: formData,
-          });
-          const result = await res.json();
-          if (!res.ok) throw new Error(result.error || "上传失败");
-          results[index] = result.path;
-          setUploadProgress(`${results.filter(Boolean).length} / ${fileArray.length}`);
-          return result.path;
-        });
+          formData.append("file", blob, file.name);
 
-        const paths = await Promise.all(uploadPromises);
-        const next = [...images, ...paths];
+          /* 10 秒超时 */
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => {
+            controller.abort();
+            console.error("[上传] fetch 超时");
+          }, 10000);
+
+          let res: Response;
+          try {
+            res = await fetch("/api/upload", {
+              method: "POST",
+              body: formData,
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+          } catch (fetchErr: unknown) {
+            clearTimeout(timeoutId);
+            const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+            console.error("[上传] fetch 失败:", msg);
+            throw new Error("网络请求失败: " + msg);
+          }
+
+          let result: { path?: string; error?: string };
+          try {
+            result = await res.json();
+          } catch {
+            throw new Error("服务器返回格式错误,状态码: " + res.status);
+          }
+
+          if (!res.ok) {
+            throw new Error(result.error || "上传失败(HTTP " + res.status + ")");
+          }
+
+          results[i] = result.path!;
+          setUploadProgress(`${results.filter(Boolean).length} / ${fileArray.length}`);
+          console.log(`[上传] 文件 ${i + 1} 上传成功: ${result.path}`);
+        }
+
+        const next = [...images, ...results];
         setImages(next);
         onUpload(next);
+        console.log("[上传] 全部完成");
       } catch (err: unknown) {
-        alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[上传] 异常:", msg);
+        setErrorMsg(msg);
+        alert("图片上传失败: " + msg);
       } finally {
         setUploading(false);
         setUploadProgress("");
@@ -118,9 +291,8 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
         ))}
         {images.length < maxImages && (
           <div className="flex gap-2">
-            {/* 移动端：用 label 关联 input，比 ref.click() 更可靠 */}
+            {/* 移动端：input 嵌套在 label 内部，比 htmlFor 关联更可靠 */}
             <label
-              htmlFor={cameraId}
               className={`md:hidden w-20 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
             >
               {uploading ? (
@@ -135,9 +307,16 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
                   <span className="text-[10px]">{images.length}/{maxImages}</span>
                 </>
               )}
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="sr-only"
+                onChange={handleFileChange}
+              />
             </label>
             <label
-              htmlFor={fileId}
               className={`hidden md:flex w-20 h-20 rounded border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
             >
               {uploading ? (
@@ -150,72 +329,34 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
                   <span className="text-[10px]">相册</span>
                 </>
               )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                onChange={handleFileChange}
+              />
             </label>
           </div>
         )}
       </div>
-      <input
-        id={cameraId}
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-      <input
-        id={fileId}
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        className="hidden"
-        onChange={handleFileChange}
-      />
+      {errorMsg && (
+        <p className="text-xs text-red-500 bg-red-50 rounded px-2 py-1">上传失败: {errorMsg}</p>
+      )}
       <p className="text-[10px] text-gray-400 md:hidden">支持拍照。单张自动压缩至150KB以内。</p>
       <p className="text-[10px] text-gray-400 hidden md:block">支持拍照、相册选择、Ctrl+V 粘贴。单张自动压缩至150KB以内。</p>
 
-      {/* 图片预览 */}
+      {/* 图片预览（支持双指缩放、滚轮缩放、拖动平移） */}
       {previewIndex !== null && images[previewIndex] && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80"
-          onClick={() => setPreviewIndex(null)}
-        >
-          <div className="relative max-w-[90vw] max-h-[90vh]">
-            <img
-              src={images[previewIndex]}
-              alt=""
-              className="max-w-full max-h-[90vh] object-contain rounded"
-              onClick={(e) => e.stopPropagation()}
-            />
-            <button
-              type="button"
-              onClick={() => setPreviewIndex(null)}
-              className="absolute -top-10 right-0 text-white text-2xl leading-none hover:text-gray-300"
-            >
-              ✕
-            </button>
-            {images.length > 1 && (
-              <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setPreviewIndex((i) => (i !== null && i > 0 ? i - 1 : images.length - 1)); }}
-                  className="px-3 py-1 bg-white/20 text-white rounded hover:bg-white/30 text-sm"
-                >
-                  上一张
-                </button>
-                <span className="text-white text-sm py-1">{previewIndex + 1} / {images.length}</span>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setPreviewIndex((i) => (i !== null && i < images.length - 1 ? i + 1 : 0)); }}
-                  className="px-3 py-1 bg-white/20 text-white rounded hover:bg-white/30 text-sm"
-                >
-                  下一张
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        <ImagePreview
+          src={images[previewIndex]}
+          index={previewIndex}
+          total={images.length}
+          onClose={() => setPreviewIndex(null)}
+          onPrev={() => setPreviewIndex((i) => (i !== null && i > 0 ? i - 1 : images.length - 1))}
+          onNext={() => setPreviewIndex((i) => (i !== null && i < images.length - 1 ? i + 1 : 0))}
+        />
       )}
     </div>
   );
