@@ -170,7 +170,6 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
       setUploading(true);
       setErrorMsg("");
       setUploadProgress(`0 / ${fileArray.length}`);
-      console.log(`[上传] 开始处理 ${fileArray.length} 个文件`);
 
       try {
         const results: string[] = [];
@@ -178,15 +177,12 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
         /* 逐个处理（串行），移动端并行容易内存不足 */
         for (let i = 0; i < fileArray.length; i++) {
           const file = fileArray[i];
-          console.log(`[上传] 文件 ${i + 1}/${fileArray.length}: ${file.name}, 大小 ${Math.round(file.size / 1024)}KB, 类型 ${file.type}`);
           setUploadProgress(`${i + 1} / ${fileArray.length} 压缩中...`);
 
           let blob: Blob;
           try {
             blob = await compressImage(file, 150);
-            console.log(`[上传] 压缩完成: ${Math.round(blob.size / 1024)}KB`);
-          } catch (compressErr) {
-            console.error("[上传] 压缩失败,用原文件:", compressErr);
+          } catch {
             blob = file;
           }
 
@@ -199,7 +195,6 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
           const controller = new AbortController();
           const timeoutId = setTimeout(() => {
             controller.abort();
-            console.error("[上传] fetch 超时");
           }, 10000);
 
           let res: Response;
@@ -213,7 +208,6 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
           } catch (fetchErr: unknown) {
             clearTimeout(timeoutId);
             const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-            console.error("[上传] fetch 失败:", msg);
             throw new Error("网络请求失败: " + msg);
           }
 
@@ -230,16 +224,13 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
 
           results[i] = result.path!;
           setUploadProgress(`${results.filter(Boolean).length} / ${fileArray.length}`);
-          console.log(`[上传] 文件 ${i + 1} 上传成功: ${result.path}`);
         }
 
         const next = [...images, ...results];
         setImages(next);
         onUpload(next);
-        console.log("[上传] 全部完成");
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error("[上传] 异常:", msg);
         setErrorMsg(msg);
         alert("图片上传失败: " + msg);
       } finally {

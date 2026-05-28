@@ -16,9 +16,6 @@ const 允许的图片类型 = new Set([
   "image/webp",
 ]);
 
-/* 允许的图片扩展名 */
-const 允许的扩展名 = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
-
 export async function POST(request: Request) {
   try {
     const { url } = await request.json();

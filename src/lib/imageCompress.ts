@@ -7,7 +7,6 @@ export async function compressImage(file: File, maxSizeKB: number = 150): Promis
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
-    const startTime = Date.now();
 
     img.onload = async () => {
       URL.revokeObjectURL(url);
@@ -49,10 +48,6 @@ export async function compressImage(file: File, maxSizeKB: number = 150): Promis
         return;
       }
 
-      console.log(
-        `[压缩] ${file.name} ${Math.round(file.size / 1024)}KB → ${Math.round(blob.size / 1024)}KB ` +
-        `(${img.width}x${img.height} → ${width}x${height})，耗时 ${Date.now() - startTime}ms`
-      );
       resolve(blob);
     };
 
