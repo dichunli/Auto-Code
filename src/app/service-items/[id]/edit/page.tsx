@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -51,12 +51,6 @@ function CommissionField({
   );
 }
 
-interface LinkedPart {
-  id: string;
-  name: string;
-  quantity: number | null;
-}
-
 interface VehiclePrice {
   id?: string;
   vehicle_model_id: number;
@@ -89,20 +83,10 @@ interface ServiceCategory {
   qc_commission_value?: number | null;
 }
 
-interface ServiceNameResult {
+interface LinkedItem {
   id: string;
   name: string;
-  category_id: string;
-  search_keywords: string | null;
-  service_categories: ServiceCategory | null;
-  sales_commission_type?: string | null;
-  sales_commission_value?: number | null;
-  diagnosis_commission_type?: string | null;
-  diagnosis_commission_value?: number | null;
-  repair_commission_type?: string | null;
-  repair_commission_value?: number | null;
-  qc_commission_type?: string | null;
-  qc_commission_value?: number | null;
+  quantity: number | null;
 }
 
 function getPriceKey(p: { price: number; vip_price: number | null; customer_parts_price: number | null; company_price: number | null }) {
@@ -123,18 +107,11 @@ export default function EditServiceItemPage() {
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
 
-  // 项目名称搜索
-  const [nameQuery, setNameQuery] = useState("");
-  const [nameResults, setNameResults] = useState<ServiceNameResult[]>([]);
-  const [nameSearching, setNameSearching] = useState(false);
-  const [selectedNameId, setSelectedNameId] = useState<string | null>(null);
-  const [showDirectCreate, setShowDirectCreate] = useState(false);
-
   const [form, setForm] = useState({
     code: "",
     category_id: "",
-    service_name_id: "",
     name: "",
+    search_keywords: "",
     standard_hours: "",
     description: "",
     default_price: "",
@@ -150,6 +127,14 @@ export default function EditServiceItemPage() {
     qc_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     qc_value: "",
   });
+
+  // 关联配件
+  const [linkedParts, setLinkedParts] = useState<LinkedItem[]>([]);
+  const [partQuery, setPartQuery] = useState("");
+  const [partResults, setPartResults] = useState<{ id: string; name: string; default_quantity?: number | null }[] | null>(null);
+  const [partSearching, setPartSearching] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   // 车型定价
   const [vehiclePrices, setVehiclePrices] = useState<VehiclePrice[]>([]);
@@ -238,9 +223,6 @@ export default function EditServiceItemPage() {
       setSavingPrices(false);
     }
   }
-
-  const [linkedParts, setLinkedParts] = useState<LinkedPart[]>([]);
-
 
   // 指定用户价格
   interface SpecialPrice {
@@ -349,8 +331,8 @@ export default function EditServiceItemPage() {
         setForm({
           code: item.code || "",
           category_id: item.category_id || "",
-          service_name_id: item.service_name_id || "",
           name: item.name || "",
+          search_keywords: item.search_keywords || "",
           standard_hours: item.standard_hours?.toString() || "",
           description: item.description || "",
           default_price: item.default_price?.toString() || "",
@@ -366,27 +348,6 @@ export default function EditServiceItemPage() {
           qc_type: item.qc_commission_type || "",
           qc_value: item.qc_commission_value?.toString() || "",
         });
-        if (item.service_name_id) {
-          setSelectedNameId(item.service_name_id);
-          const { data: partLinks } = await supabase
-            .from("service_name_part_names")
-            .select("part_name_id, quantity")
-            .eq("service_name_id", item.service_name_id)
-            .order("sort_order", { ascending: true });
-          if (partLinks && partLinks.length > 0) {
-            const partIds = partLinks.map((l) => l.part_name_id as string);
-            const { data: partNamesData } = await supabase.from("part_names").select("id, name").in("id", partIds);
-            const nameMap = new Map((partNamesData || []).map((p: { id: string; name: string }) => [p.id, p.name]));
-            const parts = partLinks
-              .map((l) => ({ id: l.part_name_id as string, name: nameMap.get(l.part_name_id as string), quantity: l.quantity ?? null }))
-              .filter((x) => x.name) as LinkedPart[];
-            setLinkedParts(parts);
-          } else {
-            setLinkedParts([]);
-          }
-        } else {
-          setLinkedParts([]);
-        }
         interface VehicleDataRow {
           id: string;
           vehicle_model_id: number;
@@ -454,129 +415,98 @@ export default function EditServiceItemPage() {
           vehicle_info: s.vehicles ? `${s.vehicles.plate_number}${s.vehicles.brand ? ` · ${s.vehicles.brand}` : ""}${s.vehicles.model ? ` ${s.vehicles.model}` : ""}` : undefined,
           price: s.price,
         })));
+
+        // 加载关联配件
+        const { data: partLinks } = await supabase
+          .from("service_item_part_names")
+          .select("part_name_id, sort_order, quantity")
+          .eq("service_item_id", id)
+          .order("sort_order", { ascending: true });
+        if (partLinks && partLinks.length > 0) {
+          const partIds = partLinks.map((l: { part_name_id: string }) => l.part_name_id);
+          const { data: partNamesData } = await supabase.from("part_names").select("id, name").in("id", partIds);
+          const nameMap = new Map((partNamesData || []).map((p: { id: string; name: string }) => [p.id, p.name]));
+          const parts = partLinks
+            .map((l: { part_name_id: string; quantity: number | null }) => ({ id: l.part_name_id, name: nameMap.get(l.part_name_id), quantity: l.quantity ?? null }))
+            .filter((x: { id: string; name: string | undefined; quantity: number | null }) => x.name) as LinkedItem[];
+          setLinkedParts(parts);
+        } else {
+          setLinkedParts([]);
+        }
       } catch (err: unknown) { console.error("加载失败:", err); alert("加载数据失败: " + (err instanceof Error ? err.message : "未知错误")); }
       finally { setLoading(false); }
     }
     load();
   }, [id, supabase, router]);
 
-  const searchServiceNames = useCallback(
-    async (q: string) => {
-      if (!q.trim()) {
-        setNameResults([]);
-        return;
-      }
-      setNameSearching(true);
-      const trimmed = q.trim();
+  /* ========== 关联配件 ========== */
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const q = partQuery.trim();
+      if (!q) { setPartResults(null); setHighlightIndex(-1); return; }
+      setPartSearching(true);
+      const { data } = await supabase
+        .from("part_names")
+        .select("id, name, default_quantity")
+        .or(`name.ilike.%${q}%,search_keywords.ilike.%${q}%`)
+        .order("name")
+        .limit(20);
+      const results = (data || []).filter((p: { id: string }) => !linkedParts.some((x) => x.id === p.id));
+      setPartResults(results);
+      setHighlightIndex(results.length > 0 ? 0 : -1);
+      setPartSearching(false);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [partQuery, supabase, linkedParts]);
 
-      // 1) 直接匹配 service_names
-      const [{ data: directMatches }, { data: partMatches }] = await Promise.all([
-        supabase
-          .from("service_names")
-          .select("id, name, category_id, search_keywords, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, service_categories(*)")
-          .or(`name.ilike.%${trimmed}%,search_keywords.ilike.%${trimmed}%`)
-          .limit(20),
-        supabase
-          .from("part_names")
-          .select("id")
-          .or(`name.ilike.%${trimmed}%,search_keywords.ilike.%${trimmed}%`)
-          .limit(20),
-      ]);
-
-      // 2) 通过配件名称间接匹配
-      let indirectMatches: ServiceNameResult[] = [];
-      const partIds = partMatches?.map((p) => p.id) || [];
-      if (partIds.length > 0) {
-        const { data: linked } = await supabase
-          .from("service_name_part_names")
-          .select("service_name_id")
-          .in("part_name_id", partIds);
-        const linkedIds = [...new Set((linked || []).map((l) => l.service_name_id as string))];
-        if (linkedIds.length > 0) {
-          const { data } = await supabase
-            .from("service_names")
-            .select("id, name, category_id, search_keywords, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, service_categories(*)")
-            .in("id", linkedIds)
-            .limit(20);
-          indirectMatches = (data || []) as ServiceNameResult[];
-        }
-      }
-
-      // 合并去重并按名称长度排序
-      const seen = new Set<string>();
-      const merged: ServiceNameResult[] = [];
-      for (const item of [...(directMatches || []), ...indirectMatches]) {
-        if (!seen.has(item.id)) {
-          seen.add(item.id);
-          merged.push(item as ServiceNameResult);
-        }
-      }
-      merged.sort((a, b) => a.name.length - b.name.length);
-      setNameResults(merged);
-      setShowDirectCreate(merged.length === 0);
-      setNameSearching(false);
-    },
-    [supabase]
-  );
-
-  async function handleSearchName() {
-    await searchServiceNames(nameQuery);
-  }
-
-  function handleNameKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter") {
+  function handlePartInputKeyDown(e: React.KeyboardEvent) {
+    if (!partResults || partResults.length === 0) return;
+    if (e.key === "ArrowDown") {
       e.preventDefault();
-      handleSearchName();
+      setHighlightIndex((prev) => Math.min(prev + 1, partResults.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIndex((prev) => Math.max(prev - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const p = partResults[highlightIndex];
+      if (p) addPart(p);
+    } else if (e.key === "Escape") {
+      setPartResults(null);
+      setHighlightIndex(-1);
     }
   }
 
-  async function selectServiceName(item: ServiceNameResult) {
-    setSelectedNameId(item.id);
-    const cat = item.service_categories;
-    setForm((prev) => ({
-      ...prev,
-      service_name_id: item.id,
-      name: item.name,
-      category_id: item.category_id || "",
-      sales_type: item.sales_commission_type || cat?.sales_commission_type || "",
-      sales_value: item.sales_commission_value?.toString() || cat?.sales_commission_value?.toString() || "",
-      diagnosis_type: item.diagnosis_commission_type || cat?.diagnosis_commission_type || "",
-      diagnosis_value: item.diagnosis_commission_value?.toString() || cat?.diagnosis_commission_value?.toString() || "",
-      repair_type: item.repair_commission_type || cat?.repair_commission_type || "",
-      repair_value: item.repair_commission_value?.toString() || cat?.repair_commission_value?.toString() || "",
-      qc_type: item.qc_commission_type || cat?.qc_commission_type || "",
-      qc_value: item.qc_commission_value?.toString() || cat?.qc_commission_value?.toString() || "",
-    }));
-
-    const { data: partLinks } = await supabase
-      .from("service_name_part_names")
-      .select("part_name_id, quantity")
-      .eq("service_name_id", item.id)
-      .order("sort_order", { ascending: true });
-
-    if (partLinks && partLinks.length > 0) {
-      const partIds = partLinks.map((l) => l.part_name_id as string);
-      const { data: partNamesData } = await supabase.from("part_names").select("id, name").in("id", partIds);
-      const nameMap = new Map((partNamesData || []).map((p: { id: string; name: string }) => [p.id, p.name]));
-      const parts = partLinks
-        .map((l) => ({ id: l.part_name_id as string, name: nameMap.get(l.part_name_id as string), quantity: l.quantity ?? null }))
-        .filter((x) => x.name) as LinkedPart[];
-      setLinkedParts(parts);
-    } else {
-      setLinkedParts([]);
-    }
-
-    setNameResults([]);
-    setShowDirectCreate(false);
+  function addPart(p: { id: string; name: string; default_quantity?: number | null }) {
+    if (linkedParts.some((x) => x.id === p.id)) { alert("该配件已关联"); return; }
+    setLinkedParts((prev) => [...prev, { id: p.id, name: p.name, quantity: p.default_quantity ?? null }]);
+    setPartQuery("");
+    setPartResults(null);
+    setHighlightIndex(-1);
   }
 
-  function handleDirectCreate() {
-    setForm((prev) => ({ ...prev, name: nameQuery.trim() }));
-    setSelectedNameId(null);
-    setShowDirectCreate(false);
-    setNameResults([]);
-    setLinkedParts([]);
+  function removePart(partId: string) {
+    setLinkedParts((prev) => prev.filter((x) => x.id !== partId));
   }
+
+  function updatePartQuantity(partId: string, val: string) {
+    const qty = val.trim() === "" ? null : parseFloat(val);
+    setLinkedParts((prev) => prev.map((p) => (p.id === partId ? { ...p, quantity: qty } : p)));
+  }
+
+  function handleDragStart(index: number) { setDragIndex(index); }
+  function handleDragOver(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === index) return;
+    setLinkedParts((prev) => {
+      const newParts = [...prev];
+      const [removed] = newParts.splice(dragIndex, 1);
+      newParts.splice(index, 0, removed);
+      return newParts;
+    });
+    setDragIndex(index);
+  }
+  function handleDragEnd() { setDragIndex(null); }
 
   function handleCategoryChange(categoryId: string) {
     const cat = categories.find((c) => c.id === categoryId);
@@ -732,8 +662,8 @@ export default function EditServiceItemPage() {
       .from("service_items")
       .update({
         category_id: form.category_id,
-        service_name_id: form.service_name_id || null,
         name: form.name.trim(),
+        search_keywords: form.search_keywords.trim() || null,
         standard_hours: form.standard_hours ? parseFloat(form.standard_hours) : null,
         description: form.description || null,
         default_price: form.default_price ? parseFloat(form.default_price) : null,
@@ -805,6 +735,29 @@ export default function EditServiceItemPage() {
       }
     }
 
+    // 保存关联配件
+    const { error: delLpError } = await supabase.from("service_item_part_names").delete().eq("service_item_id", id);
+    if (delLpError) {
+      alert("删除旧配件关联失败: " + delLpError.message);
+      setSaving(false);
+      return;
+    }
+    if (linkedParts.length > 0) {
+      const { error: lpError } = await supabase.from("service_item_part_names").insert(
+        linkedParts.map((p, idx) => ({
+          service_item_id: id,
+          part_name_id: p.id,
+          sort_order: idx,
+          quantity: p.quantity,
+        }))
+      );
+      if (lpError) {
+        alert("关联配件保存失败: " + lpError.message);
+        setSaving(false);
+        return;
+      }
+    }
+
     router.push("/service-items");
     router.refresh();
   }
@@ -830,99 +783,35 @@ export default function EditServiceItemPage() {
               <div className="text-xs text-gray-400">编码：{form.code}</div>
             )}
 
-            {/* 项目名称搜索 */}
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-gray-700">维修项目名称 *</label>
-              {!form.service_name_id && (
-                <div className="flex gap-2">
-                  <input
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="输入名称搜索名称库（支持配件名称搜索）..."
-                    value={nameQuery}
-                    onChange={(e) => setNameQuery(e.target.value)}
-                    onKeyDown={handleNameKeyDown}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSearchName}
-                    disabled={nameSearching || !nameQuery.trim()}
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {nameSearching ? "搜索中..." : "搜索"}
-                  </button>
-                </div>
-              )}
-
-              {nameResults.length > 0 && (
-                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                  {nameResults.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => selectServiceName(item)}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                        <div className="text-xs text-gray-400">
-                          {item.service_categories?.name || "-"}
-                          {item.search_keywords ? ` · ${item.search_keywords}` : ""}
-                        </div>
-                      </div>
-                      <span className="text-xs text-blue-600">选择</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {showDirectCreate && nameQuery.trim() && (
-                <div className="space-y-2">
-                  <div className="text-sm text-gray-500">未找到包含「{nameQuery.trim()}」的项目名称。</div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handleDirectCreate}
-                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-                    >
-                      直接创建「{nameQuery.trim()}」
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => router.push("/service-names/new")}
-                      className="px-4 py-2 text-sm font-medium text-blue-600 bg-white border border-blue-300 rounded-lg hover:bg-blue-50"
-                    >
-                      去名称库新建
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {form.service_name_id && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                  <span className="text-sm text-blue-800">已选择：{form.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForm((prev) => ({ ...prev, service_name_id: "", name: "" }));
-                      setSelectedNameId(null);
-                      setLinkedParts([]);
-                    }}
-                    className="text-xs text-blue-600 hover:text-blue-800 underline"
-                  >
-                    重新选择
-                  </button>
-                </div>
-              )}
-            </div>
-
             {/* 基本信息 */}
             <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">项目名称 *</label>
+                  <input
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="输入维修项目名称"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">搜索关键字</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="多个关键字用空格分隔，方便查找"
+                    value={form.search_keywords}
+                    onChange={(e) => setForm({ ...form, search_keywords: e.target.value })}
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">所属分类 *</label>
                 <select
                   required
-                  disabled={!!form.service_name_id}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={form.category_id}
                   onChange={(e) => handleCategoryChange(e.target.value)}
                 >
@@ -931,19 +820,9 @@ export default function EditServiceItemPage() {
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
-                {form.service_name_id && <p className="text-xs text-gray-400 mt-1">已关联名称库，分类不可修改</p>}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">项目名称 *</label>
-                  <input
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  />
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">标准工时</label>
                   <input
@@ -966,22 +845,84 @@ export default function EditServiceItemPage() {
               </div>
             </div>
 
-            {/* 关联配件 */}
-            {linkedParts.length > 0 && (
-              <div className="border-t border-gray-100 pt-4">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">关联配件</h3>
-                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-                  {linkedParts.map((p, idx) => (
-                    <div key={p.id} className="flex items-center justify-between px-4 py-2.5">
-                      <span className="text-sm text-gray-900">{idx + 1}. {p.name}</span>
-                      <span className="text-xs text-gray-500">
-                        数量：{p.quantity ?? <span className="text-gray-400">待定</span>}
-                      </span>
+            {/* 关联配件名称 */}
+            <div className="border-t border-gray-100 pt-4">
+              <label className="block text-sm font-semibold text-gray-900 mb-2">关联配件名称（输入搜索，键盘上下选择，可拖拽排序）</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="输入配件名称逐字检索..."
+                  value={partQuery}
+                  onChange={(e) => { setPartQuery(e.target.value); setHighlightIndex(0); }}
+                  onKeyDown={handlePartInputKeyDown}
+                />
+                {partSearching && <span className="absolute right-3 top-2.5 text-xs text-gray-400">搜索中...</span>}
+              </div>
+
+              {partResults && partResults.length > 0 && (
+                <div className="mt-1 border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                  {partResults.map((p, idx) => (
+                    <div
+                      key={p.id}
+                      onClick={() => addPart(p)}
+                      className={`flex items-center justify-between px-4 py-2 cursor-pointer ${idx === highlightIndex ? "bg-blue-50" : "hover:bg-gray-50"}`}
+                    >
+                      <span className="text-sm text-gray-900">{p.name}</span>
+                      <span className="text-xs text-blue-600">添加</span>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+
+              {partResults !== null && partResults.length === 0 && !partSearching && (
+                <div className="mt-1 text-sm text-gray-500">
+                  配件名称库中未找到「{partQuery.trim()}」
+                </div>
+              )}
+
+              {linkedParts.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs text-gray-500 mb-2">已关联配件（{linkedParts.length} 条，拖拽可排序）</p>
+                  <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                    {linkedParts.map((p, idx) => (
+                      <div
+                        key={p.id}
+                        draggable
+                        onDragStart={() => handleDragStart(idx)}
+                        onDragOver={(e) => handleDragOver(e, idx)}
+                        onDragEnd={handleDragEnd}
+                        className={`flex items-center justify-between px-4 py-2 cursor-move select-none ${dragIndex === idx ? "opacity-50 bg-blue-50" : ""}`}
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" /></svg>
+                          <span className="text-sm text-gray-900 truncate">{idx + 1}. {p.name}</span>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-gray-500">数量</span>
+                            <input
+                              type="number"
+                              className="w-16 px-1 py-0.5 text-xs border border-gray-300 rounded text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              placeholder="空"
+                              value={p.quantity === null ? "" : p.quantity}
+                              onChange={(e) => updatePartQuantity(p.id, e.target.value)}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removePart(p.id)}
+                            className="text-xs text-red-600 hover:text-red-700"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* 价格 */}
             <div className="border-t border-gray-100 pt-4">

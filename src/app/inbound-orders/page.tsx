@@ -52,7 +52,7 @@ export default function InboundOrdersPage() {
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const supplierOptions = useMemo(() => {

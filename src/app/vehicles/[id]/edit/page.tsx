@@ -22,6 +22,7 @@ export default function EditVehiclePage() {
   const [form, setForm] = useState({
     plate_number: "",
     vin: "",
+    vehicle_model_id: null as number | null,
     brand: "",
     model: "",
     engine_no: "",
@@ -66,12 +67,32 @@ export default function EditVehiclePage() {
   const [licenseBackPhotos, setLicenseBackPhotos] = useState<string[]>([]);
   const [vinSearchKeyword, setVinSearchKeyword] = useState("");
 
+  interface 车型详情 {
+    id: number;
+    排量: string | null;
+  }
+  const [vehicleModelDetail, setVehicleModelDetail] = useState<车型详情 | null>(null);
+
+  interface 客户标签 {
+    name: string;
+    color: string;
+  }
+  const [customerStar, setCustomerStar] = useState<number | null>(null);
+  const [customerTags, setCustomerTags] = useState<客户标签[]>([]);
+
+  interface 工单统计 {
+    type: string;
+    label: string;
+    count: number;
+  }
+  const [orderStats, setOrderStats] = useState<工单统计[]>([]);
+
   useEffect(() => {
     async function load() {
       const supabase = createClient();
       const { data } = await supabase
         .from("vehicles")
-        .select("*, customers(id, name, phone), companies(id, name)")
+        .select("*, customers(id, name, phone, star_level), companies(id, name)")
         .eq("id", id)
         .single();
       if (data) {
@@ -81,6 +102,7 @@ export default function EditVehiclePage() {
         setForm({
           plate_number: plate,
           vin: data.vin || "",
+          vehicle_model_id: data.vehicle_model_id || null,
           brand: data.brand || "",
           model: data.model || "",
           engine_no: data.engine_no || "",
@@ -93,12 +115,78 @@ export default function EditVehiclePage() {
           notes: data.notes || "",
         });
         setCustomerId(data.customer_id || "");
-        const c = data.customers;
-        if (c) setCurrentCustomerName(`${c.name} (${c.phone})`);
+        const c = data.customers as { id: string; name: string; phone: string | null; star_level?: number | null } | null;
+        if (c) {
+          setCurrentCustomerName(`${c.name} (${c.phone})`);
+          setCustomerStar(c.star_level ?? null);
+        }
         const comp = data.companies;
         if (comp) {
           setCompanyId(comp.id);
           setCompanyQuery(comp.name);
+        }
+
+        /* 查询客户标签 */
+        if (data.customer_id) {
+          const { data: tagData } = await supabase
+            .from("customer_tags")
+            .select("tags(name, color)")
+            .eq("customer_id", data.customer_id);
+          if (tagData) {
+            setCustomerTags(
+              tagData
+                .filter((t: unknown) => (t as { tags?: { name: string; color: string } | null }).tags)
+                .map((t: unknown) => (t as { tags: { name: string; color: string } }).tags)
+            );
+          }
+        }
+
+        /* 查询车辆历史工单统计 */
+        const { data: orderData } = await supabase
+          .from("work_orders")
+          .select("id, order_no, order_type")
+          .eq("vehicle_id", id);
+        const typeLabelMap: Record<string, string> = {
+          appointment: "预约工单",
+          quote: "历史报价单",
+          cancelled: "作废工单",
+          maintenance: "保养工单",
+        };
+        const statsMap: Record<string, number> = {};
+        (orderData || []).forEach((o: { order_type?: string }) => {
+          const t = o.order_type || "normal";
+          if (t === "normal") return;
+          statsMap[t] = (statsMap[t] || 0) + 1;
+        });
+        setOrderStats(
+          Object.entries(statsMap).map(([t, count]) => ({
+            type: t,
+            label: typeLabelMap[t] || t,
+            count,
+          }))
+        );
+
+        /* 如果已有车型关联，查询详细信息显示在输入框 */
+        if (data.vehicle_model_id) {
+          const { data: vmData } = await supabase
+            .from("vehicle_models")
+            .select("id,品牌,车系,车型,年款,销售版本,排量,发动机型号")
+            .eq("id", data.vehicle_model_id)
+            .single();
+          if (vmData) {
+            const vm = vmData as { id: number; 品牌?: string | null; 车系?: string | null; 车型?: string | null; 年款?: number | null; 销售版本?: string | null; 排量?: string | null; 发动机型号?: string | null };
+            setVehicleModelDetail({ id: vm.id, 排量: vm.排量 || null });
+            const parts = [
+              vm.年款 ? `${vm.年款}款` : null,
+              vm.品牌,
+              vm.车系,
+              vm.车型,
+              vm.销售版本,
+              vm.排量,
+              vm.发动机型号,
+            ].filter(Boolean);
+            setVinSearchKeyword(`${parts.join(" ")} [ID:${data.vehicle_model_id}]`);
+          }
         }
 
         const { data: photoData } = await supabase
@@ -217,6 +305,7 @@ export default function EditVehiclePage() {
     const { error } = await supabase.from("vehicles").update({
       customer_id: finalCustomerId,
       company_id: companyId || null,
+      vehicle_model_id: form.vehicle_model_id,
       plate_number: form.plate_number.trim().toUpperCase(),
       vin: form.vin.trim() || null,
       brand: form.brand.trim() || null,
@@ -309,8 +398,9 @@ export default function EditVehiclePage() {
             <VinDecodeInput
               value={form.vin}
               onChange={(v) => setForm({ ...form, vin: v })}
-              onDecode={(result) => {
+              onDecode={async (result) => {
                 if (!result) return;
+                /* 先填充VIN解析的基本信息 */
                 setForm((prev) => ({
                   ...prev,
                   brand: result.brand || prev.brand,
@@ -321,9 +411,67 @@ export default function EditVehiclePage() {
                   transmission_code: result.transmissionCode || prev.transmission_code,
                   year: result.year || prev.year,
                 }));
-                setVinSearchKeyword(
-                  [result.brand, result.series, result.model].filter(Boolean).join(" ")
-                );
+
+                /* 自动匹配车型库 */
+                const searchTerms = [...new Set([result.brand, result.series, result.model].filter(Boolean))];
+                const keyword = searchTerms.join(" ");
+                if (!keyword) {
+                  setVinSearchKeyword("");
+                  return;
+                }
+
+                const supabase = createClient();
+                try {
+                  const { data } = await supabase
+                    .from("vehicle_models")
+                    .select("id,品牌,车系,车型,年款,排量,销售版本,底盘代号,发动机型号,变速箱类型,变速箱代号")
+                    .ilike("搜索字段", `%${keyword}%`)
+                    .limit(5);
+
+                  if (data && data.length > 0) {
+                    const m = data[0] as {
+                      id: number;
+                      品牌: string | null;
+                      车系: string | null;
+                      车型: string | null;
+                      年款: number | null;
+                      排量: string | null;
+                      销售版本: string | null;
+                      底盘代号: string | null;
+                      发动机型号: string | null;
+                      变速箱类型: string | null;
+                      变速箱代号: string | null;
+                    };
+                    const modelParts = [...new Set([m.车系, m.车型].filter(Boolean))];
+                    setForm((prev) => ({
+                      ...prev,
+                      vehicle_model_id: m.id,
+                      brand: m.品牌 || prev.brand,
+                      model: modelParts.join(" ") || m.品牌 || prev.model,
+                      engine_no: m.发动机型号 || prev.engine_no,
+                      chassis_code: m.底盘代号 || prev.chassis_code,
+                      transmission_type: m.变速箱类型 || prev.transmission_type,
+                      transmission_code: m.变速箱代号 || prev.transmission_code,
+                    }));
+                    const displayParts = [
+                      m.年款 ? `${m.年款}款` : null,
+                      m.品牌,
+                      m.车系,
+                      m.车型,
+                      m.销售版本,
+                      m.排量,
+                      m.发动机型号,
+                    ].filter(Boolean);
+                    setVehicleModelDetail({ id: m.id, 排量: m.排量 || null });
+                    setVinSearchKeyword(`${displayParts.join(" ")} [ID:${m.id}]`);
+                  } else {
+                    setVehicleModelDetail(null);
+                    setVinSearchKeyword(keyword);
+                  }
+                } catch {
+                  setVehicleModelDetail(null);
+                  setVinSearchKeyword(keyword);
+                }
               }}
               inputClassName="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               buttonClassName="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap shrink-0"
@@ -335,16 +483,27 @@ export default function EditVehiclePage() {
           <VehicleModelSearch
             placeholder="智能模糊搜索：品牌、车系、车型、厂商、发动机、底盘代号..."
             searchKeyword={vinSearchKeyword}
-            onSelect={(m) => setForm({
-              ...form,
-              brand: m.brand,
-              model: m.model,
-              engine_no: m.engine_no,
-              chassis_code: m.chassis_code,
-              transmission_type: m.transmission_type,
-              transmission_code: m.transmission_code,
-            })}
+            selectedModelId={form.vehicle_model_id}
+            onSelect={(m) => {
+              setForm({
+                ...form,
+                vehicle_model_id: m.vehicle_model_id,
+                brand: m.brand,
+                model: m.model,
+                engine_no: m.engine_no,
+                chassis_code: m.chassis_code,
+                transmission_type: m.transmission_type,
+                transmission_code: m.transmission_code,
+              });
+              setVehicleModelDetail(null);
+            }}
           />
+          {vehicleModelDetail && (
+            <div className="mt-2 flex items-center gap-4 text-xs text-gray-500 bg-gray-50 rounded px-3 py-2">
+              <span>车型ID: <span className="text-blue-600 font-medium">{vehicleModelDetail.id}</span></span>
+              {vehicleModelDetail.排量 && <span>排量: <span className="text-gray-700">{vehicleModelDetail.排量}</span></span>}
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
           <div>
@@ -393,19 +552,54 @@ export default function EditVehiclePage() {
         <div className="border-t border-gray-100 mt-6 pt-6">
           <h2 className="text-base font-semibold text-gray-900 mb-3">车主信息</h2>
           {!changingOwner && currentCustomerName ? (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-700">当前车主：{currentCustomerName}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setChangingOwner(true);
-                  setCustomerQuery("");
-                  setCustomerResults([]);
-                }}
-                className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-              >
-                变更车主
-              </button>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-sm text-gray-700">当前车主：{currentCustomerName}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChangingOwner(true);
+                    setCustomerQuery("");
+                    setCustomerResults([]);
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  变更车主
+                </button>
+              </div>
+              {customerStar !== null && (
+                <div className="text-sm">
+                  <span className="text-gray-500">星级：</span>
+                  <span className="text-amber-500">{"★".repeat(customerStar)}{"☆".repeat(5 - customerStar)}</span>
+                </div>
+              )}
+              {customerTags.length > 0 && (
+                <div className="flex items-center gap-2 text-sm flex-wrap">
+                  <span className="text-gray-500">标签：</span>
+                  {customerTags.map((tag, i) => (
+                    <span
+                      key={i}
+                      className="px-2 py-0.5 rounded text-xs border"
+                      style={{ backgroundColor: tag.color + "20", color: tag.color, borderColor: tag.color + "40" }}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {orderStats.length > 0 && (
+                <div className="flex items-center gap-2 text-sm flex-wrap">
+                  <span className="text-gray-400 text-xs">历史工单：</span>
+                  {orderStats.map((stat) => (
+                    <span
+                      key={stat.type}
+                      className="px-2 py-0.5 rounded text-xs bg-amber-50 text-amber-700 border border-amber-200"
+                    >
+                      {stat.label}({stat.count})
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <div>

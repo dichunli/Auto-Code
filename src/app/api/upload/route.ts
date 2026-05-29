@@ -58,6 +58,7 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
+    const folder = formData.get("folder") as string | null;
     if (!file) {
       return NextResponse.json({ error: "没有文件" }, { status: 400 });
     }
@@ -68,7 +69,9 @@ export async function POST(request: Request) {
     /* 按日期分目录，避免单目录文件过多 */
     const now = new Date();
     const dateDir = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-    const dir = path.join(UPLOAD_DIR, dateDir);
+    /* 培训视频存到 training/ 子目录 */
+    const subDir = folder === "training" ? `training/${dateDir}` : dateDir;
+    const dir = path.join(UPLOAD_DIR, subDir);
     await mkdir(dir, { recursive: true });
 
     /* 生成唯一文件名 */
@@ -79,7 +82,7 @@ export async function POST(request: Request) {
     await writeFile(filePath, buffer);
 
     /* 返回相对路径，供前端通过 /api/media/... 访问 */
-    const relativePath = `${dateDir}/${fileName}`;
+    const relativePath = `${subDir}/${fileName}`;
     const result: { path: string; pdfPath?: string } = { path: `/api/media/${relativePath}` };
 
     /* 如果是 Office 文件，尝试转 PDF */

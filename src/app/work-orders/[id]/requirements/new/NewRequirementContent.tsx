@@ -38,12 +38,6 @@ interface 配件实例 {
   part_brands?: 配件品牌 | null;
 }
 
-interface 维修项目名称库 {
-  id: string;
-  name: string;
-  category_id?: string | null;
-}
-
 interface 维修项目分类信息 {
   name?: string | null;
 }
@@ -57,7 +51,6 @@ interface 维修项目 {
   default_price?: number | null;
   customer_parts_price?: number | null;
   description?: string | null;
-  service_names?: 维修项目名称库 | null;
   service_categories?: 维修项目分类信息 | null;
   sales_commission_type?: string | null;
   sales_commission_value?: number | null;
@@ -205,9 +198,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
   const [partMatchModal, setPartMatchModal] = useState<配件匹配弹窗数据 | null>(null);
   const [reworkModalIndex, setReworkModalIndex] = useState<number | null>(null);
   const [allServiceItems, setAllServiceItems] = useState<维修项目[]>([]);
-  const [serviceNames, setServiceNames] = useState<维修项目名称库[]>([]);
   const [serviceItemPrices, setServiceItemPrices] = useState<维修项目车型定价[]>([]);
-  const [profiles, setProfiles] = useState<员工[]>([]);
   const [currentUser, setCurrentUser] = useState<员工 | null>(null);
   const [searchDropdowns, setSearchDropdowns] = useState<Record<number, 搜索下拉状态>>({});
   const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
@@ -249,12 +240,8 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     supabase.from("part_names").select("*").order("name").limit(100).then(({ data }) => setPartNames((data as 配件名称[]) || []));
     supabase.from("suppliers").select("*").order("name").limit(100).then(({ data }) => setSuppliers((data as 供应商[]) || []));
     supabase.from("logistics_companies").select("*").order("name").limit(100).then(({ data }) => setLogisticsCompanies((data as 物流公司[]) || []));
-    // 加载所有标准项目（含分类和名称库信息）
-    supabase.from("service_items").select("*, service_names(id, name, category_id), service_categories(name)").order("name").limit(100).then(({ data }) => setAllServiceItems((data as 维修项目[]) || []));
-    // 加载名称库
-    supabase.from("service_names").select("*").order("name").limit(100).then(({ data }) => setServiceNames((data as 维修项目名称库[]) || []));
-    // 加载维修项目车型定价（含自带配件价）
-    supabase.from("service_item_prices").select("*").limit(100).then(({ data }) => setServiceItemPrices((data as 维修项目车型定价[]) || []));
+    // 加载所有标准项目（含分类信息）
+    supabase.from("service_items").select("*, service_categories(name)").order("name").limit(100).then(({ data }) => setAllServiceItems((data as 维修项目[]) || []));
     // 加载员工列表
     supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").limit(100).then(({ data }) => setProfiles((data as 员工[]) || []));
     // 获取当前用户信息
@@ -289,7 +276,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     }
   }, [searchParams, supabase]);
 
-  // 查询当前工单的车辆车型，用于配件智能匹配
+  // 查询当前工单的车辆车型，用于配件智能匹配和车型定价加载
   useEffect(() => {
     if (!orderId) return;
     supabase
@@ -307,8 +294,15 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
             .eq("id", vid)
             .single()
             .then(({ data: v }) => {
-              if ((v as { vehicle_model_id?: string } | null)?.vehicle_model_id) {
-                setVehicleModelId((v as { vehicle_model_id: string }).vehicle_model_id);
+              const vmd = (v as { vehicle_model_id?: string } | null)?.vehicle_model_id;
+              if (vmd) {
+                setVehicleModelId(vmd);
+                /* 按当前车型加载维修项目定价，避免全表数据遗漏 */
+                supabase
+                  .from("service_item_prices")
+                  .select("*")
+                  .eq("vehicle_model_id", vmd)
+                  .then(({ data }) => setServiceItemPrices((data as 维修项目车型定价[]) || []));
               }
             });
         }
@@ -678,8 +672,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
   function selectServiceItem(index: number, serviceItem: 维修项目) {
     const next = [...items];
     next[index].service_item_id = serviceItem.id;
-    next[index].category_id = serviceItem.service_names?.category_id || "";
-    next[index].service_name_id = serviceItem.service_names?.id || "";
+    next[index].category_id = serviceItem.category_id || "";
     next[index].name = serviceItem.name || "";
     next[index].standard_hours = serviceItem.standard_hours?.toString() || "";
 
@@ -752,8 +745,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       const isCustomerPart = false; // 批量添加默认非自带配件
       const unitPrice = si.default_price?.toString() || "";
       return {
-        category_id: si.service_names?.category_id || si.category_id || "",
-        service_name_id: si.service_names?.id || si.service_name_id || "",
+        category_id: si.category_id || "",
         service_item_id: si.id,
         name: si.name || "",
         alias_name: "",
@@ -806,16 +798,10 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       alert("请输入项目名称");
       return;
     }
-    if (!m.service_name_id) {
-      alert("请选择名称库");
-      return;
-    }
-
     const { data, error } = await supabase
       .from("service_items")
       .insert({
         name: m.name.trim(),
-        service_name_id: m.service_name_id,
         category_id: m.category_id || null,
         description: m.description || null,
         default_price: parseFloat(m.default_price) || 0,
@@ -831,7 +817,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
         qc_commission_type: m.qc_type || null,
         qc_commission_value: m.qc_value ? parseFloat(m.qc_value) : null,
       })
-      .select("*, service_names(id, name, category_id), service_categories(name)")
+      .select("*, service_categories(name)")
       .single();
 
     if (error || !data) {
@@ -851,9 +837,8 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     if (!item.name) return null;
     const revenue = (parseFloat(item.quantity) || 1) * (parseFloat(item.unit_price) || 0);
     const serviceItem = allServiceItems.find((s) => s.id === item.service_item_id);
-    const serviceName = serviceItem?.service_names;
     const category = categories.find((c) => c.id === item.category_id);
-    return calculateItemCommission(item, serviceItem, serviceName, category, revenue, 0);
+    return calculateItemCommission(item, serviceItem, null, category, revenue, 0);
   }
 
   // 计算配件预估提成
@@ -1095,7 +1080,6 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                               </div>
                               <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
                                 <span>分类: {si.service_categories?.name || "-"}</span>
-                                <span>别名: {si.service_names?.name || "-"}</span>
                                 <span>类型: 工时</span>
                               </div>
                               {si.description && (
@@ -1582,19 +1566,6 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">名称库 *</label>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    value={newItemModal.service_name_id}
-                    onChange={(e) => setNewItemModal({ ...newItemModal, service_name_id: e.target.value })}
-                  >
-                    <option value="">请选择</option>
-                    {serviceNames.map((sn) => (
-                      <option key={sn.id} value={sn.id}>{sn.name}</option>
-                    ))}
-                  </select>
-                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1773,14 +1744,12 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                 const q = bulkPickerModal.query.trim().toLowerCase();
                 const filteredList = allServiceItems.filter((si) => {
                   if (bulkPickerModal.categoryFilter) {
-                    const catId = si.service_names?.category_id || si.category_id;
-                    if (catId !== bulkPickerModal.categoryFilter) return false;
+                    if (si.category_id !== bulkPickerModal.categoryFilter) return false;
                   }
                   if (q) {
                     const hay = [
                       si.name,
                       si.service_categories?.name,
-                      si.service_names?.name,
                       si.description,
                     ].filter(Boolean).join(" ").toLowerCase();
                     if (!hay.includes(q)) return false;
@@ -1828,7 +1797,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                             </td>
                             <td className="px-3 py-2 font-medium text-gray-900">{si.name}</td>
                             <td className="px-3 py-2 text-gray-600">{si.service_categories?.name || "-"}</td>
-                            <td className="px-3 py-2 text-gray-600">{si.service_names?.name || "-"}</td>
+                            <td className="px-3 py-2 text-gray-600">-</td>
                             <td className="px-3 py-2 text-gray-600">工时</td>
                             <td className="px-3 py-2 text-right text-blue-600">
                               {si.default_price != null ? `${si.default_price}` : "-"}
@@ -1847,11 +1816,10 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                 const q = bulkPickerModal.query.trim().toLowerCase();
                 const filteredList = allServiceItems.filter((si) => {
                   if (bulkPickerModal.categoryFilter) {
-                    const catId = si.service_names?.category_id || si.category_id;
-                    if (catId !== bulkPickerModal.categoryFilter) return false;
+                    if (si.category_id !== bulkPickerModal.categoryFilter) return false;
                   }
                   if (q) {
-                    const hay = [si.name, si.service_categories?.name, si.service_names?.name, si.description].filter(Boolean).join(" ").toLowerCase();
+                    const hay = [si.name, si.service_categories?.name, si.description].filter(Boolean).join(" ").toLowerCase();
                     if (!hay.includes(q)) return false;
                   }
                   return true;

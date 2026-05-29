@@ -143,7 +143,7 @@ export function PartBranchStatusList({ status }: Props) {
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [status]);
 
   /* Supabase Realtime 订阅 */
@@ -174,7 +174,7 @@ export function PartBranchStatusList({ status }: Props) {
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [supabase]);
 
   async function loadData() {
@@ -868,7 +868,7 @@ export function PartBranchStatusList({ status }: Props) {
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b, "zh"))
       .map(([key, rs]) => ({ key, rows: rs.sort((a, b) => (a.name || "").localeCompare(b.name || "", "zh")) }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [rows, groupBy]);
 
   const totalCols = 15;

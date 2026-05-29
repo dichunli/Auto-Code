@@ -347,7 +347,7 @@ export default async function WorkOrderDetailPage({
     const comm = calculateItemCommission(
       item,
       item.service_items,
-      item.service_items?.service_names,
+      null,
       null,
       item.total_price || 0,
       0
@@ -785,7 +785,7 @@ export default async function WorkOrderDetailPage({
                               }))}
                               partInventory={inventoryByPart}
                               partImages={imagesByPart}
-                              vehicleModelId={order.vehicle_model_id}
+                              vehicleModelId={vehicleModelId}
                               existingOrder={
                                 outsourceOrder?.outsource_order_items?.some(
                                   (oi: { work_order_item_id?: string }) => oi.work_order_item_id === item.id
@@ -923,7 +923,7 @@ export default async function WorkOrderDetailPage({
                                 const comm = calculateItemCommission(
                                   item,
                                   item.service_items,
-                                  item.service_items?.service_names,
+                                  null,
                                   null,
                                   item.total_price || 0,
                                   0
@@ -1166,7 +1166,7 @@ export default async function WorkOrderDetailPage({
                           const comm = calculateItemCommission(
                             item,
                             item.service_items,
-                            item.service_items?.service_names,
+                            null,
                             null,
                             item.total_price || 0,
                             0

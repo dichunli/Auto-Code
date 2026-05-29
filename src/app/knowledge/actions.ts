@@ -68,8 +68,6 @@ function 解析HTML为Blocks(html: string): BlockNoteBlock[] {
     }
   }
 
-  /* 匹配列表项 */
-  const liRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
   const listItems: { text: string; parentTag: string; index: number }[] = [];
   const ulRegex = /<ul[^>]*>([\s\S]*?)<\/ul>/gi;
   const olRegex = /<ol[^>]*>([\s\S]*?)<\/ol>/gi;

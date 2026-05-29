@@ -3,12 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-interface ServiceItem {
-  id: string;
-  name: string;
-  code?: string | null;
-}
-
 interface Supplier {
   id: string;
   name: string;

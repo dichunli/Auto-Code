@@ -88,7 +88,7 @@ export default function SupplierReturnsPage() {
 
   useEffect(() => {
     loadRecords();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [statusFilter, supabase]);
 
   useEffect(() => {

@@ -212,7 +212,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       setSelectedIds(new Set());
       setSelectedQtyMap({});
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [open]);
 
   // 客户端过滤（库存状态、关联车型等）

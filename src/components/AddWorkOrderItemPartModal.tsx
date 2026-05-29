@@ -176,7 +176,7 @@ export function AddWorkOrderItemPartModal({
         });
       setPresetParts([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [open, serviceNameId, itemId]);
 
   // 搜索配件名称
@@ -241,13 +241,6 @@ export function AddWorkOrderItemPartModal({
     ]);
     setSearchQuery("");
     setSearchResults([]);
-  }
-
-  // 修改已选配件名称的数量
-  function updateNameQuantity(partNameId: string, qty: number | null) {
-    setSelectedPartNames((prev) =>
-      prev.map((sp) => (sp.part_name_id === partNameId ? { ...sp, quantity: qty } : sp))
-    );
   }
 
   // 移除已选配件名称

@@ -16,24 +16,24 @@ export default function EditOtherCategoryPage({ params }: { params: Promise<{ id
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    async function loadData(categoryId: string) {
+      const { data } = await supabase
+        .from("other_transaction_categories")
+        .select("*")
+        .eq("id", categoryId)
+        .single();
+      if (data) {
+        setName(data.name || "");
+        setType(data.type as "income" | "expense");
+        setIsActive(data.is_active ?? true);
+      }
+    }
+
     params.then((p) => {
       setId(p.id);
       loadData(p.id);
     });
   }, [params]);
-
-  async function loadData(categoryId: string) {
-    const { data } = await supabase
-      .from("other_transaction_categories")
-      .select("*")
-      .eq("id", categoryId)
-      .single();
-    if (data) {
-      setName(data.name || "");
-      setType(data.type as "income" | "expense");
-      setIsActive(data.is_active ?? true);
-    }
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

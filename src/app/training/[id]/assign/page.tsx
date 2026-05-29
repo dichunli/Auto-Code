@@ -20,7 +20,7 @@ export default function AssignCoursePage({ params }: { params: Promise<{ id: str
 
   useEffect(() => {
     params.then((p) => setCourseId(p.id));
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => {
+    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }: { data: Employee[] | null }) => {
       setEmployees(data || []);
     });
   }, [params, supabase]);

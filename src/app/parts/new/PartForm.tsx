@@ -16,7 +16,7 @@ import PartNameSearch, { PartNameItem, CommissionFillData } from "./components/P
 import DocNameSearch from "./components/DocNameSearch";
 import BrandSearch from "./components/BrandSearch";
 import SpecSearch from "./components/SpecSearch";
-import CommissionSection, { CommissionFormData } from "./components/CommissionSection";
+import CommissionSection from "./components/CommissionSection";
 import FormActions from "./components/FormActions";
 import submitPart from "./submitPart";
 

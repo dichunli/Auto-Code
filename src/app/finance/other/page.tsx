@@ -13,6 +13,7 @@ interface 其它收支 {
   transaction_date: string;
   notes: string | null;
   images: string[] | null;
+  operator_id: string | null;
   profiles: { full_name: string } | null;
   other_payment_methods: { name: string } | null;
   other_transaction_categories: { name: string } | null;
@@ -38,6 +39,9 @@ export default async function OtherTransactionsPage({
   const startDate = `${month}-01`;
   const endDay = new Date(yearNum, monthNum, 0).getDate();
   const endDate = `${month}-${String(endDay).padStart(2, "0")}`;
+
+  const { data: userData } = await supabase.auth.getUser();
+  const currentUserId = userData.user?.id;
 
   const { data: rows } = await supabase
     .from("other_transactions")
@@ -158,13 +162,19 @@ export default async function OtherTransactionsPage({
                   <td className="px-4 py-3 text-gray-500 max-w-[120px] truncate">{item.notes || "-"}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Link
-                        href={`/finance/other/${item.id}/edit`}
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        编辑
-                      </Link>
-                      <DeleteButton id={item.id} />
+                      {item.operator_id === currentUserId ? (
+                        <>
+                          <Link
+                            href={`/finance/other/${item.id}/edit`}
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            编辑
+                          </Link>
+                          <DeleteButton id={item.id} />
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-400">他人提交</span>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -70,7 +70,7 @@ export default function PartCategoriesPage() {
   const supabase = createClient();
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<配件分类[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);

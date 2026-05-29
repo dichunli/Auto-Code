@@ -474,7 +474,7 @@ export default function usePartFormInit(
     if (prefillData.purchase_price) setForm((prev) => ({ ...prev, purchase_price: prefillData.purchase_price! }));
     if (prefillData.notes) setForm((prev) => ({ ...prev, notes: prefillData.notes! }));
     if (prefillData.document_name) setDocNameQuery(prefillData.document_name);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   /* 5. 弹窗模式下：编码精确匹配配件库时自动填充 */
@@ -559,6 +559,6 @@ export default function usePartFormInit(
       }
     }, 500);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [partNumber, isEmbedded, isEditMode]);
 }

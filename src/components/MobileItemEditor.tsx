@@ -163,7 +163,6 @@ interface PickerPart {
 interface Props {
   item: ItemData;
   orderId: string;
-  orderStatus: string;
   profiles: Profile[];
   mechanicGroups: MechanicGroup[];
   existingMechanics: ExistingMechanic[];
@@ -234,7 +233,6 @@ function canCancelLastStart(logs: ConstructionLog[]): boolean {
 export default function MobileItemEditor({
   item,
   orderId,
-  orderStatus,
   profiles,
   mechanicGroups,
   existingMechanics,
@@ -297,9 +295,6 @@ export default function MobileItemEditor({
     unit_price: number | null;
     part_name_id: string | null;
   }
-  const [inventoryParts, setInventoryParts] = useState<InventoryPart[]>([]);
-  const [inventoryLoading, setInventoryLoading] = useState(false);
-  const [activeFilterTag, setActiveFilterTag] = useState<string | null>(null);
   const [linkedPartIds, setLinkedPartIds] = useState<Set<string>>(new Set());
 
   /* 配件库列表搜索 */
@@ -316,7 +311,6 @@ export default function MobileItemEditor({
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
 
   /* 弹窗内标签切换 */
-  const [activeTab, setActiveTab] = useState<"main" | "parts">("main");
 
   /* 配件列表展开状态 */
   const [partsExpanded, setPartsExpanded] = useState(false);
@@ -396,6 +390,23 @@ export default function MobileItemEditor({
 
   const personCount = mechanicIds.length;
   const isMulti = personCount > 1;
+
+  /* ========== 配件相关 ========== */
+
+  const doPartSearch = useCallback(async (keyword: string) => {
+    setPartSearching(true);
+    let query = supabase
+      .from("part_names")
+      .select("id, name, unit, default_quantity")
+      .order("name")
+      .limit(50);
+    if (keyword.trim()) {
+      query = query.ilike("name", `%${keyword.trim()}%`);
+    }
+    const { data } = await query;
+    setPartSearchResults(data || []);
+    setPartSearching(false);
+  }, [supabase]);
 
   /* 初始化配件弹窗状态 */
   useEffect(() => {
@@ -517,7 +528,7 @@ export default function MobileItemEditor({
       setLevelPreview(preview);
     }
     calcPreview();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [commissionRule, selectedPersons, selectedGroup, mechanicMode]);
 
   /* 通用刷新 */
@@ -796,23 +807,6 @@ export default function MobileItemEditor({
     setLogs(loaded);
     setElapsed(calculateTotalSeconds(loaded, new Date()));
     refresh();
-  }
-
-  /* ========== 配件相关 ========== */
-
-  async function doPartSearch(keyword: string) {
-    setPartSearching(true);
-    let query = supabase
-      .from("part_names")
-      .select("id, name, unit, default_quantity")
-      .order("name")
-      .limit(50);
-    if (keyword.trim()) {
-      query = query.ilike("name", `%${keyword.trim()}%`);
-    }
-    const { data } = await query;
-    setPartSearchResults(data || []);
-    setPartSearching(false);
   }
 
   function handlePartSearchChange(val: string) {

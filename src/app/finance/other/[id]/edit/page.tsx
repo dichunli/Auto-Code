@@ -18,9 +18,9 @@ interface 分类 {
   type: string;
 }
 
-export default function EditOtherTransactionPage({ params }: { params: Promise<{ id: string }> }) {
+export default function EditOtherTransactionPage({ params }: { params: { id: string } }) {
   const router = useRouter();
-  const [id, setId] = useState("");
+  const id = params.id;
 
   const [type, setType] = useState<"income" | "expense">("expense");
   const [amount, setAmount] = useState("");
@@ -28,6 +28,7 @@ export default function EditOtherTransactionPage({ params }: { params: Promise<{
   const [transactionDate, setTransactionDate] = useState("");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
+  const [无权编辑, set无权编辑] = useState(false);
 
   const [accounts, setAccounts] = useState<账户[]>([]);
   const [categories, setCategories] = useState<分类[]>([]);
@@ -37,12 +38,20 @@ export default function EditOtherTransactionPage({ params }: { params: Promise<{
 
   async function loadData(itemId: string) {
     const supabase = createClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+
     const { data } = await supabase
       .from("other_transactions")
       .select("*")
       .eq("id", itemId)
       .single();
     if (data) {
+      /* 只能修改自己提交的 */
+      if (data.operator_id && data.operator_id !== userId) {
+        set无权编辑(true);
+        return;
+      }
       setType(data.type as "income" | "expense");
       setAmount(String(data.amount || ""));
       setCounterparty(data.counterparty || "");
@@ -55,11 +64,8 @@ export default function EditOtherTransactionPage({ params }: { params: Promise<{
   }
 
   useEffect(() => {
-    params.then((p) => {
-      setId(p.id);
-      loadData(p.id);
-    });
-  }, [params]);
+    if (id) loadData(id);
+  }, [id]);
 
   /* 加载收款方式（按操作员过滤）和分类列表 */
   useEffect(() => {
@@ -139,6 +145,25 @@ export default function EditOtherTransactionPage({ params }: { params: Promise<{
   }
 
   const filteredCategories = categories.filter((c) => c.type === type);
+
+  if (无权编辑) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <PageHeader title="编辑收支" description="修改其它收支记录" />
+        <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
+          <p className="text-red-600 font-medium">无权编辑</p>
+          <p className="text-sm text-gray-500 mt-2">只能修改自己提交的收支记录</p>
+          <button
+            type="button"
+            onClick={() => router.push("/finance/other")}
+            className="mt-4 px-4 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50"
+          >
+            返回列表
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto">

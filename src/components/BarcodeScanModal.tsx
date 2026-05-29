@@ -9,9 +9,11 @@ function 是Capacitor环境(): boolean {
 }
 
 /* ========== 原生扫码（Capacitor） ========== */
-async function 原生扫码(): Promise<string | null> {
+async function 原生扫码(扫描中Ref: React.MutableRefObject<boolean>): Promise<string | null> {
+  let BarcodeScanner: typeof import("@capacitor-community/barcode-scanner").BarcodeScanner | null = null;
   try {
-    const { BarcodeScanner } = await import("@capacitor-community/barcode-scanner");
+    const mod = await import("@capacitor-community/barcode-scanner");
+    BarcodeScanner = mod.BarcodeScanner;
 
     /* 检查/请求摄像头权限 */
     const status = await BarcodeScanner.checkPermission({ force: true });
@@ -22,20 +24,30 @@ async function 原生扫码(): Promise<string | null> {
 
     /* 隐藏网页内容，全屏显示摄像头 */
     await BarcodeScanner.hideBackground();
+    扫描中Ref.current = true;
 
-    /* 开始扫描 */
-    const result = await BarcodeScanner.startScan();
-
-    /* 恢复网页内容 */
-    await BarcodeScanner.showBackground();
-    await BarcodeScanner.stopScan();
-
-    if (result.hasContent) {
-      return result.content;
+    try {
+      /* 开始扫描 */
+      const result = await BarcodeScanner.startScan();
+      if (result.hasContent) {
+        return result.content;
+      }
+      return null;
+    } finally {
+      /* 无论扫描结果如何，都恢复网页内容 */
+      扫描中Ref.current = false;
+      await BarcodeScanner.showBackground().catch(() => {});
+      await BarcodeScanner.stopScan().catch(() => {});
     }
-    return null;
   } catch (err: unknown) {
+    扫描中Ref.current = false;
+    if (BarcodeScanner) {
+      await BarcodeScanner.showBackground().catch(() => {});
+      await BarcodeScanner.stopScan().catch(() => {});
+    }
     const msg = err instanceof Error ? err.message : String(err);
+    /* 用户主动取消不算错误 */
+    if (msg.includes("stopped") || msg.includes("cancel")) return null;
     alert("扫码失败: " + msg);
     return null;
   }
@@ -74,6 +86,7 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
   const [不支持, set不支持] = useState(false);
   const [手动输入, set手动输入] = useState("");
   const [是App, set是App] = useState(false);
+  const 原生扫描中Ref = useRef(false);
 
   /* 检测环境 */
   useEffect(() => {
@@ -83,7 +96,7 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
   /* ========== APP 原生扫码流程 ========== */
   const 启动原生扫码 = useCallback(async () => {
     set扫描中(true);
-    const code = await 原生扫码();
+    const code = await 原生扫码(原生扫描中Ref);
     set扫描中(false);
     if (code) {
       set识别码(code);
@@ -191,6 +204,14 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     return () => {
       已取消Ref.current = true;
       停止扫描();
+      /* APP 环境：如果原生扫描还在进行，强制停止 */
+      if (原生扫描中Ref.current) {
+        原生扫描中Ref.current = false;
+        import("@capacitor-community/barcode-scanner").then(({ BarcodeScanner }) => {
+          BarcodeScanner.showBackground().catch(() => {});
+          BarcodeScanner.stopScan().catch(() => {});
+        }).catch(() => {});
+      }
     };
   }, [open, 是App, 停止扫描, 启动网页扫描, 启动原生扫码]);
 

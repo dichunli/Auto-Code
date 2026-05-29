@@ -44,6 +44,7 @@ export default function MobileReceptionListPage() {
   const supabase = createClient();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showFilter, setShowFilter] = useState(false);
   const [plateFilter, setPlateFilter] = useState("");
   const [vehicleFilter, setVehicleFilter] = useState("");
@@ -52,16 +53,27 @@ export default function MobileReceptionListPage() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const { data } = await supabase
-        .from("work_orders")
-        .select(
-          "id, order_no, status, received_at, mileage_in, vehicles(plate_number, brand, model), customers(name, phone)"
-        )
-        .not("status", "in", `(${SETTLED_STATUSES.join(",")})`)
-        .neq("order_type", "cancelled")
-        .order("created_at", { ascending: false });
-      setOrders((data || []) as Order[]);
-      setLoading(false);
+      setError(null);
+      try {
+        const { data, error: queryError } = await supabase
+          .from("work_orders")
+          .select(
+            "id, order_no, status, received_at, mileage_in, vehicles(plate_number, brand, model), customers(name, phone)"
+          )
+          .not("status", "in", `(${SETTLED_STATUSES.join(",")})`)
+          .neq("order_type", "cancelled")
+          .order("created_at", { ascending: false });
+        if (queryError) {
+          setError("查询失败：" + queryError.message);
+        } else {
+          setOrders((data || []) as Order[]);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError("加载失败：" + msg);
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, [supabase]);
@@ -144,6 +156,16 @@ export default function MobileReceptionListPage() {
       <div className="flex-1 p-3 space-y-3">
         {loading ? (
           <div className="text-center text-gray-400 py-12 text-sm">加载中...</div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <div className="text-sm text-red-500 mb-2">{error}</div>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-sm text-blue-600 underline"
+            >
+              刷新重试
+            </button>
+          </div>
         ) : filteredOrders.length > 0 ? (
           filteredOrders.map((order) => (
             <Link

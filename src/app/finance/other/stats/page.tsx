@@ -18,6 +18,7 @@ interface 记录 {
   counterparty: string | null;
   transaction_date: string;
   notes: string | null;
+  operator_id: string | null;
   other_payment_methods: { name: string } | null;
   other_transaction_categories: { name: string } | null;
   profiles: { full_name: string } | null;
@@ -28,9 +29,16 @@ interface 汇总项 {
   amount: number;
 }
 
+interface 提交人 {
+  id: string;
+  full_name: string;
+}
+
 export default function OtherStatsPage() {
   const [categories, setCategories] = useState<分类[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [operators, setOperators] = useState<提交人[]>([]);
+  const [selectedOperators, setSelectedOperators] = useState<string[]>([]);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [records, setRecords] = useState<记录[]>([]);
@@ -40,7 +48,7 @@ export default function OtherStatsPage() {
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalExpense, setTotalExpense] = useState(0);
 
-  /* 加载分类列表 */
+  /* 加载分类列表和提交人列表 */
   useEffect(() => {
     async function loadCategories() {
       const supabase = createClient();
@@ -52,6 +60,16 @@ export default function OtherStatsPage() {
       setCategories(data || []);
     }
     loadCategories();
+
+    async function loadOperators() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .order("full_name");
+      setOperators(data || []);
+    }
+    loadOperators();
 
     /* 默认本月 */
     const now = new Date();
@@ -79,6 +97,10 @@ export default function OtherStatsPage() {
 
     if (selectedCategories.length > 0) {
       query = query.in("category_id", selectedCategories);
+    }
+
+    if (selectedOperators.length > 0) {
+      query = query.in("operator_id", selectedOperators);
     }
 
     const { data } = await query;
@@ -125,6 +147,12 @@ export default function OtherStatsPage() {
   function toggleCategory(id: string) {
     setSelectedCategories((prev) =>
       prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+    );
+  }
+
+  function toggleOperator(id: string) {
+    setSelectedOperators((prev) =>
+      prev.includes(id) ? prev.filter((o) => o !== id) : [...prev, id]
     );
   }
 
@@ -180,6 +208,35 @@ export default function OtherStatsPage() {
             <button
               type="button"
               onClick={() => setSelectedCategories([])}
+              className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+            >
+              清除选择
+            </button>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">提交人（可多选）</label>
+          <div className="flex flex-wrap gap-2">
+            {operators.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => toggleOperator(o.id)}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                  selectedOperators.includes(o.id)
+                    ? "bg-blue-50 text-blue-700 border-blue-300"
+                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                {o.full_name || "未命名"}
+              </button>
+            ))}
+          </div>
+          {selectedOperators.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedOperators([])}
               className="mt-2 text-xs text-gray-500 hover:text-gray-700"
             >
               清除选择

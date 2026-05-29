@@ -76,7 +76,7 @@ export default function ProcurementReportPage() {
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   /* 供应商采购金额排名 */

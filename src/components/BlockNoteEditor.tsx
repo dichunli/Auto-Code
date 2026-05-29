@@ -105,6 +105,7 @@ function CustomToolbarButtons({
   uploadFile: (file: File) => Promise<string>;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoFileInputRef = useRef<HTMLInputElement>(null);
 
   const btnBase =
     "px-1.5 py-1 text-xs rounded hover:bg-gray-200 transition-colors text-gray-600 flex items-center gap-1";
@@ -179,6 +180,70 @@ function CustomToolbarButtons({
       pos.block,
       "after"
     );
+  }
+
+  async function handleUploadVideo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    /* 限制 500MB */
+    if (file.size > 500 * 1024 * 1024) {
+      alert("视频大小不能超过 500MB");
+      e.target.value = "";
+      return;
+    }
+
+    /* 限制 30分钟 */
+    try {
+      const duration = await new Promise<number>((resolve, reject) => {
+        const video = document.createElement("video");
+        const url = URL.createObjectURL(file);
+        const timer = setTimeout(() => {
+          URL.revokeObjectURL(url);
+          reject(new Error("读取视频信息超时"));
+        }, 10000);
+        video.onloadedmetadata = () => {
+          clearTimeout(timer);
+          URL.revokeObjectURL(url);
+          resolve(video.duration);
+        };
+        video.onerror = () => {
+          clearTimeout(timer);
+          URL.revokeObjectURL(url);
+          reject(new Error("无法读取视频信息"));
+        };
+        video.src = url;
+      });
+      if (duration > 30 * 60) {
+        alert("视频时长不能超过 30 分钟");
+        e.target.value = "";
+        return;
+      }
+    } catch {
+      /* 无法读取时长时继续上传 */
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file, file.name);
+      formData.append("folder", "training");
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "上传失败");
+
+      const pos = editor.getTextCursorPosition();
+      editor.insertBlocks(
+        [{ type: "video", props: { url: result.path, caption: "" } }],
+        pos.block,
+        "after"
+      );
+    } catch (err: unknown) {
+      alert("视频上传失败: " + (err instanceof Error ? err.message : String(err)));
+    }
+    e.target.value = "";
   }
 
   function handleInsertFile() {
@@ -276,13 +341,33 @@ function CustomToolbarButtons({
         onChange={handleInsertImage}
       />
 
-      {/* 插入视频 */}
-      <button type="button" className={btnBase} onClick={handleInsertVideo} title="插入视频">
+      {/* 插入视频链接 */}
+      <button type="button" className={btnBase} onClick={handleInsertVideo} title="插入视频链接">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
         </svg>
-        视频
+        视频链接
       </button>
+
+      {/* 上传视频 */}
+      <button
+        type="button"
+        className={btnBase}
+        onClick={() => videoFileInputRef.current?.click()}
+        title="上传视频"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+        </svg>
+        上传视频
+      </button>
+      <input
+        ref={videoFileInputRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={handleUploadVideo}
+      />
 
       {/* 上传文件 */}
       <button

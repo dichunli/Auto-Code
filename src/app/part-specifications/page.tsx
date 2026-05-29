@@ -27,7 +27,7 @@ export default function PartSpecificationsPage() {
   }
   const [allSpecs, setAllSpecs] = useState<Spec[]>([]);
   const [filteredSpecs, setFilteredSpecs] = useState<Spec[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
