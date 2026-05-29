@@ -197,3 +197,33 @@ pm2 start ecosystem.config.js
 - 项目根目录有 `deploy.bat`，双击可自动完成"停服→构建→启动"
 - 如果构建出现红色报错，需先修复错误再重新部署
 - 部署完成后需强制刷新浏览器（Ctrl+F5）清除缓存
+
+### APP 打包规范
+1. **改完代码后必须先构建前端**：`npm run build`
+2. **同步 Capacitor**：`npx cap sync`
+3. **打包 APK**：
+   ```bash
+   cd android
+   gradlew.bat assembleDebug
+   ```
+4. **安装 APK 前必须先卸载旧版本**，避免缓存冲突
+5. APK 输出路径：`android/app/build/outputs/apk/debug/app-debug.apk`
+
+### 已踩过的坑（不再重复）
+| 问题 | 原因 | 解决办法 |
+|------|------|----------|
+| 页面按钮点不动 / JS 404 | PM2 运行期间执行了 `npm run build` | 必须用 `deploy.bat` 部署，或手动"停服→构建→启动" |
+| APP 显示"网页无法打开" | 手机与电脑不在同一 WiFi，或防火墙阻止 | 确认同 WiFi；检查 Windows 防火墙是否放行 3000 端口 |
+| APP 顶部有地址栏 | `MainActivity.java` 用了 Chrome Custom Tabs | 必须用 Capacitor 的 `BridgeActivity` + WebView |
+| APP 登录没反应 | `@supabase/ssr` 的 cookie 在 WebView 中不工作 | `createClient()` 已做判断：APP 环境用 `@supabase/supabase-js` |
+| APP 扫码后黑屏 | 关闭弹窗时没停止原生扫描 | `BarcodeScanModal.tsx` 中关闭时强制调用 `stopScan()` |
+| "Failed to load chunk" | WebView 缓存了旧 HTML，引用旧 chunk | 卸载旧 APP 再安装；或清除 APP 缓存 |
+
+### 修改后必做检查清单
+1. 本地浏览器测试通过
+2. `npm run build` 无红色报错
+3. `npm run lint` 无 error（exit code 为 0）
+4. `git add -A && git commit -m "描述"`
+5. 用 `deploy.bat` 部署（或手动停服→构建→启动）
+6. 浏览器 `Ctrl+F5` 强制刷新验证
+7. 需要 APK 时：卸载旧版 → 装新版 → 验证
