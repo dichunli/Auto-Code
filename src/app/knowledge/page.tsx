@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import KnowledgeImportExport from "./KnowledgeImportExport";
 
 interface 知识分类 {
   id: string;
@@ -100,7 +101,7 @@ function 获取作者名(a: 知识文章): string {
 }
 
 export default function KnowledgePage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [articles, setArticles] = useState<知识文章[]>([]);
   const [categories, setCategories] = useState<知识分类[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,55 +113,90 @@ export default function KnowledgePage() {
 
   /* 加载数据：有搜索词时调用 RPC，无搜索词时正常查询 */
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       setLoading(true);
+      console.log("[知识库] 开始加载数据, debouncedKeyword:", debouncedKeyword);
+      try {
+        let articlesData: 知识文章[] = [];
 
-      let articlesData: 知识文章[] = [];
-
-      if (debouncedKeyword.trim()) {
-        /* 分词搜索：调用数据库函数 */
-        interface 搜索结果行 {
-          id: string;
-          title: string;
-          content: string;
-          content_blocks: BlockItem[] | null;
-          type: string;
-          created_at: string;
-          category_id: string | null;
-          category_name: string | null;
-          author_name: string | null;
-          score: number;
+        if (debouncedKeyword.trim()) {
+          /* 分词搜索：调用数据库函数 */
+          console.log("[知识库] 调用 RPC search_knowledge_articles");
+          interface 搜索结果行 {
+            id: string;
+            title: string;
+            content: string;
+            content_blocks: BlockItem[] | null;
+            type: string;
+            created_at: string;
+            category_id: string | null;
+            category_name: string | null;
+            author_name: string | null;
+            score: number;
+          }
+          const { data, error } = await supabase.rpc("search_knowledge_articles", {
+            search_query: debouncedKeyword.trim(),
+          });
+          if (cancelled) return;
+          if (error) {
+            console.error("[知识库] 搜索出错:", error);
+            setArticles([]);
+            setCategories([]);
+            setLoading(false);
+            return;
+          }
+          const rows = (data || []) as 搜索结果行[];
+          articlesData = rows.map((row) => ({
+            ...row,
+            knowledge_categories: row.category_name ? { name: row.category_name } : null,
+            profiles: row.author_name ? { full_name: row.author_name } : null,
+          }));
+        } else {
+          /* 正常加载全部 */
+          console.log("[知识库] 正常加载文章列表");
+          const { data, error } = await supabase
+            .from("knowledge_articles")
+            .select("*, knowledge_categories(name), profiles(full_name)")
+            .order("created_at", { ascending: false })
+            .limit(100);
+          if (cancelled) return;
+          if (error) {
+            console.error("[知识库] 加载文章出错:", error);
+            setArticles([]);
+            setCategories([]);
+            setLoading(false);
+            return;
+          }
+          articlesData = (data || []) as 知识文章[];
         }
-        const { data } = await supabase.rpc("search_knowledge_articles", {
-          search_query: debouncedKeyword.trim(),
-        });
-        const rows = (data || []) as 搜索结果行[];
-        articlesData = rows.map((row) => ({
-          ...row,
-          knowledge_categories: row.category_name ? { name: row.category_name } : null,
-          profiles: row.author_name ? { full_name: row.author_name } : null,
-        }));
-      } else {
-        /* 正常加载全部 */
-        const { data } = await supabase
-          .from("knowledge_articles")
-          .select("*, knowledge_categories(name), profiles(full_name)")
-          .order("created_at", { ascending: false })
+
+        console.log("[知识库] 加载分类...");
+        const { data: categoriesData, error: catError } = await supabase
+          .from("knowledge_categories")
+          .select("*")
+          .order("sort_order", { ascending: true })
           .limit(100);
-        articlesData = (data || []) as 知识文章[];
+        if (cancelled) return;
+        if (catError) {
+          console.error("[知识库] 加载分类出错:", catError);
+        }
+
+        console.log("[知识库] 加载完成, 文章:", articlesData.length, "分类:", (categoriesData || []).length);
+        setArticles(articlesData);
+        setCategories(categoriesData || []);
+      } catch (err: unknown) {
+        console.error("[知识库] 加载数据异常:", err);
+        setArticles([]);
+        setCategories([]);
       }
-
-      const { data: categoriesData } = await supabase
-        .from("knowledge_categories")
-        .select("*")
-        .order("sort_order", { ascending: true })
-        .limit(100);
-
-      setArticles(articlesData);
-      setCategories(categoriesData || []);
-      setLoading(false);
+      if (!cancelled) {
+        setLoading(false);
+        console.log("[知识库] loading 已关闭");
+      }
     }
     load();
+    return () => { cancelled = true; };
   }, [supabase, debouncedKeyword]);
 
   /* 搜索防抖 */
@@ -170,9 +206,20 @@ export default function KnowledgePage() {
     searchTimer.current = setTimeout(() => setDebouncedKeyword(val.trim()), 300);
   }
 
-  /* 解析搜索关键词（支持空格分隔多关键词） */
+  /* 解析搜索关键词：空格分词 + 中文2字子串（和数据库函数逻辑一致） */
   const searchKeywords = useMemo(() => {
-    return debouncedKeyword.split(/\s+/).filter((k) => k.length > 0);
+    const raw = debouncedKeyword.trim();
+    if (!raw) return [];
+    const words = raw.split(/\s+/).filter((k) => k.length > 0);
+    const result = [...words];
+    for (const word of words) {
+      if (word.length >= 2) {
+        for (let i = 0; i <= word.length - 2; i++) {
+          result.push(word.slice(i, i + 2));
+        }
+      }
+    }
+    return [...new Set(result)];
   }, [debouncedKeyword]);
 
   /* 过滤文章：分类过滤在前端做，搜索已交给数据库函数 */
@@ -201,6 +248,19 @@ export default function KnowledgePage() {
         description="维修指导、视频教程、常见问题"
         action={{ href: "/knowledge/new", label: "新建知识" }}
       />
+
+      {/* 导入导出按钮 */}
+      <div className="mb-4">
+        <KnowledgeImportExport
+          articles={articles}
+          categories={categories}
+          onSuccess={() => {
+            setSearchKeyword("");
+            setDebouncedKeyword("");
+            window.location.reload();
+          }}
+        />
+      </div>
 
       {/* 搜索栏 */}
       <div className="mb-6">

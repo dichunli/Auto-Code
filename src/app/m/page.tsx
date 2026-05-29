@@ -34,6 +34,13 @@ const MENU_ITEMS: MenuItem[] = [
     color: "bg-orange-500",
   },
   {
+    label: "其它收支",
+    href: "/m/other",
+    permission: "payment:manage",
+    desc: "随手记收入支出、拍照上传",
+    color: "bg-yellow-500",
+  },
+  {
     label: "手机收货",
     href: "/m/receiving",
     permission: "inventory:in",

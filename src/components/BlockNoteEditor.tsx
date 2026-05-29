@@ -192,6 +192,49 @@ function CustomToolbarButtons({
     );
   }
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleUploadOfficeFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowed = [".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".pdf"];
+    const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    if (!allowed.includes(ext)) {
+      alert("仅支持 Word、Excel、PPT、PDF 文件");
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file, file.name);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "上传失败");
+
+      const pos = editor.getTextCursorPosition();
+      editor.insertBlocks(
+        [{
+          type: "file",
+          props: {
+            url: result.path,
+            name: file.name,
+            pdfUrl: result.pdfPath || "",
+          },
+        }],
+        pos.block,
+        "after"
+      );
+    } catch (err: unknown) {
+      alert("文件上传失败: " + (err instanceof Error ? err.message : String(err)));
+    }
+    e.target.value = "";
+  }
+
   const [showJumpModal, setShowJumpModal] = useState(false);
 
   return (
@@ -241,12 +284,32 @@ function CustomToolbarButtons({
         视频
       </button>
 
-      {/* 插入文件 */}
-      <button type="button" className={btnBase} onClick={handleInsertFile} title="插入文件">
+      {/* 上传文件 */}
+      <button
+        type="button"
+        className={btnBase}
+        onClick={() => fileInputRef.current?.click()}
+        title="上传文件"
+      >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
         文件
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf"
+        className="hidden"
+        onChange={handleUploadOfficeFile}
+      />
+
+      {/* 插入文件链接 */}
+      <button type="button" className={btnBase} onClick={handleInsertFile} title="插入文件链接">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+        </svg>
+        链接
       </button>
 
       {/* 插入表格 */}

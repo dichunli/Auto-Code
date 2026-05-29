@@ -77,3 +77,5 @@ tmp_*.html
 
 # 测试脚本
 scripts/
+
+certificates

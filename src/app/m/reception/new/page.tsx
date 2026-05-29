@@ -60,6 +60,12 @@ export default function MobileReceptionNewPage() {
   const [newVin, setNewVin] = useState("");
   const vehicleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  /* ---------- VIN 查重 ---------- */
+  const [vinDuplicateVehicle, setVinDuplicateVehicle] = useState<Vehicle | null>(null);
+  const [showVinDuplicateDialog, setShowVinDuplicateDialog] = useState(false);
+  const [showChangeOwnerDialog, setShowChangeOwnerDialog] = useState(false);
+  const vinCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   /* ---------- 车辆关联工单统计 ---------- */
   const [vehicleOrderStats, setVehicleOrderStats] = useState<{
     active: number;
@@ -175,6 +181,37 @@ export default function MobileReceptionNewPage() {
   }, [selectedVehicle, supabase]);
 
   /* ============================================================
+     VIN 查重（新建车辆时）
+     ============================================================ */
+  useEffect(() => {
+    if (vinCheckTimeoutRef.current) clearTimeout(vinCheckTimeoutRef.current);
+
+    const vin = newVin.trim().toUpperCase();
+    if (!isNewVehicle || vin.length !== 17) {
+      setVinDuplicateVehicle(null);
+      setShowVinDuplicateDialog(false);
+      return;
+    }
+
+    vinCheckTimeoutRef.current = setTimeout(async () => {
+      const { data } = await supabase
+        .from("vehicles")
+        .select("id, plate_number, brand, model, vin, customer_id, customers(id, name, phone, star_level, customer_tags(tags(id, name, color)))")
+        .eq("vin", vin)
+        .maybeSingle();
+
+      if (data) {
+        setVinDuplicateVehicle(data as unknown as Vehicle);
+        setShowVinDuplicateDialog(true);
+      }
+    }, 500);
+
+    return () => {
+      if (vinCheckTimeoutRef.current) clearTimeout(vinCheckTimeoutRef.current);
+    };
+  }, [newVin, isNewVehicle, supabase]);
+
+  /* ============================================================
      客户搜索
      ============================================================ */
   useEffect(() => {
@@ -238,6 +275,18 @@ export default function MobileReceptionNewPage() {
       dashboardPaths,
     };
     sessionStorage.setItem("reception-draft", JSON.stringify(draft));
+  }
+
+  /* ============================================================
+     车牌格式校验（中国车牌）
+     ============================================================ */
+  function isValidPlate(plate: string): boolean {
+    const p = plate.trim().toUpperCase();
+    if (!p || p.length < 7 || p.length > 8) return false;
+    const provinces = "京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼使领";
+    if (!provinces.includes(p[0])) return false;
+    if (!/[A-Z]/.test(p[1])) return false;
+    return true;
   }
 
   /* ============================================================
@@ -850,6 +899,175 @@ export default function MobileReceptionNewPage() {
           {submitting ? "提交中..." : "提交接车"}
         </button>
       </div>
+
+      {/* VIN 重复车辆提示弹窗 */}
+      {showVinDuplicateDialog && vinDuplicateVehicle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm p-5 space-y-4">
+            <div className="text-center">
+              <div className="text-lg font-semibold text-gray-900">VIN 已存在</div>
+              <div className="text-sm text-gray-500 mt-1">
+                系统中已有该 VIN 码的车辆
+              </div>
+            </div>
+
+            {/* 已有车辆信息 */}
+            <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm">
+              <div className="text-xs text-gray-400 mb-1">系统中现有车辆</div>
+              <div className="font-medium text-gray-900">{vinDuplicateVehicle.plate_number}</div>
+              <div className="text-gray-500">{vinDuplicateVehicle.brand} {vinDuplicateVehicle.model}</div>
+              {getVehicleCustomer(vinDuplicateVehicle) && (
+                <div className="text-blue-600 text-xs">
+                  车主: {getVehicleCustomer(vinDuplicateVehicle)!.name} · {getVehicleCustomer(vinDuplicateVehicle)!.phone}
+                </div>
+              )}
+            </div>
+
+            {/* 新输入的车牌 */}
+            {(() => {
+              const newPlateClean = newPlate.trim().toUpperCase();
+              const hasNewPlate = !!newPlateClean && newPlateClean !== vinDuplicateVehicle.plate_number;
+              return (
+                <>
+                  {hasNewPlate && (
+                    <div className="bg-orange-50 rounded-lg p-3 space-y-1 text-sm border border-orange-200">
+                      <div className="text-xs text-orange-500 mb-1">您新输入的车牌</div>
+                      <div className="font-medium text-orange-700">{newPlateClean}</div>
+                    </div>
+                  )}
+
+                  <div className="text-sm text-gray-700 text-center">
+                    {hasNewPlate
+                      ? "新车牌与原车牌不一致，是否替换原车牌？"
+                      : "该 VIN 已存在于系统中，直接选用该车辆。"}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    {hasNewPlate && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          /* 替换为新车牌：先校验 */
+                          if (!isValidPlate(newPlateClean)) {
+                            showToast("新车牌格式不正确，请检查", "error");
+                            return;
+                          }
+
+                          const { error: updateErr } = await supabase
+                            .from("vehicles")
+                            .update({ plate_number: newPlateClean })
+                            .eq("id", vinDuplicateVehicle.id);
+                          if (updateErr) {
+                            showToast("更新车牌失败: " + updateErr.message, "error");
+                            return;
+                          }
+
+                          setShowVinDuplicateDialog(false);
+                          setIsNewVehicle(false);
+                          setNewPlate("");
+                          setNewBrand("");
+                          setNewModel("");
+                          setNewVin("");
+                          setSelectedVehicle({
+                            ...vinDuplicateVehicle,
+                            plate_number: newPlateClean,
+                          });
+                          setShowChangeOwnerDialog(true);
+                        }}
+                        className="w-full py-2.5 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700"
+                      >
+                        替换为新车牌并选用
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const v = vinDuplicateVehicle!;
+                        setShowVinDuplicateDialog(false);
+                        setVinDuplicateVehicle(null);
+                        setIsNewVehicle(false);
+                        setNewPlate("");
+                        setNewBrand("");
+                        setNewModel("");
+                        setNewVin("");
+                        setSelectedVehicle(v);
+                        setShowChangeOwnerDialog(true);
+                      }}
+                      className="w-full py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                    >
+                      {newPlate.trim().toUpperCase() && newPlate.trim().toUpperCase() !== vinDuplicateVehicle.plate_number
+                        ? "保留原车牌，直接选用"
+                        : "直接选用"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowVinDuplicateDialog(false);
+                        setVinDuplicateVehicle(null);
+                        setNewVin("");
+                      }}
+                      className="w-full py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    >
+                      取消，重新输入
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* 是否变更车主弹窗 */}
+      {showChangeOwnerDialog && vinDuplicateVehicle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm p-5 space-y-4">
+            <div className="text-center">
+              <div className="text-lg font-semibold text-gray-900">是否变更车主？</div>
+              <div className="text-sm text-gray-500 mt-1">
+                该车辆当前车主：{getVehicleCustomer(vinDuplicateVehicle)?.name || "未关联车主"}
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  /* 不变更车主：保留原有客户 */
+                  const v = vinDuplicateVehicle;
+                  const vc = getVehicleCustomer(v);
+                  if (vc) {
+                    setSelectedCustomer(vc);
+                    setShowCustomerSelect(false);
+                  } else {
+                    setSelectedCustomer(null);
+                    setShowCustomerSelect(true);
+                  }
+                  setShowChangeOwnerDialog(false);
+                  setVinDuplicateVehicle(null);
+                  showToast("已选用该车辆", "success");
+                }}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                不变更
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  /* 变更车主：清空已选客户，显示客户选择区域 */
+                  setSelectedCustomer(null);
+                  setShowCustomerSelect(true);
+                  setShowChangeOwnerDialog(false);
+                  setVinDuplicateVehicle(null);
+                  showToast("请重新选择车主", "success");
+                }}
+                className="flex-1 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                变更车主
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 主管授权码弹窗 */}
       {showAuthDialog && (

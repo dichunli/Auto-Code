@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -78,6 +78,8 @@ const navItems: NavItem[] = [
     children: [
       { href: "/finance", label: "财务概览" },
       { href: "/finance/transactions", label: "收支记录" },
+      { href: "/finance/other", label: "其它收支" },
+      { href: "/finance/other-categories", label: "其它收支分类" },
       { href: "/finance/receivable", label: "应收账款" },
       { href: "/finance/payment-methods", label: "收款方式" },
     ],
@@ -112,8 +114,6 @@ function NavGroup({
   counts: Record<string, number>;
 }) {
   const [open, setOpen] = useState(false);
-  const searchParams = useSearchParams();
-  const queryString = searchParams ? (searchParams.toString() ? "?" + searchParams.toString() : "") : "";
   const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
 
   useEffect(() => {
@@ -162,6 +162,7 @@ function NavGroup({
       {open && (
         <div className="ml-3 mt-1 space-y-1 border-l-2 border-gray-100 pl-2">
           {item.children.map((child) => {
+            const queryString = typeof window !== "undefined" && window.location.search ? window.location.search : "";
             const childActive = pathname === child.href || pathname + queryString === child.href;
             const count = child.countKey ? counts[child.countKey] || 0 : 0;
             return (

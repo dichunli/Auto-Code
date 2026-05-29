@@ -2486,12 +2486,91 @@ export default function MobileItemEditor({
                       <span className="text-gray-900 font-mono text-xs">{activeBranch.part_number || "-"}</span>
                     </div>
                   )}
-                  {/* 分类 + 单位 */}
+                  {/* 数量 + 库存 */}
                   <div className="grid grid-cols-2 gap-3">
+                    {detailEditing ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">数量</span>
+                        <input
+                          type="number"
+                          min={1}
+                          key={activeBranch.id + "-qty"}
+                          defaultValue={activeBranch.quantity}
+                          onBlur={(e) => {
+                            const val = parseInt(e.target.value);
+                            if (!isNaN(val) && val !== activeBranch.quantity) {
+                              savePartQuantity(activeBranch.id, val);
+                            }
+                          }}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-center"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">数量</span>
+                        <span className="text-gray-900 text-xs">x{activeBranch.quantity}</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-500 text-xs">分类</span>
-                      <span className="text-gray-900 text-xs">{activeBranch.category || "-"}</span>
+                      <span className="text-gray-500 text-xs">库存</span>
+                      <span className={`font-medium text-xs ${activeBranch.part_id && partInventory && (partInventory[activeBranch.part_id] || 0) > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                        {activeBranch.part_id && partInventory ? (partInventory[activeBranch.part_id] || 0) : "-"}
+                      </span>
                     </div>
+                  </div>
+                  {/* 采购价 + 销售价 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {detailEditing ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">采购价</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          key={activeBranch.id + "-cost"}
+                          defaultValue={activeBranch.unit_cost ?? ""}
+                          onBlur={(e) => {
+                            const val = e.target.value === "" ? null : parseFloat(e.target.value);
+                            if (val !== activeBranch.unit_cost) {
+                              savePartField(activeBranch.id, "unit_cost", val);
+                            }
+                          }}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">采购价</span>
+                        <span className="text-gray-900 text-xs">{activeBranch.unit_cost != null ? `¥${activeBranch.unit_cost}` : "-"}</span>
+                      </div>
+                    )}
+                    {detailEditing ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">销售价</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          key={activeBranch.id + "-price"}
+                          defaultValue={activeBranch.unit_price}
+                          onBlur={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val) && val !== activeBranch.unit_price) {
+                              savePartField(activeBranch.id, "unit_price", val);
+                            }
+                          }}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500 text-xs">销售价</span>
+                        <span className="text-gray-900 text-xs">¥{activeBranch.unit_price}</span>
+                      </div>
+                    )}
+                  </div>
+                  {/* 单位 + 分类 */}
+                  <div className="grid grid-cols-2 gap-3">
                     {detailEditing ? (
                       <div className="flex items-center justify-between">
                         <span className="text-gray-500 text-xs">单位</span>
@@ -2514,6 +2593,10 @@ export default function MobileItemEditor({
                         <span className="text-gray-900 text-xs">{activeBranch.unit || "-"}</span>
                       </div>
                     )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 text-xs">分类</span>
+                      <span className="text-gray-900 text-xs">{activeBranch.category || "-"}</span>
+                    </div>
                   </div>
                   {/* 品牌 + 规格 */}
                   <div className="grid grid-cols-2 gap-3">
@@ -2559,89 +2642,6 @@ export default function MobileItemEditor({
                       <div className="flex items-center justify-between">
                         <span className="text-gray-500 text-xs">规格</span>
                         <span className="text-gray-900 text-xs">{activeBranch.specification || "-"}</span>
-                      </div>
-                    )}
-                  </div>
-                  {/* 库存 + 采购价 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-500 text-xs">库存</span>
-                      <span className={`font-medium text-xs ${activeBranch.part_id && partInventory && (partInventory[activeBranch.part_id] || 0) > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                        {activeBranch.part_id && partInventory ? (partInventory[activeBranch.part_id] || 0) : "-"}
-                      </span>
-                    </div>
-                    {detailEditing ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-500 text-xs">采购价</span>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          key={activeBranch.id + "-cost"}
-                          defaultValue={activeBranch.unit_cost ?? ""}
-                          onBlur={(e) => {
-                            const val = e.target.value === "" ? null : parseFloat(e.target.value);
-                            if (val !== activeBranch.unit_cost) {
-                              savePartField(activeBranch.id, "unit_cost", val);
-                            }
-                          }}
-                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right"
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-500 text-xs">采购价</span>
-                        <span className="text-gray-900 text-xs">{activeBranch.unit_cost != null ? `¥${activeBranch.unit_cost}` : "-"}</span>
-                      </div>
-                    )}
-                  </div>
-                  {/* 销售价 + 数量 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    {detailEditing ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-500 text-xs">销售价</span>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          key={activeBranch.id + "-price"}
-                          defaultValue={activeBranch.unit_price}
-                          onBlur={(e) => {
-                            const val = parseFloat(e.target.value);
-                            if (!isNaN(val) && val !== activeBranch.unit_price) {
-                              savePartField(activeBranch.id, "unit_price", val);
-                            }
-                          }}
-                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-right"
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-500 text-xs">销售价</span>
-                        <span className="text-gray-900 text-xs">¥{activeBranch.unit_price}</span>
-                      </div>
-                    )}
-                    {detailEditing ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-500 text-xs">数量</span>
-                        <input
-                          type="number"
-                          min={1}
-                          key={activeBranch.id + "-qty"}
-                          defaultValue={activeBranch.quantity}
-                          onBlur={(e) => {
-                            const val = parseInt(e.target.value);
-                            if (!isNaN(val) && val !== activeBranch.quantity) {
-                              savePartQuantity(activeBranch.id, val);
-                            }
-                          }}
-                          className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-center"
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-500 text-xs">数量</span>
-                        <span className="text-gray-900 text-xs">x{activeBranch.quantity}</span>
                       </div>
                     )}
                   </div>
@@ -2847,6 +2847,9 @@ export default function MobileItemEditor({
             }
           }}
           vehicleModelId={vehicleModelId}
+          defaultNameQuery={replacePartTarget.name}
+          replacedPartName={replacePartTarget.name}
+          compact
         />
       )}
 

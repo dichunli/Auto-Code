@@ -40,10 +40,10 @@ BEGIN
     (
       COALESCE((
         SELECT sum(CASE
-          WHEN lower(ka.title) LIKE kl.kw || '%' THEN 100
-          WHEN lower(ka.title) LIKE '%' || kl.kw || '%' THEN 50
-          WHEN lower(COALESCE(kc.name, '')) LIKE '%' || kl.kw || '%' THEN 30
-          WHEN lower(COALESCE(ka.content, '') || ' ' || COALESCE(ka.content_blocks::text, '')) LIKE '%' || kl.kw || '%' THEN 10
+          WHEN lower(ka.title) LIKE lower(kl.kw) || '%' THEN 100
+          WHEN lower(ka.title) LIKE '%' || lower(kl.kw) || '%' THEN 50
+          WHEN lower(COALESCE(kc.name, '')) LIKE '%' || lower(kl.kw) || '%' THEN 30
+          WHEN lower(COALESCE(ka.content, '') || ' ' || COALESCE(ka.content_blocks::text, '')) LIKE '%' || lower(kl.kw) || '%' THEN 10
           ELSE 0
         END)
         FROM keyword_list kl
@@ -51,7 +51,7 @@ BEGIN
       COALESCE((
         SELECT count(*) * 20
         FROM keyword_list kl
-        WHERE lower(ka.title) LIKE '%' || kl.kw || '%'
+        WHERE lower(ka.title) LIKE '%' || lower(kl.kw) || '%'
       ), 0)
     )::NUMERIC AS score
   FROM knowledge_articles ka
@@ -59,9 +59,9 @@ BEGIN
   LEFT JOIN profiles p ON ka.created_by = p.id
   WHERE EXISTS (
     SELECT 1 FROM keyword_list kl
-    WHERE lower(ka.title) LIKE '%' || kl.kw || '%'
-      OR lower(COALESCE(kc.name, '')) LIKE '%' || kl.kw || '%'
-      OR lower(COALESCE(ka.content, '') || ' ' || COALESCE(ka.content_blocks::text, '')) LIKE '%' || kl.kw || '%'
+    WHERE lower(ka.title) LIKE '%' || lower(kl.kw) || '%'
+      OR lower(COALESCE(kc.name, '')) LIKE '%' || lower(kl.kw) || '%'
+      OR lower(COALESCE(ka.content, '') || ' ' || COALESCE(ka.content_blocks::text, '')) LIKE '%' || lower(kl.kw) || '%'
   )
   ORDER BY score DESC, ka.created_at DESC;
 END;
