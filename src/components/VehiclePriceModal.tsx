@@ -12,7 +12,10 @@ interface VehicleModel {
   排量: string | null;
   发动机型号: string | null;
   底盘型号: string | null;
-  变速箱型号: string | null;
+  变速箱类型: string | null;
+  变速箱详情: string | null;
+  前轮胎规格: string | null;
+  后轮胎规格: string | null;
 }
 
 interface VehiclePriceModalProps {
@@ -35,6 +38,7 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
@@ -47,7 +51,9 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
     排量: "",
     发动机型号: "",
     底盘型号: "",
-    变速箱型号: "",
+    变速箱类型: "",
+    前轮胎规格: "",
+    后轮胎规格: "",
   });
 
   // 初始化：打开时重置价格和选择
@@ -69,7 +75,7 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
     }
     setSelectedIds(new Set(preSelectedIds || []));
     setPage(1);
-    setFilters({ id: "", 品牌: "", 车系: "", 车型: "", 年款: "", 排量: "", 发动机型号: "", 底盘型号: "", 变速箱型号: "" });
+    setFilters({ id: "", 品牌: "", 车系: "", 车型: "", 年款: "", 排量: "", 发动机型号: "", 底盘型号: "", 变速箱类型: "", 前轮胎规格: "", 后轮胎规格: "" });
   }, [open]);
 
   // 服务端分页查询
@@ -80,7 +86,7 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
     (async () => {
       let query = supabase
         .from("vehicle_models")
-        .select("id,品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号", { count: "exact" })
+        .select("id,品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱类型,变速箱详情,前轮胎规格,后轮胎规格", { count: "exact" })
         .order("id");
 
       if (excludedIds && excludedIds.length > 0 && excludedIds.length <= 500) {
@@ -101,7 +107,9 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
       if (filters.排量) query = query.ilike("排量", `%${filters.排量}%`);
       if (filters.发动机型号) query = query.ilike("发动机型号", `%${filters.发动机型号}%`);
       if (filters.底盘型号) query = query.ilike("底盘型号", `%${filters.底盘型号}%`);
-      if (filters.变速箱型号) query = query.ilike("变速箱型号", `%${filters.变速箱型号}%`);
+      if (filters.变速箱类型) query = query.ilike("变速箱类型", `%${filters.变速箱类型}%`);
+      if (filters.前轮胎规格) query = query.ilike("前轮胎规格", `%${filters.前轮胎规格}%`);
+      if (filters.后轮胎规格) query = query.ilike("后轮胎规格", `%${filters.后轮胎规格}%`);
 
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
@@ -157,6 +165,67 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
     });
   }
 
+  async function handleSelectAllFiltered() {
+    setSelectingAll(true);
+    try {
+      let query = supabase
+        .from("vehicle_models")
+        .select("id")
+        .order("id");
+
+      if (excludedIds && excludedIds.length > 0 && excludedIds.length <= 500) {
+        query = query.not("id", "in", `(${excludedIds.join(",")})`);
+      }
+
+      if (filters.id) {
+        const id = parseInt(filters.id);
+        if (!Number.isNaN(id)) query = query.eq("id", id);
+      }
+      if (filters.品牌) query = query.ilike("品牌", `%${filters.品牌}%`);
+      if (filters.车系) query = query.ilike("车系", `%${filters.车系}%`);
+      if (filters.车型) query = query.ilike("车型", `%${filters.车型}%`);
+      if (filters.年款) {
+        const year = parseInt(filters.年款);
+        if (!Number.isNaN(year)) query = query.eq("年款", year);
+      }
+      if (filters.排量) query = query.ilike("排量", `%${filters.排量}%`);
+      if (filters.发动机型号) query = query.ilike("发动机型号", `%${filters.发动机型号}%`);
+      if (filters.底盘型号) query = query.ilike("底盘型号", `%${filters.底盘型号}%`);
+      if (filters.变速箱类型) query = query.ilike("变速箱类型", `%${filters.变速箱类型}%`);
+      if (filters.前轮胎规格) query = query.ilike("前轮胎规格", `%${filters.前轮胎规格}%`);
+      if (filters.后轮胎规格) query = query.ilike("后轮胎规格", `%${filters.后轮胎规格}%`);
+
+      const { data, error } = await query;
+      if (error) {
+        alert("查询失败: " + error.message);
+        setSelectingAll(false);
+        return;
+      }
+
+      let ids = (data || []).map((r: { id: number }) => r.id);
+      if (excludedIds && excludedIds.length > 500) {
+        const excludedSet = new Set(excludedIds);
+        ids = ids.filter((id: number) => !excludedSet.has(id));
+      }
+
+      if (ids.length > 5000) {
+        alert(`符合条件的车型有 ${ids.length} 条，一次最多全选 5000 条，请增加筛选条件缩小范围`);
+        setSelectingAll(false);
+        return;
+      }
+
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id: number) => next.add(id));
+        return next;
+      });
+      alert(`已全选 ${ids.length} 个车型`);
+    } catch (err: unknown) {
+      alert("全选失败: " + (err instanceof Error ? err.message : String(err)));
+    }
+    setSelectingAll(false);
+  }
+
   function handleConfirm() {
     if (confirming) return;
     const priceVal = price === "" ? NaN : parseFloat(price);
@@ -182,7 +251,7 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
     setCompanyPrice("");
     setSelectedIds(new Set());
     setPage(1);
-    setFilters({ id: "", 品牌: "", 车系: "", 车型: "", 年款: "", 排量: "", 发动机型号: "", 底盘型号: "", 变速箱型号: "" });
+    setFilters({ id: "", 品牌: "", 车系: "", 车型: "", 年款: "", 排量: "", 发动机型号: "", 底盘型号: "", 变速箱类型: "", 前轮胎规格: "", 后轮胎规格: "" });
     onClose();
   }
 
@@ -249,7 +318,8 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
         </div>
 
         <div className="flex-1 overflow-auto px-6 py-3">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[1400px]">
             <thead className="bg-gray-50 sticky top-0">
               <tr>
                 <th className="px-3 py-2 text-left w-10">
@@ -360,13 +430,37 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
                 </th>
                 <th className="px-3 py-2 text-left font-medium text-gray-500">
                   <div className="space-y-1">
-                    <div>变速箱型号</div>
+                    <div>变速箱类型</div>
                     <input
                       type="text"
                       className="w-20 px-1.5 py-0.5 border border-gray-300 rounded text-xs"
                       placeholder="筛选"
-                      value={filters.变速箱型号}
-                      onChange={(e) => updateFilter("变速箱型号", e.target.value)}
+                      value={filters.变速箱类型}
+                      onChange={(e) => updateFilter("变速箱类型", e.target.value)}
+                    />
+                  </div>
+                </th>
+                <th className="px-3 py-2 text-left font-medium text-gray-500">
+                  <div className="space-y-1">
+                    <div>前轮胎</div>
+                    <input
+                      type="text"
+                      className="w-20 px-1.5 py-0.5 border border-gray-300 rounded text-xs"
+                      placeholder="筛选"
+                      value={filters.前轮胎规格}
+                      onChange={(e) => updateFilter("前轮胎规格", e.target.value)}
+                    />
+                  </div>
+                </th>
+                <th className="px-3 py-2 text-left font-medium text-gray-500">
+                  <div className="space-y-1">
+                    <div>后轮胎</div>
+                    <input
+                      type="text"
+                      className="w-20 px-1.5 py-0.5 border border-gray-300 rounded text-xs"
+                      placeholder="筛选"
+                      value={filters.后轮胎规格}
+                      onChange={(e) => updateFilter("后轮胎规格", e.target.value)}
                     />
                   </div>
                 </th>
@@ -391,12 +485,14 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
                   <td className="px-3 py-2 text-gray-600">{v.排量 ?? "-"}</td>
                   <td className="px-3 py-2 text-gray-600">{v.发动机型号 ?? "-"}</td>
                   <td className="px-3 py-2 text-gray-600">{v.底盘型号 ?? "-"}</td>
-                  <td className="px-3 py-2 text-gray-600">{v.变速箱型号 ?? "-"}</td>
+                  <td className="px-3 py-2 text-gray-600">{v.变速箱类型 ?? "-"}</td>
+                  <td className="px-3 py-2 text-gray-600">{v.前轮胎规格 ?? "-"}</td>
+                  <td className="px-3 py-2 text-gray-600">{v.后轮胎规格 ?? "-"}</td>
                 </tr>
               ))}
               {vehicles.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={10} className="px-3 py-8 text-center">
+                  <td colSpan={13} className="px-3 py-8 text-center">
                     {excludedIds && excludedIds.length > 0 ? (
                       <div className="text-gray-500 text-sm">
                         <div className="mb-1">暂无未关联的车型</div>
@@ -416,11 +512,22 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
           {loading && (
             <div className="py-4 text-center text-sm text-gray-500">加载中...</div>
           )}
+          </div>
         </div>
 
         <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50">
-          <div className="text-xs text-gray-500">
-            共 {totalCount} 条，第 {page}/{totalPages} 页
+          <div className="flex items-center gap-3">
+            <div className="text-xs text-gray-500">
+              共 {totalCount} 条，第 {page}/{totalPages} 页
+            </div>
+            <button
+              type="button"
+              onClick={handleSelectAllFiltered}
+              disabled={selectingAll || totalCount === 0}
+              className="text-xs px-2 py-1 text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-50"
+            >
+              {selectingAll ? "查询中..." : "全选所有符合条件"}
+            </button>
           </div>
           <div className="flex gap-2">
             <button

@@ -691,21 +691,24 @@ export default function EditServiceItemPage() {
       return;
     }
     if (vehiclePrices.length > 0) {
-      const { error: vpError } = await supabase.from("service_item_prices").insert(
-        vehiclePrices.map((p) => ({
-          service_item_id: id,
-          vehicle_model_id: p.vehicle_model_id,
-          price: p.price,
-          vip_price: p.vip_price,
-          customer_parts_price: p.customer_parts_price,
-          company_price: p.company_price,
-          group_key: p.group_key || null,
-        }))
-      );
-      if (vpError) {
-        alert("车型定价保存失败: " + vpError.message);
-        setSaving(false);
-        return;
+      const insertData = vehiclePrices.map((p) => ({
+        service_item_id: id,
+        vehicle_model_id: p.vehicle_model_id,
+        price: p.price,
+        vip_price: p.vip_price,
+        customer_parts_price: p.customer_parts_price,
+        company_price: p.company_price,
+        group_key: p.group_key || null,
+      }));
+      const batchSize = 500;
+      for (let i = 0; i < insertData.length; i += batchSize) {
+        const batch = insertData.slice(i, i + batchSize);
+        const { error: vpError } = await supabase.from("service_item_prices").insert(batch);
+        if (vpError) {
+          alert(`车型定价保存失败（第${i + 1}-${Math.min(i + batchSize, insertData.length)}条）: ` + vpError.message);
+          setSaving(false);
+          return;
+        }
       }
     }
 
