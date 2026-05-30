@@ -152,7 +152,7 @@ CREATE TRIGGER fill_part_info BEFORE INSERT ON parts
 CREATE OR REPLACE FUNCTION auto_link_part_to_vehicle()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_vehicle_model_id UUID;
+  v_vehicle_model_id INTEGER;
   v_auto_link BOOLEAN;
 BEGIN
   SELECT v.vehicle_model_id INTO v_vehicle_model_id
@@ -164,7 +164,7 @@ BEGIN
   SELECT pc.auto_link_vehicle_model INTO v_auto_link
   FROM parts p
   JOIN part_names pn ON pn.id = p.part_name_id
-  JOIN part_categories pc ON pc.id = pn.category_id
+  JOIN part_categories pc ON pc.id = p.part_category_id
   WHERE p.id = NEW.part_id;
 
   IF v_auto_link AND v_vehicle_model_id IS NOT NULL THEN

@@ -70,6 +70,7 @@ export default function ServiceItemsPage() {
   /* 合并弹窗 */
   const [mergeOpen, setMergeOpen] = useState(false);
   const [batchSaving, setBatchSaving] = useState(false);
+
   const [batchCategoryId, setBatchCategoryId] = useState("");
   const [batchStandardHours, setBatchStandardHours] = useState("");
   const [batchDefaultPrice, setBatchDefaultPrice] = useState("");
@@ -440,7 +441,14 @@ export default function ServiceItemsPage() {
                       className="rounded border-gray-300"
                     />
                   </td>
-                  <td className="px-6 py-4 text-gray-600">{item.code || "-"}</td>
+                  <td className="px-6 py-4 text-gray-600">
+                    <Link
+                      href={`/service-items/${item.id}/edit`}
+                      className="hover:text-blue-600 hover:underline"
+                    >
+                      {item.code || "-"}
+                    </Link>
+                  </td>
                   <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
                   <td className="px-6 py-4 text-gray-500 text-xs max-w-[200px] truncate">{item.search_keywords || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{item.service_categories?.name || "-"}</td>

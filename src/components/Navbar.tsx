@@ -66,7 +66,6 @@ const navItems: NavItem[] = [
     label: "维修项目",
     children: [
       { href: "/service-items", label: "维修项目" },
-      { href: "/service-names", label: "项目名称库" },
       { href: "/service-categories", label: "项目分类" },
     ],
   },

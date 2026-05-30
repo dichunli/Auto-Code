@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import DeletePartButton from "./DeletePartButton";
 import { PriceValue } from "@/components/PriceVisibilityContext";
+import PartMergeDialog from "@/components/PartMergeDialog";
 
 interface ColumnDef {
   key: string;
@@ -161,6 +162,9 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
+
+  /* 合并弹窗 */
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   const [columns, setColumns] = useState<ColumnDef[]>(() => {
     if (typeof window === "undefined") return DEFAULT_COLUMNS;
@@ -819,6 +823,14 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
               >
                 批量打印条码
               </button>
+              {selectedIds.size >= 2 && (
+                <button
+                  onClick={() => setMergeOpen(true)}
+                  className="px-3 py-1.5 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                >
+                  合并
+                </button>
+              )}
               <button
                 onClick={() => setSelectedIds(new Set())}
                 className="text-sm text-gray-500 hover:text-gray-700"
@@ -982,6 +994,19 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
       )}
 
       <canvas ref={canvasRef} style={{ display: "none" }} />
+
+      {/* 合并弹窗 */}
+      {mergeOpen && (
+        <PartMergeDialog
+          open={mergeOpen}
+          selectedItems={items.filter((i) => selectedIds.has(i.id)).map((i) => ({ id: i.id, name: i.name, part_number: i.part_number, quantity: i.quantity }))}
+          onClose={() => setMergeOpen(false)}
+          onSuccess={() => {
+            setSelectedIds(new Set());
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -64,7 +64,7 @@ interface 维修项目 {
 
 interface 维修项目车型定价 {
   service_item_id: string;
-  vehicle_model_id: string;
+  vehicle_model_id: number;
   price?: number | null;
   customer_parts_price?: number | null;
 }
@@ -194,7 +194,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
   const [suppliers, setSuppliers] = useState<供应商[]>([]);
   const [logisticsCompanies, setLogisticsCompanies] = useState<物流公司[]>([]);
   const [vehicleId, setVehicleId] = useState("");
-  const [vehicleModelId, setVehicleModelId] = useState("");
+  const [vehicleModelId, setVehicleModelId] = useState<number | null>(null);
   const [partMatchModal, setPartMatchModal] = useState<配件匹配弹窗数据 | null>(null);
   const [reworkModalIndex, setReworkModalIndex] = useState<number | null>(null);
   const [allServiceItems, setAllServiceItems] = useState<维修项目[]>([]);
@@ -294,7 +294,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
             .eq("id", vid)
             .single()
             .then(({ data: v }) => {
-              const vmd = (v as { vehicle_model_id?: string } | null)?.vehicle_model_id;
+              const vmd = (v as { vehicle_model_id?: number } | null)?.vehicle_model_id;
               if (vmd) {
                 setVehicleModelId(vmd);
                 /* 按当前车型加载维修项目定价，避免全表数据遗漏 */
@@ -335,7 +335,9 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       const item = allServiceItems.find((s) => s.id === value);
       if (item) {
         next[index].name = item.name;
-        next[index].unit_price = item.default_price?.toString() || "";
+        // 优先使用车型定价，无则回退到销售价
+        const vPrice = getVehiclePrice(item.id, vehicleModelId);
+        next[index].unit_price = vPrice?.toString() ?? item.default_price?.toString() ?? "";
         next[index].standard_hours = item.standard_hours?.toString() || "";
       }
     }
@@ -639,26 +641,34 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     }
   }
 
+  // 车型定价：优先取 service_item_prices 中匹配车型的 price，无则回退到项目销售价
+  function getVehiclePrice(serviceItemId: string, vModelId: number | null): number | null {
+    if (!serviceItemId || !vModelId) return null;
+    const serviceItem = allServiceItems.find((s) => s.id === serviceItemId);
+    const vehiclePrice = serviceItemPrices.find(
+      (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vModelId
+    )?.price;
+    if (vehiclePrice != null) return vehiclePrice;
+    if (serviceItem?.default_price != null) return serviceItem.default_price;
+    return null;
+  }
+
   // 自带配件四级价格策略
-  function getCustomerPartPrice(serviceItemId: string, vModelId: string): number | null {
-    if (!serviceItemId) return null;
+  function getCustomerPartPrice(serviceItemId: string, vModelId: number | null): number | null {
+    if (!serviceItemId || !vModelId) return null;
     const serviceItem = allServiceItems.find((s) => s.id === serviceItemId);
 
     // 1. 维修项目中设置工单车型的自带配件价格
-    if (vModelId) {
-      const vehicleCp = serviceItemPrices.find(
-        (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vModelId
-      )?.customer_parts_price;
-      if (vehicleCp != null) return vehicleCp;
-    }
+    const vehicleCp = serviceItemPrices.find(
+      (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vModelId
+    )?.customer_parts_price;
+    if (vehicleCp != null) return vehicleCp;
 
     // 2. 工单车型定价
-    if (vModelId) {
-      const vehiclePrice = serviceItemPrices.find(
-        (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vModelId
-      )?.price;
-      if (vehiclePrice != null) return vehiclePrice;
-    }
+    const vehiclePrice = serviceItemPrices.find(
+      (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vModelId
+    )?.price;
+    if (vehiclePrice != null) return vehiclePrice;
 
     // 3. 维修项目的自带配件价格
     if (serviceItem?.customer_parts_price != null) return serviceItem.customer_parts_price;
@@ -676,12 +686,13 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     next[index].name = serviceItem.name || "";
     next[index].standard_hours = serviceItem.standard_hours?.toString() || "";
 
-    // 自带配件时按四级策略定价，否则用默认销售价
+    // 自带配件时按四级策略定价，否则优先使用车型定价
     if (next[index].is_customer_part) {
       const cpPrice = getCustomerPartPrice(serviceItem.id, vehicleModelId);
       next[index].unit_price = cpPrice?.toString() ?? "";
     } else {
-      next[index].unit_price = serviceItem.default_price?.toString() || "";
+      const vPrice = getVehiclePrice(serviceItem.id, vehicleModelId);
+      next[index].unit_price = vPrice?.toString() ?? serviceItem.default_price?.toString() ?? "";
     }
 
     setItems(next);
@@ -743,7 +754,9 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
 
     const buildRow = (si: 维修项目): 项目行 => {
       const isCustomerPart = false; // 批量添加默认非自带配件
-      const unitPrice = si.default_price?.toString() || "";
+      // 优先使用车型定价
+      const vPrice = getVehiclePrice(si.id, vehicleModelId);
+      const unitPrice = vPrice?.toString() ?? si.default_price?.toString() ?? "";
       return {
         category_id: si.category_id || "",
         service_item_id: si.id,

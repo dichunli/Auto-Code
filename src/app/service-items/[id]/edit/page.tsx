@@ -112,7 +112,6 @@ export default function EditServiceItemPage() {
     category_id: "",
     name: "",
     search_keywords: "",
-    standard_hours: "",
     description: "",
     default_price: "",
     vip_price: "",
@@ -333,7 +332,6 @@ export default function EditServiceItemPage() {
           category_id: item.category_id || "",
           name: item.name || "",
           search_keywords: item.search_keywords || "",
-          standard_hours: item.standard_hours?.toString() || "",
           description: item.description || "",
           default_price: item.default_price?.toString() || "",
           vip_price: item.vip_price?.toString() || "",
@@ -664,7 +662,6 @@ export default function EditServiceItemPage() {
         category_id: form.category_id,
         name: form.name.trim(),
         search_keywords: form.search_keywords.trim() || null,
-        standard_hours: form.standard_hours ? parseFloat(form.standard_hours) : null,
         description: form.description || null,
         default_price: form.default_price ? parseFloat(form.default_price) : null,
         vip_price: form.vip_price ? parseFloat(form.vip_price) : null,
@@ -822,26 +819,14 @@ export default function EditServiceItemPage() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">标准工时</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={form.standard_hours}
-                    onChange={(e) => setForm({ ...form, standard_hours: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">项目说明</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="简短说明"
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">项目说明</label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="简短说明"
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                />
               </div>
             </div>
 

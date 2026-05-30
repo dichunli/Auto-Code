@@ -60,6 +60,8 @@ export default function EditPartCategoryPage() {
     name: "",
     auto_link_vehicle_model: false,
     is_consumable: false,
+    require_scan_check: false,
+    require_location_check: false,
     sales_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     sales_value: "",
     diagnosis_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
@@ -88,6 +90,8 @@ export default function EditPartCategoryPage() {
           name: data.name || "",
           auto_link_vehicle_model: data.auto_link_vehicle_model || false,
           is_consumable: data.is_consumable || false,
+          require_scan_check: data.require_scan_check || false,
+          require_location_check: data.require_location_check || false,
           sales_type: data.sales_commission_type || "",
           sales_value: data.sales_commission_value?.toString() || "",
           diagnosis_type: data.diagnosis_commission_type || "",
@@ -113,6 +117,8 @@ export default function EditPartCategoryPage() {
         name: form.name,
         auto_link_vehicle_model: form.auto_link_vehicle_model,
         is_consumable: form.is_consumable,
+        require_scan_check: form.require_scan_check,
+        require_location_check: form.require_location_check,
         sales_commission_type: form.sales_type || null,
         sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
         diagnosis_commission_type: form.diagnosis_type || null,
@@ -143,6 +149,8 @@ export default function EditPartCategoryPage() {
     const updateData = {
       auto_link_vehicle_model: form.auto_link_vehicle_model,
       is_consumable: form.is_consumable,
+      require_scan_check: form.require_scan_check,
+      require_location_check: form.require_location_check,
       sales_commission_type: form.sales_type || null,
       sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
       diagnosis_commission_type: form.diagnosis_type || null,
@@ -189,7 +197,7 @@ export default function EditPartCategoryPage() {
             />
           </div>
 
-          <div className="flex gap-6">
+          <div className="flex gap-6 flex-wrap">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -207,6 +215,24 @@ export default function EditPartCategoryPage() {
                 className="w-4 h-4"
               />
               <span className="text-sm text-gray-700">耗材（出库不计入营业额）</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该分类下的配件出库时需要库管扫码确认">
+              <input
+                type="checkbox"
+                checked={form.require_scan_check}
+                onChange={(e) => setForm({ ...form, require_scan_check: e.target.checked })}
+                className="w-4 h-4"
+              />
+              <span className="text-sm text-gray-700">扫码出库确认</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该分类下的配件入库时必须填写/确认存放位置">
+              <input
+                type="checkbox"
+                checked={form.require_location_check}
+                onChange={(e) => setForm({ ...form, require_location_check: e.target.checked })}
+                className="w-4 h-4"
+              />
+              <span className="text-sm text-gray-700">入库仓位确认</span>
             </label>
           </div>
 

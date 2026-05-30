@@ -6,9 +6,10 @@ import ItemBatchPickerModal from "./ItemBatchPickerModal";
 interface Props {
   orderId: string;
   requirementId: string;
+  vehicleModelId?: number | null;
 }
 
-export default function AddRequirementItemsButton({ orderId, requirementId }: Props) {
+export default function AddRequirementItemsButton({ orderId, requirementId, vehicleModelId }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -25,6 +26,7 @@ export default function AddRequirementItemsButton({ orderId, requirementId }: Pr
         onClose={() => setOpen(false)}
         orderId={orderId}
         requirementId={requirementId}
+        vehicleModelId={vehicleModelId}
       />
     </>
   );
