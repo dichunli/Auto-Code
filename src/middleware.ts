@@ -1,13 +1,28 @@
-import { NextResponse } from "next/server";
-import { type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-function isMobileDevice(userAgent: string): boolean {
+function 是移动设备(userAgent: string): boolean {
   return /Mobile|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(userAgent);
 }
 
-export async function proxy(request: NextRequest) {
-  /* 先处理 Supabase 会话（登录状态、Cookie 刷新） */
+function 是APP环境(userAgent: string): boolean {
+  return (
+    userAgent.includes("wv") || /* Android WebView 标识 */
+    userAgent.includes("Capacitor") ||
+    (!userAgent.includes("Chrome/") && userAgent.includes("Linux; Android")) /* 无 Chrome 版本号的 Android WebView */
+  );
+}
+
+export async function middleware(request: NextRequest) {
+  const userAgent = request.headers.get("user-agent") || "";
+  const { pathname } = request.nextUrl;
+
+  /* ========== APP 环境：跳过服务端 auth 检查，由客户端自行处理 ========== */
+  if (是APP环境(userAgent) && pathname.startsWith("/m")) {
+    return NextResponse.next();
+  }
+
+  /* ========== 先处理 Supabase 会话（登录状态、Cookie 刷新） ========== */
   const sessionResponse = await updateSession(request);
 
   /* 如果会话逻辑已经触发重定向（如未登录去登录页），直接返回 */
@@ -15,11 +30,8 @@ export async function proxy(request: NextRequest) {
     return sessionResponse;
   }
 
-  const { pathname } = request.nextUrl;
-  const userAgent = request.headers.get("user-agent") || "";
-
-  /* 非移动端设备不处理 */
-  if (!isMobileDevice(userAgent)) {
+  /* ========== 移动端重定向逻辑（来自原来的 proxy.ts） ========== */
+  if (!是移动设备(userAgent)) {
     return sessionResponse;
   }
 
@@ -52,6 +64,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    /*
+     * 匹配所有路径，排除静态资源
+     */
     "/((?!_next/static|_next/image|favicon.ico|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|js|css|woff|woff2|ttf)$).*)",
   ],
 };

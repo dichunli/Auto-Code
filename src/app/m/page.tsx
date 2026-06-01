@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { hasPermission, type Permission } from "@/lib/permissions";
@@ -70,27 +71,43 @@ const MENU_ITEMS: MenuItem[] = [
   },
 ];
 
+function 是APP环境(userAgent: string): boolean {
+  return (
+    userAgent.includes("wv") ||
+    userAgent.includes("Capacitor") ||
+    (!userAgent.includes("Chrome/") && userAgent.includes("Linux; Android"))
+  );
+}
+
 export default async function MobileHomePage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const headerList = await headers();
+  const userAgent = headerList.get("user-agent") || "";
 
   let roles: string[] = [];
-  if (user) {
-    const { data } = await supabase
-      .from("profile_roles")
-      .select("roles(name)")
-      .eq("profile_id", user.id);
-    interface 角色关联 {
-      roles: { name: string } | null;
+
+  /* 非 APP 环境：服务端获取用户角色 */
+  if (!是APP环境(userAgent)) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (user) {
+      const { data } = await supabase
+        .from("profile_roles")
+        .select("roles(name)")
+        .eq("profile_id", user.id);
+      interface 角色关联 {
+        roles: { name: string } | null;
+      }
+      roles = (data || [])
+        .map((r: 角色关联) => r.roles?.name)
+        .filter(Boolean) as string[];
     }
-    roles = (data || [])
-      .map((r: 角色关联) => r.roles?.name)
-      .filter(Boolean) as string[];
   }
 
-  const visibleItems = MENU_ITEMS.filter((item) =>
-    hasPermission(roles, item.permission)
-  );
+  /* APP 环境：显示所有菜单（权限由客户端各页面自行检查） */
+  const visibleItems = 是APP环境(userAgent)
+    ? MENU_ITEMS
+    : MENU_ITEMS.filter((item) => hasPermission(roles, item.permission));
 
   return (
     <div className="p-4 space-y-4">

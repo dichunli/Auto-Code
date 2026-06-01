@@ -183,6 +183,19 @@ export async function vin17GetModelListFromPartNumber(partNumber: string, groupI
   });
 }
 
+/* 通过配件号(OE号/品牌件号)获取适用车型【易损件】（API 40032） */
+export async function vin17GetModelListFromPartNumberForAftermarket(partNumber: string, groupId: string, basedOn?: string) {
+  const params: Record<string, string> = {
+    action: "get_modellist_from_part_number_and_group_id_for_aftermarket",
+    part_number: partNumber,
+    group_id: groupId,
+  };
+  if (basedOn) {
+    params.based_on = basedOn;
+  }
+  return vin17Request("/", params);
+}
+
 /* ==================== 账户余额查询（接口1002） ==================== */
 
 export interface Vin17BalanceItem {
@@ -345,6 +358,10 @@ export async function vin17SearchFiltersByVin(vin: string): Promise<Vin17FilterR
     if (name.includes("cabin filter") || name.includes("innenraumfilter")) {
       return { type: "cabin", score: 10 };
     }
+    /* 保养/维护目录也可能包含三滤 */
+    if (name.includes("保养") || name.includes("维护") || name.includes("service") || name.includes("保养件") || name.includes("维护件")) {
+      return { score: 3 };
+    }
     /* 模糊匹配：只包含滤/Filter的目录给低分 */
     if (name.includes("滤") || name.includes("filter")) {
       return { score: 3 };
@@ -406,6 +423,9 @@ export async function vin17SearchFiltersByVin(vin: string): Promise<Vin17FilterR
 
       const cataMatch = isFilterCata(item.name_zh, item.name_en);
       const inferredType = cataMatch.type || parentType;
+
+      /* 完全不匹配且没有上级推断的类型，跳过该分支 */
+      if (cataMatch.score === 0 && !parentType) continue;
 
       if (item.is_last === 1) {
         /* 获取配件列表 */

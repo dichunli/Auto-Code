@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useId } from "react";
 import { recognizeLicensePlate } from "@/lib/baidu-ocr/client";
+import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 
 interface Props {
   open: boolean;
@@ -9,46 +10,8 @@ interface Props {
   onRecognize: (plateNumber: string) => void;
 }
 
-/* 压缩图片为 base64，宽度最大 1280，质量 0.8 */
-async function compressImage(file: File | Blob, maxWidth = 1280, quality = 0.8): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let { width, height } = img;
-      if (width > maxWidth) {
-        height = Math.round((height * maxWidth) / width);
-        width = maxWidth;
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("canvas 不支持"));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", quality));
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("图片加载失败"));
-    };
-    img.src = url;
-  });
-}
-
-/* file / blob 转 base64 */
-async function fileToBase64(file: File | Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+/* 取景框：画面中央，宽75%，高28%（车牌比VIN大一些） */
+const 取景框 = { x: 0.125, y: 0.36, w: 0.75, h: 0.28 };
 
 export default function LicensePlateCameraModal({ open, onClose, onRecognize }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -105,7 +68,6 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
     setErrorMsg(null);
     setRecognizing(false);
 
-    /* 尝试启动 WebRTC 摄像头 */
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       navigator.mediaDevices
         .getUserMedia({ video: { facingMode: "environment" }, audio: false })
@@ -113,14 +75,11 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
           streamRef.current = stream;
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
-            videoRef.current.play().catch(() => {
-              /* 某些浏览器 autoplay 需要用户交互 */
-            });
+            videoRef.current.play().catch(() => {});
           }
           setHasCamera(true);
         })
         .catch(() => {
-          /* 无摄像头权限或环境不支持 */
           setHasCamera(false);
         });
     } else {
@@ -132,29 +91,42 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
     };
   }, [open, stopCamera]);
 
-  /* 拍照 */
+  /* 拍照：截取取景框区域，压缩，立即识别 */
   const handleCapture = useCallback(() => {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0) return;
 
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
 
-    /* 压缩 */
-    canvas.toBlob(
-      (blob) => {
+    /* 计算取景框在视频帧上的像素坐标 */
+    const cx = Math.round(取景框.x * vw);
+    const cy = Math.round(取景框.y * vh);
+    const cw = Math.round(取景框.w * vw);
+    const ch = Math.round(取景框.h * vh);
+
+    /* 裁剪视频帧 */
+    const cropCanvas = document.createElement("canvas");
+    cropCanvas.width = cw;
+    cropCanvas.height = ch;
+    const cropCtx = cropCanvas.getContext("2d");
+    if (!cropCtx) return;
+    cropCtx.drawImage(video, cx, cy, cw, ch, 0, 0, cw, ch);
+
+    /* 转为 base64 并压缩 */
+    cropCanvas.toBlob(
+      async (blob) => {
         if (!blob) return;
-        compressImage(blob, 1280, 0.8).then((base64) => {
+        try {
+          const base64 = await 压缩图片为Base64(blob, { 最大宽度: 1024, 质量: 0.75 });
           setPreviewImage(base64);
-          doRecognize(base64);
-        });
+          await doRecognize(base64);
+        } catch {
+          setErrorMsg("图片处理失败");
+        }
       },
       "image/jpeg",
-      0.8
+      0.75
     );
   }, [doRecognize]);
 
@@ -175,13 +147,12 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
       try {
         const base64 =
           file.size > 512 * 1024
-            ? await compressImage(file, 1280, 0.8)
-            : await fileToBase64(file);
+            ? await 压缩图片为Base64(file, { 最大宽度: 1024, 质量: 0.75 })
+            : await 文件转Base64(file);
         setPreviewImage(base64);
         await doRecognize(base64);
       } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        setErrorMsg("图片处理失败: " + errorMsg);
+        setErrorMsg("图片处理失败: " + (err instanceof Error ? err.message : String(err)));
       } finally {
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
@@ -202,6 +173,7 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
     setPreviewImage(null);
     setRecognizedPlate(null);
     setErrorMsg(null);
+    setRecognizing(false);
   }, []);
 
   if (!open) return null;
@@ -235,16 +207,28 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
               className="absolute inset-0 w-full h-full object-cover"
             />
             {/* 取景框 */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="relative w-72 h-44">
-                {/* 四边角 */}
-                <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-green-400" />
-                <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-green-400" />
-                <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-green-400" />
-                <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-green-400" />
+            <div
+              className="absolute flex items-center justify-center pointer-events-none"
+              style={{ top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 }}
+            >
+              <div
+                className="relative"
+                style={{
+                  width: `${取景框.w * 100}%`,
+                  height: `${取景框.h * 100}%`,
+                  border: '2px solid rgba(74, 222, 128, 0.6)',
+                }}
+              >
+                {/* 四边角（加粗） */}
+                <div className="absolute" style={{ top: -2, left: -2, width: 24, height: 24, borderTop: '4px solid rgb(74, 222, 128)', borderLeft: '4px solid rgb(74, 222, 128)' }} />
+                <div className="absolute" style={{ top: -2, right: -2, width: 24, height: 24, borderTop: '4px solid rgb(74, 222, 128)', borderRight: '4px solid rgb(74, 222, 128)' }} />
+                <div className="absolute" style={{ bottom: -2, left: -2, width: 24, height: 24, borderBottom: '4px solid rgb(74, 222, 128)', borderLeft: '4px solid rgb(74, 222, 128)' }} />
+                <div className="absolute" style={{ bottom: -2, right: -2, width: 24, height: 24, borderBottom: '4px solid rgb(74, 222, 128)', borderRight: '4px solid rgb(74, 222, 128)' }} />
+                {/* 中间提示线 */}
+                <div className="absolute" style={{ top: '50%', left: 0, right: 0, height: 1, background: 'rgba(74, 222, 128, 0.3)' }} />
                 {/* 提示文字 */}
-                <div className="absolute -top-7 left-0 right-0 text-center">
-                  <span className="text-xs text-white/80 bg-black/40 px-2 py-0.5 rounded">
+                <div className="absolute text-center" style={{ top: -32, left: 0, right: 0 }}>
+                  <span style={{ fontSize: 12, color: '#fff', background: 'rgba(22, 163, 74, 0.8)', padding: '2px 8px', borderRadius: 4 }}>
                     将车牌对准框内
                   </span>
                 </div>
@@ -270,9 +254,11 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
           </div>
         )}
 
-        {/* 拍照预览 */}
+        {/* 拍照预览（显示裁剪后的图片） */}
         {previewImage && (
-          <img src={previewImage} alt="预览" className="absolute inset-0 w-full h-full object-contain bg-black" />
+          <div className="absolute inset-0 w-full h-full">
+            <img src={previewImage} alt="预览" className="w-full h-full object-contain bg-black" />
+          </div>
         )}
       </div>
 
@@ -335,7 +321,7 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
                 <span className="text-[10px]">相册</span>
               </label>
 
-              {/* 打开系统相机（capture 方式，最可靠） */}
+              {/* 打开系统相机（capture 方式） */}
               <label
                 htmlFor={captureFileId}
                 className="flex flex-col items-center gap-1 text-white active:text-white cursor-pointer select-none"
@@ -346,12 +332,13 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
                 <span className="text-[10px]">拍照</span>
               </label>
 
-              {/* 应用内截图（getUserMedia 可用时显示） */}
+              {/* 应用内截图：点击后直接截取取景框区域并识别 */}
               {hasCamera ? (
                 <button
                   type="button"
                   onClick={handleCapture}
-                  className="flex flex-col items-center gap-1 text-white/70 active:text-white"
+                  disabled={recognizing}
+                  className="flex flex-col items-center gap-1 text-white/70 active:text-white disabled:opacity-40"
                 >
                   <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

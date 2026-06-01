@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import { batchQueryVinFilters, VinQueryResult } from "./actions";
-import { batchCreatePartsFromVin, CreatePartResult } from "./createActions";
+import { batchCreatePartsFromVin, autoCreateFiltersByVin, CreatePartResult } from "./createActions";
 import { PageHeader } from "@/components/PageHeader";
 
 export default function VinBatchQueryPage() {
@@ -103,15 +103,11 @@ function QueryTab() {
         setUploading(false);
         return;
       }
-      if (vins.length > 100) {
-        setError(`VIN数量过多(${vins.length}个)，建议分批处理，每批不超过100个`);
-        setUploading(false);
-        return;
-      }
 
       setUploading(false);
       setQuerying(true);
 
+      /* 自动分批，每批最多10个（避免Server Action超时） */
       const batchSize = 10;
       const allResults: VinQueryResult[] = [];
       for (let i = 0; i < vins.length; i += batchSize) {
@@ -120,7 +116,7 @@ function QueryTab() {
         if (res.success && res.data) {
           allResults.push(...res.data);
         }
-        setProgress(Math.min(((i + batchSize) / vins.length) * 100, 100));
+        setProgress(Math.min(((i + batch.length) / vins.length) * 100, 100));
       }
 
       setResults(allResults);
@@ -174,7 +170,7 @@ function QueryTab() {
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <h2 className="text-base font-semibold text-gray-900 mb-4">上传Excel</h2>
         <p className="text-sm text-gray-500 mb-4">
-          Excel中需包含VIN码列（列标题含"VIN"或"车架号"即可），系统会自动提取有效的17位VIN码并批量查询三滤OE号。
+          Excel中需包含VIN码列（列标题含&apos;VIN&apos;或&apos;车架号&apos;即可），系统会自动提取有效的17位VIN码并批量查询三滤OE号。
         </p>
         <div className="flex items-center gap-4">
           <label className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 cursor-pointer inline-block">
@@ -300,6 +296,8 @@ function QueryTab() {
 
 /* ==================== 创建配件Tab ==================== */
 function CreateTab() {
+  const [createMode, setCreateMode] = useState<"full" | "vin-only">("full");
+  const [selectedBrand, setSelectedBrand] = useState("博世");
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -307,6 +305,7 @@ function CreateTab() {
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /* 解析完整模式Excel（需包含编码、名称、品牌、成本价、VIN） */
   function parseCreateExcel(file: File): Promise<Array<{ partNumber: string; name: string; brand: string; unitCost: string; vin: string }>> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -356,6 +355,44 @@ function CreateTab() {
     });
   }
 
+  /* 解析仅VIN模式Excel（只需VIN列） */
+  function parseVinOnlyExcel(file: File): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: "array" });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as string[][];
+
+          const header = rows[0] || [];
+          let vinColIndex = header.findIndex(
+            (h) =>
+              String(h).toUpperCase().includes("VIN") ||
+              String(h).includes("车架号") ||
+              String(h).includes("车架")
+          );
+          if (vinColIndex === -1) vinColIndex = 0;
+
+          const vins: string[] = [];
+          for (let i = 1; i < rows.length; i++) {
+            const vin = String(rows[i][vinColIndex] || "").trim().toUpperCase();
+            if (/^[A-HJ-NPR-Z0-9]{17}$/.test(vin) && !vins.includes(vin)) {
+              vins.push(vin);
+            }
+          }
+          resolve(vins);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  /* 完整模式上传处理 */
   async function handleCreateUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -372,16 +409,11 @@ function CreateTab() {
         setUploading(false);
         return;
       }
-      if (rows.length > 50) {
-        setError(`数据行数过多(${rows.length}行)，建议分批处理，每批不超过50行`);
-        setUploading(false);
-        return;
-      }
-
       setUploading(false);
       setCreating(true);
 
-      const batchSize = 5;
+      /* 自动分批，每批最多10个（避免Server Action超时） */
+      const batchSize = 10;
       const allResults: CreatePartResult[] = [];
       for (let i = 0; i < rows.length; i += batchSize) {
         const batch = rows.slice(i, i + batchSize);
@@ -389,7 +421,50 @@ function CreateTab() {
         if (res.success && res.data) {
           allResults.push(...res.data);
         }
-        setProgress(Math.min(((i + batchSize) / rows.length) * 100, 100));
+        setProgress(Math.min(((i + batch.length) / rows.length) * 100, 100));
+      }
+
+      setResults(allResults);
+      setCreating(false);
+    } catch (err: unknown) {
+      setError("解析失败：" + (err instanceof Error ? err.message : String(err)));
+      setUploading(false);
+      setCreating(false);
+    }
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  /* 仅VIN模式上传处理 */
+  async function handleVinOnlyUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError("");
+    setResults([]);
+    setProgress(0);
+
+    try {
+      const vins = await parseVinOnlyExcel(file);
+      if (vins.length === 0) {
+        setError("未在Excel中找到有效的17位VIN码");
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+      setCreating(true);
+
+      /* 每批最多10个VIN（避免Server Action超时） */
+      const batchSize = 10;
+      const allResults: CreatePartResult[] = [];
+      for (let i = 0; i < vins.length; i += batchSize) {
+        const batch = vins.slice(i, i + batchSize);
+        const res = await autoCreateFiltersByVin(batch, selectedBrand);
+        if (res.success && res.data) {
+          allResults.push(...res.data);
+        }
+        setProgress(Math.min(((i + batch.length) / vins.length) * 100, 100));
       }
 
       setResults(allResults);
@@ -408,8 +483,10 @@ function CreateTab() {
     const rows = results.map((r) => ({
       零件编码: r.partNumber,
       零件名称: r.name,
+      品牌: r.brand || "",
       VIN: r.vin,
       OE号: r.oeNumber || "",
+      品牌编码: r.brandPartNumber || "",
       状态: r.success ? "创建成功" : "失败",
       关联车型数: r.matchedModels || 0,
       失败原因: r.error || "",
@@ -429,13 +506,65 @@ function CreateTab() {
   return (
     <>
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-        <h2 className="text-base font-semibold text-gray-900 mb-4">上传Excel创建配件</h2>
-        <p className="text-sm text-gray-500 mb-2">
-          Excel需包含以下列：<strong>零件编码、零件名称、品牌、成本价、VIN</strong>
-        </p>
-        <p className="text-xs text-gray-400 mb-4">
-          零件名称必须是"机油滤"/"空气滤"/"空调滤"之一。系统会用VIN查OE号并自动关联车型。
-        </p>
+        {/* 模式切换 */}
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => { setCreateMode("full"); setResults([]); setError(""); }}
+            className={`px-3 py-1.5 text-sm font-medium rounded-lg ${
+              createMode === "full"
+                ? "bg-orange-600 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            完整模式（Excel含编码/名称/品牌/VIN）
+          </button>
+          <button
+            onClick={() => { setCreateMode("vin-only"); setResults([]); setError(""); }}
+            className={`px-3 py-1.5 text-sm font-medium rounded-lg ${
+              createMode === "vin-only"
+                ? "bg-orange-600 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            仅VIN模式（只传VIN，自动创建三滤）
+          </button>
+        </div>
+
+        {createMode === "full" ? (
+          <>
+            <h2 className="text-base font-semibold text-gray-900 mb-4">上传Excel创建配件</h2>
+            <p className="text-sm text-gray-500 mb-2">
+              Excel需包含以下列：<strong>零件编码、零件名称、品牌、成本价、VIN</strong>
+            </p>
+            <p className="text-xs text-gray-400 mb-4">
+              零件名称必须是&apos;机油滤&apos;/&apos;空气滤&apos;/&apos;空调滤&apos;之一。系统会用VIN查OE号并自动关联车型。
+            </p>
+          </>
+        ) : (
+          <>
+            <h2 className="text-base font-semibold text-gray-900 mb-4">仅上传VIN，自动创建三滤</h2>
+            <p className="text-sm text-gray-500 mb-2">
+              Excel中只需包含<strong>VIN码</strong>列（列标题含&apos;VIN&apos;或&apos;车架号&apos;即可）
+            </p>
+            <p className="text-xs text-gray-400 mb-4">
+              系统会自动为每个VIN创建机油滤、空气滤、空调滤（{selectedBrand}品牌），编码自动生成。
+            </p>
+            {/* 品牌选择 */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-sm text-gray-700">选择品牌：</span>
+              <select
+                value={selectedBrand}
+                onChange={(e) => setSelectedBrand(e.target.value)}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              >
+                <option value="博世">博世</option>
+                <option value="马勒">马勒</option>
+                <option value="曼牌">曼牌</option>
+              </select>
+            </div>
+          </>
+        )}
+
         <div className="flex items-center gap-4">
           <label className="px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 cursor-pointer inline-block">
             {uploading ? "解析中..." : creating ? "创建中..." : "选择Excel文件"}
@@ -443,7 +572,7 @@ function CreateTab() {
               ref={fileInputRef}
               type="file"
               accept=".xlsx,.xls"
-              onChange={handleCreateUpload}
+              onChange={createMode === "full" ? handleCreateUpload : handleVinOnlyUpload}
               disabled={uploading || creating}
               className="hidden"
             />
@@ -500,8 +629,10 @@ function CreateTab() {
                 <tr>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">零件编码</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">零件名称</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">品牌</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">VIN</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">OE号</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">品牌编码</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">状态</th>
                 </tr>
               </thead>
@@ -510,8 +641,10 @@ function CreateTab() {
                   <tr key={idx} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-mono text-gray-900">{r.partNumber}</td>
                     <td className="px-4 py-3">{r.name}</td>
+                    <td className="px-4 py-3">{r.brand || "-"}</td>
                     <td className="px-4 py-3 font-mono text-gray-700">{r.vin}</td>
                     <td className="px-4 py-3">{r.oeNumber || "-"}</td>
+                    <td className="px-4 py-3 font-mono text-gray-700">{r.brandPartNumber || "-"}</td>
                     <td className="px-4 py-3">
                       {r.success ? (
                         <span className="text-green-600">
