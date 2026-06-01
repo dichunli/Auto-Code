@@ -119,7 +119,6 @@ const navItems: NavItem[] = [
   { href: "/follow-ups", label: "售后回访" },
   { href: "/operation-logs", label: "操作日志" },
   {
-  {
     href: "/settings",
     label: "系统设置",
     children: [
