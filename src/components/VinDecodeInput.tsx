@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { vin17DecodeVin, vin17OcrAndDecode } from "@/lib/17vin/client";
+import { vin17OcrImage, vin17DecodeVin } from "@/lib/17vin/client";
+import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import VinKeyboard from "./VinKeyboard";
 
 export interface VinDecodeResult {
@@ -42,6 +43,7 @@ export default function VinDecodeInput({
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [recognizedVin, setRecognizedVin] = useState<string | null>(null);
   const [decodeResult, setDecodeResult] = useState<VinDecodeResult | null>(null);
+  const [queryingModel, setQueryingModel] = useState(false);
   const pcInputRef = useRef<HTMLInputElement>(null);
   const mobileInputRef = useRef<HTMLInputElement>(null);
 
@@ -61,7 +63,26 @@ export default function VinDecodeInput({
     }
     setDecoding(true);
     try {
-      const res = await vin17DecodeVin(vin);
+      const res = (await vin17DecodeVin(vin)) as {
+        code: number;
+        data?: {
+          model_list?: Array<{
+            Brand?: string; brand?: string;
+            Series?: string; series?: string;
+            Model?: string; model?: string;
+            Model_year?: string; model_year?: string;
+            Engine_no?: string; engine_no?: string;
+            Cc?: string; cc?: string;
+            Transmission_type?: string; transmission_type?: string;
+            Trans_code?: string; trans_code?: string;
+            Chassis_code?: string; chassis_code?: string;
+            Driving_mode?: string; driving_mode?: string;
+            Factory?: string; factory?: string;
+            Id?: number; id?: number;
+          }>;
+          model_year_from_vin?: string;
+        };
+      };
       if (res.code !== 1 || !res.data?.model_list?.[0]) {
         alert("未找到该 VIN 码对应的车型信息");
         onDecode(null);
@@ -104,70 +125,115 @@ export default function VinDecodeInput({
       return;
     }
 
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
-    setPreviewImage(base64);
-    setPreviewOpen(true);
-    setOcrLoading(true);
-    setRecognizedVin(null);
-    setDecodeResult(null);
-
     try {
+      /* 压缩图片（>512KB 才压缩） */
+      const base64 =
+        file.size > 512 * 1024
+          ? await 压缩图片为Base64(file, { 最大宽度: 1024, 质量: 0.75 })
+          : await 文件转Base64(file);
+
+      setPreviewImage(base64);
+      setPreviewOpen(true);
+      setOcrLoading(true);
+      setRecognizedVin(null);
+      setDecodeResult(null);
+      setQueryingModel(false);
+
       const base64Body = base64.split(",")[1] || "";
       const base64Urlencode = encodeURIComponent(base64Body);
 
-      const res = await vin17OcrAndDecode(base64Urlencode);
-      if (res.code !== 1 || !res.data?.model_list?.[0]) {
-        alert("未能识别出有效的 VIN 码或车型信息，请尝试手动输入");
+      /* 第1步：只 OCR 识别 VIN */
+      const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
+        code: number;
+        msg?: string;
+        data?: {
+          vin?: string; VIN?: string; Vin?: string;
+          vin_no?: string; vin_code?: string;
+          vehicle?: { vin?: string; VIN?: string };
+          vehicle_info?: { vin?: string };
+          ocr_result?: { vin?: string };
+        };
+      };
+
+      if (ocrRes.code !== 1) {
+        alert(ocrRes.msg || "未能识别出 VIN 码，请尝试手动输入");
         setOcrLoading(false);
         return;
       }
 
       const detectedVin =
-        res.data?.vin ||
-        res.data?.VIN ||
-        res.data?.Vin ||
-        res.data?.vin_no ||
-        res.data?.vin_code ||
-        res.data?.vehicle?.vin ||
-        res.data?.vehicle?.VIN ||
-        res.data?.vehicle_info?.vin ||
-        res.data?.ocr_result?.vin ||
-        res.vin ||
-        res.VIN ||
-        res.Vin ||
+        ocrRes.data?.vin ||
+        ocrRes.data?.VIN ||
+        ocrRes.data?.Vin ||
+        ocrRes.data?.vin_no ||
+        ocrRes.data?.vin_code ||
+        ocrRes.data?.vehicle?.vin ||
+        ocrRes.data?.vehicle?.VIN ||
+        ocrRes.data?.vehicle_info?.vin ||
+        ocrRes.data?.ocr_result?.vin ||
         "";
 
-      const m = res.data.model_list[0];
-      const result: VinDecodeResult = {
-        brand: m.Brand || m.brand || "",
-        series: m.Series || m.series || "",
-        model: m.Model || m.model || "",
-        year: res.data.model_year_from_vin || m.Model_year || m.model_year || "",
-        engineNo: m.Engine_no || m.engine_no || "",
-        cc: m.Cc || m.cc || "",
-        transmissionType: m.Transmission_type || m.transmission_type || "",
-        transmissionCode: m.Trans_code || m.trans_code || "",
-        chassisCode: m.Chassis_code || m.chassis_code || "",
-        drivingMode: m.Driving_mode || m.driving_mode || "",
-        factory: m.Factory || m.factory || "",
-        modelId: m.Id || m.id || undefined,
-      };
+      if (!detectedVin) {
+        alert("图片中未检测到 VIN 码，请尝试手动输入");
+        setOcrLoading(false);
+        return;
+      }
 
-      setRecognizedVin(detectedVin.toUpperCase());
-      setDecodeResult(result);
+      const upperVin = detectedVin.toUpperCase();
+      setRecognizedVin(upperVin);
+      setOcrLoading(false);
+
+      /* 第2步：异步解码车型（不阻塞用户看到 VIN） */
+      setQueryingModel(true);
+      try {
+        const decodeRes = (await vin17DecodeVin(upperVin)) as {
+          code: number;
+          data?: {
+            model_list?: Array<{
+              Brand?: string; brand?: string;
+              Series?: string; series?: string;
+              Model?: string; model?: string;
+              Model_year?: string; model_year?: string;
+              Engine_no?: string; engine_no?: string;
+              Cc?: string; cc?: string;
+              Transmission_type?: string; transmission_type?: string;
+              Trans_code?: string; trans_code?: string;
+              Chassis_code?: string; chassis_code?: string;
+              Driving_mode?: string; driving_mode?: string;
+              Factory?: string; factory?: string;
+              Id?: number; id?: number;
+            }>;
+            model_year_from_vin?: string;
+          };
+        };
+
+        if (decodeRes.code === 1 && decodeRes.data?.model_list?.[0]) {
+          const m = decodeRes.data.model_list[0];
+          setDecodeResult({
+            brand: m.Brand || m.brand || "",
+            series: m.Series || m.series || "",
+            model: m.Model || m.model || "",
+            year: decodeRes.data.model_year_from_vin || m.Model_year || m.model_year || "",
+            engineNo: m.Engine_no || m.engine_no || "",
+            cc: m.Cc || m.cc || "",
+            transmissionType: m.Transmission_type || m.transmission_type || "",
+            transmissionCode: m.Trans_code || m.trans_code || "",
+            chassisCode: m.Chassis_code || m.chassis_code || "",
+            drivingMode: m.Driving_mode || m.driving_mode || "",
+            factory: m.Factory || m.factory || "",
+            modelId: m.Id || m.id || undefined,
+          });
+        }
+      } catch {
+        /* 解码失败不影响，用户已有 VIN */
+      } finally {
+        setQueryingModel(false);
+      }
     } catch (err: unknown) {
       alert("图片识别失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
-      setOcrLoading(false);
+      e.target.value = "";
     }
-
-    e.target.value = "";
   }
 
   function handleConfirm() {
@@ -288,7 +354,16 @@ export default function VinDecodeInput({
                 <div className="inline-flex items-center gap-2 bg-blue-600/20 border border-blue-500/40 rounded-lg px-4 py-2">
                   <span className="text-lg font-bold text-blue-400 tracking-wider font-mono">{recognizedVin}</span>
                 </div>
-                {decodeResult && (
+                {queryingModel && (
+                  <div className="text-xs text-white/50 flex items-center justify-center gap-1">
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    正在查询车型...
+                  </div>
+                )}
+                {decodeResult && !queryingModel && (
                   <div className="text-xs text-white/70">
                     {decodeResult.brand} {decodeResult.series} {decodeResult.model}
                     {decodeResult.year && ` · ${decodeResult.year}年`}

@@ -2,7 +2,10 @@
 
 export interface CommissionFormData {
   auto_link_vehicle_model: boolean;
+  auto_match_17vin_models: boolean;
   is_consumable: boolean;
+  require_scan_check: boolean;
+  require_location_check: boolean;
   sales_type: "" | "revenue_pct" | "profit_pct" | "fixed";
   sales_value: string;
   diagnosis_type: "" | "revenue_pct" | "profit_pct" | "fixed";
@@ -66,7 +69,7 @@ export default function CommissionSection({ data, onChange }: CommissionSectionP
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6">
       <h3 className="text-sm font-semibold text-gray-900 mb-4">分类属性与提成（选择配件名称后自动带入，可修改）</h3>
-      <div className="flex gap-6 mb-4">
+      <div className="flex gap-6 flex-wrap mb-4">
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -76,6 +79,15 @@ export default function CommissionSection({ data, onChange }: CommissionSectionP
           />
           <span className="text-sm text-gray-700">自动关联车型</span>
         </label>
+        <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该配件保存时会自动通过17VIN匹配全部适配车型">
+          <input
+            type="checkbox"
+            checked={data.auto_match_17vin_models}
+            onChange={(e) => onChange({ auto_match_17vin_models: e.target.checked })}
+            className="w-4 h-4"
+          />
+          <span className="text-sm text-gray-700">17VIN自动匹配全部车型</span>
+        </label>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -84,6 +96,24 @@ export default function CommissionSection({ data, onChange }: CommissionSectionP
             className="w-4 h-4"
           />
           <span className="text-sm text-gray-700">耗材（出库不计入营业额）</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该配件出库时需要库管扫码确认">
+          <input
+            type="checkbox"
+            checked={data.require_scan_check}
+            onChange={(e) => onChange({ require_scan_check: e.target.checked })}
+            className="w-4 h-4"
+          />
+          <span className="text-sm text-gray-700">扫码出库确认</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该配件入库时必须填写/确认存放位置">
+          <input
+            type="checkbox"
+            checked={data.require_location_check}
+            onChange={(e) => onChange({ require_location_check: e.target.checked })}
+            className="w-4 h-4"
+          />
+          <span className="text-sm text-gray-700">入库仓位确认</span>
         </label>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

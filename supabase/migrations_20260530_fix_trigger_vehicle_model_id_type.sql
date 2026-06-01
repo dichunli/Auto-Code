@@ -1,8 +1,13 @@
-/* 修复触发器 auto_link_part_to_vehicle 中 vehicle_model_id 变量类型 */
-/* vehicles.vehicle_model_id 已改为 INTEGER，触发器变量也应同步 */
+/* ============================================================
+   修复触发器 auto_link_part_to_vehicle
+   1. vehicle_model_id 改为 INTEGER 类型（同步 vehicles 表变更）
+   2. 【重要】p.part_category_id 已修正为 pn.category_id
+      原因：parts 表实际列名为 category_id，不是 part_category_id
+      后续若修改此触发器，请勿恢复为 p.part_category_id
+   ============================================================ */
 
 CREATE OR REPLACE FUNCTION auto_link_part_to_vehicle()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $BODY$
 DECLARE
   v_vehicle_model_id INTEGER;
   v_auto_link BOOLEAN;
@@ -16,7 +21,7 @@ BEGIN
   SELECT pc.auto_link_vehicle_model INTO v_auto_link
   FROM parts p
   JOIN part_names pn ON pn.id = p.part_name_id
-  JOIN part_categories pc ON pc.id = p.part_category_id
+  JOIN part_categories pc ON pc.id = pn.category_id
   WHERE p.id = NEW.part_id;
 
   IF v_auto_link AND v_vehicle_model_id IS NOT NULL THEN
@@ -27,4 +32,4 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE 'plpgsql';
+$BODY$ LANGUAGE plpgsql;

@@ -7,6 +7,7 @@ import { BlockNoteTOC } from "@/components/BlockNoteTOC";
 import { PresentationView } from "@/components/PresentationView";
 import { KnowledgeDeleteButton } from "@/components/KnowledgeDeleteButton";
 import KnowledgeVehicleLinks from "@/components/KnowledgeVehicleLinks";
+import { 是抖音链接, 抖音视频简化卡片 } from "@/components/DouyinVideo";
 
 interface 维修项目关联 {
   service_names: { name: string } | null;
@@ -93,19 +94,25 @@ export default async function KnowledgeDetailPage({
         </div>
 
         {article.type === "video" && article.video_url && (
-          <div className="mb-6 aspect-video bg-gray-900 rounded-lg flex items-center justify-center">
-            <a
-              href={article.video_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-white text-sm flex items-center gap-2 hover:text-blue-300"
-            >
-              <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-              点击播放视频
-            </a>
-          </div>
+          <>
+            {是抖音链接(article.video_url) ? (
+              <抖音视频简化卡片 url={article.video_url} />
+            ) : (
+              <div className="mb-6 aspect-video bg-gray-900 rounded-lg flex items-center justify-center">
+                <a
+                  href={article.video_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-white text-sm flex items-center gap-2 hover:text-blue-300"
+                >
+                  <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  点击播放视频
+                </a>
+              </div>
+            )}
+          </>
         )}
 
         {/* 移动端目录 */}

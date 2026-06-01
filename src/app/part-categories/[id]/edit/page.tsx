@@ -59,6 +59,7 @@ export default function EditPartCategoryPage() {
   const [form, setForm] = useState({
     name: "",
     auto_link_vehicle_model: false,
+    auto_match_17vin_models: false,
     is_consumable: false,
     require_scan_check: false,
     require_location_check: false,
@@ -89,6 +90,7 @@ export default function EditPartCategoryPage() {
         setForm({
           name: data.name || "",
           auto_link_vehicle_model: data.auto_link_vehicle_model || false,
+          auto_match_17vin_models: data.auto_match_17vin_models || false,
           is_consumable: data.is_consumable || false,
           require_scan_check: data.require_scan_check || false,
           require_location_check: data.require_location_check || false,
@@ -116,6 +118,7 @@ export default function EditPartCategoryPage() {
       .update({
         name: form.name,
         auto_link_vehicle_model: form.auto_link_vehicle_model,
+        auto_match_17vin_models: form.auto_match_17vin_models,
         is_consumable: form.is_consumable,
         require_scan_check: form.require_scan_check,
         require_location_check: form.require_location_check,
@@ -148,6 +151,7 @@ export default function EditPartCategoryPage() {
 
     const updateData = {
       auto_link_vehicle_model: form.auto_link_vehicle_model,
+      auto_match_17vin_models: form.auto_match_17vin_models,
       is_consumable: form.is_consumable,
       require_scan_check: form.require_scan_check,
       require_location_check: form.require_location_check,
@@ -206,6 +210,15 @@ export default function EditPartCategoryPage() {
                 className="w-4 h-4"
               />
               <span className="text-sm text-gray-700">自动关联车型</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该分类下的配件使用时会自动匹配17VIN中的全部适配车型">
+              <input
+                type="checkbox"
+                checked={form.auto_match_17vin_models}
+                onChange={(e) => setForm({ ...form, auto_match_17vin_models: e.target.checked })}
+                className="w-4 h-4"
+              />
+              <span className="text-sm text-gray-700">17VIN自动匹配全部车型</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input

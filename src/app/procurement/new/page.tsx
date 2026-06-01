@@ -67,7 +67,7 @@ export default function NewPurchaseOrderPage() {
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [items, setItems] = useState<LineItem[]>([
     {
-      id: crypto.randomUUID(),
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
       part_id: "",
       part_name_id: "",
       part_number: "",
@@ -237,7 +237,7 @@ export default function NewPurchaseOrderPage() {
     setItems((prev) => [
       ...prev,
       {
-        id: crypto.randomUUID(),
+        id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
         part_id: "",
         part_name_id: "",
         part_number: "",
@@ -315,7 +315,7 @@ export default function NewPurchaseOrderPage() {
 
     try {
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const randomStr = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
+      const randomStr = (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 10)).replace(/-/g, "").slice(0, 8).toUpperCase();
       const orderNo = `CG-${dateStr}-${randomStr}`;
 
       const { data: order, error: orderError } = await supabase

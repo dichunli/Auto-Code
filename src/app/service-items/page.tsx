@@ -32,7 +32,6 @@ interface ServiceCategory {
 const importFields = [
   { key: "项目名称", required: true },
   { key: "分类名称", required: true },
-  { key: "标准工时", required: false },
   { key: "项目说明", required: false },
   { key: "销售价", required: false },
   { key: "VIP价", required: false },
@@ -216,7 +215,6 @@ export default function ServiceItemsPage() {
     const example = [
       "更换机油",
       "常规保养",
-      0.5,
       "含机油滤芯更换",
       280,
       250,
@@ -285,7 +283,6 @@ export default function ServiceItemsPage() {
           code: autoCode,
           category_id: categoryId,
           name: String(record["项目名称"]).trim(),
-          standard_hours: record["标准工时"] ? parseFloat(record["标准工时"]) : null,
           description: record["项目说明"] ? String(record["项目说明"]).trim() : null,
           default_price: record["销售价"] ? parseFloat(record["销售价"]) : null,
           vip_price: record["VIP价"] ? parseFloat(record["VIP价"]) : null,
@@ -424,7 +421,6 @@ export default function ServiceItemsPage() {
                 <th className="px-6 py-3 text-left font-medium text-gray-500">项目名称</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">搜索关键字</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">分类</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">标准工时</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">默认价格</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">车型定价</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">操作</th>
@@ -452,7 +448,6 @@ export default function ServiceItemsPage() {
                   <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
                   <td className="px-6 py-4 text-gray-500 text-xs max-w-[200px] truncate">{item.search_keywords || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{item.service_categories?.name || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{item.standard_hours || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{formatCurrency(item.default_price)}</td>
                   <td className="px-6 py-4">
                     <span className={`text-xs px-2 py-0.5 rounded ${item.is_vehicle_specific ? "bg-blue-50 text-blue-700" : "bg-gray-50 text-gray-600"}`}>
@@ -468,7 +463,7 @@ export default function ServiceItemsPage() {
                 </tr>
               ))}
               {(!paginatedItems || paginatedItems.length === 0) && (
-                <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-400">暂无维修项目</td></tr>
+                <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400">暂无维修项目</td></tr>
               )}
             </tbody>
           </table>

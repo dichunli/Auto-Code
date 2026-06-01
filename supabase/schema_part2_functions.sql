@@ -149,8 +149,13 @@ $$ LANGUAGE 'plpgsql';
 DROP TRIGGER IF EXISTS fill_part_info ON parts CASCADE;
 CREATE TRIGGER fill_part_info BEFORE INSERT ON parts
   FOR EACH ROW EXECUTE FUNCTION auto_fill_part_info();
+/* ============================================================
+   【重要】此处 p.part_category_id 已修正为 pn.category_id
+   原因：parts 表实际列名为 category_id，不是 part_category_id
+   后续若修改此触发器，请勿恢复为 p.part_category_id
+   ============================================================ */
 CREATE OR REPLACE FUNCTION auto_link_part_to_vehicle()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $BODY$
 DECLARE
   v_vehicle_model_id INTEGER;
   v_auto_link BOOLEAN;
@@ -164,7 +169,7 @@ BEGIN
   SELECT pc.auto_link_vehicle_model INTO v_auto_link
   FROM parts p
   JOIN part_names pn ON pn.id = p.part_name_id
-  JOIN part_categories pc ON pc.id = p.part_category_id
+  JOIN part_categories pc ON pc.id = pn.category_id
   WHERE p.id = NEW.part_id;
 
   IF v_auto_link AND v_vehicle_model_id IS NOT NULL THEN
@@ -175,7 +180,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE 'plpgsql';
+$BODY$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS auto_link_vehicle_model ON work_order_item_parts CASCADE;
 CREATE TRIGGER auto_link_vehicle_model AFTER INSERT ON work_order_item_parts
   FOR EACH ROW EXECUTE FUNCTION auto_link_part_to_vehicle();

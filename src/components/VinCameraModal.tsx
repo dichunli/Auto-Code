@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useId } from "react";
-import { vin17OcrAndDecode } from "@/lib/17vin/client";
+import { vin17OcrImage, vin17DecodeVin } from "@/lib/17vin/client";
+import { 压缩图片为Base64, 文件转Base64, 裁剪Base64图片 } from "@/lib/imageCompress";
 import { VinDecodeResult } from "./VinDecodeInput";
 
 interface Props {
@@ -10,46 +11,16 @@ interface Props {
   onRecognize: (vin: string, result: VinDecodeResult | null) => void;
 }
 
-/* 压缩图片为 base64，宽度最大 1920，质量 0.85（VIN 需要更高清晰度） */
-async function compressImage(file: File | Blob, maxWidth = 1920, quality = 0.85): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let { width, height } = img;
-      if (width > maxWidth) {
-        height = Math.round((height * maxWidth) / width);
-        width = maxWidth;
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("canvas 不支持"));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", quality));
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("图片加载失败"));
-    };
-    img.src = url;
-  });
+/* 裁剪区域 */
+interface 裁剪区域 {
+  x: number; /* 相对图片的百分比 0-1 */
+  y: number;
+  w: number;
+  h: number;
 }
 
-/* file / blob 转 base64 */
-async function fileToBase64(file: File | Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+/* 默认裁剪框：横向长条，中间位置 */
+const 默认裁剪区: 裁剪区域 = { x: 0.1, y: 0.4, w: 0.8, h: 0.2 };
 
 export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -57,13 +28,22 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileId = `vin-album-${useId()}`;
   const captureFileId = `vin-capture-${useId()}`;
+  const previewContainerRef = useRef<HTMLDivElement>(null);
 
   const [hasCamera, setHasCamera] = useState(true);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewImage尺寸, setPreviewImage尺寸] = useState<{ w: number; h: number } | null>(null);
   const [recognizing, setRecognizing] = useState(false);
   const [recognizedVin, setRecognizedVin] = useState<string | null>(null);
   const [decodeResult, setDecodeResult] = useState<VinDecodeResult | null>(null);
+  const [decoding, setDecoding] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  /* 裁剪相关 */
+  const [裁剪区, set裁剪区] = useState<裁剪区域>(默认裁剪区);
+  const [正在拖动, set正在拖动] = useState(false);
+  const [显示裁剪框, set显示裁剪框] = useState(true);
+  const 拖动起始偏移 = useRef({ dx: 0, dy: 0 });
 
   /* 关闭相机 */
   const stopCamera = useCallback(() => {
@@ -76,84 +56,146 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     }
   }, []);
 
-  /* 执行识别 */
-  const doRecognize = useCallback(async (base64: string) => {
+  /* 执行 OCR 识别 */
+  const doOcr = useCallback(async (base64: string, 使用裁剪: boolean) => {
     setRecognizing(true);
     setErrorMsg(null);
     setRecognizedVin(null);
     setDecodeResult(null);
+    setDecoding(false);
 
     try {
-      const base64Body = base64.split(",")[1] || "";
-      const base64Urlencode = encodeURIComponent(base64Body);
+      let 发送图片 = base64;
 
-      const res = await vin17OcrAndDecode(base64Urlencode);
-      if (res.code !== 1 || !res.data?.model_list?.[0]) {
-        throw new Error("未能识别出有效的 VIN 码或车型信息，请尝试手动输入");
+      /* 如果使用裁剪，先裁剪 */
+      if (使用裁剪 && previewImage尺寸) {
+        const imgW = previewImage尺寸.w;
+        const imgH = previewImage尺寸.h;
+        const cx = Math.round(裁剪区.x * imgW);
+        const cy = Math.round(裁剪区.y * imgH);
+        const cw = Math.round(裁剪区.w * imgW);
+        const ch = Math.round(裁剪区.h * imgH);
+        发送图片 = await 裁剪Base64图片(base64, cx, cy, cw, ch);
       }
 
-      /* 提取 VIN */
+      const base64Body = 发送图片.split(",")[1] || "";
+      const base64Urlencode = encodeURIComponent(base64Body);
+
+      /* 第1步：只 OCR 识别 VIN */
+      const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
+        code: number;
+        msg?: string;
+        data?: {
+          vin?: string;
+          VIN?: string;
+          Vin?: string;
+          vin_no?: string;
+          vin_code?: string;
+          vehicle?: { vin?: string; VIN?: string };
+          vehicle_info?: { vin?: string };
+          ocr_result?: { vin?: string };
+        };
+      };
+
+      if (ocrRes.code !== 1) {
+        throw new Error(ocrRes.msg || "未能识别出 VIN 码，请尝试调整裁剪框或手动输入");
+      }
+
       const detectedVin =
-        res.data?.vin ||
-        res.data?.VIN ||
-        res.data?.Vin ||
-        res.data?.vin_no ||
-        res.data?.vin_code ||
-        res.data?.vehicle?.vin ||
-        res.data?.vehicle?.VIN ||
-        res.data?.vehicle_info?.vin ||
-        res.data?.ocr_result?.vin ||
-        res.vin ||
-        res.VIN ||
-        res.Vin ||
+        ocrRes.data?.vin ||
+        ocrRes.data?.VIN ||
+        ocrRes.data?.Vin ||
+        ocrRes.data?.vin_no ||
+        ocrRes.data?.vin_code ||
+        ocrRes.data?.vehicle?.vin ||
+        ocrRes.data?.vehicle?.VIN ||
+        ocrRes.data?.vehicle_info?.vin ||
+        ocrRes.data?.ocr_result?.vin ||
         "";
 
       if (!detectedVin) {
-        throw new Error("识别到了车型信息，但未提取到 VIN 码");
+        throw new Error("图片中未检测到 VIN 码，请调整裁剪框对准 VIN 区域后重试");
       }
 
-      const m = res.data.model_list[0];
-      const result: VinDecodeResult = {
-        brand: m.Brand || m.brand || "",
-        series: m.Series || m.series || "",
-        model: m.Model || m.model || "",
-        year: res.data.model_year_from_vin || m.Model_year || m.model_year || "",
-        engineNo: m.Engine_no || m.engine_no || "",
-        cc: m.Cc || m.cc || "",
-        transmissionType: m.Transmission_type || m.transmission_type || "",
-        transmissionCode: m.Trans_code || m.trans_code || "",
-        chassisCode: m.Chassis_code || m.chassis_code || "",
-        drivingMode: m.Driving_mode || m.driving_mode || "",
-        factory: m.Factory || m.factory || "",
-        modelId: m.Id || m.id || undefined,
-      };
+      const upperVin = detectedVin.toUpperCase();
+      setRecognizedVin(upperVin);
 
-      setRecognizedVin(detectedVin.toUpperCase());
-      setDecodeResult(result);
+      /* 第2步：异步解码车型（不阻塞用户看到 VIN） */
+      setDecoding(true);
+      try {
+        const decodeRes = (await vin17DecodeVin(upperVin)) as {
+          code: number;
+          data?: {
+            model_list?: Array<{
+              Brand?: string; brand?: string;
+              Series?: string; series?: string;
+              Model?: string; model?: string;
+              Model_year?: string; model_year?: string;
+              Engine_no?: string; engine_no?: string;
+              Cc?: string; cc?: string;
+              Transmission_type?: string; transmission_type?: string;
+              Trans_code?: string; trans_code?: string;
+              Chassis_code?: string; chassis_code?: string;
+              Driving_mode?: string; driving_mode?: string;
+              Factory?: string; factory?: string;
+              Id?: number; id?: number;
+            }>;
+            model_year_from_vin?: string;
+          };
+        };
+
+        if (decodeRes.code === 1 && decodeRes.data?.model_list?.[0]) {
+          const m = decodeRes.data.model_list[0];
+          setDecodeResult({
+            brand: m.Brand || m.brand || "",
+            series: m.Series || m.series || "",
+            model: m.Model || m.model || "",
+            year: decodeRes.data.model_year_from_vin || m.Model_year || m.model_year || "",
+            engineNo: m.Engine_no || m.engine_no || "",
+            cc: m.Cc || m.cc || "",
+            transmissionType: m.Transmission_type || m.transmission_type || "",
+            transmissionCode: m.Trans_code || m.trans_code || "",
+            chassisCode: m.Chassis_code || m.chassis_code || "",
+            drivingMode: m.Driving_mode || m.driving_mode || "",
+            factory: m.Factory || m.factory || "",
+            modelId: m.Id || m.id || undefined,
+          });
+        }
+      } catch {
+        /* 解码失败不影响，用户已有 VIN */
+      } finally {
+        setDecoding(false);
+      }
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : "识别失败");
     } finally {
       setRecognizing(false);
     }
-  }, []);
+  }, [裁剪区, previewImage尺寸]);
 
   /* 打开相机 */
   useEffect(() => {
     if (!open) {
       stopCamera();
       setPreviewImage(null);
+      setPreviewImage尺寸(null);
       setRecognizedVin(null);
       setDecodeResult(null);
       setErrorMsg(null);
       setRecognizing(false);
+      setDecoding(false);
+      set裁剪区(默认裁剪区);
       return;
     }
 
     setPreviewImage(null);
+    setPreviewImage尺寸(null);
     setRecognizedVin(null);
     setDecodeResult(null);
     setErrorMsg(null);
     setRecognizing(false);
+    setDecoding(false);
+    set裁剪区(默认裁剪区);
 
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       navigator.mediaDevices
@@ -191,17 +233,25 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     ctx.drawImage(video, 0, 0);
 
     canvas.toBlob(
-      (blob) => {
+      async (blob) => {
         if (!blob) return;
-        compressImage(blob, 1920, 0.85).then((base64) => {
+        try {
+          const base64 = await 压缩图片为Base64(blob, { 最大宽度: 1024, 质量: 0.75 });
           setPreviewImage(base64);
-          doRecognize(base64);
-        });
+          /* 获取图片尺寸 */
+          const img = new Image();
+          img.onload = () => {
+            setPreviewImage尺寸({ w: img.width, h: img.height });
+          };
+          img.src = base64;
+        } catch {
+          /* 忽略 */
+        }
       },
       "image/jpeg",
-      0.85
+      0.75
     );
-  }, [doRecognize]);
+  }, []);
 
   /* 从相册选择 */
   const handleFileSelect = useCallback(
@@ -220,17 +270,22 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       try {
         const base64 =
           file.size > 512 * 1024
-            ? await compressImage(file, 1920, 0.85)
-            : await fileToBase64(file);
+            ? await 压缩图片为Base64(file, { 最大宽度: 1024, 质量: 0.75 })
+            : await 文件转Base64(file);
         setPreviewImage(base64);
-        await doRecognize(base64);
+        /* 获取图片尺寸 */
+        const img = new Image();
+        img.onload = () => {
+          setPreviewImage尺寸({ w: img.width, h: img.height });
+        };
+        img.src = base64;
       } catch (err: unknown) {
         setErrorMsg("图片处理失败: " + (err instanceof Error ? err.message : String(err)));
       } finally {
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [doRecognize]
+    []
   );
 
   /* 确认使用识别结果 */
@@ -244,10 +299,56 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   /* 重新拍摄 */
   const handleRetake = useCallback(() => {
     setPreviewImage(null);
+    setPreviewImage尺寸(null);
     setRecognizedVin(null);
     setDecodeResult(null);
     setErrorMsg(null);
+    setRecognizing(false);
+    setDecoding(false);
+    set裁剪区(默认裁剪区);
   }, []);
+
+  /* 裁剪框拖动 */
+  const handleCropPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    set正在拖动(true);
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    const clientX = "touches" in e ? (e as unknown as React.TouchEvent).touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? (e as unknown as React.TouchEvent).touches[0].clientY : e.clientY;
+    拖动起始偏移.current = { dx: clientX - rect.left, dy: clientY - rect.top };
+  }, []);
+
+  const handleCropPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!正在拖动 || !previewContainerRef.current) return;
+      const container = previewContainerRef.current.getBoundingClientRect();
+      const clientX = "touches" in e ? (e as unknown as React.TouchEvent).touches[0].clientX : e.clientX;
+      const clientY = "touches" in e ? (e as unknown as React.TouchEvent).touches[0].clientY : e.clientY;
+
+      let nx = (clientX - container.left - 拖动起始偏移.current.dx) / container.width;
+      let ny = (clientY - container.top - 拖动起始偏移.current.dy) / container.height;
+
+      /* 限制在边界内 */
+      nx = Math.max(0, Math.min(1 - 裁剪区.w, nx));
+      ny = Math.max(0, Math.min(1 - 裁剪区.h, ny));
+
+      set裁剪区((prev) => ({ ...prev, x: nx, y: ny }));
+    },
+    [正在拖动, 裁剪区.w, 裁剪区.h]
+  );
+
+  const handleCropPointerUp = useCallback(() => {
+    set正在拖动(false);
+  }, []);
+
+  /* 裁剪框样式 */
+  const 裁剪框样式: React.CSSProperties = {
+    left: `${裁剪区.x * 100}%`,
+    top: `${裁剪区.y * 100}%`,
+    width: `${裁剪区.w * 100}%`,
+    height: `${裁剪区.h * 100}%`,
+    cursor: 正在拖动 ? "grabbing" : "grab",
+  };
 
   if (!open) return null;
 
@@ -268,7 +369,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       </div>
 
       {/* 预览 / 相机画面 */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative overflow-hidden" ref={previewContainerRef}>
         {/* 实时预览 */}
         {!previewImage && hasCamera && (
           <>
@@ -317,7 +418,52 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
         {/* 拍照预览 */}
         {previewImage && (
-          <img src={previewImage} alt="预览" className="absolute inset-0 w-full h-full object-contain bg-black" />
+          <div className="absolute inset-0 w-full h-full">
+            <img src={previewImage} alt="预览" className="w-full h-full object-contain bg-black" />
+
+            {/* 裁剪框（未识别时显示） */}
+            {!recognizedVin && !recognizing && (
+              <>
+                {/* 遮罩 */}
+                <div className="absolute inset-0 pointer-events-none">
+                  <div
+                    className="absolute inset-0 bg-black/50"
+                    style={{
+                      clipPath: `polygon(
+                        0% 0%, 100% 0%, 100% 100%, 0% 100%,
+                        0% ${裁剪区.y * 100}%,
+                        ${裁剪区.x * 100}% ${裁剪区.y * 100}%,
+                        ${裁剪区.x * 100}% ${(裁剪区.y + 裁剪区.h) * 100}%,
+                        ${(裁剪区.x + 裁剪区.w) * 100}% ${(裁剪区.y + 裁剪区.h) * 100}%,
+                        ${(裁剪区.x + 裁剪区.w) * 100}% ${裁剪区.y * 100}%,
+                        0% ${裁剪区.y * 100}%
+                      )`,
+                    }}
+                  />
+                </div>
+
+                {/* 可拖动的裁剪框 */}
+                <div
+                  className="absolute border-2 border-blue-400 bg-transparent touch-none"
+                  style={裁剪框样式}
+                  onPointerDown={handleCropPointerDown}
+                  onPointerMove={handleCropPointerMove}
+                  onPointerUp={handleCropPointerUp}
+                  onPointerLeave={handleCropPointerUp}
+                >
+                  {/* 四角标记 */}
+                  <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-white" />
+                  <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-white" />
+                  <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-white" />
+                  <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-white" />
+                  {/* 提示 */}
+                  <div className="absolute -top-6 left-0 right-0 text-center">
+                    <span className="text-[10px] text-white bg-blue-600 px-1.5 py-0.5 rounded">拖动框选 VIN 区域</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -340,16 +486,27 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
               </div>
             )}
 
-            {!recognizing && recognizedVin && decodeResult && (
+            {!recognizing && recognizedVin && (
               <div className="text-center py-2 space-y-1">
                 <div className="text-xs text-white/50">识别结果</div>
                 <div className="inline-flex items-center gap-2 bg-blue-600/20 border border-blue-500/40 rounded-lg px-4 py-2">
                   <span className="text-lg font-bold text-blue-400 tracking-wider font-mono">{recognizedVin}</span>
                 </div>
-                <div className="text-xs text-white/70">
-                  {decodeResult.brand} {decodeResult.series} {decodeResult.model}
-                  {decodeResult.year && ` · ${decodeResult.year}年`}
-                </div>
+                {decoding && (
+                  <div className="text-xs text-white/50 flex items-center justify-center gap-1">
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    正在查询车型...
+                  </div>
+                )}
+                {decodeResult && !decoding && (
+                  <div className="text-xs text-white/70">
+                    {decodeResult.brand} {decodeResult.series} {decodeResult.model}
+                    {decodeResult.year && ` · ${decodeResult.year}年`}
+                  </div>
+                )}
               </div>
             )}
 
@@ -416,35 +573,85 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
             </>
           ) : (
             <>
-              {/* 重新拍摄 */}
-              <button
-                type="button"
-                onClick={handleRetake}
-                disabled={recognizing}
-                className="flex flex-col items-center gap-1 text-white/70 active:text-white disabled:opacity-40"
-              >
-                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                    />
-                  </svg>
-                </div>
-                <span className="text-[10px]">重拍</span>
-              </button>
+              {!recognizedVin ? (
+                <>
+                  {/* 重新拍摄 */}
+                  <button
+                    type="button"
+                    onClick={handleRetake}
+                    disabled={recognizing}
+                    className="flex flex-col items-center gap-1 text-white/70 active:text-white disabled:opacity-40"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
+                      </svg>
+                    </div>
+                    <span className="text-[10px]">重拍</span>
+                  </button>
 
-              {/* 确认 */}
-              <button
-                type="button"
-                onClick={handleConfirm}
-                disabled={recognizing || !recognizedVin}
-                className="px-6 py-2.5 rounded-full bg-blue-600 text-white text-sm font-medium active:bg-blue-700 disabled:opacity-40 disabled:active:bg-blue-600"
-              >
-                使用此 VIN
-              </button>
+                  {/* 识别按钮 */}
+                  <button
+                    type="button"
+                    onClick={() => doOcr(previewImage, 显示裁剪框)}
+                    disabled={recognizing}
+                    className="px-6 py-2.5 rounded-full bg-blue-600 text-white text-sm font-medium active:bg-blue-700 disabled:opacity-40"
+                  >
+                    {recognizing ? "识别中..." : "识别 VIN"}
+                  </button>
+
+                  {/* 裁剪开关 */}
+                  <button
+                    type="button"
+                    onClick={() => set显示裁剪框((v) => !v)}
+                    className={`flex flex-col items-center gap-1 ${显示裁剪框 ? "text-blue-400" : "text-white/70"} active:text-white`}
+                  >
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${显示裁剪框 ? "bg-blue-600/30" : "bg-white/10"} active:bg-white/20`}>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <span className="text-[10px]">{显示裁剪框 ? "裁剪中" : "全图"}</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* 重新拍摄 */}
+                  <button
+                    type="button"
+                    onClick={handleRetake}
+                    disabled={recognizing}
+                    className="flex flex-col items-center gap-1 text-white/70 active:text-white disabled:opacity-40"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
+                      </svg>
+                    </div>
+                    <span className="text-[10px]">重拍</span>
+                  </button>
+
+                  {/* 确认 */}
+                  <button
+                    type="button"
+                    onClick={handleConfirm}
+                    disabled={!recognizedVin}
+                    className="px-6 py-2.5 rounded-full bg-blue-600 text-white text-sm font-medium active:bg-blue-700 disabled:opacity-40 disabled:active:bg-blue-600"
+                  >
+                    使用此 VIN
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>

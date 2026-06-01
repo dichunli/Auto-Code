@@ -146,7 +146,7 @@ function ExamManageContent() {
         course_id: selectedCourseId,
         question_type: questionForm.question_type,
         question_text: questionForm.question_text.trim(),
-        options: questionForm.question_type === "essay" ? [] : questionForm.options.filter((o) => o.text.trim()),
+        options: questionForm.question_type === "essay" || questionForm.question_type === "scoring" ? [] : questionForm.options.filter((o) => o.text.trim()),
         correct_answer: questionForm.correct_answer.trim() || null,
         score: parseInt(questionForm.score) || 10,
         sort_order: editingQuestion ? editingQuestion.sort_order : questions.length,
@@ -189,6 +189,7 @@ function ExamManageContent() {
     single_choice: "单选题",
     multiple_choice: "多选题",
     essay: "简答题",
+    scoring: "评分项",
   };
 
   return (
@@ -310,6 +311,7 @@ function ExamManageContent() {
                   <option value="single_choice">单选题</option>
                   <option value="multiple_choice">多选题</option>
                   <option value="essay">简答题</option>
+                  <option value="scoring">评分项</option>
                 </select>
               </div>
               <div>
@@ -324,7 +326,7 @@ function ExamManageContent() {
               </div>
 
               {/* 选项（仅选择题） */}
-              {questionForm.question_type !== "essay" && (
+              {questionForm.question_type !== "essay" && questionForm.question_type !== "scoring" && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-medium text-gray-700">选项</label>
@@ -365,7 +367,11 @@ function ExamManageContent() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {questionForm.question_type === "essay" ? "参考答案" : "正确答案"}
+                  {questionForm.question_type === "essay"
+                    ? "参考答案"
+                    : questionForm.question_type === "scoring"
+                    ? "评分说明"
+                    : "正确答案"}
                 </label>
                 <input
                   value={questionForm.correct_answer}
@@ -376,6 +382,8 @@ function ExamManageContent() {
                       ? "填写选项字母，如 A"
                       : questionForm.question_type === "multiple_choice"
                       ? "填写选项字母，如 A,B,C"
+                      : questionForm.question_type === "scoring"
+                      ? "填写评分标准说明"
                       : "填写参考答案（供判卷参考）"
                   }
                 />

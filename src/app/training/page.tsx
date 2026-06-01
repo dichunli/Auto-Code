@@ -1,14 +1,99 @@
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 
-export default async function TrainingPage() {
-  const supabase = await createClient();
+interface 课程 {
+  id: string;
+  category: string;
+  is_required: boolean;
+  title: string;
+  description: string | null;
+  duration_minutes: number | null;
+  passing_score: number;
+  points: number | null;
+  video_url: string | null;
+  has_exam: boolean | null;
+  exam_mode: string | null;
+  sort_order: number;
+  profiles: { full_name: string } | null;
+}
 
-  const { data: courses } = await supabase
-    .from("training_courses")
-    .select("*, profiles(full_name)")
-    .order("created_at", { ascending: false });
+export default function TrainingPage() {
+  const supabase = createClient();
+  const [courses, setCourses] = useState<课程[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const loadCourses = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("training_courses")
+      .select("*, profiles(full_name)")
+      .order("created_at", { ascending: false });
+    setCourses((data as 课程[]) || []);
+    setLoading(false);
+  }, [supabase]);
+
+  useEffect(() => {
+    loadCourses();
+  }, [loadCourses]);
+
+  async function saveSortOrder(updated: 课程[]) {
+    const updates = updated.map((c, index) => ({
+      id: c.id,
+      sort_order: index,
+    }));
+
+    for (const u of updates) {
+      await supabase.from("training_courses").update({ sort_order: u.sort_order }).eq("id", u.id);
+    }
+  }
+
+  function handleDragStart(id: string) {
+    setDragId(id);
+  }
+
+  function handleDragOver(e: React.DragEvent, overId: string) {
+    e.preventDefault();
+    if (dragId && dragId !== overId) {
+      setDragOverId(overId);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent, targetId: string) {
+    e.preventDefault();
+    if (!dragId || dragId === targetId) {
+      setDragId(null);
+      setDragOverId(null);
+      return;
+    }
+
+    const fromIndex = courses.findIndex((c) => c.id === dragId);
+    const toIndex = courses.findIndex((c) => c.id === targetId);
+    if (fromIndex === -1 || toIndex === -1) {
+      setDragId(null);
+      setDragOverId(null);
+      return;
+    }
+
+    const next = [...courses];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+
+    setCourses(next);
+    saveSortOrder(next);
+    setDragId(null);
+    setDragOverId(null);
+  }
+
+  function handleDragEnd() {
+    setDragId(null);
+    setDragOverId(null);
+  }
 
   const categoryLabels: Record<string, string> = {
     safety: "安全",
@@ -17,10 +102,19 @@ export default async function TrainingPage() {
     management: "管理",
   };
 
+  if (loading) {
+    return (
+      <div>
+        <PageHeader title="培训考核" description="员工培训与学习管理" />
+        <div className="p-8 text-center text-gray-400">加载中...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="授课学堂"
+        title="培训考核"
         description="员工培训与学习管理"
         action={{ href: "/training/new", label: "新建课程" }}
       />
@@ -69,47 +163,55 @@ export default async function TrainingPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {courses?.map((course: { id: string; category: string; is_required: boolean; title: string; description: string | null; duration_minutes: number | null; passing_score: number; points: number | null; video_url: string | null; has_exam: boolean | null; profiles: { full_name: string } | null }) => (
-          <Link
+        {courses.map((course) => (
+          <div
             key={course.id}
-            href={`/training/${course.id}`}
-            className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow"
+            draggable
+            onDragStart={() => handleDragStart(course.id)}
+            onDragOver={(e) => handleDragOver(e, course.id)}
+            onDrop={(e) => handleDrop(e, course.id)}
+            onDragEnd={handleDragEnd}
+            className={`bg-white rounded-xl border p-5 hover:shadow-sm transition-all cursor-move ${
+              dragOverId === course.id ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"
+            } ${dragId === course.id ? "opacity-50" : "opacity-100"}`}
           >
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
-                {categoryLabels[course.category] || course.category}
-              </span>
-              {course.is_required && (
-                <span className="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-100">必修</span>
-              )}
-              {(course.points ?? 0) > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded bg-yellow-50 text-yellow-700 border border-yellow-100">
-                  积分 {course.points}
+            <Link href={`/training/${course.id}`} className="block">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
+                  {categoryLabels[course.category] || course.category}
                 </span>
+                {course.is_required && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-100">必修</span>
+                )}
+                {(course.points ?? 0) > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-yellow-50 text-yellow-700 border border-yellow-100">
+                    积分 {course.points}
+                  </span>
+                )}
+                {course.video_url && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-600 border border-green-100">
+                    视频
+                  </span>
+                )}
+                {course.has_exam && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-100">
+                    {course.exam_mode === "offline" ? "线下考试" : "考试"}
+                  </span>
+                )}
+              </div>
+              <h3 className="text-base font-semibold text-gray-900">{course.title}</h3>
+              {course.description && (
+                <p className="text-sm text-gray-500 mt-1 line-clamp-2">{course.description}</p>
               )}
-              {course.video_url && (
-                <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-600 border border-green-100">
-                  视频
-                </span>
-              )}
-              {course.has_exam && (
-                <span className="text-xs px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-100">
-                  考试
-                </span>
-              )}
-            </div>
-            <h3 className="text-base font-semibold text-gray-900">{course.title}</h3>
-            {course.description && (
-              <p className="text-sm text-gray-500 mt-1 line-clamp-2">{course.description}</p>
-            )}
-            <div className="flex items-center gap-3 mt-3 text-xs text-gray-400">
-              {course.duration_minutes && <span>{course.duration_minutes} 分钟</span>}
-              <span>通过分: {course.passing_score}</span>
-              <span>创建: {course.profiles?.full_name}</span>
-            </div>
-          </Link>
+              <div className="flex items-center gap-3 mt-3 text-xs text-gray-400">
+                {course.duration_minutes && <span>{course.duration_minutes} 分钟</span>}
+                <span>通过分: {course.passing_score}</span>
+                <span>创建: {course.profiles?.full_name}</span>
+              </div>
+            </Link>
+          </div>
         ))}
-        {(!courses || courses.length === 0) && (
+        {courses.length === 0 && (
           <div className="col-span-full text-center text-gray-400 py-12">暂无课程</div>
         )}
       </div>

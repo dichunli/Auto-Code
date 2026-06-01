@@ -182,6 +182,23 @@ function CustomToolbarButtons({
     );
   }
 
+  function handleInsertDouyinVideo() {
+    const url = prompt("输入抖音视频分享链接（如 https://v.douyin.com/xxxxx）:");
+    if (!url) return;
+    /* 简单校验 */
+    const trimmed = url.trim();
+    if (!trimmed.startsWith("http")) {
+      alert("请输入以 http:// 或 https:// 开头的链接");
+      return;
+    }
+    const pos = editor.getTextCursorPosition();
+    editor.insertBlocks(
+      [{ type: "video", props: { url: trimmed, caption: "" } }],
+      pos.block,
+      "after"
+    );
+  }
+
   async function handleUploadVideo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -347,6 +364,14 @@ function CustomToolbarButtons({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
         </svg>
         视频链接
+      </button>
+
+      {/* 插入抖音视频 */}
+      <button type="button" className={btnBase} onClick={handleInsertDouyinVideo} title="插入抖音视频">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
+          <path d="M12.53 2C12.53 2 12.53 6.5 12.53 8C12.53 10.5 14.53 12.5 17.03 12.5C17.83 12.5 18.53 12.3 19.03 12V16.5C19.03 16.5 17.53 17 16.03 17C13.53 17 11.53 15 11.53 12.5V8H8.53V12.5C8.53 16.5 11.53 19.5 15.53 19.5C16.53 19.5 17.53 19.3 18.53 18.8V22C18.53 22 17.03 22.5 15.53 22.5C10.53 22.5 6.53 18.5 6.53 13.5V8H4.53V4H11.53C11.53 3 12.03 2 12.53 2Z" fill="currentColor" />
+        </svg>
+        抖音视频
       </button>
 
       {/* 上传视频 */}

@@ -22,6 +22,10 @@ interface 员工状态 {
   daily_loss: number;
   behavior_score: number;
   exam_passed: boolean;
+  required_courses_completed: boolean;
+  required_courses_count: number;
+  required_courses_done: number;
+  exam_total_score: number;
   missing: string[];
   rule: {
     min_course_points: number;
@@ -29,7 +33,9 @@ interface 员工状态 {
     max_rework_loss: number;
     max_daily_loss: number;
     min_behavior_score: number;
+    min_exam_score: number;
     exam_pass_required: boolean;
+    required_course_ids: string[];
   } | null;
 }
 
@@ -75,8 +81,10 @@ export default function PromotionOverviewPage() {
       max_rework_loss: number;
       max_daily_loss: number;
       min_behavior_score: number;
+      min_exam_score: number;
       exam_pass_required: boolean;
       period_months: number;
+      required_course_ids: string[] | null;
     }[];
 
     /* 获取等级名称 */
@@ -114,7 +122,7 @@ export default function PromotionOverviewPage() {
         p_target_level_id: rule.to_level_id,
       });
 
-      const result = (checkResult as { eligible: boolean; course_points: number; work_order_count: number; rework_loss_total: number; daily_loss_total: number; behavior_score_total: number; exam_all_passed: boolean; missing_items: string[] }[] | null)?.[0];
+      const result = (checkResult as { eligible: boolean; course_points: number; work_order_count: number; rework_loss_total: number; daily_loss_total: number; behavior_score_total: number; exam_all_passed: boolean; required_courses_completed: boolean; required_courses_count: number; required_courses_done: number; exam_total_score: number; missing_items: string[] }[] | null)?.[0];
 
       statuses.push({
         employee: emp,
@@ -127,6 +135,10 @@ export default function PromotionOverviewPage() {
         daily_loss: result?.daily_loss_total || 0,
         behavior_score: result?.behavior_score_total || 0,
         exam_passed: result?.exam_all_passed ?? true,
+        required_courses_completed: result?.required_courses_completed ?? true,
+        required_courses_count: result?.required_courses_count || 0,
+        required_courses_done: result?.required_courses_done || 0,
+        exam_total_score: result?.exam_total_score || 0,
         missing: result?.missing_items || [],
         rule: {
           min_course_points: rule.min_course_points,
@@ -134,7 +146,9 @@ export default function PromotionOverviewPage() {
           max_rework_loss: rule.max_rework_loss,
           max_daily_loss: rule.max_daily_loss,
           min_behavior_score: rule.min_behavior_score,
+          min_exam_score: rule.min_exam_score,
           exam_pass_required: rule.exam_pass_required,
+          required_course_ids: rule.required_course_ids || [],
         },
       });
     }
@@ -243,6 +257,17 @@ export default function PromotionOverviewPage() {
                       {s.exam_passed ? "通过" : "未通过"}
                     </span>
                   </div>
+                  {s.rule.required_course_ids && s.rule.required_course_ids.length > 0 && (
+                    <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <span className="text-gray-500">必修课程</span>
+                      <span className={s.required_courses_completed ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
+                        {s.required_courses_done}/{s.required_courses_count}
+                      </span>
+                    </div>
+                  )}
+                  {s.rule.min_exam_score > 0 && (
+                    <ProgressItem label="考核得分" current={s.exam_total_score} target={s.rule.min_exam_score} />
+                  )}
                   {s.rule.max_rework_loss > 0 && (
                     <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
                       <span className="text-gray-500">返工损失</span>

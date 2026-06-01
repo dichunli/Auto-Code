@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { compressImage } from "@/lib/imageCompress";
@@ -79,6 +79,7 @@ interface ItemPart {
   part_id?: string | null;
   part_name_id?: string | null;
   category?: string | null;
+  pickedQty?: number;
 }
 
 interface PartImageRecord {
@@ -314,6 +315,20 @@ export default function MobileItemEditor({
 
   /* 配件列表展开状态 */
   const [partsExpanded, setPartsExpanded] = useState(false);
+
+  /* 按配件名称分组 */
+  const partGroups = useMemo(() => {
+    const map = new Map<string, ItemPart[]>();
+    for (const p of parts) {
+      const key = p.part_name_id || p.name;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(p);
+    }
+    return Array.from(map.values()).map((items) => ({
+      name: items[0].name,
+      parts: items,
+    }));
+  }, [parts]);
 
   /* 配件详情弹窗 */
   const [selectedPartForDetail, setSelectedPartForDetail] = useState<ItemPart | null>(null);
@@ -1206,6 +1221,22 @@ export default function MobileItemEditor({
     refresh();
   }
 
+  /* 删除维修项目 */
+  async function handleDeleteItem() {
+    if (!confirm(`确定删除维修项目「${item.alias_name || item.name}」？`)) return;
+    if (parts.length > 0) {
+      if (!confirm("该项目下还有配件，确定一并删除吗？")) return;
+    }
+    setLoading(true);
+    const { error } = await supabase.from("work_order_items").delete().eq("id", item.id);
+    setLoading(false);
+    if (error) {
+      alert("删除失败: " + error.message);
+      return;
+    }
+    refresh();
+  }
+
   /* 取消外包 */
   async function cancelOutsource() {
     if (!existingOrder || !existingItem) return;
@@ -1308,9 +1339,30 @@ export default function MobileItemEditor({
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">施工中</span>
             )}
           </div>
-          <span className="text-sm font-medium text-gray-900">
-            ¥{item.total_price ?? (item.unit_price || 0) * (item.quantity || 1)}
-          </span>
+          <div className="flex items-center gap-2 shrink-0 ml-2">
+            <span className="text-sm font-medium text-gray-900">
+              ¥{item.total_price ?? (item.unit_price || 0) * (item.quantity || 1)}
+            </span>
+            {!isLocked && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const hasPicked = parts.some((p) => (p.pickedQty || 0) > 0);
+                  if (hasPicked) {
+                    alert("该项目已有出库配件，不能删除");
+                    return;
+                  }
+                  handleDeleteItem();
+                }}
+                disabled={loading}
+                className="text-xs text-red-500 hover:text-red-600 px-1 py-0.5 rounded hover:bg-red-50 disabled:opacity-50"
+                title="删除项目"
+              >
+                删除
+              </button>
+            )}
+          </div>
         </div>
         {mechanicNames.length > 0 && (
           <div className="text-xs text-gray-500 mt-1">施工人: {mechanicNames.join("、")}</div>
@@ -1337,38 +1389,40 @@ export default function MobileItemEditor({
             </button>
             {partsExpanded && (
               <div className="mt-1.5 space-y-1 pl-2 border-l-2 border-gray-200">
-                {parts.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedPartForDetail(p);
-                      setDetailActiveBranchId(p.id);
-                    }}
-                    className="w-full flex items-center justify-between text-xs py-0.5 text-left"
-                  >
-                    <div className="min-w-0 flex-1 truncate text-gray-700">
-                      {p.name}
-                      {p.part_number && <span className="text-gray-400 ml-1">({p.part_number})</span>}
-                      {p.brand && <span className="text-gray-400 ml-1">{p.brand}</span>}
-                      {p.specification && <span className="text-gray-400 ml-1">{p.specification}</span>}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0 ml-2">
-                      {p.customer_opinion && (
-                        <span className={`text-[10px] px-1 py-0.5 rounded ${
-                          p.customer_opinion === 'agree' ? 'bg-green-50 text-green-600' :
-                          p.customer_opinion === 'reject' ? 'bg-red-50 text-red-600' :
-                          'bg-gray-100 text-gray-500'
-                        }`}>
-                          {p.customer_opinion === 'agree' ? '同意' : p.customer_opinion === 'reject' ? '拒绝' : '待确认'}
-                        </span>
-                      )}
-                      <span className="text-gray-500">x{p.quantity}</span>
-                      <span className="text-gray-500">¥{p.total_price || (p.unit_price * p.quantity)}</span>
-                    </div>
-                  </button>
-                ))}
+                {partGroups.map((group) => {
+                  const branchCount = group.parts.length;
+                  const firstPart = group.parts[0];
+                  const totalQty = group.parts.reduce((sum, p) => sum + (p.quantity || 0), 0);
+                  const totalPrice = group.parts.reduce((sum, p) => sum + (p.total_price || (p.unit_price * p.quantity) || 0), 0);
+                  return (
+                    <button
+                      key={firstPart.part_name_id || firstPart.name}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPartForDetail(firstPart);
+                        setDetailActiveBranchId(firstPart.id);
+                      }}
+                      className="w-full flex items-center justify-between text-xs py-1 text-left"
+                    >
+                      <div className="min-w-0 flex-1 truncate text-gray-700">
+                        <span className="font-medium">{group.name}</span>
+                        {branchCount > 1 && (
+                          <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">
+                            {branchCount}个分支
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <span className="text-gray-500">x{totalQty}</span>
+                        <span className="text-gray-500">¥{totalPrice}</span>
+                        <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </button>
+                  );
+                })}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1438,6 +1492,23 @@ export default function MobileItemEditor({
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-2">
+                {!isLocked && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const hasPicked = parts.some((p) => (p.pickedQty || 0) > 0);
+                      if (hasPicked) {
+                        alert("该项目已有出库配件，不能删除");
+                        return;
+                      }
+                      handleDeleteItem();
+                    }}
+                    disabled={loading}
+                    className="text-xs text-red-500 hover:text-red-600 px-2 py-1.5 rounded hover:bg-red-50 disabled:opacity-50"
+                  >
+                    删除
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
@@ -1762,7 +1833,7 @@ export default function MobileItemEditor({
               {/* 项目配件 — 移到底部并高亮 */}
               <section className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-amber-800">项目配件 <span className="text-amber-600 font-normal">({parts.length} 项)</span></h4>
+                  <h4 className="text-sm font-bold text-amber-800">项目配件 <span className="text-amber-600 font-normal">({partGroups.length} 种 / {parts.length} 项)</span></h4>
                   {!isLocked && (
                     <button
                       type="button"
@@ -1773,31 +1844,41 @@ export default function MobileItemEditor({
                     </button>
                   )}
                 </div>
-                {parts.length > 0 ? (
+                {partGroups.length > 0 ? (
                   <div className="space-y-1.5">
-                    {parts.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between text-xs py-1.5 border-b border-amber-200 last:border-0">
-                        <div className="min-w-0 flex-1">
-                          <span className="text-gray-900">{p.name}</span>
-                          {p.part_number && <span className="text-gray-500 ml-1">({p.part_number})</span>}
-                          {p.brand && <span className="text-gray-500 ml-1">{p.brand}</span>}
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0 ml-2">
-                          <span className="text-gray-600">x{p.quantity}</span>
-                          <span className="text-gray-600">¥{p.total_price || (p.unit_price * p.quantity)}</span>
-                          {!isLocked && (
-                            <button
-                              type="button"
-                              onClick={() => deletePart(p.id, p.name)}
-                              disabled={loading}
-                              className="text-[10px] text-red-500 hover:text-red-600 px-1 py-0.5 rounded hover:bg-red-50 disabled:opacity-50"
-                            >
-                              删除
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                    {partGroups.map((group) => {
+                      const firstPart = group.parts[0];
+                      const branchCount = group.parts.length;
+                      const totalQty = group.parts.reduce((sum, p) => sum + (p.quantity || 0), 0);
+                      const totalPrice = group.parts.reduce((sum, p) => sum + (p.total_price || (p.unit_price * p.quantity) || 0), 0);
+                      return (
+                        <button
+                          key={firstPart.part_name_id || firstPart.name}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPartForDetail(firstPart);
+                            setDetailActiveBranchId(firstPart.id);
+                          }}
+                          className="w-full flex items-center justify-between text-xs py-1.5 border-b border-amber-200 last:border-0 text-left"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <span className="text-gray-900 font-medium">{group.name}</span>
+                            {branchCount > 1 && (
+                              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">
+                                {branchCount}个分支
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            <span className="text-gray-600">x{totalQty}</span>
+                            <span className="text-gray-600">¥{totalPrice}</span>
+                            <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-xs text-gray-500">暂无配件，点击上方按钮添加</p>
@@ -2431,24 +2512,42 @@ export default function MobileItemEditor({
               </div>
               {/* 内容 */}
               <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 text-sm">
-                {/* 分支选择（多分支时显示） */}
+                {/* 分支选择（多分支时显示可滑动卡片） */}
                 {branchParts.length > 1 && (
                   <div>
-                    <p className="text-xs text-gray-500 mb-2">选择分支 ({branchParts.length} 个)</p>
-                    <div className="flex flex-wrap gap-1.5">
+                    <p className="text-xs text-gray-500 mb-2">左右滑动查看分支 ({branchParts.length} 个)</p>
+                    <div className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory -mx-1 px-1">
                       {branchParts.map((bp, idx) => (
                         <button
                           key={bp.id}
                           type="button"
                           onClick={() => setDetailActiveBranchId(bp.id)}
-                          className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                          className={`flex-shrink-0 w-36 p-2.5 rounded-xl border text-left snap-start transition-colors ${
                             bp.id === activeBranch.id
-                              ? "bg-blue-600 text-white border-blue-600"
-                              : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                              ? "bg-blue-50 border-blue-400 shadow-sm"
+                              : "bg-white border-gray-200 hover:bg-gray-50"
                           }`}
                         >
-                          分支 {idx + 1}
-                          {bp.part_number && <span className="ml-1 opacity-80">({bp.part_number})</span>}
+                          <div className={`text-xs font-medium mb-1 ${bp.id === activeBranch.id ? "text-blue-700" : "text-gray-700"}`}>
+                            分支 {idx + 1}
+                          </div>
+                          <div className="space-y-0.5">
+                            {bp.part_number && (
+                              <div className="text-[10px] text-gray-500 truncate font-mono">{bp.part_number}</div>
+                            )}
+                            {bp.brand && (
+                              <div className="text-[10px] text-gray-500 truncate">{bp.brand}</div>
+                            )}
+                            {bp.specification && (
+                              <div className="text-[10px] text-gray-500 truncate">{bp.specification}</div>
+                            )}
+                            <div className="flex items-center justify-between pt-0.5">
+                              <span className="text-[10px] text-gray-400">x{bp.quantity}</span>
+                              <span className={`text-[10px] font-medium ${bp.id === activeBranch.id ? "text-blue-600" : "text-gray-600"}`}>
+                                ¥{bp.total_price || (bp.unit_price * bp.quantity)}
+                              </span>
+                            </div>
+                          </div>
                         </button>
                       ))}
                     </div>

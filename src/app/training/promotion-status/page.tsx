@@ -19,6 +19,10 @@ interface 晋级检查结果 {
   daily_loss_total: number;
   behavior_score_total: number;
   exam_all_passed: boolean;
+  required_courses_completed: boolean;
+  required_courses_count: number;
+  required_courses_done: number;
+  exam_total_score: number;
   missing_items: string[];
 }
 
@@ -31,8 +35,10 @@ interface 晋级规则 {
   max_rework_loss: number;
   max_daily_loss: number;
   min_behavior_score: number;
+  min_exam_score: number;
   exam_pass_required: boolean;
   period_months: number;
+  required_course_ids: string[] | null;
 }
 
 export default function PromotionStatusPage() {
@@ -200,6 +206,25 @@ export default function PromotionStatusPage() {
             <ProgressBar label="课程积分" current={checkResult.course_points} target={rule.min_course_points} />
             <ProgressBar label="工单数量" current={checkResult.work_order_count} target={rule.min_work_orders} />
             <ProgressBar label="行为规范分数" current={checkResult.behavior_score_total} target={rule.min_behavior_score} />
+            {rule.required_course_ids && rule.required_course_ids.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm text-gray-600">必修课程</span>
+                  <span className={`text-sm font-medium ${checkResult.required_courses_completed ? "text-green-600" : "text-gray-700"}`}>
+                    {checkResult.required_courses_done} / {checkResult.required_courses_count}
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${checkResult.required_courses_completed ? "bg-green-500" : "bg-blue-500"}`}
+                    style={{ width: `${checkResult.required_courses_count > 0 ? Math.min(100, Math.round((checkResult.required_courses_done / checkResult.required_courses_count) * 100)) : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            {rule.min_exam_score > 0 && (
+              <ProgressBar label="考核得分" current={checkResult.exam_total_score} target={rule.min_exam_score} />
+            )}
             {rule.max_rework_loss > 0 && (
               <ProgressBar label="返工损失（越低越好）" current={checkResult.rework_loss_total} target={rule.max_rework_loss} reverse />
             )}

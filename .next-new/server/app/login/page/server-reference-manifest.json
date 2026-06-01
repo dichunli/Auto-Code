@@ -1,0 +1,17 @@
+{
+  "node": {
+    "408fcccfd980dac5a8032959422dcc9b35c6e7011c": {
+      "workers": {
+        "app/login/page": {
+          "moduleId": 25128,
+          "async": false,
+          "exportedName": "logLogin",
+          "filename": "src/lib/operationLog.ts"
+        }
+      },
+      "exportedName": "logLogin",
+      "filename": "src/lib/operationLog.ts"
+    }
+  },
+  "edge": {}
+}

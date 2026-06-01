@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
@@ -10,6 +10,11 @@ const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
   { ssr: false }
 );
+
+interface 知识文章 {
+  id: string;
+  title: string;
+}
 
 export default function NewCoursePage() {
   const router = useRouter();
@@ -30,7 +35,23 @@ export default function NewCoursePage() {
     is_required: false,
     points: "",
     has_exam: false,
+    exam_mode: "online",
+    knowledge_article_id: "",
   });
+
+  /* 知识库文章列表 */
+  const [knowledgeArticles, setKnowledgeArticles] = useState<知识文章[]>([]);
+
+  useEffect(() => {
+    async function loadArticles() {
+      const { data } = await supabase
+        .from("knowledge_articles")
+        .select("id, title")
+        .order("created_at", { ascending: false });
+      setKnowledgeArticles(data || []);
+    }
+    loadArticles();
+  }, [supabase]);
 
   async function uploadVideo(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -136,11 +157,13 @@ export default function NewCoursePage() {
         content_type: form.content_type,
         content_text: form.content_type === "document" ? form.content_text.trim() || null : null,
         video_url: form.content_type === "video" ? videoUrl || null : null,
+        knowledge_article_id: form.content_type === "knowledge" ? form.knowledge_article_id || null : null,
         duration_minutes: form.duration_minutes ? parseInt(form.duration_minutes) : null,
         passing_score: parseInt(form.passing_score) || 60,
         is_required: form.is_required,
         points: form.points ? parseInt(form.points) : 0,
         has_exam: form.has_exam,
+        exam_mode: form.has_exam ? form.exam_mode : "online",
       });
 
       if (error) throw error;
@@ -183,11 +206,12 @@ export default function NewCoursePage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">内容类型</label>
             <select
               value={form.content_type}
-              onChange={(e) => setForm({ ...form, content_type: e.target.value })}
+              onChange={(e) => setForm({ ...form, content_type: e.target.value, knowledge_article_id: "" })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
             >
               <option value="document">文档</option>
               <option value="video">视频</option>
+              <option value="knowledge">知识库文章</option>
             </select>
           </div>
         </div>
@@ -261,6 +285,27 @@ export default function NewCoursePage() {
           </div>
         )}
 
+        {/* 知识库文章选择 */}
+        {form.content_type === "knowledge" && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">选择知识库文章 *</label>
+            <select
+              required
+              value={form.knowledge_article_id}
+              onChange={(e) => setForm({ ...form, knowledge_article_id: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              <option value="">请选择文章</option>
+              {knowledgeArticles.map((a) => (
+                <option key={a.id} value={a.id}>{a.title}</option>
+              ))}
+            </select>
+            {knowledgeArticles.length === 0 && (
+              <p className="text-xs text-gray-400 mt-1">暂无知识库文章，请先前往知识库添加</p>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">时长（分钟）</label>
@@ -291,7 +336,7 @@ export default function NewCoursePage() {
             />
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -312,6 +357,19 @@ export default function NewCoursePage() {
             />
             <label htmlFor="has_exam" className="text-sm text-gray-700">包含考试</label>
           </div>
+          {form.has_exam && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-700">考试方式</label>
+              <select
+                value={form.exam_mode}
+                onChange={(e) => setForm({ ...form, exam_mode: e.target.value })}
+                className="px-2 py-1 border border-gray-300 rounded-lg text-sm"
+              >
+                <option value="online">线上考试</option>
+                <option value="offline">线下考试</option>
+              </select>
+            </div>
+          )}
         </div>
         <div className="flex gap-3 justify-end pt-4">
           <button

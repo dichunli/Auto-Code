@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
+import { 是抖音链接, 抖音视频简化卡片 } from "@/components/DouyinVideo";
 
 export default async function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -10,11 +11,13 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
 
   const { data: course } = await supabase
     .from("training_courses")
-    .select("*, profiles(full_name)")
+    .select("*, profiles(full_name), knowledge_articles(title, content, content_blocks, video_url)")
     .eq("id", id)
     .single();
 
   if (!course) notFound();
+
+  const knowledgeArticle = course.knowledge_articles as { title: string; content: string | null; content_blocks: unknown; video_url: string | null } | null;
 
   const { data: assignments } = await supabase
     .from("training_assignments")
@@ -78,7 +81,10 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
 
   return (
     <div className="space-y-6">
-      <PageHeader title={course.title} />
+      <PageHeader
+        title={course.title}
+        action={{ href: `/training/${id}/edit`, label: "编辑课程" }}
+      />
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -96,7 +102,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
           )}
           {course.has_exam && (
             <span className="text-xs px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-100">
-              含考试
+              含{course.exam_mode === 'offline' ? '线下' : '线上'}考试
             </span>
           )}
         </div>
@@ -108,12 +114,16 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
         {/* 视频播放 */}
         {course.video_url && (
           <div className="mb-4">
-            <video
-              src={course.video_url}
-              controls
-              className="w-full max-w-2xl rounded-lg border border-gray-200"
-              preload="metadata"
-            />
+            {是抖音链接(course.video_url) ? (
+              <抖音视频简化卡片 url={course.video_url} />
+            ) : (
+              <video
+                src={course.video_url}
+                controls
+                className="w-full max-w-2xl rounded-lg border border-gray-200"
+                preload="metadata"
+              />
+            )}
           </div>
         )}
 
@@ -124,8 +134,37 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
           </div>
         )}
 
+        {/* 知识库文章内容 */}
+        {knowledgeArticle && (
+          <div className="max-w-none mt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">知识库文章</span>
+              <span className="text-sm text-gray-600">{knowledgeArticle.title}</span>
+            </div>
+            {knowledgeArticle.video_url && (
+              <div className="mb-4">
+                {是抖音链接(knowledgeArticle.video_url) ? (
+                  <抖音视频简化卡片 url={knowledgeArticle.video_url} />
+                ) : (
+                  <video
+                    src={knowledgeArticle.video_url}
+                    controls
+                    className="w-full max-w-2xl rounded-lg border border-gray-200"
+                    preload="metadata"
+                  />
+                )}
+              </div>
+            )}
+            {knowledgeArticle.content_blocks ? (
+              <CourseContent content={JSON.stringify(knowledgeArticle.content_blocks)} />
+            ) : knowledgeArticle.content ? (
+              <CourseContent content={knowledgeArticle.content} />
+            ) : null}
+          </div>
+        )}
+
         {/* 学员考试入口 */}
-        {canTakeExam && (
+        {canTakeExam && course.exam_mode !== 'offline' && (
           <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
             <div className="flex items-center justify-between">
               <div>
@@ -143,6 +182,18 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
                 {myExamResult ? "重新考试" : "开始考试"}
               </Link>
             </div>
+          </div>
+        )}
+
+        {/* 线下考试提示 */}
+        {course.has_exam && course.exam_mode === 'offline' && myAssignment && !myExamResult && (
+          <div className="mt-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
+            <p className="text-sm font-medium text-orange-800">
+              本课程为线下考试，请按时参加现场考核
+            </p>
+            <p className="text-xs text-orange-600 mt-0.5">
+              通过分数: {course.passing_score} 分
+            </p>
           </div>
         )}
 
@@ -183,6 +234,14 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
               className="px-4 py-2 text-sm text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 border border-purple-200"
             >
               考题管理 ({questionCount || 0} 题)
+            </Link>
+          )}
+          {course.has_exam && course.exam_mode === 'offline' && (
+            <Link
+              href={`/training/${id}/grade-entry`}
+              className="px-4 py-2 text-sm text-green-600 bg-green-50 rounded-lg hover:bg-green-100 border border-green-200"
+            >
+              录入成绩
             </Link>
           )}
         </div>

@@ -48,7 +48,7 @@ export default function ExamPage() {
       /* 查询课程信息 */
       const { data: course } = await supabase
         .from("training_courses")
-        .select("title, has_exam")
+        .select("title, has_exam, exam_mode")
         .eq("id", courseId)
         .single();
 
@@ -62,6 +62,12 @@ export default function ExamPage() {
 
       if (!course.has_exam) {
         alert("该课程不包含考试");
+        router.push(`/training/${courseId}`);
+        return;
+      }
+
+      if (course.exam_mode === "offline") {
+        alert("该课程为线下考试，请在课程详情页查看考试安排");
         router.push(`/training/${courseId}`);
         return;
       }

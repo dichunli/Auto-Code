@@ -1,0 +1,17 @@
+{
+  "node": {
+    "600f72790f157ac186c681b658c99a2bc90210b8a5": {
+      "workers": {
+        "app/procurement/page": {
+          "moduleId": 45381,
+          "async": false,
+          "exportedName": "syncOeFromVin",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "exportedName": "syncOeFromVin",
+      "filename": "src/app/parts/actions.ts"
+    }
+  },
+  "edge": {}
+}

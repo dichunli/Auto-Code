@@ -1,0 +1,17 @@
+{
+  "node": {
+    "40e5e09e8f0b771d656583a76ba8771498fb610692": {
+      "workers": {
+        "app/inventory/page": {
+          "moduleId": 74337,
+          "async": false,
+          "exportedName": "deletePart",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "exportedName": "deletePart",
+      "filename": "src/app/parts/actions.ts"
+    }
+  },
+  "edge": {}
+}

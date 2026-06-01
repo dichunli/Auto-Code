@@ -9,6 +9,11 @@ interface 技师等级 {
   name: string;
 }
 
+interface 课程 {
+  id: string;
+  title: string;
+}
+
 interface 晋级规则 {
   id: string;
   from_level_id: string | null;
@@ -20,8 +25,10 @@ interface 晋级规则 {
   max_rework_loss: number;
   max_daily_loss: number;
   min_behavior_score: number;
+  min_exam_score: number;
   exam_pass_required: boolean;
   period_months: number;
+  required_course_ids: string[];
   description: string | null;
   is_active: boolean;
 }
@@ -29,6 +36,7 @@ interface 晋级规则 {
 export default function PromotionRulesPage() {
   const supabase = createClient();
   const [levels, setLevels] = useState<技师等级[]>([]);
+  const [courses, setCourses] = useState<课程[]>([]);
   const [rules, setRules] = useState<晋级规则[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -43,28 +51,33 @@ export default function PromotionRulesPage() {
     max_rework_loss: "",
     max_daily_loss: "",
     min_behavior_score: "",
+    min_exam_score: "",
     exam_pass_required: true,
     period_months: "6",
+    required_course_ids: [] as string[],
     description: "",
     is_active: true,
   });
 
   async function fetchData() {
     setLoading(true);
-    const [{ data: levelData }, { data: ruleData }] = await Promise.all([
+    const [{ data: levelData }, { data: ruleData }, { data: courseData }] = await Promise.all([
       supabase.from("mechanic_levels").select("id, name").order("sort_order", { ascending: true }),
       supabase.from("promotion_rules").select("*").order("created_at", { ascending: false }),
+      supabase.from("training_courses").select("id, title").eq("is_required", true).order("title"),
     ]);
 
     const levelMap = new Map<string, string>();
     (levelData as 技师等级[] | null)?.forEach((l) => levelMap.set(l.id, l.name));
     setLevels((levelData as 技师等级[] | null) || []);
+    setCourses((courseData as 课程[] | null) || []);
 
     setRules(
       ((ruleData || []) as 晋级规则[]).map((r) => ({
         ...r,
         from_level_name: r.from_level_id ? levelMap.get(r.from_level_id) || "无等级" : "无等级",
         to_level_name: levelMap.get(r.to_level_id) || "未知",
+        required_course_ids: r.required_course_ids || [],
       }))
     );
     setLoading(false);
@@ -84,8 +97,10 @@ export default function PromotionRulesPage() {
       max_rework_loss: "",
       max_daily_loss: "",
       min_behavior_score: "",
+      min_exam_score: "",
       exam_pass_required: true,
       period_months: "6",
+      required_course_ids: [],
       description: "",
       is_active: true,
     });
@@ -102,12 +117,24 @@ export default function PromotionRulesPage() {
       max_rework_loss: String(rule.max_rework_loss),
       max_daily_loss: String(rule.max_daily_loss),
       min_behavior_score: String(rule.min_behavior_score),
+      min_exam_score: String(rule.min_exam_score),
       exam_pass_required: rule.exam_pass_required,
       period_months: String(rule.period_months),
+      required_course_ids: rule.required_course_ids || [],
       description: rule.description || "",
       is_active: rule.is_active,
     });
     setModalOpen(true);
+  }
+
+  function toggleCourse(courseId: string) {
+    setForm((prev) => {
+      const exists = prev.required_course_ids.includes(courseId);
+      if (exists) {
+        return { ...prev, required_course_ids: prev.required_course_ids.filter((id) => id !== courseId) };
+      }
+      return { ...prev, required_course_ids: [...prev.required_course_ids, courseId] };
+    });
   }
 
   async function handleSave() {
@@ -126,8 +153,10 @@ export default function PromotionRulesPage() {
         max_rework_loss: parseFloat(form.max_rework_loss) || 0,
         max_daily_loss: parseFloat(form.max_daily_loss) || 0,
         min_behavior_score: parseInt(form.min_behavior_score) || 0,
+        min_exam_score: parseInt(form.min_exam_score) || 0,
         exam_pass_required: form.exam_pass_required,
         period_months: parseInt(form.period_months) || 6,
+        required_course_ids: form.required_course_ids.length > 0 ? form.required_course_ids : null,
         description: form.description.trim() || null,
         is_active: form.is_active,
       };
@@ -159,6 +188,8 @@ export default function PromotionRulesPage() {
     fetchData();
   }
 
+  const courseMap = new Map(courses.map((c) => [c.id, c.title]));
+
   return (
     <div>
       <PageHeader
@@ -182,8 +213,8 @@ export default function PromotionRulesPage() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500">课程积分</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">工单数量</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">行为分数</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">返工上限</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">损失上限</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">考核得分</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">必修课程</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">考察期</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">状态</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">操作</th>
@@ -200,8 +231,16 @@ export default function PromotionRulesPage() {
                   <td className="px-4 py-3">{r.min_course_points}</td>
                   <td className="px-4 py-3">{r.min_work_orders}</td>
                   <td className="px-4 py-3">{r.min_behavior_score}</td>
-                  <td className="px-4 py-3">{r.max_rework_loss > 0 ? `¥${r.max_rework_loss}` : "不限"}</td>
-                  <td className="px-4 py-3">{r.max_daily_loss > 0 ? `¥${r.max_daily_loss}` : "不限"}</td>
+                  <td className="px-4 py-3">{r.min_exam_score > 0 ? r.min_exam_score : "-"}</td>
+                  <td className="px-4 py-3">
+                    {r.required_course_ids && r.required_course_ids.length > 0 ? (
+                      <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                        {r.required_course_ids.length} 门
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">-</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">{r.period_months} 个月</td>
                   <td className="px-4 py-3">
                     <span
@@ -302,7 +341,7 @@ export default function PromotionRulesPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">返工损失上限（0=不限）</label>
                   <input
@@ -319,6 +358,16 @@ export default function PromotionRulesPage() {
                     value={form.max_daily_loss}
                     onChange={(e) => setForm({ ...form, max_daily_loss: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">最低考核得分</label>
+                  <input
+                    type="number"
+                    value={form.min_exam_score}
+                    onChange={(e) => setForm({ ...form, min_exam_score: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="0=不限"
                   />
                 </div>
               </div>
@@ -346,6 +395,26 @@ export default function PromotionRulesPage() {
                   </label>
                 </div>
               </div>
+
+              {/* 必修课程选择 */}
+              {courses.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">必修课程</label>
+                  <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
+                    {courses.map((c) => (
+                      <label key={c.id} className="flex items-center gap-2 p-1.5 hover:bg-gray-50 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={form.required_course_ids.includes(c.id)}
+                          onChange={() => toggleCourse(c.id)}
+                          className="rounded"
+                        />
+                        <span className="text-sm text-gray-700">{c.title}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">说明</label>

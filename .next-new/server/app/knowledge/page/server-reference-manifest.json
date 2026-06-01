@@ -1,0 +1,29 @@
+{
+  "node": {
+    "4098131aba9c890eda4774b2011b1140af3e6505e7": {
+      "workers": {
+        "app/knowledge/page": {
+          "moduleId": 26000,
+          "async": false,
+          "exportedName": "解析Word文档",
+          "filename": "src/app/knowledge/actions.ts"
+        }
+      },
+      "exportedName": "解析Word文档",
+      "filename": "src/app/knowledge/actions.ts"
+    },
+    "407258997c65f7acf964619ea27ed6b4d2290abea9": {
+      "workers": {
+        "app/knowledge/page": {
+          "moduleId": 26000,
+          "async": false,
+          "exportedName": "生成Word文档",
+          "filename": "src/app/knowledge/actions.ts"
+        }
+      },
+      "exportedName": "生成Word文档",
+      "filename": "src/app/knowledge/actions.ts"
+    }
+  },
+  "edge": {}
+}

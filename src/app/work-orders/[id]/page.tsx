@@ -68,6 +68,8 @@ export default async function WorkOrderDetailPage({
 
   // 工单车型ID（用于配件库存匹配）
   const vehicleModelId = order?.vehicles?.vehicle_model_id;
+  // 工单VIN（用于查三滤）
+  const vehicleVin = order?.vehicles?.vin;
 
   // 查询该车历史维修工单数量（排除当前工单）
   const supabaseServer = await createClient();
@@ -782,6 +784,7 @@ export default async function WorkOrderDetailPage({
                                 part_id: (p.part_id as string) || null,
                                 part_name_id: (p.part_name_id as string) || null,
                                 category: (p.part_names as { part_categories?: { name?: string } | null } | null)?.part_categories?.name || (p.parts as { part_categories?: { name?: string } | null } | null)?.part_categories?.name || null,
+                                pickedQty: pickingByPart[p.id as string] || 0,
                               }))}
                               partInventory={inventoryByPart}
                               partImages={imagesByPart}
@@ -876,6 +879,7 @@ export default async function WorkOrderDetailPage({
                                     serviceNameId={item.service_items?.service_name_id}
                                     itemName={item.alias_name || item.name}
                                     vehicleModelId={vehicleModelId}
+                                    vin={vehicleVin}
                                   />
                                   <WorkOrderItemActions
                                     itemId={item.id}
@@ -989,7 +993,7 @@ export default async function WorkOrderDetailPage({
                                             itemId={item.id}
                                             existingImages={group.images}
                                           />
-                                          <div className="space-y-3 pl-3 border-l-2 border-gray-200 ml-1">
+                                          <div className="space-y-3 pl-3 border-l-2 border-gray-300 ml-1">
                                             {group.parts.map((p: PartBranch, branchIdx: number) => {
                                           const pPickedQty = pickingByPart[p.id] || 0;
                                           const pReturnQty = returnByPart[p.id] || 0;

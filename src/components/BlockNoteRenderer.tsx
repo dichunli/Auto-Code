@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, type JSX } from "react";
+import { 是抖音链接, 抖音视频卡片 } from "./DouyinVideo";
 
 /* BlockNote 块级 JSON 只读渲染组件 */
 
@@ -286,11 +287,20 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void, onP
       );
     }
 
-    case "video":
+    case "video": {
+      const videoUrl = props.url || "";
+      /* 抖音链接用卡片渲染 */
+      if (videoUrl && 是抖音链接(videoUrl)) {
+        return (
+          <div key={block.id} className={alignClass}>
+            <抖音视频卡片 url={videoUrl} caption={props.caption || ""} />
+          </div>
+        );
+      }
       return (
         <figure key={block.id} className={`my-4 ${alignClass}`}>
           <video
-            src={props.url}
+            src={videoUrl}
             controls
             className="max-w-full rounded-lg"
             preload="metadata"
@@ -302,6 +312,7 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void, onP
           )}
         </figure>
       );
+    }
 
     case "divider":
       return <hr key={block.id} className="my-6 border-t border-gray-200" />;
