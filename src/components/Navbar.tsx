@@ -78,6 +78,8 @@ const navItems: NavItem[] = [
       { href: "/training/exam-manage", label: "考题管理" },
       { href: "/training/exam-grade", label: "简答题判卷" },
       { href: "/training/behavior-items", label: "行为项目" },
+      { href: "/training/behavior-tasks", label: "考核任务" },
+      { href: "/training/behavior-checks", label: "今日考核" },
       { href: "/training/behavior-score", label: "行为打分" },
       { href: "/training/rework-records", label: "返工记录" },
       { href: "/training/loss-records", label: "损失记录" },
@@ -116,7 +118,16 @@ const navItems: NavItem[] = [
   },
   { href: "/follow-ups", label: "售后回访" },
   { href: "/operation-logs", label: "操作日志" },
-  { href: "/settings", label: "系统设置" },
+  {
+  {
+    href: "/settings",
+    label: "系统设置",
+    children: [
+      { href: "/settings", label: "基础设置" },
+      { href: "/17vin-billing", label: "17VIN余额" },
+      { href: "/tools/vin-batch-query", label: "VIN批量查OE号" },
+    ],
+  },
 ];
 
 function NavGroup({
@@ -233,7 +244,7 @@ export function Navbar() {
       rows.forEach((o: { status: string; order_type?: string }) => {
         if (o.status === "settled" || o.status === "delivered") {
           history++;
-        } else {
+        } else if ((o.order_type || "normal") === "normal") {
           active++;
         }
         const t = o.order_type || "normal";
@@ -254,11 +265,25 @@ export function Navbar() {
     }
     fetchCounts();
 
-    /* 工单变更后即时刷新角标 */
+    /* 工单变更后即时刷新角标（全量刷新） */
     function handleWorkOrderUpdate() {
       fetchCounts();
     }
     window.addEventListener("work-order-counts-update", handleWorkOrderUpdate);
+
+    /* 以事件驱动方式增减角标（增量更新） */
+    function handleCountChange(e: Event) {
+      const detail = (e as CustomEvent).detail as { delta?: Record<string, number> } | undefined;
+      if (!detail?.delta) return;
+      setCounts((prev) => {
+        const next = { ...prev };
+        for (const [key, val] of Object.entries(detail.delta)) {
+          next[key] = Math.max(0, (next[key] || 0) + (val as number));
+        }
+        return next;
+      });
+    }
+    window.addEventListener("work-order-count-change", handleCountChange);
 
     /* 页面重新可见时立即刷新角标 */
     function handleVisibility() {
@@ -268,6 +293,7 @@ export function Navbar() {
 
     return () => {
       window.removeEventListener("work-order-counts-update", handleWorkOrderUpdate);
+      window.removeEventListener("work-order-count-change", handleCountChange);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [supabase]);
