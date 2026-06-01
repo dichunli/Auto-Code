@@ -21,6 +21,7 @@ interface PrefillData {
   purchase_price?: string;
   notes?: string;
   document_name?: string;
+  oeNumber?: string;
 }
 
 interface FormState {
@@ -36,7 +37,10 @@ interface FormState {
   wholesale_price: string;
   notes: string;
   auto_link_vehicle_model: boolean;
+  auto_match_17vin_models: boolean;
   is_consumable: boolean;
+  require_scan_check: boolean;
+  require_location_check: boolean;
   sales_type: "" | "revenue_pct" | "profit_pct" | "fixed";
   sales_value: string;
   diagnosis_type: "" | "revenue_pct" | "profit_pct" | "fixed";
@@ -230,7 +234,10 @@ export default function usePartFormInit(
         wholesale_price: "",
         notes: "",
         auto_link_vehicle_model: part.auto_link_vehicle_model || false,
+        auto_match_17vin_models: part.auto_match_17vin_models || false,
         is_consumable: part.is_consumable || false,
+        require_scan_check: part.require_scan_check || false,
+        require_location_check: part.require_location_check || false,
         sales_type: part.sales_commission_type || "",
         sales_value: part.sales_commission_value ? String(part.sales_commission_value) : "",
         diagnosis_type: part.diagnosis_commission_type || "",
@@ -245,7 +252,7 @@ export default function usePartFormInit(
 
       setPartImages([]);
       setStockLocations([
-        { id: crypto.randomUUID(), warehouseName: "", location: "", quantity: "0", min_stock: "0", max_stock: "" },
+        { id: (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15)), warehouseName: "", location: "", quantity: "0", min_stock: "0", max_stock: "" },
       ]);
     }
 
@@ -384,7 +391,10 @@ export default function usePartFormInit(
           wholesale_price: part.wholesale_price ? String(part.wholesale_price) : "",
           notes: part.notes || "",
           auto_link_vehicle_model: part.auto_link_vehicle_model || false,
+          auto_match_17vin_models: part.auto_match_17vin_models || false,
           is_consumable: part.is_consumable || false,
+          require_scan_check: part.require_scan_check || false,
+          require_location_check: part.require_location_check || false,
           sales_type: part.sales_commission_type || "",
           sales_value: part.sales_commission_value ? String(part.sales_commission_value) : "",
           diagnosis_type: part.diagnosis_commission_type || "",
@@ -474,6 +484,7 @@ export default function usePartFormInit(
     if (prefillData.purchase_price) setForm((prev) => ({ ...prev, purchase_price: prefillData.purchase_price! }));
     if (prefillData.notes) setForm((prev) => ({ ...prev, notes: prefillData.notes! }));
     if (prefillData.document_name) setDocNameQuery(prefillData.document_name);
+    if (prefillData.oeNumber) setOeNumber(prefillData.oeNumber);
      
   }, []);
 
@@ -506,7 +517,10 @@ export default function usePartFormInit(
         wholesale_price: data.wholesale_price != null ? String(data.wholesale_price) : prev.wholesale_price,
         notes: data.notes || prev.notes,
         auto_link_vehicle_model: data.auto_link_vehicle_model || false,
+        auto_match_17vin_models: data.auto_match_17vin_models || false,
         is_consumable: data.is_consumable || false,
+        require_scan_check: data.require_scan_check || false,
+        require_location_check: data.require_location_check || false,
         sales_type: (data.sales_commission_type as "" | "revenue_pct" | "profit_pct" | "fixed") || "",
         sales_value: data.sales_commission_value != null ? String(data.sales_commission_value) : "",
         diagnosis_type: (data.diagnosis_commission_type as "" | "revenue_pct" | "profit_pct" | "fixed") || "",
@@ -547,7 +561,7 @@ export default function usePartFormInit(
             const l = loc as Record<string, unknown>;
             const wh = l.warehouses as Record<string, unknown> | undefined;
             return {
-              id: crypto.randomUUID(),
+              id: (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15)),
               warehouseName: wh?.name as string || "",
               location: l.location as string || "",
               quantity: String(l.quantity || 0),

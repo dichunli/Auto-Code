@@ -19,6 +19,7 @@ import SpecSearch from "./components/SpecSearch";
 import CommissionSection from "./components/CommissionSection";
 import FormActions from "./components/FormActions";
 import submitPart from "./submitPart";
+import { syncOeFromVin } from "../actions";
 
 /* 供应商查询结果 */
 interface SupplierItem {
@@ -43,6 +44,7 @@ export default function PartForm({
     purchase_price?: string;
     notes?: string;
     document_name?: string;
+    oeNumber?: string;
   };
 }) {
   const router = useRouter();
@@ -76,13 +78,19 @@ export default function PartForm({
 
   // Stock locations
   const [stockLocations, setStockLocations] = useState<StockLocationRow[]>([
-    { id: crypto.randomUUID(), warehouseName: "", location: "", quantity: "0", min_stock: "0", max_stock: "" },
+    { id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15), warehouseName: "", location: "", quantity: "0", min_stock: "0", max_stock: "" },
   ]);
 
 
   const [barcode, setBarcode] = useState("");
   const [interchangeCode, setInterchangeCode] = useState("");
   const [oeNumber, setOeNumber] = useState("");
+
+  /* OE号同步弹窗 */
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [syncVin, setSyncVin] = useState("");
+  const [syncLoading, setSyncLoading] = useState(false);
+
   const [partImages, setPartImages] = useState<string[]>([]);
 
   const [form, setForm] = useState({
@@ -98,7 +106,10 @@ export default function PartForm({
     wholesale_price: "",
     notes: "",
     auto_link_vehicle_model: false,
+    auto_match_17vin_models: false,
     is_consumable: false,
+    require_scan_check: false,
+    require_location_check: false,
     sales_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     sales_value: "",
     diagnosis_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
@@ -256,6 +267,36 @@ export default function PartForm({
     }));
   }
 
+  // OE号同步：通过VIN查OE号
+  async function handleSyncOe() {
+    const vin = syncVin.trim().toUpperCase();
+    if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) {
+      alert("VIN码必须为17位");
+      return;
+    }
+    const partName = selectedPartName?.name || form.name;
+    if (!partName) {
+      alert("请先选择配件名称");
+      return;
+    }
+    setSyncLoading(true);
+    try {
+      const res = await syncOeFromVin(vin, partName);
+      if (res.success && res.oeNumber) {
+        setOeNumber(res.oeNumber);
+        setSyncOpen(false);
+        setSyncVin("");
+        alert(`已同步OE号：${res.oeNumber}`);
+      } else {
+        alert(res.error || "同步失败");
+      }
+    } catch (err: unknown) {
+      alert("同步出错：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSyncLoading(false);
+    }
+  }
+
   function handleClearCommission() {
     setForm((prev) => ({
       ...prev,
@@ -322,13 +363,23 @@ export default function PartForm({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">OE号</label>
-              <input
-                type="text"
-                placeholder="原厂编码"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                value={oeNumber}
-                onChange={(e) => setOeNumber(e.target.value.toUpperCase())}
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="原厂编码"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  value={oeNumber}
+                  onChange={(e) => setOeNumber(e.target.value.toUpperCase())}
+                />
+                <button
+                  type="button"
+                  onClick={() => setSyncOpen(true)}
+                  className="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shrink-0"
+                  title="通过VIN同步OE号"
+                >
+                  同步
+                </button>
+              </div>
             </div>
           </div>
 
@@ -372,6 +423,7 @@ export default function PartForm({
               selectedPartName={selectedPartName}
             />
           </div>
+
         </div>
 
         <PricingSection
@@ -434,6 +486,43 @@ export default function PartForm({
           onCancel={() => (onCancel ? onCancel() : router.back())}
         />
       </form>
+
+      {/* OE号同步弹窗 */}
+      {syncOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-md mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">通过VIN同步OE号</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              配件名称：<span className="font-medium text-gray-700">{selectedPartName?.name || form.name || "未选择"}</span>
+            </p>
+            <input
+              type="text"
+              value={syncVin}
+              onChange={(e) => setSyncVin(e.target.value.toUpperCase())}
+              placeholder="输入17位VIN码"
+              maxLength={17}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-4 font-mono"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setSyncOpen(false); setSyncVin(""); }}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSyncOe}
+                disabled={syncLoading || syncVin.trim().length !== 17}
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {syncLoading ? "同步中..." : "同步"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
