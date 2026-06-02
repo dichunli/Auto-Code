@@ -51,9 +51,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
     try {
       const base64Body = base64.split(",")[1] || "";
-      const base64Urlencode = encodeURIComponent(base64Body);
-
-      const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
+      /* 注意：不要预先 encodeURIComponent，vin17OcrImage 内部会用 URLSearchParams 编码 */
+      const ocrRes = (await vin17OcrImage(base64Body)) as {
         code: number;
         msg?: string;
         data?: {
@@ -169,9 +168,10 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   /* ========== APP 原生拍照 ========== */
   const 原生拍照 = useCallback(async () => {
     try {
+      set模式("拍照");
       const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
       const image = await Camera.getPhoto({
-        quality: 90,
+        quality: 75,
         allowEditing: false,
         resultType: CameraResultType.Base64,
         source: CameraSource.Camera,
@@ -184,33 +184,15 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("cancel") || msg.includes("denied")) return;
-      setErrorMsg("相机调用失败: " + msg);
-    }
-  }, [doOcr]);
-
-  /* ========== APP 原生相册 ========== */
-  const 原生相册 = useCallback(async () => {
-    try {
-      const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
-      const image = await Camera.getPhoto({
-        quality: 90,
-        allowEditing: false,
-        resultType: CameraResultType.Base64,
-        source: CameraSource.Photos,
-      });
-      if (image.base64String) {
-        const base64 = `data:image/jpeg;base64,${image.base64String}`;
-        setPreviewImage(base64);
-        set模式("预览");
-        await doOcr(base64);
+      if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User cancelled")) {
+        /* 用户取消拍照：关闭弹窗 */
+        onClose();
+        return;
       }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("cancel") || msg.includes("denied")) return;
-      setErrorMsg("相册调用失败: " + msg);
+      setErrorMsg("相机调用失败: " + msg);
+      set模式("拍照");
     }
-  }, [doOcr]);
+  }, [doOcr, onClose]);
 
   /* ========== 浏览器文件选择 ========== */
   const 处理文件选择 = useCallback(
@@ -294,8 +276,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setDecoding(false);
 
     if (是App) {
-      /* APP：直接显示拍照界面，不尝试 getUserMedia */
-      set模式("拍照");
+      /* APP：直接打开相机拍照 */
+      void 原生拍照();
     } else {
       /* 浏览器：尝试实时摄像头 */
       set模式("实时");
@@ -326,12 +308,13 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setDecoding(false);
 
     if (是App) {
-      set模式("拍照");
+      /* APP：直接重新打开相机 */
+      void 原生拍照();
     } else {
       set模式("实时");
       启动实时摄像头();
     }
-  }, [是App, 启动实时摄像头]);
+  }, [是App, 启动实时摄像头, 原生拍照]);
 
   if (!open) return null;
 
@@ -388,44 +371,29 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
           </>
         )}
 
-        {/* ========== 模式2：APP 拍照 / 浏览器 fallback ========== */}
+        {/* ========== 模式2：APP 自动打开相机 / 浏览器 fallback ========== */}
         {(模式 === "拍照" || (!是App && 模式 !== "实时" && 模式 !== "预览")) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 px-6">
-            <svg className="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            {!是App && <p className="text-sm">实时摄像头不可用</p>}
-            <p className="text-xs mt-1 opacity-60">请选择拍照或相册</p>
-
-            <div className="flex gap-6 mt-6">
-              {是App ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={原生拍照}
-                    className="flex flex-col items-center gap-1 text-white active:text-white"
-                  >
-                    <div className="w-14 h-14 rounded-full border-4 border-white/80 flex items-center justify-center active:scale-95 transition-transform">
-                      <div className="w-10 h-10 rounded-full bg-white" />
-                    </div>
-                    <span className="text-[10px]">拍照</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={原生相册}
-                    className="flex flex-col items-center gap-1 text-white/70 active:text-white"
-                  >
-                    <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <span className="text-[10px]">相册</span>
-                  </button>
-                </>
-              ) : (
-                <label className="flex flex-col items-center gap-1 text-white/70 active:text-white cursor-pointer select-none">
+            {是App ? (
+              /* APP：显示正在打开相机的 loading */
+              <>
+                <svg className="w-12 h-12 mb-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <p className="text-sm">正在打开相机...</p>
+                {errorMsg && <p className="text-xs mt-4 text-red-400">{errorMsg}</p>}
+              </>
+            ) : (
+              /* 浏览器 fallback */
+              <>
+                <svg className="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <p className="text-sm">实时摄像头不可用</p>
+                <p className="text-xs mt-1 opacity-60">请选择图片</p>
+                <label className="flex flex-col items-center gap-1 mt-6 text-white/70 active:text-white cursor-pointer select-none">
                   <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -434,10 +402,9 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
                   <span className="text-[10px]">选择图片</span>
                   <input type="file" accept="image/*" onChange={处理文件选择} className="hidden" />
                 </label>
-              )}
-            </div>
-
-            {errorMsg && <p className="text-xs mt-4 text-red-400">{errorMsg}</p>}
+                {errorMsg && <p className="text-xs mt-4 text-red-400">{errorMsg}</p>}
+              </>
+            )}
           </div>
         )}
 
