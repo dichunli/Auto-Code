@@ -124,12 +124,11 @@ async function vin17PostRequest(params: Record<string, string>): Promise<unknown
 
   const 接口类型 = params.action || "unknown";
 
-  /* token 计算使用原始参数字符串（不 URL 编码） */
-  const rawQuery = Object.entries(params)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("&");
-  const urlParameters = "/?" + rawQuery;
-  const token = getToken(urlParameters);
+  /*
+   * POST 请求的 token 计算：17VIN 服务端用 URL path 作为 url_parameters，
+   * 不包含 body 中的参数。服务端返回的提示：url_parameters: /
+   */
+  const token = getToken("/");
 
   /*
    * 手动构建 body，避免 URLSearchParams 对已经是 URL 编码过的值再次编码。
