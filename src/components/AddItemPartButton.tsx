@@ -9,9 +9,10 @@ interface Props {
   serviceNameId?: string | null;
   itemName: string;
   vehicleModelId?: string | null;
+  vin?: string | null;
 }
 
-export default function AddItemPartButton({ itemId, serviceNameId, itemName, vehicleModelId }: Props) {
+export default function AddItemPartButton({ itemId, serviceNameId, itemName, vehicleModelId, vin }: Props) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -31,6 +32,7 @@ export default function AddItemPartButton({ itemId, serviceNameId, itemName, veh
           serviceNameId={serviceNameId}
           itemName={itemName}
           vehicleModelId={vehicleModelId}
+          vin={vin}
           onClose={() => setOpen(false)}
           onSuccess={() => {
             setOpen(false);

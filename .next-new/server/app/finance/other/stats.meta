@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/finance/layout,_N_T_/finance/other/layout,_N_T_/finance/other/stats/layout,_N_T_/finance/other/stats/page,_N_T_/finance/other/stats"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/finance/other/stats/__PAGE__",
+    "/finance/other/stats",
+    "/finance/other",
+    "/finance",
+    "/_index",
+    "/_head"
+  ]
+}

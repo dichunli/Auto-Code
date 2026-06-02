@@ -100,6 +100,14 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
       newValues: updates,
     });
 
+    /* 以事件驱动方式更新角标 */
+    const fromType = currentType || "normal";
+    const delta: Record<string, number> = {};
+    if (fromType !== "normal") delta[fromType] = -1;
+    if (type !== "normal") delta[type] = 1;
+    if (Object.keys(delta).length > 0) {
+      window.dispatchEvent(new CustomEvent("work-order-count-change", { detail: { delta } }));
+    }
     window.dispatchEvent(new Event("work-order-counts-update"));
     if (onSuccess) {
       onSuccess();
@@ -136,6 +144,12 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
     });
 
     setReason("");
+    /* 以事件驱动方式更新角标 */
+    const fromType = currentType || "normal";
+    const delta: Record<string, number> = {};
+    if (fromType !== "normal") delta[fromType] = -1;
+    delta.cancelled = 1;
+    window.dispatchEvent(new CustomEvent("work-order-count-change", { detail: { delta } }));
     window.dispatchEvent(new Event("work-order-counts-update"));
     if (onSuccess) {
       onSuccess();

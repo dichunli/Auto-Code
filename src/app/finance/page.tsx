@@ -200,12 +200,18 @@ export default async function FinancePage() {
       </div>
 
       {/* 快捷入口 */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-3">
         <Link href="/finance/transactions/new" className="bg-blue-50 text-blue-700 rounded-xl border border-blue-100 p-4 text-sm font-medium hover:bg-blue-100 transition-colors text-center">
           + 记一笔
         </Link>
         <Link href="/finance/transactions" className="bg-gray-50 text-gray-700 rounded-xl border border-gray-100 p-4 text-sm font-medium hover:bg-gray-100 transition-colors text-center">
           收支流水
+        </Link>
+        <Link href="/finance/other" className="bg-green-50 text-green-700 rounded-xl border border-green-100 p-4 text-sm font-medium hover:bg-green-100 transition-colors text-center">
+          其它收支
+        </Link>
+        <Link href="/finance/other-categories" className="bg-orange-50 text-orange-700 rounded-xl border border-orange-100 p-4 text-sm font-medium hover:bg-orange-100 transition-colors text-center">
+          收支分类
         </Link>
         <Link href="/finance/payroll" className="bg-gray-50 text-gray-700 rounded-xl border border-gray-100 p-4 text-sm font-medium hover:bg-gray-100 transition-colors text-center">
           工资提成

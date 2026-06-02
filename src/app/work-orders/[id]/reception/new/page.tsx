@@ -16,7 +16,6 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
   const [videoPaths, setVideoPaths] = useState<string[]>([]);
   const [exteriorPaths, setExteriorPaths] = useState<string[]>([]);
   const [dashboardPaths, setDashboardPaths] = useState<string[]>([]);
-  const [rejectionMarkPaths, setRejectionMarkPaths] = useState<string[]>([]);
   const [mileage, setMileage] = useState("");
   const [notes, setNotes] = useState("");
   const [inspectorName, setInspectorName] = useState("");
@@ -25,17 +24,20 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
     params.then((p) => setOrderId(p.id));
   }, [params]);
 
-  // 加载工单当前里程
+  // 加载工单当前里程和已有的照片
   useEffect(() => {
     if (!orderId) return;
     supabase
       .from("work_orders")
-      .select("mileage_in")
+      .select("mileage_in, dashboard_photos")
       .eq("id", orderId)
       .single()
       .then(({ data }) => {
         if (data?.mileage_in != null) {
           setMileage(String(data.mileage_in));
+        }
+        if (data?.dashboard_photos) {
+          setDashboardPaths(data.dashboard_photos);
         }
       });
   }, [orderId, supabase]);
@@ -73,7 +75,6 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
       const orderUpdate: Record<string, string | number | string[] | null> = {};
       if (mileage) orderUpdate.mileage_in = parseFloat(mileage);
       orderUpdate.dashboard_photos = dashboardPaths.length > 0 ? dashboardPaths : null;
-      orderUpdate.rejection_mark_photos = rejectionMarkPaths.length > 0 ? rejectionMarkPaths : null;
       const { error: orderError } = await supabase
         .from("work_orders")
         .update(orderUpdate)
@@ -113,7 +114,7 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
           storage_path: path,
         });
       });
-      /* 仪表照片和排异标照片已保存到工单表，此处只保存检查记录专属媒体 */
+      /* 仪表照片已保存到工单表，此处只保存检查记录专属媒体 */
 
       if (mediaRecords.length > 0) {
         const { error: mediaError } = await supabase.from("work_order_inspection_media").insert(mediaRecords);
@@ -157,17 +158,12 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
 
         <section className="border-t border-gray-100 pt-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">仪表照片</h2>
-          <ImageUploader onUpload={setDashboardPaths} maxImages={3} />
-        </section>
-
-        <section className="border-t border-gray-100 pt-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">排异标照片</h2>
-          <ImageUploader onUpload={setRejectionMarkPaths} maxImages={3} />
+          <ImageUploader onUpload={setDashboardPaths} existingImages={dashboardPaths} maxImages={3} />
         </section>
 
         <section className="border-t border-gray-100 pt-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">外观照片</h2>
-          <ImageUploader onUpload={setExteriorPaths} maxImages={8} />
+          <ImageUploader onUpload={setExteriorPaths} existingImages={exteriorPaths} maxImages={8} />
         </section>
 
         <section className="border-t border-gray-100 pt-6">

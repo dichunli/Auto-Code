@@ -1,8 +1,7 @@
 module.exports = {
   apps: [{
     name: 'auto-repair-shop',
-    script: 'node',
-    args: ['./node_modules/next/dist/bin/next', 'start'],
+    script: 'server.js',
     cwd: './',
     instances: 1,
     autorestart: true,

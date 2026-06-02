@@ -1,0 +1,29 @@
+{
+  "node": {
+    "00e98e1da09c7ab1ac30d65734c889e1af4bbae16e": {
+      "workers": {
+        "app/17vin-billing/page": {
+          "moduleId": 11569,
+          "async": false,
+          "exportedName": "vin17GetBalance",
+          "filename": "src/lib/17vin/client.ts"
+        }
+      },
+      "exportedName": "vin17GetBalance",
+      "filename": "src/lib/17vin/client.ts"
+    },
+    "603529b9de08bb87874094a50e2753352626642588": {
+      "workers": {
+        "app/17vin-billing/page": {
+          "moduleId": 11569,
+          "async": false,
+          "exportedName": "查询调用记录",
+          "filename": "src/app/17vin-billing/actions.ts"
+        }
+      },
+      "exportedName": "查询调用记录",
+      "filename": "src/app/17vin-billing/actions.ts"
+    }
+  },
+  "edge": {}
+}

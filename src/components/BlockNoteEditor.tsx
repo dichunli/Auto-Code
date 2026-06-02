@@ -105,6 +105,7 @@ function CustomToolbarButtons({
   uploadFile: (file: File) => Promise<string>;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoFileInputRef = useRef<HTMLInputElement>(null);
 
   const btnBase =
     "px-1.5 py-1 text-xs rounded hover:bg-gray-200 transition-colors text-gray-600 flex items-center gap-1";
@@ -181,6 +182,87 @@ function CustomToolbarButtons({
     );
   }
 
+  function handleInsertDouyinVideo() {
+    const url = prompt("输入抖音视频分享链接（如 https://v.douyin.com/xxxxx）:");
+    if (!url) return;
+    /* 简单校验 */
+    const trimmed = url.trim();
+    if (!trimmed.startsWith("http")) {
+      alert("请输入以 http:// 或 https:// 开头的链接");
+      return;
+    }
+    const pos = editor.getTextCursorPosition();
+    editor.insertBlocks(
+      [{ type: "video", props: { url: trimmed, caption: "" } }],
+      pos.block,
+      "after"
+    );
+  }
+
+  async function handleUploadVideo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    /* 限制 500MB */
+    if (file.size > 500 * 1024 * 1024) {
+      alert("视频大小不能超过 500MB");
+      e.target.value = "";
+      return;
+    }
+
+    /* 限制 30分钟 */
+    try {
+      const duration = await new Promise<number>((resolve, reject) => {
+        const video = document.createElement("video");
+        const url = URL.createObjectURL(file);
+        const timer = setTimeout(() => {
+          URL.revokeObjectURL(url);
+          reject(new Error("读取视频信息超时"));
+        }, 10000);
+        video.onloadedmetadata = () => {
+          clearTimeout(timer);
+          URL.revokeObjectURL(url);
+          resolve(video.duration);
+        };
+        video.onerror = () => {
+          clearTimeout(timer);
+          URL.revokeObjectURL(url);
+          reject(new Error("无法读取视频信息"));
+        };
+        video.src = url;
+      });
+      if (duration > 30 * 60) {
+        alert("视频时长不能超过 30 分钟");
+        e.target.value = "";
+        return;
+      }
+    } catch {
+      /* 无法读取时长时继续上传 */
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file, file.name);
+      formData.append("folder", "training");
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "上传失败");
+
+      const pos = editor.getTextCursorPosition();
+      editor.insertBlocks(
+        [{ type: "video", props: { url: result.path, caption: "" } }],
+        pos.block,
+        "after"
+      );
+    } catch (err: unknown) {
+      alert("视频上传失败: " + (err instanceof Error ? err.message : String(err)));
+    }
+    e.target.value = "";
+  }
+
   function handleInsertFile() {
     const url = prompt("输入文件链接地址:");
     if (!url) return;
@@ -190,6 +272,49 @@ function CustomToolbarButtons({
       pos.block,
       "after"
     );
+  }
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleUploadOfficeFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowed = [".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".pdf"];
+    const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    if (!allowed.includes(ext)) {
+      alert("仅支持 Word、Excel、PPT、PDF 文件");
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file, file.name);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "上传失败");
+
+      const pos = editor.getTextCursorPosition();
+      editor.insertBlocks(
+        [{
+          type: "file",
+          props: {
+            url: result.path,
+            name: file.name,
+            pdfUrl: result.pdfPath || "",
+          },
+        }],
+        pos.block,
+        "after"
+      );
+    } catch (err: unknown) {
+      alert("文件上传失败: " + (err instanceof Error ? err.message : String(err)));
+    }
+    e.target.value = "";
   }
 
   const [showJumpModal, setShowJumpModal] = useState(false);
@@ -233,20 +358,68 @@ function CustomToolbarButtons({
         onChange={handleInsertImage}
       />
 
-      {/* 插入视频 */}
-      <button type="button" className={btnBase} onClick={handleInsertVideo} title="插入视频">
+      {/* 插入视频链接 */}
+      <button type="button" className={btnBase} onClick={handleInsertVideo} title="插入视频链接">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
         </svg>
-        视频
+        视频链接
       </button>
 
-      {/* 插入文件 */}
-      <button type="button" className={btnBase} onClick={handleInsertFile} title="插入文件">
+      {/* 插入抖音视频 */}
+      <button type="button" className={btnBase} onClick={handleInsertDouyinVideo} title="插入抖音视频">
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
+          <path d="M12.53 2C12.53 2 12.53 6.5 12.53 8C12.53 10.5 14.53 12.5 17.03 12.5C17.83 12.5 18.53 12.3 19.03 12V16.5C19.03 16.5 17.53 17 16.03 17C13.53 17 11.53 15 11.53 12.5V8H8.53V12.5C8.53 16.5 11.53 19.5 15.53 19.5C16.53 19.5 17.53 19.3 18.53 18.8V22C18.53 22 17.03 22.5 15.53 22.5C10.53 22.5 6.53 18.5 6.53 13.5V8H4.53V4H11.53C11.53 3 12.03 2 12.53 2Z" fill="currentColor" />
+        </svg>
+        抖音视频
+      </button>
+
+      {/* 上传视频 */}
+      <button
+        type="button"
+        className={btnBase}
+        onClick={() => videoFileInputRef.current?.click()}
+        title="上传视频"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+        </svg>
+        上传视频
+      </button>
+      <input
+        ref={videoFileInputRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={handleUploadVideo}
+      />
+
+      {/* 上传文件 */}
+      <button
+        type="button"
+        className={btnBase}
+        onClick={() => fileInputRef.current?.click()}
+        title="上传文件"
+      >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
         文件
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf"
+        className="hidden"
+        onChange={handleUploadOfficeFile}
+      />
+
+      {/* 插入文件链接 */}
+      <button type="button" className={btnBase} onClick={handleInsertFile} title="插入文件链接">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+        </svg>
+        链接
       </button>
 
       {/* 插入表格 */}

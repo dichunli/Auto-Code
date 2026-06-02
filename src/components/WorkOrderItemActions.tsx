@@ -11,10 +11,9 @@ interface Props {
   aliasName?: string | null;
   quantity?: number;
   unitPrice?: number;
-  serviceItemId?: string | null;
 }
 
-export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, unitPrice, serviceItemId }: Props) {
+export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, unitPrice }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [deleting, setDeleting] = useState(false);

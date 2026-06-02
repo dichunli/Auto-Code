@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, 获取当前环境 } from "@/lib/supabase/client";
 import { logLogin } from "@/lib/operationLog";
 
 export default function LoginPage() {
@@ -9,13 +9,31 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const supabase = createClient();
+  const [环境, set环境] = useState("检测中...");
+  /* supabase 客户端延迟到 useEffect 中创建，避免 SSR 阶段环境误判 */
+  const [supabase, setSupabase] = useState<ReturnType<typeof createClient> | null>(null);
 
-  /* 检测页面是否从浏览器缓存恢复（bfcache），如果是则强制刷新 */
+  useEffect(() => {
+    set环境(获取当前环境());
+    /* 客户端挂载后再创建 supabase 实例，确保能正确识别 APP/WebView 环境 */
+    setSupabase(createClient());
+  }, []);
+
+  /* 检测页面是否从浏览器缓存恢复（bfcache） */
+  /* 注意：APP 环境下某些国产手机的 WebView 会误触发 persisted，导致输入框被清空 */
+  /* 在事件触发时再检查 window.Capacitor，比 useEffect 执行时检查更可靠 */
   useEffect(() => {
     function handlePageShow(e: PageTransitionEvent) {
       if (e.persisted) {
-        window.location.reload();
+        /* 事件触发时双重检查：如果是 APP 环境直接忽略 */
+        const w = window as Record<string, unknown>;
+        if (w.Capacitor || w.CapacitorIsNative) return;
+
+        /* 浏览器环境：从缓存恢复时，如果已经有 session 则跳走 */
+        const hasToken = document.cookie.includes("sb-") || !!window.localStorage.getItem("sb-");
+        if (hasToken) {
+          window.location.href = "/";
+        }
       }
     }
     window.addEventListener("pageshow", handlePageShow);
@@ -33,8 +51,17 @@ export default function LoginPage() {
     return /^1[3-9]\d{9}$/.test(value);
   }
 
-  async function handleSubmit(e: React.FormEvent | null) {
-    if (e) e.preventDefault();
+  async function handleSubmit() {
+    /* 调试用：确认函数被调用 */
+    alert("点击了登录按钮");
+
+    /* 防止 supabase 客户端尚未初始化时提交 */
+    if (!supabase) {
+      alert("supabase 未初始化");
+      setError("登录服务正在初始化，请稍后再试");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
@@ -54,7 +81,7 @@ export default function LoginPage() {
       ]);
 
       if (error) {
-        setError(error.message);
+        setError(error.message || "登录失败，请检查账号密码");
         setLoading(false);
         return;
       }
@@ -65,7 +92,7 @@ export default function LoginPage() {
         return;
       }
 
-      // 记录登录日志（不阻塞登录流程）
+      /* 记录登录日志（不阻塞登录流程） */
       logLogin({
         userId: data.user?.id || "",
         userName: data.user?.email || account,
@@ -120,14 +147,24 @@ export default function LoginPage() {
             <h1 className="login-title">汽修管家</h1>
           </div>
 
-          <form onSubmit={handleSubmit} className="login-form">
+          {/* 环境检测显示（调试用，确认 APP 是否正确识别） */}
+          <div style={{ fontSize: "12px", color: "#9ca3af", textAlign: "center", marginBottom: "12px" }}>
+            当前环境: {环境}
+          </div>
+
+          <div className="login-form"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                void handleSubmit();
+              }
+            }}
+          >
             <div>
               <label className="login-label">
                 手机号 / 邮箱
               </label>
               <input
                 type="text"
-                required
                 className="login-input"
                 value={account}
                 onChange={(e) => setAccount(e.target.value)}
@@ -140,7 +177,6 @@ export default function LoginPage() {
               </label>
               <input
                 type="password"
-                required
                 className="login-input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -156,13 +192,13 @@ export default function LoginPage() {
 
             <button
               type="button"
-              onClick={() => handleSubmit(null)}
+              onClick={handleSubmit}
               disabled={loading}
               className="login-btn"
             >
               {loading ? "登录中..." : "登录"}
             </button>
-          </form>
+          </div>
 
           <div className="login-hint">
             首次使用请在 Supabase 控制台创建用户

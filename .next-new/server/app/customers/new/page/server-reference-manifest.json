@@ -1,0 +1,17 @@
+{
+  "node": {
+    "40471b037b9ffb26f296c84b2fff789b59aefaddcb": {
+      "workers": {
+        "app/customers/new/page": {
+          "moduleId": 60205,
+          "async": false,
+          "exportedName": "recognizeLicensePlate",
+          "filename": "src/lib/baidu-ocr/client.ts"
+        }
+      },
+      "exportedName": "recognizeLicensePlate",
+      "filename": "src/lib/baidu-ocr/client.ts"
+    }
+  },
+  "edge": {}
+}

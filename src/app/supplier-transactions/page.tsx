@@ -107,7 +107,7 @@ export default function SupplierTransactionsPage() {
   useEffect(() => {
     loadRecords();
     loadSuppliers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [supplierFilter, typeFilter, supabase]);
 
   useEffect(() => {

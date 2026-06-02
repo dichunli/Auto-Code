@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import Link from "next/link";
+import Vin17SyncButton from "@/components/Vin17SyncButton";
 
 interface PartSpecification {
   id: string;
@@ -182,6 +183,13 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
           <InfoItem label="批发价" value={formatCurrency(part.wholesale_price)} />
         </div>
       </div>
+
+      {/* 17VIN 车型适配 */}
+      <Vin17SyncButton
+        partId={part.id}
+        oeNumber={part.oe_number}
+        vin17GroupId={part.vin17_group_id}
+      />
 
       {/* 库存分布 */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">

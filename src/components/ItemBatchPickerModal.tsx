@@ -9,6 +9,7 @@ interface Props {
   onClose: () => void;
   orderId: string;
   requirementId: string;
+  vehicleModelId?: number | null;
 }
 
 type ServiceItem = {
@@ -18,9 +19,14 @@ type ServiceItem = {
   default_price: number | null;
   standard_hours: number | null;
   category_id: string | null;
-  service_name_id: string | null;
+  search_keywords: string | null;
   service_categories?: { id: string; name: string } | null;
-  service_names?: { id: string; name: string; search_keywords: string | null; category_id: string } | null;
+};
+
+type ServiceItemPrice = {
+  service_item_id: string;
+  vehicle_model_id: number;
+  price: number | null;
 };
 
 type ExistingItem = { name: string };
@@ -42,10 +48,11 @@ const QUICK_TAGS = [
   "轮胎",
 ];
 
-export default function ItemBatchPickerModal({ open, onClose, orderId, requirementId }: Props) {
+export default function ItemBatchPickerModal({ open, onClose, orderId, requirementId, vehicleModelId }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [allServiceItems, setAllServiceItems] = useState<ServiceItem[]>([]);
+  const [serviceItemPrices, setServiceItemPrices] = useState<ServiceItemPrice[]>([]);
   const [query, setQuery] = useState("");
   const [defaultType] = useState<"labor" | "part" | "other">("labor");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -60,14 +67,18 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
     async function loadData() {
       setLoading(true);
       try {
-        const { data: items } = await supabase
+        const { data: items, error } = await supabase
           .from("service_items")
           .select(`
-            id, name, description, default_price, standard_hours, category_id, service_name_id,
-            service_categories(id, name),
-            service_names(id, name, search_keywords, category_id)
+            id, name, description, default_price, standard_hours, category_id, search_keywords,
+            service_categories(id, name)
           `)
           .order("name");
+        if (error) {
+          alert("加载项目失败: " + error.message);
+          setAllServiceItems([]);
+          return;
+        }
         setAllServiceItems((items as unknown as ServiceItem[]) || []);
       } catch (err: unknown) {
         alert("加载项目失败: " + (err instanceof Error ? err.message : String(err)));
@@ -77,7 +88,32 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
     }
 
     loadData();
-  }, [open, supabase]);
+
+    /* 加载车型定价 */
+    if (vehicleModelId) {
+      supabase
+        .from("service_item_prices")
+        .select("service_item_id, vehicle_model_id, price")
+        .eq("vehicle_model_id", vehicleModelId)
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("加载车型定价失败:", error.message);
+            return;
+          }
+          setServiceItemPrices((data as ServiceItemPrice[]) || []);
+        });
+    } else {
+      setServiceItemPrices([]);
+    }
+  }, [open, supabase, vehicleModelId]);
+
+  /* 获取车型定价价格 */
+  function getVehiclePrice(serviceItemId: string): number | null {
+    if (!vehicleModelId) return null;
+    return serviceItemPrices.find(
+      (p) => p.service_item_id === serviceItemId && p.vehicle_model_id === vehicleModelId
+    )?.price ?? null;
+  }
 
   const filteredList = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -86,8 +122,7 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
         const hay = [
           si.name,
           si.service_categories?.name,
-          si.service_names?.name,
-          si.service_names?.search_keywords,
+          si.search_keywords,
           si.description,
         ]
           .filter(Boolean)
@@ -141,16 +176,19 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
         return;
       }
 
-      const records = toInsert.map((si) => ({
-        work_order_id: orderId,
-        requirement_id: requirementId,
-        service_item_id: si.id,
-        name: si.name,
-        item_type: defaultType,
-        description: si.description || null,
-        quantity: 1,
-        unit_price: si.default_price ?? 0,
-      }));
+      const records = toInsert.map((si) => {
+        const vPrice = getVehiclePrice(si.id);
+        return {
+          work_order_id: orderId,
+          requirement_id: requirementId,
+          service_item_id: si.id,
+          name: si.name,
+          item_type: defaultType,
+          description: si.description || null,
+          quantity: 1,
+          unit_price: vPrice ?? si.default_price ?? 0,
+        };
+      });
 
       const { error } = await supabase.from("work_order_items").insert(records);
       if (error) throw error;
@@ -230,6 +268,7 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
             <div className="space-y-2">
               {listToShow.map((si) => {
                 const checked = selectedIds.includes(si.id);
+                const vPrice = getVehiclePrice(si.id);
                 return (
                   <div
                     key={si.id}
@@ -262,11 +301,8 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
                           </span>
                         </div>
                         <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
-                          {si.service_names?.name && (
-                            <span>名称库: {si.service_names.name}</span>
-                          )}
                           <span className="text-blue-600 font-medium">
-                            {si.default_price != null ? `¥${si.default_price}` : "-"}
+                            {vPrice != null ? `车型价¥${vPrice}` : si.default_price != null ? `销售价¥${si.default_price}` : "-"}
                           </span>
                           {si.standard_hours && (
                             <span>{si.standard_hours}工时</span>

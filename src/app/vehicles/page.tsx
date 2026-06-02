@@ -180,6 +180,7 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
                   <td className="px-6 py-4 text-gray-600">{v.companies?.name || "-"}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
+                      <Link href={`/vehicles/${v.id}`} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">查看详情</Link>
                       <Link href={`/vehicles/${v.id}/edit`} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">编辑</Link>
                       <DeleteButton id={v.id} />
                     </div>

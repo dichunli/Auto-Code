@@ -9,6 +9,7 @@ import { DeleteButton } from "./DeleteButton";
 interface 维修分类 {
   id: string;
   name: string;
+  sort_order: number;
   sales_commission_type: string | null;
   sales_commission_value: number | null;
   diagnosis_commission_type: string | null;
@@ -72,6 +73,11 @@ export default function ServiceCategoriesPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  /* 拖动排序状态 */
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+
   const [form, setForm] = useState({
     name: "",
     sales_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
@@ -92,7 +98,8 @@ export default function ServiceCategoriesPage() {
     const { data } = await supabase
       .from("service_categories")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
     setCategories(data || []);
   }, [supabase]);
 
@@ -105,6 +112,75 @@ export default function ServiceCategoriesPage() {
     if (type === "revenue_pct") return `${value}% (产值)`;
     if (type === "profit_pct") return `${value}% (毛利)`;
     return `¥${value} (固定)`;
+  }
+
+  function handleDragStart(e: React.DragEvent<HTMLTableRowElement>, id: string) {
+    setDraggingId(id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLTableRowElement>, id: string) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (id !== draggingId) {
+      setDragOverId(id);
+    }
+  }
+
+  function handleDragLeave() {
+    setDragOverId(null);
+  }
+
+  async function handleDrop(e: React.DragEvent<HTMLTableRowElement>, targetId: string) {
+    e.preventDefault();
+    setDragOverId(null);
+    if (!draggingId || draggingId === targetId) {
+      setDraggingId(null);
+      return;
+    }
+
+    const fromIndex = categories.findIndex((c) => c.id === draggingId);
+    const toIndex = categories.findIndex((c) => c.id === targetId);
+    if (fromIndex === -1 || toIndex === -1) {
+      setDraggingId(null);
+      return;
+    }
+
+    const newList = [...categories];
+    const [moved] = newList.splice(fromIndex, 1);
+    newList.splice(toIndex, 0, moved);
+    setCategories(newList);
+    setDraggingId(null);
+
+    /* 批量更新 sort_order */
+    await saveSortOrder(newList);
+  }
+
+  function handleDragEnd() {
+    setDraggingId(null);
+    setDragOverId(null);
+  }
+
+  async function saveSortOrder(list: 维修分类[]) {
+    setSavingOrder(true);
+    try {
+      const updates = list.map((item, index) =>
+        supabase.from("service_categories").update({ sort_order: index }).eq("id", item.id)
+      );
+      const results = await Promise.all(updates);
+      const errors = results.filter((r) => r.error);
+      if (errors.length > 0) {
+        alert("排序保存失败: " + errors[0].error?.message);
+        await load();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "未知错误";
+      alert("排序保存失败: " + msg);
+      await load();
+    } finally {
+      setSavingOrder(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -265,6 +341,20 @@ export default function ServiceCategoriesPage() {
         </form>
       )}
 
+      {categories.length > 1 && (
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-xs text-gray-500">
+            <svg className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+            </svg>
+            按住左侧图标拖动行可调整分类排序
+          </p>
+          {savingOrder && (
+            <span className="text-xs text-blue-600">正在保存排序...</span>
+          )}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -282,8 +372,26 @@ export default function ServiceCategoriesPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {categories?.map((c: 维修分类) => (
-                <tr key={c.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium text-gray-900">{c.name}</td>
+                <tr
+                  key={c.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, c.id)}
+                  onDragOver={(e) => handleDragOver(e, c.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, c.id)}
+                  onDragEnd={handleDragEnd}
+                  className={`hover:bg-gray-50 transition-colors cursor-move select-none ${
+                    draggingId === c.id ? "opacity-50 bg-blue-50" : ""
+                  } ${dragOverId === c.id && dragOverId !== draggingId ? "border-t-2 border-blue-500 bg-blue-50" : ""}`}
+                >
+                  <td className="px-6 py-4 font-medium text-gray-900">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                      </svg>
+                      {c.name}
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-gray-600">
                     {formatCommission(c.sales_commission_type, c.sales_commission_value)}
                   </td>

@@ -39,7 +39,7 @@ interface LogisticsCompany {
   name: string;
 }
 
-export function BatchEditModal({ orderId, items, itemParts, suppliers, logisticsCompanies, onClose, onSuccess }: BatchEditModalProps) {
+export function BatchEditModal({ items, itemParts, suppliers, logisticsCompanies, onClose, onSuccess }: BatchEditModalProps) {
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
 

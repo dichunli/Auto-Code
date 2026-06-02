@@ -88,12 +88,13 @@ export default function PartBranchEditor({
 
   // 只有一个分支时默认选中
   useEffect(() => {
-    if (!canDelete && !part.is_selected) {
+    if (!canDelete && part.is_selected !== true) {
+      setLocalSelected(true);
       supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", part.id).then(({ error }) => {
-        if (!error) refresh();
+        if (error) setLocalSelected(false);
       });
     }
-  }, []);
+  }, [canDelete, part.is_selected, part.id, supabase]);
 
   // 字段编辑状态
   const [editForm, setEditForm] = useState({
@@ -540,6 +541,7 @@ export default function PartBranchEditor({
             checked={localSelected}
             onChange={async () => {
               const next = !localSelected;
+              if (!canDelete && !next) return;
               setLocalSelected(next);
               setSaving(true);
               // 单选：选中当前时，取消同组其他分支的选中状态

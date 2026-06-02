@@ -82,7 +82,7 @@ export function CompletedStorageList() {
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   async function handleRevokeCompleted(orderId: string) {

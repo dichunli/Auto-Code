@@ -17,13 +17,42 @@ export default async function VehicleDetailPage({
 
   const { data: vehicle } = await supabase
     .from("vehicles")
-    .select("id, plate_number, brand, model, vin, engine_no, color, year, mileage, notes, customer_id, customers(id, name, phone), companies(id, name), vehicle_model_id, vehicle_models(*), created_at")
+    .select("id, plate_number, brand, model, vin, engine_no, color, year, mileage, notes, customer_id, customers(id, name, phone, star_level), companies(id, name), vehicle_model_id, vehicle_models(*), created_at")
     .eq("id", id)
     .single();
+
+  /* 查询客户标签 */
+  const { data: customerTagData } = await supabase
+    .from("customer_tags")
+    .select("tags(name, color)")
+    .eq("customer_id", vehicle.customer_id);
 
   if (!vehicle) {
     notFound();
   }
+
+  /* 查询该车辆各类型工单统计 */
+  const { data: allVehicleOrders } = await supabase
+    .from("work_orders")
+    .select("id, order_no, order_type")
+    .eq("vehicle_id", id);
+
+  const typeCountMap: Record<string, { count: number; orders: { id: string; order_no: string }[] }> = {};
+  const typeLabelMap: Record<string, string> = {
+    appointment: "预约工单",
+    quote: "历史报价单",
+    cancelled: "作废工单",
+    maintenance: "保养工单",
+  };
+  (allVehicleOrders || []).forEach((o: { order_type?: string; id: string; order_no: string }) => {
+    const t = o.order_type || "normal";
+    if (t === "normal") return;
+    if (!typeCountMap[t]) {
+      typeCountMap[t] = { count: 0, orders: [] };
+    }
+    typeCountMap[t].count++;
+    typeCountMap[t].orders.push({ id: o.id, order_no: o.order_no });
+  });
 
   /* 查询该车辆历史工单 */
   const { data: workOrders } = await supabase
@@ -36,6 +65,11 @@ export default async function VehicleDetailPage({
     id: string;
     name: string;
     phone: string | null;
+    star_level?: number | null;
+  }
+
+  interface CustomerTag {
+    tags: { name: string; color: string } | null;
   }
 
   interface Company {
@@ -157,6 +191,9 @@ export default async function VehicleDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">车型信息</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+              {(model as unknown as { id?: number }).id !== undefined && (
+                <div><span className="text-gray-500">车型ID：</span><span className="text-gray-900 font-medium">{(model as unknown as { id?: number }).id}</span></div>
+              )}
               {model.厂商 && (
                 <div><span className="text-gray-500">厂商：</span><span className="text-gray-900">{model.厂商}</span></div>
               )}
@@ -258,24 +295,63 @@ export default async function VehicleDetailPage({
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">关联客户</h2>
           {customer ? (
-            <div className="flex items-center gap-4 text-sm">
-              <div>
-                <span className="text-gray-500">客户姓名：</span>
-                <Link
-                  href={`/customers/${customer.id}${from_work_order ? `?from_work_order=${from_work_order}` : ""}`}
-                  className="text-blue-600 hover:underline font-medium"
-                >
-                  {customer.name}
-                </Link>
-              </div>
-              <div>
-                <span className="text-gray-500">电话：</span>
-                <span className="text-gray-900">{customer.phone || "-"}</span>
-              </div>
-              {company?.name && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-4 text-sm flex-wrap">
                 <div>
-                  <span className="text-gray-500">单位：</span>
-                  <span className="text-gray-900">{company.name}</span>
+                  <span className="text-gray-500">客户姓名：</span>
+                  <Link
+                    href={`/customers/${customer.id}${from_work_order ? `?from_work_order=${from_work_order}` : ""}`}
+                    className="text-blue-600 hover:underline font-medium"
+                  >
+                    {customer.name}
+                  </Link>
+                </div>
+                <div>
+                  <span className="text-gray-500">电话：</span>
+                  <span className="text-gray-900">{customer.phone || "-"}</span>
+                </div>
+                {company?.name && (
+                  <div>
+                    <span className="text-gray-500">单位：</span>
+                    <span className="text-gray-900">{company.name}</span>
+                  </div>
+                )}
+                {customer.star_level !== null && customer.star_level !== undefined && (
+                  <div>
+                    <span className="text-gray-500">星级：</span>
+                    <span className="text-amber-500">{"★".repeat(customer.star_level)}{"☆".repeat(5 - customer.star_level)}</span>
+                  </div>
+                )}
+              </div>
+              {customerTagData && customerTagData.length > 0 && (
+                <div className="flex items-center gap-2 text-sm flex-wrap">
+                  <span className="text-gray-500">标签：</span>
+                  {(customerTagData as CustomerTag[]).map((tag, i) => (
+                    tag.tags ? (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded text-xs border"
+                        style={{ backgroundColor: tag.tags.color + "20", color: tag.tags.color, borderColor: tag.tags.color + "40" }}
+                      >
+                        {tag.tags.name}
+                      </span>
+                    ) : null
+                  ))}
+                </div>
+              )}
+              {/* 车辆历史工单统计 */}
+              {Object.keys(typeCountMap).length > 0 && (
+                <div className="flex items-center gap-2 text-sm flex-wrap pt-1">
+                  <span className="text-gray-400 text-xs">历史工单：</span>
+                  {Object.entries(typeCountMap).map(([t, info]) => (
+                    <Link
+                      key={t}
+                      href={`/work-orders?type=${t}&vehicle_id=${id}`}
+                      className="px-2 py-0.5 rounded text-xs bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+                    >
+                      {typeLabelMap[t] || t}({info.count})
+                    </Link>
+                  ))}
                 </div>
               )}
             </div>

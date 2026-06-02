@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/knowledge/layout,_N_T_/knowledge/categories/layout,_N_T_/knowledge/categories/page,_N_T_/knowledge/categories"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/knowledge/categories/__PAGE__",
+    "/knowledge/categories",
+    "/knowledge",
+    "/_index",
+    "/_head"
+  ]
+}

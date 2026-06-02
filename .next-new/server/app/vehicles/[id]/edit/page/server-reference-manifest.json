@@ -1,0 +1,41 @@
+{
+  "node": {
+    "4036ba372aacae112aa1c41f4f8967503c31ea8947": {
+      "workers": {
+        "app/vehicles/[id]/edit/page": {
+          "moduleId": 31255,
+          "async": false,
+          "exportedName": "vin17OcrImage",
+          "filename": "src/lib/17vin/client.ts"
+        }
+      },
+      "exportedName": "vin17OcrImage",
+      "filename": "src/lib/17vin/client.ts"
+    },
+    "405ccd60b2be6a1c5ee0cb0765c03e72fdc457018d": {
+      "workers": {
+        "app/vehicles/[id]/edit/page": {
+          "moduleId": 31255,
+          "async": false,
+          "exportedName": "vin17DecodeVin",
+          "filename": "src/lib/17vin/client.ts"
+        }
+      },
+      "exportedName": "vin17DecodeVin",
+      "filename": "src/lib/17vin/client.ts"
+    },
+    "40471b037b9ffb26f296c84b2fff789b59aefaddcb": {
+      "workers": {
+        "app/vehicles/[id]/edit/page": {
+          "moduleId": 31255,
+          "async": false,
+          "exportedName": "recognizeLicensePlate",
+          "filename": "src/lib/baidu-ocr/client.ts"
+        }
+      },
+      "exportedName": "recognizeLicensePlate",
+      "filename": "src/lib/baidu-ocr/client.ts"
+    }
+  },
+  "edge": {}
+}

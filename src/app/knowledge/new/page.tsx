@@ -87,6 +87,20 @@ export default function NewKnowledgePage() {
     setLoading(true);
 
     try {
+      /* 校验：维修指导类型/分类必须关联维修项目和车型 */
+      const 维修指导分类ID = categories.find((c) => c.name === "维修指导")?.id;
+      const is维修指导 = form.type === "guide" || form.category_id === 维修指导分类ID;
+      if (is维修指导 && linkedNames.length === 0) {
+        alert("维修指导文章必须至少关联一个维修项目");
+        setLoading(false);
+        return;
+      }
+      if (is维修指导 && linkedVehicles.length === 0) {
+        alert("维修指导文章必须至少关联一个适用车型");
+        setLoading(false);
+        return;
+      }
+
       /* 处理外部图片：自动下载到本地 */
       let contentBlocks = form.content_blocks ? JSON.parse(form.content_blocks) : null;
       if (contentBlocks && Array.isArray(contentBlocks)) {

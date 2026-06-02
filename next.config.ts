@@ -2,9 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["192.168.1.75"],
+  distDir: ".next-new",
   typescript: {
     ignoreBuildErrors: true,
   },
+  serverExternalPackages: ["mammoth", "docx"],
   experimental: {
     serverActions: {
       bodySizeLimit: "100mb",

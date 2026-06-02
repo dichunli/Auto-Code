@@ -275,7 +275,6 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
       // 为找不到车主的行创建新客户
       const customersToCreate: { name: string; phone: string }[] = [];
       const createdPhoneToId = new Map<string, string>();
-      const createdNameToId = new Map<string, string>();
 
       for (const row of newRows) {
         if (!row.ownerPhone && !row.ownerName) continue;

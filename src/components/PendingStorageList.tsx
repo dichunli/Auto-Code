@@ -156,7 +156,7 @@ export function PendingStorageList() {
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   /* 打开入库单确认弹窗 */

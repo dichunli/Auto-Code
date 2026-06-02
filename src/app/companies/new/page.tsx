@@ -130,7 +130,7 @@ export default function NewCompanyPage() {
             <p className="text-sm text-gray-400">点击{'"'}添加联系人{'"'}按钮录入联系人</p>
           )}
           <div className="space-y-3">
-            {contacts.map((c, idx) => (
+            {contacts.map((c) => (
               <div key={c.id} className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end bg-gray-50 rounded-lg p-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">姓名</label>
