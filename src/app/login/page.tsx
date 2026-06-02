@@ -47,7 +47,9 @@ export default function LoginPage() {
     return /^1[3-9]\d{9}$/.test(value);
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
     /* 防止 supabase 客户端尚未初始化时提交 */
     if (!supabase) {
       setError("登录服务正在初始化，请稍后再试");
@@ -144,14 +146,7 @@ export default function LoginPage() {
             当前环境: {环境}
           </div>
 
-          <div className="login-form"
-            onKeyDown={(e) => {
-              /* 回车键触发登录 */
-              if (e.key === "Enter") {
-                void handleSubmit();
-              }
-            }}
-          >
+          <form onSubmit={handleSubmit} className="login-form">
             <div>
               <label className="login-label">
                 手机号 / 邮箱
@@ -186,14 +181,13 @@ export default function LoginPage() {
             )}
 
             <button
-              type="button"
-              onClick={() => void handleSubmit()}
+              type="submit"
               disabled={loading}
               className="login-btn"
             >
               {loading ? "登录中..." : "登录"}
             </button>
-          </div>
+          </form>
 
           <div className="login-hint">
             首次使用请在 Supabase 控制台创建用户

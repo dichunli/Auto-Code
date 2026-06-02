@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { recognizeLicensePlate } from "@/lib/baidu-ocr/client";
-import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
+import { 压缩图片为Base64, 文件转Base64, base64转Blob } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 
 interface Props {
@@ -44,14 +44,26 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
     setErrorMsg(null);
     setRecognizedPlate(null);
     try {
-      const plate = await recognizeLicensePlate(base64);
+      /* APP 环境：压缩图片后再传给 Server Action，减少传输时间 */
+      let processedBase64 = base64;
+      if (是App) {
+        const blob = base64转Blob(base64);
+        processedBase64 = await 压缩图片为Base64(blob, { 最大宽度: 1280, 质量: 0.6 });
+      }
+      const plate = await recognizeLicensePlate(processedBase64);
       setRecognizedPlate(plate.toUpperCase());
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : "识别失败");
+      const msg = err instanceof Error ? err.message : "识别失败";
+      /* 过滤掉 Next.js Server Components 的通用错误包装 */
+      if (msg.includes("Server Components render")) {
+        setErrorMsg("识别服务暂时不可用，请检查网络后重试");
+      } else {
+        setErrorMsg(msg);
+      }
     } finally {
       setRecognizing(false);
     }
-  }, []);
+  }, [是App]);
 
   /* ========== 浏览器环境：启动实时摄像头 ========== */
   const 启动实时摄像头 = useCallback(async () => {
@@ -81,7 +93,7 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
       set模式("拍照");
       const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
       const image = await Camera.getPhoto({
-        quality: 75,
+        quality: 60,
         allowEditing: false,
         resultType: CameraResultType.Base64,
         source: CameraSource.Camera,

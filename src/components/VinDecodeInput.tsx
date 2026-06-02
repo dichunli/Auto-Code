@@ -140,8 +140,10 @@ export default function VinDecodeInput({
       setQueryingModel(false);
 
       const base64Body = base64.split(",")[1] || "";
-      /* 注意：不要预先 encodeURIComponent，vin17OcrImage 内部会用 URLSearchParams 编码 */
-      const ocrRes = (await vin17OcrImage(base64Body)) as {
+      const base64Urlencode = encodeURIComponent(base64Body);
+
+      /* 第1步：只 OCR 识别 VIN */
+      const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
         code: number;
         msg?: string;
         data?: {

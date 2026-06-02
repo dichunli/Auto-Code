@@ -51,8 +51,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
     try {
       const base64Body = base64.split(",")[1] || "";
-      /* 注意：不要预先 encodeURIComponent，vin17OcrImage 内部会用 URLSearchParams 编码 */
-      const ocrRes = (await vin17OcrImage(base64Body)) as {
+      const base64Urlencode = encodeURIComponent(base64Body);
+      const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
         code: number;
         msg?: string;
         data?: {
@@ -171,7 +171,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       set模式("拍照");
       const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
       const image = await Camera.getPhoto({
-        quality: 75,
+        quality: 60,
         allowEditing: false,
         resultType: CameraResultType.Base64,
         source: CameraSource.Camera,

@@ -131,11 +131,18 @@ async function vin17PostRequest(params: Record<string, string>): Promise<unknown
   const urlParameters = "/?" + rawQuery;
   const token = getToken(urlParameters);
 
-  /* 实际 POST body 需要编码 */
-  const bodyParams = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => bodyParams.append(k, v));
-  bodyParams.append("user", USERNAME);
-  bodyParams.append("token", token);
+  /*
+   * 手动构建 body，避免 URLSearchParams 对已经是 URL 编码过的值再次编码。
+   * base64_urlencode_imagestring 的值已经是 encodeURIComponent(base64) 的结果，
+   * 如果再经过 URLSearchParams.append() 会双重编码，导致 17VIN 无法正确解码图片。
+   */
+  const bodyParts: string[] = [];
+  Object.entries(params).forEach(([k, v]) => {
+    bodyParts.push(`${encodeURIComponent(k)}=${v}`);
+  });
+  bodyParts.push(`${encodeURIComponent("user")}=${USERNAME}`);
+  bodyParts.push(`${encodeURIComponent("token")}=${token}`);
+  const body = bodyParts.join("&");
 
   const res = await fetch(`${BASE_URL}/`, {
     method: "POST",
@@ -143,7 +150,7 @@ async function vin17PostRequest(params: Record<string, string>): Promise<unknown
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
     },
-    body: bodyParams.toString(),
+    body,
   });
 
   if (!res.ok) {
@@ -237,17 +244,19 @@ export interface Vin17AftermarketResult {
   };
 }
 
-/* VIN查保养件：直接传VIN+品牌，返回保养件列表 */
+/* VIN查保养件：传VIN+可选品牌，不传品牌返回所有品牌数据 */
 export async function vin17SearchAftermarketParts(
   vin: string,
-  manufacturerBrand: string,
+  manufacturerBrand?: string,
   category?: string
 ): Promise<Vin17AftermarketResult> {
   const params: Record<string, string> = {
     action: "aftermarket_vin",
     vin,
-    manufacturer_brand: manufacturerBrand,
   };
+  if (manufacturerBrand) {
+    params.manufacturer_brand = manufacturerBrand;
+  }
   if (category) {
     params.category = category;
   }
