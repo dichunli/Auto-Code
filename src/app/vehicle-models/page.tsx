@@ -109,8 +109,8 @@ const detailFields: { key: keyof VehicleModel; label: string }[] = [
   { key: "有配件标志", label: "有配件标志" },
 ];
 
-const tableColumns: { key: keyof VehicleModel; label: string; searchable?: boolean }[] = [
-  { key: "id", label: "ID" },
+const tableColumns: { key: keyof VehicleModel; label: string; searchable?: boolean; numeric?: boolean }[] = [
+  { key: "id", label: "ID", searchable: true, numeric: true },
   { key: "厂商", label: "厂商", searchable: true },
   { key: "品牌", label: "品牌", searchable: true },
   { key: "车系", label: "车系", searchable: true },
@@ -166,7 +166,14 @@ export default function VehicleModelsPage() {
 
     Object.entries(columnFilters).forEach(([col, val]) => {
       if (val.trim()) {
-        q = q.ilike(col, `%${val.trim()}%`);
+        if (col === "id") {
+          const num = parseInt(val.trim(), 10);
+          if (!isNaN(num)) {
+            q = q.eq(col, num);
+          }
+        } else {
+          q = q.ilike(col, `%${val.trim()}%`);
+        }
       }
     });
 

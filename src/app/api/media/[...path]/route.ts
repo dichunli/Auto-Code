@@ -16,6 +16,11 @@ const mimeTypes: Record<string, string> = {
   ".mov": "video/quicktime",
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 
 export async function GET(

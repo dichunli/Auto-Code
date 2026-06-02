@@ -21,6 +21,9 @@ interface 配件分类 {
   qc_commission_value: number | null;
   picking_commission_type: string | null;
   picking_commission_value: number | null;
+  require_scan_check: boolean;
+  require_location_check: boolean;
+  sort_order: number;
   created_at: string;
 }
 
@@ -70,10 +73,13 @@ export default function PartCategoriesPage() {
   const supabase = createClient();
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<配件分类[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [sortSaving, setSortSaving] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -89,6 +95,8 @@ export default function PartCategoriesPage() {
     qc_value: "",
     picking_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     picking_value: "",
+    require_scan_check: false,
+    require_location_check: false,
   });
 
   const loadCategories = useCallback(
@@ -97,7 +105,7 @@ export default function PartCategoriesPage() {
       let q = supabase
         .from("part_categories")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("sort_order", { ascending: true });
       if (search?.trim()) {
         q = q.ilike("name", `%${search.trim()}%`);
       }
@@ -125,6 +133,61 @@ export default function PartCategoriesPage() {
     return `¥${value} (固定)`;
   }
 
+  /* 拖拽排序 */
+  function handleDragStart(e: React.DragEvent, id: string) {
+    setDraggingId(id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
+  }
+
+  function handleDragOver(e: React.DragEvent, id: string) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (id !== draggingId) {
+      setDragOverId(id);
+    }
+  }
+
+  function handleDragLeave() {
+    setDragOverId(null);
+  }
+
+  async function handleDrop(e: React.DragEvent, targetId: string) {
+    e.preventDefault();
+    setDragOverId(null);
+    setDraggingId(null);
+
+    const sourceId = e.dataTransfer.getData("text/plain");
+    if (!sourceId || sourceId === targetId) return;
+
+    const sourceIndex = categories.findIndex((c) => c.id === sourceId);
+    const targetIndex = categories.findIndex((c) => c.id === targetId);
+    if (sourceIndex === -1 || targetIndex === -1) return;
+
+    const newCategories = [...categories];
+    const [removed] = newCategories.splice(sourceIndex, 1);
+    newCategories.splice(targetIndex, 0, removed);
+    setCategories(newCategories);
+
+    /* 保存到数据库 */
+    setSortSaving(true);
+    for (let i = 0; i < newCategories.length; i++) {
+      const { error } = await supabase
+        .from("part_categories")
+        .update({ sort_order: i + 1 })
+        .eq("id", newCategories[i].id);
+      if (error) {
+        console.error("保存排序失败:", error);
+      }
+    }
+    setSortSaving(false);
+  }
+
+  function handleDragEnd() {
+    setDraggingId(null);
+    setDragOverId(null);
+  }
+
   function handleStartCreate() {
     setForm((prev) => ({ ...prev, name: query.trim() }));
     setShowForm(true);
@@ -138,10 +201,17 @@ export default function PartCategoriesPage() {
     }
     setSaving(true);
 
+    const maxSort = categories.length > 0
+      ? Math.max(...categories.map((c) => c.sort_order || 0))
+      : 0;
+
     const { error } = await supabase.from("part_categories").insert({
       name: form.name.trim(),
+      sort_order: maxSort + 1,
       auto_link_vehicle_model: form.auto_link_vehicle_model,
       is_consumable: form.is_consumable,
+      require_scan_check: form.require_scan_check,
+      require_location_check: form.require_location_check,
       sales_commission_type: form.sales_type || null,
       sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
       diagnosis_commission_type: form.diagnosis_type || null,
@@ -166,6 +236,8 @@ export default function PartCategoriesPage() {
       name: "",
       auto_link_vehicle_model: false,
       is_consumable: false,
+      require_scan_check: false,
+      require_location_check: false,
       sales_type: "",
       sales_value: "",
       diagnosis_type: "",
@@ -185,7 +257,7 @@ export default function PartCategoriesPage() {
     <div>
       <PageHeader
         title="配件分类"
-        description="管理分类、耗材属性及各类提成标准"
+        description={`管理分类、耗材属性及各类提成标准${sortSaving ? "（保存排序中...）" : ""}`}
       />
 
       <div className="mb-4 flex gap-2">
@@ -213,6 +285,8 @@ export default function PartCategoriesPage() {
                 <th className="px-6 py-3 text-left font-medium text-gray-500">分类名称</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">自动关联车型</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">耗材</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">扫码出库</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">入库仓位</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">销售提成</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">诊断提成</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">施工提成</th>
@@ -223,10 +297,31 @@ export default function PartCategoriesPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {categories?.map((c: 配件分类) => (
-                <tr key={c.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium text-gray-900">{c.name}</td>
+                <tr
+                  key={c.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, c.id)}
+                  onDragOver={(e) => handleDragOver(e, c.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, c.id)}
+                  onDragEnd={handleDragEnd}
+                  className={`hover:bg-gray-50 cursor-move transition-colors ${
+                    draggingId === c.id ? "opacity-50 bg-blue-50" : ""
+                  } ${dragOverId === c.id && dragOverId !== draggingId ? "border-t-2 border-blue-400 bg-blue-50" : ""}`}
+                  title="拖动可排序"
+                >
+                  <td className="px-6 py-4 font-medium text-gray-900">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                      </svg>
+                      {c.name}
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-gray-600">{c.auto_link_vehicle_model ? "是" : "否"}</td>
                   <td className="px-6 py-4 text-gray-600">{c.is_consumable ? "是" : "否"}</td>
+                  <td className="px-6 py-4 text-gray-600">{c.require_scan_check ? "是" : "否"}</td>
+                  <td className="px-6 py-4 text-gray-600">{c.require_location_check ? "是" : "否"}</td>
                   <td className="px-6 py-4 text-gray-600">{formatCommission(c.sales_commission_type, c.sales_commission_value)}</td>
                   <td className="px-6 py-4 text-gray-600">{formatCommission(c.diagnosis_commission_type, c.diagnosis_commission_value)}</td>
                   <td className="px-6 py-4 text-gray-600">{formatCommission(c.repair_commission_type, c.repair_commission_value)}</td>
@@ -242,7 +337,7 @@ export default function PartCategoriesPage() {
               ))}
               {(!categories || categories.length === 0) && !showForm && (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center">
+                  <td colSpan={10} className="px-6 py-12 text-center">
                     <div className="text-gray-400 mb-4">
                       {searching ? "搜索中..." : query.trim() ? "未找到匹配的分类" : "暂无分类"}
                     </div>
@@ -274,7 +369,7 @@ export default function PartCategoriesPage() {
               />
             </div>
 
-            <div className="flex gap-6">
+            <div className="flex gap-6 flex-wrap">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -292,6 +387,24 @@ export default function PartCategoriesPage() {
                   className="w-4 h-4"
                 />
                 <span className="text-sm text-gray-700">耗材（出库不计入营业额）</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该分类下的配件出库时需要库管扫码确认">
+                <input
+                  type="checkbox"
+                  checked={form.require_scan_check}
+                  onChange={(e) => setForm({ ...form, require_scan_check: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">扫码出库确认</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该分类下的配件入库时必须填写/确认存放位置">
+                <input
+                  type="checkbox"
+                  checked={form.require_location_check}
+                  onChange={(e) => setForm({ ...form, require_location_check: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">入库仓位确认</span>
               </label>
             </div>
 

@@ -1,0 +1,29 @@
+{
+  "node": {
+    "40aadde7ce144c017b3b448df007b32a891844f00f": {
+      "workers": {
+        "app/tools/vin-batch-query/page": {
+          "moduleId": 40356,
+          "async": false,
+          "exportedName": "batchQueryVinFilters",
+          "filename": "src/app/tools/vin-batch-query/actions.ts"
+        }
+      },
+      "exportedName": "batchQueryVinFilters",
+      "filename": "src/app/tools/vin-batch-query/actions.ts"
+    },
+    "40d02b37bcbda90e13c58839bff5ad636e5abb26be": {
+      "workers": {
+        "app/tools/vin-batch-query/page": {
+          "moduleId": 40356,
+          "async": false,
+          "exportedName": "batchCreatePartsFromVin",
+          "filename": "src/app/tools/vin-batch-query/createActions.ts"
+        }
+      },
+      "exportedName": "batchCreatePartsFromVin",
+      "filename": "src/app/tools/vin-batch-query/createActions.ts"
+    }
+  },
+  "edge": {}
+}

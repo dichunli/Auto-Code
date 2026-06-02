@@ -117,7 +117,7 @@ export async function getWorkOrderData(id: string) {
     supabase.from("work_order_items").select(`
       *,
       profiles!work_order_items_mechanic_id_fkey(full_name),
-      service_items(service_name_id, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, service_names(sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value)),
+      service_items(sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value),
       outsourced_supplier:suppliers(name),
       work_order_item_media(*),
       work_order_item_mechanics(work_order_item_id, mechanic_id, share_pct, profiles(full_name)),
@@ -210,12 +210,15 @@ export async function getWorkOrderData(id: string) {
   if (knowledgeConditions.length > 0) {
     const { data: links } = await supabase
       .from("knowledge_service_links")
-      .select("article_id, service_item_id, service_name_id, knowledge_articles(id, title, type)")
+      .select(`
+        article_id, service_item_id, service_name_id,
+        knowledge_articles(id, title, type, category_id, knowledge_categories(name))
+      `)
       .or(knowledgeConditions.join(","));
     knowledgeLinks = links || [];
   }
 
-  // 获取车型关联的文章ID（维修指导类型需要同时匹配车型）
+  // 获取车型关联的文章ID（维修指导类型/分类需要同时匹配车型）
   const vehicleModelId = (order as Record<string, unknown> | null)?.vehicles ? ((order as Record<string, unknown>).vehicles as Record<string, unknown> | undefined)?.vehicle_model_id as string | undefined : undefined;
   let guideArticleIds: string[] = [];
   if (vehicleModelId) {
@@ -226,11 +229,14 @@ export async function getWorkOrderData(id: string) {
     guideArticleIds = (vlinks || []).map((v: unknown) => (v as Record<string, unknown>).article_id as string);
   }
 
-  // 过滤：维修指导类型(guide)需要同时匹配车型
+  // 过滤：维修指导类型(guide)或分类为"维修指导"的文章需要同时匹配车型
   knowledgeLinks = knowledgeLinks.filter((link: unknown) => {
     const l = link as Record<string, unknown>;
-    const articleType = (l.knowledge_articles as Record<string, unknown> | undefined)?.type;
-    if (articleType !== "guide") return true; // 非维修指导类型不需要车型匹配
+    const article = l.knowledge_articles as Record<string, unknown> | undefined;
+    const articleType = article?.type;
+    const categoryName = (article?.knowledge_categories as Record<string, unknown> | undefined)?.name;
+    const needsVehicleMatch = articleType === "guide" || categoryName === "维修指导";
+    if (!needsVehicleMatch) return true; // 非维修指导不需要车型匹配
     return guideArticleIds.includes(l.article_id as string);
   });
 

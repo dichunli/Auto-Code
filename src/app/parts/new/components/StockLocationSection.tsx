@@ -83,7 +83,7 @@ export default function StockLocationSection({ value, onChange }: StockLocationS
     onChange([
       ...value,
       {
-        id: crypto.randomUUID(),
+        id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
         warehouseName: "",
         location: "",
         quantity: "0",

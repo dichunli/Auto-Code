@@ -109,20 +109,20 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       /* 加载关联车型 */
       const { data: vehicleLinks } = await supabase
         .from("knowledge_vehicle_links")
-        .select("vehicle_models(id, brand, series, model_name, year_start, year_end)")
+        .select("vehicle_models(id, 品牌, 车系, 车型, 年款)")
         .eq("article_id", id);
 
       if (vehicleLinks) {
         setLinkedVehicles(
           vehicleLinks.map((v) => {
-            const vm = (v as { vehicle_models: { id: number; brand: string; series: string; model_name: string | null; year_start: number | null; year_end: number | null } | null }).vehicle_models;
+            const vm = (v as { vehicle_models: { id: number; 品牌: string; 车系: string; 车型: string | null; 年款: number | null } | null }).vehicle_models;
             return {
               id: String(vm?.id || ""),
-              brand: vm?.brand || "",
-              series: vm?.series || "",
-              model: vm?.model_name || "",
-              yearStart: vm?.year_start || undefined,
-              yearEnd: vm?.year_end || undefined,
+              brand: vm?.品牌 || "",
+              series: vm?.车系 || "",
+              model: vm?.车型 || "",
+              yearStart: vm?.年款 || undefined,
+              yearEnd: vm?.年款 || undefined,
             };
           })
         );
@@ -170,6 +170,20 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
     setLoading(true);
 
     try {
+      /* 校验：维修指导类型/分类必须关联维修项目和车型 */
+      const 维修指导分类ID = categories.find((c) => c.name === "维修指导")?.id;
+      const is维修指导 = form.type === "guide" || form.category_id === 维修指导分类ID;
+      if (is维修指导 && linkedNames.length === 0) {
+        alert("维修指导文章必须至少关联一个维修项目");
+        setLoading(false);
+        return;
+      }
+      if (is维修指导 && linkedVehicles.length === 0) {
+        alert("维修指导文章必须至少关联一个适用车型");
+        setLoading(false);
+        return;
+      }
+
       /* 处理外部图片：自动下载到本地 */
       let contentBlocks = form.content_blocks ? JSON.parse(form.content_blocks) : null;
       if (contentBlocks && Array.isArray(contentBlocks)) {

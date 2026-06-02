@@ -16,9 +16,11 @@ import PartNameSearch, { PartNameItem, CommissionFillData } from "./components/P
 import DocNameSearch from "./components/DocNameSearch";
 import BrandSearch from "./components/BrandSearch";
 import SpecSearch from "./components/SpecSearch";
-import CommissionSection, { CommissionFormData } from "./components/CommissionSection";
+import CommissionSection from "./components/CommissionSection";
 import FormActions from "./components/FormActions";
 import submitPart from "./submitPart";
+import { syncOeFromVin, syncModelsFromVin } from "../actions";
+import { 标准化VIN } from "@/lib/vinValidator";
 
 /* 供应商查询结果 */
 interface SupplierItem {
@@ -43,6 +45,7 @@ export default function PartForm({
     purchase_price?: string;
     notes?: string;
     document_name?: string;
+    oeNumber?: string;
   };
 }) {
   const router = useRouter();
@@ -76,13 +79,19 @@ export default function PartForm({
 
   // Stock locations
   const [stockLocations, setStockLocations] = useState<StockLocationRow[]>([
-    { id: crypto.randomUUID(), warehouseName: "", location: "", quantity: "0", min_stock: "0", max_stock: "" },
+    { id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15), warehouseName: "", location: "", quantity: "0", min_stock: "0", max_stock: "" },
   ]);
 
 
   const [barcode, setBarcode] = useState("");
   const [interchangeCode, setInterchangeCode] = useState("");
   const [oeNumber, setOeNumber] = useState("");
+
+  /* OE号同步弹窗 */
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [syncVin, setSyncVin] = useState("");
+  const [syncLoading, setSyncLoading] = useState(false);
+
   const [partImages, setPartImages] = useState<string[]>([]);
 
   const [form, setForm] = useState({
@@ -98,7 +107,10 @@ export default function PartForm({
     wholesale_price: "",
     notes: "",
     auto_link_vehicle_model: false,
+    auto_match_17vin_models: false,
     is_consumable: false,
+    require_scan_check: false,
+    require_location_check: false,
     sales_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     sales_value: "",
     diagnosis_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
@@ -256,6 +268,97 @@ export default function PartForm({
     }));
   }
 
+  /* 把匹配到的车型ID加入已选车型列表 */
+  async function addMatchedModels(matchedModelIds: number[]) {
+    if (!matchedModelIds || matchedModelIds.length === 0) return;
+    const { data: vms } = await supabase
+      .from("vehicle_models")
+      .select("id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准")
+      .in("id", matchedModelIds);
+
+    if (vms && vms.length > 0) {
+      const newItems = vms.map((vm) => {
+        const brand = (vm.品牌 as string) || "";
+        const series = (vm.车系 as string) || "";
+        const model_name = (vm.车型 as string) || "";
+        return {
+          id: String(vm.id),
+          name: `${brand} ${series} ${model_name}`.trim(),
+          manufacturer: vm.厂商 as string | undefined,
+          brand,
+          series,
+          model_name,
+          sales_version: vm.销售版本 as string | undefined,
+          year_start: vm.年款 as number | undefined,
+          year_end: vm.年款 as number | undefined,
+          displacement: vm.排量 as string | undefined,
+          engine: vm.发动机型号 as string | undefined,
+          fuel_type: vm.燃油类型 as string | undefined,
+          intake_form: vm.进气形式 as string | undefined,
+          chassis_code: vm.底盘代号 as string | undefined,
+          transmission_type: vm.变速箱类型 as string | undefined,
+          transmission_code: vm.变速箱代号 as string | undefined,
+          drive_type: vm.驱动方式 as string | undefined,
+          body_type: vm.车身类型 as string | undefined,
+          emission_standard: vm.排放标准 as string | undefined,
+        };
+      });
+      setSelectedVehicleModels((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const uniqueNew = newItems.filter((n) => !existingIds.has(n.id));
+        return [...prev, ...uniqueNew];
+      });
+    }
+  }
+
+  /* OE号同步：已有OE号时只查车型，没有OE号时查OE号+车型 */
+  async function handleSyncOe() {
+    const vin = 标准化VIN(syncVin);
+    if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) {
+      alert("VIN码必须为17位");
+      return;
+    }
+    setSyncLoading(true);
+    try {
+      /* 已有OE号，只查车型 */
+      if (oeNumber.trim()) {
+        const res = await syncModelsFromVin(oeNumber.trim(), vin);
+        if (res.success && res.matchedModelIds && res.matchedModelIds.length > 0) {
+          await addMatchedModels(res.matchedModelIds);
+          setSyncOpen(false);
+          setSyncVin("");
+          alert(`已同步车型，关联${res.matchedModelIds.length}个车型`);
+        } else {
+          alert(res.error || "未找到该OE号对应的适配车型");
+        }
+        return;
+      }
+
+      /* 没有OE号，查OE号+车型 */
+      const partName = selectedPartName?.name || form.name;
+      if (!partName) {
+        alert("请先选择配件名称");
+        return;
+      }
+      const res = await syncOeFromVin(vin, partName);
+      if (res.success && res.oeNumber) {
+        setOeNumber(res.oeNumber);
+        if (res.matchedModelIds && res.matchedModelIds.length > 0) {
+          await addMatchedModels(res.matchedModelIds);
+        }
+        setSyncOpen(false);
+        setSyncVin("");
+        alert(`已同步OE号：${res.oeNumber}${res.matchedModelIds ? `，关联${res.matchedModelIds.length}个车型` : ""}`);
+      } else {
+        alert(res.error || "同步失败");
+      }
+    } catch (err: unknown) {
+      alert("同步出错：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSyncLoading(false);
+    }
+  }
+
   function handleClearCommission() {
     setForm((prev) => ({
       ...prev,
@@ -322,13 +425,23 @@ export default function PartForm({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">OE号</label>
-              <input
-                type="text"
-                placeholder="原厂编码"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                value={oeNumber}
-                onChange={(e) => setOeNumber(e.target.value.toUpperCase())}
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="原厂编码"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  value={oeNumber}
+                  onChange={(e) => setOeNumber(e.target.value.toUpperCase())}
+                />
+                <button
+                  type="button"
+                  onClick={() => setSyncOpen(true)}
+                  className="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shrink-0"
+                  title="通过VIN同步OE号"
+                >
+                  同步
+                </button>
+              </div>
             </div>
           </div>
 
@@ -372,6 +485,7 @@ export default function PartForm({
               selectedPartName={selectedPartName}
             />
           </div>
+
         </div>
 
         <PricingSection
@@ -410,6 +524,7 @@ export default function PartForm({
         <VehicleModelSelector
           value={selectedVehicleModels}
           onChange={setSelectedVehicleModels}
+          onSyncVin={() => setSyncOpen(true)}
         />
 
         <SpecialPricingSection
@@ -434,6 +549,43 @@ export default function PartForm({
           onCancel={() => (onCancel ? onCancel() : router.back())}
         />
       </form>
+
+      {/* OE号同步弹窗 */}
+      {syncOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-md mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">通过VIN同步OE号</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              配件名称：<span className="font-medium text-gray-700">{selectedPartName?.name || form.name || "未选择"}</span>
+            </p>
+            <input
+              type="text"
+              value={syncVin}
+              onChange={(e) => setSyncVin(e.target.value.toUpperCase())}
+              placeholder="输入17位VIN码"
+              maxLength={17}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-4 font-mono"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setSyncOpen(false); setSyncVin(""); }}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSyncOe}
+                disabled={syncLoading || syncVin.trim().length !== 17}
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {syncLoading ? "同步中..." : "同步"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

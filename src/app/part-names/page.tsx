@@ -118,7 +118,7 @@ export default function PartNamesPage() {
   const supabase = createClient();
   const [query, setQuery] = useState("");
   const [names, setNames] = useState<PartName[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");

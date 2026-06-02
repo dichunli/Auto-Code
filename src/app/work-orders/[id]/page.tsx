@@ -68,6 +68,8 @@ export default async function WorkOrderDetailPage({
 
   // 工单车型ID（用于配件库存匹配）
   const vehicleModelId = order?.vehicles?.vehicle_model_id;
+  // 工单VIN（用于查三滤）
+  const vehicleVin = order?.vehicles?.vin;
 
   // 查询该车历史维修工单数量（排除当前工单）
   const supabaseServer = await createClient();
@@ -347,7 +349,7 @@ export default async function WorkOrderDetailPage({
     const comm = calculateItemCommission(
       item,
       item.service_items,
-      item.service_items?.service_names,
+      null,
       null,
       item.total_price || 0,
       0
@@ -541,7 +543,6 @@ export default async function WorkOrderDetailPage({
                     orderId={id}
                     mileageIn={order.mileage_in}
                     dashboardPhotos={order.dashboard_photos}
-                    rejectionMarkPhotos={order.rejection_mark_photos}
                     estimatedCompletionAt={order.estimated_completion_at}
                     senderName={order.sender_name}
                     senderPhone={order.sender_phone}
@@ -605,7 +606,6 @@ export default async function WorkOrderDetailPage({
                   orderId={id}
                   mileageIn={order.mileage_in}
                   dashboardPhotos={order.dashboard_photos}
-                  rejectionMarkPhotos={order.rejection_mark_photos}
                   estimatedCompletionAt={order.estimated_completion_at}
                   senderName={order.sender_name}
                   senderPhone={order.sender_phone}
@@ -689,8 +689,8 @@ export default async function WorkOrderDetailPage({
             </div>
             <div className="divide-y divide-gray-300">
               {requirements?.map((req: { id: string; seq: number; submitted_by?: string; assigned_to_profile?: { full_name?: string } | null; assignment_type?: string; notes?: string }) => (
-                <div key={req.id} className="px-4 py-3 md:px-6 md:py-4">
-                  <div className="flex items-center gap-2 flex-wrap">
+                <div key={req.id} className="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
+                  <div className="flex items-center gap-2 flex-wrap px-4 py-3 md:px-6 md:py-4 border-b border-gray-100 bg-gray-50/50">
                     <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} />
                     {req.assigned_to_profile && req.assignment_type === 'claimed' && (
                       <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px]">
@@ -711,7 +711,7 @@ export default async function WorkOrderDetailPage({
                           requirement={req}
                           profiles={profiles || []}
                         />
-                        <AddRequirementItemsButton orderId={id} requirementId={req.id} />
+                        <AddRequirementItemsButton orderId={id} requirementId={req.id} vehicleModelId={vehicleModelId} />
                       </div>
                     )}
                   </div>
@@ -720,7 +720,7 @@ export default async function WorkOrderDetailPage({
                       项目加载失败: {itemsError.message}
                     </div>
                   )}
-                  <div className="mt-2">
+                  <div className="px-4 py-3 md:px-6 md:py-4">
                         {(() => {
                           const reqItems = itemsByRequirement.get(req.id) || [];
                           interface ReqItem {
@@ -752,7 +752,7 @@ export default async function WorkOrderDetailPage({
                               tableName="work_order_items"
                             >
                               {reqItems.map((item: ReqItem, itemIdx: number) => (
-                                <div key={item.id} className={`rounded-lg px-3 py-1 text-sm ${item.item_type === 'labor' ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                                <div key={item.id} className={`rounded-lg px-4 py-3 text-sm mb-2 ${item.item_type === 'labor' ? 'bg-blue-50/60 border-l-4 border-blue-300' : 'bg-gray-50/60 border-l-4 border-gray-300'}`}>
                             {/* 移动端项目卡片 */}
                             <MobileItemEditor
                               item={item}
@@ -784,10 +784,11 @@ export default async function WorkOrderDetailPage({
                                 part_id: (p.part_id as string) || null,
                                 part_name_id: (p.part_name_id as string) || null,
                                 category: (p.part_names as { part_categories?: { name?: string } | null } | null)?.part_categories?.name || (p.parts as { part_categories?: { name?: string } | null } | null)?.part_categories?.name || null,
+                                pickedQty: pickingByPart[p.id as string] || 0,
                               }))}
                               partInventory={inventoryByPart}
                               partImages={imagesByPart}
-                              vehicleModelId={order.vehicle_model_id}
+                              vehicleModelId={vehicleModelId}
                               existingOrder={
                                 outsourceOrder?.outsource_order_items?.some(
                                   (oi: { work_order_item_id?: string }) => oi.work_order_item_id === item.id
@@ -878,6 +879,7 @@ export default async function WorkOrderDetailPage({
                                     serviceNameId={item.service_items?.service_name_id}
                                     itemName={item.alias_name || item.name}
                                     vehicleModelId={vehicleModelId}
+                                    vin={vehicleVin}
                                   />
                                   <WorkOrderItemActions
                                     itemId={item.id}
@@ -925,7 +927,7 @@ export default async function WorkOrderDetailPage({
                                 const comm = calculateItemCommission(
                                   item,
                                   item.service_items,
-                                  item.service_items?.service_names,
+                                  null,
                                   null,
                                   item.total_price || 0,
                                   0
@@ -965,8 +967,11 @@ export default async function WorkOrderDetailPage({
                             )}
                             {/* 项目所用配件（仅桌面端显示，移动端通过弹窗管理） */}
                             {(partGroupsByItem.get(item.id) || []).length > 0 && (
-                              <div className="hidden md:block mt-2 pt-3 border-t-2 border-dashed border-gray-400 text-xs space-y-2">
-                                <div className="inline-block text-[11px] font-medium text-gray-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded mb-1">所用配件</div>
+                              <div className="hidden md:block mt-3 ml-2 bg-white rounded-lg border border-gray-200 p-3 text-xs space-y-2 shadow-sm">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="w-1 h-4 bg-amber-400 rounded-full" />
+                                  <span className="text-[11px] font-semibold text-gray-700">所用配件</span>
+                                </div>
                                 {(() => {
                                   const groups = partGroupsByItem.get(item.id) || [];
                                   const extraIdMap: Record<string, string[]> = {};
@@ -988,7 +993,7 @@ export default async function WorkOrderDetailPage({
                                             itemId={item.id}
                                             existingImages={group.images}
                                           />
-                                          <div className="space-y-2 pl-2">
+                                          <div className="space-y-3 pl-3 border-l-2 border-gray-300 ml-1">
                                             {group.parts.map((p: PartBranch, branchIdx: number) => {
                                           const pPickedQty = pickingByPart[p.id] || 0;
                                           const pReturnQty = returnByPart[p.id] || 0;
@@ -1109,7 +1114,7 @@ export default async function WorkOrderDetailPage({
                   return (
                     <SortableList ids={orphanItems.map((it) => it.id)} groupKey={`orphan_${id}`} tableName="work_order_items">
                       {orphanItems.map((item) => (
-                        <div key={item.id} className={`px-6 py-4 text-sm flex items-center justify-between ${item.item_type === 'labor' ? 'bg-blue-50' : ''}`}>
+                        <div key={item.id} className={`px-6 py-4 text-sm flex items-center justify-between ${item.item_type === 'labor' ? 'bg-blue-50/60 border-l-4 border-blue-300' : 'bg-gray-50/60 border-l-4 border-gray-300'}`}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-gray-900">{item.alias_name || item.name}</span>
                       {item.alias_name && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">别名</span>}
@@ -1168,7 +1173,7 @@ export default async function WorkOrderDetailPage({
                           const comm = calculateItemCommission(
                             item,
                             item.service_items,
-                            item.service_items?.service_names,
+                            null,
                             null,
                             item.total_price || 0,
                             0

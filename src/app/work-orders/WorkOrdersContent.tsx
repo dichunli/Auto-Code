@@ -284,6 +284,13 @@ export default function WorkOrdersContent() {
     setDeleteModalOpen(false);
     setDeleteTarget(null);
     setDeleteReason("");
+
+    /* 以事件驱动方式更新角标（删除工单只在作废工单页面，所以只减作废和全部） */
+    window.dispatchEvent(new CustomEvent("work-order-count-change", {
+      detail: { delta: { all: -1, cancelled: -1 } }
+    }));
+    window.dispatchEvent(new Event("work-order-counts-update"));
+
     setOrders((prev) => prev.filter((o) => o.id !== deleteTarget.id));
   }
 
@@ -408,7 +415,7 @@ export default function WorkOrdersContent() {
                     </button>
                   </td>
                   <td className="px-6 py-4 text-gray-900">{order.vehicles?.plate_number || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600 font-mono text-xs">{order.vehicles?.vin || "-"}</td>
+                  <td className="px-6 py-4 text-gray-600 font-mono whitespace-nowrap">{order.vehicles?.vin || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{order.vehicles?.brand} {order.vehicles?.model}</td>
                   <td className="px-6 py-4 text-gray-900">{order.customers?.name || "-"}</td>
                   <td className="px-6 py-4 text-gray-500">{order.customers?.phone || "-"}</td>

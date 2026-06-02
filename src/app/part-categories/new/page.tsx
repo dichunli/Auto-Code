@@ -65,6 +65,7 @@ export default function NewPartCategoryPage() {
   const [form, setForm] = useState({
     name: "",
     auto_link_vehicle_model: false,
+    auto_match_17vin_models: false,
     is_consumable: false,
     sales_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     sales_value: "",
@@ -124,6 +125,7 @@ export default function NewPartCategoryPage() {
     const { error } = await supabase.from("part_categories").insert({
       name: form.name.trim(),
       auto_link_vehicle_model: form.auto_link_vehicle_model,
+      auto_match_17vin_models: form.auto_match_17vin_models,
       is_consumable: form.is_consumable,
       sales_commission_type: form.sales_type || null,
       sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
@@ -239,7 +241,7 @@ export default function NewPartCategoryPage() {
               />
             </div>
 
-            <div className="flex gap-6">
+            <div className="flex gap-6 flex-wrap">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -250,6 +252,17 @@ export default function NewPartCategoryPage() {
                   className="w-4 h-4"
                 />
                 <span className="text-sm text-gray-700">自动关联车型</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该分类下的配件使用时会自动匹配17VIN中的全部适配车型">
+                <input
+                  type="checkbox"
+                  checked={form.auto_match_17vin_models}
+                  onChange={(e) =>
+                    setForm({ ...form, auto_match_17vin_models: e.target.checked })
+                  }
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">17VIN自动匹配全部车型</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input

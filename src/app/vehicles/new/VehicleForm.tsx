@@ -8,6 +8,7 @@ import { VehicleModelSearch } from "@/components/VehicleModelSearch";
 import { ImageUploader } from "@/components/ImageUploader";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
+import { 标准化VIN } from "@/lib/vinValidator";
 
 type OwnerMode = "existing" | "new";
 
@@ -45,6 +46,7 @@ export default function VehicleForm() {
   const [form, setForm] = useState({
     plate_number: "黑",
     vin: "",
+    vehicle_model_id: null as number | null,
     brand: "",
     model: "",
     engine_no: "",
@@ -62,6 +64,12 @@ export default function VehicleForm() {
   const [licenseFrontPhotos, setLicenseFrontPhotos] = useState<string[]>([]);
   const [licenseBackPhotos, setLicenseBackPhotos] = useState<string[]>([]);
   const [vinSearchKeyword, setVinSearchKeyword] = useState("");
+
+  interface 车型详情 {
+    id: number;
+    排量: string | null;
+  }
+  const [vehicleModelDetail, setVehicleModelDetail] = useState<车型详情 | null>(null);
 
   // 车牌号逐字检索
   const plateSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -243,7 +251,7 @@ export default function VehicleForm() {
       const { data: existingVin } = await supabase
         .from("vehicles")
         .select("id")
-        .eq("vin", form.vin.trim().toUpperCase())
+        .eq("vin", form.标准化VIN(vin))
         .maybeSingle();
       if (existingVin) {
         alert("该 VIN 码已被使用，请更换");
@@ -256,6 +264,7 @@ export default function VehicleForm() {
     const { data: vehicleData, error } = await supabase.from("vehicles").insert({
       customer_id: customerId,
       company_id: companyId || null,
+      vehicle_model_id: form.vehicle_model_id,
       plate_number: form.plate_number.trim(),
       vin: form.vin.trim() || null,
       brand: form.brand.trim() || null,
@@ -360,8 +369,9 @@ export default function VehicleForm() {
               <VinDecodeInput
                 value={form.vin}
                 onChange={(v) => setForm({ ...form, vin: v })}
-                onDecode={(result) => {
+                onDecode={async (result) => {
                   if (!result) return;
+                  /* 先填充VIN解析的基本信息 */
                   setForm((prev) => ({
                     ...prev,
                     brand: result.brand || prev.brand,
@@ -372,9 +382,67 @@ export default function VehicleForm() {
                     transmission_code: result.transmissionCode || prev.transmission_code,
                     year: result.year || prev.year,
                   }));
-                  setVinSearchKeyword(
-                    [result.brand, result.series, result.model].filter(Boolean).join(" ")
-                  );
+
+                  /* 自动匹配车型库 */
+                  const searchTerms = [...new Set([result.brand, result.series, result.model].filter(Boolean))];
+                  const keyword = searchTerms.join(" ");
+                  if (!keyword) {
+                    setVinSearchKeyword("");
+                    return;
+                  }
+
+                  const supabase = createClient();
+                  try {
+                    const { data } = await supabase
+                      .from("vehicle_models")
+                      .select("id,品牌,车系,车型,年款,排量,销售版本,底盘代号,发动机型号,变速箱类型,变速箱代号")
+                      .ilike("搜索字段", `%${keyword}%`)
+                      .limit(5);
+
+                    if (data && data.length > 0) {
+                      const m = data[0] as {
+                        id: number;
+                        品牌: string | null;
+                        车系: string | null;
+                        车型: string | null;
+                        年款: number | null;
+                        排量: string | null;
+                        销售版本: string | null;
+                        底盘代号: string | null;
+                        发动机型号: string | null;
+                        变速箱类型: string | null;
+                        变速箱代号: string | null;
+                      };
+                      const modelParts = [...new Set([m.车系, m.车型].filter(Boolean))];
+                      setForm((prev) => ({
+                        ...prev,
+                        vehicle_model_id: m.id,
+                        brand: m.品牌 || prev.brand,
+                        model: modelParts.join(" ") || m.品牌 || prev.model,
+                        engine_no: m.发动机型号 || prev.engine_no,
+                        chassis_code: m.底盘代号 || prev.chassis_code,
+                        transmission_type: m.变速箱类型 || prev.transmission_type,
+                        transmission_code: m.变速箱代号 || prev.transmission_code,
+                      }));
+                      const displayParts = [
+                        m.年款 ? `${m.年款}款` : null,
+                        m.品牌,
+                        m.车系,
+                        m.车型,
+                        m.销售版本,
+                        m.排量,
+                        m.发动机型号,
+                      ].filter(Boolean);
+                      setVehicleModelDetail({ id: m.id, 排量: m.排量 || null });
+                      setVinSearchKeyword(`${displayParts.join(" ")} [ID:${m.id}]`);
+                    } else {
+                      setVehicleModelDetail(null);
+                      setVinSearchKeyword(keyword);
+                    }
+                  } catch {
+                    setVehicleModelDetail(null);
+                    setVinSearchKeyword(keyword);
+                  }
                 }}
                 inputClassName="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 buttonClassName="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap shrink-0"
@@ -386,16 +454,27 @@ export default function VehicleForm() {
             <VehicleModelSearch
               placeholder="智能模糊搜索：品牌、车系、车型、厂商、发动机、底盘代号..."
               searchKeyword={vinSearchKeyword}
-              onSelect={(m) => setForm({
-                ...form,
-                brand: m.brand,
-                model: m.model,
-                engine_no: m.engine_no,
-                chassis_code: m.chassis_code,
-                transmission_type: m.transmission_type,
-                transmission_code: m.transmission_code,
-              })}
+              selectedModelId={form.vehicle_model_id}
+              onSelect={(m) => {
+                setForm({
+                  ...form,
+                  vehicle_model_id: m.vehicle_model_id,
+                  brand: m.brand,
+                  model: m.model,
+                  engine_no: m.engine_no,
+                  chassis_code: m.chassis_code,
+                  transmission_type: m.transmission_type,
+                  transmission_code: m.transmission_code,
+                });
+                setVehicleModelDetail(null);
+              }}
             />
+            {vehicleModelDetail && (
+              <div className="mt-2 flex items-center gap-4 text-xs text-gray-500 bg-gray-50 rounded px-3 py-2">
+                <span>车型ID: <span className="text-blue-600 font-medium">{vehicleModelDetail.id}</span></span>
+                {vehicleModelDetail.排量 && <span>排量: <span className="text-gray-700">{vehicleModelDetail.排量}</span></span>}
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             <div>

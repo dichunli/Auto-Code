@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, type JSX } from "react";
+import { 是抖音链接, 抖音视频卡片 } from "./DouyinVideo";
 
 /* BlockNote 块级 JSON 只读渲染组件 */
 
@@ -22,6 +23,7 @@ interface BlockProps {
   language?: string;
   checked?: boolean;
   name?: string;
+  pdfUrl?: string;
 }
 
 interface TableContent {
@@ -98,7 +100,7 @@ function renderInlineContent(content: InlineContent[]): React.ReactNode {
   });
 }
 
-function renderBlock(block: BlockItem, onImageClick?: (url: string) => void): React.ReactNode {
+function renderBlock(block: BlockItem, onImageClick?: (url: string) => void, onPdfPreview?: (url: string) => void): React.ReactNode {
   const { type, content, children } = block;
   const props = block.props || {};
   const alignment = props.textAlignment || "left";
@@ -150,7 +152,7 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void): Re
         <li key={block.id} className={`ml-6 list-disc my-1 ${alignClass}`} style={style}>
           {inlineContent}
           {children && children.length > 0 && (
-            <ul className="my-1">{children.map((c, i) => renderBlock(c, i))}</ul>
+            <ul className="my-1">{children.map((c) => renderBlock(c, onImageClick, onPdfPreview))}</ul>
           )}
         </li>
       );
@@ -160,7 +162,7 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void): Re
         <li key={block.id} className={`ml-6 list-decimal my-1 ${alignClass}`} style={style}>
           {inlineContent}
           {children && children.length > 0 && (
-            <ol className="my-1">{children.map((c, i) => renderBlock(c, i))}</ol>
+            <ol className="my-1">{children.map((c) => renderBlock(c, onImageClick, onPdfPreview))}</ol>
           )}
         </li>
       );
@@ -182,7 +184,7 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void): Re
             {inlineContent}
           </span>
           {children && children.length > 0 && (
-            <ul className="my-1 w-full">{children.map((c, i) => renderBlock(c, i))}</ul>
+            <ul className="my-1 w-full">{children.map((c) => renderBlock(c, onImageClick, onPdfPreview))}</ul>
           )}
         </li>
       );
@@ -285,11 +287,20 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void): Re
       );
     }
 
-    case "video":
+    case "video": {
+      const videoUrl = props.url || "";
+      /* 抖音链接用卡片渲染 */
+      if (videoUrl && 是抖音链接(videoUrl)) {
+        return (
+          <div key={block.id} className={alignClass}>
+            <抖音视频卡片 url={videoUrl} caption={props.caption || ""} />
+          </div>
+        );
+      }
       return (
         <figure key={block.id} className={`my-4 ${alignClass}`}>
           <video
-            src={props.url}
+            src={videoUrl}
             controls
             className="max-w-full rounded-lg"
             preload="metadata"
@@ -301,25 +312,52 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void): Re
           )}
         </figure>
       );
+    }
 
     case "divider":
       return <hr key={block.id} className="my-6 border-t border-gray-200" />;
 
-    case "file":
+    case "file": {
+      const fileUrl = props.url || "";
+      const fileName = props.name || "文件";
+      const pdfUrl = props.pdfUrl || "";
+      const isOffice = pdfUrl || /\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(fileUrl);
       return (
-        <a
-          key={block.id}
-          href={props.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 my-3 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-blue-600 hover:bg-gray-100"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        <div key={block.id} className="my-3 inline-flex items-center gap-2 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+          <svg className="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          {props.name || "下载文件"}
-        </a>
+          <span className="text-gray-700 truncate max-w-[200px] sm:max-w-xs">{fileName}</span>
+          {pdfUrl ? (
+            <button
+              type="button"
+              onClick={() => onPdfPreview?.(pdfUrl)}
+              className="ml-1 px-2 py-0.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 text-xs flex items-center gap-1"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              预览
+            </button>
+          ) : isOffice ? (
+            <span className="ml-1 text-xs text-gray-400">(未生成预览)</span>
+          ) : null}
+          <a
+            href={fileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            className="ml-1 text-gray-400 hover:text-blue-600"
+            title="下载"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </a>
+        </div>
       );
+    }
 
     case "audio":
       return (
@@ -340,7 +378,7 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void): Re
   }
 }
 
-function wrapListBlocks(blocks: BlockItem[], onImageClick?: (url: string) => void): React.ReactNode {
+function wrapListBlocks(blocks: BlockItem[], onImageClick?: (url: string) => void, onPdfPreview?: (url: string) => void): React.ReactNode {
   const result: React.ReactNode[] = [];
   let currentBulletList: BlockItem[] = [];
   let currentNumberedList: BlockItem[] = [];
@@ -358,7 +396,7 @@ function wrapListBlocks(blocks: BlockItem[], onImageClick?: (url: string) => voi
       if (currentBulletList.length > 0) {
         result.push(
           <ul key={`ul-${i}`} className="my-2">
-            {currentBulletList.map((b) => renderBlock(b, onImageClick))}
+            {currentBulletList.map((b) => renderBlock(b, onImageClick, onPdfPreview))}
           </ul>
         );
         currentBulletList = [];
@@ -366,26 +404,26 @@ function wrapListBlocks(blocks: BlockItem[], onImageClick?: (url: string) => voi
       if (currentNumberedList.length > 0) {
         result.push(
           <ol key={`ol-${i}`} className="my-2">
-            {currentNumberedList.map((b) => renderBlock(b, onImageClick))}
+            {currentNumberedList.map((b) => renderBlock(b, onImageClick, onPdfPreview))}
           </ol>
         );
         currentNumberedList = [];
       }
-      result.push(renderBlock(block, onImageClick));
+      result.push(renderBlock(block, onImageClick, onPdfPreview));
     }
   }
 
   if (currentBulletList.length > 0) {
     result.push(
       <ul key="ul-end" className="my-2">
-        {currentBulletList.map((b) => renderBlock(b, onImageClick))}
+        {currentBulletList.map((b) => renderBlock(b, onImageClick, onPdfPreview))}
       </ul>
     );
   }
   if (currentNumberedList.length > 0) {
     result.push(
       <ol key="ol-end" className="my-2">
-        {currentNumberedList.map((b) => renderBlock(b, onImageClick))}
+        {currentNumberedList.map((b) => renderBlock(b, onImageClick, onPdfPreview))}
       </ol>
     );
   }
@@ -508,17 +546,100 @@ function ImagePreview({ url, caption, onClose }: { url: string; caption?: string
   );
 }
 
+/* PDF 预览弹窗 */
+function PdfPreview({ url, onClose }: { url: string; onClose: () => void }) {
+  const touchStartY = useRef(0);
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  function handleTouchStart(e: React.TouchEvent) {
+    touchStartY.current = e.touches[0].clientY;
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    if (Math.abs(dy) > 100) {
+      onClose();
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] bg-black/80 flex flex-col"
+      onClick={onClose}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* 顶部工具栏 */}
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-900 text-white">
+        <span className="text-sm truncate max-w-[60%]">PDF 预览</span>
+        <div className="flex items-center gap-3">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-300 hover:text-blue-200 flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            新窗口打开
+          </a>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded hover:bg-white/10"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* PDF 内容区 */}
+      <div className="flex-1 min-h-0" onClick={(e) => e.stopPropagation()}>
+        <iframe
+          src={url}
+          className="w-full h-full border-0"
+          title="PDF 预览"
+        />
+      </div>
+    </div>
+  );
+}
+
 export function BlockNoteRenderer({ blocks }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewCaption, setPreviewCaption] = useState<string>("");
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   const handleImageClick = useCallback((url: string) => {
     setPreviewUrl(url);
     setPreviewCaption("");
   }, []);
 
-  const handleClose = useCallback(() => {
+  const handlePdfPreview = useCallback((url: string) => {
+    setPdfUrl(url);
+  }, []);
+
+  const handleCloseImage = useCallback(() => {
     setPreviewUrl(null);
+  }, []);
+
+  const handleClosePdf = useCallback(() => {
+    setPdfUrl(null);
   }, []);
 
   if (!blocks || blocks.length === 0) {
@@ -527,8 +648,9 @@ export function BlockNoteRenderer({ blocks }: Props) {
 
   return (
     <>
-      <div className="blocknote-content">{wrapListBlocks(blocks, handleImageClick)}</div>
-      {previewUrl && <ImagePreview url={previewUrl} caption={previewCaption} onClose={handleClose} />}
+      <div className="blocknote-content">{wrapListBlocks(blocks, handleImageClick, handlePdfPreview)}</div>
+      {previewUrl && <ImagePreview url={previewUrl} caption={previewCaption} onClose={handleCloseImage} />}
+      {pdfUrl && <PdfPreview url={pdfUrl} onClose={handleClosePdf} />}
     </>
   );
 }

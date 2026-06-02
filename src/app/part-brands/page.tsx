@@ -31,7 +31,6 @@ interface PartName {
   const supabase = createClient();
   const [query, setQuery] = useState("");
   const [brands, setBrands] = useState<PartBrand[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,7 +53,6 @@ interface PartName {
       }
       const { data } = await q;
       setBrands(data || []);
-      setLoading(false);
       setSearching(false);
     },
     [supabase]

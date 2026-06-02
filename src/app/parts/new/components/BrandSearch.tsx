@@ -34,7 +34,7 @@ export default function BrandSearch({
   useEffect(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     const value = query.trim();
-    if (selectedBrand) {
+    if (selectedBrand && !focus) {
       setResults(null);
       setSearching(false);
       return;
@@ -182,9 +182,18 @@ export default function BrandSearch({
           }}
         />
         {selectedBrand && (
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-green-600 bg-green-100 px-1.5 py-0.5 rounded">
-            已选
-          </span>
+          <button
+            type="button"
+            onClick={() => {
+              onSelectBrand(null);
+              setQuery("");
+              setResults(null);
+              document.getElementById("brand-input")?.focus();
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-green-600 bg-green-100 px-1.5 py-0.5 rounded hover:bg-green-200"
+          >
+            已选 ×
+          </button>
         )}
         {searching && <div className="text-xs text-gray-400 mt-1">检索中...</div>}
         {results && results.length > 0 && (

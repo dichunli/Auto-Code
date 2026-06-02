@@ -16,7 +16,10 @@ interface SubmitPartFormData {
   wholesale_price: string;
   notes: string;
   auto_link_vehicle_model: boolean;
+  auto_match_17vin_models: boolean;
   is_consumable: boolean;
+  require_scan_check: boolean;
+  require_location_check: boolean;
   sales_type: string;
   sales_value: string;
   diagnosis_type: string;
@@ -112,7 +115,10 @@ export default async function submitPart(params: SubmitPartParams): Promise<Subm
     supplier_id: supplierId,
     notes: form.notes || null,
     auto_link_vehicle_model: form.auto_link_vehicle_model,
+    auto_match_17vin_models: form.auto_match_17vin_models,
     is_consumable: form.is_consumable,
+    require_scan_check: form.require_scan_check,
+    require_location_check: form.require_location_check,
     sales_commission_type: form.sales_type || null,
     sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
     diagnosis_commission_type: form.diagnosis_type || null,

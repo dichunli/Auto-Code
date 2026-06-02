@@ -56,7 +56,9 @@ build3.log
 server.log
 logs/
 
-# Android 签名密钥（严禁提交）
+# Android 构建产物和签名密钥
+android/app/build/
+android/.gradle/
 android/app/my-release-key.jks
 
 # 大型数据文件
@@ -67,7 +69,6 @@ public/sw.js
 
 # 临时文件
 tmp_*.html
-EOF
 
 # Claude 临时文件
 .claude/
@@ -76,3 +77,5 @@ EOF
 
 # 测试脚本
 scripts/
+
+certificates

@@ -523,7 +523,8 @@ export default function LogisticsPage() {
     setInlineEditing((prev) => {
       const next = { ...prev };
       if (next[waybillId]) {
-        const { [field]: _, ...rest } = next[waybillId];
+        const rest = { ...next[waybillId] };
+        delete rest[field];
         next[waybillId] = rest;
         if (Object.keys(rest).length === 0) delete next[waybillId];
       }

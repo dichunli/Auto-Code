@@ -1,0 +1,276 @@
+{
+  "node": {
+    "00e98e1da09c7ab1ac30d65734c889e1af4bbae16e": {
+      "workers": {
+        "app/17vin-billing/page": {
+          "moduleId": 11569,
+          "async": false,
+          "exportedName": "vin17GetBalance",
+          "filename": "src/lib/17vin/client.ts"
+        }
+      },
+      "filename": "src/lib/17vin/client.ts",
+      "exportedName": "vin17GetBalance"
+    },
+    "603529b9de08bb87874094a50e2753352626642588": {
+      "workers": {
+        "app/17vin-billing/page": {
+          "moduleId": 11569,
+          "async": false,
+          "exportedName": "查询调用记录",
+          "filename": "src/app/17vin-billing/actions.ts"
+        }
+      },
+      "filename": "src/app/17vin-billing/actions.ts",
+      "exportedName": "查询调用记录"
+    },
+    "40471b037b9ffb26f296c84b2fff789b59aefaddcb": {
+      "workers": {
+        "app/appointments/new/page": {
+          "moduleId": 58086,
+          "async": false,
+          "exportedName": "recognizeLicensePlate",
+          "filename": "src/lib/baidu-ocr/client.ts"
+        },
+        "app/customers/[id]/page": {
+          "moduleId": 50992,
+          "async": false,
+          "exportedName": "recognizeLicensePlate",
+          "filename": "src/lib/baidu-ocr/client.ts"
+        },
+        "app/customers/new/page": {
+          "moduleId": 60205,
+          "async": false,
+          "exportedName": "recognizeLicensePlate",
+          "filename": "src/lib/baidu-ocr/client.ts"
+        },
+        "app/m/reception/new/page": {
+          "moduleId": 62726,
+          "async": false,
+          "exportedName": "recognizeLicensePlate",
+          "filename": "src/lib/baidu-ocr/client.ts"
+        },
+        "app/vehicles/[id]/edit/page": {
+          "moduleId": 31255,
+          "async": false,
+          "exportedName": "recognizeLicensePlate",
+          "filename": "src/lib/baidu-ocr/client.ts"
+        },
+        "app/vehicles/new/page": {
+          "moduleId": 71893,
+          "async": false,
+          "exportedName": "recognizeLicensePlate",
+          "filename": "src/lib/baidu-ocr/client.ts"
+        }
+      },
+      "filename": "src/lib/baidu-ocr/client.ts",
+      "exportedName": "recognizeLicensePlate"
+    },
+    "40e5e09e8f0b771d656583a76ba8771498fb610692": {
+      "workers": {
+        "app/inventory/page": {
+          "moduleId": 74337,
+          "async": false,
+          "exportedName": "deletePart",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "filename": "src/app/parts/actions.ts",
+      "exportedName": "deletePart"
+    },
+    "4098131aba9c890eda4774b2011b1140af3e6505e7": {
+      "workers": {
+        "app/knowledge/page": {
+          "moduleId": 26000,
+          "async": false,
+          "exportedName": "解析Word文档",
+          "filename": "src/app/knowledge/actions.ts"
+        }
+      },
+      "filename": "src/app/knowledge/actions.ts",
+      "exportedName": "解析Word文档"
+    },
+    "407258997c65f7acf964619ea27ed6b4d2290abea9": {
+      "workers": {
+        "app/knowledge/page": {
+          "moduleId": 26000,
+          "async": false,
+          "exportedName": "生成Word文档",
+          "filename": "src/app/knowledge/actions.ts"
+        }
+      },
+      "filename": "src/app/knowledge/actions.ts",
+      "exportedName": "生成Word文档"
+    },
+    "408fcccfd980dac5a8032959422dcc9b35c6e7011c": {
+      "workers": {
+        "app/login/page": {
+          "moduleId": 25128,
+          "async": false,
+          "exportedName": "logLogin",
+          "filename": "src/lib/operationLog.ts"
+        }
+      },
+      "filename": "src/lib/operationLog.ts",
+      "exportedName": "logLogin"
+    },
+    "4036ba372aacae112aa1c41f4f8967503c31ea8947": {
+      "workers": {
+        "app/m/reception/new/page": {
+          "moduleId": 62726,
+          "async": false,
+          "exportedName": "vin17OcrImage",
+          "filename": "src/lib/17vin/client.ts"
+        },
+        "app/vehicles/[id]/edit/page": {
+          "moduleId": 31255,
+          "async": false,
+          "exportedName": "vin17OcrImage",
+          "filename": "src/lib/17vin/client.ts"
+        },
+        "app/vehicles/new/page": {
+          "moduleId": 71893,
+          "async": false,
+          "exportedName": "vin17OcrImage",
+          "filename": "src/lib/17vin/client.ts"
+        },
+        "app/work-orders/new/page": {
+          "moduleId": 4864,
+          "async": false,
+          "exportedName": "vin17OcrImage",
+          "filename": "src/lib/17vin/client.ts"
+        }
+      },
+      "filename": "src/lib/17vin/client.ts",
+      "exportedName": "vin17OcrImage"
+    },
+    "405ccd60b2be6a1c5ee0cb0765c03e72fdc457018d": {
+      "workers": {
+        "app/m/reception/new/page": {
+          "moduleId": 62726,
+          "async": false,
+          "exportedName": "vin17DecodeVin",
+          "filename": "src/lib/17vin/client.ts"
+        },
+        "app/vehicles/[id]/edit/page": {
+          "moduleId": 31255,
+          "async": false,
+          "exportedName": "vin17DecodeVin",
+          "filename": "src/lib/17vin/client.ts"
+        },
+        "app/vehicles/new/page": {
+          "moduleId": 71893,
+          "async": false,
+          "exportedName": "vin17DecodeVin",
+          "filename": "src/lib/17vin/client.ts"
+        },
+        "app/work-orders/new/page": {
+          "moduleId": 4864,
+          "async": false,
+          "exportedName": "vin17DecodeVin",
+          "filename": "src/lib/17vin/client.ts"
+        }
+      },
+      "filename": "src/lib/17vin/client.ts",
+      "exportedName": "vin17DecodeVin"
+    },
+    "6097b0a5b2ed74224e22d473f874e31ad20aec2d49": {
+      "workers": {
+        "app/parts/[id]/page": {
+          "moduleId": 500,
+          "async": false,
+          "exportedName": "syncPartVin17Models",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "filename": "src/app/parts/actions.ts",
+      "exportedName": "syncPartVin17Models"
+    },
+    "600f72790f157ac186c681b658c99a2bc90210b8a5": {
+      "workers": {
+        "app/parts/[id]/edit/page": {
+          "moduleId": 79655,
+          "async": false,
+          "exportedName": "syncOeFromVin",
+          "filename": "src/app/parts/actions.ts"
+        },
+        "app/parts/new/page": {
+          "moduleId": 26339,
+          "async": false,
+          "exportedName": "syncOeFromVin",
+          "filename": "src/app/parts/actions.ts"
+        },
+        "app/procurement/page": {
+          "moduleId": 45381,
+          "async": false,
+          "exportedName": "syncOeFromVin",
+          "filename": "src/app/parts/actions.ts"
+        },
+        "app/work-orders/[id]/page": {
+          "moduleId": 28611,
+          "async": false,
+          "exportedName": "syncOeFromVin",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "filename": "src/app/parts/actions.ts",
+      "exportedName": "syncOeFromVin"
+    },
+    "40aadde7ce144c017b3b448df007b32a891844f00f": {
+      "workers": {
+        "app/tools/vin-batch-query/page": {
+          "moduleId": 40356,
+          "async": false,
+          "exportedName": "batchQueryVinFilters",
+          "filename": "src/app/tools/vin-batch-query/actions.ts"
+        }
+      },
+      "filename": "src/app/tools/vin-batch-query/actions.ts",
+      "exportedName": "batchQueryVinFilters"
+    },
+    "40d02b37bcbda90e13c58839bff5ad636e5abb26be": {
+      "workers": {
+        "app/tools/vin-batch-query/page": {
+          "moduleId": 40356,
+          "async": false,
+          "exportedName": "batchCreatePartsFromVin",
+          "filename": "src/app/tools/vin-batch-query/createActions.ts"
+        }
+      },
+      "filename": "src/app/tools/vin-batch-query/createActions.ts",
+      "exportedName": "batchCreatePartsFromVin"
+    },
+    "40aacfb90fcb4ad7c5c304f5bd0c2bfcbc3471edc8": {
+      "workers": {
+        "app/work-orders/[id]/page": {
+          "moduleId": 28611,
+          "async": false,
+          "exportedName": "logAction",
+          "filename": "src/lib/operationLog.ts"
+        },
+        "app/work-orders/page": {
+          "moduleId": 74641,
+          "async": false,
+          "exportedName": "logAction",
+          "filename": "src/lib/operationLog.ts"
+        }
+      },
+      "filename": "src/lib/operationLog.ts",
+      "exportedName": "logAction"
+    },
+    "6082ece3560689d66cc9aad259e30ade5d26193dfb": {
+      "workers": {
+        "app/work-orders/[id]/page": {
+          "moduleId": 28611,
+          "async": false,
+          "exportedName": "searchVinFilters",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "filename": "src/app/parts/actions.ts",
+      "exportedName": "searchVinFilters"
+    }
+  },
+  "edge": {},
+  "encryptionKey": "xBxhXNEJtzjbcP8zvb/ICEvPy1U6GxnVt9odnUwgmIk="
+}

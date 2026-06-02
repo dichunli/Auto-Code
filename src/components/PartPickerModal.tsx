@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
+import BarcodeScanModal from "./BarcodeScanModal";
 
 interface Part {
   id: string;
@@ -30,9 +31,12 @@ interface Props {
   onClose: () => void;
   onConfirm: (parts: Part[]) => void;
   vehicleModelId?: string | null;
+  defaultNameQuery?: string;
+  replacedPartName?: string;
+  compact?: boolean;
 }
 
-export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Props) {
+export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defaultNameQuery, replacedPartName, compact }: Props) {
   const supabase = createClient();
 
   // 数据
@@ -60,6 +64,9 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
 
   // 关联车型配件ID列表
   const [linkedPartIds, setLinkedPartIds] = useState<Set<string>>(new Set());
+
+  // 扫码弹窗
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
 
   // 加载配件分类
   useEffect(() => {
@@ -133,14 +140,79 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
     setLoading(false);
   }, [supabase, partNumber, oeNumberQuery, nameQuery, specQuery, categoryId]);
 
-  // 打开时自动查询一次
+  // 使用指定名称搜索（用于默认名称和扫码后的搜索）
+  const doSearchWithName = useCallback(async (searchName: string) => {
+    setLoading(true);
+    setCurrentPage(1);
+
+    let query = supabase
+      .from("parts")
+      .select(
+        "id, part_number, oe_number, name, unit, quantity, min_stock, unit_cost, unit_price, location, specification_text, part_name_id, part_names(name, unit), part_brands(name), part_specifications(name), part_categories(name), suppliers(name)"
+      )
+      .order("name", { ascending: true })
+      .limit(500);
+
+    // 名称
+    if (searchName.trim()) {
+      query = query.ilike("name", `%${searchName.trim()}%`);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("查询配件失败:", error);
+      setParts([]);
+    } else {
+      setParts((data as Part[]) || []);
+    }
+    setLoading(false);
+  }, [supabase]);
+
+  // 扫码回调：按编码搜索
+  const handleBarcodeScan = useCallback(async (barcode: string) => {
+    setShowBarcodeScanner(false);
+    const trimmed = barcode.trim();
+    if (!trimmed) return;
+
+    setPartNumber(trimmed);
+    setLoading(true);
+    setCurrentPage(1);
+
+    const { data, error } = await supabase
+      .from("parts")
+      .select(
+        "id, part_number, oe_number, name, unit, quantity, min_stock, unit_cost, unit_price, location, specification_text, part_name_id, part_names(name, unit), part_brands(name), part_specifications(name), part_categories(name), suppliers(name)"
+      )
+      .or(`part_number.ilike.%${trimmed}%,name.ilike.%${trimmed}%`)
+      .order("name", { ascending: true })
+      .limit(100);
+
+    if (error) {
+      console.error("扫码搜索失败:", error);
+      setParts([]);
+    } else {
+      setParts((data as Part[]) || []);
+    }
+    setLoading(false);
+  }, [supabase]);
+
+  // 打开时自动查询一次，如果有默认名称搜索词则填入
   useEffect(() => {
     if (open) {
-      doSearch();
+      if (defaultNameQuery && defaultNameQuery.trim()) {
+        setNameQuery(defaultNameQuery.trim());
+        // 延迟搜索，等待状态更新
+        setTimeout(() => {
+          doSearchWithName(defaultNameQuery.trim());
+        }, 0);
+      } else {
+        doSearch();
+      }
       setSelectedIds(new Set());
       setSelectedQtyMap({});
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [open]);
 
   // 客户端过滤（库存状态、关联车型等）
@@ -239,9 +311,208 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
 
   if (!open) return null;
 
+  /* ========== 紧凑模式（移动端） ========== */
+  if (compact) {
+    return (
+      <>
+        <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/50">
+          <div className="bg-white rounded-t-xl sm:rounded-xl border border-gray-200 w-full max-w-lg sm:mx-4 max-h-[90vh] flex flex-col">
+            {/* 标题 */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
+              <h2 className="text-base font-semibold text-gray-900">选择配件</h2>
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* 搜索 + 标签 */}
+            <div className="px-4 py-3 border-b border-gray-100 space-y-2 shrink-0">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={nameQuery}
+                  onChange={(e) => {
+                    setNameQuery(e.target.value);
+                    if (!e.target.value.trim()) {
+                      doSearchWithName("");
+                    }
+                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") doSearchWithName(nameQuery); }}
+                  placeholder="搜索配件编码或名称..."
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowBarcodeScanner(true)}
+                  className="px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 whitespace-nowrap shrink-0"
+                >
+                  扫码
+                </button>
+              </div>
+
+              {/* 快捷标签 */}
+              <div className="flex flex-wrap gap-1.5">
+                {replacedPartName && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (nameQuery === replacedPartName) {
+                        setNameQuery("");
+                        doSearchWithName("");
+                      } else {
+                        setNameQuery(replacedPartName);
+                        doSearchWithName(replacedPartName);
+                      }
+                    }}
+                    className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                      nameQuery === replacedPartName
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
+                    }`}
+                  >
+                    {replacedPartName}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 配件列表 */}
+            <div className="flex-1 overflow-y-auto px-4 py-2">
+              {loading ? (
+                <p className="text-xs text-gray-400 text-center py-4">加载中...</p>
+              ) : filteredParts.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">未找到配件</p>
+              ) : (
+                <div className="space-y-1">
+                  {filteredParts.map((part) => {
+                    const isLinked = linkedPartIds.has(part.id);
+                    const hasStock = part.quantity > 0;
+                    const alreadySelected = selectedIds.has(part.id);
+                    return (
+                      <button
+                        key={part.id}
+                        type="button"
+                        onClick={() => toggleSelect(part.id)}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                          alreadySelected
+                            ? "bg-blue-50 border-blue-300"
+                            : isLinked
+                              ? "bg-blue-50/50 border-blue-200 hover:bg-blue-100"
+                              : "bg-white border-gray-100 hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-gray-900 truncate">
+                              {part.name}
+                              {isLinked && (
+                                <span className="ml-1 text-xs text-blue-600 font-normal">(匹配车型)</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {part.part_number && <span>编号: {part.part_number} · </span>}
+                              库存:{" "}
+                              <span className={hasStock ? "text-green-600 font-medium" : "text-red-500"}>
+                                {part.quantity}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="shrink-0 ml-3 text-right">
+                            <div className="text-sm font-medium text-gray-900">
+                              ¥{part.unit_price || 0}
+                            </div>
+                            {alreadySelected && (
+                              <div className="text-[10px] text-blue-600">已选择</div>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 已选择区域 */}
+            {selectedIds.size > 0 && (
+              <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 shrink-0">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">
+                  已选择 ({selectedIds.size}项)
+                </h3>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {selectedParts.map((part) => (
+                    <div key={part.id} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 bg-white">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{part.name}</div>
+                        <div className="text-xs text-gray-500">
+                          {part.part_number && <span className="mr-1">{part.part_number} ·</span>}
+                          库存:{part.quantity}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <span className="text-xs text-gray-500">数量</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={selectedQtyMap[part.id] ?? 1}
+                          onChange={(e) => updateQuantity(part.id, parseInt(e.target.value) || 1)}
+                          className="w-12 px-1 py-0.5 border border-gray-200 rounded text-xs text-center"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleSelect(part.id)}
+                        className="text-xs text-red-600 hover:text-red-700 px-1 flex-shrink-0"
+                      >
+                        移除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 底部按钮 */}
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 shrink-0">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                disabled={selectedIds.size === 0}
+                className="flex-1 px-4 py-2.5 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                确认添加 ({selectedIds.size})
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <BarcodeScanModal
+          open={showBarcodeScanner}
+          onClose={() => setShowBarcodeScanner(false)}
+          onScan={handleBarcodeScan}
+        />
+      </>
+    );
+  }
+
+  /* ========== 桌面端默认布局 ========== */
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-xl border border-gray-200 w-full max-w-[1400px] mx-4 max-h-[90vh] flex flex-col">
+    <>
+      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50">
+        <div className="bg-white rounded-xl border border-gray-200 w-full max-w-[1400px] mx-4 max-h-[90vh] flex flex-col">
         {/* 标题 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900">选择配件</h2>
@@ -321,6 +592,13 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
             >
               查询
             </button>
+            <button
+              type="button"
+              onClick={() => setShowBarcodeScanner(true)}
+              className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+            >
+              扫码
+            </button>
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -345,9 +623,16 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
           <div className="flex-1 flex flex-col min-w-0">
             {/* 统计栏 */}
             <div className="px-6 py-2 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-              <span className="text-sm text-gray-600">
-                已选择 <span className="font-semibold text-blue-600">{selectedIds.size}</span> 个配件
-              </span>
+              <div className="flex items-center gap-3">
+                {replacedPartName && (
+                  <span className="text-xs px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-md">
+                    替换前: {replacedPartName}
+                  </span>
+                )}
+                <span className="text-sm text-gray-600">
+                  已选择 <span className="font-semibold text-blue-600">{selectedIds.size}</span> 个配件
+                </span>
+              </div>
               <span className="text-sm text-gray-400">
                 共 {totalCount} 条记录，共 {totalPages} 页
               </span>
@@ -564,5 +849,13 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId }: Pr
         </div>
       </div>
     </div>
+
+    {/* 扫码弹窗 */}
+    <BarcodeScanModal
+      open={showBarcodeScanner}
+      onClose={() => setShowBarcodeScanner(false)}
+      onScan={handleBarcodeScan}
+    />
+  </>
   );
 }

@@ -1,0 +1,17 @@
+{
+  "node": {
+    "6097b0a5b2ed74224e22d473f874e31ad20aec2d49": {
+      "workers": {
+        "app/parts/[id]/page": {
+          "moduleId": 500,
+          "async": false,
+          "exportedName": "syncPartVin17Models",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "exportedName": "syncPartVin17Models",
+      "filename": "src/app/parts/actions.ts"
+    }
+  },
+  "edge": {}
+}

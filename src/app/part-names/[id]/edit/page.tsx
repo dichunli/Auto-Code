@@ -60,7 +60,10 @@ export default function EditPartNamePage() {
     search_keywords: "",
     default_quantity: "",
     auto_link_vehicle_model: false,
+    auto_match_17vin_models: false,
     is_consumable: false,
+    require_scan_check: false,
+    require_location_check: false,
     sales_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     sales_value: "",
     diagnosis_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
@@ -98,7 +101,7 @@ export default function EditPartNamePage() {
         supabase.from("part_names").select("*").eq("id", id).single(),
         supabase
           .from("part_categories")
-          .select("id, name, auto_link_vehicle_model, is_consumable, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value")
+          .select("id, name, auto_link_vehicle_model, auto_match_17vin_models, is_consumable, require_scan_check, require_location_check, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value")
           .order("name"),
         supabase.from("part_name_brands").select("brand_id, part_brands(id, name)").eq("part_name_id", id),
         supabase.from("part_name_specifications").select("specification_id, part_specifications(id, name)").eq("part_name_id", id),
@@ -114,7 +117,10 @@ export default function EditPartNamePage() {
         search_keywords: part.search_keywords || "",
         default_quantity: part.default_quantity?.toString() || "",
         auto_link_vehicle_model: part.auto_link_vehicle_model || false,
+        auto_match_17vin_models: part.auto_match_17vin_models || false,
         is_consumable: part.is_consumable || false,
+        require_scan_check: part.require_scan_check || false,
+        require_location_check: part.require_location_check || false,
         sales_type: part.sales_commission_type || "",
         sales_value: part.sales_commission_value?.toString() || "",
         diagnosis_type: part.diagnosis_commission_type || "",
@@ -171,7 +177,10 @@ export default function EditPartNamePage() {
       setForm((prev) => ({
         ...prev, category_id: categoryId,
         auto_link_vehicle_model: cat.auto_link_vehicle_model || false,
+        auto_match_17vin_models: cat.auto_match_17vin_models || false,
         is_consumable: cat.is_consumable || false,
+        require_scan_check: cat.require_scan_check || false,
+        require_location_check: cat.require_location_check || false,
         sales_type: cat.sales_commission_type || "", sales_value: cat.sales_commission_value?.toString() || "",
         diagnosis_type: cat.diagnosis_commission_type || "", diagnosis_value: cat.diagnosis_commission_value?.toString() || "",
         repair_type: cat.repair_commission_type || "", repair_value: cat.repair_commission_value?.toString() || "",
@@ -230,7 +239,11 @@ export default function EditPartNamePage() {
       name: form.name.trim(), category_id: form.category_id, unit: form.unit,
       search_keywords: form.search_keywords || null,
       default_quantity: form.default_quantity ? parseInt(form.default_quantity) : null,
-      auto_link_vehicle_model: form.auto_link_vehicle_model, is_consumable: form.is_consumable,
+      auto_link_vehicle_model: form.auto_link_vehicle_model,
+      auto_match_17vin_models: form.auto_match_17vin_models,
+      is_consumable: form.is_consumable,
+      require_scan_check: form.require_scan_check,
+      require_location_check: form.require_location_check,
       sales_commission_type: form.sales_type || null, sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
       diagnosis_commission_type: form.diagnosis_type || null, diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
       repair_commission_type: form.repair_type || null, repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
@@ -328,14 +341,26 @@ export default function EditPartNamePage() {
 
         <div className="border-t border-gray-100 pt-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">分类属性（选择分类后自动带入，可修改）</h3>
-          <div className="flex gap-6 mb-4">
+          <div className="flex gap-6 flex-wrap mb-4">
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={form.auto_link_vehicle_model} onChange={(e) => setForm({ ...form, auto_link_vehicle_model: e.target.checked })} className="w-4 h-4" />
               <span className="text-sm text-gray-700">自动关联车型</span>
             </label>
+            <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该配件使用时会自动匹配17VIN中的全部适配车型">
+              <input type="checkbox" checked={form.auto_match_17vin_models} onChange={(e) => setForm({ ...form, auto_match_17vin_models: e.target.checked })} className="w-4 h-4" />
+              <span className="text-sm text-gray-700">17VIN自动匹配全部车型</span>
+            </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={form.is_consumable} onChange={(e) => setForm({ ...form, is_consumable: e.target.checked })} className="w-4 h-4" />
               <span className="text-sm text-gray-700">耗材（出库不计入营业额）</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该配件出库时需要库管扫码确认">
+              <input type="checkbox" checked={form.require_scan_check} onChange={(e) => setForm({ ...form, require_scan_check: e.target.checked })} className="w-4 h-4" />
+              <span className="text-sm text-gray-700">扫码出库确认</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该配件入库时必须填写/确认存放位置">
+              <input type="checkbox" checked={form.require_location_check} onChange={(e) => setForm({ ...form, require_location_check: e.target.checked })} className="w-4 h-4" />
+              <span className="text-sm text-gray-700">入库仓位确认</span>
             </label>
           </div>
           <div className="space-y-4">

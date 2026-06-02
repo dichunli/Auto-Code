@@ -7,11 +7,13 @@ import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import { DeleteButton } from "./DeleteButton";
+import ServiceItemMergeDialog from "@/components/ServiceItemMergeDialog";
 
 interface ServiceItem {
   id: string;
   code: string | null;
   name: string;
+  search_keywords: string | null;
   standard_hours: number | null;
   default_price: number | null;
   vip_price: number | null;
@@ -20,7 +22,6 @@ interface ServiceItem {
   is_vehicle_specific: boolean;
   category_id: string | null;
   service_categories: { name: string } | null;
-  service_names: { name: string } | null;
 }
 
 interface ServiceCategory {
@@ -31,7 +32,6 @@ interface ServiceCategory {
 const importFields = [
   { key: "项目名称", required: true },
   { key: "分类名称", required: true },
-  { key: "标准工时", required: false },
   { key: "项目说明", required: false },
   { key: "销售价", required: false },
   { key: "VIP价", required: false },
@@ -44,7 +44,7 @@ const pageSize = 20;
 export default function ServiceItemsPage() {
   const supabase = createClient();
   const [items, setItems] = useState<ServiceItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,7 +65,11 @@ export default function ServiceItemsPage() {
 
   /* 批量修改弹窗 */
   const [batchOpen, setBatchOpen] = useState(false);
+
+  /* 合并弹窗 */
+  const [mergeOpen, setMergeOpen] = useState(false);
   const [batchSaving, setBatchSaving] = useState(false);
+
   const [batchCategoryId, setBatchCategoryId] = useState("");
   const [batchStandardHours, setBatchStandardHours] = useState("");
   const [batchDefaultPrice, setBatchDefaultPrice] = useState("");
@@ -83,7 +87,7 @@ export default function ServiceItemsPage() {
     setLoading(true);
     const { data } = await supabase
       .from("service_items")
-      .select("*, service_categories(name), service_names(name)")
+      .select("*, service_categories(name)")
       .order("created_at", { ascending: false });
     setItems((data as ServiceItem[]) || []);
     setLoading(false);
@@ -118,6 +122,7 @@ export default function ServiceItemsPage() {
     return items.filter(
       (item) =>
         item.name.toLowerCase().includes(q) ||
+        (item.search_keywords && item.search_keywords.toLowerCase().includes(q)) ||
         (item.code && item.code.toLowerCase().includes(q))
     );
   }, [items, debouncedQuery]);
@@ -210,7 +215,6 @@ export default function ServiceItemsPage() {
     const example = [
       "更换机油",
       "常规保养",
-      0.5,
       "含机油滤芯更换",
       280,
       250,
@@ -279,7 +283,6 @@ export default function ServiceItemsPage() {
           code: autoCode,
           category_id: categoryId,
           name: String(record["项目名称"]).trim(),
-          standard_hours: record["标准工时"] ? parseFloat(record["标准工时"]) : null,
           description: record["项目说明"] ? String(record["项目说明"]).trim() : null,
           default_price: record["销售价"] ? parseFloat(record["销售价"]) : null,
           vip_price: record["VIP价"] ? parseFloat(record["VIP价"]) : null,
@@ -326,7 +329,7 @@ export default function ServiceItemsPage() {
     <div>
       <PageHeader
         title="维修项目"
-        description="管理维修项目实例，关联分类和名称库"
+        description="管理维修项目，支持搜索关键字快速查找"
         action={{ href: "/service-items/new", label: "新建项目" }}
       />
 
@@ -334,7 +337,7 @@ export default function ServiceItemsPage() {
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <input
           type="text"
-          placeholder="搜索项目名称或编码"
+          placeholder="搜索项目名称、关键字或编码"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full max-w-xs px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -377,6 +380,14 @@ export default function ServiceItemsPage() {
               >
                 批量修改
               </button>
+              {selectedIds.size >= 2 && (
+                <button
+                  onClick={() => setMergeOpen(true)}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700"
+                >
+                  合并
+                </button>
+              )}
               <button
                 onClick={() => setSelectedIds(new Set())}
                 className="text-sm text-gray-500 hover:text-gray-700"
@@ -408,8 +419,8 @@ export default function ServiceItemsPage() {
                 </th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">编码</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">项目名称</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">搜索关键字</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">分类</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">标准工时</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">默认价格</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">车型定价</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">操作</th>
@@ -426,10 +437,17 @@ export default function ServiceItemsPage() {
                       className="rounded border-gray-300"
                     />
                   </td>
-                  <td className="px-6 py-4 text-gray-600">{item.code || "-"}</td>
+                  <td className="px-6 py-4 text-gray-600">
+                    <Link
+                      href={`/service-items/${item.id}/edit`}
+                      className="hover:text-blue-600 hover:underline"
+                    >
+                      {item.code || "-"}
+                    </Link>
+                  </td>
                   <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
+                  <td className="px-6 py-4 text-gray-500 text-xs max-w-[200px] truncate">{item.search_keywords || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{item.service_categories?.name || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{item.standard_hours || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{formatCurrency(item.default_price)}</td>
                   <td className="px-6 py-4">
                     <span className={`text-xs px-2 py-0.5 rounded ${item.is_vehicle_specific ? "bg-blue-50 text-blue-700" : "bg-gray-50 text-gray-600"}`}>
@@ -481,6 +499,19 @@ export default function ServiceItemsPage() {
             下一页
           </button>
         </div>
+      )}
+
+      {/* 合并弹窗 */}
+      {mergeOpen && (
+        <ServiceItemMergeDialog
+          open={mergeOpen}
+          selectedItems={items.filter((i) => selectedIds.has(i.id)).map((i) => ({ id: i.id, name: i.name, code: i.code }))}
+          onClose={() => setMergeOpen(false)}
+          onSuccess={() => {
+            setSelectedIds(new Set());
+            loadItems();
+          }}
+        />
       )}
 
       {/* 批量修改弹窗 */}

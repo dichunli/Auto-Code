@@ -1,18 +1,33 @@
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { MobileToastProvider } from "@/components/mobile/MobileToast";
 import { MobileBottomNav } from "@/components/mobile/MobileBottomNav";
+
+function 是APP环境(userAgent: string): boolean {
+  return (
+    userAgent.includes("wv") ||
+    userAgent.includes("Capacitor") ||
+    (!userAgent.includes("Chrome/") && userAgent.includes("Linux; Android"))
+  );
+}
 
 export default async function MobileLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const headerList = await headers();
+  const userAgent = headerList.get("user-agent") || "";
 
-  if (!user) {
-    redirect("/login?redirect=/m/");
+  /* APP 环境：跳过服务端 auth 检查，由客户端自行处理 */
+  if (!是APP环境(userAgent)) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login?redirect=/m/");
+    }
   }
 
   return (

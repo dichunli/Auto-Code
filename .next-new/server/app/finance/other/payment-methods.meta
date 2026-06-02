@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/finance/layout,_N_T_/finance/other/layout,_N_T_/finance/other/payment-methods/layout,_N_T_/finance/other/payment-methods/page,_N_T_/finance/other/payment-methods"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/finance/other/payment-methods/__PAGE__",
+    "/finance/other/payment-methods",
+    "/finance/other",
+    "/finance",
+    "/_index",
+    "/_head"
+  ]
+}

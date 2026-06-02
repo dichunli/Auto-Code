@@ -6,16 +6,8 @@ import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
 import { BlockNoteTOC } from "@/components/BlockNoteTOC";
 import { PresentationView } from "@/components/PresentationView";
 import { KnowledgeDeleteButton } from "@/components/KnowledgeDeleteButton";
-
-interface 车型关联 {
-  vehicle_models: {
-    brand: string;
-    series: string;
-    model_name: string | null;
-    year_start: number | null;
-    year_end: number | null;
-  } | null;
-}
+import KnowledgeVehicleLinks from "@/components/KnowledgeVehicleLinks";
+import { 是抖音链接, 抖音视频简化卡片 } from "@/components/DouyinVideo";
 
 interface 维修项目关联 {
   service_names: { name: string } | null;
@@ -57,7 +49,7 @@ export default async function KnowledgeDetailPage({
 
   const { data: vehicleLinks } = await supabase
     .from("knowledge_vehicle_links")
-    .select("vehicle_models(id, brand, series, model_name, year_start, year_end)")
+    .select("vehicle_models(id, 品牌, 车系, 车型, 年款)")
     .eq("article_id", id);
 
   return (
@@ -102,19 +94,25 @@ export default async function KnowledgeDetailPage({
         </div>
 
         {article.type === "video" && article.video_url && (
-          <div className="mb-6 aspect-video bg-gray-900 rounded-lg flex items-center justify-center">
-            <a
-              href={article.video_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-white text-sm flex items-center gap-2 hover:text-blue-300"
-            >
-              <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-              点击播放视频
-            </a>
-          </div>
+          <>
+            {是抖音链接(article.video_url) ? (
+              <抖音视频简化卡片 url={article.video_url} />
+            ) : (
+              <div className="mb-6 aspect-video bg-gray-900 rounded-lg flex items-center justify-center">
+                <a
+                  href={article.video_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-white text-sm flex items-center gap-2 hover:text-blue-300"
+                >
+                  <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  点击播放视频
+                </a>
+              </div>
+            )}
+          </>
         )}
 
         {/* 移动端目录 */}
@@ -152,23 +150,7 @@ export default async function KnowledgeDetailPage({
         ) : null}
 
         {vehicleLinks && vehicleLinks.length > 0 && (
-          <div className="mt-8 pt-6 border-t border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">关联车型</h3>
-            <div className="flex flex-wrap gap-2">
-              {vehicleLinks.map((vlink: 车型关联, i: number) => {
-                const vm = vlink.vehicle_models;
-                const label = vm ? `${vm.brand} ${vm.series} ${vm.model_name || ""} ${vm.year_start ? vm.year_start + "款" : ""}`.trim() : "-";
-                return (
-                  <span
-                    key={i}
-                    className="px-2 py-1 rounded bg-blue-50 text-blue-600 text-xs border border-blue-200"
-                  >
-                    {label}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
+          <KnowledgeVehicleLinks vehicleLinks={vehicleLinks} />
         )}
 
         {links && links.length > 0 && (
