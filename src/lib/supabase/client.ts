@@ -1,19 +1,9 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 
 let browserClient: ReturnType<typeof createBrowserClient> | null = null;
 let capacitorClient: ReturnType<typeof createSupabaseClient> | null = null;
-
-function 是Capacitor环境(): boolean {
-  if (typeof window === "undefined") return false;
-  const w = window as Record<string, unknown>;
-  /* 标准检测：Capacitor 注入的 window.Capacitor */
-  if (!!w.Capacitor) return true;
-  /* 备用检测：某些版本使用不同全局变量 */
-  if (!!w.CapacitorIsNative) return true;
-  if (!!w.Ionic) return true;
-  return false;
-}
 
 /* 从 Supabase URL 中提取项目引用 ID（用于构造 cookie 名称） */
 function 获取项目引用(): string {

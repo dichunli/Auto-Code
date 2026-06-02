@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
-import { batchQueryVinFilters, VinQueryResult } from "./actions";
+import { batchQueryVinFilters, batchSyncMissingModels, VinQueryResult, type 补录结果项 } from "./actions";
 import { batchCreatePartsFromVin, autoCreateFiltersByVin, CreatePartResult } from "./createActions";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -50,6 +50,12 @@ function QueryTab() {
   const [results, setResults] = useState<VinQueryResult[]>([]);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /* 补录车型状态 */
+  const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncResults, setSyncResults] = useState<补录结果项[] | null>(null);
+  const [syncSummary, setSyncSummary] = useState<{ totalSkipped: number; totalSynced: number; totalFailed: number } | null>(null);
 
   function parseExcel(file: File): Promise<string[]> {
     return new Promise((resolve, reject) => {
@@ -135,17 +141,62 @@ function QueryTab() {
     const rows = results.map((r) => ({
       VIN: r.vin,
       机油滤OE号: r.oil?.oeNumber || "",
-      机油滤来源: r.oil ? (r.oil.fromCache ? "缓存" : "17VIN") : "未找到",
+      机油滤匹配车型: r.oil?.matchedModels?.toString() || "0",
       空气滤OE号: r.air?.oeNumber || "",
-      空气滤来源: r.air ? (r.air.fromCache ? "缓存" : "17VIN") : "未找到",
+      空气滤匹配车型: r.air?.matchedModels?.toString() || "0",
       空调滤OE号: r.cabin?.oeNumber || "",
-      空调滤来源: r.cabin ? (r.cabin.fromCache ? "缓存" : "17VIN") : "未找到",
+      空调滤匹配车型: r.cabin?.matchedModels?.toString() || "0",
     }));
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "三滤OE号查询结果");
     const now = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     XLSX.writeFile(workbook, `三滤OE号查询结果_${now}.xlsx`);
+  }
+
+  /* 补录车型数据 */
+  async function handleSyncModels() {
+    if (results.length === 0) return;
+    const vins = results.map((r) => r.vin);
+    setSyncing(true);
+    setSyncProgress(0);
+    setSyncResults(null);
+    setSyncSummary(null);
+
+    try {
+      /* 分批补录，每批10个VIN */
+      const batchSize = 10;
+      const allResults: 补录结果项[] = [];
+      let totalSkipped = 0;
+      let totalSynced = 0;
+      let totalFailed = 0;
+
+      for (let i = 0; i < vins.length; i += batchSize) {
+        const batch = vins.slice(i, i + batchSize);
+        const res = await batchSyncMissingModels(batch);
+        if (res.success && res.data) {
+          allResults.push(...res.data);
+          totalSkipped += res.totalSkipped || 0;
+          totalSynced += res.totalSynced || 0;
+          totalFailed += res.totalFailed || 0;
+        }
+        setSyncProgress(Math.min(((i + batch.length) / vins.length) * 100, 100));
+      }
+
+      setSyncResults(allResults);
+      setSyncSummary({ totalSkipped, totalSynced, totalFailed });
+
+      /* 刷新查询结果中的车型数据 */
+      const refreshed = await batchQueryVinFilters(vins);
+      if (refreshed.success && refreshed.data) {
+        setResults(refreshed.data);
+      }
+    } catch {
+      setSyncResults([]);
+      setSyncSummary({ totalSkipped: 0, totalSynced: 0, totalFailed: 0 });
+    } finally {
+      setSyncing(false);
+    }
   }
 
   const total = results.length;
@@ -162,6 +213,18 @@ function QueryTab() {
       (r.oil && !r.oil.fromCache ? 1 : 0) +
       (r.air && !r.air.fromCache ? 1 : 0) +
       (r.cabin && !r.cabin.fromCache ? 1 : 0),
+    0
+  );
+  const totalModels = results.reduce(
+    (sum, r) => sum + (r.oil?.matchedModels || 0) + (r.air?.matchedModels || 0) + (r.cabin?.matchedModels || 0),
+    0
+  );
+  const missingModels = results.reduce(
+    (sum, r) =>
+      sum +
+      (r.oil && (r.oil.matchedModels || 0) === 0 ? 1 : 0) +
+      (r.air && (r.air.matchedModels || 0) === 0 ? 1 : 0) +
+      (r.cabin && (r.cabin.matchedModels || 0) === 0 ? 1 : 0),
     0
   );
 
@@ -207,7 +270,7 @@ function QueryTab() {
               导出Excel
             </button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-4 text-sm">
             <div className="bg-gray-50 rounded-lg p-3 text-center">
               <div className="text-2xl font-bold text-gray-900">{total}</div>
               <div className="text-gray-500">VIN总数</div>
@@ -228,10 +291,14 @@ function QueryTab() {
               <div className="text-2xl font-bold text-green-700">{fromCache}</div>
               <div className="text-green-600">来自缓存</div>
             </div>
+            <div className="bg-purple-50 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-purple-700">{totalModels}</div>
+              <div className="text-purple-600">已匹配车型</div>
+            </div>
           </div>
           {fromApi > 0 && (
             <p className="text-xs text-gray-500 mt-2">
-              其中 {fromApi} 条通过17VIN接口实时查询，其余来自本地缓存
+              其中 {fromApi} 条通过17VIN接口实时查询，其余来自本地缓存；累计匹配 {totalModels} 个本地车型
             </p>
           )}
         </div>
@@ -247,6 +314,7 @@ function QueryTab() {
                   <th className="px-4 py-3 text-left font-medium text-gray-500">机油滤OE号</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">空气滤OE号</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">空调滤OE号</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">适用车型</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -283,11 +351,89 @@ function QueryTab() {
                         <span className="text-gray-300">-</span>
                       )}
                     </td>
+                    <td className="px-4 py-3">
+                      <div className="text-xs space-y-0.5">
+                        <div className={r.oil && (r.oil.matchedModels || 0) > 0 ? "text-green-600" : "text-gray-400"}>
+                          机油{r.oil?.matchedModels || 0}
+                        </div>
+                        <div className={r.air && (r.air.matchedModels || 0) > 0 ? "text-green-600" : "text-gray-400"}>
+                          空气{r.air?.matchedModels || 0}
+                        </div>
+                        <div className={r.cabin && (r.cabin.matchedModels || 0) > 0 ? "text-green-600" : "text-gray-400"}>
+                          空调{r.cabin?.matchedModels || 0}
+                        </div>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* 车型数据区域 — 补录按钮放在这里 */}
+      {total > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">适用车型数据</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                共匹配 {totalModels} 个本地车型，{missingModels} 条记录缺少车型数据
+              </p>
+            </div>
+            <button
+              onClick={handleSyncModels}
+              disabled={syncing || missingModels === 0}
+              className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50"
+            >
+              {syncing ? `补录中...${Math.round(syncProgress)}%` : "补录缺车型数据"}
+            </button>
+          </div>
+
+          {syncSummary && (
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="bg-green-50 rounded-lg p-3 text-center">
+                <div className="text-xl font-bold text-green-700">{syncSummary.totalSynced}</div>
+                <div className="text-green-600">补录成功</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 text-center">
+                <div className="text-xl font-bold text-gray-700">{syncSummary.totalSkipped}</div>
+                <div className="text-gray-500">已有数据跳过</div>
+              </div>
+              <div className="bg-red-50 rounded-lg p-3 text-center">
+                <div className="text-xl font-bold text-red-700">{syncSummary.totalFailed}</div>
+                <div className="text-red-600">补录失败</div>
+              </div>
+            </div>
+          )}
+
+          {syncResults && syncResults.length > 0 && syncSummary && syncSummary.totalSynced > 0 && (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">VIN</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">类型</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">OE号</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">结果</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {syncResults.filter((s) => s.synced).map((s, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 font-mono text-gray-900">{s.vin}</td>
+                      <td className="px-3 py-2">{s.typeName}</td>
+                      <td className="px-3 py-2 font-mono text-gray-700">{s.oeNumber}</td>
+                      <td className="px-3 py-2">
+                        <span className="text-green-600">匹配{s.matchedModels}个车型</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </>
@@ -297,7 +443,7 @@ function QueryTab() {
 /* ==================== 创建配件Tab ==================== */
 function CreateTab() {
   const [createMode, setCreateMode] = useState<"full" | "vin-only">("full");
-  const [selectedBrand, setSelectedBrand] = useState("博世");
+  const [selectedBrand, setSelectedBrand] = useState("原厂");
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -557,6 +703,7 @@ function CreateTab() {
                 onChange={(e) => setSelectedBrand(e.target.value)}
                 className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
               >
+                <option value="原厂">原厂</option>
                 <option value="博世">博世</option>
                 <option value="马勒">马勒</option>
                 <option value="曼牌">曼牌</option>

@@ -8,6 +8,7 @@ import { VehicleModelSearch } from "@/components/VehicleModelSearch";
 import { ImageUploader } from "@/components/ImageUploader";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
+import { 标准化VIN } from "@/lib/vinValidator";
 
 type OwnerMode = "existing" | "new";
 
@@ -250,7 +251,7 @@ export default function VehicleForm() {
       const { data: existingVin } = await supabase
         .from("vehicles")
         .select("id")
-        .eq("vin", form.vin.trim().toUpperCase())
+        .eq("vin", form.标准化VIN(vin))
         .maybeSingle();
       if (existingVin) {
         alert("该 VIN 码已被使用，请更换");

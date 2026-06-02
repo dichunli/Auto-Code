@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { vin17OcrImage, vin17DecodeVin } from "@/lib/17vin/client";
 import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
@@ -191,7 +192,6 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   const 原生拍照 = useCallback(async () => {
     try {
       set模式("拍照");
-      const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
       const image = await Camera.getPhoto({
         quality: 60,
         allowEditing: false,

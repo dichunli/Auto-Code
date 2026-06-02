@@ -8,6 +8,7 @@ import { VehicleModelSearch } from "@/components/VehicleModelSearch";
 import { ImageUploader } from "@/components/ImageUploader";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
+import { 标准化VIN } from "@/lib/vinValidator";
 
 type OwnerMode = "existing" | "new";
 
@@ -285,7 +286,7 @@ export default function EditVehiclePage() {
     }
 
     // VIN 唯一性校验（变更时才检查）
-    const trimmedVin = form.vin.trim().toUpperCase();
+    const trimmedVin = form.标准化VIN(vin);
     if (trimmedVin && trimmedVin !== originalVin.toUpperCase()) {
       const supabaseCheck = createClient();
       const { data: existingVin } = await supabaseCheck

@@ -2,6 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { syncOeFromVin } from "@/app/parts/actions";
+import { 标准化VIN } from "@/lib/vinValidator";
+import { 配件系统码前缀, 生成完整系统码, 提取系统码序号 } from "@/lib/systemCode";
 
 export interface CreatePartRow {
   partNumber: string;
@@ -82,7 +84,7 @@ export async function batchCreatePartsFromVin(
     const { data: existingPart } = await supabase
       .from("parts")
       .select("id")
-      .eq("part_number", row.partNumber.trim().toUpperCase())
+      .eq("part_number", 标准化VIN(row.partNumber))
       .single();
 
     if (existingPart) {
@@ -116,7 +118,7 @@ export async function batchCreatePartsFromVin(
     }
 
     /* 5. 用VIN+品牌查OE号（指定品牌，查不到不自动试其他品牌） */
-    const vinRes = await syncOeFromVin(row.vin.trim().toUpperCase(), row.name.trim(), row.brand.trim());
+    const vinRes = await syncOeFromVin(标准化VIN(row.vin), row.name.trim(), row.brand.trim());
     if (!vinRes.success || !vinRes.oeNumber) {
       result.error = vinRes.error || `该车型${row.name}无${row.brand}品牌OE号`;
       results.push(result);
@@ -124,8 +126,7 @@ export async function batchCreatePartsFromVin(
     }
 
     /* 6. 生成系统码 */
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const prefix = `PJ${dateStr}`;
+    const prefix = 配件系统码前缀();
     const { data: lastCode } = await supabase
       .from("parts")
       .select("system_code")
@@ -135,18 +136,17 @@ export async function batchCreatePartsFromVin(
 
     let seq = 1;
     if (lastCode && lastCode.length > 0 && lastCode[0].system_code) {
-      const suffix = lastCode[0].system_code.slice(prefix.length);
-      const num = parseInt(suffix, 10);
-      if (!isNaN(num)) seq = num + 1;
+      const lastSeq = 提取系统码序号(lastCode[0].system_code);
+      if (lastSeq > 0) seq = lastSeq + 1;
     }
-    const systemCode = `${prefix}${String(seq).padStart(3, "0")}`;
+    const systemCode = 生成完整系统码(prefix, seq);
 
     /* 7. 创建配件 */
     const { data: newPart, error: createError } = await supabase
       .from("parts")
       .insert({
         system_code: systemCode,
-        part_number: row.partNumber.trim().toUpperCase(),
+        part_number: 标准化VIN(row.partNumber),
         name: row.name.trim(),
         part_name_id: partNameId,
         brand_id: brandId,
@@ -246,8 +246,7 @@ export async function autoCreateFiltersByVin(
   }
 
   /* 生成系统码序号 */
-  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const prefix = `PJ${dateStr}`;
+  const prefix = 配件系统码前缀();
   const { data: lastCode } = await supabase
     .from("parts")
     .select("system_code")
@@ -257,13 +256,12 @@ export async function autoCreateFiltersByVin(
 
   let seq = 1;
   if (lastCode && lastCode.length > 0 && lastCode[0].system_code) {
-    const suffix = lastCode[0].system_code.slice(prefix.length);
-    const num = parseInt(suffix, 10);
-    if (!isNaN(num)) seq = num + 1;
+    const lastSeq = 提取系统码序号(lastCode[0].system_code);
+    if (lastSeq > 0) seq = lastSeq + 1;
   }
 
   for (const vin of vinList) {
-    const normalizedVin = vin.trim().toUpperCase();
+    const normalizedVin = 标准化VIN(vin);
 
     for (const { name } of filterNames) {
       const partNameId = partNameIdMap.get(name);

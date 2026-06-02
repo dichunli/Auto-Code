@@ -3,6 +3,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { vin17DecodeVin, vin17GetModelListFromPartNumber, vin17GetModelListFromPartNumberForAftermarket, vin17SearchFiltersByVin, vin17SearchAftermarketParts } from "@/lib/17vin/client";
+import { 判断三滤类型, 精准三滤类型 } from "@/lib/filterType";
+import { 车型库匹配字段 } from "@/lib/vehicleModelFields";
+import { 标准化字符串, 标准化大写 } from "@/lib/stringNormalize";
+import { 标准化VIN } from "@/lib/vinValidator";
+import { 生成完整系统码, 配件系统码前缀, 提取系统码序号 } from "@/lib/systemCode";
 
 interface 同步结果 {
   success: boolean;
@@ -102,6 +107,74 @@ export async function syncPartVin17Models(partId: string, vin: string): Promise<
   };
 }
 
+/* 已有OE号时，通过VIN查适配车型（不查OE号，只查40031车型） */
+export async function syncModelsFromVin(
+  oeNumber: string,
+  vin: string
+): Promise<{
+  success: boolean;
+  matchedModelIds?: number[];
+  error?: string;
+}> {
+  const supabase = await createClient();
+
+  /* 1. VIN解码获取group_id */
+  let groupId: string;
+  try {
+    const decodeRes = (await vin17DecodeVin(vin)) as {
+      code: number;
+      data?: { group_id?: string | number; model_list?: Array<{ group_id?: string | number; Group_id?: string | number }> };
+    };
+    if (decodeRes.code !== 1) {
+      return { success: false, error: "VIN解码失败，未找到车型信息" };
+    }
+    const gid = decodeRes.data?.group_id || decodeRes.data?.model_list?.[0]?.group_id || decodeRes.data?.model_list?.[0]?.Group_id;
+    if (!gid) {
+      return { success: false, error: "VIN解码结果中缺少品牌分组ID(group_id)" };
+    }
+    groupId = String(gid);
+  } catch (err: unknown) {
+    return { success: false, error: "VIN解码出错: " + (err instanceof Error ? err.message : String(err)) };
+  }
+
+  /* 2. 用OE号+group_id查适配车型（API 40031） */
+  let modelList: Array<Record<string, unknown>> = [];
+  try {
+    const fitRes = (await vin17GetModelListFromPartNumber(oeNumber, groupId)) as {
+      code: number;
+      data?: { model_list_std?: Array<Record<string, unknown>> };
+    };
+    if (fitRes.code === 1) {
+      modelList = fitRes.data?.model_list_std || [];
+    }
+  } catch { /* 忽略 */ }
+
+  /* 3. 40031返回空，尝试40032易损件接口 */
+  if (modelList.length === 0) {
+    try {
+      const fitRes2 = (await vin17GetModelListFromPartNumberForAftermarket(oeNumber, groupId, "engine")) as {
+        code: number;
+        data?: { model_list_std?: Array<Record<string, unknown>> };
+      };
+      if (fitRes2.code === 1) {
+        modelList = fitRes2.data?.model_list_std || [];
+      }
+    } catch { /* 忽略 */ }
+  }
+
+  if (modelList.length === 0) {
+    return { success: false, error: "17VIN未返回该配件的适配车型" };
+  }
+
+  /* 4. 匹配本地车型库 */
+  const matchedModelIds = await matchVin17ModelsToLocal(supabase, modelList);
+
+  return {
+    success: true,
+    matchedModelIds,
+  };
+}
+
 export async function deletePart(partId: string): Promise<{ success: boolean; error?: string }> {
   const supabase = await createClient();
 
@@ -127,33 +200,6 @@ export async function deletePart(partId: string): Promise<{ success: boolean; er
   return { success: true };
 }
 
-/* 判断配件名称对应的三滤类型 */
-function judgeFilterType(name: string): "oil" | "air" | "cabin" | null {
-  const n = name.toLowerCase();
-  /* 机油滤 */
-  if ((n.includes("机油") || n.includes("oil") || n.includes("öl")) && (n.includes("滤") || n.includes("filter"))) {
-    return "oil";
-  }
-  /* 空气滤 */
-  if ((n.includes("空气") || n.includes("air") || n.includes("luft")) && (n.includes("滤") || n.includes("filter"))) {
-    return "air";
-  }
-  /* 空调滤 / 花粉滤 / 粉尘滤 */
-  if ((n.includes("空调") || n.includes("cabin") || n.includes("花粉") || n.includes("pollen") || n.includes("粉尘") || n.includes("dust") || n.includes("innenraum")) && (n.includes("滤") || n.includes("filter"))) {
-    return "cabin";
-  }
-  return null;
-}
-
-/* 精准匹配三滤名称 */
-function exactFilterType(name: string): "oil" | "air" | "cabin" | null {
-  const n = name.trim();
-  if (n === "机油滤" || n === "机油滤清器") return "oil";
-  if (n === "空气滤" || n === "空气滤清器") return "air";
-  if (n === "空调滤" || n === "空调滤清器") return "cabin";
-  return null;
-}
-
 /* 公共函数：将17VIN返回的车型列表匹配到本地车型库 */
 async function matchVin17ModelsToLocal(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -161,7 +207,7 @@ async function matchVin17ModelsToLocal(
 ): Promise<number[]> {
   const { data: localModels } = await supabase
     .from("vehicle_models")
-    .select("id, brand, series, model_name, year_start, year_end, engine");
+    .select(车型库匹配字段);
 
   const matchedIds: number[] = [];
 
@@ -236,7 +282,7 @@ async function matchVinDecodeModelToLocal(
 ): Promise<number[]> {
   const { data: localModels } = await supabase
     .from("vehicle_models")
-    .select("id, 品牌, 车系, 车型, 年款, 发动机型号");
+    .select(车型库匹配字段);
 
   const vmBrand = (vinModel.Brand || "").toLowerCase().trim();
   const vmSeries = (vinModel.Series || "").toLowerCase().trim();
@@ -315,12 +361,12 @@ export async function syncOeFromVin(
   error?: string;
 }> {
   const supabase = await createClient();
-  const filterType = exactFilterType(filterName);
+  const filterType = 精准三滤类型(filterName);
   if (!filterType) {
     return { success: false, error: "只支持机油滤/空气滤/空调滤" };
   }
 
-  const normalizedVin = vin.trim().toUpperCase();
+  const normalizedVin = 标准化VIN(vin);
 
   /* 1. 查本地缓存（30天内有效） */
   const { data: cache } = await supabase
@@ -354,7 +400,8 @@ export async function syncOeFromVin(
   /* 如果缓存缺品牌编码，也重新查17VIN */
   if (!oeNumber || !brandPartNumber) {
     /* 方式一：7001接口（aftermarket_vin） */
-    const brandsToTry = brand ? [brand] : ["博世", "马勒", "曼牌"];
+    /* 传了brand就查指定品牌，没传就不传manufacturer_brand返回所有品牌 */
+    const brandsToTry: (string | undefined)[] = brand ? [brand] : [undefined];
     for (const b of brandsToTry) {
       try {
         const res = await vin17SearchAftermarketParts(normalizedVin, b, "滤清器");
@@ -363,7 +410,7 @@ export async function syncOeFromVin(
         const list = res.data?.aftermarket || [];
         for (const item of list) {
           const name = String((item.name || item.name_zh || item.Name || item.Name_zh || item.std_name_zh || item.std_name || "") as string);
-          const itemType = judgeFilterType(name);
+          const itemType = 判断三滤类型(name);
           if (itemType !== filterType) continue;
 
           const foundOe = String((item.partnumber_original || item.oem_partnumber || item.oe_number || item.OE || item.oe || "") as string);
@@ -371,7 +418,8 @@ export async function syncOeFromVin(
           if (foundOe) {
             oeNumber = foundOe;
             brandPartNumber = foundBrandPn;
-            sourceBrand = b;
+            /* 没传brand时，从返回数据里取实际品牌 */
+            sourceBrand = b || String((item.manufacturer_brand || item.brand || "") as string);
             break;
           }
         }
@@ -556,7 +604,7 @@ export async function searchVinFilters(
         const category = String((item.category || item.Category || "滤清器") as string);
         const remark = String((item.remark || item.remark_zh || item.Remark || "") as string);
 
-        const type = judgeFilterType(name);
+        const type = 判断三滤类型(name);
         if (!type) continue;
 
         results.push({

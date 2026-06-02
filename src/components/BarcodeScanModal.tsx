@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 
 /* ========== 支持的条码格式 ========== */
@@ -201,7 +202,6 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
   /* ========== APP 环境：拍照后识别条码（fallback） ========== */
   const 拍照识别条码 = useCallback(async () => {
     try {
-      const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
       const image = await Camera.getPhoto({
         quality: 90,
         allowEditing: false,
@@ -221,14 +221,14 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
       tempDiv.style.display = "none";
       document.body.appendChild(tempDiv);
 
+      const 扫描器 = new Html5Qrcode(tempId);
       try {
-        const 扫描器 = new Html5Qrcode(tempId);
         const result = await 扫描器.scanFile(file, false);
         set识别码(result);
         set模式("识别成功");
       } finally {
-        /* 清理临时容器 */
-        try { await 扫描器Ref.current?.clear(); } catch { /* 忽略 */ }
+        /* 清理临时扫描器和容器 */
+        try { await 扫描器.clear(); } catch { /* 忽略 */ }
         if (document.getElementById(tempId)) {
           document.body.removeChild(tempDiv);
         }

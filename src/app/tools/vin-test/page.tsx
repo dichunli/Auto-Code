@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { syncOeFromVin } from "@/app/parts/actions";
 import { PageHeader } from "@/components/PageHeader";
+import { 标准化VIN } from "@/lib/vinValidator";
 
 export default function VinTestPage() {
   const [vin, setVin] = useState("");
@@ -19,7 +20,7 @@ export default function VinTestPage() {
   } | null>(null);
 
   async function handleTest() {
-    const normalizedVin = vin.trim().toUpperCase();
+    const normalizedVin = 标准化VIN(vin);
     if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(normalizedVin)) {
       alert("请输入17位VIN码");
       return;

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { PartPickerModal } from "./PartPickerModal";
 import { searchVinFilters, syncOeFromVin } from "@/app/parts/actions";
+import { 标准化VIN } from "@/lib/vinValidator";
 
 interface PartName {
   id: string;
@@ -171,7 +172,7 @@ export function AddWorkOrderItemPartModal({
       /* 异步查OE号 */
       (async () => {
         try {
-          const res = await syncOeFromVin(vin.trim().toUpperCase(), sp.name);
+          const res = await syncOeFromVin(标准化VIN(vin), sp.name);
           if (res.success && res.oeNumber) {
             setFilterHints((prev) => [
               ...prev.filter((h) => h.partNameId !== sp.part_name_id),
@@ -414,7 +415,7 @@ export function AddWorkOrderItemPartModal({
       setFilterError("该工单没有VIN码，无法查询");
       return;
     }
-    const vinValid = /^[A-HJ-NPR-Z0-9]{17}$/.test(vin.trim().toUpperCase());
+    const vinValid = /^[A-HJ-NPR-Z0-9]{17}$/.test(标准化VIN(vin));
     if (!vinValid) {
       setFilterError("VIN码格式不正确（应为17位大写字母与数字）");
       return;
@@ -422,7 +423,7 @@ export function AddWorkOrderItemPartModal({
     setFilterLoading(true);
     setFilterError("");
     setFilterResults([]);
-    const result = await searchVinFilters(vin.trim().toUpperCase(), filterBrand);
+    const result = await searchVinFilters(标准化VIN(vin), filterBrand);
     setFilterLoading(false);
     if (!result.success) {
       setFilterError(result.error || "查询失败");

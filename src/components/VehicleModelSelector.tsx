@@ -33,6 +33,7 @@ export interface LinkedItem {
 interface VehicleModelSelectorProps {
   value: LinkedItem[];
   onChange: (value: LinkedItem[]) => void;
+  onSyncVin?: () => void;
 }
 
 const VM_MODAL_PAGE_SIZE = 50;
@@ -58,7 +59,7 @@ const VM_MODAL_COLUMNS: { key: string; label: string; type: "int" | "text"; minW
   { key: "厂商", label: "厂商", type: "text", minWidth: 60 },
 ];
 
-export default function VehicleModelSelector({ value, onChange }: VehicleModelSelectorProps) {
+export default function VehicleModelSelector({ value, onChange, onSyncVin }: VehicleModelSelectorProps) {
   const supabase = createClient();
 
   const [vmModalOpen, setVmModalOpen] = useState(false);
@@ -353,6 +354,15 @@ export default function VehicleModelSelector({ value, onChange }: VehicleModelSe
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-gray-900">适用车型</h3>
         <div className="flex items-center gap-2">
+          {onSyncVin && (
+            <button
+              type="button"
+              onClick={onSyncVin}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700"
+            >
+              同步
+            </button>
+          )}
           <button
             type="button"
             onClick={() => openVmModal("add")}
