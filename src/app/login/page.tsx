@@ -19,11 +19,17 @@ export default function LoginPage() {
     setSupabase(createClient());
   }, []);
 
-  /* 检测页面是否从浏览器缓存恢复（bfcache），如果是则强制刷新 */
+  /* 检测页面是否从浏览器缓存恢复（bfcache） */
+  /* 注意：APP 环境下某些国产手机的 WebView 会误触发 persisted，导致输入框被清空 */
+  /* 因此 APP 环境不做任何处理，浏览器环境也只记录日志不强制刷新 */
   useEffect(() => {
     function handlePageShow(e: PageTransitionEvent) {
-      if (e.persisted) {
-        window.location.reload();
+      if (e.persisted && 获取当前环境() !== "APP") {
+        /* 浏览器环境：从缓存恢复时，如果已经有 session 则跳走，不强制刷新 */
+        const hasToken = document.cookie.includes("sb-") || !!window.localStorage.getItem("sb-");
+        if (hasToken) {
+          window.location.href = "/";
+        }
       }
     }
     window.addEventListener("pageshow", handlePageShow);
@@ -41,9 +47,7 @@ export default function LoginPage() {
     return /^1[3-9]\d{9}$/.test(value);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
+  async function handleSubmit() {
     /* 防止 supabase 客户端尚未初始化时提交 */
     if (!supabase) {
       setError("登录服务正在初始化，请稍后再试");
@@ -140,7 +144,14 @@ export default function LoginPage() {
             当前环境: {环境}
           </div>
 
-          <form onSubmit={handleSubmit} className="login-form">
+          <div className="login-form"
+            onKeyDown={(e) => {
+              /* 回车键触发登录 */
+              if (e.key === "Enter") {
+                void handleSubmit();
+              }
+            }}
+          >
             <div>
               <label className="login-label">
                 手机号 / 邮箱
@@ -175,13 +186,14 @@ export default function LoginPage() {
             )}
 
             <button
-              type="submit"
+              type="button"
+              onClick={() => void handleSubmit()}
               disabled={loading}
               className="login-btn"
             >
               {loading ? "登录中..." : "登录"}
             </button>
-          </form>
+          </div>
 
           <div className="login-hint">
             首次使用请在 Supabase 控制台创建用户
