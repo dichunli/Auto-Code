@@ -21,15 +21,14 @@ export default function LoginPage() {
 
   /* 检测页面是否从浏览器缓存恢复（bfcache） */
   /* 注意：APP 环境下某些国产手机的 WebView 会误触发 persisted，导致输入框被清空 */
-  /* 直接在 useEffect 里检查 window.Capacitor，避免函数调用时的时序问题 */
+  /* 在事件触发时再检查 window.Capacitor，比 useEffect 执行时检查更可靠 */
   useEffect(() => {
-    const w = window as Record<string, unknown>;
-    if (w.Capacitor || w.CapacitorIsNative) {
-      /* APP 环境：完全不加 pageshow 监听器 */
-      return;
-    }
     function handlePageShow(e: PageTransitionEvent) {
       if (e.persisted) {
+        /* 事件触发时双重检查：如果是 APP 环境直接忽略 */
+        const w = window as Record<string, unknown>;
+        if (w.Capacitor || w.CapacitorIsNative) return;
+
         /* 浏览器环境：从缓存恢复时，如果已经有 session 则跳走 */
         const hasToken = document.cookie.includes("sb-") || !!window.localStorage.getItem("sb-");
         if (hasToken) {
@@ -52,11 +51,13 @@ export default function LoginPage() {
     return /^1[3-9]\d{9}$/.test(value);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit() {
+    /* 调试用：确认函数被调用 */
+    alert("点击了登录按钮");
 
     /* 防止 supabase 客户端尚未初始化时提交 */
     if (!supabase) {
+      alert("supabase 未初始化");
       setError("登录服务正在初始化，请稍后再试");
       return;
     }
@@ -151,14 +152,19 @@ export default function LoginPage() {
             当前环境: {环境}
           </div>
 
-          <form onSubmit={handleSubmit} className="login-form">
+          <div className="login-form"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                void handleSubmit();
+              }
+            }}
+          >
             <div>
               <label className="login-label">
                 手机号 / 邮箱
               </label>
               <input
                 type="text"
-                required
                 className="login-input"
                 value={account}
                 onChange={(e) => setAccount(e.target.value)}
@@ -171,7 +177,6 @@ export default function LoginPage() {
               </label>
               <input
                 type="password"
-                required
                 className="login-input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -186,13 +191,14 @@ export default function LoginPage() {
             )}
 
             <button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               disabled={loading}
               className="login-btn"
             >
               {loading ? "登录中..." : "登录"}
             </button>
-          </form>
+          </div>
 
           <div className="login-hint">
             首次使用请在 Supabase 控制台创建用户
