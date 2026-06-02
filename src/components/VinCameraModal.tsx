@@ -41,6 +41,28 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     }
   }, []);
 
+  /* ========== 按比例裁剪 base64 图片 ========== */
+  const 裁剪图片 = useCallback((base64: string, 比例: { x: number; y: number; w: number; h: number }, 质量 = 0.75): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const cw = Math.round(比例.w * img.width);
+        const ch = Math.round(比例.h * img.height);
+        const cx = Math.round(比例.x * img.width);
+        const cy = Math.round(比例.y * img.height);
+        const canvas = document.createElement("canvas");
+        canvas.width = cw;
+        canvas.height = ch;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("canvas 不支持")); return; }
+        ctx.drawImage(img, cx, cy, cw, ch, 0, 0, cw, ch);
+        resolve(canvas.toDataURL("image/jpeg", 质量));
+      };
+      img.onerror = () => reject(new Error("图片加载失败"));
+      img.src = base64;
+    });
+  }, []);
+
   /* ========== 执行 OCR 识别 ========== */
   const doOcr = useCallback(async (base64: string) => {
     setRecognizing(true);
@@ -50,7 +72,12 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setDecoding(false);
 
     try {
-      const base64Body = base64.split(",")[1] || "";
+      let processedBase64 = base64;
+      /* APP 环境：裁剪 VIN 区域（挡风玻璃下方中间） */
+      if (是App) {
+        processedBase64 = await 裁剪图片(base64, { x: 0.05, y: 0.45, w: 0.9, h: 0.35 }, 0.75);
+      }
+      const base64Body = processedBase64.split(",")[1] || "";
       const base64Urlencode = encodeURIComponent(base64Body);
       const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
         code: number;
