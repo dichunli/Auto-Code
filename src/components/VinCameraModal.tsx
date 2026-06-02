@@ -72,12 +72,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setDecoding(false);
 
     try {
-      let processedBase64 = base64;
-      /* APP 环境：裁剪 VIN 区域（挡风玻璃下方中间） */
-      if (是App) {
-        processedBase64 = await 裁剪图片(base64, { x: 0.05, y: 0.45, w: 0.9, h: 0.35 }, 0.75);
-      }
-      const base64Body = processedBase64.split(",")[1] || "";
+      const base64Body = base64.split(",")[1] || "";
       const base64Urlencode = encodeURIComponent(base64Body);
       const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
         code: number;
@@ -204,7 +199,13 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
         source: CameraSource.Camera,
       });
       if (image.base64String) {
-        const base64 = `data:image/jpeg;base64,${image.base64String}`;
+        let base64 = `data:image/jpeg;base64,${image.base64String}`;
+        /* APP 环境：裁剪 VIN 区域（挡风玻璃下方中间），失败用原图 */
+        try {
+          base64 = await 裁剪图片(base64, { x: 0.05, y: 0.45, w: 0.9, h: 0.35 }, 0.75);
+        } catch {
+          /* 裁剪失败用原图继续 */
+        }
         setPreviewImage(base64);
         set模式("预览");
         await doOcr(base64);
@@ -219,7 +220,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       setErrorMsg("相机调用失败: " + msg);
       set模式("拍照");
     }
-  }, [doOcr, onClose]);
+  }, [doOcr, onClose, 裁剪图片]);
 
   /* ========== 浏览器文件选择 ========== */
   const 处理文件选择 = useCallback(

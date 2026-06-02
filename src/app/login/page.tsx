@@ -21,11 +21,16 @@ export default function LoginPage() {
 
   /* 检测页面是否从浏览器缓存恢复（bfcache） */
   /* 注意：APP 环境下某些国产手机的 WebView 会误触发 persisted，导致输入框被清空 */
-  /* 因此 APP 环境不做任何处理，浏览器环境也只记录日志不强制刷新 */
+  /* 直接在 useEffect 里检查 window.Capacitor，避免函数调用时的时序问题 */
   useEffect(() => {
+    const w = window as Record<string, unknown>;
+    if (w.Capacitor || w.CapacitorIsNative) {
+      /* APP 环境：完全不加 pageshow 监听器 */
+      return;
+    }
     function handlePageShow(e: PageTransitionEvent) {
-      if (e.persisted && 获取当前环境() !== "APP") {
-        /* 浏览器环境：从缓存恢复时，如果已经有 session 则跳走，不强制刷新 */
+      if (e.persisted) {
+        /* 浏览器环境：从缓存恢复时，如果已经有 session 则跳走 */
         const hasToken = document.cookie.includes("sb-") || !!window.localStorage.getItem("sb-");
         if (hasToken) {
           window.location.href = "/";
