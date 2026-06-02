@@ -27,6 +27,7 @@ interface Props {
   placeholder?: string;
   inputClassName?: string;
   buttonClassName?: string;
+  autoOpenCamera?: boolean;
 }
 
 export default function VinDecodeInput({
@@ -36,6 +37,7 @@ export default function VinDecodeInput({
   placeholder = "输入17位VIN码",
   inputClassName,
   buttonClassName,
+  autoOpenCamera,
 }: Props) {
   const [decoding, setDecoding] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -54,6 +56,15 @@ export default function VinDecodeInput({
     const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
     setIsMobile(/Mobi|Android|iPhone|iPad|iPod/i.test(ua) || isTouch);
   }, []);
+
+  /* 自动打开相机（接车登记流程：未找到车辆时自动触发 VIN 拍照） */
+  useEffect(() => {
+    if (!autoOpenCamera || !isMobile || ocrLoading) return;
+    const timer = setTimeout(() => {
+      mobileInputRef.current?.click();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [autoOpenCamera, isMobile, ocrLoading]);
 
   async function handleDecode() {
     const vin = value.trim().toUpperCase();

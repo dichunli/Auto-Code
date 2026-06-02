@@ -10,6 +10,7 @@ import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
 import { StarDisplay, TagDisplay } from "@/components/CustomerSearchDropdown";
+import { 标准化VIN } from "@/lib/vinValidator";
 
 /* ============================================================
    接车登记 — 手机端新建工单（一步提交）
@@ -58,6 +59,7 @@ export default function MobileReceptionNewPage() {
   const [newBrand, setNewBrand] = useState("");
   const [newModel, setNewModel] = useState("");
   const [newVin, setNewVin] = useState("");
+  const [autoOpenVinCamera, setAutoOpenVinCamera] = useState(false);
   const vehicleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   /* ---------- VIN 查重 ---------- */
@@ -186,7 +188,7 @@ export default function MobileReceptionNewPage() {
   useEffect(() => {
     if (vinCheckTimeoutRef.current) clearTimeout(vinCheckTimeoutRef.current);
 
-    const vin = newVin.trim().toUpperCase();
+    const vin = 标准化VIN(newVin);
     if (!isNewVehicle || vin.length !== 17) {
       setVinDuplicateVehicle(null);
       setShowVinDuplicateDialog(false);
@@ -362,7 +364,7 @@ export default function MobileReceptionNewPage() {
             plate_number: newPlate.trim().toUpperCase(),
             brand: newBrand.trim() || null,
             model: newModel.trim() || null,
-            vin: newVin.trim().toUpperCase() || null,
+            vin: 标准化VIN(newVin) || null,
           })
           .select("id")
           .single();
@@ -544,6 +546,7 @@ export default function MobileReceptionNewPage() {
                   onClick={() => {
                     setIsNewVehicle(true);
                     setNewPlate(vehicleQuery);
+                    setAutoOpenVinCamera(true);
                   }}
                   className="text-sm text-blue-600"
                 >
@@ -690,6 +693,7 @@ export default function MobileReceptionNewPage() {
                 placeholder="VIN码（17位）"
                 inputClassName="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 buttonClassName="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap shrink-0"
+                autoOpenCamera={autoOpenVinCamera}
               />
               <input
                 type="text"
@@ -713,6 +717,7 @@ export default function MobileReceptionNewPage() {
                   setNewBrand("");
                   setNewModel("");
                   setNewVin("");
+                  setAutoOpenVinCamera(false);
                 }}
                 className="text-xs text-gray-500"
               >
