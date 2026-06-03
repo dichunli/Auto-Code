@@ -135,6 +135,7 @@
   "/suppliers/page": "app/suppliers/page.js",
   "/tags/page": "app/tags/page.js",
   "/tools/vin-batch-query/page": "app/tools/vin-batch-query/page.js",
+  "/tools/vin-test/page": "app/tools/vin-test/page.js",
   "/training/[id]/assign/page": "app/training/[id]/assign/page.js",
   "/training/[id]/edit/page": "app/training/[id]/edit/page.js",
   "/training/[id]/exam/page": "app/training/[id]/exam/page.js",

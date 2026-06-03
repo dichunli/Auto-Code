@@ -1,6 +1,6 @@
 {
   "node": {
-    "00e98e1da09c7ab1ac30d65734c889e1af4bbae16e": {
+    "004d8b60e6dcb945e2765b961164b8acc5dccc946d": {
       "workers": {
         "app/17vin-billing/page": {
           "moduleId": 11569,
@@ -12,7 +12,7 @@
       "filename": "src/lib/17vin/client.ts",
       "exportedName": "vin17GetBalance"
     },
-    "603529b9de08bb87874094a50e2753352626642588": {
+    "6069a2d8f4fc367d45e1c479cdeeded6cb530c3dc8": {
       "workers": {
         "app/17vin-billing/page": {
           "moduleId": 11569,
@@ -24,7 +24,7 @@
       "filename": "src/app/17vin-billing/actions.ts",
       "exportedName": "查询调用记录"
     },
-    "40471b037b9ffb26f296c84b2fff789b59aefaddcb": {
+    "409aa95b669e5a885f387b3d7970c8bd2e2b9a8738": {
       "workers": {
         "app/appointments/new/page": {
           "moduleId": 58086,
@@ -66,7 +66,7 @@
       "filename": "src/lib/baidu-ocr/client.ts",
       "exportedName": "recognizeLicensePlate"
     },
-    "40e5e09e8f0b771d656583a76ba8771498fb610692": {
+    "400c463aadfa05dcc10f1dc27ad11192c428570585": {
       "workers": {
         "app/inventory/page": {
           "moduleId": 74337,
@@ -78,7 +78,7 @@
       "filename": "src/app/parts/actions.ts",
       "exportedName": "deletePart"
     },
-    "4098131aba9c890eda4774b2011b1140af3e6505e7": {
+    "40fdeb5e70cf8287520f9e23177ee4c12306ea4d78": {
       "workers": {
         "app/knowledge/page": {
           "moduleId": 26000,
@@ -90,7 +90,7 @@
       "filename": "src/app/knowledge/actions.ts",
       "exportedName": "解析Word文档"
     },
-    "407258997c65f7acf964619ea27ed6b4d2290abea9": {
+    "401056faa6bda33e65283738f4ffbeabe50f19e630": {
       "workers": {
         "app/knowledge/page": {
           "moduleId": 26000,
@@ -102,7 +102,7 @@
       "filename": "src/app/knowledge/actions.ts",
       "exportedName": "生成Word文档"
     },
-    "408fcccfd980dac5a8032959422dcc9b35c6e7011c": {
+    "40cf3acbc32f6741011e57682c4a94be66f3c8ed49": {
       "workers": {
         "app/login/page": {
           "moduleId": 25128,
@@ -114,7 +114,7 @@
       "filename": "src/lib/operationLog.ts",
       "exportedName": "logLogin"
     },
-    "4036ba372aacae112aa1c41f4f8967503c31ea8947": {
+    "40f056050febde61b17dbc920bf234f1a33dcba860": {
       "workers": {
         "app/m/reception/new/page": {
           "moduleId": 62726,
@@ -144,7 +144,7 @@
       "filename": "src/lib/17vin/client.ts",
       "exportedName": "vin17OcrImage"
     },
-    "405ccd60b2be6a1c5ee0cb0765c03e72fdc457018d": {
+    "40e5996b83fc4bd6ea5a66791bb9fae7cea6e68f08": {
       "workers": {
         "app/m/reception/new/page": {
           "moduleId": 62726,
@@ -174,7 +174,7 @@
       "filename": "src/lib/17vin/client.ts",
       "exportedName": "vin17DecodeVin"
     },
-    "6097b0a5b2ed74224e22d473f874e31ad20aec2d49": {
+    "6006fa5aa8a972bcf40aab0959f620b55233e1943a": {
       "workers": {
         "app/parts/[id]/page": {
           "moduleId": 500,
@@ -186,7 +186,7 @@
       "filename": "src/app/parts/actions.ts",
       "exportedName": "syncPartVin17Models"
     },
-    "600f72790f157ac186c681b658c99a2bc90210b8a5": {
+    "707ae66ab4e496ebf73993021651a9eedf3b0cbef1": {
       "workers": {
         "app/parts/[id]/edit/page": {
           "moduleId": 79655,
@@ -206,6 +206,12 @@
           "exportedName": "syncOeFromVin",
           "filename": "src/app/parts/actions.ts"
         },
+        "app/tools/vin-test/page": {
+          "moduleId": 39219,
+          "async": false,
+          "exportedName": "syncOeFromVin",
+          "filename": "src/app/parts/actions.ts"
+        },
         "app/work-orders/[id]/page": {
           "moduleId": 28611,
           "async": false,
@@ -216,7 +222,55 @@
       "filename": "src/app/parts/actions.ts",
       "exportedName": "syncOeFromVin"
     },
-    "40aadde7ce144c017b3b448df007b32a891844f00f": {
+    "6030a68d3c762518e6f0cbd2fe27cff79d1b778f98": {
+      "workers": {
+        "app/parts/[id]/edit/page": {
+          "moduleId": 79655,
+          "async": false,
+          "exportedName": "syncModelsFromVin",
+          "filename": "src/app/parts/actions.ts"
+        },
+        "app/parts/new/page": {
+          "moduleId": 26339,
+          "async": false,
+          "exportedName": "syncModelsFromVin",
+          "filename": "src/app/parts/actions.ts"
+        },
+        "app/procurement/page": {
+          "moduleId": 45381,
+          "async": false,
+          "exportedName": "syncModelsFromVin",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "filename": "src/app/parts/actions.ts",
+      "exportedName": "syncModelsFromVin"
+    },
+    "60fa6ec93a10e7bc1e173c091aac15b1ec89089dc8": {
+      "workers": {
+        "app/parts/[id]/edit/page": {
+          "moduleId": 79655,
+          "async": false,
+          "exportedName": "syncModelsByGroupId",
+          "filename": "src/app/parts/actions.ts"
+        },
+        "app/parts/new/page": {
+          "moduleId": 26339,
+          "async": false,
+          "exportedName": "syncModelsByGroupId",
+          "filename": "src/app/parts/actions.ts"
+        },
+        "app/procurement/page": {
+          "moduleId": 45381,
+          "async": false,
+          "exportedName": "syncModelsByGroupId",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "filename": "src/app/parts/actions.ts",
+      "exportedName": "syncModelsByGroupId"
+    },
+    "40cd33f98b987777ae1f22b5c7223bb3611624710e": {
       "workers": {
         "app/tools/vin-batch-query/page": {
           "moduleId": 40356,
@@ -228,7 +282,19 @@
       "filename": "src/app/tools/vin-batch-query/actions.ts",
       "exportedName": "batchQueryVinFilters"
     },
-    "40d02b37bcbda90e13c58839bff5ad636e5abb26be": {
+    "4098d45640bb5377ffcd09adfcb74c826584546d11": {
+      "workers": {
+        "app/tools/vin-batch-query/page": {
+          "moduleId": 40356,
+          "async": false,
+          "exportedName": "batchSyncMissingModels",
+          "filename": "src/app/tools/vin-batch-query/actions.ts"
+        }
+      },
+      "filename": "src/app/tools/vin-batch-query/actions.ts",
+      "exportedName": "batchSyncMissingModels"
+    },
+    "40c4f27f98779a4608b4ef4225f7220dbc1fc6f423": {
       "workers": {
         "app/tools/vin-batch-query/page": {
           "moduleId": 40356,
@@ -240,7 +306,19 @@
       "filename": "src/app/tools/vin-batch-query/createActions.ts",
       "exportedName": "batchCreatePartsFromVin"
     },
-    "40aacfb90fcb4ad7c5c304f5bd0c2bfcbc3471edc8": {
+    "600c2b7093f4568ae485fbf67fcf42a19c06dfc2df": {
+      "workers": {
+        "app/tools/vin-batch-query/page": {
+          "moduleId": 40356,
+          "async": false,
+          "exportedName": "autoCreateFiltersByVin",
+          "filename": "src/app/tools/vin-batch-query/createActions.ts"
+        }
+      },
+      "filename": "src/app/tools/vin-batch-query/createActions.ts",
+      "exportedName": "autoCreateFiltersByVin"
+    },
+    "4064247a624d2780f3d88fe405c80bfdcf77123546": {
       "workers": {
         "app/work-orders/[id]/page": {
           "moduleId": 28611,
@@ -258,7 +336,7 @@
       "filename": "src/lib/operationLog.ts",
       "exportedName": "logAction"
     },
-    "6082ece3560689d66cc9aad259e30ade5d26193dfb": {
+    "608562f1f01175b63d4019a36763fbbbdda61a2b3b": {
       "workers": {
         "app/work-orders/[id]/page": {
           "moduleId": 28611,
@@ -272,5 +350,5 @@
     }
   },
   "edge": {},
-  "encryptionKey": "xBxhXNEJtzjbcP8zvb/ICEvPy1U6GxnVt9odnUwgmIk="
+  "encryptionKey": "y114zKtOiF2FSg2UAYcRQdMvRHNEV4jchWX7p9yY748="
 }

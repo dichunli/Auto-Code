@@ -1,0 +1,17 @@
+{
+  "node": {
+    "707ae66ab4e496ebf73993021651a9eedf3b0cbef1": {
+      "workers": {
+        "app/tools/vin-test/page": {
+          "moduleId": 39219,
+          "async": false,
+          "exportedName": "syncOeFromVin",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "exportedName": "syncOeFromVin",
+      "filename": "src/app/parts/actions.ts"
+    }
+  },
+  "edge": {}
+}

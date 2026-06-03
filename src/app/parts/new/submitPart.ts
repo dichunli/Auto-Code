@@ -41,6 +41,7 @@ interface SubmitPartParams {
   barcode: string;
   interchangeCode: string;
   oeNumber: string;
+  vin17GroupId: string;
   documentName: string | null;
   partNameId: string;
   partName: string;
@@ -73,6 +74,7 @@ export default async function submitPart(params: SubmitPartParams): Promise<Subm
     barcode,
     interchangeCode,
     oeNumber,
+    vin17GroupId,
     documentName,
     partNameId,
     partName,
@@ -98,6 +100,7 @@ export default async function submitPart(params: SubmitPartParams): Promise<Subm
     barcode: barcode.trim() || null,
     interchange_code: interchangeCode.trim().toUpperCase() || null,
     oe_number: oeNumber.trim().toUpperCase() || null,
+    vin17_group_id: vin17GroupId.trim() || null,
     document_name: documentName,
     part_name_id: partNameId,
     name: partName.trim(),

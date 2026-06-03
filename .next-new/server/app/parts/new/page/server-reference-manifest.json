@@ -1,6 +1,6 @@
 {
   "node": {
-    "600f72790f157ac186c681b658c99a2bc90210b8a5": {
+    "707ae66ab4e496ebf73993021651a9eedf3b0cbef1": {
       "workers": {
         "app/parts/new/page": {
           "moduleId": 26339,
@@ -10,6 +10,30 @@
         }
       },
       "exportedName": "syncOeFromVin",
+      "filename": "src/app/parts/actions.ts"
+    },
+    "6030a68d3c762518e6f0cbd2fe27cff79d1b778f98": {
+      "workers": {
+        "app/parts/new/page": {
+          "moduleId": 26339,
+          "async": false,
+          "exportedName": "syncModelsFromVin",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "exportedName": "syncModelsFromVin",
+      "filename": "src/app/parts/actions.ts"
+    },
+    "60fa6ec93a10e7bc1e173c091aac15b1ec89089dc8": {
+      "workers": {
+        "app/parts/new/page": {
+          "moduleId": 26339,
+          "async": false,
+          "exportedName": "syncModelsByGroupId",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "exportedName": "syncModelsByGroupId",
       "filename": "src/app/parts/actions.ts"
     }
   },

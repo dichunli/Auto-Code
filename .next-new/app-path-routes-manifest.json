@@ -135,6 +135,7 @@
   "/suppliers/page": "/suppliers",
   "/tags/page": "/tags",
   "/tools/vin-batch-query/page": "/tools/vin-batch-query",
+  "/tools/vin-test/page": "/tools/vin-test",
   "/training/[id]/assign/page": "/training/[id]/assign",
   "/training/[id]/edit/page": "/training/[id]/edit",
   "/training/[id]/exam/page": "/training/[id]/exam",

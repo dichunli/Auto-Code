@@ -182,14 +182,14 @@ export default function BehaviorChecksPage() {
     fetchRecords();
   }, [fetchRecords]);
 
-  async function uploadPhoto(file: File): Promise<string> {
+  const uploadPhoto = useCallback(async (file: File): Promise<string> => {
     const watermarked = await addWatermark(file);
     const fileName = `behavior-checks/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
     const { error } = await supabase.storage.from("media").upload(fileName, watermarked);
     if (error) throw error;
     const { data: urlData } = supabase.storage.from("media").getPublicUrl(fileName);
     return urlData.publicUrl;
-  }
+  }, [supabase]);
 
   async function handleComplete(recordId: string) {
     const file = fileInputRef.current?.files?.[0];

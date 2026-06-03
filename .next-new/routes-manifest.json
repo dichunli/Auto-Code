@@ -32,6 +32,16 @@
         }
       ],
       "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+    },
+    {
+      "source": "/_next/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate, max-age=0"
+        }
+      ],
+      "regex": "^/_next(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
     }
   ],
   "onMatchHeaders": [],
@@ -1046,6 +1056,12 @@
       "regex": "^/tools/vin\\-batch\\-query(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/tools/vin\\-batch\\-query(?:/)?$"
+    },
+    {
+      "page": "/tools/vin-test",
+      "regex": "^/tools/vin\\-test(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/tools/vin\\-test(?:/)?$"
     },
     {
       "page": "/training",

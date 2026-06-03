@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -65,7 +65,7 @@ export default function NewPurchaseOrderPage() {
   const [supplierId, setSupplierId] = useState("");
   const [notes, setNotes] = useState("");
   const [selectedBranchId, setSelectedBranchId] = useState("");
-  const [items, setItems] = useState<LineItem[]>([
+  const [items, setItems] = useState<LineItem[]>(() => [
     {
       id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
       part_id: "",
@@ -300,7 +300,7 @@ export default function NewPurchaseOrderPage() {
     return sum + qty * cost;
   }, 0);
 
-  async function handleSubmit(e: React.FormEvent) {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supplierId) {
       alert("请选择供应商");
@@ -357,7 +357,7 @@ export default function NewPurchaseOrderPage() {
       alert("保存失败: " + msg);
       setLoading(false);
     }
-  }
+  }, [supplierId, items, totalAmount, notes, router]);
 
   const selectedSupplier = suppliers.find((s) => s.id === supplierId);
 

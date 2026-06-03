@@ -28,6 +28,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   const [decodeResult, setDecodeResult] = useState<VinDecodeResult | null>(null);
   const [decoding, setDecoding] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [手动输入Vin, set手动输入Vin] = useState("");
 
   const 是App = 是Capacitor环境();
 
@@ -193,19 +194,14 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     try {
       set模式("拍照");
       const image = await Camera.getPhoto({
-        quality: 60,
+        quality: 85,
         allowEditing: false,
         resultType: CameraResultType.Base64,
         source: CameraSource.Camera,
       });
       if (image.base64String) {
-        let base64 = `data:image/jpeg;base64,${image.base64String}`;
-        /* APP 环境：裁剪 VIN 区域（挡风玻璃下方中间），失败用原图 */
-        try {
-          base64 = await 裁剪图片(base64, { x: 0.05, y: 0.45, w: 0.9, h: 0.35 }, 0.75);
-        } catch {
-          /* 裁剪失败用原图继续 */
-        }
+        const base64 = `data:image/jpeg;base64,${image.base64String}`;
+        /* 发送完整图片给 17VIN OCR，不裁剪 */
         setPreviewImage(base64);
         set模式("预览");
         await doOcr(base64);
@@ -320,11 +316,12 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
   /* ========== 确认 ========== */
   const handleConfirm = useCallback(() => {
-    if (recognizedVin) {
-      onRecognize(recognizedVin, decodeResult);
+    const vin = recognizedVin || 手动输入Vin.trim();
+    if (vin) {
+      onRecognize(vin.toUpperCase(), decodeResult);
       onClose();
     }
-  }, [recognizedVin, decodeResult, onRecognize, onClose]);
+  }, [recognizedVin, 手动输入Vin, decodeResult, onRecognize, onClose]);
 
   /* ========== 重拍 ========== */
   const handleRetake = useCallback(() => {
@@ -334,6 +331,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setErrorMsg(null);
     setRecognizing(false);
     setDecoding(false);
+    set手动输入Vin("");
 
     if (是App) {
       /* APP：直接重新打开相机 */
@@ -483,9 +481,18 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
             )}
 
             {!recognizing && errorMsg && (
-              <div className="text-center py-2">
-                <div className="text-xs text-white/50 mb-1">识别失败</div>
+              <div className="text-center py-2 space-y-2">
+                <div className="text-xs text-white/50">识别失败</div>
                 <div className="text-sm text-red-400">{errorMsg}</div>
+                <div className="px-4">
+                  <input
+                    type="text"
+                    placeholder="手动输入 VIN 码"
+                    value={手动输入Vin}
+                    onChange={(e) => set手动输入Vin(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white text-sm placeholder:text-white/40 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -510,7 +517,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
               <button
                 type="button"
                 onClick={handleConfirm}
-                disabled={!recognizedVin}
+                disabled={!recognizedVin && !手动输入Vin.trim()}
                 className="px-6 py-2.5 rounded-full bg-blue-600 text-white text-sm font-medium active:bg-blue-700 disabled:opacity-40 disabled:active:bg-blue-600"
               >
                 使用此 VIN

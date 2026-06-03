@@ -601,8 +601,8 @@ function CreateTab() {
       setUploading(false);
       setCreating(true);
 
-      /* 每批最多10个VIN（避免Server Action超时） */
-      const batchSize = 10;
+      /* 每批最多3个VIN（避免Server Action超时，每个VIN要查3个三滤） */
+      const batchSize = 3;
       const allResults: CreatePartResult[] = [];
       for (let i = 0; i < vins.length; i += batchSize) {
         const batch = vins.slice(i, i + batchSize);

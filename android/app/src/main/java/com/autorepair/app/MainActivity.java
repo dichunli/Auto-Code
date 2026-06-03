@@ -39,11 +39,31 @@ public class MainActivity extends BridgeActivity {
     /* 配置 WebView */
     if (bridge != null && bridge.getWebView() != null) {
       WebSettings settings = bridge.getWebView().getSettings();
+
+      /* 显式启用 JavaScript（某些手机默认禁用） */
+      settings.setJavaScriptEnabled(true);
+      /* 启用 DOM 存储 */
+      settings.setDomStorageEnabled(true);
+      /* 启用数据库缓存 */
+      settings.setDatabaseEnabled(true);
       /* 允许媒体自动播放 */
       settings.setMediaPlaybackRequiresUserGesture(false);
+      /* 允许文件访问 */
+      settings.setAllowFileAccess(true);
 
       /* 添加 JavaScript 接口 */
       bridge.getWebView().addJavascriptInterface(new AppSettingsInterface(), "AndroidApp");
+
+      /* 调试用：在 WebView 中打印日志 */
+      bridge.getWebView().setWebChromeClient(new android.webkit.WebChromeClient() {
+        @Override
+        public boolean onConsoleMessage(android.webkit.ConsoleMessage consoleMessage) {
+          android.util.Log.d("WebViewConsole", consoleMessage.message() +
+            " -- From line " + consoleMessage.lineNumber() +
+            " of " + consoleMessage.sourceId());
+          return true;
+        }
+      });
     }
   }
 }

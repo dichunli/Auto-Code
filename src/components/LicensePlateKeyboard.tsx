@@ -10,6 +10,7 @@ interface Props {
   maxLength?: number;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   variant?: "full" | "simple";
+  readOnly?: boolean;
 }
 
 /* 是否为移动设备 */
@@ -49,6 +50,7 @@ export default function LicensePlateKeyboard({
   maxLength = 8,
   onKeyDown,
   variant = "full",
+  readOnly,
 }: Props) {
   const displayValue = value.toUpperCase();
 
@@ -69,11 +71,11 @@ export default function LicensePlateKeyboard({
 
   /* 移动端简化版键盘 */
   if (variant === "simple") {
-    return <SimpleKeyboard value={displayValue} onChange={onChange} placeholder={placeholder} className={className} maxLength={maxLength} />;
+    return <SimpleKeyboard value={displayValue} onChange={onChange} placeholder={placeholder} className={className} maxLength={maxLength} readOnly={readOnly} />;
   }
 
   /* 移动端完整版车牌键盘 */
-  return <FullKeyboard value={displayValue} onChange={onChange} placeholder={placeholder} className={className} maxLength={maxLength} />;
+  return <FullKeyboard value={displayValue} onChange={onChange} placeholder={placeholder} className={className} maxLength={maxLength} readOnly={readOnly} />;
 }
 
 /* ========== 简化版键盘 ========== */
@@ -83,12 +85,14 @@ function SimpleKeyboard({
   placeholder,
   className,
   maxLength,
+  readOnly,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   className: string;
   maxLength: number;
+  readOnly?: boolean;
 }) {
   const [show, setShow] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -142,9 +146,9 @@ function SimpleKeyboard({
         readOnly
         inputMode="none"
         value={value}
-        onClick={() => setShow(true)}
+        onClick={readOnly ? undefined : () => setShow(true)}
         placeholder={placeholder}
-        className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${className}`}
+        className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${readOnly ? "bg-gray-50 cursor-not-allowed" : "cursor-pointer"} ${className}`}
       />
 
       {show && <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setShow(false)} />}
@@ -260,12 +264,14 @@ function FullKeyboard({
   placeholder,
   className,
   maxLength,
+  readOnly,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   className: string;
   maxLength: number;
+  readOnly?: boolean;
 }) {
   const [show, setShow] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -450,9 +456,9 @@ function FullKeyboard({
         readOnly
         inputMode="none"
         value={value}
-        onClick={handleInputClick}
+        onClick={readOnly ? undefined : handleInputClick}
         placeholder={placeholder}
-        className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${className}`}
+        className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${readOnly ? "bg-gray-50 cursor-not-allowed" : "cursor-pointer"} ${className}`}
       />
 
       {/* 键盘遮罩 */}

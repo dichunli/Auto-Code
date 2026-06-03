@@ -544,8 +544,13 @@ export default function MobileReceptionNewPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    const plate = vehicleQuery.trim().toUpperCase();
+                    if (!isValidPlate(plate)) {
+                      alert("车牌格式不正确，请检查");
+                      return;
+                    }
                     setIsNewVehicle(true);
-                    setNewPlate(vehicleQuery);
+                    setNewPlate(plate);
                     setAutoOpenVinCamera(true);
                   }}
                   className="text-sm text-blue-600"
@@ -669,18 +674,13 @@ export default function MobileReceptionNewPage() {
 
           {isNewVehicle && (
             <div className="space-y-2">
-              <div className="flex gap-2">
-                <LicensePlateKeyboard
-                  value={newPlate}
-                  onChange={(val) => setNewPlate(val)}
-                  placeholder="车牌号 *"
-                  className="flex-1"
-                />
-                <LicensePlateOcrButton
-                  onRecognize={setNewPlate}
-                  className="px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 whitespace-nowrap shrink-0"
-                />
-              </div>
+              <LicensePlateKeyboard
+                value={newPlate}
+                onChange={(val) => setNewPlate(val)}
+                placeholder="车牌号 *"
+                className="flex-1"
+                readOnly
+              />
               <VinDecodeInput
                 value={newVin}
                 onChange={setNewVin}
