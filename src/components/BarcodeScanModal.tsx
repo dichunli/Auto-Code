@@ -3,10 +3,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import { BarcodeScanner, BarcodeFormat } from "@capacitor-mlkit/barcode-scanning";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 
-/* ========== 支持的条码格式 ========== */
-const 条码格式 = [
+/* ========== 支持的条码格式（浏览器环境用 html5-qrcode） ========== */
+const 浏览器条码格式 = [
   Html5QrcodeSupportedFormats.CODE_128,
   Html5QrcodeSupportedFormats.CODE_39,
   Html5QrcodeSupportedFormats.EAN_13,
@@ -18,14 +19,27 @@ const 条码格式 = [
   Html5QrcodeSupportedFormats.QR_CODE,
 ];
 
+/* ========== APP 环境用 MLKit 条码格式 ========== */
+const APP条码格式: BarcodeFormat[] = [
+  BarcodeFormat.Code128,
+  BarcodeFormat.Code39,
+  BarcodeFormat.Ean13,
+  BarcodeFormat.Ean8,
+  BarcodeFormat.UpcA,
+  BarcodeFormat.UpcE,
+  BarcodeFormat.Itf,
+  BarcodeFormat.Codabar,
+  BarcodeFormat.QrCode,
+];
+
 interface Props {
   open: boolean;
   onClose: () => void;
   onScan: (barcode: string) => void;
 }
 
-/* 将 base64 转换为 File 对象 */
-function base64转文件(dataurl: string, filename: string): File {
+/* 将 base64 转换为 Blob 对象（供 MLKit readBarcodesFromImage 使用） */
+function base64转Blob(dataurl: string): Blob {
   const arr = dataurl.split(",");
   const mime = arr[0].match(/:(.*?);/)?.[1] || "image/jpeg";
   const bstr = atob(arr[1]);
@@ -34,53 +48,34 @@ function base64转文件(dataurl: string, filename: string): File {
   while (n--) {
     u8arr[n] = bstr.charCodeAt(n);
   }
-  return new File([u8arr], filename, { type: mime });
+  return new Blob([u8arr], { type: mime });
 }
 
 export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
   const 容器Ref = useRef<HTMLDivElement>(null);
   const 扫描器Ref = useRef<Html5Qrcode | null>(null);
-  const 监听器清理Ref = useRef<(() => void) | null>(null);
   const 已取消Ref = useRef(false);
+  const 扫描中Ref = useRef(false);
 
-  const [模式, set模式] = useState<"扫描中" | "识别成功" | "拍照" | "不支持" | "错误">("扫描中");
+  const [模式, set模式] = useState<"扫描中" | "识别成功" | "拍照" | "不支持" | "错误" | "启动中">("扫描中");
   const [识别码, set识别码] = useState<string | null>(null);
   const [错误信息, set错误信息] = useState<string | null>(null);
   const [手动输入, set手动输入] = useState("");
-  const [原生插件可用, set原生插件可用] = useState<boolean | null>(null);
 
   const 是App = 是Capacitor环境();
 
-  /* ========== 通用：完全停止所有扫描（浏览器 + APP 原生） ========== */
-  const 完全停止 = useCallback(async () => {
-    /* 1. 停止 html5-qrcode */
+  /* ========== 浏览器环境：停止 html5-qrcode ========== */
+  const 停止浏览器扫描 = useCallback(async () => {
     if (扫描器Ref.current) {
       try { await 扫描器Ref.current.stop(); } catch { /* 忽略 */ }
       try { await 扫描器Ref.current.clear(); } catch { /* 忽略 */ }
       扫描器Ref.current = null;
     }
-
-    /* 2. 移除原生监听器 */
-    if (监听器清理Ref.current) {
-      try { 监听器清理Ref.current(); } catch { /* 忽略 */ }
-      监听器清理Ref.current = null;
-    }
-
-    /* 3. 停止原生扫描 + 恢复背景（仅 APP） */
-    if (是App) {
-      try {
-        const { BarcodeScanner } = await import("@capacitor-community/barcode-scanner");
-        await BarcodeScanner.stopScan();
-        await BarcodeScanner.showBackground();
-      } catch { /* 忽略：可能没启动过 */ }
-    }
-
-    /* 4. 重置 body 样式 */
     if (typeof document !== "undefined") {
       document.body.style.background = "";
       document.body.classList.remove("scanner-active");
     }
-  }, [是App]);
+  }, []);
 
   /* ========== 浏览器环境：启动 html5-qrcode 实时扫描 ========== */
   const 启动浏览器扫描 = useCallback(async () => {
@@ -104,7 +99,7 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
         {
           fps: 8,
           qrbox: { width: 300, height: 100 },
-          formatsToSupport: 条码格式,
+          formatsToSupport: 浏览器条码格式,
           videoConstraints: {
             width: { min: 640, ideal: 1280 },
             height: { min: 480, ideal: 720 },
@@ -140,64 +135,54 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     }
   }, []);
 
-  /* ========== APP 环境：尝试启动原生扫码 ========== */
-  const 启动原生扫描 = useCallback(async () => {
-    if (已取消Ref.current) return;
+  /* ========== APP 环境：用 MLKit scan() 启动原生扫描 ========== */
+  const 启动APP扫码 = useCallback(async () => {
+    if (已取消Ref.current || 扫描中Ref.current) return;
+    扫描中Ref.current = true;
+    set模式("启动中");
 
     try {
-      const { BarcodeScanner } = await import("@capacitor-community/barcode-scanner");
+      const { barcodes } = await BarcodeScanner.scan({ formats: APP条码格式 });
+      if (已取消Ref.current) return;
 
-      /* 检查插件是否真的有 startScan */
-      if (!BarcodeScanner || typeof BarcodeScanner.startScan !== "function") {
-        throw new Error("原生插件 API 不匹配");
-      }
-
-      /* 权限检查 */
-      const perm = await BarcodeScanner.checkPermission({ force: true });
-      if (!perm.granted) {
-        set错误信息("需要相机权限，请在设置中开启");
-        set模式("错误");
-        return;
-      }
-
-      /* 隐藏 WebView 背景，让原生摄像头画面透出来 */
-      await BarcodeScanner.hideBackground();
-      document.body.classList.add("scanner-active");
-
-      /* 尝试 v4 方式：addListener */
-      if (typeof BarcodeScanner.addListener === "function") {
-        const handle = await BarcodeScanner.addListener("barcodeScanned", async (result) => {
-          const code =
-            (result.barcodeValue as string) ||
-            (result.barcodeRawValue as string) ||
-            (result.content as string) ||
-            "";
-          if (code && !已取消Ref.current) {
-            /* 扫到了！停止扫描 */
-            await BarcodeScanner.stopScan();
-            await BarcodeScanner.showBackground();
-            document.body.classList.remove("scanner-active");
-            if (监听器清理Ref.current) {
-              try { 监听器清理Ref.current(); } catch { /* 忽略 */ }
-              监听器清理Ref.current = null;
+      if (barcodes && barcodes.length > 0) {
+        const code = barcodes[0].rawValue || barcodes[0].displayValue || "";
+        if (code) {
+          set识别码(code);
+          set模式("识别成功");
+          /* 短暂显示结果后自动确认 */
+          setTimeout(() => {
+            if (!已取消Ref.current) {
+              onScan(code);
+              onClose();
             }
-            set识别码(code);
-            set模式("识别成功");
-          }
-        });
-        监听器清理Ref.current = () => handle.remove();
+          }, 600);
+          return;
+        }
       }
 
-      /* 开始扫描 */
-      await BarcodeScanner.startScan();
-      set原生插件可用(true);
-      set模式("扫描中");
-    } catch {
-      /* 原生插件不可用，fallback 到拍照模式 */
-      set原生插件可用(false);
-      set模式("拍照");
+      /* 扫描完成但没识别到条码 */
+      set错误信息("未能识别条码，请重试或手动输入");
+      set模式("错误");
+    } catch (err: unknown) {
+      if (已取消Ref.current) return;
+      const msg = err instanceof Error ? err.message : String(err);
+
+      if (msg.includes("cancel") || msg.includes("canceled") || msg.includes("denied")) {
+        set错误信息("扫描已取消，可手动输入条码");
+        set模式("错误");
+      } else if (msg.includes("unavailable") || msg.includes("Google Play") || msg.includes("module")) {
+        /* 设备不支持 Google Barcode Scanner，fallback 到拍照 */
+        set错误信息("当前设备不支持自动扫描，已切换到拍照识别");
+        set模式("拍照");
+      } else {
+        set错误信息("扫描失败: " + msg);
+        set模式("错误");
+      }
+    } finally {
+      扫描中Ref.current = false;
     }
-  }, []);
+  }, [onScan, onClose]);
 
   /* ========== APP 环境：拍照后识别条码（fallback） ========== */
   const 拍照识别条码 = useCallback(async () => {
@@ -211,28 +196,21 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
       if (!image.base64String) return;
 
       const base64 = `data:image/jpeg;base64,${image.base64String}`;
-      const file = base64转文件(base64, "barcode.jpg");
+      const blob = base64转Blob(base64);
 
-      /* 用 html5-qrcode 识别图片中的条码 */
-      /* 创建一个临时容器来运行 scanFile */
-      const tempId = "barcode-temp-" + Date.now();
-      const tempDiv = document.createElement("div");
-      tempDiv.id = tempId;
-      tempDiv.style.display = "none";
-      document.body.appendChild(tempDiv);
-
-      const 扫描器 = new Html5Qrcode(tempId);
-      try {
-        const result = await 扫描器.scanFile(file, false);
-        set识别码(result);
-        set模式("识别成功");
-      } finally {
-        /* 清理临时扫描器和容器 */
-        try { await 扫描器.clear(); } catch { /* 忽略 */ }
-        if (document.getElementById(tempId)) {
-          document.body.removeChild(tempDiv);
+      /* 用 MLKit 识别图片中的条码（替代旧版的 html5-qrcode scanFile） */
+      const { barcodes } = await BarcodeScanner.readBarcodesFromImage({ blob });
+      if (barcodes && barcodes.length > 0) {
+        const code = barcodes[0].rawValue || barcodes[0].displayValue || "";
+        if (code) {
+          set识别码(code);
+          set模式("识别成功");
+          return;
         }
       }
+
+      set错误信息("未能识别条码，请对准后重试或手动输入");
+      set模式("错误");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User cancelled")) {
@@ -249,12 +227,12 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
 
     if (!open) {
       /* ===== 关闭弹窗：强制清理所有资源 ===== */
-      完全停止();
+      停止浏览器扫描();
       set识别码(null);
       set错误信息(null);
       set模式("扫描中");
       set手动输入("");
-      set原生插件可用(null);
+      扫描中Ref.current = false;
       return;
     }
 
@@ -263,11 +241,11 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     set错误信息(null);
     set模式("扫描中");
     set手动输入("");
-    set原生插件可用(null);
+    扫描中Ref.current = false;
 
     if (是App) {
-      /* APP：先尝试原生扫码 */
-      启动原生扫描();
+      /* APP：调用 MLKit 原生扫描 */
+      启动APP扫码();
     } else {
       /* 浏览器：检查支持性 */
       if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
@@ -279,9 +257,9 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
 
     return () => {
       已取消Ref.current = true;
-      完全停止();
+      停止浏览器扫描();
     };
-  }, [open, 是App, 完全停止, 启动浏览器扫描, 启动原生扫描]);
+  }, [open, 是App, 停止浏览器扫描, 启动浏览器扫描, 启动APP扫码]);
 
   /* ========== 确认使用 ========== */
   const 确认使用 = useCallback(() => {
@@ -306,19 +284,12 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     set模式("扫描中");
 
     if (是App) {
-      if (原生插件可用 === true) {
-        /* 原生模式：先完全停止再重启 */
-        await 完全停止();
-        await 启动原生扫描();
-      } else {
-        /* 拍照模式 */
-        await 拍照识别条码();
-      }
+      await 启动APP扫码();
     } else {
-      await 完全停止();
+      await 停止浏览器扫描();
       await 启动浏览器扫描();
     }
-  }, [是App, 原生插件可用, 完全停止, 启动原生扫描, 启动浏览器扫描, 拍照识别条码]);
+  }, [是App, 停止浏览器扫描, 启动浏览器扫描, 启动APP扫码]);
 
   if (!open) return null;
 
@@ -357,7 +328,7 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
           type="button"
           onClick={() => {
             /* 关闭前强制清理 */
-            void 完全停止();
+            void 停止浏览器扫描();
             onClose();
           }}
           className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"
@@ -375,29 +346,20 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
           <div ref={容器Ref} id="barcode-scanner-container" className="barcode-scanner-root absolute inset-0" />
         )}
 
-        {/* APP 原生模式：扫描框 UI（背景透明，原生摄像头在 WebView 下方） */}
-        {是App && 原生插件可用 === true && 模式 === "扫描中" && !识别码 && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="relative w-72 h-32">
-              {/* 四边角 */}
-              <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-green-400" />
-              <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-green-400" />
-              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-green-400" />
-              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-green-400" />
-              {/* 提示文字 */}
-              <div className="absolute -top-7 left-0 right-0 text-center">
-                <span className="text-xs text-white/80 bg-black/40 px-2 py-0.5 rounded">
-                  将条形码对准框内
-                </span>
-              </div>
-              {/* 扫描线动画 */}
-              <div className="absolute top-0 left-0 right-0 h-0.5 bg-green-400/80 animate-scan-line" />
-            </div>
+        {/* APP 环境：启动中 loading */}
+        {是App && 模式 === "启动中" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70">
+            <svg className="w-10 h-10 animate-spin mb-3" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-sm">正在启动扫码...</span>
+            <span className="text-xs mt-1 opacity-50">请对准条形码或二维码</span>
           </div>
         )}
 
         {/* APP 拍照模式提示 */}
-        {是App && (原生插件可用 === false || 模式 === "拍照") && !识别码 && !错误信息 && (
+        {是App && 模式 === "拍照" && !识别码 && !错误信息 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 px-6">
             <svg className="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -407,9 +369,6 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
                 d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
               />
             </svg>
-            <p className="text-sm text-center">
-              {原生插件可用 === false ? "原生扫码不可用" : ""}
-            </p>
             <p className="text-xs mt-1 opacity-60">点击下方按钮拍照识别条码</p>
           </div>
         )}
@@ -487,8 +446,8 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
             <>
               {是App ? (
                 <>
-                  {/* APP 原生模式：显示拍照按钮（fallback） */}
-                  {原生插件可用 === false || 模式 === "拍照" ? (
+                  {/* APP 拍照模式 fallback */}
+                  {模式 === "拍照" ? (
                     <button
                       type="button"
                       onClick={拍照识别条码}
@@ -499,8 +458,11 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
                       </div>
                       <span className="text-[10px]">拍照识别</span>
                     </button>
+                  ) : 模式 === "启动中" ? (
+                    /* APP 启动中：显示取消提示 */
+                    <span className="text-sm text-white/50">正在启动系统扫描器...</span>
                   ) : (
-                    /* APP 原生模式正在扫描：显示取消/重新扫描 */
+                    /* APP 错误或取消后：显示重新扫描 */
                     <button
                       type="button"
                       onClick={重新扫描}
