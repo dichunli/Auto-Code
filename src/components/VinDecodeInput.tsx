@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { vin17OcrImage, vin17DecodeVin } from "@/lib/17vin/client";
 import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
+import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import VinKeyboard from "./VinKeyboard";
 
 export interface VinDecodeResult {
@@ -49,6 +51,8 @@ export default function VinDecodeInput({
   const pcInputRef = useRef<HTMLInputElement>(null);
   const mobileInputRef = useRef<HTMLInputElement>(null);
 
+  const 是App = 是Capacitor环境();
+
   /* 判断是否移动端（客户端挂载后检测，避免 SSR 不匹配） */
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -61,10 +65,15 @@ export default function VinDecodeInput({
   useEffect(() => {
     if (!autoOpenCamera || !isMobile || ocrLoading) return;
     const timer = setTimeout(() => {
-      mobileInputRef.current?.click();
+      if (是App) {
+        void APP拍照识别();
+      } else {
+        mobileInputRef.current?.click();
+      }
     }, 500);
     return () => clearTimeout(timer);
-  }, [autoOpenCamera, isMobile, ocrLoading]);
+     
+  }, [autoOpenCamera, isMobile, ocrLoading, 是App]);
 
   async function handleDecode() {
     const vin = value.trim().toUpperCase();
@@ -122,17 +131,120 @@ export default function VinDecodeInput({
     }
   }
 
-  /* 文件选择后识别 */
+  /* 处理 base64 图片：压缩、OCR 识别、解码车型 */
+  async function processBase64Image(base64: string) {
+    setPreviewImage(base64);
+    setPreviewOpen(true);
+    setOcrLoading(true);
+    setRecognizedVin(null);
+    setDecodeResult(null);
+    setQueryingModel(false);
+
+    const base64Body = base64.split(",")[1] || "";
+    const base64Urlencode = encodeURIComponent(base64Body);
+
+    /* 第1步：只 OCR 识别 VIN */
+    const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
+      code: number;
+      msg?: string;
+      data?: {
+        vin?: string; VIN?: string; Vin?: string;
+        vin_no?: string; vin_code?: string;
+        vehicle?: { vin?: string; VIN?: string };
+        vehicle_info?: { vin?: string };
+        ocr_result?: { vin?: string };
+      };
+    };
+
+    if (ocrRes.code !== 1) {
+      alert(ocrRes.msg || "未能识别出 VIN 码，请尝试手动输入");
+      setOcrLoading(false);
+      return;
+    }
+
+    const detectedVin =
+      ocrRes.data?.vin ||
+      ocrRes.data?.VIN ||
+      ocrRes.data?.Vin ||
+      ocrRes.data?.vin_no ||
+      ocrRes.data?.vin_code ||
+      ocrRes.data?.vehicle?.vin ||
+      ocrRes.data?.vehicle?.VIN ||
+      ocrRes.data?.vehicle_info?.vin ||
+      ocrRes.data?.ocr_result?.vin ||
+      "";
+
+    if (!detectedVin) {
+      alert("图片中未检测到 VIN 码，请尝试手动输入");
+      setOcrLoading(false);
+      return;
+    }
+
+    const upperVin = detectedVin.toUpperCase();
+    setRecognizedVin(upperVin);
+    setOcrLoading(false);
+
+    /* 第2步：异步解码车型（不阻塞用户看到 VIN） */
+    setQueryingModel(true);
+    try {
+      const decodeRes = (await vin17DecodeVin(upperVin)) as {
+        code: number;
+        data?: {
+          model_list?: Array<{
+            Brand?: string; brand?: string;
+            Series?: string; series?: string;
+            Model?: string; model?: string;
+            Model_year?: string; model_year?: string;
+            Engine_no?: string; engine_no?: string;
+            Cc?: string; cc?: string;
+            Transmission_type?: string; transmission_type?: string;
+            Trans_code?: string; trans_code?: string;
+            Chassis_code?: string; chassis_code?: string;
+            Driving_mode?: string; driving_mode?: string;
+            Factory?: string; factory?: string;
+            Id?: number; id?: number;
+          }>;
+          model_year_from_vin?: string;
+        };
+      };
+
+      if (decodeRes.code === 1 && decodeRes.data?.model_list?.[0]) {
+        const m = decodeRes.data.model_list[0];
+        setDecodeResult({
+          brand: m.Brand || m.brand || "",
+          series: m.Series || m.series || "",
+          model: m.Model || m.model || "",
+          year: decodeRes.data.model_year_from_vin || m.Model_year || m.model_year || "",
+          engineNo: m.Engine_no || m.engine_no || "",
+          cc: m.Cc || m.cc || "",
+          transmissionType: m.Transmission_type || m.transmission_type || "",
+          transmissionCode: m.Trans_code || m.trans_code || "",
+          chassisCode: m.Chassis_code || m.chassis_code || "",
+          drivingMode: m.Driving_mode || m.driving_mode || "",
+          factory: m.Factory || m.factory || "",
+          modelId: m.Id || m.id || undefined,
+        });
+      }
+    } catch {
+      /* 解码失败不影响，用户已有 VIN */
+    } finally {
+      setQueryingModel(false);
+    }
+  }
+
+  /* 浏览器环境：文件选择后识别 */
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
       alert("请选择图片文件");
+      e.target.value = "";
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
       alert("图片大小不能超过 10MB");
+      e.target.value = "";
       return;
     }
 
@@ -142,108 +254,34 @@ export default function VinDecodeInput({
         file.size > 512 * 1024
           ? await 压缩图片为Base64(file, { 最大宽度: 1024, 质量: 0.75 })
           : await 文件转Base64(file);
-
-      setPreviewImage(base64);
-      setPreviewOpen(true);
-      setOcrLoading(true);
-      setRecognizedVin(null);
-      setDecodeResult(null);
-      setQueryingModel(false);
-
-      const base64Body = base64.split(",")[1] || "";
-      const base64Urlencode = encodeURIComponent(base64Body);
-
-      /* 第1步：只 OCR 识别 VIN */
-      const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
-        code: number;
-        msg?: string;
-        data?: {
-          vin?: string; VIN?: string; Vin?: string;
-          vin_no?: string; vin_code?: string;
-          vehicle?: { vin?: string; VIN?: string };
-          vehicle_info?: { vin?: string };
-          ocr_result?: { vin?: string };
-        };
-      };
-
-      if (ocrRes.code !== 1) {
-        alert(ocrRes.msg || "未能识别出 VIN 码，请尝试手动输入");
-        setOcrLoading(false);
-        return;
-      }
-
-      const detectedVin =
-        ocrRes.data?.vin ||
-        ocrRes.data?.VIN ||
-        ocrRes.data?.Vin ||
-        ocrRes.data?.vin_no ||
-        ocrRes.data?.vin_code ||
-        ocrRes.data?.vehicle?.vin ||
-        ocrRes.data?.vehicle?.VIN ||
-        ocrRes.data?.vehicle_info?.vin ||
-        ocrRes.data?.ocr_result?.vin ||
-        "";
-
-      if (!detectedVin) {
-        alert("图片中未检测到 VIN 码，请尝试手动输入");
-        setOcrLoading(false);
-        return;
-      }
-
-      const upperVin = detectedVin.toUpperCase();
-      setRecognizedVin(upperVin);
-      setOcrLoading(false);
-
-      /* 第2步：异步解码车型（不阻塞用户看到 VIN） */
-      setQueryingModel(true);
-      try {
-        const decodeRes = (await vin17DecodeVin(upperVin)) as {
-          code: number;
-          data?: {
-            model_list?: Array<{
-              Brand?: string; brand?: string;
-              Series?: string; series?: string;
-              Model?: string; model?: string;
-              Model_year?: string; model_year?: string;
-              Engine_no?: string; engine_no?: string;
-              Cc?: string; cc?: string;
-              Transmission_type?: string; transmission_type?: string;
-              Trans_code?: string; trans_code?: string;
-              Chassis_code?: string; chassis_code?: string;
-              Driving_mode?: string; driving_mode?: string;
-              Factory?: string; factory?: string;
-              Id?: number; id?: number;
-            }>;
-            model_year_from_vin?: string;
-          };
-        };
-
-        if (decodeRes.code === 1 && decodeRes.data?.model_list?.[0]) {
-          const m = decodeRes.data.model_list[0];
-          setDecodeResult({
-            brand: m.Brand || m.brand || "",
-            series: m.Series || m.series || "",
-            model: m.Model || m.model || "",
-            year: decodeRes.data.model_year_from_vin || m.Model_year || m.model_year || "",
-            engineNo: m.Engine_no || m.engine_no || "",
-            cc: m.Cc || m.cc || "",
-            transmissionType: m.Transmission_type || m.transmission_type || "",
-            transmissionCode: m.Trans_code || m.trans_code || "",
-            chassisCode: m.Chassis_code || m.chassis_code || "",
-            drivingMode: m.Driving_mode || m.driving_mode || "",
-            factory: m.Factory || m.factory || "",
-            modelId: m.Id || m.id || undefined,
-          });
-        }
-      } catch {
-        /* 解码失败不影响，用户已有 VIN */
-      } finally {
-        setQueryingModel(false);
-      }
+      await processBase64Image(base64);
     } catch (err: unknown) {
       alert("图片识别失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       e.target.value = "";
+    }
+  }
+
+  /* APP 环境：调用原生相机拍照识别 */
+  async function APP拍照识别() {
+    if (ocrLoading) return;
+    try {
+      const image = await Camera.getPhoto({
+        quality: 85,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera,
+      });
+      if (image.base64String) {
+        const base64 = `data:image/jpeg;base64,${image.base64String}`;
+        await processBase64Image(base64);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User cancelled")) {
+        return;
+      }
+      alert("相机调用失败: " + msg);
     }
   }
 
@@ -265,7 +303,9 @@ export default function VinDecodeInput({
     setPreviewImage(null);
     setRecognizedVin(null);
     setDecodeResult(null);
-    if (isMobile && mobileInputRef.current) {
+    if (是App) {
+      void APP拍照识别();
+    } else if (isMobile && mobileInputRef.current) {
       mobileInputRef.current.click();
     } else if (!isMobile && pcInputRef.current) {
       pcInputRef.current.click();
@@ -296,7 +336,13 @@ export default function VinDecodeInput({
         >
           {decoding ? "解析中..." : "解析"}
         </button>
-        {isMobile ? (
+        {是App ? (
+          /* APP 环境：调用 Capacitor 原生相机 */
+          <button type="button" onClick={APP拍照识别} disabled={ocrLoading} className={photoClass}>
+            {ocrLoading ? "识别中..." : "拍照"}
+          </button>
+        ) : isMobile ? (
+          /* 浏览器移动端：用 HTML5 capture */
           <label className={photoClass}>
             {ocrLoading ? "识别中..." : "拍照"}
             <input
@@ -309,6 +355,7 @@ export default function VinDecodeInput({
             />
           </label>
         ) : (
+          /* PC 端 */
           <label className={photoClass}>
             {ocrLoading ? "识别中..." : "拍照"}
             <input
