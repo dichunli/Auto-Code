@@ -43,6 +43,7 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
   const 已处理Ref = useRef(false);
   const onScanRef = useRef(onScan);
   const onCloseRef = useRef(onClose);
+  const 监听器Ref = useRef<{ remove: () => void } | null>(null);
 
   const 是App = 是Capacitor环境();
 
@@ -52,7 +53,7 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     onCloseRef.current = onClose;
   });
 
-  /* ========== APP 环境：用 MLKit scan() 启动原生扫描 ========== */
+  /* ========== APP 环境：用 MLKit startScan() 启动原生相机扫描 ========== */
   const 启动APP扫码 = useCallback(async () => {
     if (已取消Ref.current || 扫描中Ref.current) return;
     扫描中Ref.current = true;
@@ -60,24 +61,45 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     set模式("启动中");
 
     try {
-      const { barcodes } = await BarcodeScanner.scan({ formats: APP条码格式 });
-      if (已取消Ref.current || 已处理Ref.current) return;
-
-      if (barcodes && barcodes.length > 0) {
-        const code = barcodes[0].rawValue || barcodes[0].displayValue || "";
-        if (code) {
-          已处理Ref.current = true;
-          set识别码(code);
-          set模式("识别成功");
-          onScanRef.current(code);
-          onCloseRef.current();
-          return;
-        }
+      /* 请求相机权限 */
+      const perm = await BarcodeScanner.requestPermissions();
+      if (perm.camera !== 'granted') {
+        set错误信息("需要相机权限才能扫码");
+        set模式("错误");
+        return;
       }
 
-      /* 扫描完成但没识别到条码 */
-      set错误信息("未能识别条码，请重试或手动输入");
-      set模式("错误");
+      /* 启动原生相机扫描 */
+      await BarcodeScanner.startScan({ formats: APP条码格式, lensFacing: 'BACK' });
+
+      /* 监听扫描结果 */
+      const listener = await BarcodeScanner.addListener('barcodesScanned', async (event) => {
+        if (已取消Ref.current || 已处理Ref.current) return;
+        const barcodes = event.barcodes;
+        if (barcodes && barcodes.length > 0) {
+          const code = barcodes[0].rawValue || barcodes[0].displayValue || '';
+          if (code) {
+            已处理Ref.current = true;
+            await BarcodeScanner.stopScan();
+            listener.remove();
+            监听器Ref.current = null;
+            set识别码(code);
+            set模式("识别成功");
+            onScanRef.current(code);
+            onCloseRef.current();
+          }
+        }
+      });
+      监听器Ref.current = listener;
+
+      /* 监听扫描错误 */
+      const errorListener = await BarcodeScanner.addListener('scanError', async (event) => {
+        if (已取消Ref.current || 已处理Ref.current) return;
+        await BarcodeScanner.stopScan();
+        errorListener.remove();
+        set错误信息("扫描失败: " + event.message);
+        set模式("错误");
+      });
     } catch (err: unknown) {
       if (已取消Ref.current) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -85,10 +107,6 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
       if (msg.includes("cancel") || msg.includes("canceled") || msg.includes("denied")) {
         set错误信息("扫描已取消，可手动输入条码");
         set模式("错误");
-      } else if (msg.includes("unavailable") || msg.includes("Google Play") || msg.includes("module")) {
-        /* 设备不支持 Google Barcode Scanner，fallback 到拍照 */
-        set错误信息("当前设备不支持自动扫描，已切换到拍照识别");
-        set模式("拍照");
       } else {
         set错误信息("扫描失败: " + msg);
         set模式("错误");
@@ -154,7 +172,12 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     已取消Ref.current = false;
 
     if (!open) {
-      /* 关闭弹窗：重置所有状态 */
+      /* 关闭弹窗：停止扫描并释放资源 */
+      if (监听器Ref.current) {
+        监听器Ref.current.remove();
+        监听器Ref.current = null;
+      }
+      void BarcodeScanner.stopScan().catch(() => {});
       set识别码(null);
       set错误信息(null);
       set模式("扫描中");
@@ -197,6 +220,12 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     已处理Ref.current = false;
 
     if (是App) {
+      /* 先停止之前的扫描 */
+      if (监听器Ref.current) {
+        监听器Ref.current.remove();
+        监听器Ref.current = null;
+      }
+      await BarcodeScanner.stopScan().catch(() => {});
       await 启动APP扫码();
     } else {
       /* 浏览器：通过改变 key 强制 BrowserScanner 重新挂载 */
