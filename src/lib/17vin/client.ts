@@ -115,7 +115,7 @@ export async function vin17SearchPartNumber(
   });
 }
 
-/* ==================== POST 请求辅助函数（用于 OCR 接口） ==================== */
+/* ==================== POST 请求封装（OCR 等需要 POST 的接口） ==================== */
 
 async function vin17PostRequest(params: Record<string, string>): Promise<unknown> {
   if (!USERNAME) {
@@ -125,28 +125,16 @@ async function vin17PostRequest(params: Record<string, string>): Promise<unknown
   const 接口类型 = params.action || "unknown";
 
   /*
-   * POST 请求的 token 计算：
-   * 虽然服务端错误提示说 url_parameters: /，但实际验证时可能用的是包含 body 参数的字符串。
-   * 原来的代码用 /?rawQuery 计算 token，在浏览器中能识别，说明这是对的。
+   * POST 请求 token 计算：17VIN 服务端只用 path "/" 验证，body 参数不参与 token。
+   * 错误提示明确说明 url_parameters 为 "/"，故 token 计算只传 "/"。
    */
-  const rawQuery = Object.entries(params)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("&");
-  const urlParameters = "/?" + rawQuery;
-  const token = getToken(urlParameters);
+  const token = getToken("/");
 
-  /*
-   * 手动构建 body，避免 URLSearchParams 对已经是 URL 编码过的值再次编码。
-   * base64_urlencode_imagestring 的值已经是 encodeURIComponent(base64) 的结果，
-   * 如果再经过 URLSearchParams.append() 会双重编码，导致 17VIN 无法正确解码图片。
-   */
-  const bodyParts: string[] = [];
-  Object.entries(params).forEach(([k, v]) => {
-    bodyParts.push(`${encodeURIComponent(k)}=${v}`);
-  });
-  bodyParts.push(`${encodeURIComponent("user")}=${USERNAME}`);
-  bodyParts.push(`${encodeURIComponent("token")}=${token}`);
-  const body = bodyParts.join("&");
+  /* POST body：直接拼接，不再二次编码（params 值已是 encodeURIComponent 后的） */
+  const bodyEntries = Object.entries(params);
+  bodyEntries.push(["user", USERNAME]);
+  bodyEntries.push(["token", token]);
+  const bodyString = bodyEntries.map(([k, v]) => `${k}=${v}`).join("&");
 
   const res = await fetch(`${BASE_URL}/`, {
     method: "POST",
@@ -154,7 +142,7 @@ async function vin17PostRequest(params: Record<string, string>): Promise<unknown
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
     },
-    body,
+    body: bodyString,
   });
 
   if (!res.ok) {
@@ -168,6 +156,8 @@ async function vin17PostRequest(params: Record<string, string>): Promise<unknown
 
   return data;
 }
+
+/* ==================== OCR 接口（需 POST 提交） ==================== */
 
 /* OCR 识别 VIN（仅返回 VIN 字符串） */
 export async function vin17OcrImage(base64UrlencodeImage: string) {
