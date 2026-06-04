@@ -1,6 +1,6 @@
 {
   "node": {
-    "40fdeb5e70cf8287520f9e23177ee4c12306ea4d78": {
+    "4092f01e8c2775ab7d353bba74812b3ed80141faa6": {
       "workers": {
         "app/knowledge/page": {
           "moduleId": 26000,
@@ -12,7 +12,7 @@
       "exportedName": "解析Word文档",
       "filename": "src/app/knowledge/actions.ts"
     },
-    "401056faa6bda33e65283738f4ffbeabe50f19e630": {
+    "40b3458315bf6ec5675b2c4a048c99dc1c73579df0": {
       "workers": {
         "app/knowledge/page": {
           "moduleId": 26000,

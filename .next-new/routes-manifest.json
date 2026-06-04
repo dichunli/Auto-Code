@@ -458,6 +458,12 @@
       "namedRegex": "^/api/proxy\\-image(?:/)?$"
     },
     {
+      "page": "/api/test-vin17-ocr",
+      "regex": "^/api/test\\-vin17\\-ocr(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/test\\-vin17\\-ocr(?:/)?$"
+    },
+    {
       "page": "/api/upload",
       "regex": "^/api/upload(?:/)?$",
       "routeKeys": {},

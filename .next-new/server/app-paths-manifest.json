@@ -6,6 +6,7 @@
   "/api/employees/route": "app/api/employees/route.js",
   "/api/media/[...path]/route": "app/api/media/[...path]/route.js",
   "/api/proxy-image/route": "app/api/proxy-image/route.js",
+  "/api/test-vin17-ocr/route": "app/api/test-vin17-ocr/route.js",
   "/api/upload/route": "app/api/upload/route.js",
   "/appointments/[id]/page": "app/appointments/[id]/page.js",
   "/appointments/new/page": "app/appointments/new/page.js",

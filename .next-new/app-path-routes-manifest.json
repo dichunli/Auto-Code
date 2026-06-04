@@ -6,6 +6,7 @@
   "/api/employees/route": "/api/employees",
   "/api/media/[...path]/route": "/api/media/[...path]",
   "/api/proxy-image/route": "/api/proxy-image",
+  "/api/test-vin17-ocr/route": "/api/test-vin17-ocr",
   "/api/upload/route": "/api/upload",
   "/appointments/[id]/page": "/appointments/[id]",
   "/appointments/new/page": "/appointments/new",

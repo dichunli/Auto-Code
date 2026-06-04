@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
-import { vin17OcrImage, vin17DecodeVin } from "@/lib/17vin/client";
+import { vin17DecodeVin } from "@/lib/17vin/client";
 import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { VinDecodeResult } from "./VinDecodeInput";
@@ -76,20 +76,35 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     try {
       const base64Body = base64.split(",")[1] || "";
       const base64Urlencode = encodeURIComponent(base64Body);
-      const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
-        code: number;
-        msg?: string;
-        data?: {
-          vin?: string;
-          VIN?: string;
-          Vin?: string;
-          vin_no?: string;
-          vin_code?: string;
-          vehicle?: { vin?: string; VIN?: string };
-          vehicle_info?: { vin?: string };
-          ocr_result?: { vin?: string };
+
+      /* 通过API路由调用OCR，避免Server Action参数过大问题 */
+      const ocrResponse = await fetch("/api/vin-ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ base64UrlencodeImage: base64Urlencode }),
+      });
+      const ocrData = (await ocrResponse.json()) as {
+        success: boolean;
+        result?: {
+          code: number;
+          msg?: string;
+          data?: {
+            vin?: string;
+            VIN?: string;
+            Vin?: string;
+            vin_no?: string;
+            vin_code?: string;
+            vehicle?: { vin?: string; VIN?: string };
+            vehicle_info?: { vin?: string };
+            ocr_result?: { vin?: string };
+          };
         };
+        error?: string;
       };
+      if (!ocrData.success || !ocrData.result) {
+        throw new Error(ocrData.error || "OCR 请求失败");
+      }
+      const ocrRes = ocrData.result;
 
       if (ocrRes.code !== 1) {
         throw new Error(ocrRes.msg || "未能识别出 VIN 码，请重试或手动输入");
@@ -194,14 +209,15 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     try {
       set模式("拍照");
       const image = await Camera.getPhoto({
-        quality: 85,
+        quality: 60,
         allowEditing: false,
         resultType: CameraResultType.Base64,
         source: CameraSource.Camera,
+        /* 限制输出尺寸，避免base64过大导致传输问题 */
+        width: 1280,
       });
       if (image.base64String) {
         const base64 = `data:image/jpeg;base64,${image.base64String}`;
-        /* 发送完整图片给 17VIN OCR，不裁剪 */
         setPreviewImage(base64);
         set模式("预览");
         await doOcr(base64);
@@ -216,7 +232,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       setErrorMsg("相机调用失败: " + msg);
       set模式("拍照");
     }
-  }, [doOcr, onClose, 裁剪图片]);
+  }, [doOcr, onClose]);
 
   /* ========== 浏览器文件选择 ========== */
   const 处理文件选择 = useCallback(
