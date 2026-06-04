@@ -130,14 +130,17 @@ async function vin17OcrRequest(action: string, base64UrlencodeImage: string): Pr
 
   const 接口类型 = action;
 
-  /* token 计算：包含所有业务参数（不含 user 和 token） */
+  /*
+   * token 计算：包含所有业务参数（不含 user 和 token）
+   * 注意：base64UrlencodeImage 的值已经是 encodeURIComponent(base64Body) 的结果，
+   * 这里直接拼接，不再二次编码。
+   */
   const rawQuery = `action=${action}&base64_urlencode_imagestring=${base64UrlencodeImage}`;
   const urlParameters = "/?" + rawQuery;
   const token = getToken(urlParameters);
 
-  /* 实际请求 URL：参数需要 URL 编码 */
-  const encodedQuery = `action=${encodeURIComponent(action)}&base64_urlencode_imagestring=${encodeURIComponent(base64UrlencodeImage)}`;
-  const fullUrl = `${BASE_URL}/?${encodedQuery}&user=${encodeURIComponent(USERNAME)}&token=${token}`;
+  /* 实际请求 URL：base64UrlencodeImage 已是 URL 编码后的值，不再二次编码 */
+  const fullUrl = `${BASE_URL}/?${rawQuery}&user=${encodeURIComponent(USERNAME)}&token=${token}`;
 
   const res = await fetch(fullUrl, {
     method: "GET",
