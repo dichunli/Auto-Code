@@ -63,23 +63,29 @@ export default function VinTestPage() {
           };
         };
 
-        /* 显示完整的17VIN返回数据 */
-        const detectedVin =
-          ocrRes.data?.vin ||
-          ocrRes.data?.VIN ||
-          ocrRes.data?.Vin ||
-          ocrRes.data?.vin_no ||
-          ocrRes.data?.vin_code ||
-          ocrRes.data?.vehicle?.vin ||
-          ocrRes.data?.vehicle?.VIN ||
-          ocrRes.data?.vehicle_info?.vin ||
-          ocrRes.data?.ocr_result?.vin ||
-          "";
+        /* 17VIN返回的data可能是字符串也可能是对象 */
+        let detectedVin = "";
+        if (typeof ocrRes.data === "string") {
+          detectedVin = ocrRes.data;
+        } else if (ocrRes.data && typeof ocrRes.data === "object") {
+          const d = ocrRes.data as Record<string, unknown>;
+          detectedVin =
+            (d.vin as string) ||
+            (d.VIN as string) ||
+            (d.Vin as string) ||
+            (d.vin_no as string) ||
+            (d.vin_code as string) ||
+            (d.vehicle as { vin?: string; VIN?: string })?.vin ||
+            (d.vehicle as { vin?: string; VIN?: string })?.VIN ||
+            (d.vehicle_info as { vin?: string })?.vin ||
+            (d.ocr_result as { vin?: string })?.vin ||
+            "";
+        }
 
         setResult({
           success: ocrRes.code === 1,
           vin: detectedVin || undefined,
-          msg: ocrRes.msg || undefined,
+          msg: ocrRes.code !== 1 ? (ocrRes.msg || undefined) : undefined,
           imageSize: originalSize,
           rawData: JSON.stringify(ocrRes, null, 2),
         });
