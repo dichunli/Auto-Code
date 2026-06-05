@@ -75,14 +75,11 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setDecoding(false);
 
     try {
-      const base64Body = base64.split(",")[1] || "";
-      const base64Urlencode = encodeURIComponent(base64Body);
-
-      /* 通过API路由调用OCR，避免Server Action参数过大问题 */
+      /* 传原始base64，API内部用sharp压缩 */
       const ocrResponse = await fetch("/api/vin-ocr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ base64UrlencodeImage: base64Urlencode }),
+        body: JSON.stringify({ base64Image: base64 }),
       });
       const ocrData = (await ocrResponse.json()) as {
         success: boolean;

@@ -470,6 +470,12 @@
       "namedRegex": "^/api/upload(?:/)?$"
     },
     {
+      "page": "/api/vin-ocr",
+      "regex": "^/api/vin\\-ocr(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/vin\\-ocr(?:/)?$"
+    },
+    {
       "page": "/appointments",
       "regex": "^/appointments(?:/)?$",
       "routeKeys": {},
@@ -804,6 +810,12 @@
       "regex": "^/m/reception/new(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/m/reception/new(?:/)?$"
+    },
+    {
+      "page": "/m/test",
+      "regex": "^/m/test(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/m/test(?:/)?$"
     },
     {
       "page": "/mechanic-levels",

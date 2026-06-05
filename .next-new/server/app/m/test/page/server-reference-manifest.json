@@ -1,0 +1,17 @@
+{
+  "node": {
+    "40c59299ab0a689f170ac9ebe180c178570a006645": {
+      "workers": {
+        "app/m/test/page": {
+          "moduleId": 23102,
+          "async": false,
+          "exportedName": "vin17DecodeVin",
+          "filename": "src/lib/17vin/client.ts"
+        }
+      },
+      "exportedName": "vin17DecodeVin",
+      "filename": "src/lib/17vin/client.ts"
+    }
+  },
+  "edge": {}
+}
