@@ -69,6 +69,13 @@ const MENU_ITEMS: MenuItem[] = [
     desc: "维修指导、常见问题、资料查阅",
     color: "bg-cyan-500",
   },
+  {
+    label: "功能测试",
+    href: "/m/test",
+    permission: "work_order:create",
+    desc: "VIN识别、扫码等功能测试",
+    color: "bg-gray-500",
+  },
 ];
 
 function 是APP环境(userAgent: string): boolean {
