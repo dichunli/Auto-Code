@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { vin17DecodeVin } from "@/lib/17vin/client";
 import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
@@ -373,7 +374,34 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setDecoding(false);
 
     if (是App) {
-      /* APP：不自动触发，等待用户点击"点击拍照"按钮 */
+      /* APP：延迟300ms后自动打开原生相机，静默识别 */
+      const timer = setTimeout(() => {
+        void (async () => {
+          try {
+            const image = await Camera.getPhoto({
+              quality: 60,
+              allowEditing: false,
+              resultType: CameraResultType.Base64,
+              source: CameraSource.Camera,
+              width: 1280,
+            });
+            if (image.base64String) {
+              const base64 = `data:image/jpeg;base64,${image.base64String}`;
+              await doOcr(base64);
+            } else {
+              onClose();
+            }
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User cancelled")) {
+              onClose();
+              return;
+            }
+            setErrorMsg("相机调用失败: " + msg);
+          }
+        })();
+      }, 300);
+      return () => clearTimeout(timer);
     } else {
       /* 浏览器：尝试实时摄像头 */
       set模式("实时");
@@ -416,73 +444,59 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     }
   }, [是App, 启动实时摄像头]);
 
-  /* APP端：显示极简触发界面，用户点击后同步触发文件选择 */
+  /* APP端：只渲染错误弹窗，相机调用在主useEffect中处理 */
   if (是App) {
+    if (!open || !errorMsg) return null;
     return (
-      <>
-        {/* 隐藏的input，用于触发系统相机 */}
-        <input
-          ref={文件输入Ref}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={处理App文件选择}
-          className="hidden"
-        />
-        {/* 弹窗打开时显示拍照触发界面 */}
-        {open && !errorMsg && (
-          <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center px-6"
-003e
-            <div className="bg-white rounded-xl p-6 max-w-sm w-full text-center space-y-5"
-003e
-              <div className="text-base font-medium text-gray-900">VIN 拍照识别</div>
-              <div className="text-sm text-gray-500">
-                点击下方按钮打开相机，对准挡风玻璃上的 VIN 码拍照
-              </div>
-              <button
-                type="button"
-                onClick={() => 文件输入Ref.current?.click()}
-                className="w-full px-6 py-3 rounded-lg bg-blue-600 text-white text-sm font-medium active:bg-blue-700"
-              >
-                点击拍照
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full px-6 py-2 text-sm text-gray-500 active:text-gray-700"
-              >
-                取消
-              </button>
-            </div>
+      <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center px-6">
+        <div className="bg-white rounded-xl p-6 max-w-sm w-full text-center space-y-4">
+          <div className="text-sm text-red-500">{errorMsg}</div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setErrorMsg(null);
+                setTimeout(() => {
+                  void (async () => {
+                    try {
+                      const image = await Camera.getPhoto({
+                        quality: 60,
+                        allowEditing: false,
+                        resultType: CameraResultType.Base64,
+                        source: CameraSource.Camera,
+                        width: 1280,
+                      });
+                      if (image.base64String) {
+                        const base64 = `data:image/jpeg;base64,${image.base64String}`;
+                        await doOcr(base64);
+                      } else {
+                        onClose();
+                      }
+                    } catch (err: unknown) {
+                      const msg = err instanceof Error ? err.message : String(err);
+                      if (msg.includes("cancel") || msg.includes("denied")) {
+                        onClose();
+                        return;
+                      }
+                      setErrorMsg("相机调用失败: " + msg);
+                    }
+                  })();
+                }, 100);
+              }}
+              className="flex-1 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium active:bg-gray-200"
+            >
+              重试
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium active:bg-blue-700"
+            >
+              取消
+            </button>
           </div>
-        )}
-        {/* 出错时显示错误弹窗 */}
-        {open && errorMsg && (
-          <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center px-6"
-003e
-            <div className="bg-white rounded-xl p-6 max-w-sm w-full text-center space-y-4"
-003e
-              <div className="text-sm text-red-500">{errorMsg}</div>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={handleRetake}
-                  className="flex-1 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium active:bg-gray-200"
-                >
-                  重试
-                </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium active:bg-blue-700"
-                >
-                  取消
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </>
+        </div>
+      </div>
     );
   }
 
