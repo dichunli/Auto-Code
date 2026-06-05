@@ -11,7 +11,7 @@ export default function VinTestPage() {
     msg?: string;
     error?: string;
     imageSize?: number;
-    urlLength?: number;
+    rawData?: string;
   } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,31 +63,26 @@ export default function VinTestPage() {
           };
         };
 
-        if (ocrRes.code === 1) {
-          const detectedVin =
-            ocrRes.data?.vin ||
-            ocrRes.data?.VIN ||
-            ocrRes.data?.Vin ||
-            ocrRes.data?.vin_no ||
-            ocrRes.data?.vin_code ||
-            ocrRes.data?.vehicle?.vin ||
-            ocrRes.data?.vehicle?.VIN ||
-            ocrRes.data?.vehicle_info?.vin ||
-            ocrRes.data?.ocr_result?.vin ||
-            "";
+        /* 显示完整的17VIN返回数据 */
+        const detectedVin =
+          ocrRes.data?.vin ||
+          ocrRes.data?.VIN ||
+          ocrRes.data?.Vin ||
+          ocrRes.data?.vin_no ||
+          ocrRes.data?.vin_code ||
+          ocrRes.data?.vehicle?.vin ||
+          ocrRes.data?.vehicle?.VIN ||
+          ocrRes.data?.vehicle_info?.vin ||
+          ocrRes.data?.ocr_result?.vin ||
+          "";
 
-          setResult({
-            success: true,
-            vin: detectedVin,
-            imageSize: originalSize,
-          });
-        } else {
-          setResult({
-            success: false,
-            msg: ocrRes.msg || "识别失败",
-            imageSize: originalSize,
-          });
-        }
+        setResult({
+          success: ocrRes.code === 1,
+          vin: detectedVin || undefined,
+          msg: ocrRes.msg || undefined,
+          imageSize: originalSize,
+          rawData: JSON.stringify(ocrRes, null, 2),
+        });
       } else {
         setResult({
           success: false,
@@ -190,6 +185,15 @@ export default function VinTestPage() {
               <div className="flex items-center gap-2">
                 <span className="text-gray-500 w-24">错误信息：</span>
                 <span className="text-red-500">{result.error}</span>
+              </div>
+            )}
+
+            {result.rawData && (
+              <div className="mt-4">
+                <div className="text-gray-500 text-sm mb-1">17VIN 原始返回数据：</div>
+                <pre className="bg-gray-50 rounded-lg p-3 text-xs text-gray-700 overflow-auto max-h-60">
+                  {result.rawData}
+                </pre>
               </div>
             )}
           </div>
