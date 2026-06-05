@@ -373,10 +373,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setDecoding(false);
 
     if (是App) {
-      /* APP：触发隐藏的文件输入框，弹出系统相机/相册选择 */
-      setTimeout(() => {
-        文件输入Ref.current?.click();
-      }, 100);
+      /* APP：不自动触发，等待用户点击"点击拍照"按钮 */
     } else {
       /* 浏览器：尝试实时摄像头 */
       set模式("实时");
@@ -419,7 +416,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     }
   }, [是App, 启动实时摄像头]);
 
-  /* APP端：弹窗不渲染UI，只保留隐藏文件输入框 */
+  /* APP端：显示极简触发界面，用户点击后同步触发文件选择 */
   if (是App) {
     return (
       <>
@@ -432,11 +429,40 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
           onChange={处理App文件选择}
           className="hidden"
         />
-        {/* 出错时显示极简弹窗 */}
+        {/* 弹窗打开时显示拍照触发界面 */}
+        {open && !errorMsg && (
+          <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center px-6"
+003e
+            <div className="bg-white rounded-xl p-6 max-w-sm w-full text-center space-y-5"
+003e
+              <div className="text-base font-medium text-gray-900">VIN 拍照识别</div>
+              <div className="text-sm text-gray-500">
+                点击下方按钮打开相机，对准挡风玻璃上的 VIN 码拍照
+              </div>
+              <button
+                type="button"
+                onClick={() => 文件输入Ref.current?.click()}
+                className="w-full px-6 py-3 rounded-lg bg-blue-600 text-white text-sm font-medium active:bg-blue-700"
+              >
+                点击拍照
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full px-6 py-2 text-sm text-gray-500 active:text-gray-700"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+        {/* 出错时显示错误弹窗 */}
         {open && errorMsg && (
-          <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center px-6">
-            <div className="bg-white rounded-xl p-6 max-w-sm w-full text-center space-y-4">
-              <div className="text-sm text-gray-700">{errorMsg}</div>
+          <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center px-6"
+003e
+            <div className="bg-white rounded-xl p-6 max-w-sm w-full text-center space-y-4"
+003e
+              <div className="text-sm text-red-500">{errorMsg}</div>
               <div className="flex gap-3">
                 <button
                   type="button"
