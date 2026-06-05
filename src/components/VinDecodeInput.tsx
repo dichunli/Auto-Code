@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
-import { vin17OcrImage, vin17DecodeVin } from "@/lib/17vin/client";
+import { vin17DecodeVin } from "@/lib/17vin/client";
 import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import VinKeyboard from "./VinKeyboard";
@@ -131,63 +131,55 @@ export default function VinDecodeInput({
     }
   }
 
-  /* 处理 base64 图片：压缩、OCR 识别、解码车型 */
-  async function processBase64Image(base64: string) {
-    setPreviewImage(base64);
-    setPreviewOpen(true);
-    setOcrLoading(true);
-    setRecognizedVin(null);
-    setDecodeResult(null);
-    setQueryingModel(false);
+  /* 调用 API 路由进行 OCR 识别 */
+  async function callOcrApi(base64: string): Promise<{
+    detectedVin: string;
+    decodeResult: VinDecodeResult | null;
+  }> {
+    const res = await fetch("/api/vin-ocr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base64Image: base64 }),
+    });
+    const data = await res.json();
 
-    const base64Body = base64.split(",")[1] || "";
-    const base64Urlencode = encodeURIComponent(base64Body);
+    if (!data.success) {
+      throw new Error(data.error || "识别失败");
+    }
 
-    /* 第1步：只 OCR 识别 VIN */
-    const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
+    const ocrRes = data.result as {
       code: number;
       msg?: string;
-      data?: {
-        vin?: string; VIN?: string; Vin?: string;
-        vin_no?: string; vin_code?: string;
-        vehicle?: { vin?: string; VIN?: string };
-        vehicle_info?: { vin?: string };
-        ocr_result?: { vin?: string };
-      };
+      data?: string | Record<string, unknown>;
     };
 
     if (ocrRes.code !== 1) {
-      alert(ocrRes.msg || "未能识别出 VIN 码，请尝试手动输入");
-      setOcrLoading(false);
-      return;
+      throw new Error(ocrRes.msg || "未能识别出 VIN 码");
     }
 
-    const detectedVin =
-      ocrRes.data?.vin ||
-      ocrRes.data?.VIN ||
-      ocrRes.data?.Vin ||
-      ocrRes.data?.vin_no ||
-      ocrRes.data?.vin_code ||
-      ocrRes.data?.vehicle?.vin ||
-      ocrRes.data?.vehicle?.VIN ||
-      ocrRes.data?.vehicle_info?.vin ||
-      ocrRes.data?.ocr_result?.vin ||
-      "";
+    /* 处理 data 是字符串或对象的情况 */
+    let detectedVin = "";
+    if (typeof ocrRes.data === "string") {
+      detectedVin = ocrRes.data;
+    } else if (ocrRes.data && typeof ocrRes.data === "object") {
+      const d = ocrRes.data as Record<string, unknown>;
+      detectedVin =
+        (d.vin as string) ||
+        (d.VIN as string) ||
+        (d.Vin as string) ||
+        (d.vin_no as string) ||
+        (d.vin_code as string) ||
+        "";
+    }
 
     if (!detectedVin) {
-      alert("图片中未检测到 VIN 码，请尝试手动输入");
-      setOcrLoading(false);
-      return;
+      throw new Error("图片中未检测到 VIN 码");
     }
 
-    const upperVin = detectedVin.toUpperCase();
-    setRecognizedVin(upperVin);
-    setOcrLoading(false);
-
-    /* 第2步：异步解码车型（不阻塞用户看到 VIN） */
-    setQueryingModel(true);
+    /* 解码车型 */
+    let decodeResult: VinDecodeResult | null = null;
     try {
-      const decodeRes = (await vin17DecodeVin(upperVin)) as {
+      const decodeRes = (await vin17DecodeVin(detectedVin.toUpperCase())) as {
         code: number;
         data?: {
           model_list?: Array<{
@@ -210,7 +202,7 @@ export default function VinDecodeInput({
 
       if (decodeRes.code === 1 && decodeRes.data?.model_list?.[0]) {
         const m = decodeRes.data.model_list[0];
-        setDecodeResult({
+        decodeResult = {
           brand: m.Brand || m.brand || "",
           series: m.Series || m.series || "",
           model: m.Model || m.model || "",
@@ -223,12 +215,45 @@ export default function VinDecodeInput({
           drivingMode: m.Driving_mode || m.driving_mode || "",
           factory: m.Factory || m.factory || "",
           modelId: m.Id || m.id || undefined,
-        });
+        };
       }
     } catch {
-      /* 解码失败不影响，用户已有 VIN */
+      /* 解码失败不影响 */
+    }
+
+    return { detectedVin, decodeResult };
+  }
+
+  /* 浏览器环境：显示识别过程 */
+  async function processBase64Image(base64: string) {
+    setPreviewImage(base64);
+    setPreviewOpen(true);
+    setOcrLoading(true);
+    setRecognizedVin(null);
+    setDecodeResult(null);
+    setQueryingModel(false);
+
+    try {
+      const { detectedVin, decodeResult } = await callOcrApi(base64);
+      setRecognizedVin(detectedVin.toUpperCase());
+      if (decodeResult) setDecodeResult(decodeResult);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "识别失败");
     } finally {
-      setQueryingModel(false);
+      setOcrLoading(false);
+    }
+  }
+
+  /* APP环境：静默识别，不显示过程 */
+  async function processBase64ImageSilent(base64: string) {
+    try {
+      const { detectedVin, decodeResult } = await callOcrApi(base64);
+      const upperVin = detectedVin.toUpperCase();
+      onChange(upperVin);
+      if (decodeResult) onDecode(decodeResult);
+      alert(`识别成功: ${upperVin}\n${decodeResult?.brand || ""} ${decodeResult?.series || ""} ${decodeResult?.model || ""}`);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "识别失败");
     }
   }
 
@@ -262,19 +287,21 @@ export default function VinDecodeInput({
     }
   }
 
-  /* APP 环境：调用原生相机拍照识别 */
+  /* APP 环境：调用原生相机拍照，静默识别（不显示过程） */
   async function APP拍照识别() {
     if (ocrLoading) return;
     try {
       const image = await Camera.getPhoto({
-        quality: 85,
+        quality: 60,
         allowEditing: false,
         resultType: CameraResultType.Base64,
         source: CameraSource.Camera,
+        width: 1280,
       });
       if (image.base64String) {
         const base64 = `data:image/jpeg;base64,${image.base64String}`;
-        await processBase64Image(base64);
+        /* APP端静默识别，不显示预览弹窗 */
+        await processBase64ImageSilent(base64);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
