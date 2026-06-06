@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 扫码界面主色调 -->
+    <color name="barcode_scan_green">#4ADE80</color>
+    <color name="barcode_scan_green_light">#86EFAC</color>
+    <color name="barcode_scan_mask">#B3000000</color>
+    <color name="barcode_scan_control_bg">#CC000000</color>
+    <color name="barcode_scan_white">#FFFFFF</color>
+</resources>

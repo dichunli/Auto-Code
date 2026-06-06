@@ -5,6 +5,7 @@ import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { vin17DecodeVin } from "@/lib/17vin/client";
 import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { 启动原生VIN拍照 } from "@/lib/androidVinCapture";
 import { VinDecodeResult } from "./VinDecodeInput";
 
 interface Props {
@@ -378,34 +379,25 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setDecoding(false);
 
     if (是App) {
-      /* APP：延迟300ms后自动打开原生相机，静默识别 */
-      const timer = setTimeout(() => {
-        void (async () => {
-          try {
-            const image = await Camera.getPhoto({
-              quality: 60,
-              allowEditing: false,
-              resultType: CameraResultType.Base64,
-              source: CameraSource.Camera,
-              width: 1280,
-            });
-            if (image.base64String) {
-              const base64 = `data:image/jpeg;base64,${image.base64String}`;
-              await doOcr(base64);
-            } else {
-              onClose();
-            }
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User cancelled")) {
-              onClose();
-              return;
-            }
-            setErrorMsg("相机调用失败: " + msg);
+      /* APP：启动原生 VIN 拍照 Activity（支持手电筒） */
+      void (async () => {
+        try {
+          const 结果 = await 启动原生VIN拍照();
+          if (已取消Ref.current) return;
+
+          if (结果.image) {
+            const base64 = `data:image/jpeg;base64,${结果.image}`;
+            await doOcr(base64);
+          } else if (结果.cancelled) {
+            onClose();
+          } else {
+            setErrorMsg(结果.error || "拍照失败");
           }
-        })();
-      }, 300);
-      return () => clearTimeout(timer);
+        } catch (err: unknown) {
+          if (已取消Ref.current) return;
+          setErrorMsg(err instanceof Error ? err.message : "拍照失败");
+        }
+      })();
     } else {
       /* 浏览器：尝试实时摄像头 */
       set模式("实时");
@@ -438,15 +430,30 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     set手动输入Vin("");
 
     if (是App) {
-      /* APP：重新触发文件选择 */
-      setTimeout(() => {
-        文件输入Ref.current?.click();
-      }, 100);
+      /* APP：重新启动原生 VIN 拍照 */
+      void (async () => {
+        try {
+          const 结果 = await 启动原生VIN拍照();
+          if (已取消Ref.current) return;
+
+          if (结果.image) {
+            const base64 = `data:image/jpeg;base64,${结果.image}`;
+            await doOcr(base64);
+          } else if (结果.cancelled) {
+            onClose();
+          } else {
+            setErrorMsg(结果.error || "拍照失败");
+          }
+        } catch (err: unknown) {
+          if (已取消Ref.current) return;
+          setErrorMsg(err instanceof Error ? err.message : "拍照失败");
+        }
+      })();
     } else {
       set模式("实时");
       启动实时摄像头();
     }
-  }, [是App, 启动实时摄像头]);
+  }, [是App, doOcr, onClose, 启动实时摄像头]);
 
   /* APP端：只渲染错误弹窗，相机调用在主useEffect中处理 */
   if (是App) {
@@ -460,32 +467,23 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
               type="button"
               onClick={() => {
                 setErrorMsg(null);
-                setTimeout(() => {
-                  void (async () => {
-                    try {
-                      const image = await Camera.getPhoto({
-                        quality: 60,
-                        allowEditing: false,
-                        resultType: CameraResultType.Base64,
-                        source: CameraSource.Camera,
-                        width: 1280,
-                      });
-                      if (image.base64String) {
-                        const base64 = `data:image/jpeg;base64,${image.base64String}`;
-                        await doOcr(base64);
-                      } else {
-                        onClose();
-                      }
-                    } catch (err: unknown) {
-                      const msg = err instanceof Error ? err.message : String(err);
-                      if (msg.includes("cancel") || msg.includes("denied")) {
-                        onClose();
-                        return;
-                      }
-                      setErrorMsg("相机调用失败: " + msg);
+                void (async () => {
+                  try {
+                    const 结果 = await 启动原生VIN拍照();
+                    if (已取消Ref.current) return;
+                    if (结果.image) {
+                      const base64 = `data:image/jpeg;base64,${结果.image}`;
+                      await doOcr(base64);
+                    } else if (结果.cancelled) {
+                      onClose();
+                    } else {
+                      setErrorMsg(结果.error || "拍照失败");
                     }
-                  })();
-                }, 100);
+                  } catch (err: unknown) {
+                    if (已取消Ref.current) return;
+                    setErrorMsg(err instanceof Error ? err.message : "拍照失败");
+                  }
+                })();
               }}
               className="flex-1 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium active:bg-gray-200"
             >

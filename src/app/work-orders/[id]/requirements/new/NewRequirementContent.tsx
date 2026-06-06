@@ -980,7 +980,17 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       router.push(`/work-orders/${orderId}`);
       router.refresh();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      let msg = "未知错误";
+      if (err instanceof Error) {
+        msg = err.message;
+      } else if (err && typeof err === "object" && "message" in err) {
+        msg = String((err as Record<string, unknown>).message);
+      } else if (err && typeof err === "object" && "error" in err) {
+        msg = String((err as Record<string, unknown>).error);
+      } else {
+        msg = String(err);
+      }
+      console.error("保存需求异常:", err);
       alert("保存失败: " + msg);
       setLoading(false);
     }

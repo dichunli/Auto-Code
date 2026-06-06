@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import { base64转Blob } from "@/lib/imageCompress";
 
 interface 考核记录 {
   id: string;
@@ -84,6 +87,8 @@ export default function BehaviorChecksPage() {
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
+  /* APP环境：存储拍照得到的文件 */
+  const [capturedFile, setCapturedFile] = useState<File | null>(null);
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -191,8 +196,32 @@ export default function BehaviorChecksPage() {
     return urlData.publicUrl;
   }, [supabase]);
 
+  /* APP环境：调用原生相机拍照 */
+  async function handleAppCamera() {
+    try {
+      const photo = await Camera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera,
+      });
+      if (!photo.base64String) {
+        alert("拍照未获取到图片");
+        return;
+      }
+      const base64 = `data:image/jpeg;base64,${photo.base64String}`;
+      const blob = base64转Blob(base64);
+      const file = new File([blob], `camera_${Date.now()}.jpg`, { type: "image/jpeg" });
+      setCapturedFile(file);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
+      alert("拍照失败: " + msg);
+    }
+  }
+
   async function handleComplete(recordId: string) {
-    const file = fileInputRef.current?.files?.[0];
+    const file = 是Capacitor环境() ? capturedFile : fileInputRef.current?.files?.[0];
     if (!file) {
       alert("请先拍照上传");
       return;
@@ -244,6 +273,7 @@ export default function BehaviorChecksPage() {
     } finally {
       setSubmittingId(null);
       setActiveRecordId(null);
+      setCapturedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
@@ -304,17 +334,45 @@ export default function BehaviorChecksPage() {
                   <p className="text-sm text-gray-500">请拍照上传完成任务</p>
                   {activeRecordId === r.id ? (
                     <div className="space-y-3">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                      />
+                      {是Capacitor环境() ? (
+                        /* APP环境：原生相机拍照 */
+                        <div className="space-y-2">
+                          {capturedFile ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-green-600">✓ 已拍照</span>
+                              <button
+                                type="button"
+                                onClick={handleAppCamera}
+                                className="text-sm text-blue-600 hover:text-blue-700"
+                              >
+                                重拍
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleAppCamera}
+                              className="px-4 py-2 text-sm text-white bg-green-600 rounded-lg hover:bg-green-700"
+                            >
+                              拍照
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        /* 浏览器环境：input 文件选择 */
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                      )}
                       <div className="flex gap-2">
                         <button
                           onClick={() => {
                             setActiveRecordId(null);
+                            setCapturedFile(null);
                             if (fileInputRef.current) fileInputRef.current.value = "";
                           }}
                           className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"

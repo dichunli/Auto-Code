@@ -61,24 +61,29 @@ export default function VinDecodeInput({
     setIsMobile(/Mobi|Android|iPhone|iPad|iPod/i.test(ua) || isTouch);
   }, []);
 
-  /* 自动打开相机（接车登记流程：未找到车辆时自动触发 VIN 拍照） */
+  /* 自动打开相机（接车登记流程：未找到车辆时自动触发 VIN 拍照）
+   * 注意：不用 isMobile 做条件，避免时序问题（isMobile 初始 false 可能跳过触发）
+   * APP 环境直接调原生相机；浏览器环境通过 ref 触发 input click */
   useEffect(() => {
-    if (!autoOpenCamera || !isMobile || ocrLoading) return;
+    if (!autoOpenCamera || ocrLoading) return;
     const timer = setTimeout(() => {
       if (是App) {
         void APP拍照识别();
-      } else {
-        mobileInputRef.current?.click();
+      } else if (mobileInputRef.current) {
+        try {
+          mobileInputRef.current.click();
+        } catch {
+          /* 浏览器可能阻止非用户手势的自动点击，静默忽略 */
+        }
       }
     }, 500);
     return () => clearTimeout(timer);
-     
-  }, [autoOpenCamera, isMobile, ocrLoading, 是App]);
+  }, [autoOpenCamera, ocrLoading, 是App]);
 
   async function handleDecode() {
     const vin = value.trim().toUpperCase();
     if (vin.length !== 17) {
-      alert("VIN 码必须为 17 位");
+      alert(`VIN 码必须为 17 位，当前 ${vin.length} 位，请检查是否多输入或少输入字符`);
       return;
     }
     setDecoding(true);

@@ -286,7 +286,7 @@ export default function EditVehiclePage() {
     }
 
     // VIN 唯一性校验（变更时才检查）
-    const trimmedVin = form.标准化VIN(vin);
+    const trimmedVin = 标准化VIN(form.vin);
     if (trimmedVin && trimmedVin !== originalVin.toUpperCase()) {
       const supabaseCheck = createClient();
       const { data: existingVin } = await supabaseCheck

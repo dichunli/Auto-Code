@@ -49,7 +49,7 @@ export default async function KnowledgeDetailPage({
 
   const { data: vehicleLinks } = await supabase
     .from("knowledge_vehicle_links")
-    .select("vehicle_models(id, 品牌, 车系, 车型, 年款)")
+    .select("vehicle_models(id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准)")
     .eq("article_id", id);
 
   return (

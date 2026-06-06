@@ -475,3 +475,158 @@ function blockToDocxElement(
     }
   }
 }
+
+/* ========== VIN同步车型 Server Action ========== */
+
+import { vin17DecodeVin } from "@/lib/17vin/client";
+import { 标准化VIN } from "@/lib/vinValidator";
+
+/**
+ * 知识库通过VIN同步车型
+ * VIN解码后匹配本地车型库，未匹配到则自动创建
+ */
+export async function syncKnowledgeModelsFromVin(rawVin: string): Promise<{
+  success: boolean;
+  matchedModels?: Array<{
+    id: number;
+    厂商: string | null;
+    品牌: string | null;
+    车系: string | null;
+    车型: string | null;
+    销售版本: string | null;
+    年款: number | null;
+    排量: string | null;
+    发动机型号: string | null;
+    燃油类型: string | null;
+    进气形式: string | null;
+    变速箱类型: string | null;
+    变速箱代号: string | null;
+    底盘代号: string | null;
+    驱动方式: string | null;
+    车身类型: string | null;
+    排放标准: string | null;
+  }>;
+  error?: string;
+}> {
+  const supabase = await createClient();
+  const vin = 标准化VIN(rawVin);
+
+  if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) {
+    return { success: false, error: "VIN码必须为17位" };
+  }
+
+  /* VIN解码获取车型信息 */
+  interface VinDecodeModel {
+    Brand?: string;
+    Series?: string;
+    Model?: string;
+    Engine_no?: string;
+    Date_begin?: string;
+    Date_end?: string;
+    Model_year?: string;
+  }
+
+  let vinDecodeModel: VinDecodeModel | null = null;
+
+  try {
+    const decodeRes = (await vin17DecodeVin(vin)) as {
+      code: number;
+      data?: {
+        model_list?: Array<VinDecodeModel>;
+      };
+    };
+    if (decodeRes.code === 1 && decodeRes.data?.model_list?.[0]) {
+      vinDecodeModel = decodeRes.data.model_list[0];
+    }
+  } catch (err: unknown) {
+    return { success: false, error: "VIN解码出错: " + (err instanceof Error ? err.message : String(err)) };
+  }
+
+  if (!vinDecodeModel) {
+    return { success: false, error: "VIN解码失败，未找到车型信息" };
+  }
+
+  /* 匹配本地车型库 */
+  const { data: localModels } = await supabase
+    .from("vehicle_models")
+    .select("id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准");
+
+  const vmBrand = (vinDecodeModel.Brand || "").toLowerCase().trim();
+  const vmSeries = (vinDecodeModel.Series || "").toLowerCase().trim();
+  const vmModel = (vinDecodeModel.Model || "").toLowerCase().trim();
+  const vmEngine = (vinDecodeModel.Engine_no || "").toLowerCase().trim();
+  const yearStr = vinDecodeModel.Model_year || vinDecodeModel.Date_begin || "";
+  const vmYear = yearStr ? parseInt(String(yearStr).slice(0, 4)) : null;
+
+  const matchedModels: Array<{
+    id: number;
+    厂商: string | null;
+    品牌: string | null;
+    车系: string | null;
+    车型: string | null;
+    销售版本: string | null;
+    年款: number | null;
+    排量: string | null;
+    发动机型号: string | null;
+    燃油类型: string | null;
+    进气形式: string | null;
+    变速箱类型: string | null;
+    变速箱代号: string | null;
+    底盘代号: string | null;
+    驱动方式: string | null;
+    车身类型: string | null;
+    排放标准: string | null;
+  }> = [];
+
+  for (const local of localModels || []) {
+    const localBrand = (local.品牌 || "").toLowerCase().trim();
+    const localSeries = (local.车系 || "").toLowerCase().trim();
+    const localModel = (local.车型 || "").toLowerCase().trim();
+    const localYear = local.年款;
+    const localEngine = (local.发动机型号 || "").toLowerCase().trim();
+
+    if (!vmBrand || !localBrand) continue;
+    const brandMatch = localBrand.includes(vmBrand) || vmBrand.includes(localBrand);
+    if (!brandMatch) continue;
+
+    if (vmEngine && localEngine) {
+      const engineMatch = localEngine.includes(vmEngine) || vmEngine.includes(localEngine);
+      if (!engineMatch) continue;
+    } else if (vmSeries && localSeries) {
+      const seriesMatch = localSeries.includes(vmSeries) || vmSeries.includes(localSeries);
+      if (!seriesMatch) continue;
+    } else if (vmModel && localModel) {
+      const modelMatch = localModel.includes(vmModel) || vmModel.includes(localModel);
+      if (!modelMatch) continue;
+    }
+
+    if (vmYear && localYear) {
+      if (vmYear < localYear - 1 || vmYear > localYear + 1) continue;
+    }
+
+    matchedModels.push(local);
+  }
+
+  /* 没有匹配到，自动创建一条车型记录 */
+  if (matchedModels.length === 0 && vmBrand) {
+    const { data: newModel } = await supabase
+      .from("vehicle_models")
+      .insert({
+        品牌: vinDecodeModel.Brand || "",
+        车系: vinDecodeModel.Series || "",
+        车型: vinDecodeModel.Model || "",
+        年款: vmYear || null,
+        发动机型号: vinDecodeModel.Engine_no || "",
+      })
+      .select("id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准")
+      .single();
+    if (newModel) {
+      matchedModels.push(newModel);
+    }
+  }
+
+  return {
+    success: true,
+    matchedModels,
+  };
+}

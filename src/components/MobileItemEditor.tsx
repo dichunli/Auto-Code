@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { compressImage } from "@/lib/imageCompress";
+import { compressImage, base64转Blob } from "@/lib/imageCompress";
+import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import ItemImageUploader from "./ItemImageUploader";
 import { PartPickerModal } from "./PartPickerModal";
 import { OutsourceModal } from "./OutsourceModal";
@@ -1110,6 +1112,30 @@ export default function MobileItemEditor({
 
     setSelectedPartForDetail(null);
     refresh();
+  }
+
+  /* APP环境：调用原生相机拍照 */
+  async function handleAppCamera(branchId: string) {
+    try {
+      const photo = await Camera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera,
+      });
+      if (!photo.base64String) {
+        alert("拍照未获取到图片");
+        return;
+      }
+      const base64 = `data:image/jpeg;base64,${photo.base64String}`;
+      const blob = base64转Blob(base64);
+      const file = new File([blob], `camera_${Date.now()}.jpg`, { type: "image/jpeg" });
+      await uploadPartImage(file, branchId);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
+      alert("拍照失败: " + msg);
+    }
   }
 
   /* 上传配件图片 */
@@ -2781,7 +2807,13 @@ export default function MobileItemEditor({
                     <>
                       <button
                         type="button"
-                        onClick={() => detailFileInputRef.current?.click()}
+                        onClick={() => {
+                          if (是Capacitor环境()) {
+                            void handleAppCamera(activeBranch.id);
+                          } else {
+                            detailFileInputRef.current?.click();
+                          }
+                        }}
                         disabled={loading}
                         className={`inline-flex items-center justify-center w-16 h-16 rounded border border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-50 disabled:pointer-events-none`}
                       >

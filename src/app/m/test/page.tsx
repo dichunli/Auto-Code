@@ -3,6 +3,7 @@
 import { useState } from "react";
 import VinCameraModal from "@/components/VinCameraModal";
 import BarcodeScanModal from "@/components/BarcodeScanModal";
+import LicensePlateCameraModal from "@/components/LicensePlateCameraModal";
 import { VinDecodeResult } from "@/components/VinDecodeInput";
 
 /* ==================== APP 测试功能页 ==================== */
@@ -10,6 +11,7 @@ import { VinDecodeResult } from "@/components/VinDecodeInput";
 export default function MobileTestPage() {
   const [vinModalOpen, setVinModalOpen] = useState(false);
   const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [plateModalOpen, setPlateModalOpen] = useState(false);
   const [testResults, setTestResults] = useState<string[]>([]);
 
   /* 添加测试结果 */
@@ -30,6 +32,11 @@ export default function MobileTestPage() {
   /* 扫码结果 */
   const handleScan = (barcode: string) => {
     addResult("扫码", barcode);
+  };
+
+  /* 车牌识别结果 */
+  const handlePlateRecognize = (plate: string) => {
+    addResult("车牌识别", plate);
   };
 
   return (
@@ -56,6 +63,27 @@ export default function MobileTestPage() {
           <div className="text-left">
             <div className="font-medium text-gray-900">VIN 识别</div>
             <div className="text-xs text-gray-500">拍照识别车辆VIN码</div>
+          </div>
+          <svg className="w-5 h-5 text-gray-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+
+        {/* 车牌识别 */}
+        <button
+          type="button"
+          onClick={() => setPlateModalOpen(true)}
+          className="w-full flex items-center gap-3 bg-white rounded-xl p-4 shadow-sm active:bg-gray-50 transition-colors"
+        >
+          <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+            <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <div className="text-left">
+            <div className="font-medium text-gray-900">车牌识别</div>
+            <div className="text-xs text-gray-500">拍照识别车牌号（有网云端/没网本地）</div>
           </div>
           <svg className="w-5 h-5 text-gray-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -131,6 +159,13 @@ export default function MobileTestPage() {
         open={scanModalOpen}
         onClose={() => setScanModalOpen(false)}
         onScan={handleScan}
+      />
+
+      {/* 车牌识别弹窗 */}
+      <LicensePlateCameraModal
+        open={plateModalOpen}
+        onClose={() => setPlateModalOpen(false)}
+        onRecognize={handlePlateRecognize}
       />
     </div>
   );

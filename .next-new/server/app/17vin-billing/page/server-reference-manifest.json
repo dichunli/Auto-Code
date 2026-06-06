@@ -1,6 +1,6 @@
 {
   "node": {
-    "00477fe8494eacbb5d6b33e445722e1b789b6e66e1": {
+    "005f153c48ffc93b067fa9533115ab1bd033fc5317": {
       "workers": {
         "app/17vin-billing/page": {
           "moduleId": 11569,
@@ -12,7 +12,7 @@
       "exportedName": "vin17GetBalance",
       "filename": "src/lib/17vin/client.ts"
     },
-    "6015bb3d735e06004996d96445912f6e46bd3020d0": {
+    "60cdbdebcb60327fbefb576cfbc7c628a6d0f13c38": {
       "workers": {
         "app/17vin-billing/page": {
           "moduleId": 11569,

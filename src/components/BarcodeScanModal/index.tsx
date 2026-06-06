@@ -1,25 +1,26 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { BarcodeScanner, BarcodeFormat } from "@capacitor-mlkit/barcode-scanning";
+import { BarcodeScanner } from "@capacitor-mlkit/barcode-scanning";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { 启动原生扫码 } from "@/lib/androidBarcode";
 import { base64转Blob } from "@/lib/base64ToBlob";
 import BrowserScanner from "./BrowserScanner";
 import ScanResult from "./ScanResult";
 import ScanError from "./ScanError";
 
-/* ========== APP 环境用 MLKit 条码格式 ========== */
-const APP条码格式: BarcodeFormat[] = [
-  BarcodeFormat.Code128,
-  BarcodeFormat.Code39,
-  BarcodeFormat.Ean13,
-  BarcodeFormat.Ean8,
-  BarcodeFormat.UpcA,
-  BarcodeFormat.UpcE,
-  BarcodeFormat.Itf,
-  BarcodeFormat.Codabar,
-  BarcodeFormat.QrCode,
+/* ========== APP 环境条码格式名称（传给原生层） ========== */
+const APP条码格式名称 = [
+  "Code128",
+  "Code39",
+  "Ean13",
+  "Ean8",
+  "UpcA",
+  "UpcE",
+  "Itf",
+  "Codabar",
+  "QrCode",
 ];
 
 interface Props {
@@ -30,10 +31,10 @@ interface Props {
 
 /**
  * 扫码弹窗主组件
- * 根据环境自动选择浏览器扫描（html5-qrcode）或 APP 原生扫描（MLKit）
+ * 根据环境自动选择浏览器扫描（html5-qrcode）或 APP 原生扫描（Android 原生 Activity）
  */
 export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
-  const [模式, set模式] = useState<"扫描中" | "识别成功" | "拍照" | "不支持" | "错误" | "启动中">("扫描中");
+  const [模式, set模式] = useState<"扫描中" | "识别成功" | "不支持" | "错误" | "启动中">("扫描中");
   const [识别码, set识别码] = useState<string | null>(null);
   const [错误信息, set错误信息] = useState<string | null>(null);
   const [浏览器扫描Key, set浏览器扫描Key] = useState(0);
@@ -43,7 +44,6 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
   const 已处理Ref = useRef(false);
   const onScanRef = useRef(onScan);
   const onCloseRef = useRef(onClose);
-  const 监听器Ref = useRef<{ remove: () => void } | null>(null);
 
   const 是App = 是Capacitor环境();
 
@@ -53,64 +53,34 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     onCloseRef.current = onClose;
   });
 
-  /* ========== APP 环境：用 MLKit startScan() 启动原生相机扫描 ========== */
+  /* ========== APP 环境：启动原生 Android 条码扫描 Activity ========== */
   const 启动APP扫码 = useCallback(async () => {
     if (已取消Ref.current || 扫描中Ref.current) return;
     扫描中Ref.current = true;
     已处理Ref.current = false;
     set模式("启动中");
+    set错误信息(null);
 
     try {
-      /* 请求相机权限 */
-      const perm = await BarcodeScanner.requestPermissions();
-      if (perm.camera !== 'granted') {
-        set错误信息("需要相机权限才能扫码");
+      const 结果 = await 启动原生扫码(APP条码格式名称);
+      if (已取消Ref.current) return;
+
+      if (结果.barcode) {
+        已处理Ref.current = true;
+        set识别码(结果.barcode);
+        set模式("识别成功");
+        onScanRef.current(结果.barcode);
+        onCloseRef.current();
+      } else {
+        /* 用户取消或原生扫码不可用 */
+        set错误信息("扫描已取消，可拍照识别或手动输入条码");
         set模式("错误");
-        return;
       }
-
-      /* 启动原生相机扫描 */
-      await BarcodeScanner.startScan({ formats: APP条码格式, lensFacing: 'BACK' });
-
-      /* 监听扫描结果 */
-      const listener = await BarcodeScanner.addListener('barcodesScanned', async (event) => {
-        if (已取消Ref.current || 已处理Ref.current) return;
-        const barcodes = event.barcodes;
-        if (barcodes && barcodes.length > 0) {
-          const code = barcodes[0].rawValue || barcodes[0].displayValue || '';
-          if (code) {
-            已处理Ref.current = true;
-            await BarcodeScanner.stopScan();
-            listener.remove();
-            监听器Ref.current = null;
-            set识别码(code);
-            set模式("识别成功");
-            onScanRef.current(code);
-            onCloseRef.current();
-          }
-        }
-      });
-      监听器Ref.current = listener;
-
-      /* 监听扫描错误 */
-      const errorListener = await BarcodeScanner.addListener('scanError', async (event) => {
-        if (已取消Ref.current || 已处理Ref.current) return;
-        await BarcodeScanner.stopScan();
-        errorListener.remove();
-        set错误信息("扫描失败: " + event.message);
-        set模式("错误");
-      });
     } catch (err: unknown) {
       if (已取消Ref.current) return;
       const msg = err instanceof Error ? err.message : String(err);
-
-      if (msg.includes("cancel") || msg.includes("canceled") || msg.includes("denied")) {
-        set错误信息("扫描已取消，可手动输入条码");
-        set模式("错误");
-      } else {
-        set错误信息("扫描失败: " + msg);
-        set模式("错误");
-      }
+      set错误信息("扫描失败: " + msg);
+      set模式("错误");
     } finally {
       扫描中Ref.current = false;
     }
@@ -172,12 +142,8 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     已取消Ref.current = false;
 
     if (!open) {
-      /* 关闭弹窗：停止扫描并释放资源 */
-      if (监听器Ref.current) {
-        监听器Ref.current.remove();
-        监听器Ref.current = null;
-      }
-      void BarcodeScanner.stopScan().catch(() => {});
+      /* 关闭弹窗：重置状态 */
+      已取消Ref.current = true;
       set识别码(null);
       set错误信息(null);
       set模式("扫描中");
@@ -218,14 +184,9 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     set模式("扫描中");
     扫描中Ref.current = false;
     已处理Ref.current = false;
+    已取消Ref.current = false;
 
     if (是App) {
-      /* 先停止之前的扫描 */
-      if (监听器Ref.current) {
-        监听器Ref.current.remove();
-        监听器Ref.current = null;
-      }
-      await BarcodeScanner.stopScan().catch(() => {});
       await 启动APP扫码();
     } else {
       /* 浏览器：通过改变 key 强制 BrowserScanner 重新挂载 */
@@ -304,21 +265,6 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
           </div>
         )}
 
-        {/* APP 拍照模式提示 */}
-        {是App && 模式 === "拍照" && !识别码 && !错误信息 && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 px-6">
-            <svg className="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
-              />
-            </svg>
-            <p className="text-xs mt-1 opacity-60">点击下方按钮拍照识别条码</p>
-          </div>
-        )}
-
         {/* 浏览器不支持提示 */}
         {!是App && 模式 === "不支持" && (
           <ScanError message="当前环境不支持摄像头访问" isNotSupported onConfirm={handleManualInput} />
@@ -340,32 +286,28 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
             <>
               {是App ? (
                 <>
-                  {/* APP 拍照按钮 */}
-                  {模式 === "拍照" && (
-                    <button
-                      type="button"
-                      onClick={拍照识别条码}
-                      className="flex flex-col items-center gap-1 text-white active:text-white"
-                    >
-                      <div className="w-16 h-16 rounded-full border-4 border-white/80 flex items-center justify-center active:scale-95 transition-transform">
-                        <div className="w-12 h-12 rounded-full bg-white" />
-                      </div>
-                      <span className="text-[10px]">拍照识别</span>
-                    </button>
-                  )}
                   {/* APP 启动中提示 */}
                   {模式 === "启动中" && (
                     <span className="text-sm text-white/50">正在启动系统扫描器...</span>
                   )}
-                  {/* APP 错误或扫描中：显示重新扫描 */}
+                  {/* APP 错误或扫描中：显示重新扫描 + 拍照识别 */}
                   {(模式 === "错误" || 模式 === "扫描中") && (
-                    <button
-                      type="button"
-                      onClick={重新扫描}
-                      className="px-6 py-2.5 rounded-full bg-white/10 text-white text-sm font-medium active:bg-white/20"
-                    >
-                      重新扫描
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={重新扫描}
+                        className="px-5 py-2.5 rounded-full bg-white/10 text-white text-sm font-medium active:bg-white/20"
+                      >
+                        重新扫描
+                      </button>
+                      <button
+                        type="button"
+                        onClick={拍照识别条码}
+                        className="px-5 py-2.5 rounded-full bg-blue-600 text-white text-sm font-medium active:bg-blue-700"
+                      >
+                        拍照识别
+                      </button>
+                    </>
                   )}
                 </>
               ) : (

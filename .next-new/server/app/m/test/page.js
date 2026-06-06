@@ -17,6 +17,6 @@ R.c("server/chunks/ssr/node_modules_0k57kai._.js")
 R.c("server/chunks/ssr/_03d1v5i._.js")
 R.c("server/chunks/ssr/node_modules_@supabase_supabase-js_dist_index_mjs_04qodwz._.js")
 R.c("server/chunks/ssr/node_modules_next_dist_0ve2ws3._.js")
-R.c("server/chunks/ssr/[root-of-the-server]__0_-g.il._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__0nvc4kj._.js")
 R.m(412)
 module.exports=R.m(412).exports

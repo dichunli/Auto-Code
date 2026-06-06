@@ -1,18 +1,6 @@
 {
   "node": {
-    "4083014275ae41c134f8b19af54c54c1f4b00265ea": {
-      "workers": {
-        "app/work-orders/new/page": {
-          "moduleId": 4864,
-          "async": false,
-          "exportedName": "vin17OcrImage",
-          "filename": "src/lib/17vin/client.ts"
-        }
-      },
-      "exportedName": "vin17OcrImage",
-      "filename": "src/lib/17vin/client.ts"
-    },
-    "40c59299ab0a689f170ac9ebe180c178570a006645": {
+    "409758a8a47cf5c49bfc5117b60c465b8a5fe9f6ec": {
       "workers": {
         "app/work-orders/new/page": {
           "moduleId": 4864,

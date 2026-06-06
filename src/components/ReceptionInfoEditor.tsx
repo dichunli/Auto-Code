@@ -16,6 +16,15 @@ function fromDatetimeLocal(localString: string): string {
   return new Date(localString).toISOString();
 }
 
+/** 生成快捷时间的 datetime-local 格式字符串 */
+function 生成快捷时间(偏移天数: number, 小时: number, 分钟: number = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 偏移天数);
+  d.setHours(小时, 分钟, 0, 0);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
 interface Props {
   orderId: string;
   mileageIn: number | null;
@@ -102,6 +111,30 @@ export function ReceptionInfoEditor({
               </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">约定交车时间</label>
+                {/* 快捷时间选择 */}
+                <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
+                  {[
+                    { label: "今天18:00", value: 生成快捷时间(0, 18) },
+                    { label: "明天09:00", value: 生成快捷时间(1, 9) },
+                    { label: "明天18:00", value: 生成快捷时间(1, 18) },
+                    { label: "后天09:00", value: 生成快捷时间(2, 9) },
+                    { label: "后天18:00", value: 生成快捷时间(2, 18) },
+                    { label: "大后天18:00", value: 生成快捷时间(3, 18) },
+                  ].map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => setDelivery(item.value)}
+                      className={`shrink-0 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                        delivery === item.value
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="datetime-local"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"

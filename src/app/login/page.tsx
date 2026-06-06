@@ -77,9 +77,6 @@ export default function LoginPage() {
   }
 
   async function handleSubmit() {
-    /* 调试用：确认函数被调用 */
-    alert("点击了登录按钮");
-
     /* 防止 supabase 客户端尚未初始化时提交 */
     if (!supabase) {
       alert("supabase 未初始化，尝试直接创建...");
