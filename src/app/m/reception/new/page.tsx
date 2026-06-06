@@ -754,6 +754,7 @@ export default function MobileReceptionNewPage() {
                     /* 系统中有该VIN，显示重复询问弹窗（替换车牌/保留原车牌/取消） */
                     setVinDuplicateVehicle(data as unknown as Vehicle);
                     setShowVinDuplicateDialog(true);
+                    setAutoOpenVinCamera(false); /* 防止再次自动触发拍照 */
                     return true;
                   }
 

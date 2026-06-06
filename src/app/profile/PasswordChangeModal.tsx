@@ -78,8 +78,14 @@ export function PasswordChangeModal({ open, onClose, userEmail }: Props) {
         return;
       }
 
-      alert("密码修改成功！请使用新密码重新登录");
-      handleClose();
+      /* 密码修改成功：退出登录并跳转到登录页 */
+      alert("密码修改成功，请使用新密码重新登录");
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        /* 忽略登出错误，强制跳转 */
+      }
+      window.location.href = "/login";
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError("操作失败：" + msg);

@@ -60,6 +60,7 @@ export default function VinDecodeInput({
   const [recognizedVin, setRecognizedVin] = useState<string | null>(null);
   const [decodeResult, setDecodeResult] = useState<VinDecodeResult | null>(null);
   const [editingVin, setEditingVin] = useState<string>("");
+  const [cursorIndex, setCursorIndex] = useState<number>(-1);
   const pcInputRef = useRef<HTMLInputElement>(null);
   const mobileInputRef = useRef<HTMLInputElement>(null);
 
@@ -384,16 +385,37 @@ export default function VinDecodeInput({
     setRecognizedVin(null);
     setDecodeResult(null);
     setEditingVin("");
+    setCursorIndex(-1);
   }
 
   function appendChar(char: string) {
     if (editingVin.length >= 17) return;
-    setEditingVin((prev) => (prev + char).toUpperCase());
+    const ch = char.toUpperCase();
+    if (cursorIndex >= 0 && cursorIndex < editingVin.length) {
+      const arr = editingVin.split("");
+      arr.splice(cursorIndex, 0, ch);
+      const next = arr.join("").slice(0, 17);
+      setEditingVin(next);
+      setCursorIndex(Math.min(cursorIndex + 1, next.length - 1));
+    } else {
+      setEditingVin((prev) => (prev + ch).slice(0, 17));
+    }
   }
 
   function handleDelete() {
     if (editingVin.length === 0) return;
-    setEditingVin((prev) => prev.slice(0, -1));
+    if (cursorIndex >= 0 && cursorIndex < editingVin.length) {
+      const arr = editingVin.split("");
+      arr.splice(cursorIndex, 1);
+      const next = arr.join("");
+      setEditingVin(next);
+      if (cursorIndex >= next.length) {
+        setCursorIndex(next.length > 0 ? next.length - 1 : -1);
+      }
+    } else {
+      setEditingVin((prev) => prev.slice(0, -1));
+      setCursorIndex(-1);
+    }
   }
 
   function handleRetake() {
@@ -402,6 +424,7 @@ export default function VinDecodeInput({
     setRecognizedVin(null);
     setDecodeResult(null);
     setEditingVin("");
+    setCursorIndex(-1);
     if (是App) {
       void APP拍照识别();
     } else if (isMobile && mobileInputRef.current) {
@@ -485,8 +508,11 @@ export default function VinDecodeInput({
             {previewImage ? (
               <img src={previewImage} alt="预览" className="w-full h-full object-contain" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-white/50">
-                <span className="text-sm">已识别 VIN，请核对修改</span>
+              <div className="w-full h-full flex flex-col items-center justify-center text-white/80 gap-2">
+                <span className="text-xs text-white/40">已识别 VIN</span>
+                <span className="text-2xl tracking-widest font-mono font-medium">
+                  {editingVin || (ocrLoading ? "识别中..." : "—")}
+                </span>
               </div>
             )}
           </div>
@@ -499,7 +525,7 @@ export default function VinDecodeInput({
                 <div className="text-xs text-gray-500">
                   {ocrLoading ? "正在识别中..." : "识别结果，点击可手动修改"}
                 </div>
-                <div className="bg-gray-100 rounded-lg px-4 py-3 text-center min-h-[3.5rem] flex items-center justify-center">
+                <div className="bg-gray-100 rounded-lg px-3 py-3 text-center min-h-[3.5rem] flex items-center justify-center overflow-x-auto">
                   {ocrLoading ? (
                     <div className="flex items-center gap-2">
                       <svg className="w-5 h-5 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
@@ -508,10 +534,38 @@ export default function VinDecodeInput({
                       </svg>
                       <span className="text-sm text-gray-500">识别中...</span>
                     </div>
+                  ) : editingVin ? (
+                    <div className="flex items-center justify-center gap-[2px]">
+                      {editingVin.split("").map((char, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setCursorIndex(idx)}
+                          className={`w-[18px] h-8 flex items-center justify-center text-lg font-mono rounded select-none transition-colors ${
+                            cursorIndex === idx
+                              ? "bg-blue-600 text-white"
+                              : "text-gray-900 hover:bg-gray-200"
+                          }`}
+                        >
+                          {char}
+                        </button>
+                      ))}
+                      {editingVin.length < 17 && (
+                        <button
+                          type="button"
+                          onClick={() => setCursorIndex(editingVin.length)}
+                          className={`w-[18px] h-8 flex items-center justify-center text-lg font-mono rounded border border-dashed select-none transition-colors ${
+                            cursorIndex === editingVin.length
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "text-gray-300 border-gray-300 hover:border-gray-400"
+                          }`}
+                        >
+                          <span className="text-xs">+</span>
+                        </button>
+                      )}
+                    </div>
                   ) : (
-                    <span className={`text-xl tracking-widest font-mono ${editingVin ? "text-gray-900" : "text-gray-400"}`}>
-                      {editingVin || "—"}
-                    </span>
+                    <span className="text-gray-400 text-xl">—</span>
                   )}
                 </div>
                 {decodeResult && (
@@ -566,34 +620,38 @@ export default function VinDecodeInput({
             </div>
 
             {/* 底部内联 VIN 键盘 */}
-            <div className="shrink-0 bg-gray-200 p-2 pb-safe">
-              <div className="flex justify-between items-center px-2 mb-2">
-                <span className="text-xs text-gray-500">VIN码 {editingVin.length}/17 位</span>
+            <div className="shrink-0 bg-gray-100 p-2 pb-safe">
+              <div className="flex justify-between items-center px-1 mb-2"
+              >
+                <span className="text-xs text-gray-500 font-medium">VIN码 {editingVin.length}/17 位</span>
                 <button
                   type="button"
                   onClick={handleConfirm}
                   disabled={ocrLoading || !(editingVin || recognizedVin || "").trim()}
-                  className="text-sm text-blue-600 font-medium active:text-blue-800 disabled:opacity-40"
+                  className="text-sm text-blue-600 font-semibold active:text-blue-800 disabled:opacity-40 px-2 py-1"
                 >
                   完成
                 </button>
               </div>
-              <div className={`space-y-1.5 ${ocrLoading ? "opacity-50 pointer-events-none" : ""}`}>
-                <div className="grid grid-cols-10 gap-1">
+              <div className={`space-y-2 ${ocrLoading ? "opacity-40 pointer-events-none" : ""}`}
+              >
+                <div className="grid grid-cols-10 gap-1.5"
+                >
                   {VIN_NUMBERS.map((c) => (
                     <button
                       key={c}
                       type="button"
                       onClick={() => appendChar(c)}
                       disabled={editingVin.length >= 17 || ocrLoading}
-                      className="h-10 rounded bg-white text-gray-900 text-sm font-medium active:bg-gray-100 disabled:opacity-30"
+                      className="h-11 rounded-lg bg-white text-gray-900 text-base font-semibold shadow-sm border border-gray-200 active:bg-gray-100 active:scale-95 transition-all disabled:opacity-30"
                     >
                       {c}
                     </button>
                   ))}
                 </div>
                 {QWERTY_ROWS.map((row, idx) => (
-                  <div key={idx} className="grid grid-cols-10 gap-1">
+                  <div key={idx} className="grid grid-cols-10 gap-1.5"
+                  >
                     {row.map((c) => {
                       const isInvalid = VIN_INVALID_LETTERS.has(c);
                       return (
@@ -602,10 +660,10 @@ export default function VinDecodeInput({
                           type="button"
                           onClick={() => !isInvalid && appendChar(c)}
                           disabled={isInvalid || editingVin.length >= 17 || ocrLoading}
-                          className={`h-10 rounded text-sm font-medium active:bg-gray-100 ${
+                          className={`h-11 rounded-lg text-base font-semibold shadow-sm border active:scale-95 transition-all ${
                             isInvalid
-                              ? "bg-gray-200 text-gray-300 cursor-not-allowed"
-                              : "bg-white text-gray-900 disabled:opacity-30"
+                              ? "bg-gray-100 text-gray-300 border-transparent cursor-not-allowed"
+                              : "bg-white text-gray-900 border-gray-200 active:bg-gray-100 disabled:opacity-30"
                           }`}
                         >
                           {c}
@@ -620,9 +678,9 @@ export default function VinDecodeInput({
                           type="button"
                           onClick={handleDelete}
                           disabled={editingVin.length === 0 || ocrLoading}
-                          className="h-10 rounded bg-amber-50 text-amber-700 text-sm font-medium active:bg-amber-100 disabled:opacity-40 flex items-center justify-center"
+                          className="h-11 rounded-lg bg-amber-100 text-amber-700 text-base font-semibold shadow-sm border border-amber-200 active:bg-amber-200 active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center"
                         >
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                             <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
                             <line x1="10" y1="9" x2="16" y2="15" />
                             <line x1="16" y1="9" x2="10" y2="15" />
