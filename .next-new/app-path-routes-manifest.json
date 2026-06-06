@@ -107,6 +107,7 @@
   "/procurement/new/page": "/procurement/new",
   "/procurement/orders/page": "/procurement/orders",
   "/procurement/page": "/procurement",
+  "/profile/page": "/profile",
   "/reminders/[id]/page": "/reminders/[id]",
   "/reminders/page": "/reminders",
   "/reports/auto-linked-parts/page": "/reports/auto-linked-parts",

@@ -351,8 +351,14 @@ export function Navbar() {
           ))}
         </nav>
 
-        {/* 退出登录 */}
-        <div className="p-3 border-t border-gray-100 flex-shrink-0">
+        {/* 用户相关 */}
+        <div className="p-3 border-t border-gray-100 flex-shrink-0 space-y-1">
+          <Link
+            href="/profile"
+            className="block px-3 py-2 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors"
+          >
+            个人信息
+          </Link>
           <button
             onClick={handleLogout}
             className="w-full px-3 py-2 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors text-left"

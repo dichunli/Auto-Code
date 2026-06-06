@@ -107,6 +107,7 @@
   "/procurement/new/page": "app/procurement/new/page.js",
   "/procurement/orders/page": "app/procurement/orders/page.js",
   "/procurement/page": "app/procurement/page.js",
+  "/profile/page": "app/profile/page.js",
   "/reminders/[id]/page": "app/reminders/[id]/page.js",
   "/reminders/page": "app/reminders/page.js",
   "/reports/auto-linked-parts/page": "app/reports/auto-linked-parts/page.js",

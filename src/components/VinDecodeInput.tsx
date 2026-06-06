@@ -242,8 +242,10 @@ export default function VinDecodeInput({
   }
 
   /* 浏览器环境：显示识别过程 */
+  /* 浏览器环境：识别前先打开弹窗显示loading */
   async function processBase64Image(base64: string) {
     setPreviewImage(base64);
+    setPreviewOpen(true);
     setOcrLoading(true);
     setRecognizedVin(null);
     setDecodeResult(null);
@@ -258,6 +260,7 @@ export default function VinDecodeInput({
         const handled = await onRecognize(upperVin, decodeResult);
         if (handled) {
           setOcrLoading(false);
+          setPreviewOpen(false);
           return;
         }
       }
@@ -265,16 +268,22 @@ export default function VinDecodeInput({
       setRecognizedVin(upperVin);
       setEditingVin(upperVin);
       if (decodeResult) setDecodeResult(decodeResult);
-      setPreviewOpen(true);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "识别失败");
+      setPreviewOpen(false);
     } finally {
       setOcrLoading(false);
     }
   }
 
-  /* APP环境：识别后先通知父组件，未处理则打开编辑弹窗 */
+  /* APP环境：识别前先打开弹窗显示loading */
   async function processBase64ImageSilent(base64: string) {
+    setPreviewOpen(true);
+    setOcrLoading(true);
+    setRecognizedVin(null);
+    setDecodeResult(null);
+    setEditingVin("");
+
     try {
       const { detectedVin, decodeResult } = await callOcrApi(base64);
       const upperVin = detectedVin.toUpperCase();
@@ -282,15 +291,20 @@ export default function VinDecodeInput({
       /* 先让父组件判断是否需要处理（如系统中已有该车辆） */
       if (onRecognize) {
         const handled = await onRecognize(upperVin, decodeResult);
-        if (handled) return;
+        if (handled) {
+          setPreviewOpen(false);
+          return;
+        }
       }
 
       setRecognizedVin(upperVin);
       setDecodeResult(decodeResult);
       setEditingVin(upperVin);
-      setPreviewOpen(true);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "识别失败");
+      setPreviewOpen(false);
+    } finally {
+      setOcrLoading(false);
     }
   }
 
@@ -482,11 +496,23 @@ export default function VinDecodeInput({
             <div className="flex-1 overflow-y-auto p-4 space-y-5">
               {/* VIN 编辑 */}
               <div className="space-y-2">
-                <div className="text-xs text-gray-500">识别结果，点击可手动修改</div>
+                <div className="text-xs text-gray-500">
+                  {ocrLoading ? "正在识别中..." : "识别结果，点击可手动修改"}
+                </div>
                 <div className="bg-gray-100 rounded-lg px-4 py-3 text-center min-h-[3.5rem] flex items-center justify-center">
-                  <span className={`text-xl tracking-widest font-mono ${editingVin ? "text-gray-900" : "text-gray-400"}`}>
-                    {editingVin || "—"}
-                  </span>
+                  {ocrLoading ? (
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      <span className="text-sm text-gray-500">识别中...</span>
+                    </div>
+                  ) : (
+                    <span className={`text-xl tracking-widest font-mono ${editingVin ? "text-gray-900" : "text-gray-400"}`}>
+                      {editingVin || "—"}
+                    </span>
+                  )}
                 </div>
                 {decodeResult && (
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
@@ -546,20 +572,20 @@ export default function VinDecodeInput({
                 <button
                   type="button"
                   onClick={handleConfirm}
-                  disabled={!(editingVin || recognizedVin || "").trim()}
+                  disabled={ocrLoading || !(editingVin || recognizedVin || "").trim()}
                   className="text-sm text-blue-600 font-medium active:text-blue-800 disabled:opacity-40"
                 >
                   完成
                 </button>
               </div>
-              <div className="space-y-1.5">
+              <div className={`space-y-1.5 ${ocrLoading ? "opacity-50 pointer-events-none" : ""}`}>
                 <div className="grid grid-cols-10 gap-1">
                   {VIN_NUMBERS.map((c) => (
                     <button
                       key={c}
                       type="button"
                       onClick={() => appendChar(c)}
-                      disabled={editingVin.length >= 17}
+                      disabled={editingVin.length >= 17 || ocrLoading}
                       className="h-10 rounded bg-white text-gray-900 text-sm font-medium active:bg-gray-100 disabled:opacity-30"
                     >
                       {c}
@@ -575,7 +601,7 @@ export default function VinDecodeInput({
                           key={c}
                           type="button"
                           onClick={() => !isInvalid && appendChar(c)}
-                          disabled={isInvalid || editingVin.length >= 17}
+                          disabled={isInvalid || editingVin.length >= 17 || ocrLoading}
                           className={`h-10 rounded text-sm font-medium active:bg-gray-100 ${
                             isInvalid
                               ? "bg-gray-200 text-gray-300 cursor-not-allowed"
@@ -593,7 +619,7 @@ export default function VinDecodeInput({
                         <button
                           type="button"
                           onClick={handleDelete}
-                          disabled={editingVin.length === 0}
+                          disabled={editingVin.length === 0 || ocrLoading}
                           className="h-10 rounded bg-amber-50 text-amber-700 text-sm font-medium active:bg-amber-100 disabled:opacity-40 flex items-center justify-center"
                         >
                           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

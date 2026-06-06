@@ -141,6 +141,22 @@ export default async function MobileHomePage() {
         ))}
       </div>
 
+      {/* 个人信息 — 所有登录用户可见，不受权限过滤 */}
+      <div className="grid grid-cols-2 gap-3 pt-2">
+        <Link
+          href="/profile"
+          className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center text-center gap-2 active:scale-95 transition-transform"
+        >
+          <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+          </div>
+          <div className="text-sm font-medium text-gray-900">个人信息</div>
+          <div className="text-xs text-gray-500 leading-tight">修改个人资料、更改登录密码</div>
+        </Link>
+      </div>
+
       <div className="text-center pt-4">
         <Link href="/?desktop=1" className="text-sm text-blue-600 hover:text-blue-700">
           返回电脑版首页

@@ -747,29 +747,17 @@ export default function MobileReceptionNewPage() {
                   const { data } = await supabase
                     .from("vehicles")
                     .select("id, plate_number, brand, model, vin, customer_id, customers(id, name, phone, star_level, customer_tags(tags(id, name, color)))")
-                    .ilike("vin", vin)
+                    .eq("vin", vin)
                     .maybeSingle();
 
                   if (data) {
-                    /* 已有车辆，直接选中 */
-                    const v = data as unknown as Vehicle;
-                    setSelectedVehicle(v);
-                    setNewVin("");
-                    setIsNewVehicle(false);
-                    setAutoOpenVinCamera(false);
-                    const vc = getVehicleCustomer(v);
-                    if (vc) {
-                      setSelectedCustomer(vc);
-                      setShowCustomerSelect(false);
-                    } else {
-                      setSelectedCustomer(null);
-                    }
-                    showToast("已选中已有车辆", "success");
+                    /* 系统中有该VIN，显示重复询问弹窗（替换车牌/保留原车牌/取消） */
+                    setVinDuplicateVehicle(data as unknown as Vehicle);
+                    setShowVinDuplicateDialog(true);
                     return true;
                   }
 
-                  /* 系统中没有，继续新建流程 */
-                  setIsNewVehicle(true);
+                  /* 系统中没有，让 VinDecodeInput 打开编辑弹窗让用户确认修改 */
                   return false;
                 }}
                 onDecode={async (result) => {
