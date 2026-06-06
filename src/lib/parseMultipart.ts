@@ -14,15 +14,6 @@ export interface MultipartResult {
   folder: string | null;
 }
 
-/* 调试日志：生产环境可关闭 */
-const 启用调试 = process.env.NODE_ENV === "development" || false;
-function 调试(...args: unknown[]) {
-  if (启用调试) {
-     
-    console.log("[multipart]", ...args);
-  }
-}
-
 /* 从 Content-Type header 中提取 boundary */
 function 提取Boundary(contentType: string): string | null {
   const match = contentType.match(/boundary=([^;]+)/i);
@@ -32,23 +23,23 @@ function 提取Boundary(contentType: string): string | null {
 
 /* 读取请求体为 Buffer */
 async function 读取请求体(request: Request): Promise<Buffer> {
-  const chunks: Uint8Array[] = [];
-  const reader = request.body!.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
+  try {
+    const ab = await request.arrayBuffer();
+    return Buffer.from(ab);
+  } catch {
+    /* 备用方案：用 getReader */
+    const chunks: Uint8Array[] = [];
+    const reader = request.body!.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks.map((c) => Buffer.from(c)));
   }
-  return Buffer.concat(chunks.map((c) => Buffer.from(c)));
 }
 
-/* 解析 Content-Disposition，支持多种形式：
-   name="file"
-   name=file
-   filename="test.mp4"
-   filename=test.mp4
-   filename*=UTF-8''%E6%B5%8B%E8%AF%95.mp4  (RFC 5987)
-*/
+/* 解析 Content-Disposition，支持多种形式 */
 function 解析ContentDisposition(headersText: string): { name: string | null; filename: string | null } {
   const disposition = headersText.match(/Content-Disposition:\s*([^\r\n]+)/i)?.[1] || "";
 
@@ -85,15 +76,22 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
   }
 
   const body = await 读取请求体(request);
-  调试("body size", body.length, "boundary", boundary);
+  console.log("[multipart] body size:", body.length, "boundary:", boundary);
+
+  if (body.length === 0) {
+    throw new Error("请求体为空");
+  }
 
   const boundaryBuffer = Buffer.from(`--${boundary}`);
   const endBoundaryBuffer = Buffer.from(`--${boundary}--`);
 
   let file: MultipartFile | null = null;
   let folder: string | null = null;
+  let partCount = 0;
 
   let start = body.indexOf(boundaryBuffer);
+  console.log("[multipart] first boundary at:", start);
+
   while (start !== -1) {
     const partStart = start + boundaryBuffer.length;
     let partEnd = body.indexOf(boundaryBuffer, partStart);
@@ -124,7 +122,8 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
     }
 
     const { name: fieldName, filename } = 解析ContentDisposition(headersText);
-    调试("part", { fieldName, filename, dataLength: data.length, headersText });
+    partCount++;
+    console.log("[multipart] part", partCount, { fieldName, filename, dataLength: data.length, headers: headersText.slice(0, 200) });
 
     if (fieldName === "file" && filename !== null) {
       const ctMatch = headersText.match(/Content-Type:\s*([^\r\n]+)/i);
@@ -142,6 +141,9 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
   }
 
   if (!file) {
+    /* 输出请求体前 800 字节用于调试 */
+    const preview = body.slice(0, 800).toString("utf-8").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+    console.error("[multipart] no file found. parts:", partCount, "preview:", preview);
     throw new Error("请求中没有找到文件");
   }
 

@@ -7,6 +7,15 @@ import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import VinKeyboard from "./VinKeyboard";
 
+/* VIN 内联键盘常量 */
+const VIN_NUMBERS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+const VIN_INVALID_LETTERS = new Set(["I", "O", "Q"]);
+const QWERTY_ROWS = [
+  ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+  ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+  ["Z", "X", "C", "V", "B", "N", "M"],
+];
+
 export interface VinDecodeResult {
   brand: string;
   series: string;
@@ -26,6 +35,8 @@ interface Props {
   value: string;
   onChange: (value: string) => void;
   onDecode: (result: VinDecodeResult | null) => void;
+  /* 识别成功后先调用此回调，返回 true 表示父组件已处理（不再弹窗），false 则继续弹窗 */
+  onRecognize?: (vin: string, result: VinDecodeResult | null) => Promise<boolean>;
   placeholder?: string;
   inputClassName?: string;
   buttonClassName?: string;
@@ -36,6 +47,7 @@ export default function VinDecodeInput({
   value,
   onChange,
   onDecode,
+  onRecognize,
   placeholder = "输入17位VIN码",
   inputClassName,
   buttonClassName,
@@ -233,7 +245,6 @@ export default function VinDecodeInput({
   /* 浏览器环境：显示识别过程 */
   async function processBase64Image(base64: string) {
     setPreviewImage(base64);
-    setPreviewOpen(true);
     setOcrLoading(true);
     setRecognizedVin(null);
     setDecodeResult(null);
@@ -243,9 +254,20 @@ export default function VinDecodeInput({
     try {
       const { detectedVin, decodeResult } = await callOcrApi(base64);
       const upperVin = detectedVin.toUpperCase();
+
+      /* 先让父组件判断是否需要处理（如系统中已有该车辆） */
+      if (onRecognize) {
+        const handled = await onRecognize(upperVin, decodeResult);
+        if (handled) {
+          setOcrLoading(false);
+          return;
+        }
+      }
+
       setRecognizedVin(upperVin);
       setEditingVin(upperVin);
       if (decodeResult) setDecodeResult(decodeResult);
+      setPreviewOpen(true);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "识别失败");
     } finally {
@@ -253,11 +275,18 @@ export default function VinDecodeInput({
     }
   }
 
-  /* APP环境：识别后打开编辑弹窗，让用户核对修改 */
+  /* APP环境：识别后先通知父组件，未处理则打开编辑弹窗 */
   async function processBase64ImageSilent(base64: string) {
     try {
       const { detectedVin, decodeResult } = await callOcrApi(base64);
       const upperVin = detectedVin.toUpperCase();
+
+      /* 先让父组件判断是否需要处理（如系统中已有该车辆） */
+      if (onRecognize) {
+        const handled = await onRecognize(upperVin, decodeResult);
+        if (handled) return;
+      }
+
       setRecognizedVin(upperVin);
       setDecodeResult(decodeResult);
       setEditingVin(upperVin);
@@ -343,6 +372,16 @@ export default function VinDecodeInput({
     setRecognizedVin(null);
     setDecodeResult(null);
     setEditingVin("");
+  }
+
+  function appendChar(char: string) {
+    if (editingVin.length >= 17) return;
+    setEditingVin((prev) => (prev + char).toUpperCase());
+  }
+
+  function handleDelete() {
+    if (editingVin.length === 0) return;
+    setEditingVin((prev) => prev.slice(0, -1));
   }
 
   function handleRetake() {

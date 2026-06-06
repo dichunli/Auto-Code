@@ -742,6 +742,36 @@ export default function MobileReceptionNewPage() {
               <VinDecodeInput
                 value={newVin}
                 onChange={setNewVin}
+                onRecognize={async (vin) => {
+                  /* 1. 先查询系统中是否已有该 VIN 的车辆 */
+                  const { data } = await supabase
+                    .from("vehicles")
+                    .select("id, plate_number, brand, model, vin, customer_id, customers(id, name, phone, star_level, customer_tags(tags(id, name, color)))")
+                    .ilike("vin", vin)
+                    .maybeSingle();
+
+                  if (data) {
+                    /* 已有车辆，直接选中 */
+                    const v = data as unknown as Vehicle;
+                    setSelectedVehicle(v);
+                    setNewVin("");
+                    setIsNewVehicle(false);
+                    setAutoOpenVinCamera(false);
+                    const vc = getVehicleCustomer(v);
+                    if (vc) {
+                      setSelectedCustomer(vc);
+                      setShowCustomerSelect(false);
+                    } else {
+                      setSelectedCustomer(null);
+                    }
+                    showToast("已选中已有车辆", "success");
+                    return true;
+                  }
+
+                  /* 系统中没有，继续新建流程 */
+                  setIsNewVehicle(true);
+                  return false;
+                }}
                 onDecode={async (result) => {
                   if (!result) return;
                   /* 1. 填充VIN解析基本信息 */

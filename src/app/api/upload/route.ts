@@ -100,6 +100,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "上传失败";
+    console.error("[upload] error:", message, "stack:", err instanceof Error ? err.stack : "");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
