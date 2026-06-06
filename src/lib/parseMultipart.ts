@@ -14,6 +14,15 @@ export interface MultipartResult {
   folder: string | null;
 }
 
+/* 调试日志：生产环境可关闭 */
+const 启用调试 = process.env.NODE_ENV === "development" || false;
+function 调试(...args: unknown[]) {
+  if (启用调试) {
+     
+    console.log("[multipart]", ...args);
+  }
+}
+
 /* 从 Content-Type header 中提取 boundary */
 function 提取Boundary(contentType: string): string | null {
   const match = contentType.match(/boundary=([^;]+)/i);
@@ -33,6 +42,40 @@ async function 读取请求体(request: Request): Promise<Buffer> {
   return Buffer.concat(chunks.map((c) => Buffer.from(c)));
 }
 
+/* 解析 Content-Disposition，支持多种形式：
+   name="file"
+   name=file
+   filename="test.mp4"
+   filename=test.mp4
+   filename*=UTF-8''%E6%B5%8B%E8%AF%95.mp4  (RFC 5987)
+*/
+function 解析ContentDisposition(headersText: string): { name: string | null; filename: string | null } {
+  const disposition = headersText.match(/Content-Disposition:\s*([^\r\n]+)/i)?.[1] || "";
+
+  /* name 字段：支持有引号和无引号 */
+  const nameMatch = disposition.match(/name=(?:"([^"]+)"|([^;\s]+))/);
+  const name = nameMatch ? (nameMatch[1] ?? nameMatch[2]) : null;
+
+  /* filename 字段：优先 RFC 5987 的 filename*，再试 filename */
+  let filename: string | null = null;
+  const filenameStarMatch = disposition.match(/filename\*=([^'"]*'[^'"]*'[^;\s]+)/);
+  if (filenameStarMatch) {
+    const encoded = filenameStarMatch[1];
+    const lastQuoteIndex = encoded.lastIndexOf("'");
+    const value = lastQuoteIndex !== -1 ? encoded.slice(lastQuoteIndex + 1) : encoded;
+    try {
+      filename = decodeURIComponent(value);
+    } catch {
+      filename = value;
+    }
+  } else {
+    const filenameMatch = disposition.match(/filename=(?:"([^"]*)"|([^;\s]+))/);
+    filename = filenameMatch ? (filenameMatch[1] ?? filenameMatch[2]) : null;
+  }
+
+  return { name, filename };
+}
+
 /* 解析 multipart 请求体 */
 export async function 解析Multipart请求(request: Request): Promise<MultipartResult> {
   const contentType = request.headers.get("content-type") || "";
@@ -42,6 +85,8 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
   }
 
   const body = await 读取请求体(request);
+  调试("body size", body.length, "boundary", boundary);
+
   const boundaryBuffer = Buffer.from(`--${boundary}`);
   const endBoundaryBuffer = Buffer.from(`--${boundary}--`);
 
@@ -78,14 +123,13 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
       data = data.slice(0, -2);
     }
 
-    const nameMatch = headersText.match(/name="([^"]+)"/);
-    const filenameMatch = headersText.match(/filename="([^"]*)"/);
-    const fieldName = nameMatch ? nameMatch[1] : null;
+    const { name: fieldName, filename } = 解析ContentDisposition(headersText);
+    调试("part", { fieldName, filename, dataLength: data.length, headersText });
 
-    if (fieldName === "file" && filenameMatch) {
+    if (fieldName === "file" && filename !== null) {
       const ctMatch = headersText.match(/Content-Type:\s*([^\r\n]+)/i);
       file = {
-        filename: filenameMatch[1],
+        filename: filename || `upload_${Date.now()}.bin`,
         contentType: ctMatch ? ctMatch[1].trim() : "application/octet-stream",
         data,
       };

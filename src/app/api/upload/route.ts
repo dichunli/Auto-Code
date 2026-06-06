@@ -57,9 +57,12 @@ async function convertToPdf(inputPath: string, outputDir: string): Promise<strin
 
 export async function POST(request: Request) {
   try {
+    const contentType = request.headers.get("content-type") || "";
+    console.log("[upload] Content-Type:", contentType);
     const multipart = await 解析Multipart请求(request);
     const { file } = multipart;
     const folder = multipart.folder;
+    console.log("[upload] parsed file:", file?.filename, "size:", file?.data.length, "folder:", folder);
     if (!file || file.data.length === 0) {
       return NextResponse.json({ error: "没有文件" }, { status: 400 });
     }

@@ -78,6 +78,54 @@ describe("解析Multipart请求", () => {
     await expect(解析Multipart请求(request)).rejects.toThrow("请求中没有找到文件");
   });
 
+  it("能处理无引号的 name 和 filename", async () => {
+    const boundary = "----TestBoundary";
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\n`),
+      Buffer.from("Content-Disposition: form-data; name=file; filename=video.mp4\r\n"),
+      Buffer.from("Content-Type: video/mp4\r\n\r\n"),
+      Buffer.from([1, 2, 3]),
+      Buffer.from("\r\n"),
+      Buffer.from(`--${boundary}--\r\n`),
+    ]);
+    const request = new Request("http://localhost/api/upload", {
+      method: "POST",
+      headers: {
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        "Content-Length": String(body.length),
+      },
+      body: body as unknown as ReadableStream<Uint8Array>,
+      duplex: "half",
+    } as RequestInit);
+    const result = await 解析Multipart请求(request);
+    expect(result.file.filename).toBe("video.mp4");
+    expect(result.file.contentType).toBe("video/mp4");
+  });
+
+  it("能处理 RFC5987 filename* 编码", async () => {
+    const boundary = "----TestBoundary";
+    const encodedName = encodeURIComponent("测试视频.mp4");
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\n`),
+      Buffer.from(`Content-Disposition: form-data; name="file"; filename*=UTF-8''${encodedName}\r\n`),
+      Buffer.from("Content-Type: video/mp4\r\n\r\n"),
+      Buffer.from([4, 5, 6]),
+      Buffer.from("\r\n"),
+      Buffer.from(`--${boundary}--\r\n`),
+    ]);
+    const request = new Request("http://localhost/api/upload", {
+      method: "POST",
+      headers: {
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        "Content-Length": String(body.length),
+      },
+      body: body as unknown as ReadableStream<Uint8Array>,
+      duplex: "half",
+    } as RequestInit);
+    const result = await 解析Multipart请求(request);
+    expect(result.file.filename).toBe("测试视频.mp4");
+  });
+
   it("能处理文件名包含中文的情况", async () => {
     const request = 构造Multipart请求([
       { name: "file", filename: "测试.mp4", contentType: "video/mp4", data: Buffer.from([9, 10]) },
