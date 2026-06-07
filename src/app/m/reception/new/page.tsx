@@ -9,6 +9,7 @@ import { ImageUploader } from "@/components/ImageUploader";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
+import { vin17DecodeVin } from "@/lib/17vin/client";
 import { StarDisplay, TagDisplay } from "@/components/CustomerSearchDropdown";
 import { 标准化VIN } from "@/lib/vinValidator";
 import { VehicleModelDetail } from "@/components/VehicleModelSearch";
@@ -60,7 +61,6 @@ export default function MobileReceptionNewPage() {
   const [newBrand, setNewBrand] = useState("");
   const [newModel, setNewModel] = useState("");
   const [newVin, setNewVin] = useState("");
-  const [autoOpenVinCamera, setAutoOpenVinCamera] = useState(false);
   const [newVehicleModelId, setNewVehicleModelId] = useState<number | null>(null);
   const [newEngineNo, setNewEngineNo] = useState("");
   const [newChassisCode, setNewChassisCode] = useState("");
@@ -79,6 +79,7 @@ export default function MobileReceptionNewPage() {
   const [showVinDuplicateDialog, setShowVinDuplicateDialog] = useState(false);
   const [showChangeOwnerDialog, setShowChangeOwnerDialog] = useState(false);
   const vinCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const vinDecodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   /* ---------- 车辆关联工单统计 ---------- */
   const [vehicleOrderStats, setVehicleOrderStats] = useState<{
@@ -226,6 +227,67 @@ export default function MobileReceptionNewPage() {
   }, [newVin, isNewVehicle, supabase]);
 
   /* ============================================================
+     VIN 自动解析（17位且系统中不存在时自动调用17VIN）
+     ============================================================ */
+  useEffect(() => {
+    if (vinDecodeTimeoutRef.current) clearTimeout(vinDecodeTimeoutRef.current);
+
+    const vin = 标准化VIN(newVin);
+    if (!isNewVehicle || vin.length !== 17) return;
+
+    vinDecodeTimeoutRef.current = setTimeout(async () => {
+      /* 先检查系统中是否已有该VIN */
+      const { data } = await supabase
+        .from("vehicles")
+        .select("id")
+        .eq("vin", vin)
+        .maybeSingle();
+
+      if (data) return; /* 系统中已有，不自动解析 */
+
+      /* 系统中没有，调用17VIN解析 */
+      try {
+        const res = (await vin17DecodeVin(vin)) as {
+          code: number;
+          data?: {
+            model_list?: Array<{
+              Brand?: string; brand?: string;
+              Series?: string; series?: string;
+              Model?: string; model?: string;
+              Model_year?: string; model_year?: string;
+              Engine_no?: string; engine_no?: string;
+              Chassis_code?: string; chassis_code?: string;
+              Transmission_type?: string; transmission_type?: string;
+              Trans_code?: string; trans_code?: string;
+            }>;
+            model_year_from_vin?: string;
+          };
+        };
+
+        if (res.code !== 1 || !res.data?.model_list?.[0]) return;
+
+        const m = res.data.model_list[0];
+        await applyVinDecodeResult({
+          brand: m.Brand || m.brand || "",
+          series: m.Series || m.series || "",
+          model: m.Model || m.model || "",
+          year: res.data.model_year_from_vin || m.Model_year || m.model_year || "",
+          engineNo: m.Engine_no || m.engine_no || "",
+          chassisCode: m.Chassis_code || m.chassis_code || "",
+          transmissionType: m.Transmission_type || m.transmission_type || "",
+          transmissionCode: m.Trans_code || m.trans_code || "",
+        });
+      } catch {
+        /* 解析失败静默处理，不打扰用户 */
+      }
+    }, 800);
+
+    return () => {
+      if (vinDecodeTimeoutRef.current) clearTimeout(vinDecodeTimeoutRef.current);
+    };
+  }, [newVin, isNewVehicle, supabase]);
+
+  /* ============================================================
      客户搜索
      ============================================================ */
   useEffect(() => {
@@ -289,6 +351,91 @@ export default function MobileReceptionNewPage() {
       dashboardPaths,
     };
     sessionStorage.setItem("reception-draft", JSON.stringify(draft));
+  }
+
+  /* ============================================================
+     应用 VIN 解析结果到表单
+     ============================================================ */
+  async function applyVinDecodeResult(result: {
+    brand: string;
+    series: string;
+    model: string;
+    year: string;
+    engineNo: string;
+    chassisCode: string;
+    transmissionType: string;
+    transmissionCode: string;
+  }) {
+    const brand = result.brand || "";
+    const modelParts = [...new Set([result.series, result.model].filter(Boolean))];
+    const model = modelParts.join(" ");
+    setNewBrand(brand);
+    setNewModel(model);
+    setNewYear(result.year || "");
+    setNewEngineNo(result.engineNo || "");
+    setNewChassisCode(result.chassisCode || "");
+    setNewTransmissionType(result.transmissionType || "");
+    setNewTransmissionCode(result.transmissionCode || "");
+
+    /* 自动匹配车型库 */
+    const searchTerms = [...new Set([result.brand, result.series, result.model].filter(Boolean))];
+    const keyword = searchTerms.join(" ");
+    if (!keyword) {
+      setNewVehicleModelId(null);
+      setVehicleModelDetail(null);
+      return;
+    }
+
+    try {
+      const { data } = await supabase
+        .from("vehicle_models")
+        .select("id,品牌,车系,车型,年款,排量,销售版本,底盘代号,发动机型号,变速箱类型,变速箱代号")
+        .ilike("搜索字段", `%${keyword}%`)
+        .limit(5);
+
+      if (data && data.length > 0) {
+        const m = data[0] as {
+          id: number;
+          品牌: string | null;
+          车系: string | null;
+          车型: string | null;
+          年款: number | null;
+          排量: string | null;
+          销售版本: string | null;
+          底盘代号: string | null;
+          发动机型号: string | null;
+          变速箱类型: string | null;
+          变速箱代号: string | null;
+        };
+        const matchedModelParts = [...new Set([m.车系, m.车型].filter(Boolean))];
+        setNewVehicleModelId(m.id);
+        setNewBrand(m.品牌 || brand);
+        setNewModel(matchedModelParts.join(" ") || m.品牌 || model);
+        setNewEngineNo(m.发动机型号 || result.engineNo || "");
+        setNewChassisCode(m.底盘代号 || result.chassisCode || "");
+        setNewTransmissionType(m.变速箱类型 || result.transmissionType || "");
+        setNewTransmissionCode(m.变速箱代号 || result.transmissionCode || "");
+        setVehicleModelDetail({ id: m.id, 排量: m.排量 || null });
+        const displayParts = [...new Set([
+          m.年款 ? `${m.年款}款` : null,
+          m.品牌,
+          m.车系,
+          m.车型,
+          m.销售版本,
+          m.排量,
+          m.发动机型号,
+        ].filter(Boolean))];
+        setVinSearchKeyword(`${displayParts.join(" ")} [ID:${m.id}]`);
+      } else {
+        setNewVehicleModelId(null);
+        setVehicleModelDetail(null);
+        setVinSearchKeyword("");
+      }
+    } catch {
+      setNewVehicleModelId(null);
+      setVehicleModelDetail(null);
+      setVinSearchKeyword("");
+    }
   }
 
   /* ============================================================
@@ -545,7 +692,6 @@ export default function MobileReceptionNewPage() {
                       }
                       setIsNewVehicle(true);
                       setNewPlate(upperPlate);
-                      setAutoOpenVinCamera(true);
                       showToast("车牌识别成功，请继续完善车辆信息", "success");
                     }
                   }}
@@ -604,7 +750,6 @@ export default function MobileReceptionNewPage() {
                     }
                     setIsNewVehicle(true);
                     setNewPlate(plate);
-                    setAutoOpenVinCamera(true);
                   }}
                   className="text-sm text-blue-600"
                 >
@@ -754,7 +899,6 @@ export default function MobileReceptionNewPage() {
                     /* 系统中有该VIN，显示重复询问弹窗（替换车牌/保留原车牌/取消） */
                     setVinDuplicateVehicle(data as unknown as Vehicle);
                     setShowVinDuplicateDialog(true);
-                    setAutoOpenVinCamera(false); /* 防止再次自动触发拍照 */
                     return true;
                   }
 
@@ -763,83 +907,11 @@ export default function MobileReceptionNewPage() {
                 }}
                 onDecode={async (result) => {
                   if (!result) return;
-                  /* 1. 填充VIN解析基本信息 */
-                  const brand = result.brand || "";
-                  const modelParts = [...new Set([result.series, result.model].filter(Boolean))];
-                  const model = modelParts.join(" ");
-                  setNewBrand(brand);
-                  setNewModel(model);
-                  setNewYear(result.year || "");
-                  setNewEngineNo(result.engineNo || "");
-                  setNewChassisCode(result.chassisCode || "");
-                  setNewTransmissionType(result.transmissionType || "");
-                  setNewTransmissionCode(result.transmissionCode || "");
-
-                  /* 2. 自动匹配车型库 */
-                  const searchTerms = [...new Set([result.brand, result.series, result.model].filter(Boolean))];
-                  const keyword = searchTerms.join(" ");
-                  if (!keyword) {
-                    setNewVehicleModelId(null);
-                    setVehicleModelDetail(null);
-                    return;
-                  }
-
-                  try {
-                    const { data } = await supabase
-                      .from("vehicle_models")
-                      .select("id,品牌,车系,车型,年款,排量,销售版本,底盘代号,发动机型号,变速箱类型,变速箱代号")
-                      .ilike("搜索字段", `%${keyword}%`)
-                      .limit(5);
-
-                    if (data && data.length > 0) {
-                      const m = data[0] as {
-                        id: number;
-                        品牌: string | null;
-                        车系: string | null;
-                        车型: string | null;
-                        年款: number | null;
-                        排量: string | null;
-                        销售版本: string | null;
-                        底盘代号: string | null;
-                        发动机型号: string | null;
-                        变速箱类型: string | null;
-                        变速箱代号: string | null;
-                      };
-                      const matchedModelParts = [...new Set([m.车系, m.车型].filter(Boolean))];
-                      setNewVehicleModelId(m.id);
-                      setNewBrand(m.品牌 || brand);
-                      setNewModel(matchedModelParts.join(" ") || m.品牌 || model);
-                      setNewEngineNo(m.发动机型号 || result.engineNo || "");
-                      setNewChassisCode(m.底盘代号 || result.chassisCode || "");
-                      setNewTransmissionType(m.变速箱类型 || result.transmissionType || "");
-                      setNewTransmissionCode(m.变速箱代号 || result.transmissionCode || "");
-                      setVehicleModelDetail({ id: m.id, 排量: m.排量 || null });
-                      /* 构造车型信息展示文本（去重） */
-                      const displayParts = [...new Set([
-                        m.年款 ? `${m.年款}款` : null,
-                        m.品牌,
-                        m.车系,
-                        m.车型,
-                        m.销售版本,
-                        m.排量,
-                        m.发动机型号,
-                      ].filter(Boolean))];
-                      setVinSearchKeyword(`${displayParts.join(" ")} [ID:${m.id}]`);
-                    } else {
-                      setNewVehicleModelId(null);
-                      setVehicleModelDetail(null);
-                      setVinSearchKeyword("");
-                    }
-                  } catch {
-                    setNewVehicleModelId(null);
-                    setVehicleModelDetail(null);
-                    setVinSearchKeyword("");
-                  }
+                  await applyVinDecodeResult(result);
                 }}
                 placeholder="VIN码（17位）"
                 inputClassName="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 buttonClassName="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap shrink-0"
-                autoOpenCamera={autoOpenVinCamera}
               />
 
               {/* 车型信息（从车型库选择） */}
@@ -913,7 +985,6 @@ export default function MobileReceptionNewPage() {
                   setNewYear("");
                   setVehicleModelDetail(null);
                   setVinSearchKeyword("");
-                  setAutoOpenVinCamera(false);
                 }}
                 className="text-xs text-gray-500"
               >

@@ -40,7 +40,6 @@ interface Props {
   placeholder?: string;
   inputClassName?: string;
   buttonClassName?: string;
-  autoOpenCamera?: boolean;
 }
 
 export default function VinDecodeInput({
@@ -51,7 +50,6 @@ export default function VinDecodeInput({
   placeholder = "输入17位VIN码",
   inputClassName,
   buttonClassName,
-  autoOpenCamera,
 }: Props) {
   const [decoding, setDecoding] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -74,24 +72,6 @@ export default function VinDecodeInput({
     setIsMobile(/Mobi|Android|iPhone|iPad|iPod/i.test(ua) || isTouch);
   }, []);
 
-  /* 自动打开相机（接车登记流程：未找到车辆时自动触发 VIN 拍照）
-   * 注意：不用 isMobile 做条件，避免时序问题（isMobile 初始 false 可能跳过触发）
-   * APP 环境直接调原生相机；浏览器环境通过 ref 触发 input click */
-  useEffect(() => {
-    if (!autoOpenCamera || ocrLoading) return;
-    const timer = setTimeout(() => {
-      if (是App) {
-        void APP拍照识别();
-      } else if (mobileInputRef.current) {
-        try {
-          mobileInputRef.current.click();
-        } catch {
-          /* 浏览器可能阻止非用户手势的自动点击，静默忽略 */
-        }
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [autoOpenCamera, ocrLoading, 是App]);
 
   async function handleDecode() {
     const vin = value.trim().toUpperCase();
@@ -447,17 +427,6 @@ export default function VinDecodeInput({
           placeholder={placeholder}
           className={inputClassName || "flex-1"}
         />
-        <button
-          type="button"
-          onClick={handleDecode}
-          disabled={decoding || value.trim().length !== 17}
-          className={
-            buttonClassName ||
-            "px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap shrink-0"
-          }
-        >
-          {decoding ? "解析中..." : "解析"}
-        </button>
         {是App ? (
           /* APP 环境：调用 Capacitor 原生相机 */
           <button type="button" onClick={APP拍照识别} disabled={ocrLoading} className={photoClass}>
