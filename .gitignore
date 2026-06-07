@@ -79,3 +79,5 @@ tmp_*.html
 scripts/
 
 certificates
+# 构建产物副本
+.next-new/
