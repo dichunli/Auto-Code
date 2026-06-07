@@ -83,22 +83,34 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
   }
 
   const boundaryBuffer = Buffer.from(`--${boundary}`);
+  const 前缀BoundaryBuffer = Buffer.from(`\r\n--${boundary}`);
   const endBoundaryBuffer = Buffer.from(`--${boundary}--`);
+  const 前缀EndBoundaryBuffer = Buffer.from(`\r\n--${boundary}--`);
 
   let file: MultipartFile | null = null;
   let folder: string | null = null;
   let partCount = 0;
 
+  /* 找第一个 boundary 的位置（可能在请求体开头或 preamble 之后） */
   let start = body.indexOf(boundaryBuffer);
   console.log("[multipart] first boundary at:", start);
 
+  if (start === -1) {
+    throw new Error("请求中没有找到 boundary");
+  }
+
   while (start !== -1) {
     const partStart = start + boundaryBuffer.length;
-    let partEnd = body.indexOf(boundaryBuffer, partStart);
+    /* 搜索后续 boundary 时必须带 \r\n 前缀，避免在二进制文件数据中误匹配 */
+    let partEnd = body.indexOf(前缀BoundaryBuffer, partStart);
     const isLastPart = partEnd === -1;
     if (isLastPart) {
-      partEnd = body.indexOf(endBoundaryBuffer, partStart);
-      if (partEnd === -1) break;
+      partEnd = body.indexOf(前缀EndBoundaryBuffer, partStart);
+      if (partEnd === -1) {
+        /* 备用：搜索不带 \r\n 前缀的结束 boundary */
+        partEnd = body.indexOf(endBoundaryBuffer, partStart);
+        if (partEnd === -1) break;
+      }
     }
 
     let part = body.slice(partStart, partEnd);
@@ -110,7 +122,7 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
     const headerEnd = part.indexOf("\r\n\r\n");
     if (headerEnd === -1) {
       if (isLastPart) break;
-      start = partEnd;
+      start = partEnd + 2; /* 跳过 \r\n，指向 --boundary */
       continue;
     }
 
@@ -137,7 +149,7 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
     }
 
     if (isLastPart) break;
-    start = partEnd;
+    start = partEnd + 2; /* 跳过 \r\n，指向 --boundary */
   }
 
   if (!file) {

@@ -145,4 +145,21 @@ describe("解析Multipart请求", () => {
     expect(result.file.data[0]).toBe(0xab);
     expect(result.file.data[largeData.length - 1]).toBe(0xab);
   });
+
+  it("文件数据中恰好包含 boundary 字符串时不会误匹配", async () => {
+    const boundary = "----TestBoundary";
+    /* 构造文件数据：中间恰好包含 --boundary（但前面没有 \r\n，不能当作真正的 boundary） */
+    const 文件数据 = Buffer.concat([
+      Buffer.from([0x01, 0x02, 0x03]),
+      Buffer.from(`--${boundary}`), /* 模拟二进制数据中恰好出现 boundary */
+      Buffer.from([0x04, 0x05, 0x06]),
+    ]);
+    const request = 构造Multipart请求(
+      [{ name: "file", filename: "trap.mp4", contentType: "video/mp4", data: 文件数据 }],
+      boundary
+    );
+    const result = await 解析Multipart请求(request);
+    expect(result.file.filename).toBe("trap.mp4");
+    expect(result.file.data).toEqual(文件数据);
+  });
 });

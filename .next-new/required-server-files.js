@@ -313,6 +313,11 @@ self.__SERVER_FILES_MANIFEST={
       "mammoth",
       "docx"
     ],
+    "api": {
+      "bodyParser": {
+        "sizeLimit": "100mb"
+      }
+    },
     "turbopack": {
       "root": "C:\\projects\\auto-repair-shop"
     },
