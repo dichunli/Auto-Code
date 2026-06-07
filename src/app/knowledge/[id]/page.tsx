@@ -22,6 +22,13 @@ interface BlockItem {
   children?: BlockItem[];
 }
 
+/* 权限标签配置 */
+const 权限标签: Record<string, { label: string; className: string }> = {
+  public: { label: "公开", className: "bg-green-50 text-green-700" },
+  internal: { label: "内部", className: "bg-yellow-50 text-yellow-700" },
+  private: { label: "私密", className: "bg-red-50 text-red-700" },
+};
+
 export default async function KnowledgeDetailPage({
   params,
   searchParams,
@@ -39,6 +46,21 @@ export default async function KnowledgeDetailPage({
     .select("*, knowledge_categories(name), profiles(full_name)")
     .eq("id", id)
     .single();
+
+  /* 查询阅读次数 */
+  const { count: readCount } = await supabase
+    .from("knowledge_article_reads")
+    .select("*", { count: "exact", head: true })
+    .eq("article_id", id);
+
+  /* 记录阅读（登录用户才记录，不阻塞页面加载） */
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    supabase.from("knowledge_article_reads").upsert(
+      { article_id: id, user_id: user.id },
+      { onConflict: "article_id,user_id,read_date" }
+    ).catch(() => {});
+  }
 
   if (!article) notFound();
 
@@ -72,12 +94,28 @@ export default async function KnowledgeDetailPage({
             >
               {article.type === "video" ? "视频" : article.type === "qa" ? "问答" : article.type === "guide" ? "维修指导" : "文章"}
             </span>
+            {/* 阅读权限标签 */}
+            {(() => {
+              const vis = article.visibility || "public";
+              const cfg = 权限标签[vis] || 权限标签.public;
+              return (
+                <span className={`text-xs px-2 py-0.5 rounded ${cfg.className}`}>
+                  {cfg.label}
+                </span>
+              );
+            })()}
             {article.knowledge_categories?.name && (
               <span className="text-xs text-gray-500">{article.knowledge_categories.name}</span>
             )}
             <span className="text-xs text-gray-400">
               {article.profiles?.full_name || "系统"} · {new Date(article.created_at).toLocaleDateString()}
             </span>
+            {/* 阅读次数 */}
+            {readCount !== null && readCount > 0 && (
+              <span className="text-xs text-gray-400">
+                阅读 {readCount} 次
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {article.content_blocks && Array.isArray(article.content_blocks) && (

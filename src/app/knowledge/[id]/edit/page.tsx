@@ -40,6 +40,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
     content: "",
     content_blocks: "",
     video_url: "",
+    visibility: "public" as "public" | "internal" | "private",
   });
 
   /* 搜索添加维修项目名称 */
@@ -93,6 +94,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
           ? JSON.stringify(article.content_blocks)
           : "",
         video_url: article.video_url || "",
+        visibility: (article.visibility as "public" | "internal" | "private") || "public",
       });
 
       /* 加载关联维修项目名称 */
@@ -255,6 +257,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
           content: form.content || null,
           content_blocks: contentBlocks,
           video_url: form.type === "video" ? form.video_url || null : null,
+          visibility: form.visibility,
         })
         .eq("id", articleId);
 
@@ -316,7 +319,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">类型</label>
               <select
@@ -343,6 +346,18 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
                     {c.name}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">阅读权限</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                value={form.visibility}
+                onChange={(e) => setForm({ ...form, visibility: e.target.value as "public" | "internal" | "private" })}
+              >
+                <option value="public">🔓 公开（所有人可见）</option>
+                <option value="internal">🔐 内部（登录用户可见）</option>
+                <option value="private">🔒 私密（仅管理员和作者可见）</option>
               </select>
             </div>
           </div>
