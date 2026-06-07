@@ -40,7 +40,12 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
     content: "",
     content_blocks: "",
     video_url: "",
+    visibility: "public" as "public" | "internal" | "private",
   });
+
+  /* 权限状态 */
+  const [canEdit, setCanEdit] = useState(false);
+  const [checkingPermission, setCheckingPermission] = useState(true);
 
   /* 搜索添加维修项目名称 */
   const [nameSearch, setNameSearch] = useState("");
@@ -74,13 +79,38 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       /* 加载文章 */
       const { data: article } = await supabase
         .from("knowledge_articles")
-        .select("*")
+        .select("*, created_by")
         .eq("id", id)
         .single();
 
       if (!article) {
         alert("文章不存在");
         router.push("/knowledge");
+        return;
+      }
+
+      /* 检查权限：创建者或管理员才能编辑 */
+      const { data: userData } = await supabase.auth.getUser();
+      const currentUserId = userData?.user?.id;
+
+      const { data: roleData } = await supabase
+        .from("profile_roles")
+        .select("roles(name)")
+        .eq("profile_id", currentUserId || "");
+
+      const roleNames = (roleData || []).map(
+        (d: { roles?: { name?: string } | null }) => d.roles?.name
+      ).filter(Boolean) as string[];
+      const isAdmin = roleNames.includes("admin");
+      const isOwner = article.created_by === currentUserId;
+      const hasEditPermission = isAdmin || isOwner;
+
+      setCanEdit(hasEditPermission);
+      setCheckingPermission(false);
+
+      if (!hasEditPermission) {
+        alert("您没有权限编辑这篇文章");
+        router.push(`/knowledge/${id}`);
         return;
       }
 
@@ -93,6 +123,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
           ? JSON.stringify(article.content_blocks)
           : "",
         video_url: article.video_url || "",
+        visibility: (article.visibility as "public" | "internal" | "private") || "public",
       });
 
       /* 加载关联维修项目名称 */
@@ -255,6 +286,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
           content: form.content || null,
           content_blocks: contentBlocks,
           video_url: form.type === "video" ? form.video_url || null : null,
+          visibility: form.visibility,
         })
         .eq("id", articleId);
 
@@ -290,12 +322,23 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
     }
   }
 
-  if (pageLoading) {
+  if (pageLoading || checkingPermission) {
     return (
       <div>
         <PageHeader title="编辑知识库内容" />
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
           加载中...
+        </div>
+      </div>
+    );
+  }
+
+  if (!canEdit) {
+    return (
+      <div>
+        <PageHeader title="编辑知识库内容" />
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">
+          您没有权限编辑这篇文章
         </div>
       </div>
     );
@@ -316,7 +359,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">类型</label>
               <select
@@ -343,6 +386,18 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
                     {c.name}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">阅读权限</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                value={form.visibility}
+                onChange={(e) => setForm({ ...form, visibility: e.target.value as "public" | "internal" | "private" })}
+              >
+                <option value="public">所有人可见</option>
+                <option value="internal">内部可见</option>
+                <option value="private">仅自己可见</option>
               </select>
             </div>
           </div>

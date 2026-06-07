@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
 import { BlockNoteTOC } from "@/components/BlockNoteTOC";
 import { PresentationView } from "@/components/PresentationView";
@@ -22,6 +22,17 @@ interface BlockItem {
   children?: BlockItem[];
 }
 
+/* 权限标签 */
+function 权限标签(visibility: string) {
+  const map: Record<string, { label: string; className: string }> = {
+    public: { label: "公开", className: "bg-green-50 text-green-700" },
+    internal: { label: "内部", className: "bg-blue-50 text-blue-700" },
+    private: { label: "私有", className: "bg-gray-100 text-gray-600" },
+  };
+  const config = map[visibility] || map.public;
+  return config;
+}
+
 export default async function KnowledgeDetailPage({
   params,
   searchParams,
@@ -34,6 +45,13 @@ export default async function KnowledgeDetailPage({
   const autoPresent = sp.present === "1";
   const supabase = await createClient();
 
+  /* 获取当前用户 */
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const currentUserId = user?.id;
+
+  /* 获取文章 */
   const { data: article } = await supabase
     .from("knowledge_articles")
     .select("*, knowledge_categories(name), profiles(full_name)")
@@ -42,6 +60,51 @@ export default async function KnowledgeDetailPage({
 
   if (!article) notFound();
 
+  /* 获取当前用户角色 */
+  let isAdmin = false;
+  if (currentUserId) {
+    const { data: roleData } = await supabase
+      .from("profile_roles")
+      .select("roles(name)")
+      .eq("profile_id", currentUserId);
+    const roleNames = (roleData || []).map(
+      (d: { roles?: { name?: string } | null }) => d.roles?.name
+    ).filter(Boolean) as string[];
+    isAdmin = roleNames.includes("admin");
+  }
+
+  /* 检查阅读权限 */
+  const isOwner = article.created_by === currentUserId;
+  const canView =
+    isAdmin ||
+    isOwner ||
+    article.visibility === "public" ||
+    article.visibility === "internal";
+
+  if (!canView) {
+    redirect("/knowledge");
+  }
+
+  /* 记录阅读（1天内不重复） */
+  if (currentUserId) {
+    await supabase.from("knowledge_article_reads").upsert(
+      {
+        article_id: id,
+        user_id: currentUserId,
+        read_date: new Date().toISOString().split("T")[0],
+        read_at: new Date().toISOString(),
+      },
+      { onConflict: "article_id, user_id, read_date" }
+    );
+  }
+
+  /* 获取阅读次数 */
+  const { count: readCount } = await supabase
+    .from("knowledge_article_reads")
+    .select("*", { count: "exact", head: true })
+    .eq("article_id", id);
+
+  /* 获取关联数据 */
   const { data: links } = await supabase
     .from("knowledge_service_links")
     .select("service_name_id, service_item_id, service_names(name), service_items(name)")
@@ -51,6 +114,11 @@ export default async function KnowledgeDetailPage({
     .from("knowledge_vehicle_links")
     .select("vehicle_models(id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准)")
     .eq("article_id", id);
+
+  /* 是否可以编辑/删除 */
+  const canEdit = isAdmin || isOwner;
+
+  const permConfig = 权限标签(article.visibility || "public");
 
   return (
     <div>
@@ -72,24 +140,38 @@ export default async function KnowledgeDetailPage({
             >
               {article.type === "video" ? "视频" : article.type === "qa" ? "问答" : article.type === "guide" ? "维修指导" : "文章"}
             </span>
+            <span className={`text-xs px-2 py-0.5 rounded ${permConfig.className}`}>
+              {permConfig.label}
+            </span>
             {article.knowledge_categories?.name && (
               <span className="text-xs text-gray-500">{article.knowledge_categories.name}</span>
             )}
             <span className="text-xs text-gray-400">
               {article.profiles?.full_name || "系统"} · {new Date(article.created_at).toLocaleDateString()}
             </span>
+            <span className="text-xs text-gray-400 flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              {readCount ?? 0}
+            </span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {article.content_blocks && Array.isArray(article.content_blocks) && (
               <PresentationView blocks={article.content_blocks as BlockItem[]} title={article.title} autoOpen={autoPresent} />
             )}
-            <Link
-              href={`/knowledge/${id}/edit`}
-              className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
-            >
-              编辑
-            </Link>
-            <KnowledgeDeleteButton articleId={id} />
+            {canEdit && (
+              <>
+                <Link
+                  href={`/knowledge/${id}/edit`}
+                  className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                >
+                  编辑
+                </Link>
+                <KnowledgeDeleteButton articleId={id} />
+              </>
+            )}
           </div>
         </div>
 

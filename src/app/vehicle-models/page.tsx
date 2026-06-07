@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import * as XLSX from "xlsx";
@@ -140,7 +140,7 @@ const tableColumns: { key: keyof VehicleModel; label: string; searchable?: boole
 ];
 
 export default function VehicleModelsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [models, setModels] = useState<VehicleModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

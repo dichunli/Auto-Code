@@ -10,7 +10,7 @@ const hostname = '0.0.0.0';
 const httpPort = 3000;
 const httpsPort = 3443;
 
-const app = next({ dev, hostname, port: httpPort, conf: { distDir: '.next-new' } });
+const app = next({ dev, hostname, conf: { distDir: '.next' } });
 const handle = app.getRequestHandler();
 
 app.prepare().then(() => {

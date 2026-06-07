@@ -80,7 +80,7 @@ const APP存储 = {
 
 export function createClient() {
   if (是Capacitor环境()) {
-    /* APP 环境 */
+    /* APP 环境：保留单例，WebView 中 localStorage 稳定 */
     if (!capacitorClient) {
       capacitorClient = createSupabaseClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -99,7 +99,28 @@ export function createClient() {
     return capacitorClient;
   }
 
-  /* 浏览器环境：supabase-js + localStorage + cookie 同步 */
+  /*
+   * 浏览器环境：只在客户端缓存单例。
+   * SSR 阶段（typeof window === "undefined"）创建临时实例，不缓存，
+   * 避免服务端创建的无 session 实例被当成单例复用。
+   * 客户端 hydration 时从 localStorage 重新读取 session，确保认证状态正确。
+   */
+  if (typeof window === "undefined") {
+    return createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          storage: 浏览器存储,
+          storageKey: 认证存储Key,
+          autoRefreshToken: true,
+          flowType: "implicit",
+          detectSessionInUrl: false,
+        },
+      }
+    );
+  }
+
   if (!browserClient) {
     browserClient = createSupabaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
