@@ -1,11 +1,10 @@
-import { createBrowserClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 
-let browserClient: ReturnType<typeof createBrowserClient> | null = null;
+let browserClient: ReturnType<typeof createSupabaseClient> | null = null;
 let capacitorClient: ReturnType<typeof createSupabaseClient> | null = null;
 
-/* 从 Supabase URL 中提取项目引用 ID（用于构造 cookie 名称） */
+/* 从 Supabase URL 中提取项目引用 ID（用于构造 storage key） */
 function 获取项目引用(): string {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   try {
@@ -16,15 +15,47 @@ function 获取项目引用(): string {
 }
 
 const 项目引用 = 获取项目引用();
-/* 浏览器环境：@supabase/ssr 的 createBrowserClient 使用默认 cookie 管理 */
-/* APP 环境：独立 storage key，避免和浏览器 cookie 格式冲突 */
+const 认证存储Key = `sb-${项目引用}-auth-token`;
 const APP认证存储Key = `sb-${项目引用}-auth-token-app`;
 
 /*
- * APP 环境自定义存储：只使用 localStorage，不碰 cookie
- * 避免和浏览器环境的 @supabase/ssr createBrowserClient 互相污染
- * APP 环境的服务端 auth 检查已由 middleware 跳过
+ * 浏览器环境统一存储：localStorage 为主，同时同步 cookie 给 middleware 读取
+ * 解决 @supabase/ssr 的 createBrowserClient 在 Next.js App Router 客户端路由中的 session 丢失问题
  */
+const 浏览器存储 = {
+  getItem: (key: string): string | null => {
+    if (typeof window === "undefined") return null;
+    /* 优先从 localStorage 读取 */
+    const localValue = window.localStorage.getItem(key);
+    if (localValue) return localValue;
+    /* 回退到 cookie */
+    if (key === 认证存储Key) {
+      const match = document.cookie.match(
+        new RegExp(`(?:^|; )${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`)
+      );
+      return match ? decodeURIComponent(match[1]) : null;
+    }
+    return null;
+  },
+  setItem: (key: string, value: string): void => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(key, value);
+    /* 同时写入 cookie，让服务端 middleware 能读取 session */
+    if (key === 认证存储Key) {
+      const maxAge = 400 * 24 * 60 * 60;
+      document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+    }
+  },
+  removeItem: (key: string): void => {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(key);
+    if (key === 认证存储Key) {
+      document.cookie = `${key}=; path=/; max-age=0`;
+    }
+  },
+};
+
+/* APP 环境存储：只使用 localStorage，不碰 cookie */
 const APP存储 = {
   getItem: (key: string): string | null => {
     if (typeof window === "undefined") return null;
@@ -49,21 +80,17 @@ const APP存储 = {
 
 export function createClient() {
   if (是Capacitor环境()) {
-    /* APP 环境：用 supabase-js + 独立 localStorage 存储 */
+    /* APP 环境 */
     if (!capacitorClient) {
       capacitorClient = createSupabaseClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
           auth: {
-            /* APP 环境独立存储，避免和浏览器 @supabase/ssr cookie 格式冲突 */
             storage: APP存储,
             storageKey: APP认证存储Key,
-            /* 自动刷新 token */
             autoRefreshToken: true,
-            /* 使用 implicit 流程 */
             flowType: "implicit",
-            /* 不检测 URL 中的 session */
             detectSessionInUrl: false,
           },
         }
@@ -72,11 +99,20 @@ export function createClient() {
     return capacitorClient;
   }
 
-  /* 浏览器环境：用 ssr 的 cookie 管理，单例避免重复创建 */
+  /* 浏览器环境：supabase-js + localStorage + cookie 同步 */
   if (!browserClient) {
-    browserClient = createBrowserClient(
+    browserClient = createSupabaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          storage: 浏览器存储,
+          storageKey: 认证存储Key,
+          autoRefreshToken: true,
+          flowType: "implicit",
+          detectSessionInUrl: false,
+        },
+      }
     );
   }
   return browserClient;
