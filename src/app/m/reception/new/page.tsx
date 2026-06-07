@@ -121,6 +121,12 @@ export default function MobileReceptionNewPage() {
   /* ---------- VIN 相机弹窗 ---------- */
   const [showVinCameraModal, setShowVinCameraModal] = useState(false);
 
+  /* ---------- VIN 识别确认弹窗 ---------- */
+  const [vinConfirmData, setVinConfirmData] = useState<{
+    vin: string;
+    decodeResult: VinDecodeResult | null;
+  } | null>(null);
+
   /* ---------- 草稿恢复 ---------- */
   useEffect(() => {
     const draft = sessionStorage.getItem("reception-draft");
@@ -444,14 +450,36 @@ export default function MobileReceptionNewPage() {
   }
 
   /* ============================================================
-     VIN 相机识别结果处理：系统有则直接选中，无则创建新车
+     VIN 相机识别结果处理：
+     1. 先弹出确认弹窗，让用户确认 VIN 是否正确
+     2. 用户确认后：查询系统 → 有则选中车辆+客户，无则新建
      ============================================================ */
-  async function handleVinRecognize(vin: string, decodeResult: VinDecodeResult | null) {
+  function handleVinRecognize(vin: string, decodeResult: VinDecodeResult | null) {
     const upperVin = 标准化VIN(vin);
     if (!upperVin || upperVin.length !== 17) {
       alert("VIN 码无效，请重新识别");
       return;
     }
+    /* 弹出确认弹窗 */
+    setVinConfirmData({ vin: upperVin, decodeResult });
+  }
+
+  /* ============================================================
+     VIN 确认后处理：
+     confirmed = true  → 查询系统并处理
+     confirmed = false → 关闭弹窗，重新识别
+     ============================================================ */
+  async function handleVinConfirm(confirmed: boolean) {
+    if (!vinConfirmData) return;
+
+    if (!confirmed) {
+      setVinConfirmData(null);
+      return;
+    }
+
+    const upperVin = vinConfirmData.vin;
+    const decodeResult = vinConfirmData.decodeResult;
+    setVinConfirmData(null);
 
     /* 查询系统中是否已有该 VIN 的车辆 */
     const { data } = await supabase
@@ -461,6 +489,7 @@ export default function MobileReceptionNewPage() {
       .maybeSingle();
 
     if (data) {
+      /* 系统中有该VIN：直接选中车辆和客户 */
       const v = data as unknown as Vehicle;
       setSelectedVehicle(v);
       setVehicleQuery("");
@@ -473,19 +502,17 @@ export default function MobileReceptionNewPage() {
       } else {
         setSelectedCustomer(null);
       }
-      setShowVinCameraModal(false);
-      showToast("已找到该车辆，可直接提交接车", "success");
+      showToast(`已找到车辆 ${v.plate_number}，可直接提交接车`, "success");
       return;
     }
 
-    /* 系统中没有，进入新建车辆模式并填充 VIN */
+    /* 系统中没有该 VIN：进入新建车辆模式 */
     setIsNewVehicle(true);
     setNewVin(upperVin);
     if (decodeResult) {
       await applyVinDecodeResult(decodeResult);
     }
-    setShowVinCameraModal(false);
-    showToast("VIN识别成功，请补充车牌号", "success");
+    showToast("系统中未找到该VIN，请新建车辆", "warning");
   }
 
   /* ============================================================
@@ -1535,6 +1562,50 @@ export default function MobileReceptionNewPage() {
                 className="w-full py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
               >
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIN 识别确认弹窗 */}
+      {vinConfirmData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm p-5 space-y-4">
+            <div className="text-center">
+              <div className="text-lg font-semibold text-gray-900">确认 VIN 码</div>
+              <div className="text-sm text-gray-500 mt-1">请核对识别结果是否正确</div>
+            </div>
+
+            <div className="text-center py-3 bg-gray-50 rounded-lg">
+              <div className="text-2xl font-bold text-gray-900 tracking-[0.15em] font-mono">
+                {vinConfirmData.vin}
+              </div>
+              {vinConfirmData.decodeResult && (
+                <div className="text-sm text-gray-500 mt-1">
+                  {vinConfirmData.decodeResult.brand} {vinConfirmData.decodeResult.series} {vinConfirmData.decodeResult.model}
+                  {vinConfirmData.decodeResult.year && ` · ${vinConfirmData.decodeResult.year}年`}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setVinConfirmData(null);
+                  setShowVinCameraModal(true);
+                }}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                重新识别
+              </button>
+              <button
+                type="button"
+                onClick={() => handleVinConfirm(true)}
+                className="flex-1 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                确认正确
               </button>
             </div>
           </div>
