@@ -82,15 +82,23 @@ export default function EditOtherTransactionPage({ params }: { params: { id: str
         .order("sort_order");
       setCategories(cats || []);
 
-      /* 查询收款方式：专属 + 公用同时显示 */
+      /* 查询收款方式：专属 + 公用分别查询后合并，避免连续 .or() 覆盖 */
       if (operatorId) {
-        const { data: accs } = await supabase
-          .from("other_payment_methods")
-          .select("id, name")
-          .or('is_active.eq.true,is_active.is.null')
-          .or(`operator_id.eq.${operatorId},operator_id.is.null`)
-          .order("sort_order");
-        setAccounts(accs || []);
+        const [{ data: 专属账号 }, { data: 公用账号 }] = await Promise.all([
+          supabase
+            .from("other_payment_methods")
+            .select("id, name")
+            .eq("operator_id", operatorId)
+            .or('is_active.eq.true,is_active.is.null')
+            .order("sort_order"),
+          supabase
+            .from("other_payment_methods")
+            .select("id, name")
+            .is("operator_id", null)
+            .or('is_active.eq.true,is_active.is.null')
+            .order("sort_order"),
+        ]);
+        setAccounts([...(专属账号 || []), ...(公用账号 || [])]);
       } else {
         const { data: all } = await supabase
           .from("other_payment_methods")
