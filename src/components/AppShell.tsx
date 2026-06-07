@@ -36,7 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main
         className={cn(
           "flex-1 overflow-auto px-4 pb-6 sm:px-6 lg:px-8",
-          isLogin ? "pt-0" : "pt-14 md:pt-6"
+          isLogin ? "pt-0" : "pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-6"
         )}
       >
         {children}
