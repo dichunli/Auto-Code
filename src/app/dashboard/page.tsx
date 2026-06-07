@@ -62,15 +62,16 @@ async function getDashboardStats() {
   );
 
   // 1. 工单状态统计
-  const { data: orderStatusCounts } = await supabase
+  const { data: allOrderStatus } = await supabase
     .from("work_orders")
-    .select("status")
-    .not("status", "in", "(settled,delivered)");
+    .select("status");
 
   const orderCounts: Record<string, number> = {};
-  orderStatusCounts?.forEach((o: WorkOrderStatusRow) => {
-    orderCounts[o.status] = (orderCounts[o.status] || 0) + 1;
-  });
+  (allOrderStatus || [])
+    .filter((o: WorkOrderStatusRow) => o.status !== "settled" && o.status !== "delivered")
+    .forEach((o: WorkOrderStatusRow) => {
+      orderCounts[o.status] = (orderCounts[o.status] || 0) + 1;
+    });
 
   // 2. 配件状态统计
   const { data: parts } = await supabase

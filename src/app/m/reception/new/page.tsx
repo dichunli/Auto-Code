@@ -542,11 +542,13 @@ export default function MobileReceptionNewPage() {
       .from("work_orders")
       .select("id, order_no, status")
       .eq("vehicle_id", vehicle.id)
-      .not("status", "in", "(settled,delivered)")
       .limit(1);
 
-    if (orders && orders.length > 0) {
-      return { hasDuplicate: true, orderNo: orders[0].order_no };
+    const activeOrders = (orders || []).filter(
+      (o: Record<string, unknown>) => o.status !== "settled" && o.status !== "delivered"
+    );
+    if (activeOrders.length > 0) {
+      return { hasDuplicate: true, orderNo: activeOrders[0].order_no };
     }
     return { hasDuplicate: false };
   }

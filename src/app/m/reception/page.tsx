@@ -61,13 +61,16 @@ export default function MobileReceptionListPage() {
           .select(
             "id, order_no, status, received_at, mileage_in, vehicles(plate_number, brand, model), customers(name, phone)"
           )
-          .not("status", "in", `(${SETTLED_STATUSES.join(",")})`)
           .neq("order_type", "cancelled")
           .order("created_at", { ascending: false });
         if (queryError) {
           setError("查询失败：" + queryError.message);
         } else {
-          setOrders((data || []) as Order[]);
+          /* 内存过滤：排除已结算、已交车 */
+          const activeOrders = (data || []).filter((o: Record<string, unknown>) =>
+            !SETTLED_STATUSES.includes(o.status as string)
+          );
+          setOrders(activeOrders as Order[]);
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
