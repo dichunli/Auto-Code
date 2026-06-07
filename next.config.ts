@@ -7,15 +7,11 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   serverExternalPackages: ["mammoth", "docx"],
-  api: {
-    bodyParser: {
-      sizeLimit: "100mb",
-    },
-  },
   experimental: {
     serverActions: {
       bodySizeLimit: "100mb",
     },
+    middlewareClientMaxBodySize: 100 * 1024 * 1024, /* 100MB */
   },
   async headers() {
     return [

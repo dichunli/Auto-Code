@@ -216,7 +216,7 @@ self.__SERVER_FILES_MANIFEST={
       "globalNotFound": false,
       "browserDebugInfoInTerminal": "warn",
       "lockDistDir": true,
-      "proxyClientMaxBodySize": 10485760,
+      "proxyClientMaxBodySize": 104857600,
       "hideLogsAfterAbort": false,
       "mcpServer": true,
       "turbopackFileSystemCacheForDev": true,
@@ -226,6 +226,7 @@ self.__SERVER_FILES_MANIFEST={
       "serverActions": {
         "bodySizeLimit": "100mb"
       },
+      "middlewareClientMaxBodySize": 104857600,
       "optimizePackageImports": [
         "lucide-react",
         "date-fns",
@@ -313,11 +314,6 @@ self.__SERVER_FILES_MANIFEST={
       "mammoth",
       "docx"
     ],
-    "api": {
-      "bodyParser": {
-        "sizeLimit": "100mb"
-      }
-    },
     "turbopack": {
       "root": "C:\\projects\\auto-repair-shop"
     },
