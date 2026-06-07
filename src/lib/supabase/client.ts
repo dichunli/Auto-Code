@@ -2,7 +2,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 
-const browserClient: ReturnType<typeof createBrowserClient> | null = null;
+let browserClient: ReturnType<typeof createBrowserClient> | null = null;
 let capacitorClient: ReturnType<typeof createSupabaseClient> | null = null;
 
 /* 从 Supabase URL 中提取项目引用 ID（用于构造 cookie 名称） */
@@ -72,11 +72,14 @@ export function createClient() {
     return capacitorClient;
   }
 
-  /* 浏览器环境：每次都创建新实例，避免登录后 session cookie 变化检测延迟 */
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  /* 浏览器环境：用 ssr 的 cookie 管理，单例避免重复创建 */
+  if (!browserClient) {
+    browserClient = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+  }
+  return browserClient;
 }
 
 /* 导出环境检测，方便页面调试 */
