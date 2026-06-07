@@ -13,6 +13,8 @@ import { vin17DecodeVin } from "@/lib/17vin/client";
 import { StarDisplay, TagDisplay } from "@/components/CustomerSearchDropdown";
 import { 标准化VIN } from "@/lib/vinValidator";
 import { VehicleModelDetail } from "@/components/VehicleModelSearch";
+import VinCameraModal from "@/components/VinCameraModal";
+import type { VinDecodeResult } from "@/components/VinDecodeInput";
 
 /* ============================================================
    接车登记 — 手机端新建工单（一步提交）
@@ -115,6 +117,9 @@ export default function MobileReceptionNewPage() {
   const [authCode, setAuthCode] = useState("");
   const [authVerifying, setAuthVerifying] = useState(false);
   const [pendingOrderNo, setPendingOrderNo] = useState("");
+
+  /* ---------- VIN 相机弹窗 ---------- */
+  const [showVinCameraModal, setShowVinCameraModal] = useState(false);
 
   /* ---------- 草稿恢复 ---------- */
   useEffect(() => {
@@ -439,6 +444,51 @@ export default function MobileReceptionNewPage() {
   }
 
   /* ============================================================
+     VIN 相机识别结果处理：系统有则直接选中，无则创建新车
+     ============================================================ */
+  async function handleVinRecognize(vin: string, decodeResult: VinDecodeResult | null) {
+    const upperVin = 标准化VIN(vin);
+    if (!upperVin || upperVin.length !== 17) {
+      alert("VIN 码无效，请重新识别");
+      return;
+    }
+
+    /* 查询系统中是否已有该 VIN 的车辆 */
+    const { data } = await supabase
+      .from("vehicles")
+      .select("id, plate_number, brand, model, vin, customer_id, customers(id, name, phone, star_level, customer_tags(tags(id, name, color)))")
+      .eq("vin", upperVin)
+      .maybeSingle();
+
+    if (data) {
+      const v = data as unknown as Vehicle;
+      setSelectedVehicle(v);
+      setVehicleQuery("");
+      setVehicleResults([]);
+      setShowCustomerSelect(false);
+      const vc = getVehicleCustomer(v);
+      if (vc) {
+        setSelectedCustomer(vc);
+        setShowCustomerSelect(false);
+      } else {
+        setSelectedCustomer(null);
+      }
+      setShowVinCameraModal(false);
+      showToast("已找到该车辆，可直接提交接车", "success");
+      return;
+    }
+
+    /* 系统中没有，进入新建车辆模式并填充 VIN */
+    setIsNewVehicle(true);
+    setNewVin(upperVin);
+    if (decodeResult) {
+      await applyVinDecodeResult(decodeResult);
+    }
+    setShowVinCameraModal(false);
+    showToast("VIN识别成功，请补充车牌号", "success");
+  }
+
+  /* ============================================================
      车牌格式校验（中国车牌）
      ============================================================ */
   function isValidPlate(plate: string): boolean {
@@ -647,7 +697,16 @@ export default function MobileReceptionNewPage() {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* 车辆信息 */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-          <div className="text-sm font-medium text-gray-900">车辆信息</div>
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium text-gray-900">车辆信息</div>
+            <button
+              type="button"
+              onClick={() => setShowVinCameraModal(true)}
+              className="text-xs text-blue-600 hover:text-blue-800 active:text-blue-900"
+            >
+              识别VIN
+            </button>
+          </div>
 
           {!selectedVehicle && !isNewVehicle && (
             <>
@@ -1481,6 +1540,13 @@ export default function MobileReceptionNewPage() {
           </div>
         </div>
       )}
+
+      {/* VIN 识别弹窗 */}
+      <VinCameraModal
+        open={showVinCameraModal}
+        onClose={() => setShowVinCameraModal(false)}
+        onRecognize={handleVinRecognize}
+      />
 
     </div>
   );
