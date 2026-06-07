@@ -1,3 +1,0 @@
-module.exports=[3169,a=>{"use strict";var b=a.i(87924),c=a.i(95445),d=a.i(50944);a.s(["MobileLogoutButton",0,function(){let a=(0,d.useRouter)(),e=(0,c.createClient)();async function f(){confirm("确定要退出登录吗？")&&(await e.auth.signOut(),a.push("/login"),a.refresh())}return(0,b.jsx)("button",{type:"button",onClick:f,className:"w-full py-3 text-sm text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 active:bg-red-100 transition-colors",children:"退出登录"})}])}];
-
-//# sourceMappingURL=src_components_mobile_MobileLogoutButton_tsx_046epkg._.js.map

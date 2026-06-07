@@ -17,8 +17,12 @@ export async function middleware(request: NextRequest) {
   const userAgent = request.headers.get("user-agent") || "";
   const { pathname } = request.nextUrl;
 
-  /* ========== APP 环境：跳过服务端 auth 检查，由客户端自行处理 ========== */
-  if (是APP环境(userAgent) && pathname.startsWith("/m")) {
+  /* ========== APP 环境：跳过服务端 auth 检查，由客户端自行处理 ==========
+   * 原因：@supabase/ssr 的 cookie 机制在 WebView 中不可靠，APP 环境完全由
+   * 客户端 createClient()（supabase-js + localStorage）管理认证状态。
+   * 包括 /work-orders、/work-orders/:id 等非 /m 路径，在 APP 中也会被访问。
+   */
+  if (是APP环境(userAgent)) {
     return NextResponse.next();
   }
 

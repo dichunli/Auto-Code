@@ -1,3 +1,0 @@
-module.exports=[23953,a=>{"use strict";var b=a.i(87924),c=a.i(72131);a.s(["default",0,function({error:a,reset:d}){return(0,c.useEffect)(()=>{console.error(a)},[a]),(0,b.jsxs)("div",{className:"flex flex-col items-center justify-center h-screen",children:[(0,b.jsx)("div",{className:"text-2xl font-bold text-gray-900 mb-4",children:"出错了"}),(0,b.jsx)("p",{className:"text-gray-600 mb-6",children:a.message||"页面加载失败，请稍后重试"}),(0,b.jsx)("button",{onClick:d,className:"px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors",children:"重试"})]})}])}];
-
-//# sourceMappingURL=src_app_error_tsx_05yscq4._.js.map
