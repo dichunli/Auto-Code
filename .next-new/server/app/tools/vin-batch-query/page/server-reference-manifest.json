@@ -1,6 +1,6 @@
 {
   "node": {
-    "40aadde7ce144c017b3b448df007b32a891844f00f": {
+    "409dce44c7ef81c6157b9bcf9836cad284bf5c6f5c": {
       "workers": {
         "app/tools/vin-batch-query/page": {
           "moduleId": 40356,
@@ -12,7 +12,19 @@
       "exportedName": "batchQueryVinFilters",
       "filename": "src/app/tools/vin-batch-query/actions.ts"
     },
-    "40d02b37bcbda90e13c58839bff5ad636e5abb26be": {
+    "405344d1187d6bcf37e62ec2dd4c5e61e622967255": {
+      "workers": {
+        "app/tools/vin-batch-query/page": {
+          "moduleId": 40356,
+          "async": false,
+          "exportedName": "batchSyncMissingModels",
+          "filename": "src/app/tools/vin-batch-query/actions.ts"
+        }
+      },
+      "exportedName": "batchSyncMissingModels",
+      "filename": "src/app/tools/vin-batch-query/actions.ts"
+    },
+    "400807e2fab79641e38a118fee0d367fa5c60148db": {
       "workers": {
         "app/tools/vin-batch-query/page": {
           "moduleId": 40356,
@@ -22,6 +34,18 @@
         }
       },
       "exportedName": "batchCreatePartsFromVin",
+      "filename": "src/app/tools/vin-batch-query/createActions.ts"
+    },
+    "60916db8f3a998cb6197601ad828b0e8c6923d528a": {
+      "workers": {
+        "app/tools/vin-batch-query/page": {
+          "moduleId": 40356,
+          "async": false,
+          "exportedName": "autoCreateFiltersByVin",
+          "filename": "src/app/tools/vin-batch-query/createActions.ts"
+        }
+      },
+      "exportedName": "autoCreateFiltersByVin",
       "filename": "src/app/tools/vin-batch-query/createActions.ts"
     }
   },

@@ -165,7 +165,18 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
       onClose();
       router.refresh();
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      let msg = "未知错误";
+      if (err instanceof Error) {
+        msg = err.message;
+      } else if (err && typeof err === "object" && "message" in err) {
+        msg = String((err as Record<string, unknown>).message);
+      } else if (err && typeof err === "object" && "error" in err) {
+        msg = String((err as Record<string, unknown>).error);
+      } else {
+        msg = String(err);
+      }
+      console.error("保存需求弹窗异常:", err);
+      alert("保存失败: " + msg);
     } finally {
       setSaving(false);
     }

@@ -1,6 +1,6 @@
 {
   "node": {
-    "6097b0a5b2ed74224e22d473f874e31ad20aec2d49": {
+    "60b3e859df4cd9774e3565a8bd80465e80019267bc": {
       "workers": {
         "app/parts/[id]/page": {
           "moduleId": 500,

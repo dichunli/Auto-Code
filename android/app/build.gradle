@@ -54,6 +54,21 @@ dependencies {
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
     implementation "androidx.browser:browser:1.8.0"
+
+    /* CameraX */
+    implementation "androidx.camera:camera-core:$cameraXVersion"
+    implementation "androidx.camera:camera-camera2:$cameraXVersion"
+    implementation "androidx.camera:camera-lifecycle:$cameraXVersion"
+    implementation "androidx.camera:camera-view:$cameraXVersion"
+
+    /* ML Kit Barcode Scanning（离线版，不依赖 Google Play 服务） */
+    implementation "com.google.mlkit:barcode-scanning:$mlkitBarcodeScanningVersion"
+
+    /* ML Kit 中文文字识别（离线版） */
+    implementation "com.google.mlkit:text-recognition-chinese:$mlkitTextRecognitionVersion"
+
+    /* Guava（CameraX / ML Kit 需要） */
+    implementation "com.google.guava:guava:$guavaVersion"
 }
 
 apply from: 'capacitor.build.gradle'

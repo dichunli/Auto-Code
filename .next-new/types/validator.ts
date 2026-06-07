@@ -659,6 +659,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../src/app/m/test/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/m/test">> = Specific
+  const handler = {} as typeof import("../../src/app/m/test/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../src/app/mechanic-levels/[id]/edit/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/mechanic-levels/[id]/edit">> = Specific
@@ -915,6 +924,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   type __IsExpected<Specific extends AppPageConfig<"/procurement">> = Specific
   const handler = {} as typeof import("../../src/app/procurement/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/profile/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/profile">> = Specific
+  const handler = {} as typeof import("../../src/app/profile/page.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check
@@ -1194,6 +1212,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   type __IsExpected<Specific extends AppPageConfig<"/tools/vin-batch-query">> = Specific
   const handler = {} as typeof import("../../src/app/tools/vin-batch-query/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/tools/vin-test/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/tools/vin-test">> = Specific
+  const handler = {} as typeof import("../../src/app/tools/vin-test/page.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check
@@ -1577,10 +1604,28 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../src/app/api/test-vin17-ocr/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/test-vin17-ocr">> = Specific
+  const handler = {} as typeof import("../../src/app/api/test-vin17-ocr/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../src/app/api/upload/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/upload">> = Specific
   const handler = {} as typeof import("../../src/app/api/upload/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/api/vin-ocr/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/vin-ocr">> = Specific
+  const handler = {} as typeof import("../../src/app/api/vin-ocr/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

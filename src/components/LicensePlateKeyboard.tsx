@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import PlateScanKeyboard from "./PlateScanKeyboard";
 
 interface Props {
   value: string;
@@ -10,6 +11,7 @@ interface Props {
   maxLength?: number;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   variant?: "full" | "simple";
+  readOnly?: boolean;
 }
 
 /* 是否为移动设备 */
@@ -18,29 +20,6 @@ function isMobile() {
   return /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
-/* 省份简称 — 黑排第一位 */
-const PROVINCES = [
-  "黑", "京", "津", "冀", "晋", "蒙", "辽", "吉", "沪", "苏",
-  "浙", "皖", "闽", "赣", "鲁", "豫", "鄂", "湘", "粤", "桂",
-  "琼", "渝", "川", "贵", "云", "藏", "陕", "甘", "青", "宁", "新",
-];
-
-/* 字母（不含 I、O，避免与1、0混淆） */
-const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
-
-/* 数字 — 按 1-0 排列 */
-const NUMBERS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
-
-/* 新能源专用 D/F */
-const ENERGY_CHARS = ["D", "F"];
-
-/* QWERTY 布局（简化版键盘用） */
-const QWERTY_ROWS = [
-  ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
-  ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
-  ["Z", "X", "C", "V", "B", "N", "M"],
-];
-
 export default function LicensePlateKeyboard({
   value,
   onChange,
@@ -48,7 +27,7 @@ export default function LicensePlateKeyboard({
   className = "",
   maxLength = 8,
   onKeyDown,
-  variant = "full",
+  readOnly,
 }: Props) {
   const displayValue = value.toUpperCase();
 
@@ -67,28 +46,34 @@ export default function LicensePlateKeyboard({
     );
   }
 
-  /* 移动端简化版键盘 */
-  if (variant === "simple") {
-    return <SimpleKeyboard value={displayValue} onChange={onChange} placeholder={placeholder} className={className} maxLength={maxLength} />;
-  }
-
-  /* 移动端完整版车牌键盘 */
-  return <FullKeyboard value={displayValue} onChange={onChange} placeholder={placeholder} className={className} maxLength={maxLength} />;
+  /* 移动端使用截图样式键盘 */
+  return (
+    <MobilePlateKeyboard
+      value={displayValue}
+      onChange={onChange}
+      placeholder={placeholder}
+      className={className}
+      maxLength={maxLength}
+      readOnly={readOnly}
+    />
+  );
 }
 
-/* ========== 简化版键盘 ========== */
-function SimpleKeyboard({
+/* ========== 移动端车牌键盘（截图样式） ========== */
+function MobilePlateKeyboard({
   value,
   onChange,
   placeholder,
   className,
   maxLength,
+  readOnly,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   className: string;
   maxLength: number;
+  readOnly?: boolean;
 }) {
   const [show, setShow] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -117,6 +102,7 @@ function SimpleKeyboard({
     }
   }, [show]);
 
+  /* 追加字符 */
   const handleAppend = useCallback(
     (char: string) => {
       if (value.length >= maxLength) return;
@@ -125,204 +111,10 @@ function SimpleKeyboard({
     [value, maxLength, onChange]
   );
 
-  const handleDelete = useCallback(() => {
-    if (value.length === 0) return;
-    onChange(value.slice(0, -1));
-  }, [value, onChange]);
-
-  const handleClear = useCallback(() => {
-    onChange("");
-  }, [onChange]);
-
-  return (
-    <div className="relative">
-      <input
-        ref={inputRef}
-        type="text"
-        readOnly
-        inputMode="none"
-        value={value}
-        onClick={() => setShow(true)}
-        placeholder={placeholder}
-        className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${className}`}
-      />
-
-      {show && <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setShow(false)} />}
-
-      {show && (
-        <div
-          ref={keyboardRef}
-          className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100 border-t border-gray-200 p-3 pb-16"
-        >
-          {/* 顶部栏 */}
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-500">
-              {value.length > 0 ? `${value.length} 位` : "请输入车牌号"}
-            </span>
-            <div className="flex items-center gap-2">
-              {value.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  className="px-3 py-1 text-xs rounded bg-gray-200 text-gray-600 active:bg-gray-300"
-                >
-                  清空
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setShow(false)}
-                className="px-3 py-1 text-xs rounded bg-blue-600 text-white active:bg-blue-700"
-              >
-                完成
-              </button>
-            </div>
-          </div>
-
-          {/* 当前输入预览 — 点击字符删除该位及之后 */}
-          <div className="bg-white rounded-lg px-3 py-2 mb-2 text-center flex items-center justify-center gap-0.5 min-h-[40px]">
-            {value.length > 0 ? (
-              value.split("").map((char, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => onChange(value.slice(0, idx))}
-                  className="text-lg font-bold text-gray-900 tracking-wider px-0.5 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                >
-                  {char}
-                </button>
-              ))
-            ) : (
-              <span className="text-lg font-bold text-gray-300 tracking-wider">—</span>
-            )}
-          </div>
-
-          {/* 键盘面板 */}
-          <div className="touch-none select-none space-y-1.5">
-            {/* 数字行 */}
-            <div className="grid grid-cols-10 gap-1.5">
-              {NUMBERS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => handleAppend(c)}
-                  className="h-10 rounded text-sm font-medium bg-white text-gray-800 border border-gray-200 active:bg-gray-100 active:scale-95 transition-transform"
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-            {/* QWERTY 字母行 */}
-            {QWERTY_ROWS.map((row, rowIdx) => (
-              <div key={rowIdx} className="grid grid-cols-10 gap-1.5">
-                {row.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => handleAppend(c)}
-                    className="h-10 rounded text-sm font-medium bg-white text-gray-800 border border-gray-200 active:bg-gray-100 active:scale-95 transition-transform"
-                  >
-                    {c}
-                  </button>
-                ))}
-                {/* 第三行补满10格：Z-M 只有7个，后面放3个空位，最后一个放退格 */}
-                {rowIdx === 2 && (
-                  <>
-                    <div />
-                    <div />
-                    <button
-                      type="button"
-                      onClick={handleDelete}
-                      disabled={value.length === 0}
-                      className="h-10 rounded text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200 active:bg-amber-100 disabled:opacity-40 disabled:active:scale-100 active:scale-95 transition-transform flex items-center justify-center"
-                    >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
-                        <line x1="10" y1="9" x2="16" y2="15" />
-                        <line x1="16" y1="9" x2="10" y2="15" />
-                      </svg>
-                    </button>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ========== 完整版车牌键盘 ========== */
-function FullKeyboard({
-  value,
-  onChange,
-  placeholder,
-  className,
-  maxLength,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  className: string;
-  maxLength: number;
-}) {
-  const [show, setShow] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const keyboardRef = useRef<HTMLDivElement>(null);
-
-  /* 根据当前输入长度决定键盘模式（派生状态） */
-  const mode = useMemo(() => {
-    const len = value.length;
-    if (len === 0) return "province";
-    if (len === 1) return "letter";
-    if (len === 2 && (value[1] === "D" || value[1] === "F")) return "energy";
-    return "mixed";
-  }, [value]);
-
-  /* 点击外部关闭键盘 */
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent | TouchEvent) {
-      const target = e.target as HTMLElement;
-      if (
-        keyboardRef.current &&
-        !keyboardRef.current.contains(target) &&
-        inputRef.current &&
-        !inputRef.current.contains(target)
-      ) {
-        setShow(false);
-      }
-    }
-    if (show) {
-      document.addEventListener("mousedown", handleClickOutside);
-      document.addEventListener("touchstart", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-        document.removeEventListener("touchstart", handleClickOutside);
-      };
-    }
-  }, [show]);
-
-  /* 点击输入框打开键盘 */
-  function handleInputClick() {
-    setShow(true);
-  }
-
-  /* 追加字符 */
-  const handleAppend = useCallback(
-    (char: string) => {
-      if (value.length >= maxLength) return;
-      const next = value + char;
-      onChange(next);
-    },
-    [value, maxLength, onChange]
-  );
-
   /* 删除 */
   const handleDelete = useCallback(() => {
     if (value.length === 0) return;
-    const next = value.slice(0, -1);
-    onChange(next);
+    onChange(value.slice(0, -1));
   }, [value, onChange]);
 
   /* 清空 */
@@ -335,112 +127,6 @@ function FullKeyboard({
     setShow(false);
   }, []);
 
-  /* ========== 省份面板 ========== */
-  function renderProvincePanel() {
-    return (
-      <div className="grid grid-cols-8 gap-1.5">
-        {PROVINCES.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => handleAppend(p)}
-            className={`h-10 rounded text-sm font-medium active:scale-95 transition-transform ${
-              p === "黑"
-                ? "bg-blue-600 text-white"
-                : "bg-white text-gray-800 border border-gray-200 active:bg-gray-100"
-            }`}
-          >
-            {p}
-          </button>
-        ))}
-      </div>
-    );
-  }
-
-  /* ========== 字母面板 ========== */
-  function renderLetterPanel() {
-    return (
-      <div className="grid grid-cols-6 gap-1.5">
-        {LETTERS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => handleAppend(c)}
-            className="h-10 rounded text-sm font-medium bg-white text-gray-800 border border-gray-200 active:bg-gray-100 active:scale-95 transition-transform"
-          >
-            {c}
-          </button>
-        ))}
-      </div>
-    );
-  }
-
-  /* ========== 混合面板（字母+数字） ========== */
-  function renderMixedPanel() {
-    return (
-      <div className="space-y-1.5">
-        {/* 数字行 */}
-        <div className="grid grid-cols-10 gap-1.5">
-          {NUMBERS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => handleAppend(c)}
-              className="h-10 rounded text-sm font-medium bg-white text-gray-800 border border-gray-200 active:bg-gray-100 active:scale-95 transition-transform"
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-        {/* 字母行 */}
-        <div className="grid grid-cols-6 gap-1.5">
-          {LETTERS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => handleAppend(c)}
-              className="h-10 rounded text-sm font-medium bg-white text-gray-800 border border-gray-200 active:bg-gray-100 active:scale-95 transition-transform"
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  /* ========== 新能源面板（D/F + 数字） ========== */
-  function renderEnergyPanel() {
-    return (
-      <div className="space-y-1.5">
-        <div className="grid grid-cols-6 gap-1.5">
-          {ENERGY_CHARS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => handleAppend(c)}
-              className="h-10 rounded text-sm font-medium bg-green-50 text-green-700 border border-green-200 active:bg-green-100 active:scale-95 transition-transform"
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-1.5">
-          {NUMBERS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => handleAppend(c)}
-              className="h-10 rounded text-sm font-medium bg-white text-gray-800 border border-gray-200 active:bg-gray-100 active:scale-95 transition-transform"
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="relative">
       {/* 输入框 — 只读，点击打开键盘 */}
@@ -450,46 +136,40 @@ function FullKeyboard({
         readOnly
         inputMode="none"
         value={value}
-        onClick={handleInputClick}
+        onClick={readOnly ? undefined : () => setShow(true)}
         placeholder={placeholder}
-        className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${className}`}
+        className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${readOnly ? "bg-gray-50 cursor-not-allowed" : "cursor-pointer"} ${className}`}
       />
 
-      {/* 键盘遮罩 */}
-      {show && <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setShow(false)} />}
+      {/* 遮罩 */}
+      {show && (
+        <div
+          className="fixed inset-0 bg-black/20 z-40"
+          onClick={() => setShow(false)}
+        />
+      )}
 
-      {/* 底部键盘 */}
+      {/* 底部键盘弹窗 */}
       {show && (
         <div
           ref={keyboardRef}
-          className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100 border-t border-gray-200 p-3 pb-16"
+          className="fixed bottom-0 left-0 right-0 z-50 bg-gray-200 p-2 pb-8"
         >
           {/* 顶部栏 */}
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-gray-500">
-              {value.length === 0
-                ? "请选择省份简称"
-                : value.length === 1
-                ? "请选择字母"
-                : "请继续输入"}
+              {value.length > 0 ? `${value.length} 位` : "请输入车牌号"}
             </span>
             <div className="flex items-center gap-2">
               {value.length > 0 && (
                 <button
                   type="button"
                   onClick={handleClear}
-                  className="px-3 py-1 text-xs rounded bg-gray-200 text-gray-600 active:bg-gray-300"
+                  className="px-3 py-1 text-xs rounded bg-gray-300 text-gray-600 active:bg-gray-400"
                 >
                   清空
                 </button>
               )}
-              <button
-                type="button"
-                onClick={handleDone}
-                className="px-3 py-1 text-xs rounded bg-blue-600 text-white active:bg-blue-700"
-              >
-                完成
-              </button>
             </div>
           </div>
 
@@ -509,44 +189,14 @@ function FullKeyboard({
             ) : (
               <span className="text-lg font-bold text-gray-300 tracking-wider">—</span>
             )}
-            {value.length > 0 && (
-              <span className="text-xs text-gray-400 ml-2">
-                {value.length} 位
-              </span>
-            )}
           </div>
 
-          {/* 键盘面板 */}
-          <div className="touch-none select-none">
-            {mode === "province" && renderProvincePanel()}
-            {mode === "letter" && renderLetterPanel()}
-            {mode === "energy" && renderEnergyPanel()}
-            {mode === "mixed" && renderMixedPanel()}
-          </div>
-
-          {/* 底部操作栏 */}
-          <div className="flex gap-2 mt-2">
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={value.length === 0}
-              className="flex-1 h-10 rounded text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200 active:bg-amber-100 disabled:opacity-40 disabled:active:scale-100 active:scale-95 transition-transform flex items-center justify-center gap-1"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
-                <line x1="10" y1="9" x2="16" y2="15" />
-                <line x1="16" y1="9" x2="10" y2="15" />
-              </svg>
-              退格
-            </button>
-            <button
-              type="button"
-              onClick={handleDone}
-              className="flex-[2] h-10 rounded text-sm font-medium bg-blue-600 text-white active:bg-blue-700 active:scale-95 transition-transform"
-            >
-              完成
-            </button>
-          </div>
+          {/* 公共键盘面板 */}
+          <PlateScanKeyboard
+            onKeyPress={handleAppend}
+            onDelete={handleDelete}
+            onDone={handleDone}
+          />
         </div>
       )}
     </div>

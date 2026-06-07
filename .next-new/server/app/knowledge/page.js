@@ -12,6 +12,7 @@ R.c("server/chunks/ssr/node_modules_next_dist_client_components_0inhx6q._.js")
 R.c("server/chunks/ssr/node_modules_next_dist_client_components_builtin_forbidden_0ghu-f7.js")
 R.c("server/chunks/ssr/node_modules_next_dist_client_components_builtin_unauthorized_0cjv-23.js")
 R.c("server/chunks/ssr/node_modules_next_dist_client_components_builtin_global-error_0lgvd_..js")
-R.c("server/chunks/ssr/[root-of-the-server]__0o5v~rj._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__0wba7e8._.js")
+R.c("server/chunks/ssr/node_modules_@supabase_supabase-js_dist_index_mjs_04qodwz._.js")
 R.m(3828)
 module.exports=R.m(3828).exports

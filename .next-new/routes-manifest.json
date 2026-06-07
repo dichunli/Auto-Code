@@ -32,6 +32,16 @@
         }
       ],
       "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+    },
+    {
+      "source": "/_next/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate, max-age=0"
+        }
+      ],
+      "regex": "^/_next(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
     }
   ],
   "onMatchHeaders": [],
@@ -448,10 +458,22 @@
       "namedRegex": "^/api/proxy\\-image(?:/)?$"
     },
     {
+      "page": "/api/test-vin17-ocr",
+      "regex": "^/api/test\\-vin17\\-ocr(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/test\\-vin17\\-ocr(?:/)?$"
+    },
+    {
       "page": "/api/upload",
       "regex": "^/api/upload(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/api/upload(?:/)?$"
+    },
+    {
+      "page": "/api/vin-ocr",
+      "regex": "^/api/vin\\-ocr(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/vin\\-ocr(?:/)?$"
     },
     {
       "page": "/appointments",
@@ -790,6 +812,12 @@
       "namedRegex": "^/m/reception/new(?:/)?$"
     },
     {
+      "page": "/m/test",
+      "regex": "^/m/test(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/m/test(?:/)?$"
+    },
+    {
       "page": "/mechanic-levels",
       "regex": "^/mechanic\\-levels(?:/)?$",
       "routeKeys": {},
@@ -902,6 +930,12 @@
       "regex": "^/procurement/orders(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/procurement/orders(?:/)?$"
+    },
+    {
+      "page": "/profile",
+      "regex": "^/profile(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/profile(?:/)?$"
     },
     {
       "page": "/reminders",
@@ -1046,6 +1080,12 @@
       "regex": "^/tools/vin\\-batch\\-query(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/tools/vin\\-batch\\-query(?:/)?$"
+    },
+    {
+      "page": "/tools/vin-test",
+      "regex": "^/tools/vin\\-test(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/tools/vin\\-test(?:/)?$"
     },
     {
       "page": "/training",

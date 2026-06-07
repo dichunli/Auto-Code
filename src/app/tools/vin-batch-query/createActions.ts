@@ -85,7 +85,7 @@ export async function batchCreatePartsFromVin(
       .from("parts")
       .select("id")
       .eq("part_number", 标准化VIN(row.partNumber))
-      .single();
+      .maybeSingle();
 
     if (existingPart) {
       result.error = "零件编码已存在";
@@ -152,6 +152,7 @@ export async function batchCreatePartsFromVin(
         brand_id: brandId,
         unit_cost: row.unitCost ? parseFloat(row.unitCost) : null,
         oe_number: vinRes.oeNumber,
+        vin17_group_id: vinRes.vin17GroupId || null,
         unit: "个",
         min_stock: 10,
       })
@@ -327,6 +328,7 @@ export async function autoCreateFiltersByVin(
           part_name_id: partNameId,
           brand_id: brandId,
           oe_number: vinRes.oeNumber,
+          vin17_group_id: vinRes.vin17GroupId || null,
           unit: "个",
           min_stock: 10,
         })

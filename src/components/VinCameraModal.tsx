@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
-import { vin17OcrImage, vin17DecodeVin } from "@/lib/17vin/client";
+import { vin17DecodeVin } from "@/lib/17vin/client";
 import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { 启动原生VIN拍照 } from "@/lib/androidVinCapture";
 import { VinDecodeResult } from "./VinDecodeInput";
 
 interface Props {
@@ -19,6 +20,7 @@ const 取景框 = { x: 0.1, y: 0.39, w: 0.8, h: 0.22 };
 export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const 文件输入Ref = useRef<HTMLInputElement>(null);
   const 已取消Ref = useRef(false);
 
   const [模式, set模式] = useState<"实时" | "拍照" | "预览">("实时");
@@ -28,6 +30,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   const [decodeResult, setDecodeResult] = useState<VinDecodeResult | null>(null);
   const [decoding, setDecoding] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [手动输入Vin, set手动输入Vin] = useState("");
 
   const 是App = 是Capacitor环境();
 
@@ -73,44 +76,115 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setDecoding(false);
 
     try {
-      const base64Body = base64.split(",")[1] || "";
-      const base64Urlencode = encodeURIComponent(base64Body);
-      const ocrRes = (await vin17OcrImage(base64Urlencode)) as {
-        code: number;
-        msg?: string;
-        data?: {
-          vin?: string;
-          VIN?: string;
-          Vin?: string;
-          vin_no?: string;
-          vin_code?: string;
-          vehicle?: { vin?: string; VIN?: string };
-          vehicle_info?: { vin?: string };
-          ocr_result?: { vin?: string };
+      /* 传原始base64，API内部用sharp压缩 */
+      const ocrResponse = await fetch("/api/vin-ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ base64Image: base64 }),
+      });
+      const ocrData = (await ocrResponse.json()) as {
+        success: boolean;
+        result?: {
+          code: number;
+          msg?: string;
+          data?: {
+            vin?: string;
+            VIN?: string;
+            Vin?: string;
+            vin_no?: string;
+            vin_code?: string;
+            vehicle?: { vin?: string; VIN?: string };
+            vehicle_info?: { vin?: string };
+            ocr_result?: { vin?: string };
+          };
         };
+        error?: string;
       };
+      if (!ocrData.success || !ocrData.result) {
+        throw new Error(ocrData.error || "OCR 请求失败");
+      }
+      const ocrRes = ocrData.result;
 
       if (ocrRes.code !== 1) {
         throw new Error(ocrRes.msg || "未能识别出 VIN 码，请重试或手动输入");
       }
 
-      const detectedVin =
-        ocrRes.data?.vin ||
-        ocrRes.data?.VIN ||
-        ocrRes.data?.Vin ||
-        ocrRes.data?.vin_no ||
-        ocrRes.data?.vin_code ||
-        ocrRes.data?.vehicle?.vin ||
-        ocrRes.data?.vehicle?.VIN ||
-        ocrRes.data?.vehicle_info?.vin ||
-        ocrRes.data?.ocr_result?.vin ||
-        "";
+      /* 17VIN返回的data可能是字符串或对象 */
+      let detectedVin = "";
+      if (typeof ocrRes.data === "string") {
+        detectedVin = ocrRes.data;
+      } else if (ocrRes.data && typeof ocrRes.data === "object") {
+        const d = ocrRes.data as Record<string, unknown>;
+        detectedVin =
+          (d.vin as string) ||
+          (d.VIN as string) ||
+          (d.Vin as string) ||
+          (d.vin_no as string) ||
+          (d.vin_code as string) ||
+          (d.vehicle as { vin?: string; VIN?: string })?.vin ||
+          (d.vehicle as { vin?: string; VIN?: string })?.VIN ||
+          (d.vehicle_info as { vin?: string })?.vin ||
+          (d.ocr_result as { vin?: string })?.vin ||
+          "";
+      }
 
       if (!detectedVin) {
         throw new Error("图片中未检测到 VIN 码，请对准 VIN 区域后重试");
       }
 
       const upperVin = detectedVin.toUpperCase();
+
+      /* APP端：直接返回结果，不显示识别过程 */
+      if (是App) {
+        let result: VinDecodeResult | null = null;
+        try {
+          const decodeRes = (await vin17DecodeVin(upperVin)) as {
+            code: number;
+            data?: {
+              model_list?: Array<{
+                Brand?: string; brand?: string;
+                Series?: string; series?: string;
+                Model?: string; model?: string;
+                Model_year?: string; model_year?: string;
+                Engine_no?: string; engine_no?: string;
+                Cc?: string; cc?: string;
+                Transmission_type?: string; transmission_type?: string;
+                Trans_code?: string; trans_code?: string;
+                Chassis_code?: string; chassis_code?: string;
+                Driving_mode?: string; driving_mode?: string;
+                Factory?: string; factory?: string;
+                Id?: number; id?: number;
+              }>;
+              model_year_from_vin?: string;
+            };
+          };
+
+          if (decodeRes.code === 1 && decodeRes.data?.model_list?.[0]) {
+            const m = decodeRes.data.model_list[0];
+            result = {
+              brand: m.Brand || m.brand || "",
+              series: m.Series || m.series || "",
+              model: m.Model || m.model || "",
+              year: decodeRes.data.model_year_from_vin || m.Model_year || m.model_year || "",
+              engineNo: m.Engine_no || m.engine_no || "",
+              cc: m.Cc || m.cc || "",
+              transmissionType: m.Transmission_type || m.transmission_type || "",
+              transmissionCode: m.Trans_code || m.trans_code || "",
+              chassisCode: m.Chassis_code || m.chassis_code || "",
+              drivingMode: m.Driving_mode || m.driving_mode || "",
+              factory: m.Factory || m.factory || "",
+              modelId: m.Id || m.id || undefined,
+            };
+          }
+        } catch {
+          /* 解码失败不影响，用户已有 VIN */
+        }
+        onRecognize(upperVin, result);
+        onClose();
+        return;
+      }
+
+      /* 浏览器端：显示识别结果在弹窗中 */
       setRecognizedVin(upperVin);
 
       /* 异步解码车型 */
@@ -160,11 +234,46 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
         setDecoding(false);
       }
     } catch (err: unknown) {
+      /* APP端出错：直接关闭弹窗，通过alert提示 */
+      if (是App) {
+        const msg = err instanceof Error ? err.message : "识别失败";
+        alert(msg);
+        onClose();
+        return;
+      }
       setErrorMsg(err instanceof Error ? err.message : "识别失败");
     } finally {
       setRecognizing(false);
     }
-  }, []);
+  }, [是App, onRecognize, onClose]);
+
+  /* ========== APP端：文件选择后识别（不显示过程） ========== */
+  const 处理App文件选择 = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) {
+        onClose();
+        return;
+      }
+      try {
+        const base64 =
+          file.size > 512 * 1024
+            ? await 压缩图片为Base64(file, { 最大宽度: 1024, 质量: 0.75 })
+            : await 文件转Base64(file);
+        /* 直接识别，不显示预览和loading */
+        await doOcr(base64);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "识别失败";
+        alert(msg);
+        onClose();
+      }
+      /* 清空input，允许重复选择同一文件 */
+      if (文件输入Ref.current) {
+        文件输入Ref.current.value = "";
+      }
+    },
+    [doOcr, onClose]
+  );
 
   /* ========== 浏览器环境：启动实时摄像头 ========== */
   const 启动实时摄像头 = useCallback(async () => {
@@ -187,40 +296,6 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       set模式("拍照");
     }
   }, []);
-
-  /* ========== APP 原生拍照 ========== */
-  const 原生拍照 = useCallback(async () => {
-    try {
-      set模式("拍照");
-      const image = await Camera.getPhoto({
-        quality: 60,
-        allowEditing: false,
-        resultType: CameraResultType.Base64,
-        source: CameraSource.Camera,
-      });
-      if (image.base64String) {
-        let base64 = `data:image/jpeg;base64,${image.base64String}`;
-        /* APP 环境：裁剪 VIN 区域（挡风玻璃下方中间），失败用原图 */
-        try {
-          base64 = await 裁剪图片(base64, { x: 0.05, y: 0.45, w: 0.9, h: 0.35 }, 0.75);
-        } catch {
-          /* 裁剪失败用原图继续 */
-        }
-        setPreviewImage(base64);
-        set模式("预览");
-        await doOcr(base64);
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User cancelled")) {
-        /* 用户取消拍照：关闭弹窗 */
-        onClose();
-        return;
-      }
-      setErrorMsg("相机调用失败: " + msg);
-      set模式("拍照");
-    }
-  }, [doOcr, onClose, 裁剪图片]);
 
   /* ========== 浏览器文件选择 ========== */
   const 处理文件选择 = useCallback(
@@ -299,13 +374,30 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setPreviewImage(null);
     setRecognizedVin(null);
     setDecodeResult(null);
-    setErrorMsg(null);
+      setErrorMsg(null);
     setRecognizing(false);
     setDecoding(false);
 
     if (是App) {
-      /* APP：直接打开相机拍照 */
-      void 原生拍照();
+      /* APP：启动原生 VIN 拍照 Activity（支持手电筒） */
+      void (async () => {
+        try {
+          const 结果 = await 启动原生VIN拍照();
+          if (已取消Ref.current) return;
+
+          if (结果.image) {
+            const base64 = `data:image/jpeg;base64,${结果.image}`;
+            await doOcr(base64);
+          } else if (结果.cancelled) {
+            onClose();
+          } else {
+            setErrorMsg(结果.error || "拍照失败");
+          }
+        } catch (err: unknown) {
+          if (已取消Ref.current) return;
+          setErrorMsg(err instanceof Error ? err.message : "拍照失败");
+        }
+      })();
     } else {
       /* 浏览器：尝试实时摄像头 */
       set模式("实时");
@@ -320,11 +412,12 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
   /* ========== 确认 ========== */
   const handleConfirm = useCallback(() => {
-    if (recognizedVin) {
-      onRecognize(recognizedVin, decodeResult);
+    const vin = recognizedVin || 手动输入Vin.trim();
+    if (vin) {
+      onRecognize(vin.toUpperCase(), decodeResult);
       onClose();
     }
-  }, [recognizedVin, decodeResult, onRecognize, onClose]);
+  }, [recognizedVin, 手动输入Vin, decodeResult, onRecognize, onClose]);
 
   /* ========== 重拍 ========== */
   const handleRetake = useCallback(() => {
@@ -334,15 +427,80 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setErrorMsg(null);
     setRecognizing(false);
     setDecoding(false);
+    set手动输入Vin("");
 
     if (是App) {
-      /* APP：直接重新打开相机 */
-      void 原生拍照();
+      /* APP：重新启动原生 VIN 拍照 */
+      void (async () => {
+        try {
+          const 结果 = await 启动原生VIN拍照();
+          if (已取消Ref.current) return;
+
+          if (结果.image) {
+            const base64 = `data:image/jpeg;base64,${结果.image}`;
+            await doOcr(base64);
+          } else if (结果.cancelled) {
+            onClose();
+          } else {
+            setErrorMsg(结果.error || "拍照失败");
+          }
+        } catch (err: unknown) {
+          if (已取消Ref.current) return;
+          setErrorMsg(err instanceof Error ? err.message : "拍照失败");
+        }
+      })();
     } else {
       set模式("实时");
       启动实时摄像头();
     }
-  }, [是App, 启动实时摄像头, 原生拍照]);
+  }, [是App, doOcr, onClose, 启动实时摄像头]);
+
+  /* APP端：只渲染错误弹窗，相机调用在主useEffect中处理 */
+  if (是App) {
+    if (!open || !errorMsg) return null;
+    return (
+      <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center px-6">
+        <div className="bg-white rounded-xl p-6 max-w-sm w-full text-center space-y-4">
+          <div className="text-sm text-red-500">{errorMsg}</div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setErrorMsg(null);
+                void (async () => {
+                  try {
+                    const 结果 = await 启动原生VIN拍照();
+                    if (已取消Ref.current) return;
+                    if (结果.image) {
+                      const base64 = `data:image/jpeg;base64,${结果.image}`;
+                      await doOcr(base64);
+                    } else if (结果.cancelled) {
+                      onClose();
+                    } else {
+                      setErrorMsg(结果.error || "拍照失败");
+                    }
+                  } catch (err: unknown) {
+                    if (已取消Ref.current) return;
+                    setErrorMsg(err instanceof Error ? err.message : "拍照失败");
+                  }
+                })();
+              }}
+              className="flex-1 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium active:bg-gray-200"
+            >
+              重试
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium active:bg-blue-700"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!open) return null;
 
@@ -368,7 +526,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       {/* 主内容区 */}
       <div className="flex-1 relative overflow-hidden">
         {/* ========== 模式1：浏览器实时取景框 ========== */}
-        {!是App && 模式 === "实时" && (
+        {模式 === "实时" && (
           <>
             <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
             {/* 取景框 */}
@@ -399,40 +557,25 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
           </>
         )}
 
-        {/* ========== 模式2：APP 自动打开相机 / 浏览器 fallback ========== */}
-        {(模式 === "拍照" || (!是App && 模式 !== "实时" && 模式 !== "预览")) && (
+        {/* ========== 模式2：浏览器 fallback ========== */}
+        {模式 === "拍照" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 px-6">
-            {是App ? (
-              /* APP：显示正在打开相机的 loading */
-              <>
-                <svg className="w-12 h-12 mb-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            <svg className="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <p className="text-sm">实时摄像头不可用</p>
+            <p className="text-xs mt-1 opacity-60">请选择图片</p>
+            <label className="flex flex-col items-center gap-1 mt-6 text-white/70 active:text-white cursor-pointer select-none">
+              <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <p className="text-sm">正在打开相机...</p>
-                {errorMsg && <p className="text-xs mt-4 text-red-400">{errorMsg}</p>}
-              </>
-            ) : (
-              /* 浏览器 fallback */
-              <>
-                <svg className="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <p className="text-sm">实时摄像头不可用</p>
-                <p className="text-xs mt-1 opacity-60">请选择图片</p>
-                <label className="flex flex-col items-center gap-1 mt-6 text-white/70 active:text-white cursor-pointer select-none">
-                  <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <span className="text-[10px]">选择图片</span>
-                  <input type="file" accept="image/*" onChange={处理文件选择} className="hidden" />
-                </label>
-                {errorMsg && <p className="text-xs mt-4 text-red-400">{errorMsg}</p>}
-              </>
-            )}
+              </div>
+              <span className="text-[10px]">选择图片</span>
+              <input type="file" accept="image/*" onChange={处理文件选择} className="hidden" />
+            </label>
+            {errorMsg && <p className="text-xs mt-4 text-red-400">{errorMsg}</p>}
           </div>
         )}
 
@@ -483,9 +626,18 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
             )}
 
             {!recognizing && errorMsg && (
-              <div className="text-center py-2">
-                <div className="text-xs text-white/50 mb-1">识别失败</div>
+              <div className="text-center py-2 space-y-2">
+                <div className="text-xs text-white/50">识别失败</div>
                 <div className="text-sm text-red-400">{errorMsg}</div>
+                <div className="px-4">
+                  <input
+                    type="text"
+                    placeholder="手动输入 VIN 码"
+                    value={手动输入Vin}
+                    onChange={(e) => set手动输入Vin(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white text-sm placeholder:text-white/40 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -510,13 +662,13 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
               <button
                 type="button"
                 onClick={handleConfirm}
-                disabled={!recognizedVin}
+                disabled={!recognizedVin && !手动输入Vin.trim()}
                 className="px-6 py-2.5 rounded-full bg-blue-600 text-white text-sm font-medium active:bg-blue-700 disabled:opacity-40 disabled:active:bg-blue-600"
               >
                 使用此 VIN
               </button>
             </>
-          ) : 模式 === "拍照" && !是App ? (
+          ) : 模式 === "拍照" ? (
             <button
               type="button"
               onClick={() => { set模式("实时"); 启动实时摄像头(); }}

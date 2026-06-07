@@ -1,6 +1,6 @@
 {
   "node": {
-    "600f72790f157ac186c681b658c99a2bc90210b8a5": {
+    "7010db4eeacc65eeb23aa190827e49f23f5e8b36b7": {
       "workers": {
         "app/procurement/page": {
           "moduleId": 45381,
@@ -10,6 +10,30 @@
         }
       },
       "exportedName": "syncOeFromVin",
+      "filename": "src/app/parts/actions.ts"
+    },
+    "602c11a72b28cd8fc0ce8fa7cffe1fbc8043bd8b2c": {
+      "workers": {
+        "app/procurement/page": {
+          "moduleId": 45381,
+          "async": false,
+          "exportedName": "syncModelsFromVin",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "exportedName": "syncModelsFromVin",
+      "filename": "src/app/parts/actions.ts"
+    },
+    "60dc198a60841d9ebfb66e47a10515f1579cb2c732": {
+      "workers": {
+        "app/procurement/page": {
+          "moduleId": 45381,
+          "async": false,
+          "exportedName": "syncModelsByGroupId",
+          "filename": "src/app/parts/actions.ts"
+        }
+      },
+      "exportedName": "syncModelsByGroupId",
       "filename": "src/app/parts/actions.ts"
     }
   },

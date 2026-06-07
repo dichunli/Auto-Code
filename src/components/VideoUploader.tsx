@@ -1,6 +1,8 @@
 "use client";
 
 import { useId, useRef, useState, useCallback } from "react";
+import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { 启动原生录像, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -121,6 +123,79 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
     [videos, maxVideos, onUpload, uploadSingle]
   );
 
+  /* APP环境：调用原生录像 */
+  async function handleAppRecord() {
+    if (videos.length >= maxVideos) {
+      alert(`最多上传 ${maxVideos} 个视频`);
+      return;
+    }
+    try {
+      const result = await 启动原生录像();
+      if (result.cancelled) return;
+      if (result.error || !result.filePath) {
+        alert("录像失败: " + (result.error || "未知错误"));
+        return;
+      }
+
+      /* 将本地文件路径转为 WebView 可访问的 URL */
+      const fileUrl = 本地文件路径转URL(result.filePath);
+
+      /* 读取文件为 Blob */
+      setUploading(true);
+      setProgress(0);
+
+      const response = await fetch(fileUrl);
+      if (!response.ok) {
+        throw new Error("读取视频文件失败");
+      }
+      const blob = await response.blob();
+
+      /* 检查大小 */
+      if (blob.size > 100 * 1024 * 1024) {
+        alert("视频大小不能超过 100MB");
+        setUploading(false);
+        return;
+      }
+
+      /* 检查时长 */
+      const duration = await new Promise<number>((resolve, reject) => {
+        const video = document.createElement("video");
+        const url = URL.createObjectURL(blob);
+        const timer = setTimeout(() => {
+          URL.revokeObjectURL(url);
+          reject(new Error("读取视频信息超时"));
+        }, 5000);
+        video.onloadedmetadata = () => {
+          clearTimeout(timer);
+          URL.revokeObjectURL(url);
+          resolve(video.duration);
+        };
+        video.onerror = () => {
+          clearTimeout(timer);
+          URL.revokeObjectURL(url);
+          reject(new Error("无法读取视频信息"));
+        };
+        video.src = url;
+      });
+      if (duration > 60) {
+        alert("视频时长不能超过 60 秒");
+        setUploading(false);
+        return;
+      }
+
+      const file = new File([blob], `record_${Date.now()}.mp4`, { type: blob.type || "video/mp4" });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      await handleFiles(dt.files);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("录像上传失败: " + msg);
+    } finally {
+      setUploading(false);
+      setProgress(0);
+    }
+  }
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files) return;
@@ -151,31 +226,60 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
         ))}
         {videos.length < maxVideos && (
           <div className="flex gap-2">
-            {/* 移动端：用 label 关联 input，比 ref.click() 更可靠 */}
-            <label
-              htmlFor={cameraId}
-              className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
-            >
-              {uploading ? (
-                <div className="flex flex-col items-center">
-                  <span className="text-xs">{progress}%</span>
-                  <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded transition-all"
-                      style={{ width: `${progress}%` }}
-                    />
+            {/* 移动端：APP环境调用原生录像，浏览器环境用 input */}
+            {是Capacitor环境() ? (
+              <button
+                type="button"
+                onClick={handleAppRecord}
+                disabled={uploading}
+                className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {uploading ? (
+                  <div className="flex flex-col items-center">
+                    <span className="text-xs">{progress}%</span>
+                    <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 rounded transition-all"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <>
-                  <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  <span className="text-[10px]">录像</span>
-                  <span className="text-[10px]">{videos.length}/{maxVideos}</span>
-                </>
-              )}
-            </label>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-[10px]">录像</span>
+                    <span className="text-[10px]">{videos.length}/{maxVideos}</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <label
+                htmlFor={cameraId}
+                className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {uploading ? (
+                  <div className="flex flex-col items-center">
+                    <span className="text-xs">{progress}%</span>
+                    <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 rounded transition-all"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-[10px]">录像</span>
+                    <span className="text-[10px]">{videos.length}/{maxVideos}</span>
+                  </>
+                )}
+              </label>
+            )}
             <label
               htmlFor={fileId}
               className={`md:hidden w-24 h-20 rounded border border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelector";
 import { 处理外部图片 } from "@/lib/processExternalImages";
+import { syncKnowledgeModelsFromVin } from "../../actions";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
@@ -50,6 +51,11 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
 
   /* 适用车型 */
   const [linkedVehicles, setLinkedVehicles] = useState<LinkedItem[]>([]);
+
+  /* VIN同步 */
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [syncVin, setSyncVin] = useState("");
+  const [syncLoading, setSyncLoading] = useState(false);
 
   /* 加载文章数据和分类 */
   useEffect(() => {
@@ -162,6 +168,55 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
 
   function removeLinkedName(id: string) {
     setLinkedNames((prev) => prev.filter((n) => n.id !== id));
+  }
+
+  async function handleSyncVin() {
+    const vin = syncVin.trim().toUpperCase();
+    if (vin.length !== 17) {
+      alert("VIN码必须为17位");
+      return;
+    }
+    setSyncLoading(true);
+    try {
+      const res = await syncKnowledgeModelsFromVin(vin);
+      if (res.success && res.matchedModels && res.matchedModels.length > 0) {
+        const newItems = res.matchedModels.map((vm) => ({
+          id: String(vm.id),
+          name: `${vm.品牌 || ""} ${vm.车系 || ""} ${vm.车型 || ""}`.trim(),
+          manufacturer: vm.厂商 || "",
+          brand: vm.品牌 || "",
+          series: vm.车系 || "",
+          model_name: vm.车型 || "",
+          sales_version: vm.销售版本 || "",
+          year_start: vm.年款 ?? undefined,
+          year_end: vm.年款 ?? undefined,
+          displacement: vm.排量 || "",
+          engine: vm.发动机型号 || "",
+          fuel_type: vm.燃油类型 || "",
+          intake_form: vm.进气形式 || "",
+          transmission_type: vm.变速箱类型 || "",
+          transmission_code: vm.变速箱代号 || "",
+          chassis_code: vm.底盘代号 || "",
+          drive_type: vm.驱动方式 || "",
+          body_type: vm.车身类型 || "",
+          emission_standard: vm.排放标准 || "",
+        }));
+        setLinkedVehicles((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const uniqueNew = newItems.filter((n) => !existingIds.has(n.id));
+          return [...prev, ...uniqueNew];
+        });
+        setSyncOpen(false);
+        setSyncVin("");
+        alert(`已同步${res.matchedModels.length}个车型`);
+      } else {
+        alert(res.error || "未找到匹配车型");
+      }
+    } catch (err: unknown) {
+      alert("同步出错：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSyncLoading(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -354,7 +409,11 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
 
           {/* 关联车型 */}
           <div className="border-t border-gray-100 pt-4">
-            <VehicleModelSelector value={linkedVehicles} onChange={setLinkedVehicles} />
+            <VehicleModelSelector
+              value={linkedVehicles}
+              onChange={setLinkedVehicles}
+              onSyncVin={() => setSyncOpen(true)}
+            />
           </div>
         </div>
 
@@ -375,6 +434,40 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
           </button>
         </div>
       </form>
+
+      {/* VIN同步弹窗 */}
+      {syncOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-md mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">通过VIN同步车型</h3>
+            <input
+              type="text"
+              value={syncVin}
+              onChange={(e) => setSyncVin(e.target.value.toUpperCase())}
+              placeholder="输入17位VIN码"
+              maxLength={17}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-4 font-mono"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setSyncOpen(false); setSyncVin(""); }}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSyncVin}
+                disabled={syncLoading || syncVin.trim().length !== 17}
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {syncLoading ? "同步中..." : "同步"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

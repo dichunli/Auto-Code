@@ -31,6 +31,16 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      /* 防止浏览器缓存Next.js静态JS，避免Server Action ID不匹配 */
+      {
+        source: "/_next/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate, max-age=0",
+          },
+        ],
+      },
     ];
   },
 };

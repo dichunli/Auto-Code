@@ -19,7 +19,7 @@ import SpecSearch from "./components/SpecSearch";
 import CommissionSection from "./components/CommissionSection";
 import FormActions from "./components/FormActions";
 import submitPart from "./submitPart";
-import { syncOeFromVin, syncModelsFromVin } from "../actions";
+import { syncOeFromVin, syncModelsFromVin, syncModelsByGroupId } from "../actions";
 import { 标准化VIN } from "@/lib/vinValidator";
 
 /* 供应商查询结果 */
@@ -86,6 +86,7 @@ export default function PartForm({
   const [barcode, setBarcode] = useState("");
   const [interchangeCode, setInterchangeCode] = useState("");
   const [oeNumber, setOeNumber] = useState("");
+  const [vin17GroupId, setVin17GroupId] = useState("");
 
   /* OE号同步弹窗 */
   const [syncOpen, setSyncOpen] = useState(false);
@@ -148,6 +149,7 @@ export default function PartForm({
     setSpecialPrices,
     setVehicleModelPrices,
     setForm,
+    setVin17GroupId,
   });
 
   // Keyboard shortcuts
@@ -212,6 +214,7 @@ export default function PartForm({
       barcode,
       interchangeCode,
       oeNumber,
+      vin17GroupId,
       documentName: docNameQuery.trim() || null,
       partNameId: selectedPartName.id,
       partName: form.name,
@@ -311,6 +314,25 @@ export default function PartForm({
     }
   }
 
+  /* 直接同步：已有OE号+groupId时无需VIN */
+  async function handleDirectSync() {
+    if (!oeNumber.trim() || !vin17GroupId) return;
+    setSyncLoading(true);
+    try {
+      const res = await syncModelsByGroupId(oeNumber.trim(), vin17GroupId);
+      if (res.success && res.matchedModelIds && res.matchedModelIds.length > 0) {
+        await addMatchedModels(res.matchedModelIds);
+        alert(`已同步车型，关联${res.matchedModelIds.length}个车型`);
+      } else {
+        alert(res.error || "未找到该OE号对应的适配车型");
+      }
+    } catch (err: unknown) {
+      alert("同步出错：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSyncLoading(false);
+    }
+  }
+
   /* OE号同步：已有OE号时只查车型，没有OE号时查OE号+车型 */
   async function handleSyncOe() {
     const vin = 标准化VIN(syncVin);
@@ -343,6 +365,9 @@ export default function PartForm({
       const res = await syncOeFromVin(vin, partName);
       if (res.success && res.oeNumber) {
         setOeNumber(res.oeNumber);
+        if (res.vin17GroupId) {
+          setVin17GroupId(res.vin17GroupId);
+        }
         if (res.matchedModelIds && res.matchedModelIds.length > 0) {
           await addMatchedModels(res.matchedModelIds);
         }
@@ -435,9 +460,15 @@ export default function PartForm({
                 />
                 <button
                   type="button"
-                  onClick={() => setSyncOpen(true)}
+                  onClick={() => {
+                    if (vin17GroupId && oeNumber.trim()) {
+                      handleDirectSync();
+                    } else {
+                      setSyncOpen(true);
+                    }
+                  }}
                   className="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shrink-0"
-                  title="通过VIN同步OE号"
+                  title={vin17GroupId && oeNumber.trim() ? "直接同步车型" : "通过VIN同步OE号"}
                 >
                   同步
                 </button>
@@ -524,7 +555,13 @@ export default function PartForm({
         <VehicleModelSelector
           value={selectedVehicleModels}
           onChange={setSelectedVehicleModels}
-          onSyncVin={() => setSyncOpen(true)}
+          onSyncVin={() => {
+            if (vin17GroupId && oeNumber.trim()) {
+              handleDirectSync();
+            } else {
+              setSyncOpen(true);
+            }
+          }}
         />
 
         <SpecialPricingSection

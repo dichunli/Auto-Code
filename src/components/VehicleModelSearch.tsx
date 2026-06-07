@@ -18,7 +18,7 @@ interface VehicleModelOption {
   变速箱代号: string | null;
 }
 
-interface VehicleModelDetail {
+export interface VehicleModelDetail {
   id: number;
   厂商: string | null;
   品牌: string | null;

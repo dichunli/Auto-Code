@@ -3,6 +3,7 @@ import { writeFile, mkdir, access } from "fs/promises";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
+import { 解析Multipart请求 } from "@/lib/parseMultipart";
 
 const execFileAsync = promisify(execFile);
 
@@ -56,15 +57,17 @@ async function convertToPdf(inputPath: string, outputDir: string): Promise<strin
 
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-    const folder = formData.get("folder") as string | null;
-    if (!file) {
+    const contentType = request.headers.get("content-type") || "";
+    console.log("[upload] Content-Type:", contentType);
+    const multipart = await 解析Multipart请求(request);
+    const { file } = multipart;
+    const folder = multipart.folder;
+    console.log("[upload] parsed file:", file?.filename, "size:", file?.data.length, "folder:", folder);
+    if (!file || file.data.length === 0) {
       return NextResponse.json({ error: "没有文件" }, { status: 400 });
     }
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    const buffer = file.data;
 
     /* 按日期分目录，避免单目录文件过多 */
     const now = new Date();
@@ -75,7 +78,7 @@ export async function POST(request: Request) {
     await mkdir(dir, { recursive: true });
 
     /* 生成唯一文件名 */
-    const ext = path.extname(file.name) || ".bin";
+    const ext = path.extname(file.filename) || ".bin";
     const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
     const filePath = path.join(dir, fileName);
 
@@ -97,6 +100,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "上传失败";
+    console.error("[upload] error:", message, "stack:", err instanceof Error ? err.stack : "");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

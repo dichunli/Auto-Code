@@ -11,6 +11,7 @@ import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
 import { StarDisplay, TagDisplay } from "@/components/CustomerSearchDropdown";
 import { 标准化VIN } from "@/lib/vinValidator";
+import { VehicleModelDetail } from "@/components/VehicleModelSearch";
 
 /* ============================================================
    接车登记 — 手机端新建工单（一步提交）
@@ -60,6 +61,17 @@ export default function MobileReceptionNewPage() {
   const [newModel, setNewModel] = useState("");
   const [newVin, setNewVin] = useState("");
   const [autoOpenVinCamera, setAutoOpenVinCamera] = useState(false);
+  const [newVehicleModelId, setNewVehicleModelId] = useState<number | null>(null);
+  const [newEngineNo, setNewEngineNo] = useState("");
+  const [newChassisCode, setNewChassisCode] = useState("");
+  const [newTransmissionType, setNewTransmissionType] = useState("");
+  const [newTransmissionCode, setNewTransmissionCode] = useState("");
+  const [newYear, setNewYear] = useState("");
+  const [vehicleModelDetail, setVehicleModelDetail] = useState<{ id: number; 排量: string | null } | null>(null);
+  const [showModelDetail, setShowModelDetail] = useState(false);
+  const [modelDetailData, setModelDetailData] = useState<VehicleModelDetail | null>(null);
+  const [modelDetailLoading, setModelDetailLoading] = useState(false);
+  const [vinSearchKeyword, setVinSearchKeyword] = useState("");
   const vehicleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   /* ---------- VIN 查重 ---------- */
@@ -365,6 +377,12 @@ export default function MobileReceptionNewPage() {
             brand: newBrand.trim() || null,
             model: newModel.trim() || null,
             vin: 标准化VIN(newVin) || null,
+            vehicle_model_id: newVehicleModelId,
+            engine_no: newEngineNo.trim() || null,
+            chassis_code: newChassisCode.trim() || null,
+            transmission_type: newTransmissionType.trim() || null,
+            transmission_code: newTransmissionCode.trim() || null,
+            year: newYear ? parseInt(newYear) : null,
           })
           .select("id")
           .single();
@@ -488,14 +506,49 @@ export default function MobileReceptionNewPage() {
             <>
               <div className="flex gap-2">
                 <LicensePlateKeyboard
-                  variant="simple"
                   value={vehicleQuery}
                   onChange={(val) => setVehicleQuery(val)}
                   placeholder="输入车牌号搜索"
                   className="flex-1"
                 />
                 <LicensePlateOcrButton
-                  onRecognize={(plate) => setVehicleQuery(plate)}
+                  onRecognize={async (plate) => {
+                    const upperPlate = plate.trim().toUpperCase();
+                    /* 先搜索系统中是否已有该车辆 */
+                    const { data } = await supabase
+                      .from("vehicles")
+                      .select("id, plate_number, brand, model, vin, customer_id, customers(id, name, phone, star_level, customer_tags(tags(id, name, color)))")
+                      .eq("plate_number", upperPlate)
+                      .maybeSingle();
+
+                    if (data) {
+                      /* 已有车辆，直接选中 */
+                      const v = data as unknown as Vehicle;
+                      setSelectedVehicle(v);
+                      setVehicleQuery("");
+                      setVehicleResults([]);
+                      setShowCustomerSelect(false);
+                      const vc = getVehicleCustomer(v);
+                      if (vc) {
+                        setSelectedCustomer(vc);
+                        setShowCustomerSelect(false);
+                      } else {
+                        setSelectedCustomer(null);
+                      }
+                      showToast("已选中已有车辆", "success");
+                    } else {
+                      /* 没有该车辆，直接进入新建 */
+                      if (!isValidPlate(upperPlate)) {
+                        alert("车牌格式不正确，请检查");
+                        setVehicleQuery(upperPlate);
+                        return;
+                      }
+                      setIsNewVehicle(true);
+                      setNewPlate(upperPlate);
+                      setAutoOpenVinCamera(true);
+                      showToast("车牌识别成功，请继续完善车辆信息", "success");
+                    }
+                  }}
                   className="px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 whitespace-nowrap shrink-0"
                 />
               </div>
@@ -544,8 +597,13 @@ export default function MobileReceptionNewPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    const plate = vehicleQuery.trim().toUpperCase();
+                    if (!isValidPlate(plate)) {
+                      alert("车牌格式不正确，请检查");
+                      return;
+                    }
                     setIsNewVehicle(true);
-                    setNewPlate(vehicleQuery);
+                    setNewPlate(plate);
                     setAutoOpenVinCamera(true);
                   }}
                   className="text-sm text-blue-600"
@@ -669,25 +727,113 @@ export default function MobileReceptionNewPage() {
 
           {isNewVehicle && (
             <div className="space-y-2">
+              {/* 车牌号 — 只读，已识别 */}
               <div className="flex gap-2">
                 <LicensePlateKeyboard
                   value={newPlate}
                   onChange={(val) => setNewPlate(val)}
                   placeholder="车牌号 *"
                   className="flex-1"
-                />
-                <LicensePlateOcrButton
-                  onRecognize={setNewPlate}
-                  className="px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 whitespace-nowrap shrink-0"
+                  readOnly
                 />
               </div>
+
+              {/* VIN 输入 */}
               <VinDecodeInput
                 value={newVin}
                 onChange={setNewVin}
-                onDecode={(result) => {
-                  if (result) {
-                    setNewBrand(result.brand || "");
-                    setNewModel((result.series || "") + (result.model ? " " + result.model : ""));
+                onRecognize={async (vin) => {
+                  /* 1. 先查询系统中是否已有该 VIN 的车辆 */
+                  const { data } = await supabase
+                    .from("vehicles")
+                    .select("id, plate_number, brand, model, vin, customer_id, customers(id, name, phone, star_level, customer_tags(tags(id, name, color)))")
+                    .eq("vin", vin)
+                    .maybeSingle();
+
+                  if (data) {
+                    /* 系统中有该VIN，显示重复询问弹窗（替换车牌/保留原车牌/取消） */
+                    setVinDuplicateVehicle(data as unknown as Vehicle);
+                    setShowVinDuplicateDialog(true);
+                    setAutoOpenVinCamera(false); /* 防止再次自动触发拍照 */
+                    return true;
+                  }
+
+                  /* 系统中没有，让 VinDecodeInput 打开编辑弹窗让用户确认修改 */
+                  return false;
+                }}
+                onDecode={async (result) => {
+                  if (!result) return;
+                  /* 1. 填充VIN解析基本信息 */
+                  const brand = result.brand || "";
+                  const modelParts = [...new Set([result.series, result.model].filter(Boolean))];
+                  const model = modelParts.join(" ");
+                  setNewBrand(brand);
+                  setNewModel(model);
+                  setNewYear(result.year || "");
+                  setNewEngineNo(result.engineNo || "");
+                  setNewChassisCode(result.chassisCode || "");
+                  setNewTransmissionType(result.transmissionType || "");
+                  setNewTransmissionCode(result.transmissionCode || "");
+
+                  /* 2. 自动匹配车型库 */
+                  const searchTerms = [...new Set([result.brand, result.series, result.model].filter(Boolean))];
+                  const keyword = searchTerms.join(" ");
+                  if (!keyword) {
+                    setNewVehicleModelId(null);
+                    setVehicleModelDetail(null);
+                    return;
+                  }
+
+                  try {
+                    const { data } = await supabase
+                      .from("vehicle_models")
+                      .select("id,品牌,车系,车型,年款,排量,销售版本,底盘代号,发动机型号,变速箱类型,变速箱代号")
+                      .ilike("搜索字段", `%${keyword}%`)
+                      .limit(5);
+
+                    if (data && data.length > 0) {
+                      const m = data[0] as {
+                        id: number;
+                        品牌: string | null;
+                        车系: string | null;
+                        车型: string | null;
+                        年款: number | null;
+                        排量: string | null;
+                        销售版本: string | null;
+                        底盘代号: string | null;
+                        发动机型号: string | null;
+                        变速箱类型: string | null;
+                        变速箱代号: string | null;
+                      };
+                      const matchedModelParts = [...new Set([m.车系, m.车型].filter(Boolean))];
+                      setNewVehicleModelId(m.id);
+                      setNewBrand(m.品牌 || brand);
+                      setNewModel(matchedModelParts.join(" ") || m.品牌 || model);
+                      setNewEngineNo(m.发动机型号 || result.engineNo || "");
+                      setNewChassisCode(m.底盘代号 || result.chassisCode || "");
+                      setNewTransmissionType(m.变速箱类型 || result.transmissionType || "");
+                      setNewTransmissionCode(m.变速箱代号 || result.transmissionCode || "");
+                      setVehicleModelDetail({ id: m.id, 排量: m.排量 || null });
+                      /* 构造车型信息展示文本（去重） */
+                      const displayParts = [...new Set([
+                        m.年款 ? `${m.年款}款` : null,
+                        m.品牌,
+                        m.车系,
+                        m.车型,
+                        m.销售版本,
+                        m.排量,
+                        m.发动机型号,
+                      ].filter(Boolean))];
+                      setVinSearchKeyword(`${displayParts.join(" ")} [ID:${m.id}]`);
+                    } else {
+                      setNewVehicleModelId(null);
+                      setVehicleModelDetail(null);
+                      setVinSearchKeyword("");
+                    }
+                  } catch {
+                    setNewVehicleModelId(null);
+                    setVehicleModelDetail(null);
+                    setVinSearchKeyword("");
                   }
                 }}
                 placeholder="VIN码（17位）"
@@ -695,6 +841,47 @@ export default function MobileReceptionNewPage() {
                 buttonClassName="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap shrink-0"
                 autoOpenCamera={autoOpenVinCamera}
               />
+
+              {/* 车型信息（从车型库选择） */}
+              {vinSearchKeyword && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs text-gray-500">车型信息（从车型库选择）</label>
+                  <div className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-700">
+                    {vinSearchKeyword}
+                  </div>
+                  {newVehicleModelId && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-500">已关联车型:</span>
+                      <span className="text-blue-600 font-medium">ID:{newVehicleModelId}</span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setModelDetailLoading(true);
+                          setShowModelDetail(true);
+                          const { data } = await supabase
+                            .from("vehicle_models")
+                            .select("id,厂商,品牌,车系,车型,销售版本,年款,排量,发动机型号,燃油类型,进气形式,排放标准,功率,马力,驱动方式,变速箱类型,变速箱代号,档位数,底盘代号,车身类型,车身尺寸,轴距,整备质量,前轮胎规格,后轮胎规格,停产标志,厂商指导价,品牌图标")
+                            .eq("id", newVehicleModelId)
+                            .single();
+                          setModelDetailData((data as unknown as VehicleModelDetail) || null);
+                          setModelDetailLoading(false);
+                        }}
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        查看详情
+                      </button>
+                    </div>
+                  )}
+                  {vehicleModelDetail && (
+                    <div className="text-xs text-gray-500 bg-gray-50 rounded px-3 py-1.5">
+                      车型ID: <span className="text-blue-600 font-medium">{vehicleModelDetail.id}</span>
+                      {vehicleModelDetail.排量 && <span className="ml-3">排量: <span className="text-gray-700">{vehicleModelDetail.排量}</span></span>}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 手动编辑品牌和车型（收起在详情里） */}
               <input
                 type="text"
                 placeholder="品牌"
@@ -709,6 +896,7 @@ export default function MobileReceptionNewPage() {
                 value={newModel}
                 onChange={(e) => setNewModel(e.target.value)}
               />
+
               <button
                 type="button"
                 onClick={() => {
@@ -717,6 +905,14 @@ export default function MobileReceptionNewPage() {
                   setNewBrand("");
                   setNewModel("");
                   setNewVin("");
+                  setNewVehicleModelId(null);
+                  setNewEngineNo("");
+                  setNewChassisCode("");
+                  setNewTransmissionType("");
+                  setNewTransmissionCode("");
+                  setNewYear("");
+                  setVehicleModelDetail(null);
+                  setVinSearchKeyword("");
                   setAutoOpenVinCamera(false);
                 }}
                 className="text-xs text-gray-500"
@@ -1126,6 +1322,89 @@ export default function MobileReceptionNewPage() {
                 className="flex-1 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 {authVerifying ? "验证中..." : "确认"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 车型详情弹窗 */}
+      {showModelDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
+              <h3 className="text-base font-semibold text-gray-900">
+                {modelDetailData ? `${modelDetailData.品牌} ${modelDetailData.车系} ${modelDetailData.车型}` : "车型详情"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => { setShowModelDetail(false); setModelDetailData(null); }}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4">
+              {modelDetailLoading ? (
+                <div className="flex items-center justify-center gap-2 text-gray-500 py-8">
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span>加载中...</span>
+                </div>
+              ) : modelDetailData ? (
+                <div className="space-y-3">
+                  {[
+                    { label: "ID", value: modelDetailData.id },
+                    { label: "厂商", value: modelDetailData.厂商 },
+                    { label: "品牌", value: modelDetailData.品牌 },
+                    { label: "车系", value: modelDetailData.车系 },
+                    { label: "车型", value: modelDetailData.车型 },
+                    { label: "销售版本", value: modelDetailData.销售版本 },
+                    { label: "年款", value: modelDetailData.年款 },
+                    { label: "排量", value: modelDetailData.排量 },
+                    { label: "发动机型号", value: modelDetailData.发动机型号 },
+                    { label: "燃油类型", value: modelDetailData.燃油类型 },
+                    { label: "进气形式", value: modelDetailData.进气形式 },
+                    { label: "排放标准", value: modelDetailData.排放标准 },
+                    { label: "功率", value: modelDetailData.功率 ? `${modelDetailData.功率}kW` : null },
+                    { label: "马力", value: modelDetailData.马力 ? `${modelDetailData.马力}PS` : null },
+                    { label: "驱动方式", value: modelDetailData.驱动方式 },
+                    { label: "变速箱类型", value: modelDetailData.变速箱类型 },
+                    { label: "变速箱代号", value: modelDetailData.变速箱代号 },
+                    { label: "档位数", value: modelDetailData.档位数 },
+                    { label: "底盘代号", value: modelDetailData.底盘代号 },
+                    { label: "车身类型", value: modelDetailData.车身类型 },
+                    { label: "车身尺寸", value: modelDetailData.车身尺寸 },
+                    { label: "轴距", value: modelDetailData.轴距 ? `${modelDetailData.轴距}mm` : null },
+                    { label: "整备质量", value: modelDetailData.整备质量 ? `${modelDetailData.整备质量}kg` : null },
+                    { label: "前轮胎规格", value: modelDetailData.前轮胎规格 },
+                    { label: "后轮胎规格", value: modelDetailData.后轮胎规格 },
+                    { label: "状态", value: modelDetailData.停产标志 },
+                    { label: "厂商指导价", value: modelDetailData.厂商指导价 ? `¥${modelDetailData.厂商指导价.toLocaleString()}` : null },
+                  ].map((item) => (
+                    item.value !== null && item.value !== undefined && item.value !== "" ? (
+                      <div key={item.label} className="flex justify-between text-sm border-b border-gray-50 pb-1.5">
+                        <span className="text-gray-500">{item.label}</span>
+                        <span className="text-gray-900 font-medium">{String(item.value)}</span>
+                      </div>
+                    ) : null
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-gray-500 py-8">未找到车型详情</div>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-gray-100 shrink-0">
+              <button
+                type="button"
+                onClick={() => { setShowModelDetail(false); setModelDetailData(null); }}
+                className="w-full py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                关闭
               </button>
             </div>
           </div>

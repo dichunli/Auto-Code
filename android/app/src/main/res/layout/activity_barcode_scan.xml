@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <!-- 相机预览 -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/previewView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 取景框 Overlay -->
+    <com.autorepair.app.ScanOverlayView
+        android:id="@+id/scanOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 顶部栏：关闭按钮 + 标题 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="@color/barcode_scan_control_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="扫码添加配件"
+            android:textColor="@color/barcode_scan_white"
+            android:textSize="16sp" />
+
+        <ImageButton
+            android:id="@+id/closeButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="关闭"
+            android:padding="8dp"
+            android:src="@drawable/ic_close" />
+    </LinearLayout>
+
+    <!-- 底部控制栏 -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@color/barcode_scan_control_bg"
+        android:paddingHorizontal="32dp"
+        android:paddingVertical="24dp">
+
+        <!-- 切换摄像头：放左侧 -->
+        <ImageButton
+            android:id="@+id/switchCameraButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="start|center_vertical"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="切换摄像头"
+            android:padding="10dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_camera_switch" />
+
+        <!-- 手电筒：放正中，尺寸加大方便触摸 -->
+        <ImageButton
+            android:id="@+id/torchButton"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_gravity="center"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="手电筒"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_flashlight_off" />
+    </FrameLayout>
+
+    <!-- 提示文字 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center|bottom"
+        android:layout_marginBottom="120dp"
+        android:background="@drawable/bg_scan_hint"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="4dp"
+        android:text="将条码或二维码放在画面内，自动识别"
+        android:textColor="@color/barcode_scan_white"
+        android:textSize="12sp" />
+
+</FrameLayout>

@@ -71,6 +71,7 @@ interface Actions {
   setSpecialPrices: React.Dispatch<React.SetStateAction<SpecialPriceItem[]>>;
   setVehicleModelPrices: React.Dispatch<React.SetStateAction<VehicleModelPriceItem[]>>;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  setVin17GroupId: React.Dispatch<React.SetStateAction<string>>;
 }
 
 export default function usePartFormInit(
@@ -103,6 +104,7 @@ export default function usePartFormInit(
     setSpecialPrices,
     setVehicleModelPrices,
     setForm,
+    setVin17GroupId,
   } = actions;
 
   /* 1. 系统码生成 */
@@ -372,6 +374,26 @@ export default function usePartFormInit(
         setBarcode(part.barcode || "");
         setInterchangeCode(part.interchange_code || "");
         setOeNumber(part.oe_number || "");
+
+        /* 补救：配件没有group_id但有OE号时，从缓存表找回 */
+        let groupId = part.vin17_group_id || "";
+        if (!groupId && part.oe_number) {
+          const { data: cacheRow } = await supabase
+            .from("vin_filter_cache")
+            .select("vin17_group_id")
+            .eq("oe_number", part.oe_number.trim().toUpperCase())
+            .not("vin17_group_id", "is", null)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (cacheRow?.vin17_group_id) {
+            groupId = cacheRow.vin17_group_id;
+            /* 顺便把group_id补到配件表，下次不用再查 */
+            await supabase.from("parts").update({ vin17_group_id: groupId }).eq("id", editId);
+          }
+        }
+        setVin17GroupId(groupId);
+
         setDocNameQuery(part.document_name || "");
         setSystemCode(part.system_code || "");
 
@@ -460,7 +482,7 @@ export default function usePartFormInit(
       }
     }
     loadEditData();
-  }, [editId, supabase, router, setLoading, setSystemCode, setPartNumber, setBarcode, setInterchangeCode, setOeNumber, setDocNameQuery, setSelectedPartName, setSelectedBrand, setSelectedSupplier, setSelectedSpecs, setSelectedVehicleModels, setPartImages, setStockLocations, setForm, setSpecialPrices, setVehicleModelPrices]);
+  }, [editId, supabase, router, setLoading, setSystemCode, setPartNumber, setBarcode, setInterchangeCode, setOeNumber, setVin17GroupId, setDocNameQuery, setSelectedPartName, setSelectedBrand, setSelectedSupplier, setSelectedSpecs, setSelectedVehicleModels, setPartImages, setStockLocations, setForm, setSpecialPrices, setVehicleModelPrices]);
 
   /* 4. 弹窗预填数据 */
   useEffect(() => {

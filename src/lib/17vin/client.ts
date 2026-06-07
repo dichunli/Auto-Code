@@ -115,74 +115,58 @@ export async function vin17SearchPartNumber(
   });
 }
 
-/* ==================== POST 请求辅助函数（用于 OCR 接口） ==================== */
+/* ==================== OCR 接口（GET 方式） ==================== */
 
-async function vin17PostRequest(params: Record<string, string>): Promise<unknown> {
+/*
+ * 17VIN 的 OCR 接口 token 验证：
+ * - POST 方式无论如何计算 token 都报错（17VIN 服务端对 POST 请求的 token 验证有 bug）
+ * - GET 方式 token 验证正常
+ * 故 OCR 接口改用 GET 方式，参数放在 URL 查询字符串中。
+ */
+async function vin17OcrRequest(action: string, base64UrlencodeImage: string): Promise<unknown> {
   if (!USERNAME) {
     throw new Error("缺少环境变量 VIN17_USERNAME");
   }
 
-  const 接口类型 = params.action || "unknown";
+  const 接口类型 = action;
 
   /*
-   * POST 请求的 token 计算：
-   * 虽然服务端错误提示说 url_parameters: /，但实际验证时可能用的是包含 body 参数的字符串。
-   * 原来的代码用 /?rawQuery 计算 token，在浏览器中能识别，说明这是对的。
+   * token 计算：包含所有业务参数（不含 user 和 token）
+   * 注意：base64UrlencodeImage 的值已经是 encodeURIComponent(base64Body) 的结果，
+   * 这里直接拼接，不再二次编码。
    */
-  const rawQuery = Object.entries(params)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("&");
+  const rawQuery = `action=${action}&base64_urlencode_imagestring=${base64UrlencodeImage}`;
   const urlParameters = "/?" + rawQuery;
   const token = getToken(urlParameters);
 
-  /*
-   * 手动构建 body，避免 URLSearchParams 对已经是 URL 编码过的值再次编码。
-   * base64_urlencode_imagestring 的值已经是 encodeURIComponent(base64) 的结果，
-   * 如果再经过 URLSearchParams.append() 会双重编码，导致 17VIN 无法正确解码图片。
-   */
-  const bodyParts: string[] = [];
-  Object.entries(params).forEach(([k, v]) => {
-    bodyParts.push(`${encodeURIComponent(k)}=${v}`);
-  });
-  bodyParts.push(`${encodeURIComponent("user")}=${USERNAME}`);
-  bodyParts.push(`${encodeURIComponent("token")}=${token}`);
-  const body = bodyParts.join("&");
+  /* 实际请求 URL：base64UrlencodeImage 已是 URL 编码后的值，不再二次编码 */
+  const fullUrl = `${BASE_URL}/?${rawQuery}&user=${encodeURIComponent(USERNAME)}&token=${token}`;
 
-  const res = await fetch(`${BASE_URL}/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    body,
+  const res = await fetch(fullUrl, {
+    method: "GET",
+    headers: { Accept: "application/json" },
   });
 
   if (!res.ok) {
-    await 记录调用日志(接口类型, params, res.status, false, res.statusText);
+    await 记录调用日志(接口类型, { action, base64_urlencode_imagestring: base64UrlencodeImage.slice(0, 100) }, res.status, false, res.statusText);
     throw new Error(`17VIN 请求失败 [${res.status}]: ${res.statusText}`);
   }
 
   const data = await res.json();
   const 是否成功 = (data as { code?: number }).code === 1;
-  await 记录调用日志(接口类型, params, res.status, 是否成功, 是否成功 ? undefined : (data as { msg?: string }).msg);
+  await 记录调用日志(接口类型, { action, base64_urlencode_imagestring: base64UrlencodeImage.slice(0, 100) }, res.status, 是否成功, 是否成功 ? undefined : (data as { msg?: string }).msg);
 
   return data;
 }
 
 /* OCR 识别 VIN（仅返回 VIN 字符串） */
 export async function vin17OcrImage(base64UrlencodeImage: string) {
-  return vin17PostRequest({
-    action: "vin_ocr",
-    base64_urlencode_imagestring: base64UrlencodeImage,
-  });
+  return vin17OcrRequest("vin_ocr", base64UrlencodeImage);
 }
 
 /* OCR 识别 VIN 并自动解码 */
 export async function vin17OcrAndDecode(base64UrlencodeImage: string) {
-  return vin17PostRequest({
-    action: "vin_ocr_and_vin_decode",
-    base64_urlencode_imagestring: base64UrlencodeImage,
-  });
+  return vin17OcrRequest("vin_ocr_and_vin_decode", base64UrlencodeImage);
 }
 
 /* 通过配件号(OE号/品牌件号)获取适用车型（API 40031） */

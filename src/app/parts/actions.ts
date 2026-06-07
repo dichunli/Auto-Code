@@ -55,17 +55,30 @@ export async function syncPartVin17Models(partId: string, vin: string): Promise<
     return { success: false, error: "VIN解码出错: " + (err instanceof Error ? err.message : String(err)) };
   }
 
-  /* 3. 用OE号+group_id调40031接口获取适配车型 */
+  /* 3. 用OE号+group_id调40031接口获取适配车型，OE号去空格 */
+  const cleanOeNumber = (part.oe_number || "").replace(/\s/g, "");
   let modelList: Array<Record<string, unknown>> = [];
   try {
-    const fitRes = (await vin17GetModelListFromPartNumber(part.oe_number, groupId)) as {
+    const fitRes = (await vin17GetModelListFromPartNumber(cleanOeNumber, groupId)) as {
       code: number;
-      data?: { model_list_std?: Array<Record<string, unknown>> };
+      data?: Record<string, unknown>;
     };
     if (fitRes.code !== 1) {
       return { success: false, error: "17VIN接口返回错误" };
     }
-    modelList = fitRes.data?.model_list_std || [];
+    if (fitRes.data) {
+      const list =
+        fitRes.data.ModelListStd ??
+        fitRes.data.model_list_std ??
+        fitRes.data.Model_list_std ??
+        fitRes.data.model_list ??
+        fitRes.data.Model_list ??
+        fitRes.data.list ??
+        fitRes.data.List;
+      if (Array.isArray(list)) {
+        modelList = list as Array<Record<string, unknown>>;
+      }
+    }
   } catch (err: unknown) {
     return { success: false, error: "查询适配车型出错: " + (err instanceof Error ? err.message : String(err)) };
   }
@@ -109,7 +122,7 @@ export async function syncPartVin17Models(partId: string, vin: string): Promise<
 
 /* 已有OE号时，通过VIN查适配车型（不查OE号，只查40031车型） */
 export async function syncModelsFromVin(
-  oeNumber: string,
+  rawOeNumber: string,
   vin: string
 ): Promise<{
   success: boolean;
@@ -117,6 +130,7 @@ export async function syncModelsFromVin(
   error?: string;
 }> {
   const supabase = await createClient();
+  const oeNumber = rawOeNumber.replace(/\s/g, "");
 
   /* 1. VIN解码获取group_id */
   let groupId: string;
@@ -142,10 +156,20 @@ export async function syncModelsFromVin(
   try {
     const fitRes = (await vin17GetModelListFromPartNumber(oeNumber, groupId)) as {
       code: number;
-      data?: { model_list_std?: Array<Record<string, unknown>> };
+      data?: Record<string, unknown>;
     };
-    if (fitRes.code === 1) {
-      modelList = fitRes.data?.model_list_std || [];
+    if (fitRes.code === 1 && fitRes.data) {
+      const list =
+        fitRes.data.ModelListStd ??
+        fitRes.data.model_list_std ??
+        fitRes.data.Model_list_std ??
+        fitRes.data.model_list ??
+        fitRes.data.Model_list ??
+        fitRes.data.list ??
+        fitRes.data.List;
+      if (Array.isArray(list)) {
+        modelList = list as Array<Record<string, unknown>>;
+      }
     }
   } catch { /* 忽略 */ }
 
@@ -154,10 +178,21 @@ export async function syncModelsFromVin(
     try {
       const fitRes2 = (await vin17GetModelListFromPartNumberForAftermarket(oeNumber, groupId, "engine")) as {
         code: number;
-        data?: { model_list_std?: Array<Record<string, unknown>> };
+        data?: Record<string, unknown>;
       };
-      if (fitRes2.code === 1) {
-        modelList = fitRes2.data?.model_list_std || [];
+      if (fitRes2.code === 1 && fitRes2.data) {
+        const list =
+          fitRes2.data.ModelListStd_aftermarket_by_engine ??
+          fitRes2.data.ModelListStd ??
+          fitRes2.data.model_list_std ??
+          fitRes2.data.Model_list_std ??
+          fitRes2.data.model_list ??
+          fitRes2.data.Model_list ??
+          fitRes2.data.list ??
+          fitRes2.data.List;
+        if (Array.isArray(list)) {
+          modelList = list as Array<Record<string, unknown>>;
+        }
       }
     } catch { /* 忽略 */ }
   }
@@ -168,6 +203,100 @@ export async function syncModelsFromVin(
 
   /* 4. 匹配本地车型库 */
   const matchedModelIds = await matchVin17ModelsToLocal(supabase, modelList);
+
+  return {
+    success: true,
+    matchedModelIds,
+  };
+}
+
+/* 直接通过OE号+groupId同步车型（无需VIN，用于已有group_id的配件） */
+export async function syncModelsByGroupId(
+  rawOeNumber: string,
+  groupId: string
+): Promise<{
+  success: boolean;
+  matchedModelIds?: number[];
+  error?: string;
+}> {
+  const supabase = await createClient();
+  const oeNumber = rawOeNumber.replace(/\s/g, "");
+
+  /* 1. 用OE号+group_id查适配车型（API 40031） */
+  let modelList: Array<Record<string, unknown>> = [];
+  let debugInfo40031 = "";
+  let debugInfo40032 = "";
+  try {
+    const fitRes = (await vin17GetModelListFromPartNumber(oeNumber, groupId)) as {
+      code: number;
+      data?: Record<string, unknown>;
+      msg?: string;
+    };
+    const dataKeys = fitRes.data ? Object.keys(fitRes.data).join(",") : "null";
+    debugInfo40031 = `code=${fitRes.code}, data keys=[${dataKeys}]`;
+    if (fitRes.code === 1 && fitRes.data) {
+      /* 兼容可能的字段名 */
+      const list =
+        fitRes.data.ModelListStd ??
+        fitRes.data.model_list_std ??
+        fitRes.data.Model_list_std ??
+        fitRes.data.model_list ??
+        fitRes.data.Model_list ??
+        fitRes.data.list ??
+        fitRes.data.List;
+      if (Array.isArray(list)) {
+        modelList = list as Array<Record<string, unknown>>;
+      }
+    }
+  } catch (err: unknown) {
+    debugInfo40031 = "异常: " + (err instanceof Error ? err.message : String(err));
+  }
+
+  /* 2. 40031返回空，尝试40032易损件接口 */
+  if (modelList.length === 0) {
+    try {
+      const fitRes2 = (await vin17GetModelListFromPartNumberForAftermarket(oeNumber, groupId, "engine")) as {
+        code: number;
+        data?: Record<string, unknown>;
+        msg?: string;
+      };
+      const dataKeys2 = fitRes2.data ? Object.keys(fitRes2.data).join(",") : "null";
+      debugInfo40032 = `code=${fitRes2.code}, data keys=[${dataKeys2}]`;
+      if (fitRes2.code === 1 && fitRes2.data) {
+        const list =
+          fitRes2.data.ModelListStd_aftermarket_by_engine ??
+          fitRes2.data.ModelListStd ??
+          fitRes2.data.model_list_std ??
+          fitRes2.data.Model_list_std ??
+          fitRes2.data.model_list ??
+          fitRes2.data.Model_list ??
+          fitRes2.data.list ??
+          fitRes2.data.List;
+        if (Array.isArray(list)) {
+          modelList = list as Array<Record<string, unknown>>;
+        }
+      }
+    } catch (err: unknown) {
+      debugInfo40032 = "异常: " + (err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (modelList.length === 0) {
+    return {
+      success: false,
+      error: `17VIN未返回适配车型。OE=${oeNumber}, group=${groupId}, 40031: ${debugInfo40031}, 40032: ${debugInfo40032}`,
+    };
+  }
+
+  /* 3. 匹配本地车型库 */
+  const matchedModelIds = await matchVin17ModelsToLocal(supabase, modelList);
+
+  if (matchedModelIds.length === 0) {
+    return {
+      success: false,
+      error: `17VIN返回${modelList.length}个车型，但本地车型库未匹配`,
+    };
+  }
 
   return {
     success: true,
@@ -200,34 +329,48 @@ export async function deletePart(partId: string): Promise<{ success: boolean; er
   return { success: true };
 }
 
-/* 公共函数：将17VIN返回的车型列表匹配到本地车型库 */
+/* 公共函数：将17VIN返回的车型列表匹配到本地车型库（优先用ID精确匹配） */
 async function matchVin17ModelsToLocal(
   supabase: Awaited<ReturnType<typeof createClient>>,
   modelList: Array<Record<string, unknown>>
 ): Promise<number[]> {
+  /* 1. 优先用ID精确匹配（本地车型库就是17VIN的数据，ID是一套编号） */
+  const vin17Ids: number[] = [];
+  for (const vm of modelList) {
+    const idVal = vm.Id ?? vm.id ?? vm.ID;
+    if (idVal != null) {
+      const numId = typeof idVal === "number" ? idVal : parseInt(String(idVal), 10);
+      if (!isNaN(numId)) {
+        vin17Ids.push(numId);
+      }
+    }
+  }
+
+  if (vin17Ids.length > 0) {
+    const { data: matchedById } = await supabase
+      .from("vehicle_models")
+      .select("id")
+      .in("id", [...new Set(vin17Ids)]);
+    if (matchedById && matchedById.length > 0) {
+      return matchedById.map((r: Record<string, unknown>) => r.id as number);
+    }
+  }
+
+  /* 2. ID匹配不上，回退到字段模糊匹配 */
   const { data: localModels } = await supabase
     .from("vehicle_models")
     .select(车型库匹配字段);
 
   const matchedIds: number[] = [];
 
-  for (const vm of modelList as Array<{
-    id?: number;
-    brand?: string;
-    series?: string;
-    model?: string;
-    model_name?: string;
-    year?: string | number;
-    year_start?: string | number;
-    year_end?: string | number;
-    engine_no?: string;
-    engine?: string;
-  }>) {
-    const vmBrand = (vm.brand || "").toLowerCase().trim();
-    const vmSeries = (vm.series || "").toLowerCase().trim();
-    const vmModel = (vm.model || vm.model_name || "").toLowerCase().trim();
-    const vmYear = vm.year ? parseInt(String(vm.year)) : null;
-    const vmEngine = (vm.engine_no || vm.engine || "").toLowerCase().trim();
+  for (const vmRaw of modelList) {
+    const vm = vmRaw as Record<string, unknown>;
+    const vmBrand = String((vm.Brand ?? vm.brand ?? "") as string).toLowerCase().trim();
+    const vmSeries = String((vm.Series ?? vm.series ?? "") as string).toLowerCase().trim();
+    const vmModel = String((vm.Model ?? vm.model ?? vm.model_name ?? vm.Model_name ?? "") as string).toLowerCase().trim();
+    const yearVal = vm.Model_year ?? vm.model_year ?? vm.year ?? vm.Year ?? vm.year_start ?? vm.Year_start ?? vm.year_end ?? vm.Year_end;
+    const vmYear = yearVal ? parseInt(String(yearVal)) : null;
+    const vmEngine = String((vm.Engine_no ?? vm.engine_no ?? vm.Engine ?? vm.engine ?? "") as string).toLowerCase().trim();
 
     for (const local of localModels || []) {
       const localBrand = (local.品牌 || "").toLowerCase().trim();
@@ -358,6 +501,7 @@ export async function syncOeFromVin(
   brandPartNumber?: string;
   filterType?: string;
   matchedModelIds?: number[];
+  vin17GroupId?: string;
   error?: string;
 }> {
   const supabase = await createClient();
@@ -490,13 +634,24 @@ export async function syncOeFromVin(
           vinDecodeModel = decodeRes.data.model_list[0];
         }
 
-        /* 4. 用OE号+group_id查适配车型（API 40031） */
-        const fitRes = (await vin17GetModelListFromPartNumber(oeNumber, vin17GroupId)) as {
+        /* 4. 用OE号+group_id查适配车型（API 40031），OE号去空格 */
+        const cleanOeNumber = oeNumber.replace(/\s/g, "");
+        const fitRes = (await vin17GetModelListFromPartNumber(cleanOeNumber, vin17GroupId)) as {
           code: number;
-          data?: { model_list_std?: Array<Record<string, unknown>> };
+          data?: Record<string, unknown>;
         };
-        if (fitRes.code === 1) {
-          modelList = fitRes.data?.model_list_std || [];
+        if (fitRes.code === 1 && fitRes.data) {
+          const list =
+            fitRes.data.ModelListStd ??
+            fitRes.data.model_list_std ??
+            fitRes.data.Model_list_std ??
+            fitRes.data.model_list ??
+            fitRes.data.Model_list ??
+            fitRes.data.list ??
+            fitRes.data.List;
+          if (Array.isArray(list)) {
+            modelList = list as Array<Record<string, unknown>>;
+          }
         }
 
         /* 4b. 40031返回空，尝试40032易损件接口 */
@@ -504,10 +659,21 @@ export async function syncOeFromVin(
           try {
             const fitRes2 = (await vin17GetModelListFromPartNumberForAftermarket(oeNumber, vin17GroupId, "engine")) as {
               code: number;
-              data?: { model_list_std?: Array<Record<string, unknown>> };
+              data?: Record<string, unknown>;
             };
-            if (fitRes2.code === 1) {
-              modelList = fitRes2.data?.model_list_std || [];
+            if (fitRes2.code === 1 && fitRes2.data) {
+              const list =
+                fitRes2.data.ModelListStd_aftermarket_by_engine ??
+                fitRes2.data.ModelListStd ??
+                fitRes2.data.model_list_std ??
+                fitRes2.data.Model_list_std ??
+                fitRes2.data.model_list ??
+                fitRes2.data.Model_list ??
+                fitRes2.data.list ??
+                fitRes2.data.List;
+              if (Array.isArray(list)) {
+                modelList = list as Array<Record<string, unknown>>;
+              }
             }
           } catch {
             /* 40032失败忽略 */
@@ -550,6 +716,7 @@ export async function syncOeFromVin(
     brandPartNumber: brandPartNumber || undefined,
     filterType,
     matchedModelIds,
+    vin17GroupId: vin17GroupId || undefined,
   };
 }
 

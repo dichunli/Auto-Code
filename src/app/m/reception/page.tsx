@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
 
 interface Order {
   id: string;
@@ -115,12 +116,10 @@ export default function MobileReceptionListPage() {
 
         {showFilter && (
           <div className="space-y-2 pt-1 pb-1">
-            <input
-              type="text"
+            <LicensePlateKeyboard
               value={plateFilter}
-              onChange={(e) => setPlateFilter(e.target.value)}
+              onChange={(val) => setPlateFilter(val)}
               placeholder="车牌号"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <input
               type="text"

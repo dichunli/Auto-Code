@@ -51,6 +51,25 @@ export default function SettingsPage() {
       <PageHeader title="系统设置" description="管理系统参数" />
 
       <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-6">
+        {/* 个人信息入口 */}
+        <div className="flex items-center justify-between pb-5 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">个人信息</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              修改头像、联系方式和登录密码
+            </p>
+          </div>
+          <a
+            href="/profile"
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            前往设置
+            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
         <div>
           <h2 className="text-base font-semibold text-gray-900 mb-4">重复开单授权码</h2>
           <p className="text-sm text-gray-500 mb-4">

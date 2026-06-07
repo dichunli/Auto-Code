@@ -1,7 +1,9 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import { compressImage } from "@/lib/imageCompress";
+import { compressImage, base64转Blob } from "@/lib/imageCompress";
+import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -241,11 +243,16 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
     [images, maxImages, onUpload]
   );
 
-  // 粘贴上传
+  // 粘贴上传（仅当焦点不在输入框/文本域时处理，避免与文字粘贴冲突）
   useEffect(() => {
     const handler = (e: ClipboardEvent) => {
+      // 如果焦点在输入框或文本域内，不拦截粘贴
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+        return;
+      }
       const files = e.clipboardData?.files;
-      if (!files) return;
+      if (!files || files.length === 0) return;
       handleFiles(files);
     };
     window.addEventListener("paste", handler);
@@ -283,30 +290,77 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
         {images.length < maxImages && (
           <div className="flex gap-2">
             {/* 移动端：input 嵌套在 label 内部，比 htmlFor 关联更可靠 */}
-            <label
-              className={`md:hidden w-20 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
-            >
-              {uploading ? (
-                <span className="text-xs">{uploadProgress || "上传中..."}</span>
-              ) : (
-                <>
-                  <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <span className="text-[10px]">拍照</span>
-                  <span className="text-[10px]">{images.length}/{maxImages}</span>
-                </>
-              )}
-              <input
-                ref={cameraInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="sr-only"
-                onChange={handleFileChange}
-              />
-            </label>
+            {/* APP环境：调用 Capacitor 原生相机，WebView 的 capture 属性不可靠 */}
+            {是Capacitor环境() ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const photo = await Camera.getPhoto({
+                      quality: 90,
+                      allowEditing: false,
+                      resultType: CameraResultType.Base64,
+                      source: CameraSource.Camera,
+                    });
+                    if (!photo.base64String) {
+                      alert("拍照未获取到图片");
+                      return;
+                    }
+                    const base64 = `data:image/jpeg;base64,${photo.base64String}`;
+                    const blob = base64转Blob(base64);
+                    const file = new File([blob], `camera_${Date.now()}.jpg`, { type: "image/jpeg" });
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    handleFiles(dt.files);
+                  } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    /* 用户取消拍照时不提示错误 */
+                    if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
+                    alert("拍照失败: " + msg);
+                  }
+                }}
+                disabled={uploading}
+                className={`md:hidden w-20 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {uploading ? (
+                  <span className="text-xs">{uploadProgress || "上传中..."}</span>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="text-[10px]">拍照</span>
+                    <span className="text-[10px]">{images.length}/{maxImages}</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <label
+                className={`md:hidden w-20 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {uploading ? (
+                  <span className="text-xs">{uploadProgress || "上传中..."}</span>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="text-[10px]">拍照</span>
+                    <span className="text-[10px]">{images.length}/{maxImages}</span>
+                  </>
+                )}
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="sr-only"
+                  onChange={handleFileChange}
+                />
+              </label>
+            )}
             <label
               className={`hidden md:flex w-20 h-20 rounded border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
             >

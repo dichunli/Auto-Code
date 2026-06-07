@@ -5,6 +5,8 @@ import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { recognizeLicensePlate } from "@/lib/baidu-ocr/client";
 import { 压缩图片为Base64, 文件转Base64, base64转Blob } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { 启动原生车牌识别, 有网络 } from "@/lib/androidLicensePlate";
+import PlateScanEditor from "./PlateScanEditor";
 
 interface Props {
   open: boolean;
@@ -25,6 +27,8 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
   const [recognizing, setRecognizing] = useState(false);
   const [recognizedPlate, setRecognizedPlate] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showEditor, setShowEditor] = useState(false);
+  const [editorPlate, setEditorPlate] = useState("");
 
   const 是App = 是Capacitor环境();
 
@@ -52,7 +56,11 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
         processedBase64 = await 压缩图片为Base64(blob, { 最大宽度: 1280, 质量: 0.6 });
       }
       const plate = await recognizeLicensePlate(processedBase64);
-      setRecognizedPlate(plate.toUpperCase());
+      const upperPlate = plate.toUpperCase();
+      setRecognizedPlate(upperPlate);
+      /* 识别成功 → 进入编辑模式，让用户可修改 */
+      setEditorPlate(upperPlate);
+      setShowEditor(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "识别失败";
       /* 过滤掉 Next.js Server Components 的通用错误包装 */
@@ -87,6 +95,31 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
       set模式("拍照");
     }
   }, []);
+
+  /* ========== APP 离线车牌识别（没网时兜底） ========== */
+  const 启动离线车牌识别 = useCallback(async () => {
+    try {
+      set模式("拍照");
+      const 结果 = await 启动原生车牌识别();
+      if (已取消Ref.current) return;
+
+      if (结果.plate) {
+        onRecognize(结果.plate.toUpperCase());
+        onClose();
+      } else if (结果.cancelled) {
+        /* 用户取消 */
+        onClose();
+      } else {
+        setErrorMsg("本地识别未找到车牌：" + (结果.error || "未知错误"));
+        set模式("拍照");
+      }
+    } catch (err: unknown) {
+      if (已取消Ref.current) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg("离线识别失败: " + msg);
+      set模式("拍照");
+    }
+  }, [onRecognize, onClose]);
 
   /* ========== APP 原生拍照 ========== */
   const 原生拍照 = useCallback(async () => {
@@ -183,6 +216,8 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
       setRecognizedPlate(null);
       setErrorMsg(null);
       setRecognizing(false);
+      setShowEditor(false);
+      setEditorPlate("");
       return;
     }
 
@@ -193,8 +228,14 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
     setRecognizing(false);
 
     if (是App) {
-      /* APP：直接打开相机拍照 */
-      void 原生拍照();
+      /* APP：判断网络状态 */
+      if (有网络()) {
+        /* 有网：走现有流程 */
+        void 原生拍照();
+      } else {
+        /* 没网：启动原生离线识别 */
+        void 启动离线车牌识别();
+      }
     } else {
       /* 浏览器：尝试实时摄像头 */
       set模式("实时");
@@ -221,6 +262,8 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
     setRecognizedPlate(null);
     setErrorMsg(null);
     setRecognizing(false);
+    setShowEditor(false);
+    setEditorPlate("");
 
     if (是App) {
       /* APP：直接重新打开相机 */
@@ -235,6 +278,23 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+      {/* ========== 识别结果编辑器（识别成功后显示） ========== */}
+      {showEditor && (
+        <PlateScanEditor
+          initialPlate={editorPlate}
+          previewImage={previewImage}
+          onConfirm={(plate) => {
+            onRecognize(plate);
+            onClose();
+          }}
+          onRetake={handleRetake}
+          onCancel={() => {
+            setShowEditor(false);
+            setEditorPlate("");
+          }}
+        />
+      )}
+
       {/* 顶部栏 */}
       <div className="flex items-center justify-between px-4 h-12 bg-black/80 text-white shrink-0">
         <span className="text-sm font-medium">车牌识别</span>
