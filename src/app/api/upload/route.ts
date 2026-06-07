@@ -1,4 +1,3 @@
-import type { NextApiRequest, NextApiResponse } from "next";
 import { writeFile, mkdir, access } from "fs/promises";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -6,15 +5,6 @@ import path from "path";
 import { 解析Multipart请求 } from "@/lib/parseMultipart";
 
 const execFileAsync = promisify(execFile);
-
-/* Pages Router 配置：允许最大 100MB 请求体 */
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: "100mb",
-    },
-  },
-};
 
 /* 本地附件存储根目录 */
 const UPLOAD_DIR = "E:/autorepair-uploads";
@@ -61,40 +51,14 @@ async function convertToPdf(inputPath: string, outputDir: string): Promise<strin
   }
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
+export async function POST(request: Request) {
   try {
-    /* 读取请求体为 Buffer */
-    const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    await new Promise<void>((resolve, reject) => {
-      req.on("end", resolve);
-      req.on("error", reject);
-    });
-    const body = Buffer.concat(chunks);
-
-    /* 构造 Web API Request 对象，复用 parseMultipart */
-    const contentType = req.headers["content-type"] || "";
-    const request = new Request("http://localhost/api/upload", {
-      method: "POST",
-      headers: { "Content-Type": contentType },
-      body: new ReadableStream({
-        start(controller) {
-          controller.enqueue(body);
-          controller.close();
-        },
-      }),
-    });
-
     const multipart = await 解析Multipart请求(request);
     const { file } = multipart;
     const folder = multipart.folder;
 
     if (!file || file.data.length === 0) {
-      return res.status(400).json({ error: "没有文件" });
+      return Response.json({ error: "没有文件" }, { status: 400 });
     }
 
     const buffer = file.data;
@@ -127,10 +91,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    return res.status(200).json(result);
+    return Response.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "上传失败";
     console.error("[upload] error:", message);
-    return res.status(500).json({ error: message });
+    return Response.json({ error: message }, { status: 500 });
   }
 }
