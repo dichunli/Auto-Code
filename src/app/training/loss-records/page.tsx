@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -21,7 +21,7 @@ interface 损失记录 {
 const 损失类型选项 = ["工具损坏", "材料浪费", "操作失误", "设备损坏", "其他"];
 
 export default function LossRecordsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [employees, setEmployees] = useState<员工[]>([]);
   const [records, setRecords] = useState<损失记录[]>([]);
   const [loading, setLoading] = useState(false);

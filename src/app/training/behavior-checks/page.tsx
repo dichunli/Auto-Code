@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import {useState, useEffect, useRef, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
@@ -81,7 +81,7 @@ async function addWatermark(file: File): Promise<File> {
 }
 
 export default function BehaviorChecksPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [records, setRecords] = useState<考核记录[]>([]);
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState<string | null>(null);

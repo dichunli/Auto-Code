@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
@@ -36,7 +36,7 @@ interface TransactionForm {
 }
 
 export default function SupplierTransactionsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [records, setRecords] = useState<TransactionRecord[]>([]);
   const [allRecords, setAllRecords] = useState<TransactionRecord[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);

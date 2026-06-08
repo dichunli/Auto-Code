@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -14,7 +14,7 @@ interface 行为项目 {
 }
 
 export default function BehaviorItemsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<行为项目[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import {useState, useEffect, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -44,7 +44,7 @@ interface EditForm {
 }
 
 export default function MemberDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [memberId, setMemberId] = useState("");
 
   const [member, setMember] = useState<Member | null>(null);

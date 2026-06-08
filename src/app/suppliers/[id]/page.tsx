@@ -110,7 +110,7 @@ interface BrandLink {
 }
 
 export default function SupplierDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [supplierId, setSupplierId] = useState("");
   const [loading, setLoading] = useState(true);
 

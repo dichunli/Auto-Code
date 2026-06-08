@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export interface StockLocationRow {
@@ -28,7 +28,7 @@ interface StockLocationSectionProps {
 }
 
 export default function StockLocationSection({ value, onChange }: StockLocationSectionProps) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [allWarehouses, setAllWarehouses] = useState<WarehouseItem[]>([]);
   const [whResultsMap, setWhResultsMap] = useState<Record<string, WarehouseItem[]>>({});
   const [warehouseLocationMap, setWarehouseLocationMap] = useState<Record<string, LocationItem[]>>({});

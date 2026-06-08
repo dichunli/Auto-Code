@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import {useState, useCallback, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -55,7 +55,7 @@ function CommissionField({
 
 export default function NewServiceNamePage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<{ id: string; name: string; service_categories?: { name: string } | null }[]>([]);
   const [searching, setSearching] = useState(false);

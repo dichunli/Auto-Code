@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import {useState, useCallback, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -22,7 +22,7 @@ interface 配件名称 {
 
 export default function NewPartBrandPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<品牌搜索结果[]>([]);
   const [searching, setSearching] = useState(false);

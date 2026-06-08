@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import {useState, useRef, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -28,7 +28,7 @@ let vehicleIdCounter = 0;
 
 export default function NewCustomerPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
 
   interface ContactForm {

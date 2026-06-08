@@ -41,7 +41,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 };
 
 export default function OutsourceOrdersPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [orders, setOrders] = useState<OutsourceOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");

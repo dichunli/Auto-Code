@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import {useState, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export function MergeButton({ id, name, allNames }: { id: string; name: string; allNames: { id: string; name: string }[] }) {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [open, setOpen] = useState(false);
   const [targetId, setTargetId] = useState("");
   const [merging, setMerging] = useState(false);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -49,7 +49,7 @@ interface 损失记录 {
 
 export default function MyProgressPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [courses, setCourses] = useState<课程分配[]>([]);
   const [exams, setExams] = useState<考试记录[]>([]);
   const [behaviors, setBehaviors] = useState<行为记录[]>([]);

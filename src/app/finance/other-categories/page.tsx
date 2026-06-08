@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import {useState, useEffect, useCallback, useMemo} from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -117,7 +117,7 @@ function CategoryList({
 }
 
 export default function OtherCategoriesPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [categories, setCategories] = useState<分类[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);

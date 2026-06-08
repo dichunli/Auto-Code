@@ -20,7 +20,7 @@ interface InboundOrder {
 const PAGE_SIZE = 15;
 
 export default function InboundOrdersPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [orders, setOrders] = useState<InboundOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);

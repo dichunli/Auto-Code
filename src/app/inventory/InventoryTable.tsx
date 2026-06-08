@@ -153,7 +153,7 @@ interface NamedRow {
 }
 
 export default function InventoryTable({ items }: { items: InventoryItem[] }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import {useState, useEffect, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { DeleteButton } from "./DeleteButton";
@@ -23,7 +23,7 @@ interface Tag {
 }
 
 export default function TagsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import {useState, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import * as XLSX from "xlsx";
 
@@ -45,7 +45,7 @@ const exportHeaders = [
 ];
 
 export default function CustomerImportExport({ customers }: CustomerImportExportProps) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);

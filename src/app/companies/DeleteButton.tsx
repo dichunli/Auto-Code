@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function DeleteButton({ id }: Props) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [deleting, setDeleting] = useState(false);
 
   async function handleDelete() {

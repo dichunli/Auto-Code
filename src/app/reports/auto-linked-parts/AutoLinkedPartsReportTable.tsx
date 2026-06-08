@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import {useState, useMemo} from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
@@ -42,7 +42,7 @@ interface AutoLinkedRow {
 }
 
 export default function AutoLinkedPartsReportTable({ rows: initialRows }: { rows: AutoLinkedRow[] }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<AutoLinkedRow[]>(initialRows);
   const [noteValues, setNoteValues] = useState<Record<string, string>>(
     Object.fromEntries(initialRows.map((row) => [row.id, row.notes || ""]))

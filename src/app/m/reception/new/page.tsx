@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import {useState, useEffect, useRef, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { MobilePageHeader } from "@/components/mobile/MobilePageHeader";
@@ -51,7 +51,7 @@ function getVehicleCustomer(v: Vehicle | null): Customer | null {
 
 export default function MobileReceptionNewPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { showToast } = useMobileToast();
 
   /* ---------- 车辆 ---------- */

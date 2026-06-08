@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import {useState, useCallback, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -12,7 +12,7 @@ interface 规格项 {
 
 export default function NewPartSpecificationPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<规格项[]>([]);
   const [searching, setSearching] = useState(false);

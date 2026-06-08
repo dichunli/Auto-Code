@@ -42,7 +42,7 @@ const importFields = [
 const pageSize = 20;
 
 export default function ServiceItemsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<ServiceItem[]>([]);
   const [, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);

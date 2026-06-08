@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import {useState, useEffect, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
@@ -22,7 +22,7 @@ interface 课程 {
 }
 
 export default function TrainingPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [courses, setCourses] = useState<课程[]>([]);
   const [loading, setLoading] = useState(true);
   const [dragId, setDragId] = useState<string | null>(null);

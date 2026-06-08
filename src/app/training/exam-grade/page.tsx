@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -17,7 +17,7 @@ interface 待判卷答题 {
 }
 
 export default function ExamGradePage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [pendingList, setPendingList] = useState<待判卷答题[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);

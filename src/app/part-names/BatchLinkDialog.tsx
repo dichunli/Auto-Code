@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface 关联项 {
@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function BatchLinkDialog({ open, type, selectedIds, onClose, onSuccess }: Props) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<关联项[]>([]);
   const [searching, setSearching] = useState(false);

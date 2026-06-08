@@ -47,7 +47,7 @@ export default function SpecialPricingSection({
   vehicleModelPrices,
   onVehicleModelPricesChange,
 }: SpecialPricingSectionProps) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   // Company search for special pricing
   const [spCompanyQuery, setSpCompanyQuery] = useState("");

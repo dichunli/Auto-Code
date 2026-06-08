@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface Props {
@@ -10,7 +10,7 @@ interface Props {
 }
 
 export function PasswordChangeModal({ open, onClose, userEmail }: Props) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

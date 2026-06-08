@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import {useState, useEffect, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { PriceValue } from "@/components/PriceVisibilityContext";
@@ -65,7 +65,7 @@ interface ItemQtyCheck {
 }
 
 export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [orderId, setOrderId] = useState("");
   const [order, setOrder] = useState<PurchaseOrder | null>(null);
   const [items, setItems] = useState<PurchaseOrderItem[]>([]);

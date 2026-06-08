@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import {useState, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -8,7 +8,7 @@ import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 
 export default function NewAppointmentPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({

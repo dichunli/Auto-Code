@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -34,7 +34,7 @@ interface 晋级规则 {
 }
 
 export default function PromotionRulesPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [levels, setLevels] = useState<技师等级[]>([]);
   const [courses, setCourses] = useState<课程[]>([]);
   const [rules, setRules] = useState<晋级规则[]>([]);

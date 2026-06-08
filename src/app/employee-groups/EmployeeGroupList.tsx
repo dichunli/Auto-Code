@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import {useState, useMemo} from "react";
 
 interface Group {
   id: string;
@@ -19,7 +19,7 @@ interface Props {
 
 export function EmployeeGroupList({ groups }: Props) {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState<string | null>(null);
 
   async function handleDelete(id: string, name: string, memberCount: number) {
