@@ -20,7 +20,7 @@ interface 阅读记录 {
   user_id: string;
   read_date: string;
   created_at: string;
-  profiles: { full_name: string } | null;
+  full_name: string;
 }
 
 interface BlockItem {
@@ -57,18 +57,35 @@ export default async function KnowledgeDetailPage({
     .eq("id", id)
     .single();
 
-  /* 查询阅读次数和阅读人列表 */
+  /* 查询阅读次数 */
   const { count: readCount } = await supabase
     .from("knowledge_article_reads")
     .select("*", { count: "exact", head: true })
     .eq("article_id", id);
 
-  const { data: readList } = await supabase
+  /* 查询阅读记录，再单独查用户名 */
+  const { data: readsRaw } = await supabase
     .from("knowledge_article_reads")
-    .select("user_id, read_date, created_at, profiles(full_name)")
+    .select("user_id, read_date, created_at")
     .eq("article_id", id)
     .order("created_at", { ascending: false })
     .limit(50);
+
+  let readList: 阅读记录[] = [];
+  if (readsRaw && readsRaw.length > 0) {
+    const userIds = [...new Set(readsRaw.map((r) => r.user_id))];
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", userIds);
+    const profileMap = new Map((profiles || []).map((p) => [p.id, p.full_name]));
+    readList = readsRaw.map((r) => ({
+      user_id: r.user_id,
+      read_date: r.read_date,
+      created_at: r.created_at,
+      full_name: profileMap.get(r.user_id) || "未知用户",
+    }));
+  }
 
   /* 记录阅读（登录用户才记录，不阻塞页面加载） */
   const { data: { user } } = await supabase.auth.getUser();
@@ -236,9 +253,9 @@ export default async function KnowledgeDetailPage({
               </summary>
               <div className="px-4 pb-4 border-t border-gray-100">
                 <div className="mt-3 space-y-2 max-h-60 overflow-y-auto">
-                  {(readList as 阅读记录[]).map((record, index) => (
+                  {readList.map((record, index) => (
                     <div key={index} className="flex items-center justify-between text-sm py-1.5 px-2 rounded hover:bg-white">
-                      <span className="text-gray-700">{record.profiles?.full_name || "未知用户"}</span>
+                      <span className="text-gray-700">{record.full_name}</span>
                       <span className="text-gray-400 text-xs">{new Date(record.created_at).toLocaleString()}</span>
                     </div>
                   ))}
