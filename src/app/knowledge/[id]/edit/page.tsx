@@ -24,6 +24,11 @@ interface Category {
   name: string;
 }
 
+interface 岗位 {
+  id: string;
+  name: string;
+}
+
 export default function EditKnowledgePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const supabase = createClient();
@@ -32,6 +37,8 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
   const [articleId, setArticleId] = useState<string>("");
 
   const [categories, setCategories] = useState<Category[]>([]);
+  const [roles, setRoles] = useState<岗位[]>([]);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
 
   const [form, setForm] = useState({
     title: "",
@@ -40,7 +47,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
     content: "",
     content_blocks: "",
     video_url: "",
-    visibility: "public" as "public" | "internal" | "private",
+    visibility: "public" as "public" | "internal" | "private" | "role",
   });
 
   /* 搜索添加维修项目名称 */
@@ -72,6 +79,13 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
         .limit(100);
       setCategories(cats || []);
 
+      /* 加载岗位列表 */
+      const { data: rolesData } = await supabase
+        .from("roles")
+        .select("id, name")
+        .order("name");
+      setRoles(rolesData || []);
+
       /* 加载文章 */
       const { data: article } = await supabase
         .from("knowledge_articles")
@@ -94,8 +108,17 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
           ? JSON.stringify(article.content_blocks)
           : "",
         video_url: article.video_url || "",
-        visibility: (article.visibility as "public" | "internal" | "private") || "public",
+        visibility: (article.visibility as "public" | "internal" | "private" | "role") || "public",
       });
+
+      /* 加载文章关联的岗位 */
+      const { data: articleRoles } = await supabase
+        .from("knowledge_article_roles")
+        .select("role_name")
+        .eq("article_id", id);
+      if (articleRoles) {
+        setSelectedRoles(articleRoles.map((r) => r.role_name));
+      }
 
       /* 加载关联维修项目名称 */
       const { data: nameLinks } = await supabase
@@ -269,6 +292,15 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       const { error: delVehicleError } = await supabase.from("knowledge_vehicle_links").delete().eq("article_id", articleId);
       if (delVehicleError) throw delVehicleError;
 
+      /* 更新岗位权限关联 */
+      const { error: delRoleError } = await supabase.from("knowledge_article_roles").delete().eq("article_id", articleId);
+      if (delRoleError) throw delRoleError;
+      if (form.visibility === "role" && selectedRoles.length > 0) {
+        const roleLinks = selectedRoles.map((roleName) => ({ article_id: articleId, role_name: roleName }));
+        const { error: insertRoleError } = await supabase.from("knowledge_article_roles").insert(roleLinks);
+        if (insertRoleError) throw insertRoleError;
+      }
+
       if (linkedNames.length > 0) {
         const nameLinks = linkedNames.map((n) => ({ article_id: articleId, service_name_id: n.id }));
         const { error: insertNameError } = await supabase.from("knowledge_service_links").insert(nameLinks);
@@ -353,12 +385,41 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
               <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 value={form.visibility}
-                onChange={(e) => setForm({ ...form, visibility: e.target.value as "public" | "internal" | "private" })}
+                onChange={(e) => setForm({ ...form, visibility: e.target.value as "public" | "internal" | "private" | "role" })}
               >
                 <option value="public">🔓 公开（所有人可见）</option>
                 <option value="internal">🔐 内部（登录用户可见）</option>
                 <option value="private">🔒 私密（仅管理员和作者可见）</option>
+                <option value="role">👥 岗位（指定岗位可见）</option>
               </select>
+              {/* 岗位选择 */}
+              {form.visibility === "role" && (
+                <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <p className="text-xs text-gray-500 mb-2">选择可见岗位：</p>
+                  <div className="flex flex-wrap gap-2">
+                    {roles.map((role) => (
+                      <label key={role.id} className="inline-flex items-center gap-1.5 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedRoles.includes(role.name)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedRoles((prev) => [...prev, role.name]);
+                            } else {
+                              setSelectedRoles((prev) => prev.filter((r) => r !== role.name));
+                            }
+                          }}
+                          className="w-4 h-4 text-blue-600 rounded border-gray-300"
+                        />
+                        <span className="text-gray-700">{role.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {roles.length === 0 && (
+                    <p className="text-xs text-gray-400">暂无岗位数据</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

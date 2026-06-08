@@ -27,6 +27,7 @@ const 权限标签: Record<string, { label: string; className: string }> = {
   public: { label: "公开", className: "bg-green-50 text-green-700" },
   internal: { label: "内部", className: "bg-yellow-50 text-yellow-700" },
   private: { label: "私密", className: "bg-red-50 text-red-700" },
+  role: { label: "岗位", className: "bg-purple-50 text-purple-700" },
 };
 
 export default async function KnowledgeDetailPage({
