@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -19,7 +19,7 @@ interface 返工记录 {
 }
 
 export default function ReworkRecordsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [employees, setEmployees] = useState<员工[]>([]);
   const [records, setRecords] = useState<返工记录[]>([]);
   const [loading, setLoading] = useState(false);

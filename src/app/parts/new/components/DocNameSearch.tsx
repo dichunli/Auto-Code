@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface DocNameSearchProps {
@@ -9,7 +9,7 @@ interface DocNameSearchProps {
 }
 
 export default function DocNameSearch({ value, onChange }: DocNameSearchProps) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [results, setResults] = useState<string[] | null>(null);
   const [searching, setSearching] = useState(false);

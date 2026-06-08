@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import {useState, useEffect, useRef, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
@@ -24,7 +24,7 @@ const importFields = [
 const pageSize = 20;
 
 export default function ServiceNamesPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<ServiceName[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchName, setSearchName] = useState("");

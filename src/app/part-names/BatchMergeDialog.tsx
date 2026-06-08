@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -13,7 +13,7 @@ interface Props {
 
 export function BatchMergeDialog({ open, selectedNames, onClose, onSuccess }: Props) {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [targetId, setTargetId] = useState<string>("");
   const [finalName, setFinalName] = useState("");
   const [merging, setMerging] = useState(false);

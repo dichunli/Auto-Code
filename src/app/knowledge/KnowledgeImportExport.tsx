@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import {useState, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 解析Word文档, 生成Word文档 } from "./actions";
 
@@ -42,7 +42,7 @@ interface Props {
 /* ========== 主组件 ========== */
 
 export default function KnowledgeImportExport({ articles, onSuccess }: Props) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
   const [showExportModal, setShowExportModal] = useState(false);

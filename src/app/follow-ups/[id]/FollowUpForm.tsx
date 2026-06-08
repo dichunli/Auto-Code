@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import {useState, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -12,7 +12,7 @@ const METHOD_OPTIONS = [
 
 export function FollowUpForm({ followUpId }: { followUpId: string }) {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
   const [method, setMethod] = useState("phone");
   const [result, setResult] = useState("");

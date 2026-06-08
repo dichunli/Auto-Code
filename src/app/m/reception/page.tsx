@@ -42,7 +42,7 @@ const statusColor: Record<string, string> = {
 const SETTLED_STATUSES = ["settled", "delivered"];
 
 export default function MobileReceptionListPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

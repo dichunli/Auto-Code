@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CustomerSearchDropdown, Customer } from "@/components/CustomerSearchDropdown";
 
 export function MergeButton() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [open, setOpen] = useState(false);
   const [sourceCustomer, setSourceCustomer] = useState<Customer | null>(null);
   const [targetCustomer, setTargetCustomer] = useState<Customer | null>(null);

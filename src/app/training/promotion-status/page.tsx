@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -43,7 +43,7 @@ interface 晋级规则 {
 
 export default function PromotionStatusPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [currentLevel, setCurrentLevel] = useState<等级信息 | null>(null);
   const [nextLevel, setNextLevel] = useState<等级信息 | null>(null);
   const [rule, setRule] = useState<晋级规则 | null>(null);

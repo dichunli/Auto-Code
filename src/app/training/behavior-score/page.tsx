@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import {useState, useEffect, useRef, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -86,7 +86,7 @@ async function addWatermarkToBlob(blob: Blob): Promise<Blob> {
 }
 
 export default function BehaviorScorePage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [employees, setEmployees] = useState<员工[]>([]);
   const [items, setItems] = useState<行为项目[]>([]);
   const [records, setRecords] = useState<打分记录[]>([]);

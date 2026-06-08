@@ -17,7 +17,7 @@ interface BatchRecord {
 }
 
 export default function BatchesPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [batches, setBatches] = useState<BatchRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");

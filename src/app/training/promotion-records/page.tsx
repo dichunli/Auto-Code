@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -23,7 +23,7 @@ interface 晋级记录 {
 }
 
 export default function PromotionRecordsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [records, setRecords] = useState<晋级记录[]>([]);
   const [loading, setLoading] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);

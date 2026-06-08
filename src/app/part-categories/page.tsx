@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import {useState, useEffect, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
@@ -70,7 +70,7 @@ function CommissionField({
 }
 
 export default function PartCategoriesPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<配件分类[]>([]);
   const [, setLoading] = useState(true);

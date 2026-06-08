@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import {useState, useEffect, useRef, useMemo} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -184,7 +184,7 @@ interface 返工来源项目 {
 export default function NewRequirementContent({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [orderId, setOrderId] = useState("");
   const [loading, setLoading] = useState(false);
   const [existingRequirementId, setExistingRequirementId] = useState<string | null>(null);

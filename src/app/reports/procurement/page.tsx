@@ -28,7 +28,7 @@ interface InboundItem {
 }
 
 export default function ProcurementReportPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [inboundOrders, setInboundOrders] = useState<InboundOrder[]>([]);
   const [returnOrders, setReturnOrders] = useState<ReturnOrder[]>([]);
   const [inboundItems, setInboundItems] = useState<InboundItem[]>([]);

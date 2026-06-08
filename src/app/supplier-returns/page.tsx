@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
@@ -35,7 +35,7 @@ interface SupplierReturnRecord {
 }
 
 export default function SupplierReturnsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [records, setRecords] = useState<SupplierReturnRecord[]>([]);
   const [allRecords, setAllRecords] = useState<SupplierReturnRecord[]>([]);
   const [loading, setLoading] = useState(true);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -8,7 +8,7 @@ import { usePriceVisibility } from "@/components/PriceVisibilityContext";
 
 export default function NewPurchaseReturnPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { showPrices } = usePriceVisibility();
   const [loading, setLoading] = useState(false);
   interface Part {

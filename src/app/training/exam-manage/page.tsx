@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import {useState, useEffect, Suspense, useMemo} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -24,7 +24,7 @@ function ExamManageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const courseIdParam = searchParams.get("courseId");
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [courses, setCourses] = useState<课程[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState(courseIdParam || "");

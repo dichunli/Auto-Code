@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -11,7 +11,7 @@ interface 分类 {
 }
 
 export default function KnowledgeCategoriesPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [categories, setCategories] = useState<分类[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

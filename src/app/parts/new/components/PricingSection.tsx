@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface SupplierItem {
@@ -46,7 +46,7 @@ export default function PricingSection({
   selectedSupplier,
   onSelectSupplier,
 }: PricingSectionProps) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   // Supplier search state (internal)
   const [supplierQuery, setSupplierQuery] = useState("");

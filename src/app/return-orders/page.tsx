@@ -21,7 +21,7 @@ interface ReturnOrder {
 const PAGE_SIZE = 15;
 
 export default function ReturnOrdersPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [orders, setOrders] = useState<ReturnOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);

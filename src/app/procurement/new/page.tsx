@@ -47,7 +47,7 @@ interface PendingBranch {
 
 export default function NewPurchaseOrderPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   interface PartOption {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
@@ -18,7 +18,7 @@ interface 分类 {
 
 export default function NewTransactionPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [accounts, setAccounts] = useState<账户[]>([]);
   const [categories, setCategories] = useState<分类[]>([]);

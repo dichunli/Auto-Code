@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import {useState, useEffect, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
@@ -28,7 +28,7 @@ interface 员工 {
 }
 
 export default function BehaviorChecksPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [checks, setChecks] = useState<检查记录[]>([]);
   const [employees, setEmployees] = useState<员工[]>([]);
   const [showForm, setShowForm] = useState(false);

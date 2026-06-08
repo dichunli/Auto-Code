@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
@@ -30,7 +30,7 @@ const REGION_STYLES: Record<string, string> = {
 };
 
 export default function SuppliersPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [regionFilter, setRegionFilter] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);

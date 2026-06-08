@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface PartSearchResult {
@@ -22,7 +22,7 @@ export default function PartNumberField({
   editId,
   onHasDuplicateChange,
 }: PartNumberFieldProps) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [pnResults, setPnResults] = useState<PartSearchResult[] | null>(null);
   const [pnSearching, setPnSearching] = useState(false);
   const pnTimeoutRef = useRef<NodeJS.Timeout | null>(null);

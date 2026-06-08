@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {useState, useEffect, useMemo} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -99,7 +99,7 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
   const router = useRouter();
   const searchParams = useSearchParams();
   const copyFromId = searchParams.get("copy");
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [vehicleId, setVehicleId] = useState("");
   const [loading, setLoading] = useState(false);
 

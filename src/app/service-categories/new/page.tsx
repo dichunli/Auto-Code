@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import {useState, useCallback, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -54,7 +54,7 @@ function CommissionField({
 
 export default function NewServiceCategoryPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<维修分类[]>([]);
   const [searching, setSearching] = useState(false);

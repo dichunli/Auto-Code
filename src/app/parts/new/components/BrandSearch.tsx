@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { LinkedItem } from "@/components/VehicleModelSelector";
 import { PartNameItem } from "./PartNameSearch";
@@ -22,7 +22,7 @@ export default function BrandSearch({
   onSelectBrand,
   selectedPartName,
 }: BrandSearchProps) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<IdNameItem[] | null>(null);
