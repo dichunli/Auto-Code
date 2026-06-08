@@ -66,9 +66,9 @@ export default async function KnowledgeDetailPage({
   /* 查询阅读记录，再单独查用户名 */
   const { data: readsRaw } = await supabase
     .from("knowledge_article_reads")
-    .select("user_id, read_date, created_at")
+    .select("user_id, read_date, read_at")
     .eq("article_id", id)
-    .order("created_at", { ascending: false })
+    .order("read_at", { ascending: false })
     .limit(50);
 
   let readList: 阅读记录[] = [];
@@ -82,7 +82,7 @@ export default async function KnowledgeDetailPage({
     readList = readsRaw.map((r) => ({
       user_id: r.user_id,
       read_date: r.read_date,
-      created_at: r.created_at,
+      created_at: r.read_at,
       full_name: profileMap.get(r.user_id) || "未知用户",
     }));
   }
@@ -91,7 +91,7 @@ export default async function KnowledgeDetailPage({
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
     void supabase.from("knowledge_article_reads").upsert(
-      { article_id: id, user_id: user.id },
+      { article_id: id, user_id: user.id, read_date: new Date().toISOString().split("T")[0] },
       { onConflict: "article_id,user_id,read_date" }
     ).then(() => {}).catch(() => {});
   }
