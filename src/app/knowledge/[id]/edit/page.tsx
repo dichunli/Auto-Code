@@ -319,11 +319,11 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
         if (insertVehicleError) throw insertVehicleError;
       }
 
-      router.push(`/knowledge/${articleId}`);
-      router.refresh();
       if (roleUpdateError) {
-        setTimeout(() => alert("文章已保存，但岗位权限更新失败：" + roleUpdateError), 100);
+        alert("文章已保存，但岗位权限更新失败：" + roleUpdateError);
       }
+      /* 强制完整刷新，避免缓存显示旧数据 */
+      window.location.href = `/knowledge/${articleId}`;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       alert("保存失败: " + message);
@@ -400,29 +400,26 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
               </select>
               {/* 岗位选择 */}
               {form.visibility === "role" && (
-                <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <p className="text-xs text-gray-500 mb-2">选择可见岗位：</p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {roles.map((role) => (
-                      <label key={role.id} className="inline-flex items-center gap-1 text-sm cursor-pointer whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={selectedRoles.includes(role.name)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedRoles((prev) => [...prev, role.name]);
-                            } else {
-                              setSelectedRoles((prev) => prev.filter((r) => r !== role.name));
-                            }
-                          }}
-                          className="w-4 h-4 text-blue-600 rounded border-gray-300"
-                        />
-                        <span className="text-gray-700">{role.label || role.name}</span>
-                      </label>
-                    ))}
-                  </div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0">
+                  {roles.map((role) => (
+                    <label key={role.id} className="inline-flex items-center gap-1 text-sm cursor-pointer whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={selectedRoles.includes(role.name)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedRoles((prev) => [...prev, role.name]);
+                          } else {
+                            setSelectedRoles((prev) => prev.filter((r) => r !== role.name));
+                          }
+                        }}
+                        className="w-4 h-4 text-blue-600 rounded border-gray-300"
+                      />
+                      <span className="text-gray-700">{role.label || role.name}</span>
+                    </label>
+                  ))}
                   {roles.length === 0 && (
-                    <p className="text-xs text-gray-400">暂无岗位数据</p>
+                    <span className="text-xs text-gray-400">暂无岗位数据</span>
                   )}
                 </div>
               )}
