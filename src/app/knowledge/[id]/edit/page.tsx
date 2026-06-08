@@ -51,6 +51,10 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
     visibility: "public" as "public" | "internal" | "private" | "role",
   });
 
+  /* 权限状态 */
+  const [canEdit, setCanEdit] = useState(false);
+  const [checkingPermission, setCheckingPermission] = useState(true);
+
   /* 搜索添加维修项目名称 */
   const [nameSearch, setNameSearch] = useState("");
   const [nameResults, setNameResults] = useState<NamedItem[]>([]);
@@ -97,6 +101,29 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       if (!article) {
         alert("文章不存在");
         router.push("/knowledge");
+        return;
+      }
+
+      /* 检查权限：创建者或管理员才能编辑 */
+      const { data: userData } = await supabase.auth.getUser();
+      const currentUserId = userData?.user?.id;
+      const { data: roleData } = await supabase
+        .from("profile_roles")
+        .select("roles(name)")
+        .eq("profile_id", currentUserId || "");
+      const roleNames = (roleData || []).map(
+        (d: { roles?: { name?: string } | null }) => d.roles?.name
+      ).filter(Boolean) as string[];
+      const isAdmin = roleNames.includes("admin");
+      const isOwner = article.created_by === currentUserId;
+      const hasEditPermission = isAdmin || isOwner;
+
+      setCanEdit(hasEditPermission);
+      setCheckingPermission(false);
+
+      if (!hasEditPermission) {
+        alert("您没有权限编辑这篇文章");
+        router.push(`/knowledge/${id}`);
         return;
       }
 
@@ -349,12 +376,12 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
     }
   }
 
-  if (pageLoading) {
+  if (pageLoading || checkingPermission) {
     return (
       <div>
         <PageHeader title="编辑知识库内容" />
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
-          加载中...
+          {checkingPermission ? "检查权限中..." : "加载中..."}
         </div>
       </div>
     );

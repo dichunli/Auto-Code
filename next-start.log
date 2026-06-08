@@ -1,0 +1,5 @@
+▲ Next.js 16.2.4
+- Local:         http://localhost:3000
+- Network:       http://172.19.0.1:3000
+✓ Ready in 192ms
+⚠ `experimental.middlewareClientMaxBodySize` is deprecated. Please use `experimental.proxyClientMaxBodySize` instead in next.config.ts.

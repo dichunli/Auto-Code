@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -12,6 +12,39 @@ export function KnowledgeDeleteButton({ articleId }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [deleting, setDeleting] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
+
+  /* 检查删除权限 */
+  useEffect(() => {
+    async function checkPermission() {
+      const { data: userData } = await supabase.auth.getUser();
+      const currentUserId = userData?.user?.id;
+      if (!currentUserId) return;
+
+      /* 获取文章创建者 */
+      const { data: article } = await supabase
+        .from("knowledge_articles")
+        .select("created_by")
+        .eq("id", articleId)
+        .single();
+
+      const isOwner = article?.created_by === currentUserId;
+
+      /* 检查是否是管理员 */
+      const { data: roleData } = await supabase
+        .from("profile_roles")
+        .select("roles(name)")
+        .eq("profile_id", currentUserId);
+
+      const roleNames = (roleData || []).map(
+        (d: { roles?: { name?: string } | null }) => d.roles?.name
+      ).filter(Boolean) as string[];
+      const isAdmin = roleNames.includes("admin");
+
+      setCanDelete(isAdmin || isOwner);
+    }
+    checkPermission();
+  }, [articleId, supabase]);
 
   async function handleDelete() {
     if (!confirm("确定要删除这篇文章吗？删除后不可恢复。")) return;
@@ -34,6 +67,8 @@ export function KnowledgeDeleteButton({ articleId }: Props) {
       setDeleting(false);
     }
   }
+
+  if (!canDelete) return null;
 
   return (
     <button

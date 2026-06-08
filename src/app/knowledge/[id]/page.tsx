@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
 import { BlockNoteTOC } from "@/components/BlockNoteTOC";
 import { PresentationView } from "@/components/PresentationView";
@@ -98,6 +98,28 @@ export default async function KnowledgeDetailPage({
 
   if (!article) notFound();
 
+  /* 权限检查 */
+  const { data: { user: currentUser } } = await supabase.auth.getUser();
+  const currentUserId = currentUser?.id;
+  let isAdmin = false;
+  if (currentUserId) {
+    const { data: roleData } = await supabase
+      .from("profile_roles")
+      .select("roles(name)")
+      .eq("profile_id", currentUserId);
+    const roleNames = (roleData || []).map(
+      (d: { roles?: { name?: string } | null }) => d.roles?.name
+    ).filter(Boolean) as string[];
+    isAdmin = roleNames.includes("admin");
+  }
+  const isOwner = article.created_by === currentUserId;
+  const canView = isAdmin || isOwner || article.visibility === "public" || article.visibility === "internal";
+  const canEdit = isAdmin || isOwner;
+
+  if (!canView) {
+    redirect("/knowledge");
+  }
+
   const { data: links } = await supabase
     .from("knowledge_service_links")
     .select("service_name_id, service_item_id, service_names(name), service_items(name)")
@@ -155,13 +177,17 @@ export default async function KnowledgeDetailPage({
             {article.content_blocks && Array.isArray(article.content_blocks) && (
               <PresentationView blocks={article.content_blocks as BlockItem[]} title={article.title} autoOpen={autoPresent} />
             )}
-            <Link
-              href={`/knowledge/${id}/edit`}
-              className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
-            >
-              编辑
-            </Link>
-            <KnowledgeDeleteButton articleId={id} />
+            {canEdit && (
+              <>
+                <Link
+                  href={`/knowledge/${id}/edit`}
+                  className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                >
+                  编辑
+                </Link>
+                <KnowledgeDeleteButton articleId={id} />
+              </>
+            )}
           </div>
         </div>
 

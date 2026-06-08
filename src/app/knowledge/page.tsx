@@ -31,6 +31,8 @@ interface 知识文章 {
   type: string;
   created_at: string;
   category_id: string | null;
+  created_by: string | null;
+  visibility: string;
   knowledge_categories?: { name: string } | null;
   profiles?: { full_name: string } | null;
   /* RPC search_knowledge_articles 返回的字段 */
@@ -100,6 +102,17 @@ function 获取作者名(a: 知识文章): string {
   return a.profiles?.full_name || a.author_name || "系统";
 }
 
+/* 权限标签 */
+function 权限标签(visibility: string) {
+  const map: Record<string, { label: string; className: string }> = {
+    public: { label: "公开", className: "bg-green-50 text-green-700" },
+    internal: { label: "内部", className: "bg-blue-50 text-blue-700" },
+    private: { label: "私有", className: "bg-gray-100 text-gray-600" },
+  };
+  const config = map[visibility] || map.public;
+  return config;
+}
+
 export default function KnowledgePage() {
   const supabase = useMemo(() => createClient(), []);
   const [articles, setArticles] = useState<知识文章[]>([]);
@@ -110,6 +123,33 @@ export default function KnowledgePage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* 当前用户信息 */
+  const [currentUserId, setCurrentUserId] = useState<string>("");
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  /* 阅读次数 */
+  const [readCounts, setReadCounts] = useState<Record<string, number>>({});
+
+  /* 加载当前用户信息 */
+  useEffect(() => {
+    async function loadUser() {
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData?.user?.id;
+      if (uid) {
+        setCurrentUserId(uid);
+        const { data: roleData } = await supabase
+          .from("profile_roles")
+          .select("roles(name)")
+          .eq("profile_id", uid);
+        const roleNames = (roleData || []).map(
+          (d: { roles?: { name?: string } | null }) => d.roles?.name
+        ).filter(Boolean) as string[];
+        setIsAdmin(roleNames.includes("admin"));
+      }
+    }
+    loadUser();
+  }, [supabase]);
 
   /* 加载数据：有搜索词时调用 RPC，无搜索词时正常查询 */
   useEffect(() => {
@@ -133,6 +173,8 @@ export default function KnowledgePage() {
             category_id: string | null;
             category_name: string | null;
             author_name: string | null;
+            visibility: string;
+            created_by: string | null;
             score: number;
           }
           const { data, error } = await supabase.rpc("search_knowledge_articles", {
@@ -157,7 +199,7 @@ export default function KnowledgePage() {
           console.log("[知识库] 正常加载文章列表");
           const { data, error } = await supabase
             .from("knowledge_articles")
-            .select("*, knowledge_categories(name), profiles(full_name)")
+            .select("*, knowledge_categories(name), profiles(full_name), created_by")
             .order("created_at", { ascending: false })
             .limit(100);
           if (cancelled) return;
@@ -180,6 +222,24 @@ export default function KnowledgePage() {
         if (cancelled) return;
         if (catError) {
           console.error("[知识库] 加载分类出错:", catError);
+        }
+
+        /* 加载阅读次数 */
+        if (articlesData.length > 0) {
+          const articleIds = articlesData.map((a) => a.id);
+          const { data: readsData, error: readsError } = await supabase
+            .from("knowledge_article_reads")
+            .select("article_id")
+            .in("article_id", articleIds);
+
+          if (!readsError && readsData) {
+            const counts: Record<string, number> = {};
+            for (const r of readsData) {
+              const aid = r.article_id as string;
+              counts[aid] = (counts[aid] || 0) + 1;
+            }
+            setReadCounts(counts);
+          }
         }
 
         console.log("[知识库] 加载完成, 文章:", articlesData.length, "分类:", (categoriesData || []).length);
@@ -380,6 +440,10 @@ export default function KnowledgePage() {
           ) : (
             filteredArticles.map((a) => {
               const config = 类型标签(a.type);
+              const permConfig = 权限标签(a.visibility || "public");
+              const canEdit = isAdmin || a.created_by === currentUserId;
+              const reads = readCounts[a.id] || 0;
+
               return (
                 <Link
                   key={a.id}
@@ -387,10 +451,13 @@ export default function KnowledgePage() {
                   className="block bg-white rounded-xl border border-gray-200 p-5 hover:border-blue-300 transition-colors"
                 >
                   <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className={`text-xs px-2 py-0.5 rounded ${config.className}`}>
                           {config.label}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded ${permConfig.className}`}>
+                          {permConfig.label}
                         </span>
                         {获取分类名(a) && (
                           <span className="text-xs text-gray-500">{获取分类名(a)}</span>
@@ -409,8 +476,26 @@ export default function KnowledgePage() {
                       <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
                         <span>{获取作者名(a)}</span>
                         <span>{new Date(a.created_at).toLocaleDateString()}</span>
+                        <span className="flex items-center gap-0.5">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          {reads}
+                        </span>
                       </div>
                     </div>
+                    {canEdit && (
+                      <div className="flex-shrink-0 ml-3">
+                        <Link
+                          href={`/knowledge/${a.id}/edit`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs px-2 py-1 text-gray-500 border border-gray-200 rounded hover:bg-gray-50"
+                        >
+                          编辑
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 </Link>
               );
