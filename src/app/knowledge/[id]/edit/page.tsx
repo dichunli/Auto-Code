@@ -271,6 +271,9 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
         contentBlocks = await 处理外部图片(contentBlocks);
       }
 
+      /* 获取当前用户 */
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+
       /* 更新文章 */
       const { data: updatedRows, error: updateError } = await supabase
         .from("knowledge_articles")
@@ -282,6 +285,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
           content_blocks: contentBlocks,
           video_url: form.type === "video" ? form.video_url || null : null,
           visibility: form.visibility,
+          created_by: currentUser?.id,
         })
         .eq("id", articleId)
         .select();
