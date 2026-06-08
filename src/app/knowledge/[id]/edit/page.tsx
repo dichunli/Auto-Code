@@ -27,6 +27,7 @@ interface Category {
 interface 岗位 {
   id: string;
   name: string;
+  label: string | null;
 }
 
 export default function EditKnowledgePage({ params }: { params: Promise<{ id: string }> }) {
@@ -82,9 +83,9 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       /* 加载岗位列表 */
       const { data: rolesData } = await supabase
         .from("roles")
-        .select("id, name")
+        .select("id, name, label")
         .order("name");
-      setRoles(rolesData || []);
+      setRoles((rolesData || []) as 岗位[]);
 
       /* 加载文章 */
       const { data: article } = await supabase
@@ -292,13 +293,15 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       const { error: delVehicleError } = await supabase.from("knowledge_vehicle_links").delete().eq("article_id", articleId);
       if (delVehicleError) throw delVehicleError;
 
-      /* 更新岗位权限关联 */
+      /* 更新岗位权限关联（失败不阻塞文章保存） */
+      let roleUpdateError = "";
       const { error: delRoleError } = await supabase.from("knowledge_article_roles").delete().eq("article_id", articleId);
-      if (delRoleError) throw delRoleError;
-      if (form.visibility === "role" && selectedRoles.length > 0) {
+      if (delRoleError) {
+        roleUpdateError = delRoleError.message;
+      } else if (form.visibility === "role" && selectedRoles.length > 0) {
         const roleLinks = selectedRoles.map((roleName) => ({ article_id: articleId, role_name: roleName }));
         const { error: insertRoleError } = await supabase.from("knowledge_article_roles").insert(roleLinks);
-        if (insertRoleError) throw insertRoleError;
+        if (insertRoleError) roleUpdateError = insertRoleError.message;
       }
 
       if (linkedNames.length > 0) {
@@ -318,6 +321,9 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
 
       router.push(`/knowledge/${articleId}`);
       router.refresh();
+      if (roleUpdateError) {
+        setTimeout(() => alert("文章已保存，但岗位权限更新失败：" + roleUpdateError), 100);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       alert("保存失败: " + message);
@@ -396,9 +402,9 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
               {form.visibility === "role" && (
                 <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
                   <p className="text-xs text-gray-500 mb-2">选择可见岗位：</p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
                     {roles.map((role) => (
-                      <label key={role.id} className="inline-flex items-center gap-1.5 text-sm cursor-pointer">
+                      <label key={role.id} className="inline-flex items-center gap-1 text-sm cursor-pointer whitespace-nowrap">
                         <input
                           type="checkbox"
                           checked={selectedRoles.includes(role.name)}
@@ -411,7 +417,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
                           }}
                           className="w-4 h-4 text-blue-600 rounded border-gray-300"
                         />
-                        <span className="text-gray-700">{role.name}</span>
+                        <span className="text-gray-700">{role.label || role.name}</span>
                       </label>
                     ))}
                   </div>
