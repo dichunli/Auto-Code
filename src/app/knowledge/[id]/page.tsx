@@ -56,10 +56,10 @@ export default async function KnowledgeDetailPage({
   /* 记录阅读（登录用户才记录，不阻塞页面加载） */
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
-    supabase.from("knowledge_article_reads").upsert(
+    void supabase.from("knowledge_article_reads").upsert(
       { article_id: id, user_id: user.id },
       { onConflict: "article_id,user_id,read_date" }
-    ).catch(() => {});
+    ).then(() => {}).catch(() => {});
   }
 
   if (!article) notFound();

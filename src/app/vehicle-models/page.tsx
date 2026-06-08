@@ -161,7 +161,9 @@ export default function VehicleModelsPage() {
 
     if (search.trim()) {
       const s = search.trim();
-      q = q.ilike("搜索字段", `%${s}%`);
+      q = q.or(
+        `品牌.ilike.%${s}%,车系.ilike.%${s}%,车型.ilike.%${s}%,厂商.ilike.%${s}%,发动机型号.ilike.%${s}%`,
+      );
     }
 
     Object.entries(columnFilters).forEach(([col, val]) => {
