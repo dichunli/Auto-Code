@@ -272,7 +272,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       }
 
       /* 更新文章 */
-      const { error: updateError } = await supabase
+      const { data: updatedRows, error: updateError } = await supabase
         .from("knowledge_articles")
         .update({
           title: form.title,
@@ -283,9 +283,13 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
           video_url: form.type === "video" ? form.video_url || null : null,
           visibility: form.visibility,
         })
-        .eq("id", articleId);
+        .eq("id", articleId)
+        .select();
 
       if (updateError) throw updateError;
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error("更新失败，请检查是否有编辑权限");
+      }
 
       /* 删除旧的关联，重新插入 */
       const { error: delNameError } = await supabase.from("knowledge_service_links").delete().eq("article_id", articleId);
