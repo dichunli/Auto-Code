@@ -16,6 +16,13 @@ interface 维修项目关联 {
   service_items: { name: string } | null;
 }
 
+interface 阅读记录 {
+  user_id: string;
+  read_date: string;
+  created_at: string;
+  profiles: { full_name: string } | null;
+}
+
 interface BlockItem {
   id: string;
   type: string;
@@ -50,11 +57,18 @@ export default async function KnowledgeDetailPage({
     .eq("id", id)
     .single();
 
-  /* 查询阅读次数 */
+  /* 查询阅读次数和阅读人列表 */
   const { count: readCount } = await supabase
     .from("knowledge_article_reads")
     .select("*", { count: "exact", head: true })
     .eq("article_id", id);
+
+  const { data: readList } = await supabase
+    .from("knowledge_article_reads")
+    .select("user_id, read_date, created_at, profiles(full_name)")
+    .eq("article_id", id)
+    .order("created_at", { ascending: false })
+    .limit(50);
 
   /* 记录阅读（登录用户才记录，不阻塞页面加载） */
   const { data: { user } } = await supabase.auth.getUser();
@@ -207,6 +221,30 @@ export default async function KnowledgeDetailPage({
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* 阅读人列表 */}
+        {readList && readList.length > 0 && (
+          <div className="mt-6 pt-6 border-t border-gray-100">
+            <details className="bg-gray-50 rounded-lg border border-gray-200">
+              <summary className="px-4 py-3 text-sm font-medium text-gray-700 cursor-pointer select-none flex items-center justify-between">
+                <span>📖 阅读记录（{readList.length} 人）</span>
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </summary>
+              <div className="px-4 pb-4 border-t border-gray-100">
+                <div className="mt-3 space-y-2 max-h-60 overflow-y-auto">
+                  {(readList as 阅读记录[]).map((record, index) => (
+                    <div key={index} className="flex items-center justify-between text-sm py-1.5 px-2 rounded hover:bg-white">
+                      <span className="text-gray-700">{record.profiles?.full_name || "未知用户"}</span>
+                      <span className="text-gray-400 text-xs">{new Date(record.created_at).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </details>
           </div>
         )}
 
