@@ -329,7 +329,17 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       /* 强制完整刷新，避免缓存显示旧数据 */
       window.location.href = `/knowledge/${articleId}`;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      let message = "保存失败";
+      if (err instanceof Error) {
+        message = err.message;
+      } else if (typeof err === "object" && err !== null) {
+        const errObj = err as Record<string, unknown>;
+        if (typeof errObj.message === "string") message = errObj.message;
+        else if (typeof errObj.error_description === "string") message = errObj.error_description;
+        else message = JSON.stringify(errObj);
+      } else {
+        message = String(err);
+      }
       alert("保存失败: " + message);
       setLoading(false);
     }
