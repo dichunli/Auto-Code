@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -18,9 +18,10 @@ interface 分类 {
   type: string;
 }
 
-export default function EditOtherTransactionPage({ params }: { params: { id: string } }) {
+export default function EditOtherTransactionPage() {
   const router = useRouter();
-  const id = params.id;
+  const params = useParams();
+  const id = params.id as string;
 
   const [type, setType] = useState<"income" | "expense">("expense");
   const [amount, setAmount] = useState("");
@@ -88,12 +89,14 @@ export default function EditOtherTransactionPage({ params }: { params: { id: str
           supabase
             .from("other_payment_methods")
             .select("id, name")
-            .and(`operator_id.eq.${operatorId},or(is_active.eq.true,is_active.is.null)`)
+            .eq("operator_id", operatorId)
+            .eq("is_active", true)
             .order("sort_order"),
           supabase
             .from("other_payment_methods")
             .select("id, name")
-            .and(`operator_id.is.null,or(is_active.eq.true,is_active.is.null)`)
+            .is("operator_id", null)
+            .eq("is_active", true)
             .order("sort_order"),
         ]);
         setAccounts([...(专属账号 || []), ...(公用账号 || [])]);

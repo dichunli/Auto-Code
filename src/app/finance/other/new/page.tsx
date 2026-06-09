@@ -58,12 +58,14 @@ export default function NewOtherTransactionPage() {
           supabase
             .from("other_payment_methods")
             .select("id, name")
-            .and(`operator_id.eq.${operatorId},or(is_active.eq.true,is_active.is.null)`)
+            .eq("operator_id", operatorId)
+            .eq("is_active", true)
             .order("sort_order"),
           supabase
             .from("other_payment_methods")
             .select("id, name")
-            .and(`operator_id.is.null,or(is_active.eq.true,is_active.is.null)`)
+            .is("operator_id", null)
+            .eq("is_active", true)
             .order("sort_order"),
         ]);
         const 合并账号 = [...(专属账号 || []), ...(公用账号 || [])];
