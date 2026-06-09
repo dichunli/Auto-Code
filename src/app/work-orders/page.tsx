@@ -180,14 +180,6 @@ export default async function WorkOrdersPage(props: {
     }
   }
 
-  /* 关键词搜索（SQL 层：工单号 + 车牌 + VIN + 客户名） */
-  if (keyword.trim()) {
-    const k = keyword.trim();
-    query = query.or(
-      `order_no.ilike.%${k}%,vehicles.plate_number.ilike.%${k}%,vehicles.vin.ilike.%${k}%,customers.name.ilike.%${k}%`
-    );
-  }
-
   const { data, error } = await query;
 
   /* ═══════════════════════════════════════
@@ -206,7 +198,7 @@ export default async function WorkOrdersPage(props: {
       result = result.filter((o) => o.boardStage === status);
     }
 
-    /* 关键词搜索补充（SQL or 可能不支持所有字段，这里做二次过滤） */
+    /* 关键词搜索（服务端内存过滤，关联表字段用 SQL or 会解析失败） */
     if (keyword.trim()) {
       const k = keyword.trim().toLowerCase();
       result = result.filter((order) => {
