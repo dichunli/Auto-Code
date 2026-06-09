@@ -1,0 +1,50 @@
+{\rtf1\ansi\ansicpg65001\deff0{\fonttbl{\f0\fnil\fcharset134 SimSun;}}
+\viewkind4\uc1\pard\f0\fs20 稳定改动流程\par
+\par
+1. 先明确「这个改动要做什么"\par
+• 写清楚业务目标，例如“新增配件入库”、“修复工单保存失败”。\par
+• 不要一次改多件事，避免改动范围不清。\par
+\par
+2. 建立一个单独分支\par
+• 不要直接在 main 上改。\par
+• 分支命名示例：feat/新增配件入库、fix/工单保存问题。\par
+\par
+3. 做改动前先备份/确认\par
+• 检查 Git 是否干净（无未提交修改）。\par
+• 如果有重要配置改动，先保存备份文件。\par
+• 记录当前版本号或截屏当前文件状态，作为回退依据。\par
+\par
+4. 严格按项目规范改\par
+• 不升级依赖版本。\par
+• 客户端组件需要加 "use client"（需要交互时）。\par
+• 统一 300ms 防抖、固定定位弹窗、字符串型数字字段提交时转换为 number。\par
+\par
+5. 改动后先做本地验证\par
+• 运行 npm run build。\par
+• 运行 npm run lint。\par
+• 如果有测试脚本，运行相关测试。\par
+\par
+6. 手工测试关键功能\par
+• 根据改动场景，至少测试一次登录、列表、数据新增/修改/删除。\par
+• 不能只靠编译通过，还要手工点一遍业务流程。\par
+\par
+7. 记录改动与结果\par
+• 写清楚本次改动内容。\par
+• 标注是否通过 build、lint、关键测试。\par
+\par
+8. 合并前再复查一次\par
+• 确认改动只包含当前功能。\par
+• 让另一位懂一点的人帮看一遍更稳妥。\par
+\par
+9. 合并到主分支后再验证\par
+• 合并后再次跑 npm run build 和 npm run lint。\par
+• 关键页面再次手工检查一次。\par
+\par
+关键点总结：\par
+• 小步快走：每次只改一个功能点。\par
+• 先验证再合并：编译 + lint + 手工测试。\par
+• AI 是助手，不能当总指挥。\par
+• 不直接改 main：用分支、备份、验收流程。\par
+\par
+日期：2026年6月9日\par
+}

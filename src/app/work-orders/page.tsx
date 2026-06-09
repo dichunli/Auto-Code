@@ -164,7 +164,7 @@ export default async function WorkOrdersPage(props: {
 
   /* 状态筛选（SQL 层能处理的） */
   if (status === "active" && !type) {
-    query = query.not("status", "in", HISTORY_STATUSES).eq("order_type", "normal");
+    query = query.not("status", "eq", "settled").not("status", "eq", "delivered").eq("order_type", "normal");
   } else if (status === "history" && !type) {
     query = query.in("status", HISTORY_STATUSES);
   }
@@ -172,7 +172,7 @@ export default async function WorkOrdersPage(props: {
   /* 结算状态筛选（SQL 层） */
   if (settlement && !type) {
     if (settlement === "unsettled") {
-      query = query.not("status", "in", ["pending_settlement", "settled", "delivered"]);
+      query = query.not("status", "eq", "pending_settlement").not("status", "eq", "settled").not("status", "eq", "delivered");
     } else if (settlement === "pending") {
       query = query.eq("status", "pending_settlement");
     } else if (settlement === "settled") {
@@ -281,27 +281,24 @@ export default async function WorkOrdersPage(props: {
               </Link>
             ))}
           </div>
+          {/* 结算状态筛选 — 用 Link 避免 Server Component 中使用 onChange */}
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-sm text-gray-500 whitespace-nowrap">结算状态</span>
-            <form method="GET" className="inline">
-              {type && <input type="hidden" name="type" value={type} />}
-              {tabsParam && <input type="hidden" name="tabs" value={tabsParam} />}
-              {status && <input type="hidden" name="status" value={status} />}
-              {keyword && <input type="hidden" name="keyword" value={keyword} />}
-              <select
-                name="settlement"
-                defaultValue={settlement}
-                onChange={(e) => {
-                  const form = e.target.form;
-                  if (form) form.submit();
-                }}
-                className="px-2 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {SETTLEMENT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </form>
+            <div className="flex gap-1">
+              {SETTLEMENT_OPTIONS.map((opt) => (
+                <Link
+                  key={opt.value}
+                  href={buildLink(baseParams, { settlement: opt.value, page: "1" })}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
+                    settlement === opt.value
+                      ? "bg-blue-100 text-blue-700 font-medium"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {opt.label}
+                </Link>
+              ))}
+            </div>
           </div>
           <div className="flex-1" />
           <WorkOrderSearch keyword={keyword} baseParams={baseParams} />

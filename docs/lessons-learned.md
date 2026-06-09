@@ -4,6 +4,37 @@
 
 ---
 
+## 2026-06-10：架构改造部署连环坑
+
+### 背景
+把工单列表从客户端查询改为 Server Component 服务端查询，知识库改为 Server Action 查询。部署过程中连续踩了 4 个坑。
+
+### 坑⑥：deploy.bat 不删除 .next 目录导致 chunk 不匹配
+**现象**：部署后页面显示"出错了"，控制台报 `500 Internal Server Error`，JS chunk 加载失败。  
+**原因**：`deploy.bat` 原来的流程是"停服→构建→启动"，但**没有删除旧的 `.next` 目录**。Next.js 增量构建会保留旧文件，但 chunk 文件名每次构建都不同。旧 HTML 引用了旧 chunk 文件名，新构建中这些旧 chunk 不存在，服务器返回 500。  
+**修复**：`deploy.bat` 在 `npm run build` 之前增加 `rmdir /s /q .next`，彻底删除旧构建目录。  
+**教训**：每次部署前必须删除 `.next` 目录，防止旧文件残留导致 chunk 不匹配。
+
+### 坑⑦：PM2 多实例冲突（npx pm2 vs 全局 pm2）
+**现象**：反复停服、构建、启动，但页面仍然加载旧的 chunk。  
+**原因**：`deploy.bat` 使用 `npx pm2` 启动，但手动执行的命令用全局 `pm2`。两者是不同的 PM2 实例，管理不同的进程。停了一个，另一个还在运行。  
+**修复**：统一使用 `npx pm2`，`deploy.bat` 中已统一。  
+**教训**：项目中只用一种方式启动 PM2（`npx pm2` 或全局 `pm2`），不要混用。
+
+### 坑⑧：Server Component 中不能使用 onChange 事件处理函数
+**现象**：工单列表页面报错"An error occurred in the Server Components render"。  
+**原因**：在 `work-orders/page.tsx`（Server Component）中，给 `<select>` 元素加了 `onChange` 事件处理函数。Next.js 的 Server Component 不支持 React 事件处理系统（所有事件处理必须在 Client Component 中）。  
+**修复**：把 `onChange` 改成 `<Link>` 跳转，或者把交互部分提取为 Client Component。  
+**教训**：Server Component 中**不能**使用 `onChange`、`onClick`、`onSubmit` 等事件处理函数。有交互就拆成 Client Component。
+
+### 坑⑨：Supabase `.not("status", "in", [...])` 语法不支持
+**现象**：工单列表查询报错 `"failed to parse filter (not.in.settled,delivered)"`。  
+**原因**：Supabase JS 客户端的 `.not()` 方法不支持 `in` 操作符。`.not("status", "in", ["settled", "delivered"])` 在 SQL 解析时失败。  
+**修复**：改用多次 `.not("status", "eq", "xxx")`，如：`.not("status", "eq", "settled").not("status", "eq", "delivered")`。  
+**教训**：Supabase `.not()` 只支持 `eq`、`gt`、`lt` 等简单操作符，**不支持 `in`**。需要排除多个值时，用多个 `.not("eq", ...)` 链式调用。
+
+---
+
 ## 2026-06-09：客户端认证存储大翻车
 
 ### 背景
