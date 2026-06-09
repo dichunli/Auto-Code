@@ -41,15 +41,32 @@ const APP认证存储Key = `sb-${项目引用}-auth-token-app`;
 const 浏览器存储 = {
   getItem: (key: string): string | null => {
     if (typeof window === "undefined") return null;
-    /* 优先从 cookie 读取（createBrowserClient 标准方式）*/
+    /* 优先从 cookie 读取，但必须校验数据完整性 */
     if (key === 认证存储Key) {
       const match = document.cookie.match(
         new RegExp(`(?:^|; )${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`)
       );
       const cookieValue = match ? decodeURIComponent(match[1]) : null;
-      if (cookieValue) return cookieValue;
+      if (cookieValue) {
+        try {
+          const parsed = JSON.parse(cookieValue);
+          /* cookie 有 4KB 限制，session 可能被截断。校验必须字段都存在 */
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            typeof parsed.access_token === "string" &&
+            typeof parsed.refresh_token === "string" &&
+            parsed.access_token.length > 0 &&
+            parsed.refresh_token.length > 0
+          ) {
+            return cookieValue;
+          }
+        } catch {
+          /* cookie 数据不完整或解析失败，回退到 localStorage */
+        }
+      }
     }
-    /* 回退到 localStorage（兼容旧 session）*/
+    /* 回退到 localStorage（完整数据，无大小限制）*/
     return window.localStorage.getItem(key);
   },
   setItem: (key: string, value: string): void => {
