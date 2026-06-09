@@ -82,20 +82,18 @@ export default function EditOtherTransactionPage({ params }: { params: { id: str
         .order("sort_order");
       setCategories(cats || []);
 
-      /* 查询收款方式：专属 + 公用分别查询后合并，避免连续 .or() 覆盖 */
+      /* 查询收款方式：专属 + 公用分别查询后合并 */
       if (operatorId) {
         const [{ data: 专属账号 }, { data: 公用账号 }] = await Promise.all([
           supabase
             .from("other_payment_methods")
             .select("id, name")
-            .eq("operator_id", operatorId)
-            .or('is_active.eq.true,is_active.is.null')
+            .and(`operator_id.eq.${operatorId},or(is_active.eq.true,is_active.is.null)`)
             .order("sort_order"),
           supabase
             .from("other_payment_methods")
             .select("id, name")
-            .is("operator_id", null)
-            .or('is_active.eq.true,is_active.is.null')
+            .and(`operator_id.is.null,or(is_active.eq.true,is_active.is.null)`)
             .order("sort_order"),
         ]);
         setAccounts([...(专属账号 || []), ...(公用账号 || [])]);
