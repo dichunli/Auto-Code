@@ -201,7 +201,7 @@ export function createClient() {
             storage: APP存储,
             storageKey: APP认证存储Key,
             autoRefreshToken: true,
-            flowType: "implicit",
+            flowType: "pkce",
             detectSessionInUrl: false,
           },
         }
@@ -241,6 +241,7 @@ export function createClient() {
           storageKey: 认证存储Key,
           autoRefreshToken: true,
           detectSessionInUrl: false,
+          flowType: "pkce",
         },
       }
     );
