@@ -10,6 +10,7 @@ export function formatDate(date: string | Date | null) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Shanghai",
   });
 }
 
