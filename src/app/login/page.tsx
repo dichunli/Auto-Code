@@ -77,18 +77,20 @@ export default function LoginPage() {
   }
 
   async function handleSubmit() {
+    console.log("[login] handleSubmit called, supabase:", supabase ? "initialized" : "null");
     /* 防止 supabase 客户端尚未初始化时提交 */
     if (!supabase) {
-      alert("supabase 未初始化，尝试直接创建...");
+      console.log("[login] supabase null, creating client...");
       try {
         const client = createClient();
         setSupabase(client);
+        console.log("[login] client created, proceeding login");
         /* 继续用新创建的客户端登录 */
         await 用客户端登录(client);
         return;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        alert("创建客户端失败: " + msg);
+        console.error("[login] createClient failed:", msg);
         setError("登录服务初始化失败: " + msg);
         setLoading(false);
         return;

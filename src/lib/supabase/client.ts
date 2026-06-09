@@ -1,8 +1,8 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 
-let browserClient: ReturnType<typeof createSupabaseClient> | null = null;
-let capacitorClient: ReturnType<typeof createSupabaseClient> | null = null;
+let browserClient: ReturnType<typeof createBrowserClient> | null = null;
 
 /* 从 Supabase URL 中提取项目引用 ID（用于构造 storage key） */
 function 获取项目引用(): string {
@@ -68,6 +68,9 @@ const APP存储 = {
     if (typeof window === "undefined") return;
     if (key === APP认证存储Key) {
       window.localStorage.setItem(APP认证存储Key, value);
+      /* 同时写入 cookie，让服务端 @supabase/ssr 能读取 session */
+      const maxAge = 400 * 24 * 60 * 60;
+      document.cookie = `${认证存储Key}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax`;
     }
   },
   removeItem: (key: string): void => {
@@ -80,39 +83,20 @@ const APP存储 = {
 
 export function createClient() {
   if (是Capacitor环境()) {
-    /* APP 环境：保留单例，WebView 中 localStorage 稳定 */
-    if (!capacitorClient) {
-      capacitorClient = createSupabaseClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          auth: {
-            storage: APP存储,
-            storageKey: APP认证存储Key,
-            autoRefreshToken: true,
-            flowType: "implicit",
-            detectSessionInUrl: false,
-          },
-        }
-      );
-    }
-    return capacitorClient;
-  }
-
-  /*
-   * 浏览器环境：只在客户端缓存单例。
-   * SSR 阶段（typeof window === "undefined"）创建临时实例，不缓存，
-   * 避免服务端创建的无 session 实例被当成单例复用。
-   * 客户端 hydration 时从 localStorage 重新读取 session，确保认证状态正确。
-   */
-  if (typeof window === "undefined") {
+    /*
+     * APP 环境：不缓存单例，每次都创建新 client。
+     * 原因：APP 中登录后只是客户端路由跳转（不刷新页面），
+     * 如果缓存单例，登录前创建的无 session 实例会被复用，
+     * 导致登录后仍然无法加载数据。
+     * 每次创建新实例，确保从 localStorage 重新读取最新 token。
+     */
     return createSupabaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         auth: {
-          storage: 浏览器存储,
-          storageKey: 认证存储Key,
+          storage: APP存储,
+          storageKey: APP认证存储Key,
           autoRefreshToken: true,
           flowType: "implicit",
           detectSessionInUrl: false,
@@ -121,16 +105,35 @@ export function createClient() {
     );
   }
 
-  if (!browserClient) {
-    browserClient = createSupabaseClient(
+  /*
+   * 浏览器环境：使用 @supabase/ssr 的 createBrowserClient。
+   * 原因：createBrowserClient 会自动分块管理 cookie（token 超 4KB 时），
+   * 与服务端 createServerClient 的 cookie 读取机制完全兼容。
+   * SSR 阶段（typeof window === "undefined"）仍用 createSupabaseClient，
+   * 因为 createBrowserClient 依赖 document.cookie，在服务端不存在。
+   */
+  if (typeof window === "undefined") {
+    return createSupabaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         auth: {
-          storage: 浏览器存储,
           storageKey: 认证存储Key,
           autoRefreshToken: true,
-          flowType: "implicit",
+          detectSessionInUrl: false,
+        },
+      }
+    );
+  }
+
+  if (!browserClient) {
+    browserClient = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          storageKey: 认证存储Key,
+          autoRefreshToken: true,
           detectSessionInUrl: false,
         },
       }

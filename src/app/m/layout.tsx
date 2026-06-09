@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { MobileToastProvider } from "@/components/mobile/MobileToast";
 import { MobileBottomNav } from "@/components/mobile/MobileBottomNav";
+import { AppAuthGuard } from "@/components/mobile/AppAuthGuard";
 
 function 是APP环境(userAgent: string): boolean {
   return (
@@ -37,6 +38,7 @@ export default async function MobileLayout({
           {children}
         </main>
         <MobileBottomNav />
+        {是APP环境(userAgent) && <AppAuthGuard />}
       </div>
     </MobileToastProvider>
   );

@@ -74,9 +74,13 @@ export async function getWorkOrderData(id: string) {
     }
   );
 
+  /* 调试：检查服务端 session */
+  const { data: { user } } = await supabase.auth.getUser();
+  console.log("[workOrderData] session user:", user?.id || "null");
+
   // 第一批：全局数据 + 工单基本信息（互相独立，并行查询）
   const [
-    { data: order },
+    { data: order, error: orderError },
     { data: profiles },
     { data: mechanicGroups },
     { data: suppliers },
@@ -94,6 +98,10 @@ export async function getWorkOrderData(id: string) {
       .eq("work_order_id", id)
       .maybeSingle(),
   ]);
+
+  if (orderError) {
+    console.error("[workOrderData] order query error:", orderError.message, "code:", orderError.code);
+  }
 
   // 第二批：工单关联数据（嵌套查询减少 HTTP 请求次数）
   const [
