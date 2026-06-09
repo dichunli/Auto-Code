@@ -1,8 +1,25 @@
+/*
+ * ╔══════════════════════════════════════════════════════════════════════╗
+ * ║  ⚠️  改动前必读 — 认证客户端是全局核心文件，动这里等于动所有用户的登录状态  ║
+ * ╠══════════════════════════════════════════════════════════════════════╣
+ * ║  改这个文件之前，必须回答三个问题：                                    ║
+ * ║  1. 这个改动只解决什么问题？不要"顺手"改看起来更好的东西              ║
+ * ║  2. 已有用户的 session 存在哪（localStorage / cookie）？              ║
+ * ║     新逻辑还能读到旧数据吗？读不到怎么办？                           ║
+ * ║  3. 改完必须测：已登录用户刷新页面，数据还显示吗？                    ║
+ * ║                                                                     ║
+ * ║  历史教训：2026-06-09 把 createSupabaseClient 换成 createBrowserClient ║
+ * ║  时移除了自定义 storage，导致已登录用户 session 无法读取，全站数据   ║
+ * ║  加载为空。修复：createBrowserClient 配回兼容存储（先读cookie回退    ║
+ * ║  localStorage）。                                                    ║
+ * ╚══════════════════════════════════════════════════════════════════════╝
+ */
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createBrowserClient } from "@supabase/ssr";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 
 let browserClient: ReturnType<typeof createBrowserClient> | null = null;
+let appClient: ReturnType<typeof createSupabaseClient> | null = null;
 
 /* 从 Supabase URL 中提取项目引用 ID（用于构造 storage key） */
 function 获取项目引用(): string {
@@ -25,17 +42,16 @@ const APP认证存储Key = `sb-${项目引用}-auth-token-app`;
 const 浏览器存储 = {
   getItem: (key: string): string | null => {
     if (typeof window === "undefined") return null;
-    /* 优先从 localStorage 读取 */
-    const localValue = window.localStorage.getItem(key);
-    if (localValue) return localValue;
-    /* 回退到 cookie */
+    /* 优先从 cookie 读取（createBrowserClient 标准方式）*/
     if (key === 认证存储Key) {
       const match = document.cookie.match(
         new RegExp(`(?:^|; )${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`)
       );
-      return match ? decodeURIComponent(match[1]) : null;
+      const cookieValue = match ? decodeURIComponent(match[1]) : null;
+      if (cookieValue) return cookieValue;
     }
-    return null;
+    /* 回退到 localStorage（兼容旧 session）*/
+    return window.localStorage.getItem(key);
   },
   setItem: (key: string, value: string): void => {
     if (typeof window === "undefined") return;
@@ -83,26 +99,23 @@ const APP存储 = {
 
 export function createClient() {
   if (是Capacitor环境()) {
-    /*
-     * APP 环境：不缓存单例，每次都创建新 client。
-     * 原因：APP 中登录后只是客户端路由跳转（不刷新页面），
-     * 如果缓存单例，登录前创建的无 session 实例会被复用，
-     * 导致登录后仍然无法加载数据。
-     * 每次创建新实例，确保从 localStorage 重新读取最新 token。
-     */
-    return createSupabaseClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        auth: {
-          storage: APP存储,
-          storageKey: APP认证存储Key,
-          autoRefreshToken: true,
-          flowType: "implicit",
-          detectSessionInUrl: false,
-        },
-      }
-    );
+    /* APP 环境：缓存单例。登录后 onAuthStateChange 会自动更新 session，无需重复创建。 */
+    if (!appClient) {
+      appClient = createSupabaseClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          auth: {
+            storage: APP存储,
+            storageKey: APP认证存储Key,
+            autoRefreshToken: true,
+            flowType: "implicit",
+            detectSessionInUrl: false,
+          },
+        }
+      );
+    }
+    return appClient;
   }
 
   /*
@@ -132,6 +145,7 @@ export function createClient() {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         auth: {
+          storage: 浏览器存储,
           storageKey: 认证存储Key,
           autoRefreshToken: true,
           detectSessionInUrl: false,
