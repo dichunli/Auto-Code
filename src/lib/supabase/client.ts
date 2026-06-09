@@ -15,6 +15,7 @@
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { stringFromBase64URL } from "@supabase/ssr";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 
 let browserClient: ReturnType<typeof createSupabaseClient> | null = null;
@@ -34,11 +35,9 @@ const 项目引用 = 获取项目引用();
 const 认证存储Key = `sb-${项目引用}-auth-token`;
 const APP认证存储Key = `sb-${项目引用}-auth-token-app`;
 
-/* base64url 解码（兼容 @supabase/ssr 的 cookie 编码） */
+/* base64url 解码（兼容 @supabase/ssr 的 cookie 编码，支持 UTF-8） */
 function base64url解码(str: string): string {
-  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
-  const padLen = (4 - (base64.length % 4)) % 4;
-  return atob(base64 + "=".repeat(padLen));
+  return stringFromBase64URL(str);
 }
 
 /* 解析 @supabase/ssr 格式的 cookie 值（支持 base64- 前缀和分段 cookie） */
