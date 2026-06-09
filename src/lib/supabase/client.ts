@@ -34,6 +34,99 @@ const 项目引用 = 获取项目引用();
 const 认证存储Key = `sb-${项目引用}-auth-token`;
 const APP认证存储Key = `sb-${项目引用}-auth-token-app`;
 
+/* base64url 解码（兼容 @supabase/ssr 的 cookie 编码） */
+function base64url解码(str: string): string {
+  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  const padLen = (4 - (base64.length % 4)) % 4;
+  return atob(base64 + "=".repeat(padLen));
+}
+
+/* 解析 @supabase/ssr 格式的 cookie 值（支持 base64- 前缀和分段 cookie） */
+function 从SSRCookie解析Session(key: string): string | null {
+  /* 1. 尝试读取单个 cookie */
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`)
+  );
+  const cookieValue = match ? decodeURIComponent(match[1]) : null;
+
+  if (cookieValue) {
+    /* 1a. 直接是 JSON（当前自定义格式） */
+    try {
+      const parsed = JSON.parse(cookieValue);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof parsed.access_token === "string" &&
+        typeof parsed.refresh_token === "string" &&
+        parsed.access_token.length > 0 &&
+        parsed.refresh_token.length > 0
+      ) {
+        return cookieValue;
+      }
+    } catch {
+      /* 不是纯 JSON，继续尝试 */
+    }
+
+    /* 1b. @supabase/ssr 的 base64url 格式 */
+    if (cookieValue.startsWith("base64-")) {
+      try {
+        const decoded = base64url解码(cookieValue.substring("base64-".length));
+        const parsed = JSON.parse(decoded);
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          typeof parsed.access_token === "string" &&
+          typeof parsed.refresh_token === "string" &&
+          parsed.access_token.length > 0 &&
+          parsed.refresh_token.length > 0
+        ) {
+          return decoded;
+        }
+      } catch {
+        /* 解码失败 */
+      }
+    }
+  }
+
+  /* 2. 尝试读取分段 cookie（sb-key.0, sb-key.1, ...） */
+  const chunks: string[] = [];
+  for (let i = 0; ; i++) {
+    const chunkName = i === 0 ? key : `${key}.${i}`;
+    const chunkMatch = document.cookie.match(
+      new RegExp(`(?:^|; )${chunkName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`)
+    );
+    if (!chunkMatch) break;
+    chunks.push(decodeURIComponent(chunkMatch[1]));
+  }
+
+  if (chunks.length > 0) {
+    try {
+      const combined = chunks.join("");
+      let decoded: string;
+      if (combined.startsWith("base64-")) {
+        decoded = base64url解码(combined.substring("base64-".length));
+      } else {
+        decoded = combined;
+      }
+      const parsed = JSON.parse(decoded);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof parsed.access_token === "string" &&
+        typeof parsed.refresh_token === "string" &&
+        parsed.access_token.length > 0 &&
+        parsed.refresh_token.length > 0
+      ) {
+        return decoded;
+      }
+    } catch {
+      /* 分段解析失败 */
+    }
+  }
+
+  return null;
+}
+
 /*
  * 浏览器环境统一存储：localStorage 为主，同时同步 cookie 给 middleware 读取
  * 解决 @supabase/ssr 的 createBrowserClient 在 Next.js App Router 客户端路由中的 session 丢失问题
@@ -41,29 +134,13 @@ const APP认证存储Key = `sb-${项目引用}-auth-token-app`;
 const 浏览器存储 = {
   getItem: (key: string): string | null => {
     if (typeof window === "undefined") return null;
-    /* 优先从 cookie 读取，但必须校验数据完整性 */
+    /* 优先从 cookie 读取（兼容当前格式和 @supabase/ssr 的旧格式） */
     if (key === 认证存储Key) {
-      const match = document.cookie.match(
-        new RegExp(`(?:^|; )${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`)
-      );
-      const cookieValue = match ? decodeURIComponent(match[1]) : null;
-      if (cookieValue) {
-        try {
-          const parsed = JSON.parse(cookieValue);
-          /* cookie 有 4KB 限制，session 可能被截断。校验必须字段都存在 */
-          if (
-            parsed &&
-            typeof parsed === "object" &&
-            typeof parsed.access_token === "string" &&
-            typeof parsed.refresh_token === "string" &&
-            parsed.access_token.length > 0 &&
-            parsed.refresh_token.length > 0
-          ) {
-            return cookieValue;
-          }
-        } catch {
-          /* cookie 数据不完整或解析失败，回退到 localStorage */
-        }
+      const ssrValue = 从SSRCookie解析Session(key);
+      if (ssrValue) {
+        /* 如果读到了 @supabase/ssr 格式的数据，同步到 localStorage 以便后续读取 */
+        window.localStorage.setItem(key, ssrValue);
+        return ssrValue;
       }
     }
     /* 回退到 localStorage（完整数据，无大小限制）*/

@@ -157,15 +157,6 @@ export default function VehicleModelsPage() {
   const loadModels = useCallback(async () => {
     setLoading(true);
     setError("");
-
-    /* 确保客户端 session 已恢复（createSupabaseClient 的 session 恢复是异步的） */
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      setError("登录状态已过期，请重新登录");
-      setLoading(false);
-      return;
-    }
-
     let q = supabase.from("vehicle_models").select("*", { count: "exact" });
 
     if (search.trim()) {
