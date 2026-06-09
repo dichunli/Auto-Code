@@ -11,7 +11,8 @@ export default async function InventoryPage() {
   const { data: items } = await supabase
     .from("parts")
     .select("*, part_names(name, unit, part_categories(name)), part_brands(name), suppliers(name), parts_specifications(specification_id, part_specifications(name))")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(500);
 
   const { count: lowStock } = await supabase
     .from("parts")
