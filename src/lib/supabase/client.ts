@@ -15,10 +15,9 @@
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { createBrowserClient } from "@supabase/ssr";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 
-let browserClient: ReturnType<typeof createBrowserClient> | null = null;
+let browserClient: ReturnType<typeof createSupabaseClient> | null = null;
 let appClient: ReturnType<typeof createSupabaseClient> | null = null;
 
 /* 从 Supabase URL 中提取项目引用 ID（用于构造 storage key） */
@@ -119,11 +118,11 @@ export function createClient() {
   }
 
   /*
-   * 浏览器环境：使用 @supabase/ssr 的 createBrowserClient。
-   * 原因：createBrowserClient 会自动分块管理 cookie（token 超 4KB 时），
-   * 与服务端 createServerClient 的 cookie 读取机制完全兼容。
-   * SSR 阶段（typeof window === "undefined"）仍用 createSupabaseClient，
-   * 因为 createBrowserClient 依赖 document.cookie，在服务端不存在。
+   * 浏览器环境：使用 createSupabaseClient + 自定义 storage。
+   * 原因：createBrowserClient 的默认 cookie 存储跟 createServerClient
+   * 的读取机制在实际使用中对不上，导致服务端读不到 session。
+   * createSupabaseClient + 自定义 storage（localStorage + cookie 同步）
+   * 是本项目验证过的稳定方案。
    */
   if (typeof window === "undefined") {
     return createSupabaseClient(
@@ -140,7 +139,7 @@ export function createClient() {
   }
 
   if (!browserClient) {
-    browserClient = createBrowserClient(
+    browserClient = createSupabaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
