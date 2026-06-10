@@ -133,17 +133,26 @@ function 从SSRCookie解析Session(key: string): string | null {
 const 浏览器存储 = {
   getItem: (key: string): string | null => {
     if (typeof window === "undefined") return null;
-    /* 优先从 cookie 读取（兼容当前格式和 @supabase/ssr 的旧格式） */
+    /*
+     * 优先从 localStorage 读取（无大小限制，不会被截断）。
+     * 之前优先从 cookie 读取，但 cookie 有 4KB 限制，大 session 会被浏览器
+     * 静默截断，导致 GoTrueClient 解析失败并调用 removeItem 清除 session
+     *（连带 localStorage 中的完整 session 也被清除了）。
+     */
+    const localValue = window.localStorage.getItem(key);
+    if (localValue) return localValue;
+    /*
+     * 回退到 cookie（兼容仅从 cookie 登录的旧 session，包括 @supabase/ssr 格式）。
+     * 如果读到了有效数据，同步到 localStorage 以便后续优先读取。
+     */
     if (key === 认证存储Key) {
       const ssrValue = 从SSRCookie解析Session(key);
       if (ssrValue) {
-        /* 如果读到了 @supabase/ssr 格式的数据，同步到 localStorage 以便后续读取 */
         window.localStorage.setItem(key, ssrValue);
         return ssrValue;
       }
     }
-    /* 回退到 localStorage（完整数据，无大小限制）*/
-    return window.localStorage.getItem(key);
+    return null;
   },
   setItem: (key: string, value: string): void => {
     if (typeof window === "undefined") return;
@@ -240,8 +249,8 @@ export function createClient() {
           storage: 浏览器存储,
           storageKey: 认证存储Key,
           autoRefreshToken: true,
-          detectSessionInUrl: false,
           flowType: "pkce",
+          detectSessionInUrl: false,
         },
       }
     );
