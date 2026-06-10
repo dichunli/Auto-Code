@@ -41,16 +41,22 @@ const APP认证存储Key = `sb-${项目引用}-auth-token-app`;
 const 浏览器存储 = {
   getItem: (key: string): string | null => {
     if (typeof window === "undefined") return null;
-    /* 优先从 cookie 读取（createBrowserClient 标准方式）*/
+    /*
+     * 优先从 localStorage 读取（无大小限制，不会被截断）。
+     * 之前优先从 cookie 读取，但 cookie 有 4KB 限制，大 session 会被浏览器
+     * 静默截断，导致 GoTrueClient 解析失败并调用 removeItem 清除 session
+     *（连带 localStorage 中的完整 session 也被清除了）。
+     */
+    const localValue = window.localStorage.getItem(key);
+    if (localValue) return localValue;
+    /* 回退到 cookie（兼容仅从 cookie 登录的旧 session）*/
     if (key === 认证存储Key) {
       const match = document.cookie.match(
         new RegExp(`(?:^|; )${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`)
       );
-      const cookieValue = match ? decodeURIComponent(match[1]) : null;
-      if (cookieValue) return cookieValue;
+      if (match) return decodeURIComponent(match[1]);
     }
-    /* 回退到 localStorage（兼容旧 session）*/
-    return window.localStorage.getItem(key);
+    return null;
   },
   setItem: (key: string, value: string): void => {
     if (typeof window === "undefined") return;
