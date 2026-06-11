@@ -1,7 +1,8 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 
@@ -35,7 +36,7 @@ export default function SuppliersPage() {
   const [regionFilter, setRegionFilter] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedQuery = useDebounce(query, 300);
 
   async function loadSuppliers(search?: string, region?: string) {
     setLoading(true);
@@ -63,14 +64,8 @@ export default function SuppliersPage() {
   }, [supabase, regionFilter]);
 
   useEffect(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      loadSuppliers(query, regionFilter);
-    }, 300);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [query]);
+    loadSuppliers(debouncedQuery, regionFilter);
+  }, [debouncedQuery]);
 
   async function handleDelete(id: string, name: string, hasParts: boolean) {
     if (hasParts) {

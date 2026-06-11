@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface BatchRecord {
   id: string;
@@ -21,7 +22,7 @@ export default function BatchesPage() {
   const [batches, setBatches] = useState<BatchRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedQuery = useDebounce(query, 300);
 
   async function loadData() {
     setLoading(true);
@@ -45,8 +46,8 @@ export default function BatchesPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return batches;
-    const sq = query.trim().toLowerCase();
+    if (!debouncedQuery.trim()) return batches;
+    const sq = debouncedQuery.trim().toLowerCase();
     return batches.filter((b) => {
       const partName = b.parts?.name || "";
       const partNumber = b.parts?.part_number || "";
@@ -57,17 +58,9 @@ export default function BatchesPage() {
         batchNo.toLowerCase().includes(sq)
       );
     });
-  }, [batches, query]);
+  }, [batches, debouncedQuery]);
 
-  useEffect(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      // 防抖搜索已在 useMemo 中实现
-    }, 300);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [query]);
+
 
   const inboundTypeMap: Record<string, string> = {
     purchase: "采购入库",

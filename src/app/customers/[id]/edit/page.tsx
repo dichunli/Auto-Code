@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 import Link from "next/link";
@@ -57,7 +58,8 @@ export default function EditCustomerPage() {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const contactIdCounterRef = useRef(0);
   const phoneIdCounterRef = useRef(0);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [pendingPhoneSearch, setPendingPhoneSearch] = useState<{contactId: string; phone: string} | null>(null);
+  const debouncedPhoneSearch = useDebounce(pendingPhoneSearch, 300);
 
   useEffect(() => {
     async function load() {
@@ -263,6 +265,12 @@ export default function EditCustomerPage() {
     }
   }
 
+  useEffect(() => {
+    if (debouncedPhoneSearch) {
+      searchContactByPhone(debouncedPhoneSearch.contactId, debouncedPhoneSearch.phone);
+    }
+  }, [debouncedPhoneSearch]);
+
   function fillContactFromSearch(contactId: string) {
     setContacts((prev) =>
       prev.map((c) =>
@@ -465,10 +473,7 @@ export default function EditCustomerPage() {
                       onChange={(e) => {
                           const value = e.target.value;
                           updateContact(c.id, "phone", value);
-                          if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-                          searchTimeoutRef.current = setTimeout(() => {
-                            searchContactByPhone(c.id, value);
-                          }, 300);
+                          setPendingPhoneSearch({ contactId: c.id, phone: value });
                         }}
                     />
                   </div>

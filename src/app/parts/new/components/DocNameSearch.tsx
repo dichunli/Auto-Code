@@ -1,7 +1,8 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface DocNameSearchProps {
   value: string;
@@ -13,18 +14,17 @@ export default function DocNameSearch({ value, onChange }: DocNameSearchProps) {
 
   const [results, setResults] = useState<string[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedValue = useDebounce(value, 300);
 
   useEffect(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    const searchValue = value.trim();
+    const searchValue = debouncedValue.trim();
     if (!searchValue) {
       setResults(null);
       setSearching(false);
       return;
     }
     setSearching(true);
-    timeoutRef.current = setTimeout(async () => {
+    async function doSearch() {
       const { data } = await supabase
         .from("parts")
         .select("document_name")
@@ -40,11 +40,9 @@ export default function DocNameSearch({ value, onChange }: DocNameSearchProps) {
       ) as string[];
       setResults(names);
       setSearching(false);
-    }, 300);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [value, supabase]);
+    }
+    doSearch();
+  }, [debouncedValue, supabase]);
 
   return (
     <div className="relative sm:col-span-2">

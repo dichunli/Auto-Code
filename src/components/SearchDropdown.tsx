@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface Props<T> {
   searchFn: (query: string) => Promise<T[]>;
@@ -37,7 +38,7 @@ export function SearchDropdown<T>({
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedQuery = useDebounce(query, debounceMs);
 
   const doSearch = useCallback(
     async (q: string) => {
@@ -67,13 +68,14 @@ export function SearchDropdown<T>({
     const val = e.target.value;
     setQuery(val);
     setOpen(false);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     if (!val.trim()) {
       setResults([]);
-      return;
     }
-    timeoutRef.current = setTimeout(() => doSearch(val), debounceMs);
   }
+
+  useEffect(() => {
+    doSearch(debouncedQuery);
+  }, [debouncedQuery]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!open) {
@@ -123,12 +125,6 @@ export function SearchDropdown<T>({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  /* 组件卸载时清理定时器 */
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
 
   return (
     <div ref={wrapperRef} className={`relative ${className}`}>

@@ -1,7 +1,8 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { LinkedItem } from "@/components/VehicleModelSelector";
 import { PartNameItem } from "./PartNameSearch";
 
@@ -29,11 +30,10 @@ export default function BrandSearch({
   const [searching, setSearching] = useState(false);
   const [focus, setFocus] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedQuery = useDebounce(query, 300);
 
   useEffect(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    const value = query.trim();
+    const value = debouncedQuery.trim();
     if (selectedBrand && !focus) {
       setResults(null);
       setSearching(false);
@@ -45,7 +45,7 @@ export default function BrandSearch({
       return;
     }
     setSearching(true);
-    timeoutRef.current = setTimeout(async () => {
+    async function doSearch() {
       let linked: IdNameItem[] = [];
       let others: IdNameItem[] = [];
 
@@ -83,11 +83,9 @@ export default function BrandSearch({
 
       setResults([...linked, ...others]);
       setSearching(false);
-    }, 300);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [query, selectedPartName, focus, supabase, selectedBrand]);
+    }
+    doSearch();
+  }, [debouncedQuery, selectedPartName, focus, supabase, selectedBrand]);
 
   async function createBrandAndSelect() {
     const name = query.trim();

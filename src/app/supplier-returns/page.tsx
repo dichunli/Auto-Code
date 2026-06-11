@@ -1,7 +1,8 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 
@@ -41,7 +42,7 @@ export default function SupplierReturnsPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedQuery = useDebounce(query, 300);
 
   async function loadRecords() {
     setLoading(true);
@@ -92,14 +93,8 @@ export default function SupplierReturnsPage() {
   }, [statusFilter, supabase]);
 
   useEffect(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      filterRecords(allRecords, query);
-    }, 300);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [query, allRecords]);
+    filterRecords(allRecords, debouncedQuery);
+  }, [debouncedQuery, allRecords]);
 
   async function handleUpdateStatus(id: string, newStatus: string) {
     const { error } = await supabase

@@ -1,7 +1,8 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { LinkedItem } from "@/components/VehicleModelSelector";
 import { PartNameItem } from "./PartNameSearch";
 
@@ -22,18 +23,17 @@ export default function SpecSearch({
   const [results, setResults] = useState<{ id: string; name: string }[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedQuery = useDebounce(query, 300);
 
   useEffect(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    const value = query.trim();
+    const value = debouncedQuery.trim();
     if (!value || !selectedPartName) {
       setResults(null);
       setSearching(false);
       return;
     }
     setSearching(true);
-    timeoutRef.current = setTimeout(async () => {
+    async function doSearch() {
       const { data: linkedData } = await supabase
         .from("part_specifications")
         .select("id, name, part_name_specifications!inner(part_name_id)")
@@ -51,11 +51,9 @@ export default function SpecSearch({
 
       setResults(linked);
       setSearching(false);
-    }, 300);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [query, selectedPartName, selectedSpecs, supabase]);
+    }
+    doSearch();
+  }, [debouncedQuery, selectedPartName, selectedSpecs, supabase]);
 
   async function createSpecAndAdd() {
     const name = query.trim();

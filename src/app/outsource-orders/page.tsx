@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 
@@ -46,7 +47,7 @@ export default function OutsourceOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedQuery = useDebounce(query, 300);
 
   async function loadOrders() {
     setLoading(true);
@@ -77,14 +78,8 @@ export default function OutsourceOrdersPage() {
   }, [supabase, paymentStatus]);
 
   useEffect(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      loadOrders();
-    }, 300);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [query]);
+    loadOrders();
+  }, [debouncedQuery]);
 
   const filteredOrders = useMemo(() => {
     if (!query.trim()) return orders;

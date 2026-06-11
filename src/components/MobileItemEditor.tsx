@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { compressImage, base64转Blob } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
@@ -305,9 +306,16 @@ export default function MobileItemEditor({
   const [inventorySearchResults, setInventorySearchResults] = useState<InventoryPart[]>([]);
   const [inventorySearching, setInventorySearching] = useState(false);
   const [commonTags, setCommonTags] = useState<{ part_name_id: string; name: string }[]>([]);
-  const inventorySearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedPartSearchQuery = useDebounce(partSearchQuery, 300);
+  const debouncedInventorySearchQuery = useDebounce(inventorySearchQuery, 300);
 
-  const partSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    doPartSearch(debouncedPartSearchQuery);
+  }, [debouncedPartSearchQuery]);
+
+  useEffect(() => {
+    doInventorySearch(debouncedInventorySearchQuery);
+  }, [debouncedInventorySearchQuery]);
 
   /* 外包弹窗 */
   const [showOutsourceModal, setShowOutsourceModal] = useState(false);
@@ -828,8 +836,6 @@ export default function MobileItemEditor({
 
   function handlePartSearchChange(val: string) {
     setPartSearchQuery(val);
-    if (partSearchTimer.current) clearTimeout(partSearchTimer.current);
-    partSearchTimer.current = setTimeout(() => doPartSearch(val), 300);
   }
 
   function addPartNameFromSearch(part: PartNameResult) {
@@ -932,8 +938,6 @@ export default function MobileItemEditor({
 
   function handleInventorySearchChange(val: string) {
     setInventorySearchQuery(val);
-    if (inventorySearchTimer.current) clearTimeout(inventorySearchTimer.current);
-    inventorySearchTimer.current = setTimeout(() => doInventorySearch(val), 300);
   }
 
   /* 扫码成功回调 */

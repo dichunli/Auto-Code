@@ -1,7 +1,8 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 
 export interface PartNameItem {
   id: string;
@@ -60,12 +61,10 @@ export default function PartNameSearch({
   const [results, setResults] = useState<PartNameItem[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedQuery = useDebounce(query, 300);
 
-  // Debounced search
   useEffect(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    const value = query.trim();
+    const value = debouncedQuery.trim();
     if (selectedPartName && value === selectedPartName.name) {
       setResults(null);
       setSearching(false);
@@ -77,7 +76,7 @@ export default function PartNameSearch({
       return;
     }
     setSearching(true);
-    timeoutRef.current = setTimeout(async () => {
+    async function doSearch() {
       const { data } = await supabase
         .from("part_names")
         .select(
@@ -102,11 +101,9 @@ export default function PartNameSearch({
         .limit(10);
       setResults(data || []);
       setSearching(false);
-    }, 300);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [query, supabase, selectedPartName]);
+    }
+    doSearch();
+  }, [debouncedQuery, supabase, selectedPartName]);
 
   function selectItem(item: PartNameItem) {
     onSelectPartName(item);

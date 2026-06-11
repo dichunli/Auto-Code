@@ -2,6 +2,7 @@
 
 import {useState, useEffect, useCallback, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import * as XLSX from "xlsx";
@@ -161,6 +162,10 @@ export default function PartNamesPage() {
   const [specResults, setSpecResults] = useState<PartSpecification[] | null>(null);
   const [specSearching, setSpecSearching] = useState(false);
 
+  const debouncedQuery = useDebounce(query, 300);
+  const debouncedBrandQuery = useDebounce(brandQuery, 300);
+  const debouncedSpecQuery = useDebounce(specQuery, 300);
+
   const loadNames = useCallback(
     async (search?: string) => {
       setSearching(!!search);
@@ -194,33 +199,32 @@ export default function PartNamesPage() {
   }, [supabase, loadNames]);
 
   useEffect(() => {
-    const t = setTimeout(() => loadNames(query), 300);
-    return () => clearTimeout(t);
-  }, [query, loadNames]);
+    loadNames(debouncedQuery);
+  }, [debouncedQuery, loadNames]);
 
   useEffect(() => {
     setBrandResults(null);
-    const t = setTimeout(async () => {
-      if (!brandQuery.trim()) return;
+    if (!debouncedBrandQuery.trim()) return;
+    async function doSearch() {
       setBrandSearching(true);
-      const { data } = await supabase.from("part_brands").select("id, name").ilike("name", `%${brandQuery.trim()}%`).order("name").limit(10);
+      const { data } = await supabase.from("part_brands").select("id, name").ilike("name", `%${debouncedBrandQuery.trim()}%`).order("name").limit(10);
       setBrandResults((data as PartBrand[]) || []);
       setBrandSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [brandQuery, supabase]);
+    }
+    doSearch();
+  }, [debouncedBrandQuery, supabase]);
 
   useEffect(() => {
     setSpecResults(null);
-    const t = setTimeout(async () => {
-      if (!specQuery.trim()) return;
+    if (!debouncedSpecQuery.trim()) return;
+    async function doSearch() {
       setSpecSearching(true);
-      const { data } = await supabase.from("part_specifications").select("id, name").ilike("name", `%${specQuery.trim()}%`).order("name").limit(10);
+      const { data } = await supabase.from("part_specifications").select("id, name").ilike("name", `%${debouncedSpecQuery.trim()}%`).order("name").limit(10);
       setSpecResults((data as PartSpecification[]) || []);
       setSpecSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [specQuery, supabase]);
+    }
+    doSearch();
+  }, [debouncedSpecQuery, supabase]);
 
   function toggleSelect(id: string) {
     const next = new Set(selectedIds);

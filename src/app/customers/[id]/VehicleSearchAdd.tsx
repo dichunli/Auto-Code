@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import Link from "next/link";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 
@@ -50,7 +51,7 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
     mileage: "",
   });
   const [saving, setSaving] = useState(false);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedSearchPlate = useDebounce(searchPlate, 300);
 
   async function doSearch(plate: string) {
     if (!plate.trim()) {
@@ -74,12 +75,12 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
     }
   }
 
+  useEffect(() => {
+    doSearch(debouncedSearchPlate);
+  }, [debouncedSearchPlate]);
+
   function handleInputChange(value: string) {
     setSearchPlate(value);
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    searchTimeoutRef.current = setTimeout(() => {
-      doSearch(value);
-    }, 300);
   }
 
   async function handleDirectLink(vehicleId: string) {

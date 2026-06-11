@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface MatchedPart {
   id: string;
@@ -54,8 +55,8 @@ export function PartSearchDropdown({
   const [showDropdown, setShowDropdown] = useState(false);
   const [searching, setSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const debouncedQuery = useDebounce(query, 300);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
@@ -111,17 +112,15 @@ export function PartSearchDropdown({
     const val = e.target.value;
     setQuery(val);
     onChange(val);
-
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     if (!val.trim()) {
       setShowDropdown(false);
       setResults([]);
-      return;
     }
-    timeoutRef.current = setTimeout(() => {
-      doSearch(val);
-    }, 300);
   }
+
+  useEffect(() => {
+    doSearch(debouncedQuery);
+  }, [debouncedQuery]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!showDropdown) {

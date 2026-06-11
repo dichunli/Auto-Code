@@ -2,6 +2,7 @@
 
 import {useState, useEffect, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
@@ -30,6 +31,7 @@ interface PartName {
 
   const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounce(query, 300);
   const [brands, setBrands] = useState<PartBrand[]>([]);
   const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -63,9 +65,8 @@ interface PartName {
   }, [loadBrands]);
 
   useEffect(() => {
-    const t = setTimeout(() => loadBrands(query), 300);
-    return () => clearTimeout(t);
-  }, [query, loadBrands]);
+    loadBrands(debouncedQuery);
+  }, [debouncedQuery, loadBrands]);
 
   useEffect(() => {
     const t = setTimeout(async () => {

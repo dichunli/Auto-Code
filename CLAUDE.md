@@ -28,7 +28,7 @@
 ## 项目约定
 
 - 客户端组件文件顶部必须加 `"use client"` 声明
-- 搜索功能统一使用 300ms 防抖（setTimeout + clearTimeout 模式）
+- 搜索功能统一使用 `useDebounce` Hook（`src/lib/useDebounce.ts`），禁止手写 `setTimeout` + `clearTimeout` 防抖
 - 表单中的价格/数量字段前端用字符串存储，提交时转换为 number
 - 弹窗/模态框使用固定定位（fixed inset-0）+ 半透明遮罩（bg-black/50）实现
 - 所有代码注释和界面文案使用中文

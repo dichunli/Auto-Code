@@ -2,6 +2,7 @@
 
 import {useState, useEffect, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
@@ -80,6 +81,7 @@ export default function PartCategoriesPage() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [sortSaving, setSortSaving] = useState(false);
+  const debouncedQuery = useDebounce(query, 300);
 
   const [form, setForm] = useState({
     name: "",
@@ -122,9 +124,8 @@ export default function PartCategoriesPage() {
   }, [loadCategories]);
 
   useEffect(() => {
-    const t = setTimeout(() => loadCategories(query), 300);
-    return () => clearTimeout(t);
-  }, [query, loadCategories]);
+    loadCategories(debouncedQuery);
+  }, [debouncedQuery, loadCategories]);
 
   function formatCommission(type: string | null, value: number | null) {
     if (!type || value == null) return "-";

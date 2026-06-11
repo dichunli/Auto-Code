@@ -1,8 +1,9 @@
 "use client";
 
-import {useState, useRef, useMemo} from "react";
+import {useState, useEffect, useRef, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { VehicleModelSearch } from "@/components/VehicleModelSearch";
 import { ImageUploader } from "@/components/ImageUploader";
@@ -90,7 +91,8 @@ export default function NewCustomerPage() {
 
   const contactIdCounterRef = useRef(0);
   const phoneIdCounterRef = useRef(0);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [pendingPhoneSearch, setPendingPhoneSearch] = useState<{contactId: string; phone: string} | null>(null);
+  const debouncedPhoneSearch = useDebounce(pendingPhoneSearch, 300);
 
   function addPhone() {
     phoneIdCounterRef.current++;
@@ -140,6 +142,12 @@ export default function NewCustomerPage() {
       );
     }
   }
+
+  useEffect(() => {
+    if (debouncedPhoneSearch) {
+      searchContactByPhone(debouncedPhoneSearch.contactId, debouncedPhoneSearch.phone);
+    }
+  }, [debouncedPhoneSearch]);
 
   async function searchMainPhone(phone: string) {
     if (!phone.trim()) { setPhoneSearchResult(null); return; }
@@ -512,10 +520,7 @@ export default function NewCustomerPage() {
                         onChange={(e) => {
                           const value = e.target.value;
                           updateContact(c.id, "phone", value);
-                          if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-                          searchTimeoutRef.current = setTimeout(() => {
-                            searchContactByPhone(c.id, value);
-                          }, 300);
+                          setPendingPhoneSearch({ contactId: c.id, phone: value });
                         }}
                       />
                     </div>
