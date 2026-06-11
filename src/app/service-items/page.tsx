@@ -129,6 +129,26 @@ export default function ServiceItemsPage() {
       "| 报错:",
       userErr ? userErr.message : "无"
     );
+    /* C2. 修复验证：getSession 为空但 localStorage 有有效 session → 手动注入再重查 */
+    if (!sessionData.session && lsRaw) {
+      try {
+        const s = JSON.parse(lsRaw);
+        if (s.access_token && s.refresh_token) {
+          const { error: setErr } = await supabase.auth.setSession({
+            access_token: s.access_token,
+            refresh_token: s.refresh_token,
+          });
+          console.log("[诊断C2] 手动注入 session:", setErr ? `❌ ${setErr.message}` : "✅ 成功");
+          const { data: retry } = await supabase
+            .from("service_items")
+            .select("id")
+            .order("created_at", { ascending: false });
+          console.log("[诊断C2] 注入后重查条数:", retry?.length ?? 0, retry && retry.length > 0 ? "✅ 修复有效！" : "仍为空");
+        }
+      } catch {
+        console.log("[诊断C2] localStorage 解析失败，跳过注入");
+      }
+    }
     /* D. 实际查询 */
     const { data, error, status } = await supabase
       .from("service_items")
