@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import { stringFromBase64URL } from "@supabase/ssr";
 
 /* ============================================================
    Mock 外部依赖
@@ -46,6 +47,29 @@ const cookieStore: Record<string, string> = {};
 
 function 清理Cookie(): void {
   Object.keys(cookieStore).forEach((k) => delete cookieStore[k]);
+}
+
+/*
+ * 用「服务端 @supabase/ssr 的读取方式」从模拟 cookie 中还原 session 明文。
+ * 用于验证客户端写入的 cookie（base64- 编码 + 可能分段）能被服务端正确读回。
+ * 单条优先，没有则拼接 key.0、key.1… 分段。
+ */
+function 从Cookie按服务端方式还原(key: string): string | null {
+  let 编码值: string | null = null;
+  if (cookieStore[key] !== undefined) {
+    编码值 = cookieStore[key];
+  } else {
+    const chunks: string[] = [];
+    for (let i = 0; cookieStore[`${key}.${i}`] !== undefined; i++) {
+      chunks.push(cookieStore[`${key}.${i}`]);
+    }
+    if (chunks.length > 0) 编码值 = chunks.join("");
+  }
+  if (编码值 === null) return null;
+  if (编码值.startsWith("base64-")) {
+    return stringFromBase64URL(编码值.slice("base64-".length));
+  }
+  return 编码值;
 }
 
 beforeAll(() => {
@@ -242,7 +266,8 @@ describe("浏览器存储 - setItem", () => {
     storage.setItem(认证Key, 完整Session());
 
     expect(window.localStorage.getItem(认证Key)).toBe(完整Session());
-    expect(cookieStore[认证Key]).toBe(完整Session());
+    /* cookie 以 base64- 编码写入，需按服务端方式还原后比对明文 */
+    expect(从Cookie按服务端方式还原(认证Key)).toBe(完整Session());
   });
 
   it("非认证 key → 只写 localStorage", async () => {
@@ -255,6 +280,45 @@ describe("浏览器存储 - setItem", () => {
 
     expect(window.localStorage.getItem("other-key")).toBe("other-value");
     expect(cookieStore["other-key"]).toBeUndefined();
+  });
+
+  it("超大 session（>4KB）→ cookie 分段写入，服务端可完整还原", async () => {
+    const mod = await 加载模块();
+    mockState.isCapacitor = false;
+    mod.createClient();
+    const storage = 提取存储();
+
+    /* 构造一个超过单段上限的大 session，强制触发 createChunks 分段 */
+    const 大Session = JSON.stringify({
+      access_token: "a".repeat(5000),
+      refresh_token: "valid-refresh-token",
+      expires_at: 1234567890,
+    });
+    storage.setItem(认证Key, 大Session);
+
+    /* 单条 cookie 不应存在，应被切成 key.0、key.1… 分段 */
+    expect(cookieStore[认证Key]).toBeUndefined();
+    expect(cookieStore[`${认证Key}.0`]).toBeDefined();
+    expect(cookieStore[`${认证Key}.1`]).toBeDefined();
+    /* 服务端方式拼接还原后应等于原始明文 */
+    expect(从Cookie按服务端方式还原(认证Key)).toBe(大Session);
+  });
+
+  it("重写较小 session → 清掉上次残留的多余分段", async () => {
+    const mod = await 加载模块();
+    mockState.isCapacitor = false;
+    mod.createClient();
+    const storage = 提取存储();
+
+    /* 先写大 session 产生多段 */
+    const 大Session = JSON.stringify({ access_token: "a".repeat(5000) });
+    storage.setItem(认证Key, 大Session);
+    expect(cookieStore[`${认证Key}.1`]).toBeDefined();
+
+    /* 再写小 session，旧的第 1 段必须被清除，避免拼接出脏数据 */
+    storage.setItem(认证Key, 完整Session());
+    expect(cookieStore[`${认证Key}.1`]).toBeUndefined();
+    expect(从Cookie按服务端方式还原(认证Key)).toBe(完整Session());
   });
 });
 
@@ -325,7 +389,7 @@ describe("APP 存储", () => {
 
     expect(window.localStorage.getItem(APP认证Key)).toBe(完整Session());
     // APP 存储的 setItem 同时写入浏览器 cookie（让服务端 @supabase/ssr 能读取）
-    expect(cookieStore[认证Key]).toBe(完整Session());
+    expect(从Cookie按服务端方式还原(认证Key)).toBe(完整Session());
   });
 
   it("removeItem - APP认证Key → 删 localStorage", async () => {

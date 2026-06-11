@@ -12,11 +12,21 @@
  * ║  时移除了自定义 storage，导致已登录用户 session 无法读取，全站数据   ║
  * ║  加载为空。修复：createBrowserClient 配回兼容存储（先读cookie回退    ║
  * ║  localStorage）。                                                    ║
+ * ║  2026-06-11 统一写 cookie 格式：改用 @supabase/ssr 官方 createChunks ║
+ * ║  + base64- 编码分段写入，与服务端读取格式一致，根治单条 cookie 超 4KB ║
+ * ║  被浏览器静默截断导致服务端读不到 session 的偶发问题。localStorage   ║
+ * ║  仍为主仓库（读取优先），老用户不掉线。                              ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { stringFromBase64URL } from "@supabase/ssr";
+import { stringFromBase64URL, stringToBase64URL, createChunks } from "@supabase/ssr";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+
+/*
+ * cookie 单段最大字节数：与 @supabase/ssr 的 createChunks 默认值（MAX_CHUNK_SIZE=3180）保持一致。
+ * 浏览器单条 cookie 上限约 4KB，3180 留足了 cookie 名、编码膨胀和分隔符的余量。
+ */
+const COOKIE最大段大小 = 3180;
 
 let browserClient: ReturnType<typeof createSupabaseClient> | null = null;
 let appClient: ReturnType<typeof createSupabaseClient> | null = null;
@@ -38,6 +48,34 @@ const APP认证存储Key = `sb-${项目引用}-auth-token-app`;
 /* base64url 解码（兼容 @supabase/ssr 的 cookie 编码，支持 UTF-8） */
 function base64url解码(str: string): string {
   return stringFromBase64URL(str);
+}
+
+/*
+ * 写入 session cookie（与 @supabase/ssr 服务端读取格式完全一致）：
+ * 1. 用 base64- 前缀 + base64url 编码（服务端 createServerClient 认这种格式）
+ * 2. 超过单段上限时，用官方 createChunks 切成 key.0、key.1… 多段写入
+ *    —— 解决「单条 cookie 超 4KB 被浏览器静默截断 → 服务端读不到 session」的隐患
+ * 写入前先清掉旧的分段，避免上次 3 段、这次 2 段时残留第 3 段导致解析错乱。
+ */
+function 写入Session到Cookie(key: string, value: string): void {
+  清除Session的Cookie(key);
+  const 编码值 = "base64-" + stringToBase64URL(value);
+  const maxAge = 400 * 24 * 60 * 60;
+  const chunks = createChunks(key, 编码值, COOKIE最大段大小);
+  for (const chunk of chunks) {
+    document.cookie = `${chunk.name}=${encodeURIComponent(chunk.value)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+  }
+}
+
+/*
+ * 清除 session cookie：单条 + 所有分段（key、key.0、key.1…）一并删除，
+ * 防止退出登录或重新登录后残留旧 cookie 段。
+ */
+function 清除Session的Cookie(key: string): void {
+  document.cookie = `${key}=; path=/; max-age=0`;
+  for (let i = 0; i < 10; i++) {
+    document.cookie = `${key}.${i}=; path=/; max-age=0`;
+  }
 }
 
 /* 解析 @supabase/ssr 格式的 cookie 值（支持 base64- 前缀和分段 cookie） */
@@ -157,17 +195,16 @@ const 浏览器存储 = {
   setItem: (key: string, value: string): void => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(key, value);
-    /* 同时写入 cookie，让服务端 middleware 能读取 session */
+    /* 同时写入 cookie（base64-+分段，与服务端 @supabase/ssr 读取格式一致），让服务端能读取 session */
     if (key === 认证存储Key) {
-      const maxAge = 400 * 24 * 60 * 60;
-      document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+      写入Session到Cookie(key, value);
     }
   },
   removeItem: (key: string): void => {
     if (typeof window === "undefined") return;
     window.localStorage.removeItem(key);
     if (key === 认证存储Key) {
-      document.cookie = `${key}=; path=/; max-age=0`;
+      清除Session的Cookie(key);
     }
   },
 };
@@ -185,9 +222,8 @@ const APP存储 = {
     if (typeof window === "undefined") return;
     if (key === APP认证存储Key) {
       window.localStorage.setItem(APP认证存储Key, value);
-      /* 同时写入 cookie，让服务端 @supabase/ssr 能读取 session */
-      const maxAge = 400 * 24 * 60 * 60;
-      document.cookie = `${认证存储Key}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+      /* 同时写入 cookie（base64-+分段，与服务端 @supabase/ssr 读取格式一致），让服务端能读取 session */
+      写入Session到Cookie(认证存储Key, value);
     }
   },
   removeItem: (key: string): void => {
