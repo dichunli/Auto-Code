@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
@@ -51,8 +52,7 @@ export default function ServiceItemsPage() {
 
   /* 搜索 */
   const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedQuery = useDebounce(searchQuery, 300);
 
   /* 分页 */
   const [currentPage, setCurrentPage] = useState(1);
@@ -103,18 +103,11 @@ export default function ServiceItemsPage() {
     loadCategories();
   }, [loadItems, loadCategories, supabase]);
 
-  /* 搜索防抖 */
+  /* 搜索防抖：页码和选中状态随防抖值重置 */
   useEffect(() => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => {
-      setDebouncedQuery(searchQuery.trim());
-      setCurrentPage(1);
-      setSelectedIds(new Set());
-    }, 300);
-    return () => {
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    };
-  }, [searchQuery]);
+    setCurrentPage(1);
+    setSelectedIds(new Set());
+  }, [debouncedQuery]);
 
   const filteredItems = useMemo(() => {
     if (!debouncedQuery) return items;

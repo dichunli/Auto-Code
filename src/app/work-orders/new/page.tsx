@@ -4,6 +4,7 @@ import {useState, useEffect, useCallback, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
@@ -17,6 +18,7 @@ export default function NewWorkOrderPage() {
 
   // 车辆搜索
   const [vehicleQuery, setVehicleQuery] = useState("");
+  const debouncedVehicleQuery = useDebounce(vehicleQuery, 300);
   interface VehicleWithCustomer {
     id: string;
     plate_number: string;
@@ -110,9 +112,8 @@ export default function NewWorkOrderPage() {
   );
 
   useEffect(() => {
-    const timer = setTimeout(() => searchVehicles(vehicleQuery), 300);
-    return () => clearTimeout(timer);
-  }, [vehicleQuery, searchVehicles]);
+    searchVehicles(debouncedVehicleQuery);
+  }, [debouncedVehicleQuery, searchVehicles]);
 
   // 搜索结果变化时重置高亮
   useEffect(() => {

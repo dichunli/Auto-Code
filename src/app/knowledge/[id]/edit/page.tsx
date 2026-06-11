@@ -1,9 +1,10 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useMemo} from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelector";
 import { 处理外部图片 } from "@/lib/processExternalImages";
@@ -60,7 +61,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
   const [nameResults, setNameResults] = useState<NamedItem[]>([]);
   const [nameSearching, setNameSearching] = useState(false);
   const [linkedNames, setLinkedNames] = useState<NamedItem[]>([]);
-  const nameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedNameSearch = useDebounce(nameSearch, 300);
 
   /* 适用车型 */
   const [linkedVehicles, setLinkedVehicles] = useState<LinkedItem[]>([]);
@@ -207,9 +208,11 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
 
   function handleNameSearchChange(val: string) {
     setNameSearch(val);
-    if (nameTimer.current) clearTimeout(nameTimer.current);
-    nameTimer.current = setTimeout(() => doNameSearch(val), 300);
   }
+
+  useEffect(() => {
+    doNameSearch(debouncedNameSearch);
+  }, [debouncedNameSearch]);
 
   function addLinkedName(item: NamedItem) {
     if (!linkedNames.find((n) => n.id === item.id)) {

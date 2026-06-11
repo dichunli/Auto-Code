@@ -2,6 +2,7 @@
 
 import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 
@@ -44,7 +45,7 @@ export default function SupplierTransactionsPage() {
   const [query, setQuery] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<string>("");
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedQuery = useDebounce(query, 300);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<TransactionForm>({
@@ -111,14 +112,8 @@ export default function SupplierTransactionsPage() {
   }, [supplierFilter, typeFilter, supabase]);
 
   useEffect(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      filterRecords(allRecords, query);
-    }, 300);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [query, allRecords]);
+    filterRecords(allRecords, debouncedQuery);
+  }, [allRecords, debouncedQuery]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
