@@ -300,3 +300,57 @@ export function 获取当前环境(): "APP" | "浏览器" | "服务端" {
   if (是Capacitor环境()) return "APP";
   return "浏览器";
 }
+
+/*
+ * ╔══════════════════════════════════════════════════════════════════════╗
+ * ║  确保会话就绪 — 修复「点菜单软跳转进列表页，数据为空，刷新才出来」    ║
+ * ╠══════════════════════════════════════════════════════════════════════╣
+ * ║  根因：localStorage 里有有效 session（未过期、字段完整），但客户端   ║
+ * ║  单例实例在软跳转时未把它读入内存，getSession() 返回空，查询被 RLS   ║
+ * ║  当作未登录过滤，返回 0 条（HTTP 200 但无数据，不报错）。F5 整页刷新 ║
+ * ║  会重建客户端、重新读取，所以刷新就正常。                            ║
+ * ║  修复：进入应用时（AppShell 挂载）先调用本函数——若客户端无 session   ║
+ * ║  但 localStorage/cookie 里有有效的，手动 setSession 注入，再放行页面 ║
+ * ║  查询。结果用 Promise 缓存，全站只跑一次，不阻塞后续导航。           ║
+ * ╚══════════════════════════════════════════════════════════════════════╝
+ */
+let 会话就绪Promise: Promise<void> | null = null;
+
+export function 确保会话就绪(): Promise<void> {
+  /* 服务端无 localStorage，APP 环境由 onAuthStateChange 自管，均无需处理 */
+  if (typeof window === "undefined" || 是Capacitor环境()) {
+    return Promise.resolve();
+  }
+  /* 缓存：全站只执行一次注入，后续导航直接复用结果 */
+  if (会话就绪Promise) return 会话就绪Promise;
+
+  会话就绪Promise = (async () => {
+    try {
+      const supabase = createClient();
+      const { data } = await supabase.auth.getSession();
+      /* 客户端已有 session，无需注入 */
+      if (data.session) return;
+
+      /* 客户端没读到，但本地存储里可能有（getItem 已含 cookie 回退逻辑） */
+      const 原始值 = 浏览器存储.getItem(认证存储Key);
+      if (!原始值) return;
+
+      const 会话 = JSON.parse(原始值) as {
+        access_token?: string;
+        refresh_token?: string;
+      };
+      if (!会话.access_token || !会话.refresh_token) return;
+
+      /* 手动注入：让客户端实例认得这份登录态，后续查询才会带上 token */
+      await supabase.auth.setSession({
+        access_token: 会话.access_token,
+        refresh_token: 会话.refresh_token,
+      });
+    } catch {
+      /* 注入失败（数据损坏/网络异常）静默放行，不阻塞页面，按未登录处理 */
+    }
+  })();
+
+  return 会话就绪Promise;
+}
+

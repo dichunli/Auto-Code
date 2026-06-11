@@ -1,10 +1,11 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, Suspense } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { cn } from "@/lib/utils";
 import { Navbar } from "./Navbar";
 import { PriceVisibilityProvider, usePriceVisibility } from "./PriceVisibilityContext";
+import { 确保会话就绪 } from "@/lib/supabase/client";
 
 function KeyboardHandler() {
   const { togglePrices } = usePriceVisibility();
@@ -27,6 +28,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isLogin = pathname === "/login";
 
+  /*
+   * 进入应用先确保登录态注入到 Supabase 客户端，再渲染页面，
+   * 否则软跳转进列表页时查询会因客户端无 session 被 RLS 过滤为空。
+   * 登录页不需要等待。带超时兜底，避免网络异常时永久白屏。
+   */
+  const [会话就绪, set会话就绪] = useState(isLogin);
+
+  useEffect(() => {
+    if (isLogin) {
+      set会话就绪(true);
+      return;
+    }
+    let 已完成 = false;
+    const 标记就绪 = () => {
+      if (!已完成) {
+        已完成 = true;
+        set会话就绪(true);
+      }
+    };
+    /* 正常路径：会话注入完成后放行 */
+    确保会话就绪().then(标记就绪);
+    /* 兜底：最多等 3 秒，无论成败都放行，绝不卡住页面 */
+    const 超时 = setTimeout(标记就绪, 3000);
+    return () => clearTimeout(超时);
+  }, [isLogin]);
+
   return (
     <PriceVisibilityProvider>
       <KeyboardHandler />
@@ -39,7 +66,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           isLogin ? "pt-0" : "pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-6"
         )}
       >
-        {children}
+        {会话就绪 ? (
+          children
+        ) : (
+          <div className="flex items-center justify-center py-20 text-sm text-gray-400">
+            正在加载...
+          </div>
+        )}
       </main>
     </PriceVisibilityProvider>
   );

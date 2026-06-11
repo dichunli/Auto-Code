@@ -85,86 +85,10 @@ export default function ServiceItemsPage() {
 
   const loadItems = useCallback(async () => {
     setLoading(true);
-    /* ===== 临时诊断日志（确认是否登录态竞速，确认后删除） ===== */
-    const t0 = Date.now();
-    /* A. 直接看 localStorage 里此刻有没有登录数据 */
-    const ref = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").split("//")[1]?.split(".")[0] ?? "";
-    const lsKey = `sb-${ref}-auth-token`;
-    const lsRaw = typeof window !== "undefined" ? window.localStorage.getItem(lsKey) : null;
-    console.log(
-      "[诊断A] localStorage 登录数据:",
-      lsRaw ? `✅ 存在(${lsRaw.length}字节)` : "❌ 不存在",
-      "| key:",
-      lsKey
-    );
-    /* A2. 解析 localStorage 里这份数据，看是过期、残缺还是格式不对 */
-    if (lsRaw) {
-      try {
-        const s = JSON.parse(lsRaw);
-        const now = Math.floor(Date.now() / 1000);
-        console.log(
-          "[诊断A2] 解析成功 →",
-          "access_token:", s.access_token ? `有(${String(s.access_token).length}字符)` : "❌无",
-          "| refresh_token:", s.refresh_token ? "有" : "❌无",
-          "| expires_at:", s.expires_at,
-          "| 当前时间:", now,
-          "| 是否过期:", s.expires_at ? (s.expires_at < now ? `❌已过期(${now - s.expires_at}秒前)` : "未过期") : "无此字段",
-          "| user:", s.user ? "有" : "❌无"
-        );
-      } catch (e) {
-        console.log("[诊断A2] ❌ JSON 解析失败（数据残缺/截断）:", e instanceof Error ? e.message : String(e), "| 开头200字符:", lsRaw.slice(0, 200), "| 结尾100字符:", lsRaw.slice(-100));
-      }
-    }
-    /* B. getSession（会等内部恢复） */
-    const { data: sessionData } = await supabase.auth.getSession();
-    console.log(
-      "[诊断B] getSession 登录态:",
-      sessionData.session ? "✅ 已登录" : "❌ 无登录态"
-    );
-    /* C. getUser（强制校验，会发网络请求） */
-    const { data: userData, error: userErr } = await supabase.auth.getUser();
-    console.log(
-      "[诊断C] getUser:",
-      userData.user ? `✅ ${userData.user.email}` : "❌ 无用户",
-      "| 报错:",
-      userErr ? userErr.message : "无"
-    );
-    /* C2. 修复验证：getSession 为空但 localStorage 有有效 session → 手动注入再重查 */
-    if (!sessionData.session && lsRaw) {
-      try {
-        const s = JSON.parse(lsRaw);
-        if (s.access_token && s.refresh_token) {
-          const { error: setErr } = await supabase.auth.setSession({
-            access_token: s.access_token,
-            refresh_token: s.refresh_token,
-          });
-          console.log("[诊断C2] 手动注入 session:", setErr ? `❌ ${setErr.message}` : "✅ 成功");
-          const { data: retry } = await supabase
-            .from("service_items")
-            .select("id")
-            .order("created_at", { ascending: false });
-          console.log("[诊断C2] 注入后重查条数:", retry?.length ?? 0, retry && retry.length > 0 ? "✅ 修复有效！" : "仍为空");
-        }
-      } catch {
-        console.log("[诊断C2] localStorage 解析失败，跳过注入");
-      }
-    }
-    /* D. 实际查询 */
-    const { data, error, status } = await supabase
+    const { data } = await supabase
       .from("service_items")
       .select("*, service_categories(name)")
       .order("created_at", { ascending: false });
-    console.log(
-      "[诊断D] 查询返回 → 条数:",
-      data?.length ?? 0,
-      "| HTTP:",
-      status,
-      "| 报错:",
-      error ? error.message : "无",
-      "| 总耗时(ms):",
-      Date.now() - t0
-    );
-    /* ===== 诊断日志结束 ===== */
     setItems((data as ServiceItem[]) || []);
     setLoading(false);
   }, [supabase]);
