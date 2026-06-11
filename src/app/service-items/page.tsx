@@ -97,6 +97,24 @@ export default function ServiceItemsPage() {
       "| key:",
       lsKey
     );
+    /* A2. 解析 localStorage 里这份数据，看是过期、残缺还是格式不对 */
+    if (lsRaw) {
+      try {
+        const s = JSON.parse(lsRaw);
+        const now = Math.floor(Date.now() / 1000);
+        console.log(
+          "[诊断A2] 解析成功 →",
+          "access_token:", s.access_token ? `有(${String(s.access_token).length}字符)` : "❌无",
+          "| refresh_token:", s.refresh_token ? "有" : "❌无",
+          "| expires_at:", s.expires_at,
+          "| 当前时间:", now,
+          "| 是否过期:", s.expires_at ? (s.expires_at < now ? `❌已过期(${now - s.expires_at}秒前)` : "未过期") : "无此字段",
+          "| user:", s.user ? "有" : "❌无"
+        );
+      } catch (e) {
+        console.log("[诊断A2] ❌ JSON 解析失败（数据残缺/截断）:", e instanceof Error ? e.message : String(e), "| 开头200字符:", lsRaw.slice(0, 200), "| 结尾100字符:", lsRaw.slice(-100));
+      }
+    }
     /* B. getSession（会等内部恢复） */
     const { data: sessionData } = await supabase.auth.getSession();
     console.log(
