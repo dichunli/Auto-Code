@@ -1,5 +1,5 @@
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
-import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
 interface WorkOrderStatusRow {
@@ -55,11 +55,7 @@ async function getDashboardStats() {
     };
   }
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => [], setAll: () => {} } }
-  );
+  const supabase = await createClient();
 
   // 1. 工单状态统计
   const { data: allOrderStatus } = await supabase

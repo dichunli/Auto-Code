@@ -1,5 +1,4 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 
 interface CacheEntry {
   data: WorkOrderDataResult;
@@ -52,31 +51,10 @@ export async function getWorkOrderData(id: string) {
     return cache[id].data;
   }
 
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {
-            // 在 Server Component 中 set cookie 会报错，忽略即可
-          }
-        },
-      },
-    }
-  );
+  const supabase = await createClient();
 
-  /* 调试：检查服务端 session */
-  const { data: { user } } = await supabase.auth.getUser();
-  console.log("[workOrderData] session user:", user?.id || "null");
+  /* 获取工单数据 */
+  await supabase.auth.getUser();
 
   // 第一批：全局数据 + 工单基本信息（互相独立，并行查询）
   const [
