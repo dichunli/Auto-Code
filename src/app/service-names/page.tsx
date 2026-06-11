@@ -27,6 +27,7 @@ export default function ServiceNamesPage() {
   const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<ServiceName[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [searchName, setSearchName] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [importing, setImporting] = useState(false);
@@ -35,6 +36,7 @@ export default function ServiceNamesPage() {
 
   const loadItems = useCallback(async () => {
     setLoading(true);
+    setError("");
     let query = supabase
       .from("service_names")
       .select("*, service_categories(name), service_name_part_names(count)")
@@ -45,8 +47,13 @@ export default function ServiceNamesPage() {
       query = query.or(`name.ilike.%${s}%,search_keywords.ilike.%${s}%`);
     }
 
-    const { data } = await query;
-    setItems((data as ServiceName[]) || []);
+    const { data, error } = await query;
+    if (error) {
+      setError(error.message);
+      setItems([]);
+    } else {
+      setItems((data as ServiceName[]) || []);
+    }
     setLoading(false);
   }, [supabase, searchName]);
 
@@ -225,6 +232,12 @@ export default function ServiceNamesPage() {
         description="标准化项目名称，支持分类关联和搜索关键词"
         action={{ href: "/service-names/new", label: "新建名称" }}
       />
+
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          查询出错: {error}
+        </div>
+      )}
 
       {/* 搜索栏 */}
       <div className="mb-4 bg-white rounded-xl border border-gray-200 p-4">
