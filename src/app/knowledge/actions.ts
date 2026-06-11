@@ -1,6 +1,162 @@
 "use server";
 
 import mammoth from "mammoth";
+import { createClient } from "@/lib/supabase/server";
+
+/* ═════════════════════════════════════════════════════════════════
+ * 知识库数据查询 Server Action
+ * 把数据查询从客户端移到服务端，消除客户端 session 问题的影响。
+ * ═════════════════════════════════════════════════════════════════ */
+
+interface 知识文章数据 {
+  id: string;
+  title: string;
+  content: string;
+  content_blocks: unknown;
+  type: string;
+  created_at: string;
+  category_id: string | null;
+  created_by: string | null;
+  visibility: string;
+  category_name?: string | null;
+  author_name?: string | null;
+  score?: number;
+}
+
+interface 知识分类数据 {
+  id: string;
+  name: string;
+}
+
+export async function loadKnowledgeArticles(params: {
+  keyword?: string;
+  category?: string;
+  page?: number;
+}): Promise<{
+  success: boolean;
+  articles?: 知识文章数据[];
+  categories?: 知识分类数据[];
+  readCounts?: Record<string, number>;
+  currentUserId?: string;
+  isAdmin?: boolean;
+  total?: number;
+  totalPages?: number;
+  error?: string;
+}> {
+  const { keyword = "", category = "", page = 1 } = params;
+  const pageSize = 20;
+
+  const supabase = await createClient();
+
+  /* 获取当前用户 */
+  const { data: { user } } = await supabase.auth.getUser();
+  const currentUserId = user?.id || "";
+  let isAdmin = false;
+  if (currentUserId) {
+    const { data: roleData } = await supabase
+      .from("profile_roles")
+      .select("roles(name)")
+      .eq("profile_id", currentUserId);
+    isAdmin = (roleData || []).some(
+      (d: { roles?: { name?: string } | null }) => d.roles?.name === "admin"
+    );
+  }
+
+  /* 查询文章 */
+  let articles: 知识文章数据[] = [];
+
+  if (keyword.trim()) {
+    const { data, error } = await supabase.rpc("search_knowledge_articles", {
+      search_query: keyword.trim(),
+    });
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    articles = (data || []).map((row: Record<string, unknown>) => ({
+      id: row.id as string,
+      title: row.title as string,
+      content: row.content as string,
+      content_blocks: row.content_blocks,
+      type: row.type as string,
+      created_at: row.created_at as string,
+      category_id: row.category_id as string | null,
+      created_by: row.created_by as string | null,
+      visibility: row.visibility as string,
+      category_name: row.category_name as string | null,
+      author_name: row.author_name as string | null,
+      score: row.score as number,
+    }));
+  } else {
+    let query = supabase
+      .from("knowledge_articles")
+      .select("*, knowledge_categories(name), profiles(full_name), created_by")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (category) {
+      query = query.eq("category_id", category);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    articles = (data || []).map((a: Record<string, unknown>) => ({
+      id: a.id as string,
+      title: a.title as string,
+      content: a.content as string,
+      content_blocks: a.content_blocks,
+      type: a.type as string,
+      created_at: a.created_at as string,
+      category_id: a.category_id as string | null,
+      created_by: a.created_by as string | null,
+      visibility: a.visibility as string,
+      category_name: (a.knowledge_categories as { name: string } | null)?.name || null,
+      author_name: (a.profiles as { full_name: string } | null)?.full_name || null,
+    }));
+  }
+
+  /* 查询分类 */
+  const { data: categoriesData } = await supabase
+    .from("knowledge_categories")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .limit(100);
+
+  /* 查询阅读次数 */
+  const articleIds = articles.map((a) => a.id);
+  const readCounts: Record<string, number> = {};
+  if (articleIds.length > 0) {
+    const { data: readsData } = await supabase
+      .from("knowledge_article_reads")
+      .select("article_id")
+      .in("article_id", articleIds);
+
+    if (readsData) {
+      for (const r of readsData) {
+        const aid = r.article_id as string;
+        readCounts[aid] = (readCounts[aid] || 0) + 1;
+      }
+    }
+  }
+
+  /* 分页 */
+  const total = articles.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const fromIdx = (page - 1) * pageSize;
+  const paginatedArticles = articles.slice(fromIdx, fromIdx + pageSize);
+
+  return {
+    success: true,
+    articles: paginatedArticles,
+    categories: (categoriesData || []) as 知识分类数据[],
+    readCounts,
+    currentUserId,
+    isAdmin,
+    total,
+    totalPages,
+  };
+}
 
 interface InlineText {
   type: "text";

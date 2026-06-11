@@ -1,33 +1,41 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 
-export default function WorkOrderSearch() {
+interface WorkOrderSearchProps {
+  keyword: string;
+}
+
+export default function WorkOrderSearch({ keyword: initialKeyword }: WorkOrderSearchProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const status = searchParams.get("status") || "";
-  const [keyword, setKeyword] = useState(searchParams.get("keyword") || "");
+  const [keyword, setKeyword] = useState(initialKeyword);
+  const isFirstRender = useRef(true);
 
-  const doSearch = useCallback(
-    (value: string) => {
-      const params = new URLSearchParams();
-      if (status) params.set("status", status);
-      if (value.trim()) params.set("keyword", value.trim());
-      router.push(`/work-orders?${params.toString()}`);
-    },
-    [router, status]
-  );
-
+  /* 同步 URL 参数变化 */
   useEffect(() => {
+    setKeyword(initialKeyword);
+  }, [initialKeyword]);
+
+  /* 防抖搜索：300ms 后自动提交 */
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     const timer = setTimeout(() => {
-      const current = searchParams.get("keyword") || "";
-      if (keyword !== current) {
-        doSearch(keyword);
+      const params = new URLSearchParams(window.location.search);
+      params.set("page", "1");
+      if (keyword.trim()) {
+        params.set("keyword", keyword.trim());
+      } else {
+        params.delete("keyword");
       }
+      const qs = params.toString();
+      router.push(qs ? `/work-orders?${qs}` : "/work-orders");
     }, 300);
     return () => clearTimeout(timer);
-  }, [keyword, searchParams, doSearch]);
+  }, [keyword, router]);
 
   return (
     <div className="relative">
@@ -53,6 +61,7 @@ export default function WorkOrderSearch() {
       </svg>
       {keyword && (
         <button
+          type="button"
           onClick={() => setKeyword("")}
           className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
         >

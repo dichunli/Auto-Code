@@ -1,29 +1,20 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
-import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
-import WorkOrderSearch from "@/components/WorkOrderSearch";
 import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
 import { logAction } from "@/lib/operationLog";
+import type { Order } from "./page";
 
-interface Order {
-  id: string;
-  order_no: string;
-  status: string;
-  boardStage: string;
-  total_cost: number;
-  created_at: string;
-  order_type: string;
-  vehicles: { plate_number: string; brand: string; model: string; vin: string } | null;
-  customers: { name: string; phone: string; company: string } | null;
-}
-
-// 工单"已结单"对应的几种 work_orders.status
-const SETTLED_STATUSES = ["settled", "delivered", "pending_close", "pending_settlement"];
+/* ═════════════════════════════════════════════════════════════════
+ * 工单列表内容 — Client Component（纯展示 + 交互）
+ *
+ * 数据由父组件（page.tsx Server Component）通过 props 传入。
+ * 本组件只负责渲染表格和处理交互（删除、打开详情等）。
+ * ═════════════════════════════════════════════════════════════════ */
 
 const STAGE_LABELS: Record<string, string> = {
   pending_diagnosis: "待诊断",
@@ -47,210 +38,41 @@ const STAGE_COLORS: Record<string, string> = {
   settled: "bg-emerald-100 text-emerald-700",
 };
 
-interface WorkOrderItem {
-  id: string;
-  status?: string | null;
-  mechanic_id?: string | null;
-  item_type?: string | null;
-}
-
-interface RawWorkOrder {
-  id: string;
-  order_no: string;
+interface WorkOrdersContentProps {
+  orders: Order[];
+  total: number;
+  page: number;
+  totalPages: number;
   status: string;
-  order_type?: string | null;
-  total_cost?: number | null;
-  created_at: string;
-  vehicles?: { plate_number: string; brand: string; model: string; vin: string } | { plate_number: string; brand: string; model: string; vin: string }[] | null;
-  customers?: { name: string; phone: string; company: string } | { name: string; phone: string; company: string }[] | null;
-  work_order_items?: WorkOrderItem[] | null;
+  type: string;
+  queryError: string | null;
+  baseParams: Record<string, string>;
 }
 
-// 综合 work_orders.status + work_order_items 计算该工单的"代表看板阶段"
-function computeBoardStage(raw: RawWorkOrder): string {
-  const orderStatus = raw.status;
-  if (SETTLED_STATUSES.includes(orderStatus)) return "settled";
-  if (orderStatus === "pending_quality_check") return "pending_qc";
-
-  const labors = (raw.work_order_items || []).filter((it: WorkOrderItem) => it.item_type === "labor");
-  if (labors.length === 0) return "pending_diagnosis";
-
-  // 优先级（高→低）：已中断 → 施工中 → 已完工 → 待派工 → 待施工
-  if (labors.some((it: WorkOrderItem) => it.status === "paused")) return "paused";
-  if (labors.some((it: WorkOrderItem) => it.status === "in_progress")) return "in_progress";
-  if (labors.every((it: WorkOrderItem) => it.status === "completed")) return "completed";
-
-  const hasUnassigned = labors.some(
-    (it: WorkOrderItem) => (it.status === "pending" || !it.status) && !it.mechanic_id
-  );
-  if (hasUnassigned) return "pending_dispatch";
-
-  return "pending_construction";
-}
-
-function normalizeOrder(raw: RawWorkOrder): Order {
-  const v = raw.vehicles;
-  const c = raw.customers;
-  return {
-    id: raw.id,
-    order_no: raw.order_no,
-    status: raw.status,
-    boardStage: computeBoardStage(raw),
-    total_cost: raw.total_cost,
-    created_at: raw.created_at,
-    order_type: raw.order_type || "normal",
-    vehicles: Array.isArray(v) ? v[0] || null : v || null,
-    customers: Array.isArray(c) ? c[0] || null : c || null,
-  };
-}
-
-const HISTORY_STATUSES = ["settled", "delivered"];
-
-const statusFilters = [
-  { value: "", label: "全部" },
-  { value: "pending_diagnosis", label: "待诊断" },
-  { value: "pending_dispatch", label: "待派工" },
-  { value: "pending_construction", label: "待施工" },
-  { value: "in_progress", label: "施工中" },
-  { value: "paused", label: "已中断" },
-  { value: "completed", label: "已完工" },
-  { value: "pending_qc", label: "已质检" },
-  { value: "settled", label: "已结单" },
-];
-
-const typeLabelMap: Record<string, string> = {
-  normal: "正常工单",
-  appointment: "预约单",
-  quote: "报价单",
-  maintenance: "保养工单",
-  cancelled: "作废工单",
-};
-
-const SETTLEMENT_OPTIONS = [
-  { value: "", label: "全部" },
-  { value: "unsettled", label: "未结算" },
-  { value: "pending", label: "待结算" },
-  { value: "settled", label: "已结算" },
-];
-
-export default function WorkOrdersContent() {
-  const searchParams = useSearchParams();
+export default function WorkOrdersContent({
+  orders,
+  total,
+  page,
+  totalPages,
+  status,
+  type,
+  queryError,
+  baseParams,
+}: WorkOrdersContentProps) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
+  const supabase = createClient();
 
-  const status = searchParams.get("status") || "";
-  const keyword = searchParams.get("keyword") || "";
-  const type = searchParams.get("type") || "";
-  const settlement = searchParams.get("settlement") || "";
-  const tabsParam = searchParams.get("tabs") || "";
-  const tabs = tabsParam.split(",").filter(Boolean);
-
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [queryError, setQueryError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; orderNo: string } | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("work_orders")
-        .select(`
-          id, order_no, status, order_type, total_cost, created_at,
-          vehicles(plate_number, brand, model, vin),
-          customers(name, phone, company),
-          work_order_items(id, status, mechanic_id, item_type)
-        `)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        setQueryError(error.message);
-        setOrders([]);
-      } else {
-        setQueryError(null);
-        let result = (data || []).map(normalizeOrder);
-
-        // 按工单类型筛选（优先）
-        if (type) {
-          result = result.filter((o) => o.order_type === type);
-        }
-
-        // 按状态筛选
-        if (status === "active" && !type) {
-          result = result.filter((o) => !HISTORY_STATUSES.includes(o.status) && o.order_type === "normal");
-        } else if (status === "history" && !type) {
-          result = result.filter((o) => HISTORY_STATUSES.includes(o.status));
-        } else if (status === "all" && !type) {
-          // 显示全部，不过滤 active/history
-        } else if (status && !type) {
-          result = result.filter((o) => o.boardStage === status);
-        }
-
-        // 按结算状态筛选
-        if (settlement && !type) {
-          if (settlement === "unsettled") {
-            result = result.filter((o) => !["pending_settlement", "settled", "delivered"].includes(o.status));
-          } else if (settlement === "pending") {
-            result = result.filter((o) => o.status === "pending_settlement");
-          } else if (settlement === "settled") {
-            result = result.filter((o) => ["settled", "delivered"].includes(o.status));
-          }
-        }
-
-        if (keyword?.trim()) {
-          const k = keyword.trim().toLowerCase();
-          result = result.filter((order) => {
-            const orderNo = order.order_no?.toLowerCase() || "";
-            const plate = order.vehicles?.plate_number?.toLowerCase() || "";
-            const vin = order.vehicles?.vin?.toLowerCase() || "";
-            const brand = order.vehicles?.brand?.toLowerCase() || "";
-            const model = order.vehicles?.model?.toLowerCase() || "";
-            const customerName = order.customers?.name?.toLowerCase() || "";
-            const phone = order.customers?.phone?.toLowerCase() || "";
-            const company = order.customers?.company?.toLowerCase() || "";
-            return (
-              orderNo.includes(k) ||
-              plate.includes(k) ||
-              vin.includes(k) ||
-              brand.includes(k) ||
-              model.includes(k) ||
-              customerName.includes(k) ||
-              phone.includes(k) ||
-              company.includes(k)
-            );
-          });
-        }
-        setOrders(result);
-      }
-      setLoading(false);
-    }
-    load();
-  }, [status, keyword, type, settlement, supabase, refreshKey]);
-
-  function buildLink(params: Record<string, string>) {
-    const sp = new URLSearchParams();
-    if (type) sp.set("type", type);
-    if (tabsParam) sp.set("tabs", tabsParam);
-    if (settlement) sp.set("settlement", settlement);
-    if (keyword) sp.set("keyword", keyword);
-    Object.entries(params).forEach(([k, v]) => {
-      if (v) sp.set(k, v);
-      else sp.delete(k);
-    });
-    const qs = sp.toString();
-    return qs ? `/work-orders?${qs}` : "/work-orders";
-  }
-
   function openOrderTab(orderId: string) {
+    const tabsParam = baseParams.tabs || "";
+    const tabs = tabsParam.split(",").filter(Boolean);
     const newTabs = tabs.includes(orderId) ? tabs : [...tabs, orderId];
     router.push(`/work-orders/${orderId}?tabs=${newTabs.join(",")}`);
   }
-
-  const pageTitle = type ? typeLabelMap[type] || "工单管理" : "工单管理";
 
   function handleDelete(orderId: string, orderNo: string) {
     setDeleteTarget({ id: orderId, orderNo });
@@ -285,106 +107,25 @@ export default function WorkOrdersContent() {
     setDeleteTarget(null);
     setDeleteReason("");
 
-    /* 以事件驱动方式更新角标（删除工单只在作废工单页面，所以只减作废和全部） */
-    window.dispatchEvent(new CustomEvent("work-order-count-change", {
-      detail: { delta: { all: -1, cancelled: -1 } }
-    }));
-    window.dispatchEvent(new Event("work-order-counts-update"));
+    /* 刷新页面以更新列表 */
+    window.location.reload();
+  }
 
-    setOrders((prev) => prev.filter((o) => o.id !== deleteTarget.id));
+  function buildLink(updates: Record<string, string>): string {
+    const sp = new URLSearchParams();
+    Object.entries(baseParams).forEach(([k, v]) => {
+      if (v) sp.set(k, v);
+    });
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v) sp.set(k, v);
+      else sp.delete(k);
+    });
+    const qs = sp.toString();
+    return qs ? `/work-orders?${qs}` : "/work-orders";
   }
 
   return (
     <div>
-      <WorkOrderTabBar tabs={tabsParam} />
-
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-gray-900">{pageTitle}</h1>
-        {(!type && status !== "history") && (
-          <Link
-            href="/work-orders/new"
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-          >
-            新建工单
-          </Link>
-        )}
-      </div>
-
-      {!type && (
-        <div className="flex items-center gap-3 mb-4 overflow-x-auto pb-1">
-          <div className="flex gap-2">
-            {statusFilters.map((filter) => (
-              <Link
-                key={filter.value}
-                href={buildLink({ status: filter.value })}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                  (status || "") === filter.value
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-                }`}
-              >
-                {filter.label}
-              </Link>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-sm text-gray-500 whitespace-nowrap">结算状态</span>
-            <select
-              value={settlement}
-              onChange={(e) => {
-                const sp = new URLSearchParams();
-                if (type) sp.set("type", type);
-                if (tabsParam) sp.set("tabs", tabsParam);
-                if (status) sp.set("status", status);
-                if (keyword) sp.set("keyword", keyword);
-                if (e.target.value) sp.set("settlement", e.target.value);
-                const qs = sp.toString();
-                router.push(qs ? `/work-orders?${qs}` : "/work-orders");
-              }}
-              className="px-2 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {SETTLEMENT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex-1" />
-          <WorkOrderSearch />
-        </div>
-      )}
-
-      {type && (
-        <div className="flex items-center gap-3 mb-4 overflow-x-auto pb-1">
-          <div className="flex gap-2">
-            <Link
-              href={buildLink({ type: "" })}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-            >
-              ← 返回全部工单
-            </Link>
-          </div>
-          <div className="flex-1" />
-          <WorkOrderSearch />
-        </div>
-      )}
-
-      {!type && (
-        <div className="flex items-center gap-2 mb-6">
-          <Link
-            href={buildLink({})}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200"
-          >
-            列表视图
-          </Link>
-          <Link
-            href="/work-orders/board"
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-          >
-            维修看板
-          </Link>
-        </div>
-      )}
-
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -404,10 +145,11 @@ export default function WorkOrdersContent() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {orders?.map((order: Order) => (
+              {orders.map((order: Order) => (
                 <tr key={order.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">
                     <button
+                      type="button"
                       onClick={() => openOrderTab(order.id)}
                       className="text-blue-600 hover:text-blue-700 hover:underline text-left"
                     >
@@ -436,6 +178,7 @@ export default function WorkOrdersContent() {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <button
+                        type="button"
                         onClick={() => openOrderTab(order.id)}
                         className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                       >
@@ -445,10 +188,11 @@ export default function WorkOrdersContent() {
                         workOrderId={order.id}
                         orderNo={order.order_no}
                         currentType={order.order_type}
-                        onSuccess={() => setRefreshKey((k) => k + 1)}
+                        onSuccess={() => window.location.reload()}
                       />
                       {type === "cancelled" && (
                         <button
+                          type="button"
                           onClick={() => handleDelete(order.id, order.order_no)}
                           className="text-sm text-red-600 hover:text-red-700 font-medium"
                         >
@@ -466,17 +210,10 @@ export default function WorkOrdersContent() {
                   </td>
                 </tr>
               )}
-              {(!queryError && (!orders || orders.length === 0) && !loading) && (
+              {!queryError && orders.length === 0 && (
                 <tr>
                   <td colSpan={type ? 10 : 11} className="px-6 py-12 text-center text-gray-400">
-                    {type ? `暂无${typeLabelMap[type] || ""}数据` : "暂无工单数据"}
-                  </td>
-                </tr>
-              )}
-              {loading && (
-                <tr>
-                  <td colSpan={type ? 10 : 11} className="px-6 py-12 text-center text-gray-400">
-                    加载中...
+                    {type ? `暂无数据` : "暂无工单数据"}
                   </td>
                 </tr>
               )}
@@ -484,6 +221,68 @@ export default function WorkOrdersContent() {
           </table>
         </div>
       </div>
+
+      {/* 分页 */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-gray-500">
+            共 {total} 条，第 {page}/{totalPages} 页
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              href={buildLink({ page: String(Math.max(1, page - 1)) })}
+              className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${
+                page <= 1 ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              上一页
+            </Link>
+            <span className="text-sm text-gray-600 px-2">
+              {page} / {totalPages}
+            </span>
+            <Link
+              href={buildLink({ page: String(Math.min(totalPages, page + 1)) })}
+              className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${
+                page >= totalPages ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              下一页
+            </Link>
+            <form
+              method="GET"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const input = form.querySelector('input[name="page"]') as HTMLInputElement;
+                const p = parseInt(input.value, 10);
+                if (p >= 1 && p <= totalPages) {
+                  router.push(buildLink({ page: String(p) }));
+                }
+              }}
+              className="flex items-center gap-2 ml-4"
+            >
+              {Object.entries(baseParams).map(([k, v]) =>
+                v && k !== "page" ? <input key={k} type="hidden" name={k} value={v} /> : null
+              )}
+              <span className="text-sm text-gray-500">跳转到</span>
+              <input
+                name="page"
+                type="number"
+                min={1}
+                max={totalPages}
+                defaultValue={page}
+                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                确定
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* 删除原因弹窗 */}
       {deleteModalOpen && deleteTarget && (
@@ -500,12 +299,18 @@ export default function WorkOrdersContent() {
             />
             <div className="flex justify-end gap-2 mt-4">
               <button
-                onClick={() => { setDeleteModalOpen(false); setDeleteTarget(null); setDeleteReason(""); }}
+                type="button"
+                onClick={() => {
+                  setDeleteModalOpen(false);
+                  setDeleteTarget(null);
+                  setDeleteReason("");
+                }}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
                 取消
               </button>
               <button
+                type="button"
                 onClick={handleDeleteConfirm}
                 disabled={deleteLoading}
                 className="px-4 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"

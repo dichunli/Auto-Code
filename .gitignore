@@ -64,8 +64,8 @@ android/app/my-release-key.jks
 # 大型数据文件
 model_for_api.sql
 
-# Service Worker 构建产物
-public/sw.js
+# Service Worker 构建产物（已由手动版本替代，不再忽略）
+# public/sw.js
 
 # 临时文件
 tmp_*.html

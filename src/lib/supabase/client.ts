@@ -15,6 +15,7 @@
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { stringFromBase64URL } from "@supabase/ssr";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 
 let browserClient: ReturnType<typeof createSupabaseClient> | null = null;
@@ -34,6 +35,97 @@ const 项目引用 = 获取项目引用();
 const 认证存储Key = `sb-${项目引用}-auth-token`;
 const APP认证存储Key = `sb-${项目引用}-auth-token-app`;
 
+/* base64url 解码（兼容 @supabase/ssr 的 cookie 编码，支持 UTF-8） */
+function base64url解码(str: string): string {
+  return stringFromBase64URL(str);
+}
+
+/* 解析 @supabase/ssr 格式的 cookie 值（支持 base64- 前缀和分段 cookie） */
+function 从SSRCookie解析Session(key: string): string | null {
+  /* 1. 尝试读取单个 cookie */
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`)
+  );
+  const cookieValue = match ? decodeURIComponent(match[1]) : null;
+
+  if (cookieValue) {
+    /* 1a. 直接是 JSON（当前自定义格式） */
+    try {
+      const parsed = JSON.parse(cookieValue);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof parsed.access_token === "string" &&
+        typeof parsed.refresh_token === "string" &&
+        parsed.access_token.length > 0 &&
+        parsed.refresh_token.length > 0
+      ) {
+        return cookieValue;
+      }
+    } catch {
+      /* 不是纯 JSON，继续尝试 */
+    }
+
+    /* 1b. @supabase/ssr 的 base64url 格式 */
+    if (cookieValue.startsWith("base64-")) {
+      try {
+        const decoded = base64url解码(cookieValue.substring("base64-".length));
+        const parsed = JSON.parse(decoded);
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          typeof parsed.access_token === "string" &&
+          typeof parsed.refresh_token === "string" &&
+          parsed.access_token.length > 0 &&
+          parsed.refresh_token.length > 0
+        ) {
+          return decoded;
+        }
+      } catch {
+        /* 解码失败 */
+      }
+    }
+  }
+
+  /* 2. 尝试读取分段 cookie（sb-key.0, sb-key.1, ...） */
+  const chunks: string[] = [];
+  for (let i = 0; ; i++) {
+    const chunkName = i === 0 ? key : `${key}.${i}`;
+    const chunkMatch = document.cookie.match(
+      new RegExp(`(?:^|; )${chunkName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`)
+    );
+    if (!chunkMatch) break;
+    chunks.push(decodeURIComponent(chunkMatch[1]));
+  }
+
+  if (chunks.length > 0) {
+    try {
+      const combined = chunks.join("");
+      let decoded: string;
+      if (combined.startsWith("base64-")) {
+        decoded = base64url解码(combined.substring("base64-".length));
+      } else {
+        decoded = combined;
+      }
+      const parsed = JSON.parse(decoded);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof parsed.access_token === "string" &&
+        typeof parsed.refresh_token === "string" &&
+        parsed.access_token.length > 0 &&
+        parsed.refresh_token.length > 0
+      ) {
+        return decoded;
+      }
+    } catch {
+      /* 分段解析失败 */
+    }
+  }
+
+  return null;
+}
+
 /*
  * 浏览器环境统一存储：localStorage 为主，同时同步 cookie 给 middleware 读取
  * 解决 @supabase/ssr 的 createBrowserClient 在 Next.js App Router 客户端路由中的 session 丢失问题
@@ -49,12 +141,16 @@ const 浏览器存储 = {
      */
     const localValue = window.localStorage.getItem(key);
     if (localValue) return localValue;
-    /* 回退到 cookie（兼容仅从 cookie 登录的旧 session）*/
+    /*
+     * 回退到 cookie（兼容仅从 cookie 登录的旧 session，包括 @supabase/ssr 格式）。
+     * 如果读到了有效数据，同步到 localStorage 以便后续优先读取。
+     */
     if (key === 认证存储Key) {
-      const match = document.cookie.match(
-        new RegExp(`(?:^|; )${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`)
-      );
-      if (match) return decodeURIComponent(match[1]);
+      const ssrValue = 从SSRCookie解析Session(key);
+      if (ssrValue) {
+        window.localStorage.setItem(key, ssrValue);
+        return ssrValue;
+      }
     }
     return null;
   },
@@ -114,7 +210,7 @@ export function createClient() {
             storage: APP存储,
             storageKey: APP认证存储Key,
             autoRefreshToken: true,
-            flowType: "implicit",
+            flowType: "pkce",
             detectSessionInUrl: false,
           },
         }
@@ -153,6 +249,7 @@ export function createClient() {
           storage: 浏览器存储,
           storageKey: 认证存储Key,
           autoRefreshToken: true,
+          flowType: "pkce",
           detectSessionInUrl: false,
         },
       }
