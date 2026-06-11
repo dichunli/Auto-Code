@@ -85,10 +85,31 @@ export default function ServiceItemsPage() {
 
   const loadItems = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    /* ===== 临时诊断日志（确认是否登录态竞速，确认后删除） ===== */
+    const t0 = Date.now();
+    const { data: sessionData } = await supabase.auth.getSession();
+    console.log(
+      "[维修项目诊断] 查询发出前 → 登录态:",
+      sessionData.session ? "已登录(有token)" : "❌ 无登录态",
+      "| 用户:",
+      sessionData.session?.user?.email ?? "(无)"
+    );
+    const { data, error, status } = await supabase
       .from("service_items")
       .select("*, service_categories(name)")
       .order("created_at", { ascending: false });
+    console.log(
+      "[维修项目诊断] 查询返回 →",
+      "条数:",
+      data?.length ?? 0,
+      "| HTTP状态:",
+      status,
+      "| 报错:",
+      error ? error.message : "无",
+      "| 耗时(ms):",
+      Date.now() - t0
+    );
+    /* ===== 诊断日志结束 ===== */
     setItems((data as ServiceItem[]) || []);
     setLoading(false);
   }, [supabase]);
