@@ -87,26 +87,43 @@ export default function ServiceItemsPage() {
     setLoading(true);
     /* ===== 临时诊断日志（确认是否登录态竞速，确认后删除） ===== */
     const t0 = Date.now();
+    /* A. 直接看 localStorage 里此刻有没有登录数据 */
+    const ref = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").split("//")[1]?.split(".")[0] ?? "";
+    const lsKey = `sb-${ref}-auth-token`;
+    const lsRaw = typeof window !== "undefined" ? window.localStorage.getItem(lsKey) : null;
+    console.log(
+      "[诊断A] localStorage 登录数据:",
+      lsRaw ? `✅ 存在(${lsRaw.length}字节)` : "❌ 不存在",
+      "| key:",
+      lsKey
+    );
+    /* B. getSession（会等内部恢复） */
     const { data: sessionData } = await supabase.auth.getSession();
     console.log(
-      "[维修项目诊断] 查询发出前 → 登录态:",
-      sessionData.session ? "已登录(有token)" : "❌ 无登录态",
-      "| 用户:",
-      sessionData.session?.user?.email ?? "(无)"
+      "[诊断B] getSession 登录态:",
+      sessionData.session ? "✅ 已登录" : "❌ 无登录态"
     );
+    /* C. getUser（强制校验，会发网络请求） */
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    console.log(
+      "[诊断C] getUser:",
+      userData.user ? `✅ ${userData.user.email}` : "❌ 无用户",
+      "| 报错:",
+      userErr ? userErr.message : "无"
+    );
+    /* D. 实际查询 */
     const { data, error, status } = await supabase
       .from("service_items")
       .select("*, service_categories(name)")
       .order("created_at", { ascending: false });
     console.log(
-      "[维修项目诊断] 查询返回 →",
-      "条数:",
+      "[诊断D] 查询返回 → 条数:",
       data?.length ?? 0,
-      "| HTTP状态:",
+      "| HTTP:",
       status,
       "| 报错:",
       error ? error.message : "无",
-      "| 耗时(ms):",
+      "| 总耗时(ms):",
       Date.now() - t0
     );
     /* ===== 诊断日志结束 ===== */
