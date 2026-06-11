@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import KnowledgeImportExport from "./KnowledgeImportExport";
 
@@ -119,10 +120,9 @@ export default function KnowledgePage() {
   const [categories, setCategories] = useState<知识分类[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchKeyword, setSearchKeyword] = useState("");
-  const [debouncedKeyword, setDebouncedKeyword] = useState("");
+  const debouncedKeyword = useDebounce(searchKeyword, 300);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* 当前用户信息 */
   const [currentUserId, setCurrentUserId] = useState<string>("");
@@ -156,13 +156,11 @@ export default function KnowledgePage() {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      console.log("[知识库] 开始加载数据, debouncedKeyword:", debouncedKeyword);
       try {
         let articlesData: 知识文章[] = [];
 
         if (debouncedKeyword.trim()) {
           /* 分词搜索：调用数据库函数 */
-          console.log("[知识库] 调用 RPC search_knowledge_articles");
           interface 搜索结果行 {
             id: string;
             title: string;
@@ -196,7 +194,6 @@ export default function KnowledgePage() {
           }));
         } else {
           /* 正常加载全部 */
-          console.log("[知识库] 正常加载文章列表");
           const { data, error } = await supabase
             .from("knowledge_articles")
             .select("*, knowledge_categories(name), profiles(full_name), created_by")
@@ -213,7 +210,6 @@ export default function KnowledgePage() {
           articlesData = (data || []) as 知识文章[];
         }
 
-        console.log("[知识库] 加载分类...");
         const { data: categoriesData, error: catError } = await supabase
           .from("knowledge_categories")
           .select("*")
@@ -242,7 +238,6 @@ export default function KnowledgePage() {
           }
         }
 
-        console.log("[知识库] 加载完成, 文章:", articlesData.length, "分类:", (categoriesData || []).length);
         setArticles(articlesData);
         setCategories(categoriesData || []);
       } catch (err: unknown) {
@@ -252,7 +247,6 @@ export default function KnowledgePage() {
       }
       if (!cancelled) {
         setLoading(false);
-        console.log("[知识库] loading 已关闭");
       }
     }
     load();
@@ -262,8 +256,6 @@ export default function KnowledgePage() {
   /* 搜索防抖 */
   function handleSearchChange(val: string) {
     setSearchKeyword(val);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => setDebouncedKeyword(val.trim()), 300);
   }
 
   /* 解析搜索关键词：空格分词 + 中文2字子串（和数据库函数逻辑一致） */

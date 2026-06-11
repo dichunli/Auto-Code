@@ -2,13 +2,10 @@
 export function requestNotificationPermission() {
   if (typeof window === "undefined") return;
   if (!("Notification" in window)) {
-    console.log("当前浏览器不支持桌面通知");
     return;
   }
   if (Notification.permission === "default") {
-    Notification.requestPermission().then((permission) => {
-      console.log("桌面通知权限:", permission);
-    });
+    Notification.requestPermission();
   }
 }
 

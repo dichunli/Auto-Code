@@ -77,14 +77,11 @@ export default function LoginPage() {
   }
 
   async function handleSubmit() {
-    console.log("[login] handleSubmit called, supabase:", supabase ? "initialized" : "null");
     /* 防止 supabase 客户端尚未初始化时提交 */
     if (!supabase) {
-      console.log("[login] supabase null, creating client...");
       try {
         const client = createClient();
         setSupabase(client);
-        console.log("[login] client created, proceeding login");
         /* 继续用新创建的客户端登录 */
         await 用客户端登录(client);
         return;

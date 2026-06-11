@@ -30,9 +30,7 @@ export function WorkOrderRealtimeSync({ itemIds }: Props) {
           router.refresh();
         }
       )
-      .subscribe((status) => {
-        console.log("[工单Realtime] 订阅状态:", status);
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);

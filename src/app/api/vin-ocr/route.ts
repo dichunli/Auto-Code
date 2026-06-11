@@ -28,12 +28,7 @@ export async function POST(request: Request) {
     const compressedBase64 = compressedBuffer.toString("base64");
     const base64Urlencode = encodeURIComponent(compressedBase64);
 
-    /* 4. 记录压缩前后大小 */
-    console.log("[VIN OCR] 原始大小:", Math.round(imageBuffer.length / 1024), "KB");
-    console.log("[VIN OCR] 压缩后大小:", Math.round(compressedBuffer.length / 1024), "KB");
-    console.log("[VIN OCR] URL编码后长度:", base64Urlencode.length);
-
-    /* 5. 传给17VIN */
+    /* 4. 传给17VIN */
     const result = withDecode
       ? await vin17OcrAndDecode(base64Urlencode)
       : await vin17OcrImage(base64Urlencode);

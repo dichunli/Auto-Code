@@ -167,9 +167,7 @@ export function PartBranchStatusList({ status }: Props) {
           }
         }
       )
-      .subscribe((status) => {
-        console.log("[Realtime] 订阅状态:", status);
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);

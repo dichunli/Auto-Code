@@ -76,7 +76,6 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
   }
 
   const body = await 读取请求体(request);
-  console.log("[multipart] body size:", body.length, "boundary:", boundary);
 
   if (body.length === 0) {
     throw new Error("请求体为空");
@@ -93,7 +92,6 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
 
   /* 找第一个 boundary 的位置（可能在请求体开头或 preamble 之后） */
   let start = body.indexOf(boundaryBuffer);
-  console.log("[multipart] first boundary at:", start);
 
   if (start === -1) {
     throw new Error("请求中没有找到 boundary");
@@ -135,7 +133,6 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
 
     const { name: fieldName, filename } = 解析ContentDisposition(headersText);
     partCount++;
-    console.log("[multipart] part", partCount, { fieldName, filename, dataLength: data.length, headers: headersText.slice(0, 200) });
 
     if (fieldName === "file" && filename !== null) {
       const ctMatch = headersText.match(/Content-Type:\s*([^\r\n]+)/i);
