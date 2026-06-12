@@ -14,7 +14,6 @@ import { compressImage, base64转Blob } from "@/lib/imageCompress";
 import { blocknoteDictionary } from "@/lib/blocknoteDictionary";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
-import { 启动原生录像, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 
 interface Props {
   initialValue?: string;
@@ -169,38 +168,6 @@ function CustomToolbarButtons({
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
       alert("拍照失败: " + msg);
-    }
-  }
-
-  /* APP 环境：使用原生录像（WebView 不支持文件选择） */
-  async function handleAppRecordVideo() {
-    try {
-      const result = await 启动原生录像();
-      if (result.cancelled) return;
-      if (result.error || !result.filePath) {
-        alert("录像失败: " + (result.error || "未知错误"));
-        return;
-      }
-      const fileUrl = 本地文件路径转URL(result.filePath);
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error("读取视频文件失败");
-      const blob = await response.blob();
-      if (blob.size > 500 * 1024 * 1024) {
-        alert("视频大小不能超过 500MB");
-        return;
-      }
-      const file = new File([blob], `record_${Date.now()}.mp4`, { type: blob.type || "video/mp4" });
-      const url = await uploadFile(file);
-      const pos = editor.getTextCursorPosition();
-      editor.insertBlocks(
-        [{ type: "video", props: { url, caption: "" } }],
-        pos.block,
-        "after"
-      );
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("cancelled")) return;
-      alert("录像上传失败: " + msg);
     }
   }
 
@@ -470,39 +437,23 @@ function CustomToolbarButtons({
         抖音视频
       </button>
 
-      {/* 上传视频：APP 调用原生录像，浏览器用文件选择 */}
-      {是Capacitor环境() ? (
-        <button
-          type="button"
-          className={btnBase}
-          onClick={handleAppRecordVideo}
-          title="录像"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-          </svg>
-          上传视频
-        </button>
-      ) : (
-        <label className={btnBase + " cursor-pointer"} title="上传视频">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-          </svg>
-          上传视频
-          <input ref={videoFileInputRef} type="file" accept="video/*" className="sr-only" onChange={handleUploadVideo} />
-        </label>
-      )}
+      {/* 上传视频 */}
+      <label className={btnBase + " cursor-pointer"} title="上传视频">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+        </svg>
+        上传视频
+        <input ref={videoFileInputRef} type="file" accept="video/*" className="sr-only" onChange={handleUploadVideo} />
+      </label>
 
-      {/* 上传文件：APP 环境不显示（WebView 不支持文件选择） */}
-      {!是Capacitor环境() && (
-        <label className={btnBase + " cursor-pointer"} title="上传文件">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          文件
-          <input ref={fileInputRef} type="file" accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf" className="sr-only" onChange={handleUploadOfficeFile} />
-        </label>
-      )}
+      {/* 上传文件 */}
+      <label className={btnBase + " cursor-pointer"} title="上传文件">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        文件
+        <input ref={fileInputRef} type="file" accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf" className="sr-only" onChange={handleUploadOfficeFile} />
+      </label>
 
       {/* 插入文件链接 */}
       <button type="button" className={btnBase} onClick={handleInsertFile} title="插入文件链接">
