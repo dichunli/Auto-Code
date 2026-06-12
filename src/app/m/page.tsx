@@ -70,6 +70,13 @@ const MENU_ITEMS: MenuItem[] = [
     color: "bg-cyan-500",
   },
   {
+    label: "工具管理",
+    href: "/tools/management",
+    permission: "tool:manage",
+    desc: "工具台账、扫码借用归还",
+    color: "bg-indigo-500",
+  },
+  {
     label: "功能测试",
     href: "/m/test",
     permission: "work_order:create",

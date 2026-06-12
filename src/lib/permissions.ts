@@ -16,11 +16,12 @@ export type Permission =
   | "report:performance"
   | "dashboard:all"
   | "payment:manage"
+  | "tool:manage"
   | "*";
 
 export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   admin: ["*"],
-  boss: ["report:view", "report:profit", "report:performance", "dashboard:all", "customer:manage", "vehicle:manage"],
+  boss: ["report:view", "report:profit", "report:performance", "dashboard:all", "customer:manage", "vehicle:manage", "tool:manage"],
   receptionist: [
     "work_order:create",
     "work_order:quote",
@@ -28,10 +29,11 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     "work_order:deliver",
     "customer:manage",
     "vehicle:manage",
+    "tool:manage",
   ],
-  mechanic: ["work_order:diagnose", "work_order:repair", "work_order:quality_check"],
-  warehouse: ["inventory:manage", "inventory:in", "inventory:out"],
-  accountant: ["payment:manage", "report:view", "report:profit"],
+  mechanic: ["work_order:diagnose", "work_order:repair", "work_order:quality_check", "tool:manage"],
+  warehouse: ["inventory:manage", "inventory:in", "inventory:out", "tool:manage"],
+  accountant: ["payment:manage", "report:view", "report:profit", "tool:manage"],
 };
 
 export function hasPermission(userRoles: string[], permission: Permission): boolean {
