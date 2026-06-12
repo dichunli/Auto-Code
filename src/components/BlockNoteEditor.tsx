@@ -10,8 +10,11 @@ import {
 import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
 import { createClient } from "@/lib/supabase/client";
-import { compressImage } from "@/lib/imageCompress";
+import { compressImage, base64转Blob } from "@/lib/imageCompress";
 import { blocknoteDictionary } from "@/lib/blocknoteDictionary";
+import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import { 启动原生录像, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 
 interface Props {
   initialValue?: string;
@@ -122,21 +125,83 @@ function CustomToolbarButtons({
   const btnBase =
     "px-1.5 py-1 text-xs rounded hover:bg-gray-200 transition-colors text-gray-600 flex items-center gap-1";
 
+  /* 通用处理：上传文件并插入到编辑器 */
+  async function insertFileToEditor(file: File) {
+    const url = await uploadFile(file);
+    const pos = editor.getTextCursorPosition();
+    editor.insertBlocks(
+      [{ type: "image", props: { url, caption: "" } }],
+      pos.block,
+      "after"
+    );
+  }
+
+  /* 浏览器环境：处理 file input 选择 */
   async function handleInsertImage(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const url = await uploadFile(file);
-      const pos = editor.getTextCursorPosition();
-      editor.insertBlocks(
-        [{ type: "image", props: { url, caption: "" } }],
-        pos.block,
-        "after"
-      );
+      await insertFileToEditor(file);
     } catch (err: unknown) {
       alert("图片插入失败: " + (err instanceof Error ? err.message : String(err)));
     }
     e.target.value = "";
+  }
+
+  /* APP 环境：使用 Capacitor 原生相机/相册拍照 */
+  async function handleAppPickImage() {
+    try {
+      const photo = await Camera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Prompt, /* 让用户选择拍照或相册 */
+      });
+      if (!photo.base64String) {
+        alert("拍照未获取到图片");
+        return;
+      }
+      const base64 = `data:image/jpeg;base64,${photo.base64String}`;
+      const blob = base64转Blob(base64);
+      const file = new File([blob], `camera_${Date.now()}.jpg`, { type: "image/jpeg" });
+      await insertFileToEditor(file);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
+      alert("拍照失败: " + msg);
+    }
+  }
+
+  /* APP 环境：使用原生录像（WebView 不支持文件选择） */
+  async function handleAppRecordVideo() {
+    try {
+      const result = await 启动原生录像();
+      if (result.cancelled) return;
+      if (result.error || !result.filePath) {
+        alert("录像失败: " + (result.error || "未知错误"));
+        return;
+      }
+      const fileUrl = 本地文件路径转URL(result.filePath);
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error("读取视频文件失败");
+      const blob = await response.blob();
+      if (blob.size > 500 * 1024 * 1024) {
+        alert("视频大小不能超过 500MB");
+        return;
+      }
+      const file = new File([blob], `record_${Date.now()}.mp4`, { type: blob.type || "video/mp4" });
+      const url = await uploadFile(file);
+      const pos = editor.getTextCursorPosition();
+      editor.insertBlocks(
+        [{ type: "video", props: { url, caption: "" } }],
+        pos.block,
+        "after"
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("cancelled")) return;
+      alert("录像上传失败: " + msg);
+    }
   }
 
   function handleInsertTable() {
@@ -366,23 +431,28 @@ function CustomToolbarButtons({
         <JumpLinkModal editor={editor} onClose={() => setShowJumpModal(false)} />
       )}
 
-      {/* 插入图片 — 用 label+input 原生方式（WebView 不支持 JS .click() 打开文件选择器） */}
-      <label
-        className={btnBase + " cursor-pointer"}
-        title="插入图片"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-        图片
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          onChange={handleInsertImage}
-        />
-      </label>
+      {/* 插入图片：APP 调用原生相机，浏览器用文件选择 */}
+      {是Capacitor环境() ? (
+        <button
+          type="button"
+          className={btnBase}
+          onClick={handleAppPickImage}
+          title="拍照/相册"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          图片
+        </button>
+      ) : (
+        <label className={btnBase + " cursor-pointer"} title="插入图片">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          图片
+          <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" onChange={handleInsertImage} />
+        </label>
+      )}
 
       {/* 插入视频链接 */}
       <button type="button" className={btnBase} onClick={handleInsertVideo} title="插入视频链接">
@@ -400,41 +470,39 @@ function CustomToolbarButtons({
         抖音视频
       </button>
 
-      {/* 上传视频 — 用 label+input 原生方式（WebView 不支持 JS .click() 打开文件选择器） */}
-      <label
-        className={btnBase + " cursor-pointer"}
-        title="上传视频"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-        </svg>
-        上传视频
-        <input
-          ref={videoFileInputRef}
-          type="file"
-          accept="video/*"
-          className="sr-only"
-          onChange={handleUploadVideo}
-        />
-      </label>
+      {/* 上传视频：APP 调用原生录像，浏览器用文件选择 */}
+      {是Capacitor环境() ? (
+        <button
+          type="button"
+          className={btnBase}
+          onClick={handleAppRecordVideo}
+          title="录像"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+          </svg>
+          上传视频
+        </button>
+      ) : (
+        <label className={btnBase + " cursor-pointer"} title="上传视频">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+          </svg>
+          上传视频
+          <input ref={videoFileInputRef} type="file" accept="video/*" className="sr-only" onChange={handleUploadVideo} />
+        </label>
+      )}
 
-      {/* 上传文件 — 用 label+input 原生方式 */}
-      <label
-        className={btnBase + " cursor-pointer"}
-        title="上传文件"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        文件
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf"
-          className="sr-only"
-          onChange={handleUploadOfficeFile}
-        />
-      </label>
+      {/* 上传文件：APP 环境不显示（WebView 不支持文件选择） */}
+      {!是Capacitor环境() && (
+        <label className={btnBase + " cursor-pointer"} title="上传文件">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          文件
+          <input ref={fileInputRef} type="file" accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf" className="sr-only" onChange={handleUploadOfficeFile} />
+        </label>
+      )}
 
       {/* 插入文件链接 */}
       <button type="button" className={btnBase} onClick={handleInsertFile} title="插入文件链接">
