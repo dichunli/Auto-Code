@@ -29,6 +29,7 @@ export async function updateSession(request: NextRequest) {
 
   // getUser() 可能因网络超时而卡住，加 5 秒保护
   let user = null;
+  let getUser失败于网络 = false;
   try {
     const getUserPromise = supabase.auth.getUser();
     const timeoutPromise = new Promise((_resolve, reject) =>
@@ -37,10 +38,25 @@ export async function updateSession(request: NextRequest) {
     const result = (await Promise.race([getUserPromise, timeoutPromise])) as { data?: { user?: unknown } | null };
     user = result.data?.user || null;
   } catch {
+    getUser失败于网络 = true;
     user = null;
   }
 
+  /*
+   * 区分两种"无用户"场景：
+   * 1. 真的没登录（没有 session cookie） → 跳登录页
+   * 2. 有 session cookie 但 getUser() 网络超时 → 放行，让客户端自己处理 session 恢复
+   *    修复：首次登录后 getUser() 偶发超时导致被踢回登录页、清空表单的问题
+   */
+  const 请求中有SessionCookie = request.cookies.getAll().some(
+    (c) => c.name.includes("-auth-token") && c.value.length > 0
+  );
+
   if (!user && !request.nextUrl.pathname.startsWith("/login")) {
+    if (getUser失败于网络 && 请求中有SessionCookie) {
+      // 网络临时故障但 session cookie 存在，放行不踢回登录页
+      return supabaseResponse;
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

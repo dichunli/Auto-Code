@@ -346,11 +346,54 @@ export function 确保会话就绪(): Promise<void> {
         access_token: 会话.access_token,
         refresh_token: 会话.refresh_token,
       });
-    } catch {
+    } catch (err: unknown) {
+      console.log("[会话就绪] 异常:", err instanceof Error ? err.message : String(err));
       /* 注入失败（数据损坏/网络异常）静默放行，不阻塞页面，按未登录处理 */
     }
   })();
 
   return 会话就绪Promise;
+}
+
+/*
+ * ╔══════════════════════════════════════════════════════════════════════╗
+ * ║  确保有 session — 修复「登录后 getSession 返回空，数据加载为空」      ║
+ * ╠══════════════════════════════════════════════════════════════════════╣
+ * ║  根因：supabase-js 后台自动刷新 token 时因网络超时失败，清空了内存   ║
+ * ║  中的 session，但 localStorage 里还有完整数据。导致 getSession()     ║
+ * ║  返回 null → 查询不带 token → RLS 过滤 → 数据为空。                  ║
+ * ║  修复：每次页面查询前调用本函数——若内存中无 session 但 localStorage   ║
+ * ║  有完整的，重新 setSession 注入，确保后续查询带 token。               ║
+ * ╚══════════════════════════════════════════════════════════════════════╝
+ */
+export async function 确保有session(): Promise<void> {
+  if (typeof window === "undefined" || 是Capacitor环境()) return;
+
+  try {
+    const supabase = createClient();
+    /* 不检查内存中的 getSession，直接读 localStorage 强制注入。
+     * 原因：supabase-js 后台 token 刷新可能因网络超时清空内存 session，
+     * 而 localStorage 里数据完好。两个 await 之间的微任务窗口就能触发清除。 */
+    const 原始值 = 浏览器存储.getItem(认证存储Key);
+    if (!原始值) return;
+
+    const 会话 = JSON.parse(原始值) as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_at?: number;
+    };
+    if (!会话.access_token || !会话.refresh_token) return;
+
+    /* access_token 过期（当前时间超过 expires_at）也跳过，避免注入已过期 token */
+    if (会话.expires_at && Date.now() / 1000 >= 会话.expires_at) return;
+
+    /* 强制注入：不管内存有没有，一律覆盖，确保后续查询一定带 token */
+    await supabase.auth.setSession({
+      access_token: 会话.access_token,
+      refresh_token: 会话.refresh_token,
+    });
+  } catch {
+    /* 静默忽略 */
+  }
 }
 
