@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import ToolQrCode from "./components/ToolQrCode";
 import ToolScanButton from "./components/ToolScanButton";
+import ToolBorrowReturnModal from "./components/ToolBorrowReturnModal";
 
 interface 工具 {
   id: string;
@@ -61,6 +62,8 @@ export default function ToolManagementPage() {
   const [当前页, set当前页] = useState(1);
   const [是管理员, set是管理员] = useState(false);
   const [删除中, set删除中] = useState<string | null>(null);
+  const [借还弹窗打开, set借还弹窗打开] = useState(false);
+  const [选中工具, set选中工具] = useState<工具 | null>(null);
   const 搜索定时器 = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const 加载数据 = useCallback(async () => {
@@ -271,12 +274,16 @@ export default function ToolManagementPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Link
-                          href={`/tools/borrow-scan?id=${工具.id}`}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            set选中工具(工具);
+                            set借还弹窗打开(true);
+                          }}
                           className="text-xs px-2 py-1 text-white bg-blue-600 rounded hover:bg-blue-700"
                         >
                           {工具.status === "borrowed" ? "归还" : "借用"}
-                        </Link>
+                        </button>
                         <ToolQrCode toolId={工具.id} toolName={工具.name} toolCode={工具.code} />
                         {是管理员 && (
                           <>
@@ -350,6 +357,17 @@ export default function ToolManagementPage() {
           </div>
         </div>
       )}
+
+      <ToolBorrowReturnModal
+        工具={选中工具}
+        未归还记录={选中工具 ? 未归还记录.get(选中工具.id) || null : null}
+        open={借还弹窗打开}
+        onClose={() => {
+          set借还弹窗打开(false);
+          set选中工具(null);
+        }}
+        onSuccess={加载数据}
+      />
     </div>
   );
 }
