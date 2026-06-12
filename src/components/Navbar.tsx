@@ -90,6 +90,7 @@ const navItems: NavItem[] = [
       { href: "/training/promotion-status", label: "我的晋级" },
     ],
   },
+  { href: "/tools/management", label: "工具管理" },
   { href: "/employees", label: "员工管理" },
   {
     href: "/finance",
@@ -123,7 +124,6 @@ const navItems: NavItem[] = [
     label: "系统设置",
     children: [
       { href: "/settings", label: "基础设置" },
-      { href: "/tools/management", label: "工具管理" },
       { href: "/17vin-billing", label: "17VIN余额" },
       { href: "/tools/vin-batch-query", label: "VIN批量查OE号" },
     ],
