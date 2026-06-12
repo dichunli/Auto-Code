@@ -4,7 +4,12 @@
    - 工具借用记录：借用人、借用时间、归还人、归还时间
    ============================================================ */
 
-CREATE TABLE tools (
+/* 首次执行或重新执行前清理旧策略，避免重复创建报错 */
+DROP POLICY IF EXISTS tools_select_all ON tools;
+DROP POLICY IF EXISTS tools_write_admin ON tools;
+DROP POLICY IF EXISTS tool_borrow_records_all ON tool_borrow_records;
+
+CREATE TABLE IF NOT EXISTS tools (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
@@ -18,12 +23,12 @@ CREATE TABLE tools (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_tools_code ON tools(code);
-CREATE INDEX idx_tools_name ON tools(name);
-CREATE INDEX idx_tools_status ON tools(status);
-CREATE INDEX idx_tools_knowledge_article ON tools(knowledge_article_id);
+CREATE INDEX IF NOT EXISTS idx_tools_code ON tools(code);
+CREATE INDEX IF NOT EXISTS idx_tools_name ON tools(name);
+CREATE INDEX IF NOT EXISTS idx_tools_status ON tools(status);
+CREATE INDEX IF NOT EXISTS idx_tools_knowledge_article ON tools(knowledge_article_id);
 
-CREATE TABLE tool_borrow_records (
+CREATE TABLE IF NOT EXISTS tool_borrow_records (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   tool_id UUID NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
   borrower_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
@@ -34,9 +39,9 @@ CREATE TABLE tool_borrow_records (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_tool_borrow_records_tool_id ON tool_borrow_records(tool_id);
-CREATE INDEX idx_tool_borrow_records_borrowed_at ON tool_borrow_records(borrowed_at);
-CREATE INDEX idx_tool_borrow_records_open ON tool_borrow_records(tool_id, returned_at) WHERE returned_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tool_borrow_records_tool_id ON tool_borrow_records(tool_id);
+CREATE INDEX IF NOT EXISTS idx_tool_borrow_records_borrowed_at ON tool_borrow_records(borrowed_at);
+CREATE INDEX IF NOT EXISTS idx_tool_borrow_records_open ON tool_borrow_records(tool_id, returned_at) WHERE returned_at IS NULL;
 
 /* RLS */
 ALTER TABLE tools ENABLE ROW LEVEL SECURITY;
