@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useUpload } from "@/hooks/useUpload";
 
 interface Props {
@@ -23,10 +23,6 @@ export function VideoUploader({
   timeoutMs = 60000,
   folder,
 }: Props) {
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraId = `vid-camera-${useId()}`;
-  const fileId = `vid-file-${useId()}`;
   const [videos, setVideos] = useState<string[]>(existingVideos);
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
 
@@ -43,9 +39,6 @@ export function VideoUploader({
     maxDurationSeconds,
     timeoutMs,
     folder,
-    onProgress: () => {
-      /* 进度由 hook 内部管理，直接读取「进度」即可 */
-    },
     onSuccess: (paths) => {
       onUpload(paths);
     },
@@ -81,8 +74,6 @@ export function VideoUploader({
     },
     [videos, maxVideos, 上传, onUpload]
   );
-
-  /* ========== APP 原生录像 ========== */
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
@@ -140,19 +131,15 @@ export function VideoUploader({
         ))}
         {videos.length < maxVideos && (
           <div className="flex gap-2">
-            {/* 移动端：录像/选视频 */}
+            {/* 移动端：录像（input 嵌套在 label 内，兼容 WebView） */}
             <label
-              htmlFor={cameraId}
               className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
             >
               {上传中 ? (
                 <div className="flex flex-col items-center">
                   <span className="text-xs">{进度}%</span>
                   <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded transition-all"
-                      style={{ width: `${进度}%` }}
-                    />
+                    <div className="h-full bg-blue-500 rounded transition-all" style={{ width: `${进度}%` }} />
                   </div>
                 </div>
               ) : (
@@ -164,19 +151,17 @@ export function VideoUploader({
                   <span className="text-[10px]">{videos.length}/{maxVideos}</span>
                 </>
               )}
+              <input type="file" accept="video/*" capture="environment" className="sr-only" onChange={handleFileChange} />
             </label>
+            {/* 移动端：选视频 */}
             <label
-              htmlFor={fileId}
               className={`md:hidden w-24 h-20 rounded border border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
             >
               {上传中 ? (
                 <div className="flex flex-col items-center">
                   <span className="text-xs">{进度}%</span>
                   <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded transition-all"
-                      style={{ width: `${进度}%` }}
-                    />
+                    <div className="h-full bg-blue-500 rounded transition-all" style={{ width: `${进度}%` }} />
                   </div>
                 </div>
               ) : (
@@ -188,20 +173,17 @@ export function VideoUploader({
                   <span className="text-[10px]">{videos.length}/{maxVideos}</span>
                 </>
               )}
+              <input type="file" accept="video/*" multiple className="sr-only" onChange={handleFileChange} />
             </label>
-            {/* PC端 */}
+            {/* PC端：选择文件 */}
             <label
-              htmlFor={fileId}
               className={`hidden md:flex w-32 h-24 rounded border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
             >
               {上传中 ? (
                 <div className="flex flex-col items-center">
                   <span className="text-xs">{进度}%</span>
                   <div className="w-16 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded transition-all"
-                      style={{ width: `${进度}%` }}
-                    />
+                    <div className="h-full bg-blue-500 rounded transition-all" style={{ width: `${进度}%` }} />
                   </div>
                 </div>
               ) : (
@@ -212,27 +194,11 @@ export function VideoUploader({
                   <span className="text-[10px]">选择文件</span>
                 </>
               )}
+              <input type="file" accept="video/*" multiple className="sr-only" onChange={handleFileChange} />
             </label>
           </div>
         )}
       </div>
-      <input
-        id={cameraId}
-        ref={cameraInputRef}
-        type="file"
-        accept="video/*"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-      <input
-        id={fileId}
-        ref={fileInputRef}
-        type="file"
-        accept="video/*"
-        multiple
-        className="hidden"
-        onChange={handleFileChange}
-      />
 
       {uploadError && (
         <p className="text-xs text-red-500 bg-red-50 rounded px-2 py-1">{uploadError}</p>
@@ -266,32 +232,4 @@ export function VideoUploader({
       )}
     </div>
   );
-}
-
-/* 检测视频时长（工具函数） */
-function 检测视频时长(input: Blob): Promise<number | null> {
-  return new Promise((resolve) => {
-    const video = document.createElement("video");
-    video.preload = "metadata";
-    const url = URL.createObjectURL(input);
-
-    const timer = setTimeout(() => {
-      URL.revokeObjectURL(url);
-      resolve(null);
-    }, 5000);
-
-    video.onloadedmetadata = () => {
-      clearTimeout(timer);
-      URL.revokeObjectURL(url);
-      resolve(video.duration);
-    };
-
-    video.onerror = () => {
-      clearTimeout(timer);
-      URL.revokeObjectURL(url);
-      resolve(null);
-    };
-
-    video.src = url;
-  });
 }
