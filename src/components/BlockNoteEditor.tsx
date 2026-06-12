@@ -36,7 +36,7 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
     /* 图片文件先压缩 */
     if (file.type.startsWith("image/")) {
       try {
-        uploadFile = await compressImage(file, 150);
+        uploadFile = await compressImage(file, 300);
       } catch {
         /* 压缩失败用原文件 */
       }
@@ -44,13 +44,25 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
 
     const formData = new FormData();
     formData.append("file", uploadFile, file.name);
-    const res = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || "上传失败");
-    return result.path;
+
+    /* 30 秒超时 */
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "上传失败");
+      return result.path;
+    } catch (err: unknown) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
   }, []);
 
   /* deps 传空数组，只在组件挂载时创建一次编辑器 */
@@ -241,19 +253,35 @@ function CustomToolbarButtons({
     }
 
     try {
-      const formData = new FormData();
-      formData.append("file", file, file.name);
-      formData.append("folder", "training");
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
+      /* 使用 XHR 上传，支持进度 */
+      const path = await new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/upload");
+        xhr.timeout = 300000; /* 5分钟超时 */
+
+        xhr.onload = () => {
+          try {
+            const result = JSON.parse(xhr.responseText);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve(result.path);
+            } else {
+              reject(new Error(result.error || "上传失败"));
+            }
+          } catch {
+            reject(new Error("服务器返回格式异常"));
+          }
+        };
+        xhr.onerror = () => reject(new Error("网络错误"));
+        xhr.ontimeout = () => reject(new Error("上传超时"));
+
+        const formData = new FormData();
+        formData.append("file", file, file.name);
+        xhr.send(formData);
       });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "上传失败");
 
       const pos = editor.getTextCursorPosition();
       editor.insertBlocks(
-        [{ type: "video", props: { url: result.path, caption: "" } }],
+        [{ type: "video", props: { url: path, caption: "" } }],
         pos.block,
         "after"
       );

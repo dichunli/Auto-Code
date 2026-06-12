@@ -3,56 +3,56 @@
 import { useId, useRef, useState, useCallback } from "react";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 启动原生录像, 本地文件路径转URL } from "@/lib/androidVideoCapture";
+import { useUpload } from "@/hooks/useUpload";
 
 interface Props {
   onUpload: (paths: string[]) => void;
   existingVideos?: string[];
   maxVideos?: number;
+  /* 可选：覆盖默认限制（培训页面使用更大限制） */
+  maxFileSizeMB?: number;
+  maxDurationSeconds?: number;
+  timeoutMs?: number;
+  folder?: string;
 }
 
-export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: Props) {
+export function VideoUploader({
+  onUpload,
+  existingVideos = [],
+  maxVideos = 3,
+  maxFileSizeMB = 100,
+  maxDurationSeconds = 60,
+  timeoutMs = 60000,
+  folder,
+}: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraId = `vid-camera-${useId()}`;
   const fileId = `vid-file-${useId()}`;
-  const [uploading, setUploading] = useState(false);
   const [videos, setVideos] = useState<string[]>(existingVideos);
-  const [progress, setProgress] = useState(0);
 
-  const uploadSingle = useCallback(
-    async (file: File): Promise<string> => {
-      return new Promise((resolve, reject) => {
-        const formData = new FormData();
-        formData.append("file", file, file.name);
-
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/upload", true);
-
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            setProgress(Math.round((e.loaded / e.total) * 100));
-          }
-        };
-
-        xhr.onload = () => {
-          if (xhr.status === 200) {
-            const result = JSON.parse(xhr.responseText);
-            resolve(result.path);
-          } else {
-            const result = JSON.parse(xhr.responseText || '{}');
-            reject(new Error(result.error || "上传失败"));
-          }
-        };
-
-        xhr.timeout = 60000;
-        xhr.onerror = () => reject(new Error("上传失败"));
-        xhr.ontimeout = () => reject(new Error("上传超时"));
-
-        xhr.send(formData);
-      });
+  const {
+    上传,
+    上传中,
+    进度,
+    总进度,
+    错误: uploadError,
+    删除文件,
+  } = useUpload({
+    mediaType: "video",
+    maxFileSizeMB,
+    maxDurationSeconds,
+    timeoutMs,
+    folder,
+    onProgress: () => {
+      /* 进度由 hook 内部管理，直接读取「进度」即可 */
     },
-    []
-  );
+    onSuccess: (paths) => {
+      onUpload(paths);
+    },
+  });
+
+  /* ========== 文件上传 ========== */
 
   const handleFiles = useCallback(
     async (files: FileList) => {
@@ -65,65 +65,26 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
         return;
       }
 
-      if (fileArray.some((f) => f.size > 100 * 1024 * 1024)) {
-        alert("视频大小不能超过 100MB");
-        return;
-      }
+      const { urls, errors } = await 上传(fileArray);
 
-      /* 检查视频时长不超过 60 秒 */
-      for (const file of fileArray) {
-        const duration = await new Promise<number>((resolve, reject) => {
-          const video = document.createElement("video");
-          const url = URL.createObjectURL(file);
-          const timer = setTimeout(() => {
-            URL.revokeObjectURL(url);
-            reject(new Error("读取视频信息超时，请尝试选择文件上传"));
-          }, 5000);
-          video.onloadedmetadata = () => {
-            clearTimeout(timer);
-            URL.revokeObjectURL(url);
-            resolve(video.duration);
-          };
-          video.onerror = () => {
-            clearTimeout(timer);
-            URL.revokeObjectURL(url);
-            reject(new Error("无法读取视频信息"));
-          };
-          video.src = url;
+      if (urls.length > 0) {
+        setVideos((prev) => {
+          const next = [...prev, ...urls];
+          onUpload(next);
+          return next;
         });
-        if (duration > 60) {
-          alert("视频时长不能超过 60 秒");
-          return;
-        }
       }
 
-      setUploading(true);
-      setProgress(0);
-
-      try {
-        /* 串行上传视频（大文件并行容易出问题），但带进度 */
-        const results: string[] = [];
-        for (let i = 0; i < fileArray.length; i++) {
-          setProgress(0);
-          const path = await uploadSingle(fileArray[i]);
-          results.push(path);
-          setVideos((prev) => {
-            const next = [...prev, path];
-            onUpload(next);
-            return next;
-          });
-        }
-      } catch (err: unknown) {
-        alert("视频上传失败: " + (err instanceof Error ? err.message : String(err)));
-      } finally {
-        setUploading(false);
-        setProgress(0);
+      if (errors.length > 0) {
+        const msg = errors.map((e) => `${e.file}: ${e.error}`).join("\n");
+        alert("视频上传失败:\n" + msg);
       }
     },
-    [videos, maxVideos, onUpload, uploadSingle]
+    [videos, maxVideos, 上传, onUpload]
   );
 
-  /* APP环境：调用原生录像 */
+  /* ========== APP 原生录像 ========== */
+
   async function handleAppRecord() {
     if (videos.length >= maxVideos) {
       alert(`最多上传 ${maxVideos} 个视频`);
@@ -137,13 +98,7 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
         return;
       }
 
-      /* 将本地文件路径转为 WebView 可访问的 URL */
       const fileUrl = 本地文件路径转URL(result.filePath);
-
-      /* 读取文件为 Blob */
-      setUploading(true);
-      setProgress(0);
-
       const response = await fetch(fileUrl);
       if (!response.ok) {
         throw new Error("读取视频文件失败");
@@ -151,48 +106,27 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
       const blob = await response.blob();
 
       /* 检查大小 */
-      if (blob.size > 100 * 1024 * 1024) {
-        alert("视频大小不能超过 100MB");
-        setUploading(false);
+      if (blob.size > maxFileSizeMB * 1024 * 1024) {
+        alert(`视频大小不能超过 ${maxFileSizeMB}MB`);
         return;
       }
 
       /* 检查时长 */
-      const duration = await new Promise<number>((resolve, reject) => {
-        const video = document.createElement("video");
-        const url = URL.createObjectURL(blob);
-        const timer = setTimeout(() => {
-          URL.revokeObjectURL(url);
-          reject(new Error("读取视频信息超时"));
-        }, 5000);
-        video.onloadedmetadata = () => {
-          clearTimeout(timer);
-          URL.revokeObjectURL(url);
-          resolve(video.duration);
-        };
-        video.onerror = () => {
-          clearTimeout(timer);
-          URL.revokeObjectURL(url);
-          reject(new Error("无法读取视频信息"));
-        };
-        video.src = url;
-      });
-      if (duration > 60) {
-        alert("视频时长不能超过 60 秒");
-        setUploading(false);
+      const duration = await 检测视频时长(blob);
+      if (duration !== null && duration > maxDurationSeconds) {
+        alert(`视频时长不能超过 ${maxDurationSeconds} 秒`);
         return;
       }
 
-      const file = new File([blob], `record_${Date.now()}.mp4`, { type: blob.type || "video/mp4" });
+      const file = new File([blob], `record_${Date.now()}.mp4`, {
+        type: blob.type || "video/mp4",
+      });
       const dt = new DataTransfer();
       dt.items.add(file);
       await handleFiles(dt.files);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert("录像上传失败: " + msg);
-    } finally {
-      setUploading(false);
-      setProgress(0);
     }
   }
 
@@ -203,18 +137,36 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
     e.target.value = "";
   }
 
-  function removeVideo(index: number) {
+  /* ========== 删除视频 ========== */
+
+  async function removeVideo(index: number) {
+    const target = videos[index];
     const next = videos.filter((_, i) => i !== index);
     setVideos(next);
     onUpload(next);
+
+    /* 同步删除服务端文件 */
+    if (target) {
+      删除文件(target);
+    }
   }
+
+  /* ========== 渲染 ========== */
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         {videos.map((src, i) => (
-          <div key={i} className="relative w-32 h-24 rounded border border-gray-200 overflow-hidden group bg-gray-900">
-            <video src={src} className="w-full h-full object-cover" controls preload="metadata" />
+          <div
+            key={i}
+            className="relative w-32 h-24 rounded border border-gray-200 overflow-hidden group bg-gray-900"
+          >
+            <video
+              src={src}
+              className="w-full h-full object-cover"
+              controls
+              preload="metadata"
+            />
             <button
               type="button"
               onClick={() => removeVideo(i)}
@@ -226,21 +178,21 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
         ))}
         {videos.length < maxVideos && (
           <div className="flex gap-2">
-            {/* 移动端：APP环境调用原生录像，浏览器环境用 input */}
+            {/* 移动端 */}
             {是Capacitor环境() ? (
               <button
                 type="button"
                 onClick={handleAppRecord}
-                disabled={uploading}
-                className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+                disabled={上传中}
+                className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
               >
-                {uploading ? (
+                {上传中 ? (
                   <div className="flex flex-col items-center">
-                    <span className="text-xs">{progress}%</span>
+                    <span className="text-xs">{进度}%</span>
                     <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
                       <div
                         className="h-full bg-blue-500 rounded transition-all"
-                        style={{ width: `${progress}%` }}
+                        style={{ width: `${进度}%` }}
                       />
                     </div>
                   </div>
@@ -257,15 +209,15 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
             ) : (
               <label
                 htmlFor={cameraId}
-                className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+                className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
               >
-                {uploading ? (
+                {上传中 ? (
                   <div className="flex flex-col items-center">
-                    <span className="text-xs">{progress}%</span>
+                    <span className="text-xs">{进度}%</span>
                     <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
                       <div
                         className="h-full bg-blue-500 rounded transition-all"
-                        style={{ width: `${progress}%` }}
+                        style={{ width: `${进度}%` }}
                       />
                     </div>
                   </div>
@@ -282,15 +234,15 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
             )}
             <label
               htmlFor={fileId}
-              className={`md:hidden w-24 h-20 rounded border border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+              className={`md:hidden w-24 h-20 rounded border border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
             >
-              {uploading ? (
+              {上传中 ? (
                 <div className="flex flex-col items-center">
-                  <span className="text-xs">{progress}%</span>
+                  <span className="text-xs">{进度}%</span>
                   <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
                     <div
                       className="h-full bg-blue-500 rounded transition-all"
-                      style={{ width: `${progress}%` }}
+                      style={{ width: `${进度}%` }}
                     />
                   </div>
                 </div>
@@ -307,15 +259,15 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
             {/* PC端 */}
             <label
               htmlFor={fileId}
-              className={`hidden md:flex w-32 h-24 rounded border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+              className={`hidden md:flex w-32 h-24 rounded border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
             >
-              {uploading ? (
+              {上传中 ? (
                 <div className="flex flex-col items-center">
-                  <span className="text-xs">{progress}%</span>
+                  <span className="text-xs">{进度}%</span>
                   <div className="w-16 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
                     <div
                       className="h-full bg-blue-500 rounded transition-all"
-                      style={{ width: `${progress}%` }}
+                      style={{ width: `${进度}%` }}
                     />
                   </div>
                 </div>
@@ -348,8 +300,45 @@ export function VideoUploader({ onUpload, existingVideos = [], maxVideos = 3 }: 
         className="hidden"
         onChange={handleFileChange}
       />
-      <p className="text-[10px] text-gray-400 md:hidden">点击后选择「相机」录像或从相册选视频。单个不超过 100MB。</p>
-      <p className="text-[10px] text-gray-400 hidden md:block">支持文件上传。单个不超过 100MB。</p>
+
+      {uploadError && (
+        <p className="text-xs text-red-500 bg-red-50 rounded px-2 py-1">{uploadError}</p>
+      )}
+
+      <p className="text-[10px] text-gray-400 md:hidden">
+        点击后选择「相机」录像或从相册选视频。单个不超过 {maxFileSizeMB}MB。
+      </p>
+      <p className="text-[10px] text-gray-400 hidden md:block">
+        支持文件上传。单个不超过 {maxFileSizeMB}MB。
+      </p>
     </div>
   );
+}
+
+/* 检测视频时长（工具函数） */
+function 检测视频时长(input: Blob): Promise<number | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    const url = URL.createObjectURL(input);
+
+    const timer = setTimeout(() => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    }, 5000);
+
+    video.onloadedmetadata = () => {
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+      resolve(video.duration);
+    };
+
+    video.onerror = () => {
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+
+    video.src = url;
+  });
 }

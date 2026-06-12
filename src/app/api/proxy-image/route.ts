@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { createClient } from "@/lib/supabase/server";
 
 /* 使用 Node.js 运行时 */
 export const runtime = "nodejs";
 
-const UPLOAD_DIR = "E:/autorepair-uploads";
+const UPLOAD_DIR = process.env.UPLOAD_DIR || "E:/autorepair-uploads";
 
 /* 允许的图片 MIME 类型 */
 const 允许的图片类型 = new Set([
@@ -16,8 +17,31 @@ const 允许的图片类型 = new Set([
   "image/webp",
 ]);
 
+/* 内网 IP 前缀（SSRF 防护） */
+const 内网前缀 = ["127.", "10.", "192.168."];
+/* 内网 IP 范围 172.16.0.0 - 172.31.255.255 */
+function 是否为内网地址(hostname: string): boolean {
+  if (hostname === "localhost" || hostname === "[::1]") return true;
+  for (const prefix of 内网前缀) {
+    if (hostname.startsWith(prefix)) return true;
+  }
+  if (hostname.startsWith("172.")) {
+    const parts = hostname.split(".");
+    const second = parseInt(parts[1], 10);
+    if (second >= 16 && second <= 31) return true;
+  }
+  return false;
+}
+
 export async function POST(request: Request) {
   try {
+    /* 认证检查 */
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+
     const { url } = await request.json();
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "缺少 URL 参数" }, { status: 400 });
@@ -32,6 +56,16 @@ export async function POST(request: Request) {
     }
     if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
       return NextResponse.json({ error: "仅支持 HTTP/HTTPS" }, { status: 400 });
+    }
+
+    /* SSRF 防护：禁止访问内网地址 */
+    if (是否为内网地址(parsedUrl.hostname)) {
+      return NextResponse.json({ error: "不允许访问内网地址" }, { status: 400 });
+    }
+
+    /* 只允许 80 和 443 端口 */
+    if (parsedUrl.port && parsedUrl.port !== "80" && parsedUrl.port !== "443") {
+      return NextResponse.json({ error: "不允许的端口" }, { status: 400 });
     }
 
     /* 下载图片 */

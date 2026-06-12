@@ -3,6 +3,8 @@
 import {useState, useEffect, useRef, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useUpload } from "@/hooks/useUpload";
+import { 添加水印 } from "@/lib/imageWatermark";
 
 interface 员工 {
   id: string;
@@ -28,63 +30,6 @@ interface 打分记录 {
   media_urls: string[];
 }
 
-/* 给图片添加时间水印 */
-async function addWatermarkToBlob(blob: Blob): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        URL.revokeObjectURL(url);
-        reject(new Error("无法创建画布"));
-        return;
-      }
-
-      ctx.drawImage(img, 0, 0);
-
-      const now = new Date();
-      const timeText = now.toLocaleString("zh-CN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-      ctx.font = `${Math.max(16, Math.floor(img.width / 30))}px sans-serif`;
-      const metrics = ctx.measureText(timeText);
-      const padding = Math.max(10, Math.floor(img.width / 60));
-      const bgX = img.width - metrics.width - padding * 2;
-      const bgY = img.height - Math.max(30, Math.floor(img.height / 20)) - padding;
-      const bgW = metrics.width + padding * 2;
-      const bgH = Math.max(30, Math.floor(img.height / 20)) + padding;
-
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.fillRect(bgX, bgY, bgW, bgH);
-
-      ctx.fillStyle = "#ffffff";
-      ctx.textBaseline = "middle";
-      ctx.fillText(timeText, bgX + padding, bgY + bgH / 2);
-
-      URL.revokeObjectURL(url);
-
-      canvas.toBlob((newBlob) => {
-        if (newBlob) resolve(newBlob);
-        else reject(new Error("水印处理失败"));
-      }, "image/jpeg", 0.9);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("图片加载失败"));
-    };
-    img.src = url;
-  });
-}
-
 export default function BehaviorScorePage() {
   const supabase = useMemo(() => createClient(), []);
   const [employees, setEmployees] = useState<员工[]>([]);
@@ -100,7 +45,8 @@ export default function BehaviorScorePage() {
   const [notes, setNotes] = useState("");
   const [eventTime, setEventTime] = useState("");
   const [mediaFiles, setMediaFiles] = useState<{ blob: Blob; preview: string }[]>([]);
-  const [uploadingMedia, setUploadingMedia] = useState(false);
+
+  const { 上传, 上传中: uploadingMedia } = useUpload({ mediaType: "auto" });
 
   /* 摄像头拍照 */
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -206,7 +152,7 @@ export default function BehaviorScorePage() {
     canvas.toBlob(async (blob) => {
       if (!blob) return;
       try {
-        const watermarked = await addWatermarkToBlob(blob);
+        const watermarked = await 添加水印(blob);
         const preview = URL.createObjectURL(watermarked);
         setMediaFiles((prev) => [...prev, { blob: watermarked, preview }]);
       } catch (err: unknown) {
@@ -236,19 +182,29 @@ export default function BehaviorScorePage() {
   function removeMedia(index: number) {
     setMediaFiles((prev) => {
       const next = prev.filter((_, i) => i !== index);
+      /* 释放被删除项的预览 URL */
+      const removed = prev[index];
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
       return next;
     });
   }
 
+  /* 组件卸载时释放所有预览 URL */
+  useEffect(() => {
+    return () => {
+      mediaFiles.forEach((f) => URL.revokeObjectURL(f.preview));
+    };
+  }, []);
+
   async function uploadMedia(files: { blob: Blob }[]): Promise<string[]> {
-    const urls: string[] = [];
-    for (const { blob } of files) {
+    /* 将 Blob 转为 File 后通过 useUpload 上传 */
+    const fileList: File[] = files.map(({ blob }) => {
       const ext = blob.type.startsWith("video/") ? "mp4" : "jpg";
-      const fileName = `behavior/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error } = await supabase.storage.from("media").upload(fileName, blob);
-      if (error) throw error;
-      const { data: urlData } = supabase.storage.from("media").getPublicUrl(fileName);
-      urls.push(urlData.publicUrl);
+      return new File([blob], `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`, { type: blob.type });
+    });
+    const { urls, errors } = await 上传(fileList);
+    if (errors.length > 0) {
+      throw new Error(errors.map((e) => e.error).join("; "));
     }
     return urls;
   }

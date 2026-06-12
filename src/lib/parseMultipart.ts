@@ -68,7 +68,7 @@ function 解析ContentDisposition(headersText: string): { name: string | null; f
 }
 
 /* 解析 multipart 请求体 */
-export async function 解析Multipart请求(request: Request): Promise<MultipartResult> {
+export async function 解析Multipart请求(request: Request, maxSize: number = 500 * 1024 * 1024): Promise<MultipartResult> {
   const contentType = request.headers.get("content-type") || "";
   const boundary = 提取Boundary(contentType);
   if (!boundary) {
@@ -81,6 +81,10 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
     throw new Error("请求体为空");
   }
 
+  if (body.length > maxSize) {
+    throw new Error(`文件超过大小限制（最大 ${Math.round(maxSize / 1024 / 1024)}MB）`);
+  }
+
   const boundaryBuffer = Buffer.from(`--${boundary}`);
   const 前缀BoundaryBuffer = Buffer.from(`\r\n--${boundary}`);
   const endBoundaryBuffer = Buffer.from(`--${boundary}--`);
@@ -88,7 +92,6 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
 
   let file: MultipartFile | null = null;
   let folder: string | null = null;
-  let partCount = 0;
 
   /* 找第一个 boundary 的位置（可能在请求体开头或 preamble 之后） */
   let start = body.indexOf(boundaryBuffer);
@@ -132,7 +135,6 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
     }
 
     const { name: fieldName, filename } = 解析ContentDisposition(headersText);
-    partCount++;
 
     if (fieldName === "file" && filename !== null) {
       const ctMatch = headersText.match(/Content-Type:\s*([^\r\n]+)/i);
@@ -150,9 +152,6 @@ export async function 解析Multipart请求(request: Request): Promise<Multipart
   }
 
   if (!file) {
-    /* 输出请求体前 800 字节用于调试 */
-    const preview = body.slice(0, 800).toString("utf-8").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
-    console.error("[multipart] no file found. parts:", partCount, "preview:", preview);
     throw new Error("请求中没有找到文件");
   }
 

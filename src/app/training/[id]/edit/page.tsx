@@ -1,10 +1,11 @@
 "use client";
 
-import {useState, useRef, useEffect, useMemo} from "react";
+import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { VideoUploader } from "@/components/VideoUploader";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
@@ -31,11 +32,8 @@ export default function EditCoursePage() {
   const params = useParams();
   const id = params.id as string;
   const supabase = useMemo(() => createClient(), []);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [uploadingVideo, setUploadingVideo] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [videoUrl, setVideoUrl] = useState("");
 
   const [form, setForm] = useState({
@@ -82,96 +80,6 @@ export default function EditCoursePage() {
     }
     load();
   }, [id, supabase, router]);
-
-  async function uploadVideo(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const formData = new FormData();
-      formData.append("file", file, file.name);
-      formData.append("folder", "training");
-
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/upload", true);
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          setUploadProgress(Math.round((e.loaded / e.total) * 100));
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          const result = JSON.parse(xhr.responseText);
-          resolve(result.path);
-        } else {
-          const result = JSON.parse(xhr.responseText || "{}");
-          reject(new Error(result.error || "上传失败"));
-        }
-      };
-
-      xhr.timeout = 300000;
-      xhr.onerror = () => reject(new Error("上传失败"));
-      xhr.ontimeout = () => reject(new Error("上传超时"));
-
-      xhr.send(formData);
-    });
-  }
-
-  async function handleVideoFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 500 * 1024 * 1024) {
-      alert("培训视频大小不能超过 500MB");
-      e.target.value = "";
-      return;
-    }
-
-    try {
-      const duration = await new Promise<number>((resolve, reject) => {
-        const video = document.createElement("video");
-        const url = URL.createObjectURL(file);
-        const timer = setTimeout(() => {
-          URL.revokeObjectURL(url);
-          reject(new Error("读取视频信息超时"));
-        }, 10000);
-        video.onloadedmetadata = () => {
-          clearTimeout(timer);
-          URL.revokeObjectURL(url);
-          resolve(video.duration);
-        };
-        video.onerror = () => {
-          clearTimeout(timer);
-          URL.revokeObjectURL(url);
-          reject(new Error("无法读取视频信息"));
-        };
-        video.src = url;
-      });
-      if (duration > 30 * 60) {
-        alert("培训视频时长不能超过 30 分钟");
-        e.target.value = "";
-        return;
-      }
-    } catch {
-      /* 无法读取时长时继续上传 */
-    }
-
-    setUploadingVideo(true);
-    setUploadProgress(0);
-    try {
-      const path = await uploadVideo(file);
-      setVideoUrl(path);
-    } catch (err: unknown) {
-      alert("视频上传失败: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setUploadingVideo(false);
-      setUploadProgress(0);
-      e.target.value = "";
-    }
-  }
-
-  function removeVideo() {
-    setVideoUrl("");
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -277,48 +185,15 @@ export default function EditCoursePage() {
         {form.content_type === "video" && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">培训视频</label>
-            {videoUrl ? (
-              <div className="relative w-full max-w-md rounded border border-gray-200 overflow-hidden bg-gray-900">
-                <video src={videoUrl} className="w-full h-48 object-contain" controls preload="metadata" />
-                <button
-                  type="button"
-                  onClick={removeVideo}
-                  className="absolute top-2 right-2 px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600"
-                >
-                  删除视频
-                </button>
-              </div>
-            ) : (
-              <div>
-                <label
-                  className={`flex flex-col items-center justify-center w-full h-32 rounded border border-dashed border-gray-300 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors ${uploadingVideo ? "opacity-50 pointer-events-none" : ""}`}
-                >
-                  {uploadingVideo ? (
-                    <div className="flex flex-col items-center">
-                      <span className="text-sm text-gray-600">{uploadProgress}%</span>
-                      <div className="w-32 h-2 bg-gray-200 rounded mt-2 overflow-hidden">
-                        <div className="h-full bg-blue-500 rounded transition-all" style={{ width: `${uploadProgress}%` }} />
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <svg className="w-8 h-8 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                      </svg>
-                      <span className="text-sm text-gray-500">点击上传视频</span>
-                      <span className="text-xs text-gray-400 mt-1">不超过 500MB，时长不超过 30 分钟</span>
-                    </>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="video/*"
-                    className="hidden"
-                    onChange={handleVideoFileChange}
-                  />
-                </label>
-              </div>
-            )}
+            <VideoUploader
+              maxVideos={1}
+              existingVideos={videoUrl ? [videoUrl] : []}
+              onUpload={(paths) => setVideoUrl(paths[0] || "")}
+              maxFileSizeMB={500}
+              maxDurationSeconds={1800}
+              timeoutMs={300000}
+              folder="training"
+            />
           </div>
         )}
 
@@ -384,7 +259,7 @@ export default function EditCoursePage() {
           </button>
           <button
             type="submit"
-            disabled={saving || uploadingVideo}
+            disabled={saving}
             className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             {saving ? "保存中..." : "保存修改"}

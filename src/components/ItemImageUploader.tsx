@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback, useId } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { compressImage, base64转Blob } from "@/lib/imageCompress";
+import { base64转Blob } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { ImageViewer } from "./ImageViewer";
+import { useUpload } from "@/hooks/useUpload";
 
 interface Props {
   itemId: string;
@@ -15,58 +16,73 @@ interface Props {
 
 export default function ItemImageUploader({ itemId, existingImages, isLocked }: Props) {
   const supabase = createClient();
-  const [images, setImages] = useState(existingImages);
-  const [saving, setSaving] = useState(false);
+  const [images, setImages] = useState<string[]>(existingImages);
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
+  const [viewerIndex, setViewerIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileId = `item-img-${useId()}`;
 
+  const {
+    上传,
+    上传中,
+    总进度,
+    删除文件,
+  } = useUpload({
+    mediaType: "image",
+    compressMaxKB: 300,
+    timeoutMs: 30000,
+  });
+
+  /* 同步外部图片列表 */
   useEffect(() => {
     setImages(existingImages);
   }, [existingImages]);
 
-  const uploadFile = useCallback(
-    async (file: File) => {
-      if (!file.type.startsWith("image/")) return;
-      if (images.length >= 5) {
+  /* ========== 上传 ========== */
+
+  const handleFiles = useCallback(
+    async (files: FileList) => {
+      const remaining = 5 - images.length;
+      if (remaining <= 0) {
         alert("最多上传 5 张图片");
         return;
       }
 
-      setSaving(true);
-      try {
-        const compressed = await compressImage(file, 150);
-        const formData = new FormData();
-        formData.append("file", compressed, file.name);
+      const fileArray = Array.from(files).slice(0, remaining);
+      const { urls, errors } = await 上传(fileArray);
 
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const result = await res.json();
-        if (!res.ok) throw new Error(result.error || "上传失败");
-
+      /* 上传成功后写入数据库 */
+      for (const path of urls) {
         const { error: dbError } = await supabase.from("work_order_item_media").insert({
           work_order_item_id: itemId,
           media_type: "image",
-          storage_path: result.path,
+          storage_path: path,
         });
-        if (dbError) throw dbError;
+        if (dbError) {
+          console.error("保存图片记录失败:", dbError.message);
+        }
+      }
 
-        setImages((prev) => [...prev, result.path]);
-      } catch (err: unknown) {
-        alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
-      } finally {
-        setSaving(false);
+      if (urls.length > 0) {
+        setImages((prev) => [...prev, ...urls]);
+      }
+
+      if (errors.length > 0) {
+        const msg = errors.map((e) => `${e.file}: ${e.error}`).join("\n");
+        alert("图片上传失败:\n" + msg);
       }
     },
-    [images, itemId, supabase]
+    [images, itemId, 上传, supabase]
   );
+
+  /* ========== 删除 ========== */
 
   async function removeImage(index: number) {
     const path = images[index];
     setImages((prev) => prev.filter((_, i) => i !== index));
+
+    /* 删除数据库记录 */
     const { error } = await supabase
       .from("work_order_item_media")
       .delete()
@@ -75,10 +91,15 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
     if (error) {
       alert("删除失败: " + error.message);
       setImages(existingImages);
+      return;
     }
+
+    /* 删除存储文件 */
+    删除文件(path);
   }
 
-  /* APP环境：调用原生相机拍照 */
+  /* ========== 拍照（APP 环境） ========== */
+
   async function handleAppCamera() {
     if (images.length >= 5) {
       alert("最多上传 5 张图片");
@@ -98,7 +119,9 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
       const base64 = `data:image/jpeg;base64,${photo.base64String}`;
       const blob = base64转Blob(base64);
       const file = new File([blob], `camera_${Date.now()}.jpg`, { type: "image/jpeg" });
-      await uploadFile(file);
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      await handleFiles(dt.files);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
@@ -106,30 +129,47 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
     }
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  /* ========== 文件选择 ========== */
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files) return;
-    Array.from(files).forEach((f) => uploadFile(f));
+    await handleFiles(files);
     e.target.value = "";
   }
 
-  // 粘贴上传（只有鼠标悬停在本组件上时才响应）
+  /* ========== 粘贴上传 ========== */
+
   useEffect(() => {
     const handler = (e: ClipboardEvent) => {
       if (!isHovered) return;
       const files = e.clipboardData?.files;
       if (!files || files.length === 0) return;
-      Array.from(files).forEach((f) => uploadFile(f));
+      handleFiles(files);
     };
     window.addEventListener("paste", handler);
     return () => window.removeEventListener("paste", handler);
-  }, [uploadFile, isHovered]);
+  }, [handleFiles, isHovered]);
+
+  /* ========== 渲染 ========== */
 
   return (
-    <div className="flex items-center gap-1" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
+    <div
+      className="flex items-center gap-1"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       {images.map((src, i) => (
-        <div key={i} className="relative w-14 h-14 rounded-lg border border-gray-200 overflow-hidden group cursor-pointer">
-          <img src={src} alt="" className="w-full h-full object-cover" onClick={() => setViewerSrc(src)} />
+        <div
+          key={i}
+          className="relative w-14 h-14 rounded-lg border border-gray-200 overflow-hidden group cursor-pointer"
+        >
+          <img
+            src={src}
+            alt=""
+            className="w-full h-full object-cover"
+            onClick={() => { setViewerSrc(src); setViewerIndex(i); }}
+          />
           {!isLocked && (
             <button
               type="button"
@@ -150,12 +190,12 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
               <button
                 type="button"
                 onClick={handleAppCamera}
-                disabled={saving}
-                className={`w-14 h-14 rounded-lg border border-dashed border-blue-300 flex items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${saving ? 'opacity-50 pointer-events-none' : ''}`}
+                disabled={上传中}
+                className={`w-14 h-14 rounded-lg border border-dashed border-blue-300 flex items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
                 title="拍照"
               >
-                {saving ? (
-                  <span className="text-xs">...</span>
+                {上传中 ? (
+                  <span className="text-xs">{总进度 || "..."}</span>
                 ) : (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -165,7 +205,7 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
               </button>
               <label
                 htmlFor={fileId}
-                className={`w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${saving ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
+                className={`w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : "cursor-pointer"}`}
                 title="相册"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -186,11 +226,11 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
             <>
               <label
                 htmlFor={fileId}
-                className={`w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${saving ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
+                className={`w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : "cursor-pointer"}`}
                 title="上传/粘贴/拍照"
               >
-                {saving ? (
-                  <span className="text-xs">...</span>
+                {上传中 ? (
+                  <span className="text-xs">{总进度 || "..."}</span>
                 ) : (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -211,7 +251,17 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
         </>
       )}
       {viewerSrc && (
-        <ImageViewer src={viewerSrc} onClose={() => setViewerSrc(null)} />
+        <ImageViewer
+          src={viewerSrc}
+          images={images}
+          currentIndex={viewerIndex}
+          onIndexChange={(idx) => {
+            setViewerIndex(idx);
+            if (images[idx]) setViewerSrc(images[idx]);
+          }}
+          onClose={() => setViewerSrc(null)}
+          onDelete={!isLocked ? removeImage : undefined}
+        />
       )}
     </div>
   );

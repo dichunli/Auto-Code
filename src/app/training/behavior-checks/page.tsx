@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { base64转Blob } from "@/lib/imageCompress";
+import { useUpload } from "@/hooks/useUpload";
+import { 添加水印 } from "@/lib/imageWatermark";
 
 interface 考核记录 {
   id: string;
@@ -20,66 +22,6 @@ interface 考核记录 {
   media_urls: string[];
 }
 
-/* 给图片添加时间水印 */
-async function addWatermark(file: File): Promise<File> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        URL.revokeObjectURL(url);
-        reject(new Error("无法创建画布"));
-        return;
-      }
-
-      ctx.drawImage(img, 0, 0);
-
-      const now = new Date();
-      const timeText = now.toLocaleString("zh-CN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-      ctx.font = `${Math.max(16, Math.floor(img.width / 30))}px sans-serif`;
-      const metrics = ctx.measureText(timeText);
-      const padding = Math.max(10, Math.floor(img.width / 60));
-      const bgX = img.width - metrics.width - padding * 2;
-      const bgY = img.height - Math.max(30, Math.floor(img.height / 20)) - padding;
-      const bgW = metrics.width + padding * 2;
-      const bgH = Math.max(30, Math.floor(img.height / 20)) + padding;
-
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.fillRect(bgX, bgY, bgW, bgH);
-
-      ctx.fillStyle = "#ffffff";
-      ctx.textBaseline = "middle";
-      ctx.fillText(timeText, bgX + padding, bgY + bgH / 2);
-
-      URL.revokeObjectURL(url);
-
-      canvas.toBlob((blob) => {
-        if (blob) {
-          resolve(new File([blob], file.name, { type: file.type }));
-        } else {
-          reject(new Error("水印处理失败"));
-        }
-      }, file.type);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("图片加载失败"));
-    };
-    img.src = url;
-  });
-}
-
 export default function BehaviorChecksPage() {
   const supabase = useMemo(() => createClient(), []);
   const [records, setRecords] = useState<考核记录[]>([]);
@@ -89,6 +31,8 @@ export default function BehaviorChecksPage() {
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
   /* APP环境：存储拍照得到的文件 */
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
+
+  const { 上传 } = useUpload({ mediaType: "image" });
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -188,13 +132,14 @@ export default function BehaviorChecksPage() {
   }, [fetchRecords]);
 
   const uploadPhoto = useCallback(async (file: File): Promise<string> => {
-    const watermarked = await addWatermark(file);
-    const fileName = `behavior-checks/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
-    const { error } = await supabase.storage.from("media").upload(fileName, watermarked);
-    if (error) throw error;
-    const { data: urlData } = supabase.storage.from("media").getPublicUrl(fileName);
-    return urlData.publicUrl;
-  }, [supabase]);
+    /* 先加水印 */
+    const watermarkedBlob = await 添加水印(file);
+    const watermarkedFile = new File([watermarkedBlob], file.name, { type: "image/jpeg" });
+    /* 通过 /api/upload 上传 */
+    const { urls, errors } = await 上传([watermarkedFile]);
+    if (errors.length > 0) throw new Error(errors[0].error);
+    return urls[0];
+  }, [上传]);
 
   /* APP环境：调用原生相机拍照 */
   async function handleAppCamera() {

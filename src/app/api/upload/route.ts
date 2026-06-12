@@ -3,14 +3,28 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import { 解析Multipart请求 } from "@/lib/parseMultipart";
+import { createClient } from "@/lib/supabase/server";
 
 const execFileAsync = promisify(execFile);
 
-/* 本地附件存储根目录 */
-const UPLOAD_DIR = "E:/autorepair-uploads";
+/* 本地附件存储根目录（可通过环境变量 UPLOAD_DIR 配置） */
+const UPLOAD_DIR = process.env.UPLOAD_DIR || "E:/autorepair-uploads";
+
+/* 最大文件大小 500MB */
+const MAX_FILE_SIZE = 500 * 1024 * 1024;
 
 /* Office 文件扩展名 */
 const officeExts = [".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"];
+
+/* 允许的文件扩展名白名单 */
+const 允许的扩展名 = new Set([
+  /* 图片 */
+  ".jpg", ".jpeg", ".png", ".webp", ".gif",
+  /* 视频 */
+  ".mp4", ".webm", ".mov",
+  /* 文档 */
+  ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".pdf",
+]);
 
 /* Windows 上常见的 LibreOffice 安装路径 */
 const sofficePaths = [
@@ -53,12 +67,40 @@ async function convertToPdf(inputPath: string, outputDir: string): Promise<strin
 
 export async function POST(request: Request) {
   try {
-    const multipart = await 解析Multipart请求(request);
+    /* 认证检查 */
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return Response.json({ error: "未登录" }, { status: 401 });
+    }
+
+    /* 文件大小预检（通过 Content-Length 头） */
+    const contentLength = request.headers.get("content-length");
+    if (contentLength) {
+      const size = parseInt(contentLength, 10);
+      if (!isNaN(size) && size > MAX_FILE_SIZE) {
+        return Response.json({ error: `文件超过限制（最大 500MB）` }, { status: 400 });
+      }
+    }
+
+    const multipart = await 解析Multipart请求(request, MAX_FILE_SIZE);
     const { file } = multipart;
-    const folder = multipart.folder;
+    let folder = multipart.folder;
 
     if (!file || file.data.length === 0) {
       return Response.json({ error: "没有文件" }, { status: 400 });
+    }
+
+    /* 校验文件扩展名 */
+    const ext = path.extname(file.filename).toLowerCase();
+    if (!允许的扩展名.has(ext)) {
+      return Response.json({ error: `不支持的文件类型: ${ext}` }, { status: 400 });
+    }
+
+    /* 清理 folder 参数：去掉路径分隔符和 .. */
+    if (folder) {
+      folder = folder.replace(/[/\\]|\.\./g, "").slice(0, 50);
+      if (folder.length === 0) folder = "";
     }
 
     const buffer = file.data;
@@ -72,7 +114,6 @@ export async function POST(request: Request) {
     await mkdir(dir, { recursive: true });
 
     /* 生成唯一文件名 */
-    const ext = path.extname(file.filename) || ".bin";
     const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
     const filePath = path.join(dir, fileName);
 
@@ -83,7 +124,7 @@ export async function POST(request: Request) {
     const result: { path: string; pdfPath?: string } = { path: `/api/media/${relativePath}` };
 
     /* 如果是 Office 文件，尝试转 PDF */
-    if (officeExts.includes(ext.toLowerCase())) {
+    if (officeExts.includes(ext)) {
       const pdfFullPath = await convertToPdf(filePath, dir);
       if (pdfFullPath) {
         const pdfRelative = path.relative(UPLOAD_DIR, pdfFullPath).replace(/\\/g, "/");

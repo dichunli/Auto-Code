@@ -1,9 +1,11 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import { compressImage, base64转Blob } from "@/lib/imageCompress";
+import { base64转Blob } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import { useUpload } from "@/hooks/useUpload";
+import { ImageViewer } from "./ImageViewer";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -13,240 +15,71 @@ interface Props {
   folder?: string;
 }
 
-/* ============================================================
-   图片预览 — 支持双指缩放、滚轮缩放、拖动平移
-   ============================================================ */
-interface PreviewProps {
-  src: string;
-  index: number;
-  total: number;
-  onClose: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-}
-
-function ImagePreview({ src, index, total, onClose, onPrev, onNext }: PreviewProps) {
-  const [scale, setScale] = useState(1);
-  const [translate, setTranslate] = useState({ x: 0, y: 0 });
-  const pinchRef = useRef({ startDist: 0, startScale: 1 });
-  const panRef = useRef({ startX: 0, startY: 0, startTx: 0, startTy: 0 });
-
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
-
-  function getDistance(touches: TouchList) {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  function handleTouchStart(e: React.TouchEvent) {
-    if (e.touches.length === 2) {
-      pinchRef.current = { startDist: getDistance(e.touches), startScale: scale };
-    } else if (e.touches.length === 1 && scale > 1) {
-      panRef.current = {
-        startX: e.touches[0].clientX,
-        startY: e.touches[0].clientY,
-        startTx: translate.x,
-        startTy: translate.y,
-      };
-    }
-  }
-
-  function handleTouchMove(e: React.TouchEvent) {
-    if (e.touches.length === 2) {
-      e.preventDefault();
-      const dist = getDistance(e.touches);
-      if (pinchRef.current.startDist > 0) {
-        const ratio = dist / pinchRef.current.startDist;
-        setScale(Math.max(1, Math.min(5, pinchRef.current.startScale * ratio)));
-      }
-    } else if (e.touches.length === 1 && scale > 1) {
-      e.preventDefault();
-      const dx = e.touches[0].clientX - panRef.current.startX;
-      const dy = e.touches[0].clientY - panRef.current.startY;
-      setTranslate({ x: panRef.current.startTx + dx, y: panRef.current.startTy + dy });
-    }
-  }
-
-  function handleTouchEnd() {
-    if (scale < 1) { setScale(1); setTranslate({ x: 0, y: 0 }); }
-  }
-
-  function handleWheel(e: React.WheelEvent) {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setScale((s) => Math.max(1, Math.min(5, s * delta)));
-  }
-
-  function handleDoubleClick() {
-    setScale(1);
-    setTranslate({ x: 0, y: 0 });
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80"
-      onClick={onClose}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
-      <img
-        src={src}
-        alt=""
-        className="max-w-[90vw] max-h-[90vh] object-contain rounded select-none"
-        style={{
-          transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
-          transition: scale === 1 ? "transform 0.2s ease" : "none",
-        }}
-        onClick={(e) => e.stopPropagation()}
-        onWheel={handleWheel}
-        onDoubleClick={handleDoubleClick}
-        draggable={false}
-      />
-
-      {/* 关闭按钮 */}
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl leading-none z-10"
-      >
-        ✕
-      </button>
-
-      {/* 底部操作栏 */}
-      <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center gap-3 z-10">
-        {total > 1 && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onPrev(); setScale(1); setTranslate({ x: 0, y: 0 }); }}
-            className="px-3 py-1 bg-white/20 text-white rounded hover:bg-white/30 text-sm"
-          >
-            上一张
-          </button>
-        )}
-        <span className="text-white/70 text-xs">
-          {index + 1} / {total} · {Math.round(scale * 100)}% · 双击重置
-        </span>
-        {total > 1 && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onNext(); setScale(1); setTranslate({ x: 0, y: 0 }); }}
-            className="px-3 py-1 bg-white/20 text-white rounded hover:bg-white/30 text-sm"
-          >
-            下一张
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: Props) {
+export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, folder }: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
   const [images, setImages] = useState<string[]>(existingImages);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-  const [uploadProgress, setUploadProgress] = useState("");
-  const [errorMsg, setErrorMsg] = useState("");
 
+  const {
+    上传,
+    上传中,
+    总进度,
+    错误: uploadError,
+    删除文件,
+  } = useUpload({
+    mediaType: "image",
+    compressMaxKB: 300,
+    timeoutMs: 30000,
+    folder,
+    onSuccess: (paths) => {
+      /* 每上传成功一个就通知父组件 */
+      onUpload(paths);
+    },
+  });
+
+  /* 同步外部图片列表 */
   useEffect(() => {
     setImages(existingImages);
   }, [existingImages]);
 
+  /* ========== 文件上传 ========== */
+
   const handleFiles = useCallback(
-    async (files: FileList) => {
-      const fileArray = Array.from(files).slice(0, maxImages - images.length);
+    async (fileList: FileList) => {
+      const fileArray = Array.from(fileList).slice(0, maxImages - images.length);
       if (fileArray.length === 0) {
         alert(`最多上传 ${maxImages} 张图片`);
         return;
       }
 
-      setUploading(true);
-      setErrorMsg("");
-      setUploadProgress(`0 / ${fileArray.length}`);
+      const { urls, errors } = await 上传(fileArray);
 
-      try {
-        const results: string[] = [];
-
-        /* 逐个处理（串行），移动端并行容易内存不足 */
-        for (let i = 0; i < fileArray.length; i++) {
-          const file = fileArray[i];
-          setUploadProgress(`${i + 1} / ${fileArray.length} 压缩中...`);
-
-          let blob: Blob;
-          try {
-            blob = await compressImage(file, 150);
-          } catch {
-            blob = file;
-          }
-
-          setUploadProgress(`${i + 1} / ${fileArray.length} 上传中...`);
-
-          const formData = new FormData();
-          formData.append("file", blob, file.name);
-
-          /* 10 秒超时 */
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => {
-            controller.abort();
-          }, 10000);
-
-          let res: Response;
-          try {
-            res = await fetch("/api/upload", {
-              method: "POST",
-              body: formData,
-              signal: controller.signal,
-            });
-            clearTimeout(timeoutId);
-          } catch (fetchErr: unknown) {
-            clearTimeout(timeoutId);
-            const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-            throw new Error("网络请求失败: " + msg);
-          }
-
-          let result: { path?: string; error?: string };
-          try {
-            result = await res.json();
-          } catch {
-            throw new Error("服务器返回格式错误,状态码: " + res.status);
-          }
-
-          if (!res.ok) {
-            throw new Error(result.error || "上传失败(HTTP " + res.status + ")");
-          }
-
-          results[i] = result.path!;
-          setUploadProgress(`${results.filter(Boolean).length} / ${fileArray.length}`);
-        }
-
-        const next = [...images, ...results];
+      if (urls.length > 0) {
+        const next = [...images, ...urls];
         setImages(next);
         onUpload(next);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setErrorMsg(msg);
-        alert("图片上传失败: " + msg);
-      } finally {
-        setUploading(false);
-        setUploadProgress("");
+      }
+
+      if (errors.length > 0) {
+        const msg = errors.map((e) => `${e.file}: ${e.error}`).join("\n");
+        alert("图片上传失败:\n" + msg);
       }
     },
-    [images, maxImages, onUpload]
+    [images, maxImages, 上传, onUpload]
   );
 
-  // 粘贴上传（仅当焦点不在输入框/文本域时处理，避免与文字粘贴冲突）
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+    handleFiles(files);
+    e.target.value = "";
+  }
+
+  /* ========== 粘贴上传 ========== */
+
   useEffect(() => {
     const handler = (e: ClipboardEvent) => {
-      // 如果焦点在输入框或文本域内，不拦截粘贴
       const active = document.activeElement;
       if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
         return;
@@ -259,17 +92,18 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
     return () => window.removeEventListener("paste", handler);
   }, [handleFiles]);
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    if (!files) return;
-    handleFiles(files);
-    e.target.value = "";
-  }
+  /* ========== 删除图片 ========== */
 
-  function removeImage(index: number) {
+  async function removeImage(index: number) {
+    const target = images[index];
     const next = images.filter((_, i) => i !== index);
     setImages(next);
     onUpload(next);
+
+    /* 同步删除服务端文件 */
+    if (target) {
+      删除文件(target);
+    }
   }
 
   return (
@@ -281,7 +115,7 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); removeImage(i); }}
-              className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity md:w-5 md:h-5 w-6 h-6"
             >
               ×
             </button>
@@ -289,8 +123,7 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
         ))}
         {images.length < maxImages && (
           <div className="flex gap-2">
-            {/* 移动端：input 嵌套在 label 内部，比 htmlFor 关联更可靠 */}
-            {/* APP环境：调用 Capacitor 原生相机，WebView 的 capture 属性不可靠 */}
+            {/* 移动端 */}
             {是Capacitor环境() ? (
               <button
                 type="button"
@@ -314,16 +147,15 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
                     handleFiles(dt.files);
                   } catch (err: unknown) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    /* 用户取消拍照时不提示错误 */
                     if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
                     alert("拍照失败: " + msg);
                   }
                 }}
-                disabled={uploading}
-                className={`md:hidden w-20 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+                disabled={上传中}
+                className={`md:hidden w-20 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
               >
-                {uploading ? (
-                  <span className="text-xs">{uploadProgress || "上传中..."}</span>
+                {上传中 ? (
+                  <span className="text-xs">{总进度 || "上传中..."}</span>
                 ) : (
                   <>
                     <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -337,10 +169,10 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
               </button>
             ) : (
               <label
-                className={`md:hidden w-20 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+                className={`md:hidden w-20 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
               >
-                {uploading ? (
-                  <span className="text-xs">{uploadProgress || "上传中..."}</span>
+                {上传中 ? (
+                  <span className="text-xs">{总进度 || "上传中..."}</span>
                 ) : (
                   <>
                     <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -361,11 +193,12 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
                 />
               </label>
             )}
+            {/* PC端 */}
             <label
-              className={`hidden md:flex w-20 h-20 rounded border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+              className={`hidden md:flex w-20 h-20 rounded border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
             >
-              {uploading ? (
-                <span className="text-xs">{uploadProgress || "上传中..."}</span>
+              {上传中 ? (
+                <span className="text-xs">{总进度 || "上传中..."}</span>
               ) : (
                 <>
                   <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -386,21 +219,26 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5 }: 
           </div>
         )}
       </div>
-      {errorMsg && (
-        <p className="text-xs text-red-500 bg-red-50 rounded px-2 py-1">上传失败: {errorMsg}</p>
-      )}
-      <p className="text-[10px] text-gray-400 md:hidden">支持拍照。单张自动压缩至150KB以内。</p>
-      <p className="text-[10px] text-gray-400 hidden md:block">支持拍照、相册选择、Ctrl+V 粘贴。单张自动压缩至150KB以内。</p>
 
-      {/* 图片预览（支持双指缩放、滚轮缩放、拖动平移） */}
+      {uploadError && (
+        <p className="text-xs text-red-500 bg-red-50 rounded px-2 py-1">{uploadError}</p>
+      )}
+
+      <p className="text-[10px] text-gray-400 md:hidden">支持拍照。单张自动压缩至 300KB 以内。</p>
+      <p className="text-[10px] text-gray-400 hidden md:block">支持拍照、相册选择、Ctrl+V 粘贴。单张自动压缩至 300KB 以内。</p>
+
+      {/* 图片预览 */}
       {previewIndex !== null && images[previewIndex] && (
-        <ImagePreview
+        <ImageViewer
           src={images[previewIndex]}
-          index={previewIndex}
-          total={images.length}
+          images={images}
+          currentIndex={previewIndex}
+          onIndexChange={setPreviewIndex}
           onClose={() => setPreviewIndex(null)}
-          onPrev={() => setPreviewIndex((i) => (i !== null && i > 0 ? i - 1 : images.length - 1))}
-          onNext={() => setPreviewIndex((i) => (i !== null && i < images.length - 1 ? i + 1 : 0))}
+          onDelete={(idx) => {
+            removeImage(idx);
+            if (images.length <= 1) setPreviewIndex(null);
+          }}
         />
       )}
     </div>
