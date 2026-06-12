@@ -366,25 +366,23 @@ function CustomToolbarButtons({
         <JumpLinkModal editor={editor} onClose={() => setShowJumpModal(false)} />
       )}
 
-      {/* 插入图片 */}
-      <button
-        type="button"
-        className={btnBase}
-        onClick={() => imageInputRef.current?.click()}
+      {/* 插入图片 — 用 label+input 原生方式（WebView 不支持 JS .click() 打开文件选择器） */}
+      <label
+        className={btnBase + " cursor-pointer"}
         title="插入图片"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
         图片
-      </button>
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleInsertImage}
-      />
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          onChange={handleInsertImage}
+        />
+      </label>
 
       {/* 插入视频链接 */}
       <button type="button" className={btnBase} onClick={handleInsertVideo} title="插入视频链接">
@@ -402,45 +400,41 @@ function CustomToolbarButtons({
         抖音视频
       </button>
 
-      {/* 上传视频 */}
-      <button
-        type="button"
-        className={btnBase}
-        onClick={() => videoFileInputRef.current?.click()}
+      {/* 上传视频 — 用 label+input 原生方式（WebView 不支持 JS .click() 打开文件选择器） */}
+      <label
+        className={btnBase + " cursor-pointer"}
         title="上传视频"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
         </svg>
         上传视频
-      </button>
-      <input
-        ref={videoFileInputRef}
-        type="file"
-        accept="video/*"
-        className="hidden"
-        onChange={handleUploadVideo}
-      />
+        <input
+          ref={videoFileInputRef}
+          type="file"
+          accept="video/*"
+          className="sr-only"
+          onChange={handleUploadVideo}
+        />
+      </label>
 
-      {/* 上传文件 */}
-      <button
-        type="button"
-        className={btnBase}
-        onClick={() => fileInputRef.current?.click()}
+      {/* 上传文件 — 用 label+input 原生方式 */}
+      <label
+        className={btnBase + " cursor-pointer"}
         title="上传文件"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
         文件
-      </button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf"
-        className="hidden"
-        onChange={handleUploadOfficeFile}
-      />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf"
+          className="sr-only"
+          onChange={handleUploadOfficeFile}
+        />
+      </label>
 
       {/* 插入文件链接 */}
       <button type="button" className={btnBase} onClick={handleInsertFile} title="插入文件链接">
