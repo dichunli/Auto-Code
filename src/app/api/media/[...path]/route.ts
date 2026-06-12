@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
-import { createClient } from "@/lib/supabase/server";
 
 /* 本地附件存储根目录（可通过环境变量 UPLOAD_DIR 配置） */
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "E:/autorepair-uploads";
@@ -37,13 +36,6 @@ export async function GET(
     const resolvedUploadDir = path.resolve(UPLOAD_DIR);
     if (!resolvedPath.startsWith(resolvedUploadDir)) {
       return NextResponse.json({ error: "非法路径" }, { status: 403 });
-    }
-
-    /* 认证检查 */
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
 
     const buffer = await readFile(resolvedPath);
