@@ -49,8 +49,8 @@ CREATE POLICY tools_select_all ON tools
 /* tools 表：仅管理员可写 */
 CREATE POLICY tools_write_admin ON tools
   FOR ALL TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'))
-  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+  USING (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin')
+  WITH CHECK (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin');
 
 /* tool_borrow_records 表：所有认证用户可读写 */
 CREATE POLICY tool_borrow_records_all ON tool_borrow_records
