@@ -11,11 +11,18 @@ interface 知识文章 {
   title: string;
 }
 
+interface 工具 {
+  id: string;
+  code: string;
+  location: string | null;
+}
+
 export default function NewToolPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [保存中, set保存中] = useState(false);
   const [图片上传中, set图片上传中] = useState(false);
+  const [加载中, set加载中] = useState(true);
 
   const [表单, set表单] = useState({
     code: "",
@@ -31,6 +38,10 @@ export default function NewToolPage() {
   const [知识结果, set知识结果] = useState<知识文章[]>([]);
   const [知识搜索中, set知识搜索中] = useState(false);
   const [显示知识下拉, set显示知识下拉] = useState(false);
+
+  const [位置列表, set位置列表] = useState<string[]>([]);
+  const [使用新位置, set使用新位置] = useState(false);
+  const [新位置, set新位置] = useState("");
 
   const 搜索知识 = useCallback(
     async (q: string) => {
@@ -57,6 +68,38 @@ export default function NewToolPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [知识搜索, 搜索知识]);
+
+  /* 加载已有工具：生成编码、收集存放位置 */
+  useEffect(() => {
+    async function 初始化() {
+      set加载中(true);
+      try {
+        const { data } = await supabase.from("tools").select("code, location").order("created_at", { ascending: false });
+        const tools = (data as 工具[]) || [];
+
+        /* 自动生成编码：取 GJ-xxx 最大序号 +1 */
+        let maxNum = 0;
+        tools.forEach((t) => {
+          const match = t.code?.match(/^GJ-(\d+)$/i);
+          if (match) {
+            maxNum = Math.max(maxNum, parseInt(match[1], 10));
+          }
+        });
+        const nextCode = `GJ-${String(maxNum + 1).padStart(3, "0")}`;
+
+        /* 收集已有存放位置 */
+        const locations = Array.from(
+          new Set(tools.map((t) => t.location).filter((loc): loc is string => !!loc))
+        ).sort();
+
+        set表单((prev) => ({ ...prev, code: nextCode }));
+        set位置列表(locations);
+      } finally {
+        set加载中(false);
+      }
+    }
+    初始化();
+  }, [supabase]);
 
   async function 上传图片(file: File) {
     if (!file.type.startsWith("image/")) {
@@ -93,6 +136,8 @@ export default function NewToolPage() {
       return;
     }
 
+    const finalLocation = 使用新位置 ? 新位置.trim() : 表单.location.trim();
+
     set保存中(true);
     try {
       /* 检查编码唯一性 */
@@ -119,7 +164,7 @@ export default function NewToolPage() {
           image_url: 图片地址 || null,
           instructions: 表单.instructions.trim() || null,
           knowledge_article_id: 表单.knowledge_article_id || null,
-          location: 表单.location.trim() || null,
+          location: finalLocation || null,
           status: 表单.status,
           created_by: user?.id || null,
         })
@@ -142,6 +187,15 @@ export default function NewToolPage() {
     }
   }
 
+  if (加载中) {
+    return (
+      <div>
+        <PageHeader title="新建工具" />
+        <div className="text-sm text-gray-500 py-8">加载中...</div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader title="新建工具" />
@@ -161,6 +215,7 @@ export default function NewToolPage() {
               value={表单.code}
               onChange={(e) => set表单({ ...表单, code: e.target.value })}
             />
+            <p className="text-xs text-gray-400 mt-1">已自动生成，可手动修改</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -178,12 +233,49 @@ export default function NewToolPage() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">存放位置</label>
-          <input
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="如：A区工具架第二层"
-            value={表单.location}
-            onChange={(e) => set表单({ ...表单, location: e.target.value })}
-          />
+          {!使用新位置 ? (
+            <div className="flex gap-2">
+              <select
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={表单.location}
+                onChange={(e) => set表单({ ...表单, location: e.target.value })}
+              >
+                <option value="">请选择存放位置</option>
+                {位置列表.map((loc) => (
+                  <option key={loc} value={loc}>{loc}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  set使用新位置(true);
+                  set新位置("");
+                }}
+                className="px-3 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50"
+              >
+                + 新增位置
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="输入新的存放位置"
+                value={新位置}
+                onChange={(e) => set新位置(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  set使用新位置(false);
+                  set新位置("");
+                }}
+                className="px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                选已有位置
+              </button>
+            </div>
+          )}
         </div>
 
         <div>
@@ -274,11 +366,11 @@ export default function NewToolPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">使用说明</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">补充说明</label>
           <textarea
             rows={4}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="填写工具的使用方法、注意事项等"
+            placeholder="填写工具的补充说明、注意事项等"
             value={表单.instructions}
             onChange={(e) => set表单({ ...表单, instructions: e.target.value })}
           />

@@ -35,6 +35,10 @@ export default function EditToolPage() {
   const [知识搜索中, set知识搜索中] = useState(false);
   const [显示知识下拉, set显示知识下拉] = useState(false);
 
+  const [位置列表, set位置列表] = useState<string[]>([]);
+  const [使用新位置, set使用新位置] = useState(false);
+  const [新位置, set新位置] = useState("");
+
   const 搜索知识 = useCallback(
     async (q: string) => {
       if (!q.trim()) {
@@ -94,6 +98,16 @@ export default function EditToolPage() {
             set知识搜索((kData as 知识文章).title);
           }
         }
+
+        /* 加载已有存放位置 */
+        const { data: locData } = await supabase
+          .from("tools")
+          .select("location")
+          .neq("location", null);
+        const locations = Array.from(
+          new Set((locData || []).map((t: { location: string | null }) => t.location).filter(Boolean) as string[])
+        ).sort();
+        set位置列表(locations);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         alert("加载失败: " + msg);
@@ -141,6 +155,8 @@ export default function EditToolPage() {
 
     set保存中(true);
     try {
+      const finalLocation = 使用新位置 ? 新位置.trim() : 表单.location.trim();
+
       /* 检查编码唯一性（排除自身） */
       const { data: 重复 } = await supabase
         .from("tools")
@@ -162,7 +178,7 @@ export default function EditToolPage() {
           image_url: 图片地址 || null,
           instructions: 表单.instructions.trim() || null,
           knowledge_article_id: 表单.knowledge_article_id || null,
-          location: 表单.location.trim() || null,
+          location: finalLocation || null,
           status: 表单.status,
           updated_at: new Date().toISOString(),
         })
@@ -227,12 +243,49 @@ export default function EditToolPage() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">存放位置</label>
-          <input
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="如：A区工具架第二层"
-            value={表单.location}
-            onChange={(e) => set表单({ ...表单, location: e.target.value })}
-          />
+          {!使用新位置 ? (
+            <div className="flex gap-2">
+              <select
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={表单.location}
+                onChange={(e) => set表单({ ...表单, location: e.target.value })}
+              >
+                <option value="">请选择存放位置</option>
+                {位置列表.map((loc) => (
+                  <option key={loc} value={loc}>{loc}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  set使用新位置(true);
+                  set新位置("");
+                }}
+                className="px-3 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50"
+              >
+                + 新增位置
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="输入新的存放位置"
+                value={新位置}
+                onChange={(e) => set新位置(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  set使用新位置(false);
+                  set新位置("");
+                }}
+                className="px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                选已有位置
+              </button>
+            </div>
+          )}
         </div>
 
         <div>
@@ -323,11 +376,11 @@ export default function EditToolPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">使用说明</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">补充说明</label>
           <textarea
             rows={4}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="填写工具的使用方法、注意事项等"
+            placeholder="填写工具的补充说明、注意事项等"
             value={表单.instructions}
             onChange={(e) => set表单({ ...表单, instructions: e.target.value })}
           />
