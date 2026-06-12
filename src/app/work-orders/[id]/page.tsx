@@ -6,7 +6,6 @@ import { calculateItemCommission, calculatePartCommission } from "@/lib/commissi
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
 import { ReceptionInfoEditor } from "@/components/ReceptionInfoEditor";
 import { BatchEditWrapper } from "@/components/BatchEditWrapper";
@@ -56,6 +55,7 @@ export default async function WorkOrderDetailPage({
     partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches,
     qualityChecks, payments, advancePaymentRecords, followUps, history, suppliers, logisticsCompanies,
     inspections, inspectionMedia, outsourceOrder,
+    historyOrderCount, otherOrdersByType, customerOrderCount,
   } = await getWorkOrderData(id);
 
   if (!order) notFound();
@@ -71,21 +71,7 @@ export default async function WorkOrderDetailPage({
   // 工单VIN（用于查三滤）
   const vehicleVin = order?.vehicles?.vin;
 
-  // 查询该车历史维修工单数量（排除当前工单）
-  const supabaseServer = await createClient();
-  const { count: historyOrderCount } = await supabaseServer
-    .from("work_orders")
-    .select("*", { count: "exact", head: true })
-    .eq("vehicle_id", order.vehicle_id)
-    .neq("id", id);
-
-  // 查询该车各类型工单数量（排除当前工单）
-  const { data: otherOrdersByType } = await supabaseServer
-    .from("work_orders")
-    .select("id, order_no, order_type")
-    .eq("vehicle_id", order.vehicle_id)
-    .neq("id", id);
-
+  // 统计同车辆其他类型工单
   const typeCountMap: Record<string, { count: number; orders: { id: string; order_no: string }[] }> = {};
   const typeLabelMapForDisplay: Record<string, string> = {
     appointment: "预约工单",
@@ -102,12 +88,6 @@ export default async function WorkOrderDetailPage({
     typeCountMap[t].count++;
     typeCountMap[t].orders.push({ id: o.id, order_no: o.order_no });
   });
-
-  // 查询该客户消费次数
-  const { count: customerOrderCount } = await supabaseServer
-    .from("work_orders")
-    .select("*", { count: "exact", head: true })
-    .eq("customer_id", order.customer_id);
 
   // 查询未关联具体配件但已到货的分支，用于入库自动填写
   const pendingInboundParts = itemParts?.filter((p: { is_arrived?: boolean; part_id?: string | null }) => p.is_arrived && !p.part_id) || [];
