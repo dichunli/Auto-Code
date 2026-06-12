@@ -14,6 +14,7 @@ import { compressImage, base64转Blob } from "@/lib/imageCompress";
 import { blocknoteDictionary } from "@/lib/blocknoteDictionary";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import { 启动原生录像, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 
 interface Props {
   initialValue?: string;
@@ -121,66 +122,33 @@ function CustomToolbarButtons({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
 
-  /* APP 环境摄像头录像 */
-  const [showCamera, setShowCamera] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  async function 打开录像() {
+  /* APP 环境：调用原生录像 */
+  async function handleAppRecordVideo() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
-      streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-      setShowCamera(true);
+      const result = await 启动原生录像();
+      if (result.cancelled) return;
+      if (result.error || !result.filePath) {
+        alert("录像失败: " + (result.error || "原生录像不可用，请重新安装最新版APP"));
+        return;
+      }
+      const fileUrl = 本地文件路径转URL(result.filePath);
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error("读取视频文件失败");
+      const blob = await response.blob();
+      if (blob.size > 500 * 1024 * 1024) {
+        alert("视频大小不能超过 500MB");
+        return;
+      }
+      const file = new File([blob], `record_${Date.now()}.mp4`, { type: blob.type || "video/mp4" });
+      const url = await uploadFile(file);
+      const pos = editor.getTextCursorPosition();
+      editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], pos.block, "after");
     } catch (err: unknown) {
-      alert("无法打开摄像头: " + (err instanceof Error ? err.message : "请检查权限"));
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("cancelled")) return;
+      alert("录像上传失败: " + msg);
     }
   }
-
-  function 关闭录像() {
-    if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
-    if (timerRef.current) clearInterval(timerRef.current);
-    setShowCamera(false); setRecording(false); setRecordingTime(0);
-  }
-
-  function 开始录像() {
-    if (!streamRef.current) return;
-    chunksRef.current = [];
-    const rec = new MediaRecorder(streamRef.current, { mimeType: "video/webm" });
-    recorderRef.current = rec;
-    rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-    rec.onstop = async () => {
-      const blob = new Blob(chunksRef.current, { type: "video/webm" });
-      if (blob.size > 500 * 1024 * 1024) { alert("视频大小不能超过 500MB"); return; }
-      const file = new File([blob], `record_${Date.now()}.webm`, { type: "video/webm" });
-      try {
-        const url = await uploadFile(file);
-        const pos = editor.getTextCursorPosition();
-        editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], pos.block, "after");
-      } catch (err: unknown) {
-        alert("视频上传失败: " + (err instanceof Error ? err.message : String(err)));
-      }
-    };
-    rec.start();
-    setRecording(true); setRecordingTime(0);
-    timerRef.current = setInterval(() => { setRecordingTime((t) => t + 1); }, 1000);
-  }
-
-  function 停止录像() {
-    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
-    setRecording(false);
-    if (timerRef.current) clearInterval(timerRef.current);
-    关闭录像();
-  }
-
-  useEffect(() => {
-    return () => { if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop()); if (timerRef.current) clearInterval(timerRef.current); };
-  }, []);
 
   const btnBase =
     "px-1.5 py-1 text-xs rounded hover:bg-gray-200 transition-colors text-gray-600 flex items-center gap-1";
@@ -493,9 +461,9 @@ function CustomToolbarButtons({
         抖音视频
       </button>
 
-      {/* 上传视频：APP 用摄像头录像，浏览器用文件选择 */}
+      {/* 上传视频：APP 用原生系统相机录像，浏览器用文件选择 */}
       {是Capacitor环境() ? (
-        <button type="button" className={btnBase} onClick={打开录像} title="录像">
+        <button type="button" className={btnBase} onClick={handleAppRecordVideo} title="录像">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
           </svg>
@@ -551,34 +519,6 @@ function CustomToolbarButtons({
         </svg>
         分割线
       </button>
-
-      {/* 摄像头录像弹窗（APP 环境） */}
-      {showCamera && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 p-4">
-          <div className="bg-black rounded-xl overflow-hidden w-full max-w-md">
-            <div className="relative aspect-[3/4] bg-black">
-              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-              {recording && (
-                <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/50 rounded-full px-3 py-1">
-                  <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-                  <span className="text-white text-sm">{recordingTime}s</span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center justify-center gap-6 p-4 bg-black">
-              <button type="button" onClick={关闭录像} className="px-4 py-2 text-sm text-white bg-gray-600 rounded-lg hover:bg-gray-700">取消</button>
-              {recording ? (
-                <button type="button" onClick={停止录像} className="w-16 h-16 rounded-full border-4 border-red-500 bg-red-500/30 hover:bg-red-500/50 flex items-center justify-center">
-                  <span className="w-5 h-5 bg-white rounded-sm" />
-                </button>
-              ) : (
-                <button type="button" onClick={开始录像} className="w-16 h-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/30" />
-              )}
-              <span className="text-sm text-white">{recording ? "停止" : "录像"}</span>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

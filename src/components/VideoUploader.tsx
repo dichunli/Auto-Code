@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useUpload } from "@/hooks/useUpload";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { 启动原生录像, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -25,20 +26,10 @@ export function VideoUploader({
 }: Props) {
   const [videos, setVideos] = useState<string[]>(existingVideos);
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
-  /* 摄像头录像相关 */
-  const [recording, setRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [cameraOpen, setCameraOpen] = useState(false);
 
   const {
     上传,
     上传中,
-    进度,
     总进度,
     错误: uploadError,
     删除文件,
@@ -89,88 +80,42 @@ export function VideoUploader({
     e.target.value = "";
   }
 
-  /* ========== 摄像头录像（APP + 移动端浏览器） ========== */
+  /* ========== APP 原生录像 ========== */
 
-  async function 打开摄像头() {
+  async function handleAppRecord() {
+    if (videos.length >= maxVideos) {
+      alert(`最多上传 ${maxVideos} 个视频`);
+      return;
+    }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: true,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+      const result = await 启动原生录像();
+      if (result.cancelled) return;
+      if (result.error || !result.filePath) {
+        alert("录像失败: " + (result.error || "原生录像不可用，请重新安装最新版APP"));
+        return;
       }
-      setCameraOpen(true);
-    } catch (err: unknown) {
-      alert("无法打开摄像头: " + (err instanceof Error ? err.message : "请检查权限"));
-    }
-  }
 
-  function 关闭摄像头() {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (timerRef.current) clearInterval(timerRef.current);
-    setCameraOpen(false);
-    setRecording(false);
-    setRecordingTime(0);
-  }
+      const fileUrl = 本地文件路径转URL(result.filePath);
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error("读取视频文件失败");
+      const blob = await response.blob();
 
-  function 开始录像() {
-    if (!streamRef.current) return;
-    chunksRef.current = [];
-    const recorder = new MediaRecorder(streamRef.current, { mimeType: "video/webm" });
-    recorderRef.current = recorder;
-
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data);
-    };
-
-    recorder.onstop = async () => {
-      const blob = new Blob(chunksRef.current, { type: "video/webm" });
       if (blob.size > maxFileSizeMB * 1024 * 1024) {
         alert(`视频大小不能超过 ${maxFileSizeMB}MB`);
         return;
       }
-      const file = new File([blob], `record_${Date.now()}.webm`, { type: "video/webm" });
+
+      const file = new File([blob], `record_${Date.now()}.mp4`, {
+        type: blob.type || "video/mp4",
+      });
       const dt = new DataTransfer();
       dt.items.add(file);
       await handleFiles(dt.files);
-    };
-
-    recorder.start();
-    setRecording(true);
-    setRecordingTime(0);
-    timerRef.current = setInterval(() => {
-      setRecordingTime((t) => {
-        if (t + 1 >= maxDurationSeconds) {
-          停止录像();
-          return t;
-        }
-        return t + 1;
-      });
-    }, 1000);
-  }
-
-  function 停止录像() {
-    if (recorderRef.current && recorderRef.current.state === "recording") {
-      recorderRef.current.stop();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("录像上传失败: " + msg);
     }
-    setRecording(false);
-    if (timerRef.current) clearInterval(timerRef.current);
-    关闭摄像头();
   }
-
-  /* 清理 */
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
 
   /* ========== 删除视频 ========== */
 
@@ -182,12 +127,6 @@ export function VideoUploader({
     if (target) {
       删除文件(target);
     }
-  }
-
-  function 格式化秒数(s: number): string {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec.toString().padStart(2, "0")}`;
   }
 
   /* ========== 渲染 ========== */
@@ -222,11 +161,11 @@ export function VideoUploader({
         ))}
         {videos.length < maxVideos && (
           <div className="flex gap-2">
-            {/* APP 环境：用摄像头录像（WebView 不支持 file input） */}
+            {/* APP 环境：用原生录像（WebView 不支持 file input 和 getUserMedia） */}
             {是APP ? (
               <button
                 type="button"
-                onClick={打开摄像头}
+                onClick={handleAppRecord}
                 disabled={上传中}
                 className={`w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
               >
@@ -244,13 +183,8 @@ export function VideoUploader({
               </button>
             ) : (
               <>
-                {/* 浏览器-移动端：录像 + 选视频 */}
-                <button
-                  type="button"
-                  onClick={打开摄像头}
-                  disabled={上传中}
-                  className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
-                >
+                {/* 移动端浏览器：录像 + 选视频 */}
+                <label className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}>
                   {上传中 ? (
                     <span className="text-xs">{总进度 || "..."}</span>
                   ) : (
@@ -262,7 +196,8 @@ export function VideoUploader({
                       <span className="text-[10px]">{videos.length}/{maxVideos}</span>
                     </>
                   )}
-                </button>
+                  <input type="file" accept="video/*" capture="environment" className="sr-only" onChange={handleFileChange} />
+                </label>
                 <label className={`md:hidden w-24 h-20 rounded border border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}>
                   {上传中 ? (
                     <span className="text-xs">{总进度 || "..."}</span>
@@ -302,39 +237,8 @@ export function VideoUploader({
       )}
 
       <p className="text-[10px] text-gray-400">
-        {是APP ? "点击录像按钮拍摄视频" : "支持摄像头录像或选择文件"}。单个不超过 {maxFileSizeMB}MB、{maxDurationSeconds} 秒。
+        {是APP ? "点击录像调用系统相机拍摄" : "支持录像或选择文件"}。单个不超过 {maxFileSizeMB}MB、{maxDurationSeconds} 秒。
       </p>
-
-      {/* 摄像头录像弹窗 */}
-      {cameraOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
-          <div className="bg-black rounded-xl overflow-hidden w-full max-w-md">
-            <div className="relative aspect-[3/4] bg-black">
-              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-              {/* 录像指示器 */}
-              {recording && (
-                <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/50 rounded-full px-3 py-1">
-                  <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-                  <span className="text-white text-sm">{格式化秒数(recordingTime)}</span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center justify-center gap-6 p-4 bg-black">
-              <button type="button" onClick={关闭摄像头} className="px-4 py-2 text-sm text-white bg-gray-600 rounded-lg hover:bg-gray-700">
-                取消
-              </button>
-              {recording ? (
-                <button type="button" onClick={停止录像} className="w-16 h-16 rounded-full border-4 border-red-500 bg-red-500/30 hover:bg-red-500/50 flex items-center justify-center">
-                  <span className="w-5 h-5 bg-white rounded-sm" />
-                </button>
-              ) : (
-                <button type="button" onClick={开始录像} className="w-16 h-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/30" />
-              )}
-              <span className="text-sm text-white">{recording ? "停止" : "录像"}</span>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 全屏视频播放器 */}
       {viewerSrc && (
