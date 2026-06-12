@@ -220,11 +220,11 @@ export default function NewToolPage() {
         </div>
 
         <div className="relative">
-          <label className="block text-sm font-medium text-gray-700 mb-1">关联知识库文章</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">使用说明</label>
           <input
             type="text"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="输入知识库标题搜索..."
+            placeholder="关联知识库文章..."
             value={知识搜索}
             onChange={(e) => {
               set知识搜索(e.target.value);
