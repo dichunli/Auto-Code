@@ -275,6 +275,22 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
             });
           }
         });
+      /* 加载已有媒体文件 */
+      supabase
+        .from("work_order_requirement_media")
+        .select("media_type, storage_path")
+        .eq("requirement_id", reqId)
+        .then(({ data: mediaData }) => {
+          if (!mediaData) return;
+          const images: string[] = [];
+          const videos: string[] = [];
+          for (const m of mediaData as { media_type: string; storage_path: string }[]) {
+            if (m.media_type === "image") images.push(m.storage_path);
+            else if (m.media_type === "video") videos.push(m.storage_path);
+          }
+          setRequirementImages(images);
+          setRequirementVideos(videos);
+        });
     }
   }, [searchParams, supabase]);
 
@@ -1040,11 +1056,11 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
               </div>
               <div>
                 <h2 className="text-base font-semibold text-gray-900 mb-3">需求图片</h2>
-                <ImageUploader onUpload={setRequirementImages} />
+                <ImageUploader onUpload={setRequirementImages} existingImages={requirementImages} />
               </div>
               <div>
                 <h2 className="text-base font-semibold text-gray-900 mb-3">需求视频</h2>
-                <VideoUploader onUpload={setRequirementVideos} />
+                <VideoUploader onUpload={setRequirementVideos} existingVideos={requirementVideos} />
               </div>
             </>
           )}

@@ -1,8 +1,6 @@
 "use client";
 
 import { useId, useRef, useState, useCallback } from "react";
-import { 是Capacitor环境 } from "@/lib/capacitorEnv";
-import { 启动原生录像, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 import { useUpload } from "@/hooks/useUpload";
 
 interface Props {
@@ -86,51 +84,6 @@ export function VideoUploader({
 
   /* ========== APP 原生录像 ========== */
 
-  async function handleAppRecord() {
-    if (videos.length >= maxVideos) {
-      alert(`最多上传 ${maxVideos} 个视频`);
-      return;
-    }
-    try {
-      const result = await 启动原生录像();
-      if (result.cancelled) return;
-      if (result.error || !result.filePath) {
-        alert("录像失败: " + (result.error || "未知错误"));
-        return;
-      }
-
-      const fileUrl = 本地文件路径转URL(result.filePath);
-      const response = await fetch(fileUrl);
-      if (!response.ok) {
-        throw new Error("读取视频文件失败");
-      }
-      const blob = await response.blob();
-
-      /* 检查大小 */
-      if (blob.size > maxFileSizeMB * 1024 * 1024) {
-        alert(`视频大小不能超过 ${maxFileSizeMB}MB`);
-        return;
-      }
-
-      /* 检查时长 */
-      const duration = await 检测视频时长(blob);
-      if (duration !== null && duration > maxDurationSeconds) {
-        alert(`视频时长不能超过 ${maxDurationSeconds} 秒`);
-        return;
-      }
-
-      const file = new File([blob], `record_${Date.now()}.mp4`, {
-        type: blob.type || "video/mp4",
-      });
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      await handleFiles(dt.files);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      alert("录像上传失败: " + msg);
-    }
-  }
-
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files) return;
@@ -187,60 +140,31 @@ export function VideoUploader({
         ))}
         {videos.length < maxVideos && (
           <div className="flex gap-2">
-            {/* 移动端 */}
-            {是Capacitor环境() ? (
-              <button
-                type="button"
-                onClick={handleAppRecord}
-                disabled={上传中}
-                className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
-              >
-                {上传中 ? (
-                  <div className="flex flex-col items-center">
-                    <span className="text-xs">{进度}%</span>
-                    <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
-                      <div
-                        className="h-full bg-blue-500 rounded transition-all"
-                        style={{ width: `${进度}%` }}
-                      />
-                    </div>
+            {/* 移动端：录像/选视频 */}
+            <label
+              htmlFor={cameraId}
+              className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
+            >
+              {上传中 ? (
+                <div className="flex flex-col items-center">
+                  <span className="text-xs">{进度}%</span>
+                  <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded transition-all"
+                      style={{ width: `${进度}%` }}
+                    />
                   </div>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    <span className="text-[10px]">录像</span>
-                    <span className="text-[10px]">{videos.length}/{maxVideos}</span>
-                  </>
-                )}
-              </button>
-            ) : (
-              <label
-                htmlFor={cameraId}
-                className={`md:hidden w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
-              >
-                {上传中 ? (
-                  <div className="flex flex-col items-center">
-                    <span className="text-xs">{进度}%</span>
-                    <div className="w-12 h-1 bg-gray-200 rounded mt-1 overflow-hidden">
-                      <div
-                        className="h-full bg-blue-500 rounded transition-all"
-                        style={{ width: `${进度}%` }}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    <span className="text-[10px]">录像</span>
-                    <span className="text-[10px]">{videos.length}/{maxVideos}</span>
-                  </>
-                )}
-              </label>
-            )}
+                </div>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-[10px]">录像</span>
+                  <span className="text-[10px]">{videos.length}/{maxVideos}</span>
+                </>
+              )}
+            </label>
             <label
               htmlFor={fileId}
               className={`md:hidden w-24 h-20 rounded border border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
