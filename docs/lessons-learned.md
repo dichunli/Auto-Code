@@ -277,3 +277,76 @@ if (!session) {
 - **涉及时区的函数必须显式指定 `timeZone`**，否则服务端和客户端输出不一致。
 - **一个提交只做一件事**，禁止"顺手"改看起来更好但其实无关的东西。
 - **改回旧方案时，必须把配套逻辑也改回去**。不能只改主逻辑、漏掉辅助逻辑（如 `getItem` 的读取优先级），否则会产生"半新半旧"的混合状态，比纯新方案更难排查。
+
+---
+
+## 2026-06-12：图片/视频上传全面重构 + 视频上传排查
+
+### 背景
+全面重构系统中的图片和视频上传功能（统一压缩参数、统一存储、统一上传 Hook、统一图片查看器等），重构成功后发现在 APP 中视频上传点不动。
+
+### 踩的 3 个坑
+
+#### 坑①：WebView 三种常见方案都打不开文件选择器
+
+**走了 4 个死胡同**：
+
+| 尝试 | 为什么失败 |
+|------|-----------|
+| `<input type="file" className="hidden">` + JS `.click()` | WebView 不响应隐藏元素的 `.click()` |
+| `<label htmlFor="id">` + 外部 `<input>` | WebView 不弹文件选择器 |
+| `<label>` 嵌套 `<input>` + `sr-only` | WebView 不弹文件选择器 |
+| `getUserMedia` + `MediaRecorder` 网页录像 | WebView HTTP 环境直接拒绝摄像头 API |
+
+**教训**：Android WebView 有三个死限制，前端怎么试都绕不过——① file input 打不开 ② getUserMedia 被拒 ③ 只有 Capacitor 插件/原生桥接才靠谱。**前端搞不动时，先去看原生代码有没有方案**。
+
+#### 坑②：反复改前端没反应，因为 APK 里根本没录像功能
+
+**关键线索**：用户说"VIN 拍照正常"。VIN 拍照和视频录像用的是同一套**原生桥接机制**（Java JSInterface），这说明机制本身是好的。
+
+**根因**：视频录像桥接（`AndroidVideoCapture`）是后加进 MainActivity.java 的。用户装的 APK 没有这个桥接，前端再怎么改代码、重新部署服务器都没用。**原生桥接 ≠ 网页代码，网页改完部署服务器即可，原生桥接必须重新打包 APK。**
+
+**教训**：
+- **APP 里拍照/录像没反应 → 先问"VIN 拍照能用吗"**：能 = 机制 OK 但桥接缺，不能 = 机制本身坏了
+- **凡涉及新增 Java 桥接，必须提醒用户 `npx cap sync` + 重新打包 APK**
+- **电脑浏览器能上传 ≠ APP 能用**：浏览器走 HTML file input，APP 必须走原生桥接
+
+#### 坑③：APP 视频必须用原生系统相机，不能用 MediaRecorder
+
+**MainActivity.java 注释早就写了**：
+> Android WebView 的 getUserMedia() 在 HTTP 环境下会被拒绝，所以所有摄像头功能必须使用 Capacitor 原生插件，不能依赖 WebView 的 JavaScript 摄像头 API。
+
+但我之前没看这段注释，自己装了 MediaRecorder 方案试了两次才发现不行。
+
+**教训**：**先读原生代码的注释和文档**。MainActivity.java 里已经写了每个桥接的用法和限制，读一遍能省半天时间。
+
+### 架构教训
+
+**"APP 是远程壳，改代码不用重打包"这个说法不完全对。**
+
+准确的表述是：
+- 网页代码（React/页面/逻辑）→ 远程加载，部署服务器即可
+- **原生桥接（Java JSInterface）→ 必须打包进 APK**，新增的桥接旧 APK 没有
+
+**判断方法**：改的东西在 `src/` 下 → 部署服务器；改的东西在 `android/` 下 → 重新打包 APK。
+
+---
+
+## 2026-06-11：点菜单进列表页数据为空
+
+### 背景
+车型库列表和维修项目列表通过左侧菜单点击进入时数据显示为空，但按 F5 刷新就恢复正常。
+
+### 根因
+客户端 `createClient()` 是单例，SPA 软跳转时没有从 localStorage 重新读取 session → `getSession()` 返回空 → 查询不带 token → RLS 当作未登录过滤 → 返回空数据。F5 刷新重建客户端 → 重新读 localStorage → 正常。
+
+### 修复
+`src/lib/supabase/client.ts` 中新增 `确保会话就绪()` 函数，AppShell 挂载时调用：若客户端无 session 但 localStorage 里有有效数据，手动 `setSession()` 注入。Promise 缓存全站只跑一次。
+
+### 排查方法
+
+以后遇到"列表页数据为空"，先排查是缓存还是 session：
+
+1. **`Ctrl+F5` 强制刷新** → 好了 = 浏览器缓存旧 JS chunk（尤其是刚部署过后）
+2. 刷新后**仍空白** → 检查 `确保会话就绪()` 是否被正确调用（控制台加日志看 setSession 走了没）
+3. 如果 APP 里也空白 → 看是不是 APP 环境跳过了注入逻辑（APP 由 onAuthStateChange 自管）
