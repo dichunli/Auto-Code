@@ -30,6 +30,7 @@ export function VideoUploader({
   const cameraId = `vid-camera-${useId()}`;
   const fileId = `vid-file-${useId()}`;
   const [videos, setVideos] = useState<string[]>(existingVideos);
+  const [viewerSrc, setViewerSrc] = useState<string | null>(null);
 
   const {
     上传,
@@ -159,14 +160,22 @@ export function VideoUploader({
         {videos.map((src, i) => (
           <div
             key={i}
-            className="relative w-32 h-24 rounded border border-gray-200 overflow-hidden group bg-gray-900"
+            className="relative w-32 h-24 rounded border border-gray-200 overflow-hidden group bg-gray-900 cursor-pointer"
           >
             <video
               src={src}
               className="w-full h-full object-cover"
-              controls
               preload="metadata"
             />
+            {/* 播放按钮遮罩 — 点击进入全屏播放 */}
+            <div
+              className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity z-[5]"
+              onClick={(e) => { e.stopPropagation(); setViewerSrc(src); }}
+            >
+              <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
             <button
               type="button"
               onClick={() => removeVideo(i)}
@@ -311,6 +320,26 @@ export function VideoUploader({
       <p className="text-[10px] text-gray-400 hidden md:block">
         支持文件上传。单个不超过 {maxFileSizeMB}MB。
       </p>
+
+      {/* 全屏视频播放器 */}
+      {viewerSrc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={() => setViewerSrc(null)}>
+          <video
+            src={viewerSrc}
+            className="max-w-[95vw] max-h-[95vh] rounded"
+            controls
+            autoPlay
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setViewerSrc(null)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl leading-none w-11 h-11 flex items-center justify-center"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

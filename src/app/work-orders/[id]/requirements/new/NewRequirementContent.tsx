@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
+import { VideoUploader } from "@/components/VideoUploader";
 import { ReworkSelectModal } from "@/components/ReworkSelectModal";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { calculateItemCommission, calculatePartCommission } from "@/lib/commission";
@@ -210,6 +211,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
 
   const [requirement, setRequirement] = useState({ description: "", diagnosis: "", remarks: "" });
   const [requirementImages, setRequirementImages] = useState<string[]>([]);
+  const [requirementVideos, setRequirementVideos] = useState<string[]>([]);
   const [items, setItems] = useState<项目行[]>([
     { category_id: "", service_name_id: "", service_item_id: "", name: "", alias_name: "", item_type: "labor", quantity: "1", unit_price: "", mechanic_id: "", submitter_id: "", inspector_id: "", standard_hours: "", customer_opinion: "pending", description: "", is_outsourced: false, is_customer_part: false, outsourced_supplier_id: "", business_type: "normal", rework_source_item_id: "", rework_reason: "", rework_loss_amount: "", parts: [] },
   ]);
@@ -897,6 +899,16 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
           }));
           await supabase.from("work_order_requirement_media").insert(mediaRecords);
         }
+
+        // 保存需求视频
+        if (requirementVideos.length > 0) {
+          const videoRecords = requirementVideos.map((path) => ({
+            requirement_id: reqId,
+            media_type: "video" as const,
+            storage_path: path,
+          }));
+          await supabase.from("work_order_requirement_media").insert(videoRecords);
+        }
       }
 
       // 查询当前工单已有项目名称，防止重复
@@ -1029,6 +1041,10 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
               <div>
                 <h2 className="text-base font-semibold text-gray-900 mb-3">需求图片</h2>
                 <ImageUploader onUpload={setRequirementImages} />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 mb-3">需求视频</h2>
+                <VideoUploader onUpload={setRequirementVideos} />
               </div>
             </>
           )}
