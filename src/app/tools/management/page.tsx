@@ -119,17 +119,22 @@ export default function ToolManagementPage() {
         set未归还记录(new Map());
       }
 
-      /* 检查当前用户是否为管理员 */
+      /* 检查当前用户是否为管理员（通过 profile_roles） */
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .single();
-        set是管理员(profile?.role === "admin");
+        const { data: roleData } = await supabase
+          .from("profile_roles")
+          .select("roles(name)")
+          .eq("profile_id", user.id);
+        interface 角色关联 {
+          roles: { name: string } | null;
+        }
+        const roleNames = (roleData || [])
+          .map((r: 角色关联) => r.roles?.name)
+          .filter(Boolean) as string[];
+        set是管理员(roleNames.includes("admin"));
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

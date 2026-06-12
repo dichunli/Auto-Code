@@ -50,11 +50,19 @@ ALTER TABLE tool_borrow_records ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tools_select_all ON tools
   FOR SELECT TO authenticated USING (true);
 
-/* tools 表：仅管理员可写 */
+/* tools 表：仅管理员可写（通过 profile_roles + roles 表判断） */
 CREATE POLICY tools_write_admin ON tools
   FOR ALL TO authenticated
-  USING (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin')
-  WITH CHECK (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin');
+  USING (EXISTS (
+    SELECT 1 FROM profile_roles pr
+    JOIN roles r ON pr.role_id = r.id
+    WHERE pr.profile_id = auth.uid() AND r.name = 'admin'
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM profile_roles pr
+    JOIN roles r ON pr.role_id = r.id
+    WHERE pr.profile_id = auth.uid() AND r.name = 'admin'
+  ));
 
 /* tool_borrow_records 表：所有认证用户可读写 */
 CREATE POLICY tool_borrow_records_all ON tool_borrow_records
