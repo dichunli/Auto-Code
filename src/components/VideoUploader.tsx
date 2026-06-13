@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { useUpload } from "@/hooks/useUpload";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
-import { 启动原生录像, 本地文件路径转URL } from "@/lib/androidVideoCapture";
+import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -81,18 +81,20 @@ export function VideoUploader({
     e.target.value = "";
   }
 
-  /* ========== APP 原生录像 ========== */
-
-  async function handleAppRecord() {
+  /* APP 环境：处理原生录像或原生选择得到的视频 */
+  async function handleAppVideoSource(
+    获取结果: () => Promise<{ filePath?: string; error?: string; cancelled?: boolean }>,
+    来源名称: string
+  ) {
     if (videos.length >= maxVideos) {
       alert(`最多上传 ${maxVideos} 个视频`);
       return;
     }
     try {
-      const result = await 启动原生录像();
+      const result = await 获取结果();
       if (result.cancelled) return;
       if (result.error || !result.filePath) {
-        alert("录像失败: " + (result.error || "原生录像不可用，请重新安装最新版APP"));
+        alert(`${来源名称}失败: ` + (result.error || "原生视频功能不可用，请重新安装最新版APP"));
         return;
       }
 
@@ -106,7 +108,16 @@ export function VideoUploader({
         return;
       }
 
-      const file = new File([blob], `record_${Date.now()}.mp4`, {
+      /* 根据实际 MIME 类型选择正确扩展名，避免把 .3gp 强制存成 .mp4 */
+      function 视频扩展名(mimeType: string): string {
+        if (mimeType === "video/3gpp") return ".3gp";
+        if (mimeType === "video/webm") return ".webm";
+        if (mimeType === "video/quicktime") return ".mov";
+        return ".mp4";
+      }
+      const prefix = 来源名称 === "录像" ? "record" : "picked";
+      const ext = blob.type ? 视频扩展名(blob.type) : ".mp4";
+      const file = new File([blob], `${prefix}_${Date.now()}${ext}`, {
         type: blob.type || "video/mp4",
       });
       const dt = new DataTransfer();
@@ -114,8 +125,16 @@ export function VideoUploader({
       await handleFiles(dt.files);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("录像上传失败: " + msg);
+      alert("视频上传失败: " + msg);
     }
+  }
+
+  async function handleAppRecord() {
+    await handleAppVideoSource(启动原生录像, "录像");
+  }
+
+  async function handleAppPick() {
+    await handleAppVideoSource(启动原生视频选择, "选择视频");
   }
 
   /* ========== 删除视频 ========== */
@@ -162,26 +181,46 @@ export function VideoUploader({
         ))}
         {videos.length < maxVideos && (
           <div className="flex gap-2">
-            {/* APP 环境：用原生录像（WebView 不支持 file input 和 getUserMedia） */}
+            {/* APP 环境：原生录像 + 原生选视频（WebView 不支持 file input 和 getUserMedia） */}
             {是APP ? (
-              <button
-                type="button"
-                onClick={handleAppRecord}
-                disabled={上传中}
-                className={`w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
-              >
-                {上传中 ? (
-                  <span className="text-xs">{总进度 || "..."}</span>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    <span className="text-[10px]">录像</span>
-                    <span className="text-[10px]">{videos.length}/{maxVideos}</span>
-                  </>
-                )}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleAppRecord}
+                  disabled={上传中}
+                  className={`w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
+                >
+                  {上传中 ? (
+                    <span className="text-xs">{总进度 || "..."}</span>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-[10px]">录像</span>
+                      <span className="text-[10px]">{videos.length}/{maxVideos}</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAppPick}
+                  disabled={上传中}
+                  className={`w-24 h-20 rounded border border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
+                >
+                  {上传中 ? (
+                    <span className="text-xs">{总进度 || "..."}</span>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      <span className="text-[10px]">选视频</span>
+                      <span className="text-[10px]">{videos.length}/{maxVideos}</span>
+                    </>
+                  )}
+                </button>
+              </>
             ) : (
               <>
                 {/* 移动端浏览器：录像 + 选视频 */}
@@ -238,7 +277,7 @@ export function VideoUploader({
       )}
 
       <p className="text-[10px] text-gray-400">
-        {是APP ? "点击录像调用系统相机拍摄" : "支持录像或选择文件"}。单个不超过 {maxFileSizeMB}MB、{maxDurationSeconds} 秒。
+        {是APP ? "点击录像或选视频" : "支持录像或选择文件"}。单个不超过 {maxFileSizeMB}MB、{maxDurationSeconds} 秒。
       </p>
 
       {/* 全屏视频播放器 */}
