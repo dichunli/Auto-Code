@@ -56,7 +56,9 @@ export async function getWorkOrderData(id: string) {
 
   const supabase = await createClient();
 
-  // 第一批：全局数据 + 工单基本信息（互相独立，并行查询）
+  // ── 第一趟（并行）：工单本身 + 全局数据 + 所有只需工单ID的关联数据 ──
+  // 说明：以下查询要么不依赖任何ID，要么只依赖一开始就已知的工单ID(id)，
+  // 因此全部合并到第一趟一次性并行发出，无需等待工单查询返回。
   const [
     { data: order, error: orderError },
     { data: profiles },
@@ -64,6 +66,14 @@ export async function getWorkOrderData(id: string) {
     { data: suppliers },
     { data: logisticsCompanies },
     { data: outsourceOrder },
+    { data: requirements },
+    { data: items, error: itemsError },
+    { data: inspections },
+    { data: qualityChecks },
+    { data: payments },
+    { data: advancePaymentRecords },
+    { data: followUps },
+    { data: history },
   ] = await Promise.all([
     supabase.from("work_orders").select(`*, vehicles(*, vehicle_models(*)), customers(*)`).eq("id", id).single(),
     supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
@@ -75,30 +85,7 @@ export async function getWorkOrderData(id: string) {
       .select("id, order_no, is_paid, created_at, suppliers(name), outsource_order_items(id, work_order_item_id, service_item_id, service_name, amount)")
       .eq("work_order_id", id)
       .maybeSingle(),
-  ]);
 
-  if (orderError) {
-    console.error("[workOrderData] order query error:", orderError.message, "code:", orderError.code);
-  }
-
-  // 提取车辆和客户 ID，用于关联查询
-  const vehicleId = (order as Record<string, unknown> | null)?.vehicle_id as string | undefined;
-  const customerId = (order as Record<string, unknown> | null)?.customer_id as string | undefined;
-
-  // 第二批：工单关联数据（嵌套查询减少 HTTP 请求次数）
-  const [
-    { data: requirements },
-    { data: items, error: itemsError },
-    { data: inspections },
-    { data: qualityChecks },
-    { data: payments },
-    { data: advancePaymentRecords },
-    { data: followUps },
-    { data: history },
-    { count: historyOrderCount },
-    { data: otherOrdersByType },
-    { count: customerOrderCount },
-  ] = await Promise.all([
     supabase.from("work_order_requirements").select(`
       *,
       submitted_by_profile:profiles!work_order_requirements_submitted_by_fkey(full_name),
@@ -127,6 +114,52 @@ export async function getWorkOrderData(id: string) {
     supabase.from("advance_payment_records").select("*, profiles(full_name)").eq("work_order_id", id).order("paid_at", { ascending: true }),
     supabase.from("follow_ups").select("id, scheduled_at, completed_at, method, result, notes").eq("work_order_id", id).order("scheduled_at", { ascending: true }),
     supabase.from("work_order_history").select("id, from_status, to_status, created_at").eq("work_order_id", id).order("created_at", { ascending: true }),
+  ]);
+
+  if (orderError) {
+    console.error("[workOrderData] order query error:", orderError.message, "code:", orderError.code);
+  }
+
+  // 提取第一趟结果中的关联 ID，供第二趟使用
+  const vehicleId = (order as Record<string, unknown> | null)?.vehicle_id as string | undefined;
+  const customerId = (order as Record<string, unknown> | null)?.customer_id as string | undefined;
+  const vehicleModelId = (order as Record<string, unknown> | null)?.vehicles ? ((order as Record<string, unknown>).vehicles as Record<string, unknown> | undefined)?.vehicle_model_id as string | undefined : undefined;
+  const itemIds = items?.map((i: unknown) => (i as Record<string, unknown>).id as string) || [];
+  const serviceItemIds = [...new Set(items?.map((i: unknown) => (i as Record<string, unknown>).service_item_id as string).filter(Boolean) || [])];
+  const serviceNameIds = [...new Set(items?.map((i: unknown) => ((i as Record<string, unknown>).service_items as Record<string, unknown> | undefined)?.service_name_id as string).filter(Boolean) || [])];
+  const knowledgeConditions = [
+    ...serviceItemIds.map((sid: string) => `service_item_id.eq.${sid}`),
+    ...serviceNameIds.map((sid: string) => `service_name_id.eq.${sid}`),
+  ];
+
+  // ── 第二趟（并行）：依赖第一趟结果的查询一次性发出 ──
+  // 配件分支(依赖项目ID)、知识库关联(依赖项目)、车型指导文章(依赖车型ID)、3个统计数(依赖车辆/客户ID)
+  const [
+    { data: itemParts },
+    { data: knowledgeLinksRaw },
+    { data: vlinks },
+    { count: historyOrderCount },
+    { data: otherOrdersByType },
+    { count: customerOrderCount },
+  ] = await Promise.all([
+    itemIds.length > 0
+      ? supabase.from("work_order_item_parts").select(`
+          *,
+          part_names(name, unit, category_id, part_categories(name), sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value),
+          parts(*, part_categories(name), part_brands(name))
+        `).in("work_order_item_id", itemIds).order("sort_order", { ascending: true }).order("created_at", { ascending: true })
+      : Promise.resolve({ data: [] }),
+
+    knowledgeConditions.length > 0
+      ? supabase.from("knowledge_service_links").select(`
+          article_id, service_item_id, service_name_id,
+          knowledge_articles(id, title, type, category_id, knowledge_categories(name))
+        `).or(knowledgeConditions.join(","))
+      : Promise.resolve({ data: [] }),
+
+    vehicleModelId
+      ? supabase.from("knowledge_vehicle_links").select("article_id").eq("vehicle_model_id", vehicleModelId)
+      : Promise.resolve({ data: [] }),
 
     // 同车辆历史工单数（排除当前工单）
     vehicleId
@@ -177,17 +210,7 @@ export async function getWorkOrderData(id: string) {
     }
   });
 
-  // 第三批：配件分支（从 items 查询中拆分，避免单次查询数据量过大）
-  const itemIds = items?.map((i: unknown) => (i as Record<string, unknown>).id as string) || [];
-  const { data: itemParts } = itemIds.length > 0
-    ? await supabase.from("work_order_item_parts").select(`
-        *,
-        part_names(name, unit, category_id, part_categories(name), sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value),
-        parts(*, part_categories(name), part_brands(name))
-      `).in("work_order_item_id", itemIds).order("sort_order", { ascending: true }).order("created_at", { ascending: true })
-    : { data: [] };
-
-  // 第四批：依赖 itemParts 的 ID（并行查询）
+  // ── 第三趟（并行）：依赖配件分支ID(itemPartIds)的查询 ──
   const itemPartIds = itemParts?.map((p: unknown) => (p as Record<string, unknown>).id as string) || [];
   const partIds = itemParts?.map((p: unknown) => (p as Record<string, unknown>).part_id as string).filter(Boolean) || [];
 
@@ -205,38 +228,10 @@ export async function getWorkOrderData(id: string) {
     partIds.length > 0 ? supabase.from("part_batches").select("part_id, quantity").in("part_id", partIds) : Promise.resolve({ data: [] }),
   ]);
 
-  // knowledge links（依赖 items 的结果，合并为单次查询减少 HTTP 请求）
-  const serviceItemIds = [...new Set(items?.map((i: unknown) => (i as Record<string, unknown>).service_item_id as string).filter(Boolean) || [])];
-  const serviceNameIds = [...new Set(items?.map((i: unknown) => ((i as Record<string, unknown>).service_items as Record<string, unknown> | undefined)?.service_name_id as string).filter(Boolean) || [])];
-  let knowledgeLinks: unknown[] = [];
-  const knowledgeConditions = [
-    ...serviceItemIds.map((sid: string) => `service_item_id.eq.${sid}`),
-    ...serviceNameIds.map((sid: string) => `service_name_id.eq.${sid}`),
-  ];
-  if (knowledgeConditions.length > 0) {
-    const { data: links } = await supabase
-      .from("knowledge_service_links")
-      .select(`
-        article_id, service_item_id, service_name_id,
-        knowledge_articles(id, title, type, category_id, knowledge_categories(name))
-      `)
-      .or(knowledgeConditions.join(","));
-    knowledgeLinks = links || [];
-  }
-
-  // 获取车型关联的文章ID（维修指导类型/分类需要同时匹配车型）
-  const vehicleModelId = (order as Record<string, unknown> | null)?.vehicles ? ((order as Record<string, unknown>).vehicles as Record<string, unknown> | undefined)?.vehicle_model_id as string | undefined : undefined;
-  let guideArticleIds: string[] = [];
-  if (vehicleModelId) {
-    const { data: vlinks } = await supabase
-      .from("knowledge_vehicle_links")
-      .select("article_id")
-      .eq("vehicle_model_id", vehicleModelId);
-    guideArticleIds = (vlinks || []).map((v: unknown) => (v as Record<string, unknown>).article_id as string);
-  }
-
-  // 过滤：维修指导类型(guide)或分类为"维修指导"的文章需要同时匹配车型
-  knowledgeLinks = knowledgeLinks.filter((link: unknown) => {
+  // knowledge links 过滤（数据已在第二趟查出，此处仅做内存过滤，无网络请求）
+  // 维修指导类型(guide)或分类为"维修指导"的文章需要同时匹配车型
+  const guideArticleIds = (vlinks || []).map((v: unknown) => (v as Record<string, unknown>).article_id as string);
+  const knowledgeLinks = (knowledgeLinksRaw || []).filter((link: unknown) => {
     const l = link as Record<string, unknown>;
     const article = l.knowledge_articles as Record<string, unknown> | undefined;
     const articleType = article?.type;
