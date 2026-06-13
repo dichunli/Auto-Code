@@ -47,8 +47,13 @@ export function 启动原生录像(): Promise<原生录像结果> {
       }
     };
 
-    window.addEventListener(事件名, 监听器);
-    window.AndroidVideoCapture.startCapture();
+    try {
+      window.addEventListener(事件名, 监听器);
+      window.AndroidVideoCapture.startCapture();
+    } catch (e) {
+      window.removeEventListener(事件名, 监听器);
+      resolve({ error: e instanceof Error ? e.message : String(e) });
+    }
   });
 }
 
