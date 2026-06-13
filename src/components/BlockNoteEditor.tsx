@@ -107,9 +107,15 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
         renderEditor={false}
       >
         {/* 固定工具栏 — 显示在编辑器上方，移动端滚动时 sticky 跟随 */}
-        <div className="sticky top-0 z-30 bg-gray-50 border-b border-gray-200 px-2 py-1.5 flex items-center gap-1 flex-wrap">
-          <CustomToolbarButtons editor={editor} uploadFile={uploadFile} isMobile={是移动端()} />
-          <FormattingToolbar />
+        <div className="sticky top-0 z-30 bg-gray-50 border-b border-gray-200">
+          {/* 上层：文字格式工具栏 */}
+          <div className="px-2 py-1.5 border-b border-gray-200">
+            <FormattingToolbar />
+          </div>
+          {/* 下层：媒体按钮和其他功能按钮 */}
+          <div className="px-2 py-1.5 flex items-center gap-1 flex-wrap">
+            <CustomToolbarButtons editor={editor} uploadFile={uploadFile} isMobile={是移动端()} />
+          </div>
         </div>
         <BlockNoteViewEditor />
       </BlockNoteView>
@@ -172,8 +178,6 @@ function CustomToolbarButtons({
     );
   }
 
-  const [showImagePicker, setShowImagePicker] = useState(false);
-
   /* 浏览器环境：处理 file input 选择 */
   async function handleInsertImage(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -188,7 +192,6 @@ function CustomToolbarButtons({
 
   /* APP 环境：调用 Capacitor 原生相机/相册拍照或选图 */
   async function handleCameraCapture(source: CameraSource) {
-    setShowImagePicker(false);
     try {
       const photo = await Camera.getPhoto({
         quality: 90,
@@ -439,76 +442,53 @@ function CustomToolbarButtons({
         <JumpLinkModal editor={editor} onClose={() => setShowJumpModal(false)} />
       )}
 
-      {/* 插入图片：APP 调用原生相机，浏览器用文件选择 */}
+      {/* APP 环境：4 个独立媒体按钮 */}
       {是Capacitor环境() ? (
-        <button type="button" className={btnBase} onClick={() => setShowImagePicker(true)} title="拍照/相册">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          图片
-        </button>
+        <>
+          <button type="button" className={btnBase} onClick={() => handleCameraCapture(CameraSource.Camera)} title="拍照">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            拍照
+          </button>
+          <button type="button" className={btnBase} onClick={() => handleCameraCapture(CameraSource.Photos)} title="上传图片">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            上传图片
+          </button>
+          <button type="button" className={btnBase} onClick={handleAppRecordVideo} title="拍摄视频">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            拍摄视频
+          </button>
+          <label className={btnBase + " cursor-pointer"} title="上传视频">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+            </svg>
+            上传视频
+            <input ref={videoFileInputRef} type="file" accept="video/*" className="sr-only" onChange={handleUploadVideo} />
+          </label>
+        </>
       ) : (
-        <label className={btnBase + " cursor-pointer"} title="插入图片">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          图片
-          <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" onChange={handleInsertImage} />
-        </label>
-      )}
-
-      {/* APP 图片选择弹窗（替代系统英文 Prompt） */}
-      {showImagePicker && (
-        <div
-          className="fixed inset-0 z-[200] flex items-end justify-center bg-black/50"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowImagePicker(false);
-          }}
-        >
-          <div className="bg-white rounded-t-2xl w-full max-w-sm p-4">
-            <h3 className="text-center text-base font-medium text-gray-900 mb-4">插入图片</h3>
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => handleCameraCapture(CameraSource.Camera)}
-                className="w-full flex items-center gap-3 px-4 py-3 text-left rounded-xl bg-gray-50 hover:bg-blue-50 active:bg-blue-100 transition-colors"
-              >
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-gray-900">拍照</div>
-                  <div className="text-xs text-gray-500">使用手机相机拍照</div>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleCameraCapture(CameraSource.Photos)}
-                className="w-full flex items-center gap-3 px-4 py-3 text-left rounded-xl bg-gray-50 hover:bg-purple-50 active:bg-purple-100 transition-colors"
-              >
-                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-gray-900">从相册选择</div>
-                  <div className="text-xs text-gray-500">选择手机相册中的图片</div>
-                </div>
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowImagePicker(false)}
-              className="mt-3 w-full py-3 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-xl transition-colors"
-            >
-              取消
-            </button>
-          </div>
-        </div>
+        <>
+          <label className={btnBase + " cursor-pointer"} title="插入图片">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            图片
+            <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" onChange={handleInsertImage} />
+          </label>
+          <label className={btnBase + " cursor-pointer"} title="上传视频">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+            </svg>
+            上传视频
+            <input ref={videoFileInputRef} type="file" accept="video/*" className="sr-only" onChange={handleUploadVideo} />
+          </label>
+        </>
       )}
 
       {!isMobile && (
@@ -529,24 +509,6 @@ function CustomToolbarButtons({
             抖音视频
           </button>
         </>
-      )}
-
-      {/* 上传视频：APP 用原生系统相机录像，浏览器用文件选择 */}
-      {是Capacitor环境() ? (
-        <button type="button" className={btnBase} onClick={handleAppRecordVideo} title="录像">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-          </svg>
-          上传视频
-        </button>
-      ) : (
-        <label className={btnBase + " cursor-pointer"} title="上传视频">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-          </svg>
-          上传视频
-          <input ref={videoFileInputRef} type="file" accept="video/*" className="sr-only" onChange={handleUploadVideo} />
-        </label>
       )}
 
       {!isMobile && (
