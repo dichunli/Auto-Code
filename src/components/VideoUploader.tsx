@@ -7,6 +7,7 @@ import { 启动原生录像, 本地文件路径转URL } from "@/lib/androidVideo
 
 interface Props {
   onUpload: (paths: string[]) => void;
+  onDelete?: (path: string) => void;
   existingVideos?: string[];
   maxVideos?: number;
   maxFileSizeMB?: number;
@@ -17,6 +18,7 @@ interface Props {
 
 export function VideoUploader({
   onUpload,
+  onDelete,
   existingVideos = [],
   maxVideos = 3,
   maxFileSizeMB = 100,
@@ -32,7 +34,6 @@ export function VideoUploader({
     上传中,
     总进度,
     错误: uploadError,
-    删除文件,
   } = useUpload({
     mediaType: "video",
     maxFileSizeMB,
@@ -124,8 +125,8 @@ export function VideoUploader({
     const next = videos.filter((_, i) => i !== index);
     setVideos(next);
     onUpload(next);
-    if (target) {
-      删除文件(target);
+    if (target && onDelete) {
+      onDelete(target);
     }
   }
 

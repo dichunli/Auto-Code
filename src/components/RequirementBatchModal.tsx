@@ -47,6 +47,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
   const [images, setImages] = useState<string[]>([]);
   const [videos, setVideos] = useState<string[]>([]);
   const [deletedMediaIds, setDeletedMediaIds] = useState<string[]>([]);
+  const [deletedMediaPaths, setDeletedMediaPaths] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevOpenRef = useRef(false);
@@ -62,6 +63,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
         setImages(initialMedia.filter((m) => m.media_type === "image").map((m) => m.storage_path));
         setVideos(initialMedia.filter((m) => m.media_type === "video").map((m) => m.storage_path));
         setDeletedMediaIds([]);
+        setDeletedMediaPaths([]);
       } else {
         reset();
       }
@@ -76,6 +78,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
     setImages([]);
     setVideos([]);
     setDeletedMediaIds([]);
+    setDeletedMediaPaths([]);
   }
 
   async function handleSubmit() {
@@ -102,7 +105,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
 
         if (updateError) throw updateError;
 
-        // 删除被标记删除的媒体
+        // 删除被标记删除的媒体记录
         if (deletedMediaIds.length > 0) {
           const { error: delError } = await supabase
             .from("work_order_requirement_media")
@@ -159,6 +162,16 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
         if (mediaError) throw mediaError;
       }
 
+      // 删除被移除的媒体文件（包括已保存的和新上传后取消的）
+      const pathsToDelete = [...deletedMediaPaths];
+      for (const path of pathsToDelete) {
+        await fetch("/api/delete-media", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path }),
+        });
+      }
+
       reset();
       onClose();
       router.refresh();
@@ -182,8 +195,29 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
 
   function handleClose() {
     if (saving) return;
+    // 关闭时如果是新增模式且未保存，清理已上传的媒体文件
+    if (!isEdit && (images.length > 0 || videos.length > 0)) {
+      for (const path of [...images, ...videos]) {
+        fetch("/api/delete-media", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path }),
+        });
+      }
+    }
     reset();
     onClose();
+  }
+
+  // 处理媒体删除：已保存的媒体记录 ID，新上传的直接删文件
+  function handleDeleteMedia(path: string, mediaType: "image" | "video") {
+    const existing = initialMedia.find(
+      (m) => m.media_type === mediaType && m.storage_path === path
+    );
+    if (existing?.id) {
+      setDeletedMediaIds((prev) => (prev.includes(existing.id!) ? prev : [...prev, existing.id!]));
+    }
+    setDeletedMediaPaths((prev) => (prev.includes(path) ? prev : [...prev, path]));
   }
 
   // 移动端键盘弹出时，自动滚动到textarea
@@ -245,11 +279,21 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
           <div className="space-y-4">
             <div>
               <div className="text-xs text-gray-500 mb-1">需求图片</div>
-              <ImageUploader existingImages={images} onUpload={setImages} maxImages={5} />
+              <ImageUploader
+                existingImages={images}
+                onUpload={setImages}
+                onDelete={(path) => handleDeleteMedia(path, "image")}
+                maxImages={5}
+              />
             </div>
             <div>
               <div className="text-xs text-gray-500 mb-1">需求视频</div>
-              <VideoUploader existingVideos={videos} onUpload={setVideos} maxVideos={3} />
+              <VideoUploader
+                existingVideos={videos}
+                onUpload={setVideos}
+                onDelete={(path) => handleDeleteMedia(path, "video")}
+                maxVideos={3}
+              />
             </div>
           </div>
         </div>

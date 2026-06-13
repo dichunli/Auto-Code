@@ -9,13 +9,14 @@ import { ImageViewer } from "./ImageViewer";
 
 interface Props {
   onUpload: (paths: string[]) => void;
+  onDelete?: (path: string) => void;
   existingImages?: string[];
   maxImages?: number;
   bucket?: string;
   folder?: string;
 }
 
-export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, folder }: Props) {
+export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImages = 5, folder }: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [images, setImages] = useState<string[]>(existingImages);
@@ -26,7 +27,6 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, fo
     上传中,
     总进度,
     错误: uploadError,
-    删除文件,
   } = useUpload({
     mediaType: "image",
     compressMaxKB: 300,
@@ -100,9 +100,9 @@ export function ImageUploader({ onUpload, existingImages = [], maxImages = 5, fo
     setImages(next);
     onUpload(next);
 
-    /* 同步删除服务端文件 */
-    if (target) {
-      删除文件(target);
+    /* 通知父组件有图片被删除，由父组件统一决定何时真正删除服务端文件 */
+    if (target && onDelete) {
+      onDelete(target);
     }
   }
 
