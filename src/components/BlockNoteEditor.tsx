@@ -16,6 +16,12 @@ import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { 启动原生录像, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 
+/* 客户端判断是否为移动设备（手机/平板） */
+function 是移动端(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Mobile|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+}
+
 interface Props {
   initialValue?: string;
   onChange: (jsonString: string) => void;
@@ -102,7 +108,7 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
       >
         {/* 固定工具栏 — 显示在编辑器上方 */}
         <div className="bg-gray-50 border-b border-gray-200 px-2 py-1.5 flex items-center gap-1 flex-wrap">
-          <CustomToolbarButtons editor={editor} uploadFile={uploadFile} />
+          <CustomToolbarButtons editor={editor} uploadFile={uploadFile} isMobile={是移动端()} />
           <FormattingToolbar />
         </div>
         <BlockNoteViewEditor />
@@ -115,9 +121,11 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
 function CustomToolbarButtons({
   editor,
   uploadFile,
+  isMobile,
 }: {
   editor: ReturnType<typeof useCreateBlockNote>;
   uploadFile: (file: File) => Promise<string>;
+  isMobile?: boolean;
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
@@ -413,18 +421,19 @@ function CustomToolbarButtons({
 
   return (
     <>
-      {/* 插入跳转链接 */}
-      <button
-        type="button"
-        className={btnBase}
-        onClick={() => setShowJumpModal(true)}
-        title="插入跳转链接"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-        </svg>
-        跳转
-      </button>
+      {!isMobile && (
+        <button
+          type="button"
+          className={btnBase}
+          onClick={() => setShowJumpModal(true)}
+          title="插入跳转链接"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
+          跳转
+        </button>
+      )}
 
       {showJumpModal && (
         <JumpLinkModal editor={editor} onClose={() => setShowJumpModal(false)} />
@@ -502,21 +511,25 @@ function CustomToolbarButtons({
         </div>
       )}
 
-      {/* 插入视频链接 */}
-      <button type="button" className={btnBase} onClick={handleInsertVideo} title="插入视频链接">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-        </svg>
-        视频链接
-      </button>
+      {!isMobile && (
+        <>
+          {/* 插入视频链接 */}
+          <button type="button" className={btnBase} onClick={handleInsertVideo} title="插入视频链接">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            视频链接
+          </button>
 
-      {/* 插入抖音视频 */}
-      <button type="button" className={btnBase} onClick={handleInsertDouyinVideo} title="插入抖音视频">
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
-          <path d="M12.53 2C12.53 2 12.53 6.5 12.53 8C12.53 10.5 14.53 12.5 17.03 12.5C17.83 12.5 18.53 12.3 19.03 12V16.5C19.03 16.5 17.53 17 16.03 17C13.53 17 11.53 15 11.53 12.5V8H8.53V12.5C8.53 16.5 11.53 19.5 15.53 19.5C16.53 19.5 17.53 19.3 18.53 18.8V22C18.53 22 17.03 22.5 15.53 22.5C10.53 22.5 6.53 18.5 6.53 13.5V8H4.53V4H11.53C11.53 3 12.03 2 12.53 2Z" fill="currentColor" />
-        </svg>
-        抖音视频
-      </button>
+          {/* 插入抖音视频 */}
+          <button type="button" className={btnBase} onClick={handleInsertDouyinVideo} title="插入抖音视频">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <path d="M12.53 2C12.53 2 12.53 6.5 12.53 8C12.53 10.5 14.53 12.5 17.03 12.5C17.83 12.5 18.53 12.3 19.03 12V16.5C19.03 16.5 17.53 17 16.03 17C13.53 17 11.53 15 11.53 12.5V8H8.53V12.5C8.53 16.5 11.53 19.5 15.53 19.5C16.53 19.5 17.53 19.3 18.53 18.8V22C18.53 22 17.03 22.5 15.53 22.5C10.53 22.5 6.53 18.5 6.53 13.5V8H4.53V4H11.53C11.53 3 12.03 2 12.53 2Z" fill="currentColor" />
+            </svg>
+            抖音视频
+          </button>
+        </>
+      )}
 
       {/* 上传视频：APP 用原生系统相机录像，浏览器用文件选择 */}
       {是Capacitor环境() ? (
@@ -536,46 +549,50 @@ function CustomToolbarButtons({
         </label>
       )}
 
-      {/* 上传文件 */}
-      <label className={btnBase + " cursor-pointer"} title="上传文件">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        文件
-        <input ref={fileInputRef} type="file" accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf" className="sr-only" onChange={handleUploadOfficeFile} />
-      </label>
+      {!isMobile && (
+        <>
+          {/* 上传文件 */}
+          <label className={btnBase + " cursor-pointer"} title="上传文件">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            文件
+            <input ref={fileInputRef} type="file" accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf" className="sr-only" onChange={handleUploadOfficeFile} />
+          </label>
 
-      {/* 插入文件链接 */}
-      <button type="button" className={btnBase} onClick={handleInsertFile} title="插入文件链接">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-        </svg>
-        链接
-      </button>
+          {/* 插入文件链接 */}
+          <button type="button" className={btnBase} onClick={handleInsertFile} title="插入文件链接">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            链接
+          </button>
 
-      {/* 插入表格 */}
-      <button type="button" className={btnBase} onClick={handleInsertTable} title="插入表格">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-        </svg>
-        表格
-      </button>
+          {/* 插入表格 */}
+          <button type="button" className={btnBase} onClick={handleInsertTable} title="插入表格">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            表格
+          </button>
 
-      {/* 插入代码块 */}
-      <button type="button" className={btnBase} onClick={handleInsertCodeBlock} title="插入代码块">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-        </svg>
-        代码
-      </button>
+          {/* 插入代码块 */}
+          <button type="button" className={btnBase} onClick={handleInsertCodeBlock} title="插入代码块">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            代码
+          </button>
 
-      {/* 插入分割线 */}
-      <button type="button" className={btnBase} onClick={handleInsertDivider} title="插入分割线">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-        </svg>
-        分割线
-      </button>
+          {/* 插入分割线 */}
+          <button type="button" className={btnBase} onClick={handleInsertDivider} title="插入分割线">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+            </svg>
+            分割线
+          </button>
+        </>
+      )}
     </>
   );
 }
