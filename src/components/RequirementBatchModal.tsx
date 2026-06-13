@@ -49,12 +49,12 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
   const [deletedMediaIds, setDeletedMediaIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const initialized = useRef(false);
+  const prevOpenRef = useRef(false);
 
-  // 编辑模式时初始化数据（仅在弹窗首次打开时执行，防止外部数组引用变化导致反复重置）
+  // 编辑模式时初始化数据：每次弹窗从关闭变为打开时重新初始化，
+  // 避免第一次打开时 initialMedia 尚未加载完成导致后续数据无法回显
   useEffect(() => {
-    if (open && !initialized.current) {
-      initialized.current = true;
+    if (open && !prevOpenRef.current) {
       if (isEdit) {
         setDescription(requirement.description || "");
         setDiagnosis(requirement.diagnosis || "");
@@ -66,9 +66,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
         reset();
       }
     }
-    if (!open) {
-      initialized.current = false;
-    }
+    prevOpenRef.current = open;
   }, [open, isEdit, requirement, initialMedia]);
 
   function reset() {
