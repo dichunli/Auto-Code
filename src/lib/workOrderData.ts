@@ -5,18 +5,141 @@ interface CacheEntry {
   timestamp: number;
 }
 
+// ── 工单关联的车型（vehicle_models 表，字段名为中文）──
+export interface 车型信息 {
+  id?: string;
+  排量?: string | null;
+  变速箱类型?: string | null;
+  年份?: string | null;
+  vehicle_model_id?: string | null;
+  [key: string]: unknown;
+}
+
+// ── 工单关联的车辆 ──
+export interface 车辆信息 {
+  id?: string;
+  plate_number?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  vin?: string | null;
+  color?: string | null;
+  engine_no?: string | null;
+  vehicle_model_id?: string | null;
+  vehicle_models?: 车型信息 | null;
+  [key: string]: unknown;
+}
+
+// ── 工单关联的客户 ──
+export interface 客户信息 {
+  id?: string;
+  name?: string | null;
+  phone?: string | null;
+  company?: string | null;
+  star_level?: number | null;
+  total_spent?: number | null;
+  [key: string]: unknown;
+}
+
+// ── 工单主体 ──
+export interface 工单信息 {
+  id: string;
+  order_no?: string | null;
+  order_type?: string | null;
+  status: string;
+  description?: string | null;
+  mileage_in?: number | null;
+  estimated_completion_at?: string | null;
+  created_at?: string | null;
+  sender_name?: string | null;
+  sender_phone?: string | null;
+  dashboard_photos?: string[] | null;
+  labor_cost?: number | null;
+  parts_cost?: number | null;
+  other_cost?: number | null;
+  total_cost?: number | null;
+  discount_amount?: number | null;
+  vehicle_id?: string | null;
+  customer_id?: string | null;
+  vehicles?: 车辆信息 | null;
+  customers?: 客户信息 | null;
+  [key: string]: unknown;
+}
+
+// ── 维修项目（work_order_items），仅声明页面实际访问的字段，其余用索引签名兜底 ──
+export interface 维修项目 {
+  id: string;
+  name?: string | null;
+  description?: string | null;
+  item_type?: string | null;
+  business_type?: string | null;
+  alias_name?: string | null;
+  standard?: string | null;
+  unit?: string | null;
+  quantity?: number | null;
+  unit_price?: number | null;
+  total_price?: number | null;
+  customer_opinion?: string | null;
+  rework_reason?: string | null;
+  rework_loss_amount?: number | null;
+  rework_source_item_id?: string | null;
+  requirement_id?: string | null;
+  service_item_id?: string | null;
+  mechanic_id?: string | null;
+  submitter_id?: string | null;
+  inspector_id?: string | null;
+  is_outsourced?: boolean | null;
+  is_customer_part?: boolean | null;
+  sort_order?: number | null;
+  created_at?: string | null;
+  service_items?: { service_name_id?: string | null; [key: string]: unknown } | null;
+  outsource_order_items?: unknown[] | null;
+  [key: string]: unknown;
+}
+
+// ── 配件分支（work_order_item_parts），仅声明页面实际访问的字段 ──
+export interface 配件分支 {
+  id: string;
+  work_order_item_id?: string | null;
+  part_id?: string | null;
+  part_name_id?: string | null;
+  name?: string | null;
+  alias_name?: string | null;
+  brand?: string | null;
+  specification?: string | null;
+  part_number?: string | null;
+  unit?: string | null;
+  quantity?: number | null;
+  unit_price?: number | null;
+  unit_cost?: number | null;
+  total_price?: number | null;
+  amount?: number | null;
+  method?: string | null;
+  notes?: string | null;
+  supplier_name?: string | null;
+  logistics_agreement?: string | null;
+  customer_opinion?: string | null;
+  is_arrived?: boolean | null;
+  is_selected?: boolean | null;
+  is_purchased?: boolean | null;
+  sort_order?: number | null;
+  created_at?: string | null;
+  parts?: { name?: string | null; [key: string]: unknown } | null;
+  part_names?: { name?: string | null; unit?: string | null; [key: string]: unknown } | null;
+  [key: string]: unknown;
+}
+
 interface WorkOrderDataResult {
-  order: unknown;
+  order: 工单信息 | null;
   requirements: unknown[] | null;
   profiles: unknown[] | null;
   requirementMedia: unknown[];
-  items: unknown[] | null;
+  items: 维修项目[] | null;
   itemsError: unknown;
   itemMedia: unknown[];
   itemMechanics: unknown[];
   mechanicGroups: unknown[] | null;
   knowledgeLinks: unknown[];
-  itemParts: unknown[] | null;
+  itemParts: 配件分支[] | null;
   partMedia: unknown[] | null;
   pickingRecords: unknown[] | null;
   returnRecords: unknown[] | null;
