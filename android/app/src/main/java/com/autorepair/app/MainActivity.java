@@ -74,12 +74,22 @@ public class MainActivity extends BridgeActivity {
   public class VideoCaptureBridge {
     @android.webkit.JavascriptInterface
     public void startCapture() {
-      Intent intent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
-      /* 限制录制时长 60 秒 */
-      intent.putExtra(MediaStore.EXTRA_DURATION_LIMIT, 60);
-      /* 限制视频质量（0=低质量，1=高质量） */
-      intent.putExtra(MediaStore.EXTRA_VIDEO_QUALITY, 1);
-      startActivityForResult(intent, REQUEST_CODE_VIDEO_CAPTURE);
+      try {
+        Intent intent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
+        /* 先检查是否有应用能处理这个 Intent（防止某些手机没有系统相机） */
+        if (intent.resolveActivity(getPackageManager()) == null) {
+          injectVideoCaptureEvent(null, "当前设备没有可用的录像应用");
+          return;
+        }
+        /* 限制录制时长 60 秒 */
+        intent.putExtra(MediaStore.EXTRA_DURATION_LIMIT, 60);
+        /* 限制视频质量（0=低质量，1=高质量） */
+        intent.putExtra(MediaStore.EXTRA_VIDEO_QUALITY, 1);
+        startActivityForResult(intent, REQUEST_CODE_VIDEO_CAPTURE);
+      } catch (Exception e) {
+        android.util.Log.e("MainActivity", "启动原生录像失败", e);
+        injectVideoCaptureEvent(null, "启动录像失败: " + e.getMessage());
+      }
     }
   }
 
