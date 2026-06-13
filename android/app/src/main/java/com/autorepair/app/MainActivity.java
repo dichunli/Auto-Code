@@ -8,6 +8,9 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
+import android.view.View;
+import android.view.ViewGroup;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -35,6 +38,10 @@ public class MainActivity extends BridgeActivity {
 
   private static final int REQUEST_CODE_VIDEO_CAPTURE = 4001;
   private static final int REQUEST_CODE_CAMERA_PERMISSION = 4002;
+
+  /* HTML5 video 全屏播放相关 */
+  private View videoFullScreenView;
+  private WebChromeClient.CustomViewCallback videoFullScreenCallback;
 
   /* 暴露给前端的 JavaScript 接口：打开应用设置页面 */
   public class AppSettingsInterface {
@@ -137,7 +144,7 @@ public class MainActivity extends BridgeActivity {
       bridge.getWebView().addJavascriptInterface(new VinCaptureBridge(), "AndroidVinCapture");
       bridge.getWebView().addJavascriptInterface(new VideoCaptureBridge(), "AndroidVideoCapture");
 
-      /* 调试用：在 WebView 中打印日志 */
+      /* 调试用：在 WebView 中打印日志，并支持 HTML5 video 全屏播放 */
       bridge.getWebView().setWebChromeClient(new android.webkit.WebChromeClient() {
         @Override
         public boolean onConsoleMessage(android.webkit.ConsoleMessage consoleMessage) {
@@ -145,6 +152,48 @@ public class MainActivity extends BridgeActivity {
             " -- From line " + consoleMessage.lineNumber() +
             " of " + consoleMessage.sourceId());
           return true;
+        }
+
+        @Override
+        public void onShowCustomView(View view, WebChromeClient.CustomViewCallback callback) {
+          /* 已经有全屏视图时，先隐藏旧的 */
+          if (videoFullScreenView != null) {
+            onHideCustomView();
+            return;
+          }
+
+          videoFullScreenView = view;
+          videoFullScreenCallback = callback;
+
+          /* 把全屏视图加到窗口根布局，隐藏 WebView */
+          ViewGroup decorView = (ViewGroup) getWindow().getDecorView();
+          decorView.addView(videoFullScreenView, new ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT));
+          bridge.getWebView().setVisibility(View.GONE);
+
+          /* 隐藏状态栏和导航栏，进入沉浸式全屏 */
+          getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        }
+
+        @Override
+        public void onHideCustomView() {
+          if (videoFullScreenView == null) return;
+
+          /* 恢复 WebView，移除全屏视图 */
+          ViewGroup decorView = (ViewGroup) getWindow().getDecorView();
+          decorView.removeView(videoFullScreenView);
+          bridge.getWebView().setVisibility(View.VISIBLE);
+
+          videoFullScreenCallback.onCustomViewHidden();
+          videoFullScreenView = null;
+          videoFullScreenCallback = null;
+
+          /* 恢复系统 UI */
+          getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
         }
       });
     }
