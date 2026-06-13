@@ -14,7 +14,7 @@ import { compressImage, base64转Blob } from "@/lib/imageCompress";
 import { blocknoteDictionary } from "@/lib/blocknoteDictionary";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
-import { 启动原生录像, 本地文件路径转URL } from "@/lib/androidVideoCapture";
+import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 
 /* 客户端判断是否为移动设备（手机/平板） */
 function 是移动端(): boolean {
@@ -169,6 +169,41 @@ function CustomToolbarButtons({
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancelled")) return;
       alert("录像上传失败: " + msg);
+    }
+  }
+
+  /* APP 环境：调用原生视频选择（相册/文件管理器） */
+  async function handleAppPickVideo() {
+    try {
+      const result = await 启动原生视频选择();
+      if (result.cancelled) return;
+      if (result.error || !result.filePath) {
+        alert("选择视频失败: " + (result.error || "原生视频选择不可用，请重新安装最新版APP"));
+        return;
+      }
+      const fileUrl = 本地文件路径转URL(result.filePath);
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error("读取视频文件失败");
+      const blob = await response.blob();
+      if (blob.size > 500 * 1024 * 1024) {
+        alert("视频大小不能超过 500MB");
+        return;
+      }
+      function 视频扩展名(mimeType: string): string {
+        if (mimeType === "video/3gpp") return ".3gp";
+        if (mimeType === "video/webm") return ".webm";
+        if (mimeType === "video/quicktime") return ".mov";
+        return ".mp4";
+      }
+      const ext = blob.type ? 视频扩展名(blob.type) : ".mp4";
+      const file = new File([blob], `picked_${Date.now()}${ext}`, { type: blob.type || "video/mp4" });
+      const url = await uploadFile(file);
+      const pos = editor.getTextCursorPosition();
+      editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], pos.block, "after");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("cancelled")) return;
+      alert("视频上传失败: " + msg);
     }
   }
 
@@ -472,13 +507,12 @@ function CustomToolbarButtons({
             </svg>
             拍摄视频
           </button>
-          <label className={btnBase + " cursor-pointer"} title="上传视频">
+          <button type="button" className={btnBase} onClick={handleAppPickVideo} title="上传视频">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
             </svg>
             上传视频
-            <input ref={videoFileInputRef} type="file" accept="video/*" className="sr-only" onChange={handleUploadVideo} />
-          </label>
+          </button>
         </>
       ) : (
         <>

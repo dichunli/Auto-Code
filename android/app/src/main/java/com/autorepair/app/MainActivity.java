@@ -39,6 +39,7 @@ public class MainActivity extends BridgeActivity {
 
   private static final int REQUEST_CODE_VIDEO_CAPTURE = 4001;
   private static final int REQUEST_CODE_CAMERA_PERMISSION = 4002;
+  private static final int REQUEST_CODE_VIDEO_PICK = 4003;
 
   /* HTML5 video 全屏播放相关 */
   private View videoFullScreenView;
@@ -119,6 +120,31 @@ public class MainActivity extends BridgeActivity {
     }
   }
 
+  /* 暴露给前端的 JavaScript 接口：启动原生视频选择 */
+  public class VideoPickerBridge {
+    @android.webkit.JavascriptInterface
+    public void startPick() {
+      runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+          try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.setType("video/*");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            if (intent.resolveActivity(getPackageManager()) == null) {
+              injectVideoPickerEvent(null, "当前设备没有可用的视频选择应用");
+              return;
+            }
+            startActivityForResult(intent, REQUEST_CODE_VIDEO_PICK);
+          } catch (Exception e) {
+            android.util.Log.e("MainActivity", "启动原生视频选择失败", e);
+            injectVideoPickerEvent(null, "启动视频选择失败: " + e.getMessage());
+          }
+        }
+      });
+    }
+  }
+
   @Override
   public void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -144,6 +170,7 @@ public class MainActivity extends BridgeActivity {
       bridge.getWebView().addJavascriptInterface(new LicensePlateRecognizerBridge(), "AndroidLicensePlateRecognizer");
       bridge.getWebView().addJavascriptInterface(new VinCaptureBridge(), "AndroidVinCapture");
       bridge.getWebView().addJavascriptInterface(new VideoCaptureBridge(), "AndroidVideoCapture");
+      bridge.getWebView().addJavascriptInterface(new VideoPickerBridge(), "AndroidVideoPicker");
 
       /* 调试用：在 WebView 中打印日志，并支持 HTML5 video 全屏播放 */
       bridge.getWebView().setWebChromeClient(new android.webkit.WebChromeClient() {
@@ -253,6 +280,23 @@ public class MainActivity extends BridgeActivity {
         injectVideoCaptureEvent(null, "cancelled");
       }
     }
+    if (requestCode == REQUEST_CODE_VIDEO_PICK) {
+      if (resultCode == RESULT_OK && data != null) {
+        Uri videoUri = data.getData();
+        if (videoUri != null) {
+          String filePath = copyVideoToAppDir(videoUri);
+          if (filePath != null) {
+            injectVideoPickerEvent(filePath, null);
+          } else {
+            injectVideoPickerEvent(null, "复制视频文件失败");
+          }
+        } else {
+          injectVideoPickerEvent(null, "未能获取视频");
+        }
+      } else {
+        injectVideoPickerEvent(null, "cancelled");
+      }
+    }
   }
 
   @Override
@@ -349,6 +393,25 @@ public class MainActivity extends BridgeActivity {
       result = uri.getLastPathSegment();
     }
     return result;
+  }
+
+  /* 将视频选择结果通过自定义事件派发给前端 */
+  private void injectVideoPickerEvent(String filePath, String error) {
+    try {
+      JSONObject detail = new JSONObject();
+      if (filePath != null) {
+        detail.put("filePath", filePath);
+      } else if ("cancelled".equals(error)) {
+        detail.put("cancelled", true);
+      } else {
+        detail.put("error", error != null ? error : "选择失败");
+      }
+
+      String js = "window.dispatchEvent(new CustomEvent('nativeVideoPickerResult', { detail: " + detail.toString() + " }));";
+      bridge.getWebView().evaluateJavascript(js, null);
+    } catch (JSONException e) {
+      android.util.Log.e("MainActivity", "视频选择结果序列化失败", e);
+    }
   }
 
   /* 将录像结果通过自定义事件派发给前端 */

@@ -7,6 +7,9 @@ declare global {
     AndroidVideoCapture?: {
       startCapture: () => void;
     };
+    AndroidVideoPicker?: {
+      startPick: () => void;
+    };
   }
 }
 
@@ -50,6 +53,44 @@ export function 启动原生录像(): Promise<原生录像结果> {
     try {
       window.addEventListener(事件名, 监听器);
       window.AndroidVideoCapture.startCapture();
+    } catch (e) {
+      window.removeEventListener(事件名, 监听器);
+      resolve({ error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+}
+
+/**
+ * 启动 Android 原生视频选择（从相册/文件管理器选视频）
+ * @returns Promise，解析为选择结果（filePath 为本地绝对路径）
+ */
+export function 启动原生视频选择(): Promise<原生录像结果> {
+  return new Promise((resolve) => {
+    if (!window.AndroidVideoPicker) {
+      resolve({ error: "原生视频选择不可用" });
+      return;
+    }
+
+    const 事件名 = "nativeVideoPickerResult";
+
+    const 监听器 = (event: Event) => {
+      window.removeEventListener(事件名, 监听器);
+
+      const customEvent = event as CustomEvent<Record<string, unknown>>;
+      const detail = customEvent.detail;
+
+      if (detail && typeof detail.filePath === "string" && detail.filePath.length > 0) {
+        resolve({ filePath: detail.filePath });
+      } else if (detail && detail.cancelled === true) {
+        resolve({ cancelled: true });
+      } else {
+        resolve({ error: typeof detail?.error === "string" ? detail.error : "选择失败" });
+      }
+    };
+
+    try {
+      window.addEventListener(事件名, 监听器);
+      window.AndroidVideoPicker.startPick();
     } catch (e) {
       window.removeEventListener(事件名, 监听器);
       resolve({ error: e instanceof Error ? e.message : String(e) });
