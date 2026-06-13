@@ -106,8 +106,8 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
         formattingToolbar={false}
         renderEditor={false}
       >
-        {/* 固定工具栏 — 显示在编辑器上方 */}
-        <div className="bg-gray-50 border-b border-gray-200 px-2 py-1.5 flex items-center gap-1 flex-wrap">
+        {/* 固定工具栏 — 显示在编辑器上方，移动端滚动时 sticky 跟随 */}
+        <div className="sticky top-0 z-30 bg-gray-50 border-b border-gray-200 px-2 py-1.5 flex items-center gap-1 flex-wrap">
           <CustomToolbarButtons editor={editor} uploadFile={uploadFile} isMobile={是移动端()} />
           <FormattingToolbar />
         </div>
