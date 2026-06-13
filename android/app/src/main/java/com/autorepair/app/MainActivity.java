@@ -10,6 +10,7 @@ import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.MimeTypeMap;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import androidx.core.app.ActivityCompat;
@@ -270,8 +271,10 @@ public class MainActivity extends BridgeActivity {
 
   /* 将系统返回的视频 URI 复制到应用私有目录，返回绝对路径 */
   private String copyVideoToAppDir(Uri videoUri) {
+    InputStream inputStream = null;
+    FileOutputStream outputStream = null;
     try {
-      InputStream inputStream = getContentResolver().openInputStream(videoUri);
+      inputStream = getContentResolver().openInputStream(videoUri);
       if (inputStream == null) return null;
 
       File videoDir = new File(getFilesDir(), "videos");
@@ -279,23 +282,73 @@ public class MainActivity extends BridgeActivity {
         videoDir.mkdirs();
       }
 
-      String fileName = "video_" + System.currentTimeMillis() + ".mp4";
+      /* 根据原始 URI 的 MIME 类型确定正确扩展名，避免把 .3gp 强制重命名为 .mp4 */
+      String ext = ".mp4";
+      String mimeType = getContentResolver().getType(videoUri);
+      if (mimeType != null) {
+        String extFromMime = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
+        if (extFromMime != null && !extFromMime.isEmpty()) {
+          ext = "." + extFromMime;
+        }
+      }
+      /* 兜底：从原始文件名再猜一次扩展名 */
+      if (".mp4".equals(ext)) {
+        String displayName = getDisplayNameFromUri(videoUri);
+        if (displayName != null) {
+          int dotIndex = displayName.lastIndexOf(".");
+          if (dotIndex > 0) {
+            ext = displayName.substring(dotIndex);
+          }
+        }
+      }
+
+      String fileName = "video_" + System.currentTimeMillis() + ext;
       File outputFile = new File(videoDir, fileName);
 
-      FileOutputStream outputStream = new FileOutputStream(outputFile);
+      outputStream = new FileOutputStream(outputFile);
       byte[] buffer = new byte[8192];
       int bytesRead;
       while ((bytesRead = inputStream.read(buffer)) != -1) {
         outputStream.write(buffer, 0, bytesRead);
       }
-      outputStream.close();
-      inputStream.close();
 
       return outputFile.getAbsolutePath();
     } catch (Exception e) {
       android.util.Log.e("MainActivity", "复制视频文件失败", e);
       return null;
+    } finally {
+      try {
+        if (outputStream != null) outputStream.close();
+      } catch (Exception ignored) {}
+      try {
+        if (inputStream != null) inputStream.close();
+      } catch (Exception ignored) {}
     }
+  }
+
+  /* 从 content URI 获取原始文件名 */
+  private String getDisplayNameFromUri(Uri uri) {
+    String result = null;
+    if ("content".equals(uri.getScheme())) {
+      Cursor cursor = null;
+      try {
+        cursor = getContentResolver().query(uri, null, null, null, null);
+        if (cursor != null && cursor.moveToFirst()) {
+          int idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+          if (idx >= 0) {
+            result = cursor.getString(idx);
+          }
+        }
+      } catch (Exception e) {
+        android.util.Log.e("MainActivity", "读取 URI 显示名称失败", e);
+      } finally {
+        if (cursor != null) cursor.close();
+      }
+    }
+    if (result == null) {
+      result = uri.getLastPathSegment();
+    }
+    return result;
   }
 
   /* 将录像结果通过自定义事件派发给前端 */

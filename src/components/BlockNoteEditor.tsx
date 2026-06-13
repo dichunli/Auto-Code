@@ -153,7 +153,15 @@ function CustomToolbarButtons({
         alert("视频大小不能超过 500MB");
         return;
       }
-      const file = new File([blob], `record_${Date.now()}.mp4`, { type: blob.type || "video/mp4" });
+      /* 根据实际 MIME 类型选择正确扩展名，避免把 .3gp 强制存成 .mp4 */
+      function 视频扩展名(mimeType: string): string {
+        if (mimeType === "video/3gpp") return ".3gp";
+        if (mimeType === "video/webm") return ".webm";
+        if (mimeType === "video/quicktime") return ".mov";
+        return ".mp4";
+      }
+      const ext = blob.type ? 视频扩展名(blob.type) : ".mp4";
+      const file = new File([blob], `record_${Date.now()}${ext}`, { type: blob.type || "video/mp4" });
       const url = await uploadFile(file);
       const pos = editor.getTextCursorPosition();
       editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], pos.block, "after");

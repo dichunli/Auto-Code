@@ -302,6 +302,7 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void, onP
           <video
             src={videoUrl}
             controls
+            playsInline
             className="max-w-full rounded-lg"
             preload="metadata"
           />
