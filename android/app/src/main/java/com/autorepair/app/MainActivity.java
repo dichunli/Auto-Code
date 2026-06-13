@@ -1,12 +1,16 @@
 package com.autorepair.app;
 
+import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.webkit.WebSettings;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -30,6 +34,7 @@ import java.io.InputStream;
 public class MainActivity extends BridgeActivity {
 
   private static final int REQUEST_CODE_VIDEO_CAPTURE = 4001;
+  private static final int REQUEST_CODE_CAMERA_PERMISSION = 4002;
 
   /* 暴露给前端的 JavaScript 接口：打开应用设置页面 */
   public class AppSettingsInterface {
@@ -80,6 +85,12 @@ public class MainActivity extends BridgeActivity {
         @Override
         public void run() {
           try {
+            /* 先检查并申请相机运行时权限（Android 6.0+ 需要） */
+            if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+              ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.CAMERA}, REQUEST_CODE_CAMERA_PERMISSION);
+              return;
+            }
+
             Intent intent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
             /* 先检查是否有应用能处理这个 Intent（防止某些手机没有系统相机） */
             if (intent.resolveActivity(getPackageManager()) == null) {
@@ -190,6 +201,20 @@ public class MainActivity extends BridgeActivity {
         }
       } else {
         injectVideoCaptureEvent(null, "cancelled");
+      }
+    }
+  }
+
+  @Override
+  public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+    if (requestCode == REQUEST_CODE_CAMERA_PERMISSION) {
+      if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        /* 用户授权后，重新调用录像 */
+        new VideoCaptureBridge().startCapture();
+      } else {
+        injectVideoCaptureEvent(null, "需要相机权限才能录像，请在设置中开启权限");
       }
     }
   }
