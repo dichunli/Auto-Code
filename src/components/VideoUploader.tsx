@@ -53,12 +53,15 @@ export function VideoUploader({
     };
   }, [viewerIndex]);
 
-  /* 滑动手势：左滑关闭，上滑下一个，下滑上一个 */
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  /* 滑动手势：边缘滑动关闭，左滑关闭，上滑下一个，下滑上一个 */
+  const touchStart = useRef<{ x: number; y: number; edge: "left" | "right" | null } | null>(null);
   function handleTouchStart(e: React.TouchEvent) {
+    const touch = e.touches[0];
+    const screenWidth = typeof window !== "undefined" ? window.innerWidth : 0;
     touchStart.current = {
-      x: e.touches[0].clientX,
-      y: e.touches[0].clientY,
+      x: touch.clientX,
+      y: touch.clientY,
+      edge: touch.clientX < 30 ? "left" : touch.clientX > screenWidth - 30 ? "right" : null,
     };
   }
   function handleTouchEnd(e: React.TouchEvent) {
@@ -68,7 +71,12 @@ export function VideoUploader({
     const diffX = touchStart.current.x - endX;
     const diffY = touchStart.current.y - endY;
 
-    if (Math.abs(diffX) > Math.abs(diffY)) {
+    /* 从屏幕边缘滑动关闭 */
+    if (touchStart.current.edge === "left" && endX > touchStart.current.x + 50) {
+      setViewerIndex(null);
+    } else if (touchStart.current.edge === "right" && endX < touchStart.current.x - 50) {
+      setViewerIndex(null);
+    } else if (Math.abs(diffX) > Math.abs(diffY)) {
       /* 水平滑动：左滑关闭 */
       if (diffX > 80) {
         setViewerIndex(null);
@@ -222,13 +230,16 @@ export function VideoUploader({
             className="relative w-32 h-24 rounded border border-gray-200 overflow-hidden group bg-gray-900 cursor-pointer"
           >
             <video src={src} className="w-full h-full object-cover" preload="metadata" />
+            {/* 播放按钮：一直显示，提升辨识度 */}
             <div
-              className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity z-[5]"
+              className="absolute inset-0 flex items-center justify-center bg-black/20 z-[5]"
               onClick={(e) => { e.stopPropagation(); setViewerIndex(i); }}
             >
-              <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
+              <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                <svg className="w-5 h-5 text-gray-900 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
             </div>
             <button
               type="button"
