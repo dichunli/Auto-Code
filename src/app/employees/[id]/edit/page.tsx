@@ -2,7 +2,7 @@
 
 import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 
@@ -55,10 +55,15 @@ export default function EditEmployeePage() {
   const [contacts, setContacts] = useState<
     { id?: string; name: string; phone: string; relationship: string; is_primary: boolean }[]
   >([]);
+  const [originalContactIds, setOriginalContactIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function loadData() {
       setLoading(true);
+
+      /* 先确保客户端有有效 session，防止软跳转后内存 session 丢失导致 RLS 过滤 */
+      await 确保有session();
+
       const [{ data: g }, { data: r }, { data: l }] = await Promise.all([
         supabase.from("employee_groups").select("id, name").order("sort_order").limit(100),
         supabase.from("roles").select("id, name, label").order("name").limit(100),
@@ -73,7 +78,13 @@ export default function EditEmployeePage() {
         .from("profiles")
         .select("*")
         .eq("id", employeeId)
-        .single();
+        .maybeSingle();
+
+      if (!employee) {
+        alert("无法加载员工数据，请检查登录状态或刷新页面重试");
+        setLoading(false);
+        return;
+      }
 
       if (employee) {
         setFullName(employee.full_name || "");
@@ -103,15 +114,23 @@ export default function EditEmployeePage() {
         .select("*")
         .eq("profile_id", employeeId)
         .order("is_primary", { ascending: false });
-      setContacts(
-        (userContacts || []).map((c: { id?: string; name?: string | null; phone?: string | null; relationship?: string | null; is_primary?: boolean | null }) => ({
+      const loadedContacts = (userContacts || []).map(
+        (c: {
+          id?: string;
+          name?: string | null;
+          phone?: string | null;
+          relationship?: string | null;
+          is_primary?: boolean | null;
+        }) => ({
           id: c.id,
           name: c.name || "",
           phone: c.phone || "",
           relationship: c.relationship || "",
           is_primary: c.is_primary || false,
-        }))
+        })
       );
+      setContacts(loadedContacts);
+      setOriginalContactIds(new Set(loadedContacts.map((c) => c.id).filter(Boolean)));
 
       setLoading(false);
     }
@@ -129,17 +148,17 @@ export default function EditEmployeePage() {
   }
 
   function updateContact(index: number, field: "name" | "phone" | "relationship" | "is_primary", value: string | boolean) {
-    const next = [...contacts];
-    const contact = next[index];
-    if (field === "is_primary") {
-      contact.is_primary = value as boolean;
-    } else {
-      contact[field] = value as string;
-    }
-    if (field === "is_primary" && value === true) {
-      next.forEach((c, i) => { if (i !== index) c.is_primary = false; });
-    }
-    setContacts(next);
+    setContacts((prev) =>
+      prev.map((c, i) => {
+        if (i === index) {
+          return { ...c, [field]: value };
+        }
+        if (field === "is_primary" && value === true) {
+          return { ...c, is_primary: false };
+        }
+        return c;
+      })
+    );
   }
 
   function removeContact(index: number) {
@@ -176,33 +195,74 @@ export default function EditEmployeePage() {
 
       if (profileError) throw profileError;
 
-      // 更新角色：先删除旧的，再插入新的
-      await supabase.from("profile_roles").delete().eq("profile_id", employeeId);
-      if (roleIds.length > 0) {
-        const roleRows = roleIds.map((rid) => ({
+      // 更新角色：差异更新，先查旧的，只删真正去掉的，只插真正新增的
+      const { data: existingRoles } = await supabase
+        .from("profile_roles")
+        .select("role_id")
+        .eq("profile_id", employeeId);
+      const existingRoleIds = (existingRoles || []).map((r: { role_id: string }) => r.role_id);
+      const rolesToAdd = roleIds.filter((id) => !existingRoleIds.includes(id));
+      const rolesToRemove = existingRoleIds.filter((id) => !roleIds.includes(id));
+
+      if (rolesToAdd.length > 0) {
+        const roleRows = rolesToAdd.map((rid) => ({
           profile_id: employeeId,
           role_id: rid,
         }));
-        const { error: roleError } = await supabase.from("profile_roles").insert(roleRows);
-        if (roleError) throw roleError;
+        const { error: addRoleError } = await supabase.from("profile_roles").insert(roleRows);
+        if (addRoleError) throw addRoleError;
+      }
+      if (rolesToRemove.length > 0) {
+        const { error: removeRoleError } = await supabase
+          .from("profile_roles")
+          .delete()
+          .eq("profile_id", employeeId)
+          .in("role_id", rolesToRemove);
+        if (removeRoleError) throw removeRoleError;
       }
 
-      // 更新联系人：删除旧的，插入新的
-      await supabase.from("employee_contacts").delete().eq("profile_id", employeeId);
-      const validContacts = contacts.filter((c) => c.name.trim() && c.relationship);
-      if (validContacts.length > 0) {
-        const contactRows = validContacts.map((c) => ({
+      // 更新联系人：差异更新，保留未变的，更新改过的，新增没 id 的，删除被移除的
+      const validContacts = contacts.filter((c) => c.name.trim());
+      const contactsToAdd = validContacts.filter((c) => !c.id);
+      const contactsToUpdate = validContacts.filter((c) => c.id);
+      const keptContactIds = new Set(contactsToUpdate.map((c) => c.id));
+      const contactIdsToRemove = [...originalContactIds].filter((id) => !keptContactIds.has(id));
+
+      if (contactsToAdd.length > 0) {
+        const contactRows = contactsToAdd.map((c) => ({
           profile_id: employeeId,
           name: c.name.trim(),
           phone: c.phone || null,
-          relationship: c.relationship,
+          relationship: c.relationship || "other",
           is_primary: c.is_primary,
         }));
-        const { error: contactError } = await supabase.from("employee_contacts").insert(contactRows);
-        if (contactError) throw contactError;
+        const { error: addContactError } = await supabase.from("employee_contacts").insert(contactRows);
+        if (addContactError) throw addContactError;
       }
 
-      router.push(`/employees/${employeeId}`);
+      for (const c of contactsToUpdate) {
+        const { error: updateContactError } = await supabase
+          .from("employee_contacts")
+          .update({
+            name: c.name.trim(),
+            phone: c.phone || null,
+            relationship: c.relationship || "other",
+            is_primary: c.is_primary,
+          })
+          .eq("id", c.id);
+        if (updateContactError) throw updateContactError;
+      }
+
+      if (contactIdsToRemove.length > 0) {
+        const { error: removeContactError } = await supabase
+          .from("employee_contacts")
+          .delete()
+          .eq("profile_id", employeeId)
+          .in("id", contactIdsToRemove);
+        if (removeContactError) throw removeContactError;
+      }
+
+      await router.push(`/employees/${employeeId}`);
       router.refresh();
     } catch (err: unknown) {
       alert("保存失败：" + (err instanceof Error ? err.message : String(err)));
