@@ -78,7 +78,14 @@
     <!-- Android 11+ 需要显式声明查询 Intent，否则 resolveActivity 返回 null -->
     <queries>
         <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
             <action android:name="android.media.action.VIDEO_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.PICK" />
+            <data android:mimeType="image/*" />
         </intent>
     </queries>
 </manifest>
