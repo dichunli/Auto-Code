@@ -53,19 +53,45 @@ export function VideoUploader({
     };
   }, [viewerIndex]);
 
-  /* 左滑关闭播放器 */
-  const touchStartX = useRef<number | null>(null);
+  /* 滑动手势：左滑关闭，上滑下一个，下滑上一个 */
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   function handleTouchStart(e: React.TouchEvent) {
-    touchStartX.current = e.touches[0].clientX;
+    touchStart.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+    };
   }
   function handleTouchEnd(e: React.TouchEvent) {
-    if (touchStartX.current === null) return;
+    if (touchStart.current === null) return;
     const endX = e.changedTouches[0].clientX;
-    const diff = touchStartX.current - endX;
-    if (diff > 80) {
-      setViewerIndex(null);
+    const endY = e.changedTouches[0].clientY;
+    const diffX = touchStart.current.x - endX;
+    const diffY = touchStart.current.y - endY;
+
+    if (Math.abs(diffX) > Math.abs(diffY)) {
+      /* 水平滑动：左滑关闭 */
+      if (diffX > 80) {
+        setViewerIndex(null);
+      }
+    } else {
+      /* 垂直滑动 */
+      if (diffY > 80) {
+        /* 上滑：下一个视频 */
+        setViewerIndex((prev) => {
+          if (prev === null) return null;
+          const next = prev + 1;
+          return next < videos.length ? next : prev;
+        });
+      } else if (diffY < -80) {
+        /* 下滑：上一个视频 */
+        setViewerIndex((prev) => {
+          if (prev === null) return null;
+          const next = prev - 1;
+          return next >= 0 ? next : prev;
+        });
+      }
     }
-    touchStartX.current = null;
+    touchStart.current = null;
   }
 
   const {
@@ -325,6 +351,7 @@ export function VideoUploader({
           onTouchMove={(e) => e.preventDefault()}
         >
           <video
+            key={viewerSrc}
             src={viewerSrc}
             className="max-w-[95vw] max-h-[95vh] rounded"
             controls
@@ -356,9 +383,9 @@ export function VideoUploader({
             </svg>
             删除视频
           </button>
-          {/* 左滑提示 */}
+          {/* 滑动提示 */}
           <div className="absolute bottom-16 left-1/2 -translate-x-1/2 text-white/50 text-xs pointer-events-none md:hidden">
-            ← 左滑关闭
+            上滑下一个 · 下滑上一个 · 左滑关闭
           </div>
         </div>
       )}
