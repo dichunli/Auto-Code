@@ -14,6 +14,7 @@ interface Props {
   maxDurationSeconds?: number;
   timeoutMs?: number;
   folder?: string;
+  disabled?: boolean;
 }
 
 export function VideoUploader({
@@ -25,6 +26,7 @@ export function VideoUploader({
   maxDurationSeconds = 60,
   timeoutMs = 60000,
   folder,
+  disabled = false,
 }: Props) {
   const [videos, setVideos] = useState<string[]>(existingVideos);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -241,16 +243,18 @@ export function VideoUploader({
                 </svg>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => removeVideo(i)}
-              className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10"
-            >
-              ×
-            </button>
+            {onDelete && !disabled && (
+              <button
+                type="button"
+                onClick={() => removeVideo(i)}
+                className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10"
+              >
+                ×
+              </button>
+            )}
           </div>
         ))}
-        {videos.length < maxVideos && (
+        {!disabled && videos.length < maxVideos && (
           <div className="flex gap-2">
             {/* APP 环境：原生录像 + 原生选视频（WebView 不支持 file input 和 getUserMedia） */}
             {是APP ? (

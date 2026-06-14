@@ -14,9 +14,10 @@ interface Props {
   maxImages?: number;
   bucket?: string;
   folder?: string;
+  disabled?: boolean;
 }
 
-export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImages = 5, folder }: Props) {
+export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImages = 5, folder, disabled = false }: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [images, setImages] = useState<string[]>(existingImages);
@@ -112,16 +113,18 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
         {images.map((src, i) => (
           <div key={i} className="relative w-20 h-20 rounded border border-gray-200 overflow-hidden group cursor-pointer">
             <img src={src} alt="" className="w-full h-full object-cover" onClick={() => setPreviewIndex(i)} />
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); removeImage(i); }}
-              className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity md:w-5 md:h-5 w-6 h-6"
-            >
-              ×
-            </button>
+            {onDelete && !disabled && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); removeImage(i); }}
+                className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity md:w-5 md:h-5 w-6 h-6"
+              >
+                ×
+              </button>
+            )}
           </div>
         ))}
-        {images.length < maxImages && (
+        {!disabled && images.length < maxImages && (
           <div className="flex gap-2">
             {/* 移动端 */}
             {是Capacitor环境() ? (

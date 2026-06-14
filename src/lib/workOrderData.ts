@@ -212,6 +212,8 @@ export async function getWorkOrderData(id: string) {
     supabase.from("work_order_requirements").select(`
       *,
       submitted_by_profile:profiles!work_order_requirements_submitted_by_fkey(full_name),
+      diagnosis_submitter_profile:profiles!work_order_requirements_diagnosis_submitter_id_fkey(full_name),
+      remarks_submitter_profile:profiles!work_order_requirements_remarks_submitter_id_fkey(full_name),
       assigned_to_profile:profiles!work_order_requirements_assigned_to_fkey(full_name),
       dispatcher_profile:profiles!work_order_requirements_dispatcher_id_fkey(full_name),
       work_order_requirement_media(id, requirement_id, storage_path, media_type)
