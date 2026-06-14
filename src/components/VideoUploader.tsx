@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useUpload } from "@/hooks/useUpload";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
@@ -29,6 +29,17 @@ export function VideoUploader({
   const [videos, setVideos] = useState<string[]>(existingVideos);
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
 
+  /* 外部传入的已有视频变化时同步到内部状态（如编辑模式异步加载已有视频） */
+  useEffect(() => {
+    setVideos(existingVideos);
+  }, [existingVideos]);
+
+  /* 用 ref 保存最新视频列表，避免 setVideos 异步更新导致上传回调用旧值 */
+  const videosRef = useRef(videos);
+  useEffect(() => {
+    videosRef.current = videos;
+  }, [videos]);
+
   const {
     上传,
     上传中,
@@ -40,16 +51,13 @@ export function VideoUploader({
     maxDurationSeconds,
     timeoutMs,
     folder,
-    onSuccess: (paths) => {
-      onUpload(paths);
-    },
   });
 
   const handleFiles = useCallback(
     async (files: FileList) => {
       const fileArray = Array.from(files)
         .filter((f) => f.type.startsWith("video/") || !f.type)
-        .slice(0, maxVideos - videos.length);
+        .slice(0, maxVideos - videosRef.current.length);
 
       if (fileArray.length === 0) {
         alert("未检测到视频文件，请重新选择");
@@ -59,11 +67,9 @@ export function VideoUploader({
       const { urls, errors } = await 上传(fileArray);
 
       if (urls.length > 0) {
-        setVideos((prev) => {
-          const next = [...prev, ...urls];
-          onUpload(next);
-          return next;
-        });
+        const next = [...videosRef.current, ...urls];
+        setVideos(next);
+        onUpload(next);
       }
 
       if (errors.length > 0) {
@@ -71,7 +77,7 @@ export function VideoUploader({
         alert("视频上传失败:\n" + msg);
       }
     },
-    [videos, maxVideos, 上传, onUpload]
+    [maxVideos, 上传, onUpload]
   );
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -86,7 +92,7 @@ export function VideoUploader({
     获取结果: () => Promise<{ filePath?: string; error?: string; cancelled?: boolean }>,
     来源名称: string
   ) {
-    if (videos.length >= maxVideos) {
+    if (videosRef.current.length >= maxVideos) {
       alert(`最多上传 ${maxVideos} 个视频`);
       return;
     }
@@ -140,8 +146,8 @@ export function VideoUploader({
   /* ========== 删除视频 ========== */
 
   async function removeVideo(index: number) {
-    const target = videos[index];
-    const next = videos.filter((_, i) => i !== index);
+    const target = videosRef.current[index];
+    const next = videosRef.current.filter((_, i) => i !== index);
     setVideos(next);
     onUpload(next);
     if (target && onDelete) {

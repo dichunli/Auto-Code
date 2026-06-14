@@ -14,6 +14,7 @@ const mimeTypes: Record<string, string> = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".mov": "video/quicktime",
+  ".3gp": "video/3gpp",
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
   ".pdf": "application/pdf",
