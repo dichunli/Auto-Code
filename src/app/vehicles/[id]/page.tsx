@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
+import { VehiclePhotoGallery } from "@/components/VehiclePhotoGallery";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -21,17 +22,22 @@ export default async function VehicleDetailPage({
     .eq("id", id)
     .single();
 
+  if (!vehicle) {
+    notFound();
+  }
+
+  /* 查询车辆照片 */
+  const { data: vehiclePhotos } = await supabase
+    .from("vehicle_photos")
+    .select("category, url")
+    .eq("vehicle_id", id)
+    .order("created_at", { ascending: false });
+
   /* 查询客户标签 */
   const { data: customerTagData } = await supabase
     .from("customer_tags")
     .select("tags(name, color)")
     .eq("customer_id", vehicle.customer_id);
-
-  if (!vehicle) {
-    notFound();
-  }
-
-  /* 查询该车辆各类型工单统计 */
   const { data: allVehicleOrders } = await supabase
     .from("work_orders")
     .select("id, order_no, order_type")
@@ -184,6 +190,12 @@ export default async function VehicleDetailPage({
               <span className="text-gray-900">{formatDate(vehicle.created_at)}</span>
             </div>
           </div>
+        </div>
+
+        {/* 车辆照片 */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">车辆照片</h2>
+          <VehiclePhotoGallery photos={(vehiclePhotos || []) as { category: string; url: string }[]} />
         </div>
 
         {/* 车型信息 */}
