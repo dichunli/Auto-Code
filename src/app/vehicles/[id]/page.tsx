@@ -29,7 +29,7 @@ export default async function VehicleDetailPage({
   /* 查询车辆照片 */
   const { data: vehiclePhotos } = await supabase
     .from("vehicle_photos")
-    .select("category, url")
+    .select("category, url, storage_path")
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false });
 
@@ -195,7 +195,10 @@ export default async function VehicleDetailPage({
         {/* 车辆照片 */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">车辆照片</h2>
-          <VehiclePhotoGallery photos={(vehiclePhotos || []) as { category: string; url: string }[]} />
+          <VehiclePhotoGallery photos={((vehiclePhotos || []) as { category: string; url: string | null; storage_path: string | null }[]).map((p) => ({
+          category: p.category,
+          url: p.url || p.storage_path || "",
+        })).filter((p) => p.url)} />
         </div>
 
         {/* 车型信息 */}

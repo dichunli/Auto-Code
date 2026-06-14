@@ -114,6 +114,7 @@ export default function MobileReceptionNewPage() {
   interface 车辆照片 {
     category: string;
     url: string;
+    storage_path?: string | null;
   }
   const [vehiclePhotos, setVehiclePhotos] = useState<车辆照片[]>([]);
   const [vehiclePhotoPreviewIndex, setVehiclePhotoPreviewIndex] = useState<number | null>(null);
@@ -318,10 +319,15 @@ export default function MobileReceptionNewPage() {
       }
       const { data } = await supabase
         .from("vehicle_photos")
-        .select("category, url")
+        .select("category, url, storage_path")
         .eq("vehicle_id", selectedVehicle.id)
         .order("created_at", { ascending: false });
-      setVehiclePhotos((data || []) as 车辆照片[]);
+      setVehiclePhotos(
+        ((data || []) as 车辆照片[]).map((p) => ({
+          ...p,
+          url: p.url || p.storage_path || "",
+        })).filter((p) => p.url)
+      );
     }
     loadVehiclePhotos();
   }, [selectedVehicle, supabase]);
