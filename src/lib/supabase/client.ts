@@ -79,7 +79,7 @@ function 清除Session的Cookie(key: string): void {
 }
 
 /* 解析 @supabase/ssr 格式的 cookie 值（支持 base64- 前缀和分段 cookie） */
-function 从SSRCookie解析Session(key: string): string | null {
+export function 从SSRCookie解析Session(key: string): string | null {
   /* 1. 尝试读取单个 cookie */
   const match = document.cookie.match(
     new RegExp(`(?:^|; )${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`)
@@ -371,10 +371,20 @@ export async function 确保有session(): Promise<void> {
 
   try {
     const supabase = createClient();
-    /* 不检查内存中的 getSession，直接读 localStorage 强制注入。
-     * 原因：supabase-js 后台 token 刷新可能因网络超时清空内存 session，
-     * 而 localStorage 里数据完好。两个 await 之间的微任务窗口就能触发清除。 */
-    const 原始值 = 浏览器存储.getItem(认证存储Key);
+
+    /* 优先读 localStorage */
+    let 原始值: string | null = window.localStorage.getItem(认证存储Key);
+    let 来自Cookie = false;
+
+    /* 如果 localStorage 没有，或者里面的 session 已过期，尝试从 cookie 补救 */
+    if (!原始值 || isSessionExpired(原始值)) {
+      const cookieValue = 从SSRCookie解析Session(认证存储Key);
+      if (cookieValue && !isSessionExpired(cookieValue)) {
+        原始值 = cookieValue;
+        来自Cookie = true;
+      }
+    }
+
     if (!原始值) return;
 
     const 会话 = JSON.parse(原始值) as {
@@ -384,7 +394,7 @@ export async function 确保有session(): Promise<void> {
     };
     if (!会话.access_token || !会话.refresh_token) return;
 
-    /* access_token 过期（当前时间超过 expires_at）也跳过，避免注入已过期 token */
+    /* 再次确认没过期 */
     if (会话.expires_at && Date.now() / 1000 >= 会话.expires_at) return;
 
     /* 强制注入：不管内存有没有，一律覆盖，确保后续查询一定带 token */
@@ -392,8 +402,24 @@ export async function 确保有session(): Promise<void> {
       access_token: 会话.access_token,
       refresh_token: 会话.refresh_token,
     });
+
+    /* 如果用了 cookie 里的 session，同步回 localStorage，避免下次再从 cookie 绕 */
+    if (来自Cookie) {
+      window.localStorage.setItem(认证存储Key, 原始值);
+    }
   } catch {
     /* 静默忽略 */
   }
+}
+
+function isSessionExpired(raw: string): boolean {
+  try {
+    const session = JSON.parse(raw) as { expires_at?: number };
+    if (session.expires_at && Date.now() / 1000 >= session.expires_at) return true;
+  } catch {
+    /* 解析失败视为过期，让调用方尝试其它来源 */
+    return true;
+  }
+  return false;
 }
 
