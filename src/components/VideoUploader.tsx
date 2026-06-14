@@ -27,7 +27,8 @@ export function VideoUploader({
   folder,
 }: Props) {
   const [videos, setVideos] = useState<string[]>(existingVideos);
-  const [viewerSrc, setViewerSrc] = useState<string | null>(null);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const viewerSrc = viewerIndex !== null ? videos[viewerIndex] : null;
 
   /* 外部传入的已有视频变化时同步到内部状态（如编辑模式异步加载已有视频） */
   useEffect(() => {
@@ -39,6 +40,33 @@ export function VideoUploader({
   useEffect(() => {
     videosRef.current = videos;
   }, [videos]);
+
+  /* 全屏播放时禁止背景滚动 */
+  useEffect(() => {
+    if (viewerIndex !== null) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [viewerIndex]);
+
+  /* 左滑关闭播放器 */
+  const touchStartX = useRef<number | null>(null);
+  function handleTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0].clientX;
+  }
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current === null) return;
+    const endX = e.changedTouches[0].clientX;
+    const diff = touchStartX.current - endX;
+    if (diff > 80) {
+      setViewerIndex(null);
+    }
+    touchStartX.current = null;
+  }
 
   const {
     上传,
@@ -170,7 +198,7 @@ export function VideoUploader({
             <video src={src} className="w-full h-full object-cover" preload="metadata" />
             <div
               className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity z-[5]"
-              onClick={(e) => { e.stopPropagation(); setViewerSrc(src); }}
+              onClick={(e) => { e.stopPropagation(); setViewerIndex(i); }}
             >
               <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z" />
@@ -179,7 +207,7 @@ export function VideoUploader({
             <button
               type="button"
               onClick={() => removeVideo(i)}
-              className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+              className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10"
             >
               ×
             </button>
@@ -287,12 +315,51 @@ export function VideoUploader({
       </p>
 
       {/* 全屏视频播放器 */}
-      {viewerSrc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={() => setViewerSrc(null)}>
-          <video src={viewerSrc} className="max-w-[95vw] max-h-[95vh] rounded" controls autoPlay onClick={(e) => e.stopPropagation()} />
-          <button type="button" onClick={() => setViewerSrc(null)} className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl leading-none w-11 h-11 flex items-center justify-center">
+      {viewerIndex !== null && viewerSrc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 touch-none"
+          style={{ overscrollBehaviorX: "none" }}
+          onClick={() => setViewerIndex(null)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={(e) => e.preventDefault()}
+        >
+          <video
+            src={viewerSrc}
+            className="max-w-[95vw] max-h-[95vh] rounded"
+            controls
+            autoPlay
+            onClick={(e) => e.stopPropagation()}
+          />
+          {/* 关闭按钮 */}
+          <button
+            type="button"
+            onClick={() => setViewerIndex(null)}
+            className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl leading-none w-11 h-11 flex items-center justify-center"
+          >
             ✕
           </button>
+          {/* 删除按钮 */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (confirm("确定删除这个视频吗？")) {
+                removeVideo(viewerIndex);
+                setViewerIndex(null);
+              }
+            }}
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 bg-red-500 text-white text-sm rounded-full shadow-lg flex items-center gap-1"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            删除视频
+          </button>
+          {/* 左滑提示 */}
+          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 text-white/50 text-xs pointer-events-none md:hidden">
+            ← 左滑关闭
+          </div>
         </div>
       )}
     </div>
