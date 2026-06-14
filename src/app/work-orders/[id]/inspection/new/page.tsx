@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
+import { VideoUploader } from "@/components/VideoUploader";
 import { ImageAnnotator } from "@/components/ImageAnnotator";
 import OilLevelGauge from "@/components/OilLevelGauge";
 
@@ -164,6 +165,9 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
   // 外检照片
   const [exteriorPaths, setExteriorPaths] = useState<string[]>([]);
 
+  // 检查视频
+  const [videoPaths, setVideoPaths] = useState<string[]>([]);
+
   // 备注
   const [notes, setNotes] = useState("");
 
@@ -285,6 +289,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
         setDriveBeltPaths(media.filter((m) => m.media_type === "drive_belt").map((m) => m.storage_path));
         setTirePaths(media.filter((m) => m.media_type === "tire").map((m) => m.storage_path));
         setExteriorPaths(media.filter((m) => m.media_type === "exterior").map((m) => m.storage_path));
+        setVideoPaths(media.filter((m) => m.media_type === "inspection_video").map((m) => m.storage_path));
 
         const { data: { user } } = await supabase.auth.getUser();
         setCanEdit(user?.id === data.submitter_id);
@@ -410,6 +415,13 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
         mediaRecords.push({
           inspection_id: inspectionId,
           media_type: "tire",
+          storage_path: path,
+        });
+      });
+      videoPaths.forEach((path) => {
+        mediaRecords.push({
+          inspection_id: inspectionId,
+          media_type: "inspection_video",
           storage_path: path,
         });
       });
@@ -735,7 +747,13 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
         {/* 外检照片 */}
         <section className="border-t border-gray-100 pt-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">外检照片</h2>
-          <ImageUploader onUpload={setExteriorPaths} maxImages={8} />
+          <ImageUploader onUpload={setExteriorPaths} existingImages={exteriorPaths} maxImages={8} />
+        </section>
+
+        {/* 检查视频 */}
+        <section className="border-t border-gray-100 pt-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">检查视频</h2>
+          <VideoUploader onUpload={setVideoPaths} existingVideos={videoPaths} maxVideos={3} />
         </section>
 
         {/* 备注 */}
