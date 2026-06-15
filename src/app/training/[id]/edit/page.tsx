@@ -16,7 +16,7 @@ interface Course {
   id: string;
   title: string;
   description: string | null;
-  category: string;
+  category_id: string | null;
   content_type: string;
   content_text: string | null;
   video_url: string | null;
@@ -27,6 +27,11 @@ interface Course {
   has_exam: boolean;
 }
 
+interface 课程分类 {
+  id: string;
+  name: string;
+}
+
 export default function EditCoursePage() {
   const router = useRouter();
   const params = useParams();
@@ -35,11 +40,12 @@ export default function EditCoursePage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
+  const [categories, setCategories] = useState<课程分类[]>([]);
 
   const [form, setForm] = useState({
     title: "",
     description: "",
-    category: "technical",
+    category_id: "",
     content_type: "document",
     content_text: "",
     duration_minutes: "",
@@ -48,6 +54,18 @@ export default function EditCoursePage() {
     points: "",
     has_exam: false,
   });
+
+  useEffect(() => {
+    async function loadCategories() {
+      const { data } = await supabase
+        .from("training_categories")
+        .select("id, name")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      setCategories((data || []).map((item) => ({ id: String(item.id), name: String(item.name) })));
+    }
+    loadCategories();
+  }, [supabase]);
 
   useEffect(() => {
     async function load() {
@@ -66,7 +84,7 @@ export default function EditCoursePage() {
       setForm({
         title: course.title || "",
         description: course.description || "",
-        category: course.category || "technical",
+        category_id: course.category_id || "",
         content_type: course.content_type || "document",
         content_text: course.content_text || "",
         duration_minutes: course.duration_minutes?.toString() || "",
@@ -91,7 +109,7 @@ export default function EditCoursePage() {
         .update({
           title: form.title.trim(),
           description: form.description.trim() || null,
-          category: form.category,
+          category_id: form.category_id || null,
           content_type: form.content_type,
           content_text: form.content_type === "document" ? form.content_text.trim() || null : null,
           video_url: form.content_type === "video" ? videoUrl || null : null,
@@ -138,14 +156,13 @@ export default function EditCoursePage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">分类</label>
             <select
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              value={form.category_id}
+              onChange={(e) => setForm({ ...form, category_id: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
             >
-              <option value="safety">安全</option>
-              <option value="technical">技术</option>
-              <option value="service">服务</option>
-              <option value="management">管理</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
             </select>
           </div>
           <div>

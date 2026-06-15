@@ -1,6 +1,6 @@
 "use client";
 
-import {useState, useMemo} from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
@@ -17,6 +17,11 @@ interface 知识文章 {
   title: string;
 }
 
+interface 课程分类 {
+  id: string;
+  name: string;
+}
+
 export default function NewCoursePage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -25,7 +30,7 @@ export default function NewCoursePage() {
   const [form, setForm] = useState({
     title: "",
     description: "",
-    category: "technical",
+    category_id: "",
     content_type: "document",
     content_text: "",
     duration_minutes: "",
@@ -39,6 +44,8 @@ export default function NewCoursePage() {
 
   /* 知识库文章列表 */
   const [knowledgeArticles, setKnowledgeArticles] = useState<知识文章[]>([]);
+  /* 课程分类列表 */
+  const [categories, setCategories] = useState<课程分类[]>([]);
 
   useEffect(() => {
     async function loadArticles() {
@@ -48,7 +55,21 @@ export default function NewCoursePage() {
         .order("created_at", { ascending: false });
       setKnowledgeArticles(data || []);
     }
+    async function loadCategories() {
+      const { data } = await supabase
+        .from("training_categories")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      const list = (data || []).map((item) => ({ id: String(item.id), name: String(item.name) }));
+      setCategories(list);
+      if (list.length > 0 && !form.category_id) {
+        setForm((prev) => ({ ...prev, category_id: list[0].id }));
+      }
+    }
     loadArticles();
+    loadCategories();
   }, [supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -59,7 +80,7 @@ export default function NewCoursePage() {
       const { error } = await supabase.from("training_courses").insert({
         title: form.title.trim(),
         description: form.description.trim() || null,
-        category: form.category,
+        category_id: form.category_id || null,
         content_type: form.content_type,
         content_text: form.content_type === "document" ? form.content_text.trim() || null : null,
         video_url: form.content_type === "video" ? videoUrl || null : null,
@@ -98,15 +119,17 @@ export default function NewCoursePage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">分类</label>
             <select
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              value={form.category_id}
+              onChange={(e) => setForm({ ...form, category_id: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
             >
-              <option value="safety">安全</option>
-              <option value="technical">技术</option>
-              <option value="service">服务</option>
-              <option value="management">管理</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
             </select>
+            {categories.length === 0 && (
+              <p className="text-xs text-red-500 mt-1">暂无启用中的分类，请先到课程分类管理中添加</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">内容类型</label>
