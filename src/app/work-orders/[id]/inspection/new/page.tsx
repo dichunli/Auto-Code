@@ -498,7 +498,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
                 <OilLevelGauge value={oilBeforeLevel} onChange={setOilBeforeLevel} label="油位刻度" readonly={mode === "view"} />
                 <div className="flex-1 w-full min-w-0">
                   {!oilBeforePath ? (
-                    <ImageUploader onUpload={(paths) => setOilBeforePath(paths[0] || "")} maxImages={1} />
+                    <ImageUploader watermark onUpload={(paths) => setOilBeforePath(paths[0] || "")} maxImages={1} />
                   ) : (
                     <div>
                       <ImageAnnotator imageUrl={oilBeforePath} annotations={oilBeforeAnnotations} onChange={setOilBeforeAnnotations} readonly={mode === "view"} />
@@ -514,7 +514,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
                 <OilLevelGauge value={oilAfterLevel} onChange={setOilAfterLevel} label="油位刻度" readonly={mode === "view"} />
                 <div className="flex-1 w-full min-w-0">
                   {!oilAfterPath ? (
-                    <ImageUploader onUpload={(paths) => setOilAfterPath(paths[0] || "")} maxImages={1} />
+                    <ImageUploader watermark onUpload={(paths) => setOilAfterPath(paths[0] || "")} maxImages={1} />
                   ) : (
                     <div>
                       <ImageAnnotator imageUrl={oilAfterPath} annotations={oilAfterAnnotations} onChange={setOilAfterAnnotations} readonly={mode === "view"} />
@@ -532,14 +532,14 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
           <h2 className="text-base font-semibold text-gray-900 mb-4">仪表检查</h2>
           <div>
             <label className="block text-xs text-gray-500 mb-2">仪表照片</label>
-            <ImageUploader onUpload={setDashboardPaths} maxImages={3} />
+            <ImageUploader watermark onUpload={setDashboardPaths} maxImages={3} />
           </div>
         </section>
 
         {/* 其它油液 */}
         <section className="border-t border-gray-100 pt-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">其它油液液位</h2>
-          <ImageUploader onUpload={setFluidPaths} maxImages={5} />
+          <ImageUploader watermark onUpload={setFluidPaths} maxImages={5} />
         </section>
 
         {/* 传动皮带 */}
@@ -548,7 +548,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
           <div className="space-y-4">
             <div>
               <label className="block text-xs text-gray-500 mb-2">皮带照片</label>
-              <ImageUploader onUpload={setDriveBeltPaths} maxImages={3} />
+              <ImageUploader watermark onUpload={setDriveBeltPaths} maxImages={3} />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-2">皮带状态</label>
@@ -709,7 +709,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
           <div className="space-y-4">
             <div>
               <label className="block text-xs text-gray-500 mb-2">轮胎照片</label>
-              <ImageUploader onUpload={setTirePaths} maxImages={4} />
+              <ImageUploader watermark onUpload={setTirePaths} maxImages={4} />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
@@ -747,13 +747,13 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
         {/* 外检照片 */}
         <section className="border-t border-gray-100 pt-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">外检照片</h2>
-          <ImageUploader onUpload={setExteriorPaths} existingImages={exteriorPaths} maxImages={8} />
+          <ImageUploader watermark onUpload={setExteriorPaths} existingImages={exteriorPaths} maxImages={8} />
         </section>
 
         {/* 检查视频 */}
         <section className="border-t border-gray-100 pt-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">检查视频</h2>
-          <VideoUploader onUpload={setVideoPaths} existingVideos={videoPaths} maxVideos={3} />
+          <h2 className="text-base font-semibold text-gray-900 mb-4">检查视频（自动加水印）</h2>
+          <VideoUploader onUpload={setVideoPaths} existingVideos={videoPaths} maxVideos={3} watermark />
         </section>
 
         {/* 备注 */}

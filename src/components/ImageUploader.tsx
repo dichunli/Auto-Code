@@ -3,6 +3,8 @@
 import { useRef, useState, useCallback, useEffect, useId } from "react";
 import { base64转Blob } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { 添加水印 } from "@/lib/imageWatermark";
+import { 启动原生水印相机 } from "@/lib/androidWatermarkCamera";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { useUpload } from "@/hooks/useUpload";
 import { ImageViewer } from "./ImageViewer";
@@ -15,9 +17,10 @@ interface Props {
   bucket?: string;
   folder?: string;
   disabled?: boolean;
+  watermark?: boolean;
 }
 
-export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImages = 5, folder, disabled = false }: Props) {
+export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImages = 5, folder, disabled = false, watermark = false }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileId = `img-upload-${useId()}`;
   const [images, setImages] = useState<string[]>(existingImages);
@@ -51,7 +54,23 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
         return;
       }
 
-      const { urls, errors } = await 上传(fileArray);
+      let filesToUpload = fileArray;
+      if (watermark) {
+        try {
+          filesToUpload = await Promise.all(
+            fileArray.map(async (file) => {
+              if (!file.type.startsWith("image/")) return file;
+              const watermarkedBlob = await 添加水印(file);
+              return new File([watermarkedBlob], file.name, { type: "image/jpeg" });
+            })
+          );
+        } catch (err: unknown) {
+          alert("水印处理失败: " + (err instanceof Error ? err.message : String(err)));
+          return;
+        }
+      }
+
+      const { urls, errors } = await 上传(filesToUpload);
 
       if (urls.length > 0) {
         const next = [...images, ...urls];
@@ -64,7 +83,7 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
         alert("图片上传失败:\n" + msg);
       }
     },
-    [images, maxImages, 上传, onUpload]
+    [images, maxImages, 上传, onUpload, watermark]
   );
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -116,22 +135,35 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
       return;
     }
     try {
-      const photo = await Camera.getPhoto({
-        quality: 90,
-        allowEditing: false,
-        resultType: CameraResultType.Base64,
-        source: CameraSource.Camera,
-      });
-      if (!photo.base64String) {
-        alert("拍照未获取到图片");
-        return;
+      let base64: string;
+      if (watermark) {
+        const rawBase64 = await 启动原生水印相机();
+        base64 = `data:image/jpeg;base64,${rawBase64}`;
+      } else {
+        const photo = await Camera.getPhoto({
+          quality: 90,
+          allowEditing: false,
+          resultType: CameraResultType.Base64,
+          source: CameraSource.Camera,
+        });
+        if (!photo.base64String) {
+          alert("拍照未获取到图片");
+          return;
+        }
+        base64 = `data:image/jpeg;base64,${photo.base64String}`;
       }
-      const base64 = `data:image/jpeg;base64,${photo.base64String}`;
       const blob = base64转Blob(base64);
       const file = new File([blob], `camera_${Date.now()}.jpg`, { type: "image/jpeg" });
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      await handleFiles(dt.files);
+      /* 原生水印相机已加水印，直接上传，不再经过 handleFiles 的前端水印 */
+      const { urls, errors } = await 上传([file]);
+      if (urls.length > 0) {
+        const next = [...images, ...urls];
+        setImages(next);
+        onUpload(next);
+      }
+      if (errors.length > 0) {
+        alert("图片上传失败: " + errors[0].error);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
