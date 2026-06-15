@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, 确保有session } from "@/lib/supabase/client";
 
 export default function DeleteButton({ id, name }: { id: string; name: string }) {
   const router = useRouter();
@@ -12,6 +12,7 @@ export default function DeleteButton({ id, name }: { id: string; name: string })
   async function handleDelete() {
     if (!confirm(`确定要删除分类「${name}」吗？`)) return;
     setDeleting(true);
+    await 确保有session();
 
     const { data: courses, error: countError } = await supabase
       .from("training_courses")

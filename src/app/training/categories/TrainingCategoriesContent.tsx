@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import DeleteButton from "./DeleteButton";
 
@@ -37,6 +37,7 @@ export default function TrainingCategoriesContent({
   });
 
   async function load() {
+    await 确保有session();
     const { data } = await supabase
       .from("training_categories")
       .select("id, name, code, sort_order, is_active, created_at")
@@ -130,6 +131,7 @@ export default function TrainingCategoriesContent({
       return;
     }
     setSaving(true);
+    await 确保有session();
 
     /* 查重 */
     const { data: dup } = await supabase

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
 export default function EditTrainingCategoryPage() {
@@ -47,6 +47,7 @@ export default function EditTrainingCategoryPage() {
       return;
     }
     setSaving(true);
+    await 确保有session();
 
     /* 查重（排除自身） */
     const { data: dup } = await supabase

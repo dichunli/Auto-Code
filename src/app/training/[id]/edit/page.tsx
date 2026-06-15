@@ -3,7 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { VideoUploader } from "@/components/VideoUploader";
 
@@ -57,6 +57,7 @@ export default function EditCoursePage() {
 
   useEffect(() => {
     async function loadCategories() {
+      await 确保有session();
       const { data } = await supabase
         .from("training_categories")
         .select("id, name")

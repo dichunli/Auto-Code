@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { VideoUploader } from "@/components/VideoUploader";
 
@@ -49,6 +49,7 @@ export default function NewCoursePage() {
 
   useEffect(() => {
     async function loadArticles() {
+      await 确保有session();
       const { data } = await supabase
         .from("knowledge_articles")
         .select("id, title")
@@ -56,16 +57,25 @@ export default function NewCoursePage() {
       setKnowledgeArticles(data || []);
     }
     async function loadCategories() {
-      const { data } = await supabase
-        .from("training_categories")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("sort_order", { ascending: true })
-        .order("created_at", { ascending: true });
-      const list = (data || []).map((item) => ({ id: String(item.id), name: String(item.name) }));
-      setCategories(list);
-      if (list.length > 0 && !form.category_id) {
-        setForm((prev) => ({ ...prev, category_id: list[0].id }));
+      try {
+        await 确保有session();
+        const { data, error } = await supabase
+          .from("training_categories")
+          .select("id, name")
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: true });
+        if (error) {
+          alert("加载分类失败: " + error.message);
+          return;
+        }
+        const list = (data || []).map((item) => ({ id: String(item.id), name: String(item.name) }));
+        setCategories(list);
+        if (list.length > 0 && !form.category_id) {
+          setForm((prev) => ({ ...prev, category_id: list[0].id }));
+        }
+      } catch (err: unknown) {
+        alert("加载分类异常: " + (err instanceof Error ? err.message : String(err)));
       }
     }
     loadArticles();
