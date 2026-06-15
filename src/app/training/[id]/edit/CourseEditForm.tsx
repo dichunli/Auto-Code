@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { createClient, 确保有session } from "@/lib/supabase/client";
+import { 更新课程 } from "../../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { VideoUploader } from "@/components/VideoUploader";
 
@@ -40,7 +40,6 @@ export default function CourseEditForm({
   categories: 课程分类[];
 }) {
   const router = useRouter();
-  const supabase = createClient();
   const [saving, setSaving] = useState(false);
   const [videoUrl, setVideoUrl] = useState(course.video_url || "");
 
@@ -60,28 +59,25 @@ export default function CourseEditForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    await 确保有session();
 
     try {
-      const { error } = await supabase
-        .from("training_courses")
-        .update({
-          title: form.title.trim(),
-          description: form.description.trim() || null,
-          category_id: form.category_id || null,
-          content_type: form.content_type,
-          content_text: form.content_type === "document" ? form.content_text.trim() || null : null,
-          video_url: form.content_type === "video" ? videoUrl || null : null,
-          duration_minutes: form.duration_minutes ? parseInt(form.duration_minutes) : null,
-          passing_score: parseInt(form.passing_score) || 60,
-          is_required: form.is_required,
-          points: form.points ? parseInt(form.points) : 0,
-          has_exam: form.has_exam,
-        })
-        .eq("id", course.id);
+      const result = await 更新课程(course.id, {
+        title: form.title.trim(),
+        description: form.description.trim() || undefined,
+        category_id: form.category_id || undefined,
+        content_type: form.content_type,
+        content_text: form.content_type === "document" ? form.content_text.trim() || undefined : undefined,
+        video_url: form.content_type === "video" ? videoUrl || undefined : undefined,
+        duration_minutes: form.duration_minutes ? parseInt(form.duration_minutes) : undefined,
+        passing_score: parseInt(form.passing_score) || 60,
+        is_required: form.is_required,
+        points: form.points ? parseInt(form.points) : 0,
+        has_exam: form.has_exam,
+        exam_mode: form.has_exam ? form.exam_mode : "online",
+      });
 
-      if (error) {
-        alert("保存失败: " + error.message + (error.code ? ` (${error.code})` : ""));
+      if (!result.success) {
+        alert("保存失败: " + result.error);
         setSaving(false);
         return;
       }

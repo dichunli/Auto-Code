@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { createClient, 确保有session } from "@/lib/supabase/client";
+import { 创建课程 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { VideoUploader } from "@/components/VideoUploader";
 
@@ -30,7 +30,6 @@ export default function CourseForm({
   initialArticles: 知识文章[];
 }) {
   const router = useRouter();
-  const supabase = createClient();
   const [loading, setLoading] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
 
@@ -53,18 +52,17 @@ export default function CourseForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await 确保有session();
 
     try {
-      const { error } = await supabase.from("training_courses").insert({
+      const result = await 创建课程({
         title: form.title.trim(),
-        description: form.description.trim() || null,
-        category_id: form.category_id || null,
+        description: form.description.trim() || undefined,
+        category_id: form.category_id || undefined,
         content_type: form.content_type,
-        content_text: form.content_type === "document" ? form.content_text.trim() || null : null,
-        video_url: form.content_type === "video" ? videoUrl || null : null,
-        knowledge_article_id: form.content_type === "knowledge" ? form.knowledge_article_id || null : null,
-        duration_minutes: form.duration_minutes ? parseInt(form.duration_minutes) : null,
+        content_text: form.content_type === "document" ? form.content_text.trim() || undefined : undefined,
+        video_url: form.content_type === "video" ? videoUrl || undefined : undefined,
+        knowledge_article_id: form.content_type === "knowledge" ? form.knowledge_article_id || undefined : undefined,
+        duration_minutes: form.duration_minutes ? parseInt(form.duration_minutes) : undefined,
         passing_score: parseInt(form.passing_score) || 60,
         is_required: form.is_required,
         points: form.points ? parseInt(form.points) : 0,
@@ -72,8 +70,8 @@ export default function CourseForm({
         exam_mode: form.has_exam ? form.exam_mode : "online",
       });
 
-      if (error) {
-        alert("保存失败: " + error.message + (error.code ? ` (${error.code})` : ""));
+      if (!result.success) {
+        alert("保存失败: " + result.error);
         setLoading(false);
         return;
       }
