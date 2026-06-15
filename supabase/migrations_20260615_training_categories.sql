@@ -27,8 +27,22 @@ CREATE INDEX IF NOT EXISTS idx_training_categories_sort_order
 ALTER TABLE training_categories ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "auth_full_access" ON training_categories;
-CREATE POLICY "auth_full_access" ON training_categories
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "training_categories_select" ON training_categories;
+DROP POLICY IF EXISTS "training_categories_insert" ON training_categories;
+DROP POLICY IF EXISTS "training_categories_update" ON training_categories;
+DROP POLICY IF EXISTS "training_categories_delete" ON training_categories;
+
+CREATE POLICY "training_categories_select" ON training_categories
+  FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "training_categories_insert" ON training_categories
+  FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE POLICY "training_categories_update" ON training_categories
+  FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+CREATE POLICY "training_categories_delete" ON training_categories
+  FOR DELETE TO authenticated USING (true);
 
 /* -----------------------------------------------------------
    3. 初始化默认分类
