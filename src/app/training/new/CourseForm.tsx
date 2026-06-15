@@ -54,21 +54,27 @@ export default function CourseForm({
     setLoading(true);
 
     try {
-      const result = await 创建课程({
-        title: form.title.trim(),
-        description: form.description.trim() || undefined,
-        category_id: form.category_id || undefined,
-        content_type: form.content_type,
-        content_text: form.content_type === "document" ? form.content_text.trim() || undefined : undefined,
-        video_url: form.content_type === "video" ? videoUrl || undefined : undefined,
-        knowledge_article_id: form.content_type === "knowledge" ? form.knowledge_article_id || undefined : undefined,
-        duration_minutes: form.duration_minutes ? parseInt(form.duration_minutes) : undefined,
-        passing_score: parseInt(form.passing_score) || 60,
-        is_required: form.is_required,
-        points: form.points ? parseInt(form.points) : 0,
-        has_exam: form.has_exam,
-        exam_mode: form.has_exam ? form.exam_mode : "online",
-      });
+      /* 15 秒超时保护：防止 Server Action 无响应导致按钮一直卡在"保存中" */
+      const result = await Promise.race([
+        创建课程({
+          title: form.title.trim(),
+          description: form.description.trim() || undefined,
+          category_id: form.category_id || undefined,
+          content_type: form.content_type,
+          content_text: form.content_type === "document" ? form.content_text.trim() || undefined : undefined,
+          video_url: form.content_type === "video" ? videoUrl || undefined : undefined,
+          knowledge_article_id: form.content_type === "knowledge" ? form.knowledge_article_id || undefined : undefined,
+          duration_minutes: form.duration_minutes ? parseInt(form.duration_minutes) : undefined,
+          passing_score: parseInt(form.passing_score) || 60,
+          is_required: form.is_required,
+          points: form.points ? parseInt(form.points) : 0,
+          has_exam: form.has_exam,
+          exam_mode: form.has_exam ? form.exam_mode : "online",
+        }),
+        new Promise<{ success: boolean; error?: string }>((_, reject) =>
+          setTimeout(() => reject(new Error("保存超时，请检查网络后重试")), 15000)
+        ),
+      ]);
 
       if (!result.success) {
         alert("保存失败: " + result.error);

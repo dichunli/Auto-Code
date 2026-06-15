@@ -15,6 +15,7 @@ interface Course {
   is_required: boolean;
   points: number | null;
   has_exam: boolean;
+  exam_mode?: string | null;
 }
 
 interface 课程分类 {
@@ -49,6 +50,7 @@ export default async function EditCoursePage({ params }: { params: Promise<{ id:
     is_required: Boolean(courseData.is_required),
     points: courseData.points ? Number(courseData.points) : null,
     has_exam: Boolean(courseData.has_exam),
+    exam_mode: courseData.exam_mode ? String(courseData.exam_mode) : null,
   };
 
   const { data: categoriesData } = await supabase
