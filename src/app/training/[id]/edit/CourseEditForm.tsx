@@ -79,11 +79,15 @@ export default function CourseEditForm({
         })
         .eq("id", course.id);
 
-      if (error) throw error;
+      if (error) {
+        alert("保存失败: " + error.message + (error.code ? ` (${error.code})` : ""));
+        setSaving(false);
+        return;
+      }
       router.push(`/training/${course.id}`);
       router.refresh();
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      alert("保存异常: " + (err instanceof Error ? err.message : String(err)));
       setSaving(false);
     }
   }

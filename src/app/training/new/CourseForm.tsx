@@ -71,11 +71,15 @@ export default function CourseForm({
         exam_mode: form.has_exam ? form.exam_mode : "online",
       });
 
-      if (error) throw error;
+      if (error) {
+        alert("保存失败: " + error.message + (error.code ? ` (${error.code})` : ""));
+        setLoading(false);
+        return;
+      }
       router.push("/training");
       router.refresh();
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      alert("保存异常: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
     }
   }
