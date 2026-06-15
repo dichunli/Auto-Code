@@ -1088,8 +1088,8 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                 <ImageUploader onUpload={setRequirementImages} existingImages={requirementImages} />
               </div>
               <div>
-                <h2 className="text-base font-semibold text-gray-900 mb-3">需求视频</h2>
-                <VideoUploader onUpload={setRequirementVideos} existingVideos={requirementVideos} />
+                <h2 className="text-base font-semibold text-gray-900 mb-3">需求视频（自动加水印）</h2>
+                <VideoUploader onUpload={setRequirementVideos} existingVideos={requirementVideos} watermark />
               </div>
             </>
           )}

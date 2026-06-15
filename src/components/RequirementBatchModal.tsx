@@ -378,13 +378,14 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
               />
             </div>
             <div className={`${!canEditMedia ? "opacity-70" : ""}`}>
-              <div className="text-xs text-gray-500 mb-1">需求视频</div>
+              <div className="text-xs text-gray-500 mb-1">需求视频（自动加水印）</div>
               <VideoUploader
                 existingVideos={videos}
                 onUpload={setVideos}
                 onDelete={(path) => handleDeleteMedia(path, "video")}
                 maxVideos={3}
                 disabled={!canEditMedia}
+                watermark
               />
             </div>
           </div>
