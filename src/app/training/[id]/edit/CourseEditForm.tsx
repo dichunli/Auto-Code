@@ -90,7 +90,6 @@ export default function CourseEditForm({
         return;
       }
       router.push(`/training/${course.id}`);
-      router.refresh();
     } catch (err: unknown) {
       alert("保存异常: " + (err instanceof Error ? err.message : String(err)));
       setSaving(false);

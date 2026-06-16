@@ -82,7 +82,6 @@ export default function CourseForm({
         return;
       }
       router.push("/training");
-      router.refresh();
     } catch (err: unknown) {
       alert("保存异常: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
