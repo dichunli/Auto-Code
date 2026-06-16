@@ -1,9 +1,22 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
+import { createClient } from "@/lib/supabase/server";
 
 /* 本地附件存储根目录（可通过环境变量 UPLOAD_DIR 配置） */
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "E:/autorepair-uploads";
+
+/* 判断是否为 APP（安卓 WebView）环境。
+ * 逻辑与 src/middleware.ts 的「是APP环境」保持一致：
+ * APP 用 localStorage 管理登录态、cookie 不可用，<img>/<video> 请求带不上身份，
+ * 因此 APP 环境放行（与 middleware 整站放行 APP 的策略一致），否则 APP 内图片会全部裂图。 */
+function 是APP环境(userAgent: string): boolean {
+  return (
+    userAgent.includes("wv") || /* Android WebView 标识 */
+    userAgent.includes("Capacitor") ||
+    (!userAgent.includes("Chrome/") && userAgent.includes("Linux; Android")) /* 无 Chrome 版本号的 Android WebView */
+  );
+}
 
 const mimeTypes: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -24,10 +37,21 @@ const mimeTypes: Record<string, string> = {
 };
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   try {
+    /* 认证检查：浏览器环境必须登录（<img>/<video> 会自动带 cookie）；
+     * APP（WebView）环境放行，因其用 localStorage 管理登录态、cookie 不可用。 */
+    const userAgent = request.headers.get("user-agent") || "";
+    if (!是APP环境(userAgent)) {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return NextResponse.json({ error: "未登录" }, { status: 401 });
+      }
+    }
+
     const { path: pathSegments } = await params;
     const filePath = path.join(UPLOAD_DIR, ...pathSegments);
 
