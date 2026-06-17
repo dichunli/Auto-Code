@@ -1311,8 +1311,8 @@ export default function MobileReceptionNewPage() {
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">里程表拍照（自动加水印）</label>
-            <ImageUploader onUpload={setDashboardPaths} maxImages={3} watermark />
+            <label className="block text-xs text-gray-500 mb-1">里程表拍照</label>
+            <ImageUploader onUpload={setDashboardPaths} maxImages={3} />
           </div>
         </div>
       </div>
