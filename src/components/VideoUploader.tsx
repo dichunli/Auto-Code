@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useUpload } from "@/hooks/useUpload";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
@@ -391,8 +392,8 @@ export function VideoUploader({
         {是APP ? "点击录像或选视频" : "支持录像或选择文件"}。单个不超过 {maxFileSizeMB}MB、{maxDurationSeconds} 秒。
       </p>
 
-      {/* 全屏视频播放器 */}
-      {viewerIndex !== null && viewerSrc && (
+      {/* 全屏视频播放器：使用 Portal 渲染到 body，避免被父级弹窗的层级/透明度影响 */}
+      {viewerIndex !== null && viewerSrc && typeof document !== "undefined" && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 touch-none"
           style={{ overscrollBehaviorX: "none" }}
@@ -438,7 +439,8 @@ export function VideoUploader({
           <div className="absolute bottom-16 left-1/2 -translate-x-1/2 text-white/50 text-xs pointer-events-none md:hidden">
             上滑下一个 · 下滑上一个 · 左滑关闭
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
