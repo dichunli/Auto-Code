@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { compressImage } from "@/lib/imageCompress";
+import { 获取访问令牌 } from "@/lib/supabase/client";
 
 /* ======================== 类型定义 ======================== */
 
@@ -167,10 +168,15 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
     formData.append("file", file, fileName);
     if (folder) formData.append("folder", folder);
 
+    const token = 获取访问令牌();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+
     const res = await fetch("/api/upload", {
       method: "POST",
       body: formData,
       signal: controller.signal,
+      headers,
     });
 
     const result = await res.json();
@@ -194,6 +200,9 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
 
       xhr.open("POST", "/api/upload");
       xhr.timeout = timeoutMs;
+
+      const token = 获取访问令牌();
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) {
@@ -319,9 +328,12 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
   const 删除文件 = useCallback(
     async (path: string): Promise<boolean> => {
       try {
+        const token = 获取访问令牌();
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) headers.Authorization = `Bearer ${token}`;
         const res = await fetch("/api/delete-media", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ path }),
         });
         const result = await res.json();
