@@ -395,7 +395,7 @@ export function VideoUploader({
       {/* 全屏视频播放器：使用 Portal 渲染到 body，避免被父级弹窗的层级/透明度影响 */}
       {viewerIndex !== null && viewerSrc && typeof document !== "undefined" && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 touch-none"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 touch-none"
           style={{ overscrollBehaviorX: "none" }}
           onClick={() => setViewerIndex(null)}
           onTouchStart={handleTouchStart}
