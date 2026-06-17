@@ -165,6 +165,28 @@ export default function MobileReceptionNewPage() {
     }
   }, []);
 
+  /* ---------- APP 仪表照片持久化：防止相机返回/WebView 刷新后丢失 ---------- */
+  useEffect(() => {
+    if (dashboardPaths.length > 0) {
+      sessionStorage.setItem("reception-dashboard-paths", JSON.stringify(dashboardPaths));
+    } else {
+      sessionStorage.removeItem("reception-dashboard-paths");
+    }
+  }, [dashboardPaths]);
+
+  /* 草稿恢复后，如果仪表照片仍为空，尝试从专用 sessionStorage 恢复 */
+  useEffect(() => {
+    if (dashboardPaths.length > 0) return;
+    const saved = sessionStorage.getItem("reception-dashboard-paths");
+    if (!saved) return;
+    try {
+      const paths = JSON.parse(saved) as string[];
+      if (paths.length > 0) setDashboardPaths(paths);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   /* ============================================================
      车辆搜索
      ============================================================ */
@@ -739,6 +761,7 @@ export default function MobileReceptionNewPage() {
 
       clearTimeout(timeoutId);
       showToast("接车登记成功", "success");
+      sessionStorage.removeItem("reception-dashboard-paths");
       /* 移动端某些环境（PWA/WebView）下 router.push 不可靠，使用硬跳转 */
       window.location.href = `/work-orders/${order.id}?newReq=1`;
       return;
