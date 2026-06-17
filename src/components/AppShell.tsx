@@ -5,7 +5,7 @@ import { useEffect, useState, Suspense } from "react";
 import { cn } from "@/lib/utils";
 import { Navbar } from "./Navbar";
 import { PriceVisibilityProvider, usePriceVisibility } from "./PriceVisibilityContext";
-import { 确保会话就绪 } from "@/lib/supabase/client";
+import { 确保会话就绪, 记录登录健康检查 } from "@/lib/supabase/client";
 
 function KeyboardHandler() {
   const { togglePrices } = usePriceVisibility();
@@ -48,7 +48,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       }
     };
     /* 正常路径：会话注入完成后放行 */
-    确保会话就绪().then(标记就绪);
+    确保会话就绪().then(() => {
+      标记就绪();
+      /* 会话注入完成后做一次只读健康检查，发现异常仅在控制台留日志，不打扰用户 */
+      记录登录健康检查();
+    });
     /* 兜底：最多等 3 秒，无论成败都放行，绝不卡住页面 */
     const 超时 = setTimeout(标记就绪, 3000);
     return () => clearTimeout(超时);
