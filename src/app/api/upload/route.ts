@@ -21,7 +21,7 @@ const 允许的扩展名 = new Set([
   /* 图片 */
   ".jpg", ".jpeg", ".png", ".webp", ".gif",
   /* 视频 */
-  ".mp4", ".webm", ".mov",
+  ".mp4", ".webm", ".mov", ".3gp",
   /* 文档 */
   ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".pdf",
 ]);

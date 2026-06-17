@@ -1264,6 +1264,7 @@ export default async function WorkOrderDetailPage({
                   const dashboardPhotos = media.filter((m) => m.media_type === 'dashboard');
                   const driveBeltPhotos = media.filter((m) => m.media_type === 'drive_belt');
                   const tirePhotos = media.filter((m) => m.media_type === 'tire');
+                  const inspectionVideos = media.filter((m) => m.media_type === 'inspection_video');
 
                   return (
                     <div key={insp.id} className="px-6 py-4 text-sm space-y-4">
@@ -1663,6 +1664,18 @@ export default async function WorkOrderDetailPage({
                           <div className="flex flex-wrap gap-2">
                             {exteriorPhotos.map((m, idx: number) => (
                               <img loading="lazy" key={idx} src={m.storage_path} alt="" className="w-20 h-20 object-cover rounded border border-gray-200" />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 检查视频 */}
+                      {inspectionVideos.length > 0 && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">检查视频</div>
+                          <div className="flex flex-wrap gap-2">
+                            {inspectionVideos.map((m, idx: number) => (
+                              <video key={idx} src={m.storage_path} className="w-48 h-32 rounded border border-gray-200 object-cover" controls preload="metadata" />
                             ))}
                           </div>
                         </div>

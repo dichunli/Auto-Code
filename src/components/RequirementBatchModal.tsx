@@ -22,6 +22,9 @@ interface Requirement {
   description?: string | null;
   diagnosis?: string | null;
   remarks?: string | null;
+  submitted_by?: string | null;
+  diagnosis_submitter_id?: string | null;
+  remarks_submitter_id?: string | null;
   assigned_to?: string | null;
   assignment_type?: string | null;
   assigned_to_profile?: { full_name?: string | null } | null;
@@ -49,8 +52,30 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
   const [deletedMediaIds, setDeletedMediaIds] = useState<string[]>([]);
   const [deletedMediaPaths, setDeletedMediaPaths] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevOpenRef = useRef(false);
+
+  /* 获取当前用户及角色 */
+  useEffect(() => {
+    async function initUser() {
+      const { data: authData } = await supabase.auth.getUser();
+      const uid = authData.user?.id || null;
+      setCurrentUserId(uid);
+      if (uid) {
+        const { data: roleData } = await supabase
+          .from("profile_roles")
+          .select("roles(name)")
+          .eq("profile_id", uid);
+        const admin = (roleData || []).some(
+          (d: { roles?: { name?: string } | null }) => d.roles?.name === "admin"
+        );
+        setIsAdmin(admin);
+      }
+    }
+    initUser();
+  }, [supabase]);
 
   // 编辑模式时初始化数据：每次弹窗从关闭变为打开时重新初始化，
   // 避免第一次打开时 initialMedia 尚未加载完成导致后续数据无法回显
@@ -81,6 +106,12 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
     setDeletedMediaPaths([]);
   }
 
+  /* 权限判断 */
+  const canEditDescription = !isEdit || isAdmin || currentUserId === requirement?.submitted_by;
+  const canEditDiagnosis = !isEdit || isAdmin || currentUserId === requirement?.diagnosis_submitter_id || !requirement?.diagnosis_submitter_id;
+  const canEditRemarks = !isEdit || isAdmin || currentUserId === requirement?.remarks_submitter_id || !requirement?.remarks_submitter_id;
+  const canEditMedia = !isEdit || isAdmin || currentUserId === requirement?.submitted_by;
+
   async function handleSubmit() {
     if (!description.trim() && images.length === 0 && videos.length === 0) {
       alert("请至少填写客户需求描述或上传媒体文件");
@@ -88,25 +119,62 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
     }
 
     const { data: authData } = await supabase.auth.getUser();
-    const currentUserId = authData.user?.id || null;
+    const userId = authData.user?.id || null;
 
     setSaving(true);
     try {
       if (isEdit) {
+        /* 权限校验：非提交人/管理员尝试修改受保护字段 */
+        const isOwnerOrAdmin = isAdmin || userId === requirement?.submitted_by;
+        if (!isOwnerOrAdmin) {
+          if (description.trim() !== (requirement.description || "").trim()) {
+            alert("您没有权限修改客户需求描述");
+            setSaving(false);
+            return;
+          }
+          const hasNewImage = images.some(
+            (path) => !initialMedia.some((m) => m.media_type === "image" && m.storage_path === path)
+          );
+          const hasNewVideo = videos.some(
+            (path) => !initialMedia.some((m) => m.media_type === "video" && m.storage_path === path)
+          );
+          if (deletedMediaIds.length > 0 || hasNewImage || hasNewVideo) {
+            alert("您没有权限修改需求图片/视频");
+            setSaving(false);
+            return;
+          }
+        }
+
         // 编辑模式：更新需求
-        const { error: updateError } = await supabase
-          .from("work_order_requirements")
-          .update({
-            description: description.trim(),
-            diagnosis: diagnosis.trim() || null,
-            remarks: remarks.trim() || null,
-          })
-          .eq("id", requirement.id);
+        const updateData: Record<string, unknown> = {};
+        if (canEditDescription) {
+          updateData.description = description.trim();
+        }
+        if (canEditDiagnosis) {
+          const newDiagnosis = diagnosis.trim();
+          if (newDiagnosis !== (requirement.diagnosis || "").trim()) {
+            updateData.diagnosis = newDiagnosis || null;
+            updateData.diagnosis_submitter_id = newDiagnosis ? userId : null;
+          }
+        }
+        if (canEditRemarks) {
+          const newRemarks = remarks.trim();
+          if (newRemarks !== (requirement.remarks || "").trim()) {
+            updateData.remarks = newRemarks || null;
+            updateData.remarks_submitter_id = newRemarks ? userId : null;
+          }
+        }
 
-        if (updateError) throw updateError;
+        if (Object.keys(updateData).length > 0) {
+          const { error: updateError } = await supabase
+            .from("work_order_requirements")
+            .update(updateData)
+            .eq("id", requirement.id);
+          if (updateError) throw updateError;
+        }
 
-        // 删除被标记删除的媒体记录
-        if (deletedMediaIds.length > 0) {
+        // 删除被标记删除的媒体记录（仅当有权限时）
+        if (canEditMedia && deletedMediaIds.length > 0) {
           const { error: delError } = await supabase
             .from("work_order_requirement_media")
             .delete()
@@ -123,13 +191,19 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
           .limit(1);
         const nextSeq = (existing && existing[0]?.seq ? existing[0].seq : 0) + 1;
 
+        const newDiagnosis = diagnosis.trim();
+        const newRemarks = remarks.trim();
         const { data: req, error: reqError } = await supabase
           .from("work_order_requirements")
           .insert({
             work_order_id: orderId,
             seq: nextSeq,
             description: description.trim(),
-            submitted_by: currentUserId,
+            submitted_by: userId,
+            diagnosis: newDiagnosis || null,
+            remarks: newRemarks || null,
+            diagnosis_submitter_id: newDiagnosis ? userId : null,
+            remarks_submitter_id: newRemarks ? userId : null,
           })
           .select("id")
           .single();
@@ -138,28 +212,30 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
         requirement = { id: req.id };
       }
 
-      // 插入新媒体
-      const mediaRecords = [
-        ...images
-          .filter((path) => !initialMedia.some((m) => m.media_type === "image" && m.storage_path === path))
-          .map((path) => ({
-            requirement_id: requirement.id,
-            media_type: "image" as const,
-            storage_path: path,
-          })),
-        ...videos
-          .filter((path) => !initialMedia.some((m) => m.media_type === "video" && m.storage_path === path))
-          .map((path) => ({
-            requirement_id: requirement.id,
-            media_type: "video" as const,
-            storage_path: path,
-          })),
-      ];
-      if (mediaRecords.length > 0) {
-        const { error: mediaError } = await supabase
-          .from("work_order_requirement_media")
-          .insert(mediaRecords);
-        if (mediaError) throw mediaError;
+      // 插入新媒体（仅当有权限时）
+      if (canEditMedia) {
+        const mediaRecords = [
+          ...images
+            .filter((path) => !initialMedia.some((m) => m.media_type === "image" && m.storage_path === path))
+            .map((path) => ({
+              requirement_id: requirement.id,
+              media_type: "image" as const,
+              storage_path: path,
+            })),
+          ...videos
+            .filter((path) => !initialMedia.some((m) => m.media_type === "video" && m.storage_path === path))
+            .map((path) => ({
+              requirement_id: requirement.id,
+              media_type: "video" as const,
+              storage_path: path,
+            })),
+        ];
+        if (mediaRecords.length > 0) {
+          const { error: mediaError } = await supabase
+            .from("work_order_requirement_media")
+            .insert(mediaRecords);
+          if (mediaError) throw mediaError;
+        }
       }
 
       // 删除被移除的媒体文件（包括已保存的和新上传后取消的）
@@ -253,9 +329,21 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
             onFocus={handleTextareaFocus}
             rows={3}
             placeholder="请输入客户需求，例如：刹车异响、需要保养..."
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-3"
+            disabled={!canEditDescription}
+            className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-1 ${!canEditDescription ? "bg-gray-100 text-gray-500" : ""}`}
             inputMode="text"
           />
+          {isEdit && requirement && (
+            <div className="text-xs text-gray-400 mb-3">
+              提交人: {profiles.find((p) => p.id === requirement.submitted_by)?.full_name || "未知"}
+              {requirement.diagnosis_submitter_id && (
+                <> · 诊断: {profiles.find((p) => p.id === requirement.diagnosis_submitter_id)?.full_name || "未知"}</>
+              )}
+              {requirement.remarks_submitter_id && (
+                <> · 备注: {profiles.find((p) => p.id === requirement.remarks_submitter_id)?.full_name || "未知"}</>
+              )}
+            </div>
+          )}
 
           {isEdit && (
             <>
@@ -264,35 +352,40 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                 onChange={(e) => setDiagnosis(e.target.value)}
                 rows={2}
                 placeholder="诊断结果（可选）"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-3"
+                disabled={!canEditDiagnosis}
+                className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-3 ${!canEditDiagnosis ? "bg-gray-100 text-gray-500" : ""}`}
               />
               <textarea
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
                 rows={2}
                 placeholder="备注（可选）"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-3"
+                disabled={!canEditRemarks}
+                className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-3 ${!canEditRemarks ? "bg-gray-100 text-gray-500" : ""}`}
               />
             </>
           )}
 
           <div className="space-y-4">
-            <div>
+            <div className={`${!canEditMedia ? "opacity-70" : ""}`}>
               <div className="text-xs text-gray-500 mb-1">需求图片</div>
               <ImageUploader
                 existingImages={images}
                 onUpload={setImages}
                 onDelete={(path) => handleDeleteMedia(path, "image")}
                 maxImages={5}
+                disabled={!canEditMedia}
               />
             </div>
-            <div>
-              <div className="text-xs text-gray-500 mb-1">需求视频</div>
+            <div className={`${!canEditMedia ? "opacity-70" : ""}`}>
+              <div className="text-xs text-gray-500 mb-1">需求视频（自动加水印）</div>
               <VideoUploader
                 existingVideos={videos}
                 onUpload={setVideos}
                 onDelete={(path) => handleDeleteMedia(path, "video")}
                 maxVideos={3}
+                disabled={!canEditMedia}
+                watermark
               />
             </div>
           </div>

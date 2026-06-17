@@ -5,6 +5,9 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useUpload } from "@/hooks/useUpload";
 import { 添加水印 } from "@/lib/imageWatermark";
+import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { 启动原生水印相机 } from "@/lib/androidWatermarkCamera";
+import { base64转Blob } from "@/lib/imageCompress";
 
 interface 员工 {
   id: string;
@@ -161,6 +164,21 @@ export default function BehaviorScorePage() {
       closeCamera();
     }, "image/jpeg", 0.9);
   }, [closeCamera]);
+
+  /* APP环境：调用原生水印相机 */
+  const handleAppCamera = useCallback(async () => {
+    try {
+      const rawBase64 = await 启动原生水印相机();
+      const base64 = `data:image/jpeg;base64,${rawBase64}`;
+      const blob = base64转Blob(base64);
+      const preview = URL.createObjectURL(blob);
+      setMediaFiles((prev) => [...prev, { blob, preview }]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
+      alert("拍照失败: " + msg);
+    }
+  }, []);
 
   /* 录视频 */
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -335,7 +353,7 @@ export default function BehaviorScorePage() {
             <div className="flex flex-wrap gap-2 mb-2">
               <button
                 type="button"
-                onClick={openCamera}
+                onClick={是Capacitor环境() ? handleAppCamera : openCamera}
                 className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
               >
                 {uploadingMedia ? "处理中..." : "拍照"}

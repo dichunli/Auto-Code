@@ -190,15 +190,19 @@ export default function EditVehiclePage() {
           }
         }
 
-        const { data: photoData } = await supabase
+        const { data: photoData, error: photoError } = await supabase
           .from("vehicle_photos")
-          .select("category, url")
-          .eq("vehicle_id", id);
+          .select("category, url, storage_path")
+          .eq("vehicle_id", id)
+          .order("created_at", { ascending: false });
+        if (photoError) {
+          console.error("加载车辆照片失败:", photoError);
+        }
         if (photoData) {
-          setExteriorPhotos(photoData.filter((p) => p.category === "exterior").map((p) => p.url));
-          setNameplatePhotos(photoData.filter((p) => p.category === "nameplate").map((p) => p.url));
-          setLicenseFrontPhotos(photoData.filter((p) => p.category === "license_front").map((p) => p.url));
-          setLicenseBackPhotos(photoData.filter((p) => p.category === "license_back").map((p) => p.url));
+          setExteriorPhotos(photoData.filter((p) => p.category === "exterior").map((p) => p.url || p.storage_path));
+          setNameplatePhotos(photoData.filter((p) => p.category === "nameplate").map((p) => p.url || p.storage_path));
+          setLicenseFrontPhotos(photoData.filter((p) => p.category === "license_front").map((p) => p.url || p.storage_path));
+          setLicenseBackPhotos(photoData.filter((p) => p.category === "license_back").map((p) => p.url || p.storage_path));
         }
       }
       setLoading(false);
@@ -324,22 +328,22 @@ export default function EditVehiclePage() {
     if (error) { alert("保存失败: " + error.message); setSaving(false); return; }
 
     await supabase.from("vehicle_photos").delete().eq("vehicle_id", id);
-    const photoInserts: { vehicle_id: string; category: string; url: string }[] = [];
-    exteriorPhotos.forEach((url) => photoInserts.push({ vehicle_id: id, category: "exterior", url }));
-    nameplatePhotos.forEach((url) => photoInserts.push({ vehicle_id: id, category: "nameplate", url }));
-    licenseFrontPhotos.forEach((url) => photoInserts.push({ vehicle_id: id, category: "license_front", url }));
-    licenseBackPhotos.forEach((url) => photoInserts.push({ vehicle_id: id, category: "license_back", url }));
+    const photoInserts: { vehicle_id: string; category: string; url: string; storage_path: string }[] = [];
+    exteriorPhotos.forEach((url) => photoInserts.push({ vehicle_id: id, category: "exterior", url, storage_path: url }));
+    nameplatePhotos.forEach((url) => photoInserts.push({ vehicle_id: id, category: "nameplate", url, storage_path: url }));
+    licenseFrontPhotos.forEach((url) => photoInserts.push({ vehicle_id: id, category: "license_front", url, storage_path: url }));
+    licenseBackPhotos.forEach((url) => photoInserts.push({ vehicle_id: id, category: "license_back", url, storage_path: url }));
     if (photoInserts.length > 0) {
-      await supabase.from("vehicle_photos").insert(photoInserts);
+      const { error: insertPhotoError } = await supabase.from("vehicle_photos").insert(photoInserts);
+      if (insertPhotoError) {
+        console.error("保存车辆照片失败:", insertPhotoError);
+        alert("车辆信息已保存，但照片保存失败: " + insertPhotoError.message);
+      }
     }
 
     const returnTo = searchParams.get("returnTo");
-    if (returnTo) {
-      router.push(returnTo);
-    } else {
-      router.push("/vehicles");
-    }
-    router.refresh();
+    /* 移动端浏览器 router.push 不可靠，强制整页跳转避免缓存和状态问题 */
+    window.location.href = returnTo || `/vehicles/${id}`;
   }
 
   if (loading) return <div className="py-8 text-sm text-gray-500">加载中...</div>;

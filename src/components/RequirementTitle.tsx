@@ -12,6 +12,11 @@ interface Requirement {
   id: string;
   seq: number;
   description?: string | null;
+  submitted_by?: string | null;
+  diagnosis_submitter_id?: string | null;
+  remarks_submitter_id?: string | null;
+  diagnosis?: string | null;
+  remarks?: string | null;
 }
 
 interface MediaItem {

@@ -8,6 +8,7 @@ import Link from "next/link";
 export interface 课程 {
   id: string;
   category: string;
+  category_name?: string;
   is_required: boolean;
   title: string;
   description: string | null;
@@ -19,9 +20,14 @@ export interface 课程 {
   exam_mode: string | null;
   sort_order: number;
   profiles: { full_name: string } | null;
+  training_categories?: { id: string; name: string } | null;
 }
 
-export default function TrainingContent({ initialCourses }: { initialCourses: 课程[] }) {
+export default function TrainingContent({
+  initialCourses,
+}: {
+  initialCourses: 课程[];
+}) {
   const supabase = useMemo(() => createClient(), []);
   const [courses, setCourses] = useState<课程[]>(initialCourses);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -79,13 +85,6 @@ export default function TrainingContent({ initialCourses }: { initialCourses: �
     setDragId(null);
     setDragOverId(null);
   }
-
-  const categoryLabels: Record<string, string> = {
-    safety: "安全",
-    technical: "技术",
-    service: "服务",
-    management: "管理",
-  };
 
   return (
     <div className="space-y-6">
@@ -154,7 +153,7 @@ export default function TrainingContent({ initialCourses }: { initialCourses: �
             <Link href={`/training/${course.id}`} className="block">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
-                  {categoryLabels[course.category] || course.category}
+                  {course.category_name || course.category || "未分类"}
                 </span>
                 {course.is_required && (
                   <span className="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-100">必修</span>
