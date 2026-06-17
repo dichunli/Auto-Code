@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, type JSX } from "react";
+import { createPortal } from "react-dom";
 import { 是抖音链接, 抖音视频卡片 } from "./DouyinVideo";
 
 /* BlockNote 块级 JSON 只读渲染组件 */
@@ -100,7 +101,7 @@ function renderInlineContent(content: InlineContent[]): React.ReactNode {
   });
 }
 
-function renderBlock(block: BlockItem, onImageClick?: (url: string) => void, onPdfPreview?: (url: string) => void): React.ReactNode {
+function renderBlock(block: BlockItem, onImageClick?: (url: string, caption: string) => void, onPdfPreview?: (url: string) => void): React.ReactNode {
   const { type, content, children } = block;
   const props = block.props || {};
   const alignment = props.textAlignment || "left";
@@ -276,7 +277,7 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void, onP
           <ImageWithFallback
             src={imageUrl}
             alt={props.caption || ""}
-            onClick={() => onImageClick?.(imageUrl)}
+            onClick={() => onImageClick?.(imageUrl, props.caption || "")}
           />
           {props.caption && (
             <figcaption className="text-center text-sm text-gray-500 mt-2">
@@ -299,13 +300,7 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void, onP
       }
       return (
         <figure key={block.id} className={`my-4 ${alignClass}`}>
-          <video
-            src={videoUrl}
-            controls
-            playsInline
-            className="max-w-full rounded-lg"
-            preload="metadata"
-          />
+          <VideoPlayer src={videoUrl} caption={props.caption || ""} />
           {props.caption && (
             <figcaption className="text-center text-sm text-gray-500 mt-2">
               {props.caption}
@@ -379,7 +374,7 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string) => void, onP
   }
 }
 
-function wrapListBlocks(blocks: BlockItem[], onImageClick?: (url: string) => void, onPdfPreview?: (url: string) => void): React.ReactNode {
+function wrapListBlocks(blocks: BlockItem[], onImageClick?: (url: string, caption: string) => void, onPdfPreview?: (url: string) => void): React.ReactNode {
   const result: React.ReactNode[] = [];
   let currentBulletList: BlockItem[] = [];
   let currentNumberedList: BlockItem[] = [];
@@ -474,14 +469,38 @@ function ImageWithFallback({
   );
 }
 
-/* 图片预览弹窗 */
+interface 拖拽起点 {
+  x: number;
+  y: number;
+  px: number;
+  py: number;
+}
+
+interface 双指缩放起点 {
+  distance: number;
+  scale: number;
+  centerX: number;
+  centerY: number;
+  positionX: number;
+  positionY: number;
+}
+
+/* 图片预览弹窗：支持缩放、拖拽平移、滚轮缩放、双击放大 */
 function ImagePreview({ url, caption, onClose }: { url: string; caption?: string; onClose: () => void }) {
-  const touchStartY = useRef(0);
-  const touchStartX = useRef(0);
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<拖拽起点>({ x: 0, y: 0, px: 0, py: 0 });
+  const pinchStartRef = useRef<双指缩放起点 | null>(null);
+  const touchStartYRef = useRef(0);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
+      if (e.key === "+" || e.key === "=") handleZoomIn();
+      if (e.key === "-") handleZoomOut();
+      if (e.key === "0") handleReset();
     }
     document.addEventListener("keydown", handleKey);
     document.body.style.overflow = "hidden";
@@ -489,53 +508,259 @@ function ImagePreview({ url, caption, onClose }: { url: string; caption?: string
       document.removeEventListener("keydown", handleKey);
       document.body.style.overflow = "";
     };
-  }, [onClose]);
+  }, [onClose, scale, position]);
 
-  /* 触摸滑动关闭 */
-  function handleTouchStart(e: React.TouchEvent) {
-    touchStartY.current = e.touches[0].clientY;
-    touchStartX.current = e.touches[0].clientX;
+  function getImageCenter(): { x: number; y: number } | null {
+    if (!imgRef.current) return null;
+    const rect = imgRef.current.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   }
 
-  function handleTouchEnd(e: React.TouchEvent) {
-    const dy = e.changedTouches[0].clientY - touchStartY.current;
-    const dx = e.changedTouches[0].clientX - touchStartX.current;
-    /* 向上/向下滑动超过 80px 关闭 */
-    if (Math.abs(dy) > 80 && Math.abs(dy) > Math.abs(dx)) {
-      onClose();
+  function zoomTo(newScale: number, centerX: number, centerY: number) {
+    const clamped = Math.min(Math.max(newScale, 0.5), 5);
+    if (clamped === scale) return;
+    const center = getImageCenter();
+    if (!center) {
+      setScale(clamped);
+      return;
+    }
+    const ratio = clamped / scale;
+    const newX = position.x - (centerX - center.x) * (ratio - 1);
+    const newY = position.y - (centerY - center.y) * (ratio - 1);
+    setScale(clamped);
+    setPosition({ x: newX, y: newY });
+  }
+
+  function handleZoomIn() {
+    if (!imgRef.current) return;
+    const rect = imgRef.current.getBoundingClientRect();
+    zoomTo(scale * 1.25, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+
+  function handleZoomOut() {
+    if (!imgRef.current) return;
+    const rect = imgRef.current.getBoundingClientRect();
+    zoomTo(scale * 0.8, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+
+  function handleReset() {
+    setScale(1);
+    setPosition({ x: 0, y: 0 });
+  }
+
+  function handleWheel(e: React.WheelEvent) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    zoomTo(scale * delta, e.clientX, e.clientY);
+  }
+
+  function handleDoubleClick() {
+    if (scale > 1.2) {
+      handleReset();
+    } else if (imgRef.current) {
+      const rect = imgRef.current.getBoundingClientRect();
+      zoomTo(2.5, rect.left + rect.width / 2, rect.top + rect.height / 2);
     }
   }
 
+  function handleMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    setIsDragging(true);
+    dragStartRef.current = { x: e.clientX, y: e.clientY, px: position.x, py: position.y };
+  }
+
+  function handleMouseMove(e: React.MouseEvent) {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    setPosition({ x: dragStartRef.current.px + dx, y: dragStartRef.current.py + dy });
+  }
+
+  function handleMouseUp() {
+    setIsDragging(false);
+  }
+
+  function handleTouchStart(e: React.TouchEvent) {
+    if (e.touches.length === 1) {
+      touchStartYRef.current = e.touches[0].clientY;
+      setIsDragging(true);
+      pinchStartRef.current = null;
+      dragStartRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        px: position.x,
+        py: position.y,
+      };
+    } else if (e.touches.length === 2) {
+      setIsDragging(false);
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const distance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const center = getImageCenter();
+      pinchStartRef.current = {
+        distance,
+        scale,
+        centerX: center?.x ?? 0,
+        centerY: center?.y ?? 0,
+        positionX: position.x,
+        positionY: position.y,
+      };
+    }
+  }
+
+  function handleTouchMove(e: React.TouchEvent) {
+    if (e.touches.length === 1 && isDragging) {
+      const dx = e.touches[0].clientX - dragStartRef.current.x;
+      const dy = e.touches[0].clientY - dragStartRef.current.y;
+      setPosition({ x: dragStartRef.current.px + dx, y: dragStartRef.current.py + dy });
+    } else if (e.touches.length === 2 && pinchStartRef.current) {
+      e.preventDefault();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const distance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const info = pinchStartRef.current;
+      const newScale = Math.min(Math.max(info.scale * (distance / info.distance), 0.5), 5);
+      const ratio = newScale / info.scale;
+      const centerX = (t1.clientX + t2.clientX) / 2;
+      const centerY = (t1.clientY + t2.clientY) / 2;
+      const newX = info.positionX - (centerX - info.centerX) * (ratio - 1);
+      const newY = info.positionY - (centerY - info.centerY) * (ratio - 1);
+      setScale(newScale);
+      setPosition({ x: newX, y: newY });
+    }
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (e.touches.length === 0) {
+      setIsDragging(false);
+      pinchStartRef.current = null;
+      /* 单指滑动关闭：仅在未缩放状态下生效，避免误操作 */
+      if (scale <= 1) {
+        const dy = e.changedTouches[0].clientY - touchStartYRef.current;
+        if (Math.abs(dy) > 80) {
+          onClose();
+        }
+      }
+    } else if (e.touches.length === 1) {
+      /* 双指缩放后松开一指，切换为单指拖拽 */
+      pinchStartRef.current = null;
+      setIsDragging(true);
+      dragStartRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        px: position.x,
+        py: position.y,
+      };
+    }
+  }
+
+  function handleFullscreen() {
+    const el = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void>;
+      mozRequestFullScreen?: () => Promise<void>;
+      msRequestFullscreen?: () => Promise<void>;
+    };
+    if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen();
+    } else if (el.mozRequestFullScreen) {
+      el.mozRequestFullScreen();
+    } else if (el.msRequestFullscreen) {
+      el.msRequestFullscreen();
+    }
+  }
+
+  const toolbarBtnClass =
+    "bg-black/50 hover:bg-black/70 text-white rounded-lg p-2 transition-colors flex items-center justify-center";
+
   return (
     <div
-      className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center"
+      className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center touch-none"
       onClick={onClose}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
+      onWheel={handleWheel}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
     >
-      {/* 关闭按钮 — 移动端加大点击区域 */}
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute top-3 right-3 sm:top-4 sm:right-4 text-white/80 hover:text-white p-3 sm:p-2 rounded-lg hover:bg-white/10 transition-colors z-10"
-        title="关闭"
-      >
-        <svg className="w-7 h-7 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      {/* 顶部工具栏 */}
+      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 z-10">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
+            className={toolbarBtnClass}
+            title="缩小"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+            </svg>
+          </button>
+          <span className="text-white text-xs min-w-[3rem] text-center">{Math.round(scale * 100)}%</span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleZoomIn(); }}
+            className={toolbarBtnClass}
+            title="放大"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleReset(); }}
+            className={`${toolbarBtnClass} text-xs px-3`}
+            title="重置"
+          >
+            重置
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleFullscreen(); }}
+            className={toolbarBtnClass}
+            title="全屏"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            className={toolbarBtnClass}
+            title="关闭"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
 
       <img
+        ref={imgRef}
         src={url}
         alt={caption || ""}
-        className="max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] sm:max-h-[90vh] object-contain"
+        className="max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] sm:max-h-[90vh] object-contain select-none"
+        style={{
+          transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+          cursor: isDragging ? "grabbing" : "grab",
+        }}
         onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => { e.stopPropagation(); handleDoubleClick(); }}
+        onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         draggable={false}
       />
 
       {/* 移动端操作提示 */}
       <div className="absolute bottom-6 left-0 right-0 text-center text-white/50 text-xs sm:hidden">
-        <p>上下滑动或点击空白处关闭</p>
+        <p>双击放大 · 双指缩放 · 拖拽移动</p>
       </div>
 
       {caption && (
@@ -544,6 +769,98 @@ function ImagePreview({ url, caption, onClose }: { url: string; caption?: string
         </div>
       )}
     </div>
+  );
+}
+
+/* 视频播放器：支持原生全屏，不支持时 fallback 到弹窗全屏 */
+function VideoPlayer({ src, caption }: { src: string; caption: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [showModal, setShowModal] = useState(false);
+
+  async function handleFullscreen() {
+    const v = videoRef.current;
+    if (!v) return;
+    const el = v as HTMLVideoElement & {
+      webkitRequestFullscreen?: () => Promise<void>;
+      mozRequestFullScreen?: () => Promise<void>;
+      msRequestFullscreen?: () => Promise<void>;
+    };
+    try {
+      if (el.requestFullscreen) {
+        await el.requestFullscreen();
+      } else if (el.webkitRequestFullscreen) {
+        await el.webkitRequestFullscreen();
+      } else if (el.mozRequestFullScreen) {
+        await el.mozRequestFullScreen();
+      } else if (el.msRequestFullscreen) {
+        await el.msRequestFullscreen();
+      } else {
+        throw new Error("不支持全屏");
+      }
+    } catch {
+      setShowModal(true);
+      try {
+        await videoRef.current?.play();
+      } catch {
+        /* 自动播放可能被浏览器阻止，用户可手动点击播放 */
+      }
+    }
+  }
+
+  return (
+    <>
+      <div className="relative inline-block group">
+        <video
+          ref={videoRef}
+          src={src}
+          controls
+          playsInline
+          className="max-w-full rounded-lg"
+          preload="metadata"
+        />
+        <button
+          type="button"
+          onClick={handleFullscreen}
+          className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 transition-opacity opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+          title="全屏播放"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+          </svg>
+        </button>
+      </div>
+      {showModal && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center touch-none"
+          onClick={() => setShowModal(false)}
+          onTouchMove={(e) => e.preventDefault()}
+        >
+          <video
+            src={src}
+            controls
+            autoPlay
+            className="max-w-[95vw] max-h-[95vh] rounded"
+            onClick={(e) => e.stopPropagation()}
+          />
+          {caption && (
+            <div className="absolute bottom-6 left-0 right-0 text-center text-white/70 text-sm px-4">
+              {caption}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowModal(false)}
+            className="absolute top-4 right-4 text-white/80 hover:text-white p-2 rounded-lg hover:bg-white/10"
+            title="关闭"
+          >
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
@@ -626,9 +943,9 @@ export function BlockNoteRenderer({ blocks }: Props) {
   const [previewCaption, setPreviewCaption] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
-  const handleImageClick = useCallback((url: string) => {
+  const handleImageClick = useCallback((url: string, caption: string) => {
     setPreviewUrl(url);
-    setPreviewCaption("");
+    setPreviewCaption(caption);
   }, []);
 
   const handlePdfPreview = useCallback((url: string) => {
