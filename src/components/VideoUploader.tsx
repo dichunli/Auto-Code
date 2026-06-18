@@ -121,7 +121,16 @@ export function VideoUploader({
   const handleFiles = useCallback(
     async (files: FileList) => {
       const fileArray = Array.from(files)
-        .filter((f) => f.type.startsWith("video/") || !f.type)
+        .filter((f) => {
+          /* 明确的视频 MIME 类型 */
+          if (f.type.startsWith("video/")) return true;
+          /* 部分 APP 环境返回的 MIME 类型为空或 application/octet-stream，按扩展名兜底 */
+          if (!f.type || f.type === "application/octet-stream") {
+            const ext = f.name.split(".").pop()?.toLowerCase();
+            return ["mp4", "webm", "mov", "3gp"].includes(ext || "");
+          }
+          return false;
+        })
         .slice(0, maxVideos - videosRef.current.length);
 
       if (fileArray.length === 0) {
