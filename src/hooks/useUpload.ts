@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { compressImage } from "@/lib/imageCompress";
+import { compressImage, compressImageByDimension, 压缩图片 } from "@/lib/imageCompress";
 import { 获取访问令牌 } from "@/lib/supabase/client";
 
 /* ======================== 类型定义 ======================== */
@@ -9,8 +9,10 @@ import { 获取访问令牌 } from "@/lib/supabase/client";
 export interface 上传选项 {
   /* 媒体类型 */
   mediaType?: "image" | "video" | "auto";
-  /* 图片压缩目标大小（KB），默认 300 */
+  /* 图片压缩目标大小（KB），默认 300；与 compressMaxDimension 同时存在时优先用尺寸 */
   compressMaxKB?: number;
+  /* 图片按最大边尺寸压缩（像素），移动端常用 1280 */
+  compressMaxDimension?: number;
   /* 视频最大时长（秒），默认 60 */
   maxDurationSeconds?: number;
   /* 文件大小上限（MB），默认 100 */
@@ -51,7 +53,8 @@ interface 校验结果 {
 export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
   const {
     mediaType = "auto",
-    compressMaxKB = 300,
+    compressMaxKB,
+    compressMaxDimension,
     maxDurationSeconds = 60,
     maxFileSizeMB = 100,
     timeoutMs = 30000,
@@ -152,7 +155,14 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
   /* 处理图片：压缩 */
   async function 处理图片(file: File): Promise<Blob> {
     try {
-      return await compressImage(file, compressMaxKB);
+      /* 优先按指定尺寸压缩，其次按指定大小压缩，否则根据环境自动选择 */
+      if (compressMaxDimension) {
+        return await compressImageByDimension(file, compressMaxDimension);
+      }
+      if (compressMaxKB) {
+        return await compressImage(file, compressMaxKB);
+      }
+      return await 压缩图片(file);
     } catch {
       /* 压缩失败用原文件 */
       return file;
@@ -315,6 +325,7 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
     [
       mediaType,
       compressMaxKB,
+      compressMaxDimension,
       maxDurationSeconds,
       maxFileSizeMB,
       timeoutMs,

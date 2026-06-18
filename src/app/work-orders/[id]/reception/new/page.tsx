@@ -157,18 +157,18 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
         </section>
 
         <section className="border-t border-gray-100 pt-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">仪表照片（自动加水印）</h2>
-          <ImageUploader onUpload={setDashboardPaths} existingImages={dashboardPaths} maxImages={3} watermark />
+          <h2 className="text-base font-semibold text-gray-900 mb-4">仪表照片</h2>
+          <ImageUploader onUpload={setDashboardPaths} existingImages={dashboardPaths} maxImages={3} />
         </section>
 
         <section className="border-t border-gray-100 pt-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">外观照片（自动加水印）</h2>
-          <ImageUploader onUpload={setExteriorPaths} existingImages={exteriorPaths} maxImages={8} watermark />
+          <h2 className="text-base font-semibold text-gray-900 mb-4">外观照片</h2>
+          <ImageUploader onUpload={setExteriorPaths} existingImages={exteriorPaths} maxImages={8} />
         </section>
 
         <section className="border-t border-gray-100 pt-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">环车检查视频（自动加水印）</h2>
-          <VideoUploader onUpload={setVideoPaths} maxVideos={3} watermark />
+          <h2 className="text-base font-semibold text-gray-900 mb-4">环车检查视频</h2>
+          <VideoUploader onUpload={setVideoPaths} maxVideos={3} />
         </section>
 
         <section className="border-t border-gray-100 pt-6">

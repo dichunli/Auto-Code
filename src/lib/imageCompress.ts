@@ -1,3 +1,5 @@
+import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+
 /* ==================== VIN 识别专用压缩（返回 base64） ==================== */
 
 export interface 压缩选项 {
@@ -95,6 +97,91 @@ export function 裁剪Base64图片(
   });
 }
 
+/* 加载图片为 HTMLImageElement */
+function 加载图片(file: File): Promise<{ width: number; height: number; element: HTMLImageElement }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.width, height: img.height, element: img });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("图片加载失败"));
+    };
+    img.src = url;
+  });
+}
+
+/* 支持的浏览器 canvas 输出格式 */
+const 浏览器支持格式 = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * 按最大边尺寸压缩图片
+ * - 长边超过 maxDimension 时等比缩放
+ * - 长边未超过时直接返回原文件
+ * - JPEG / PNG / WebP 保持原格式，其他格式统一输出 JPEG
+ * - JPEG 输出质量固定 0.8
+ */
+export async function compressImageByDimension(file: File, maxDimension: number = 1280): Promise<Blob> {
+  const img = await 加载图片(file);
+
+  const max = Math.max(img.width, img.height);
+  if (max <= maxDimension) {
+    /* 尺寸已符合要求，直接返回原文件 */
+    return file;
+  }
+
+  const scale = maxDimension / max;
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("无法创建 canvas 上下文");
+  }
+  ctx.drawImage(img.element, 0, 0, w, h);
+
+  /* 输出格式：支持的保持原格式，否则转 JPEG */
+  const originalType = file.type;
+  const mimeType = 浏览器支持格式.includes(originalType) ? originalType : "image/jpeg";
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) => {
+        if (b) resolve(b);
+        else reject(new Error("canvas 编码失败"));
+      },
+      mimeType,
+      mimeType === "image/jpeg" ? 0.8 : undefined
+    );
+  });
+}
+
+/**
+ * 判断当前环境是否为移动浏览器（不含 APP）
+ */
+function 是移动端浏览器(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Mobile|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+}
+
+/**
+ * 统一图片压缩入口
+ * - APP 或移动浏览器：按大边 1280 压缩
+ * - PC 端：按 300KB 目标大小压缩
+ */
+export async function 压缩图片(file: File): Promise<Blob> {
+  if (是Capacitor环境() || 是移动端浏览器()) {
+    return compressImageByDimension(file, 1280);
+  }
+  return compressImage(file, 300);
+}
+
 export async function compressImage(file: File, maxSizeKB: number = 300): Promise<Blob> {
   /* 如果原始文件已经很小，直接返回 */
   if (file.size / 1024 <= maxSizeKB) {
@@ -162,23 +249,6 @@ async function 尝试压缩(
   /* 所有策略都失败，返回最后一种策略的结果 */
   const 最后策略 = 去重策略[去重策略.length - 1];
   return 执行压缩(img, 最后策略.maxDim, 最后策略.quality, mimeType);
-}
-
-/* 加载图片为 HTMLImageElement */
-function 加载图片(file: File): Promise<{ width: number; height: number; element: HTMLImageElement }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve({ width: img.width, height: img.height, element: img });
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("图片加载失败"));
-    };
-    img.src = url;
-  });
 }
 
 /* 执行一次压缩：缩放 + canvas 编码 */

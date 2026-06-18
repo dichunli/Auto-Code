@@ -4,10 +4,9 @@ import {useState, useEffect, useRef, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useUpload } from "@/hooks/useUpload";
-import { 添加水印 } from "@/lib/imageWatermark";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
-import { 启动原生水印相机 } from "@/lib/androidWatermarkCamera";
 import { base64转Blob } from "@/lib/imageCompress";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 
 interface 员工 {
   id: string;
@@ -154,22 +153,26 @@ export default function BehaviorScorePage() {
 
     canvas.toBlob(async (blob) => {
       if (!blob) return;
-      try {
-        const watermarked = await 添加水印(blob);
-        const preview = URL.createObjectURL(watermarked);
-        setMediaFiles((prev) => [...prev, { blob: watermarked, preview }]);
-      } catch (err: unknown) {
-        alert("水印处理失败: " + (err instanceof Error ? err.message : String(err)));
-      }
+      const preview = URL.createObjectURL(blob);
+      setMediaFiles((prev) => [...prev, { blob, preview }]);
       closeCamera();
     }, "image/jpeg", 0.9);
   }, [closeCamera]);
 
-  /* APP环境：调用原生水印相机 */
+  /* APP环境：调用系统相机 */
   const handleAppCamera = useCallback(async () => {
     try {
-      const rawBase64 = await 启动原生水印相机();
-      const base64 = `data:image/jpeg;base64,${rawBase64}`;
+      const photo = await Camera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera,
+      });
+      if (!photo.base64String) {
+        alert("拍照未获取到图片");
+        return;
+      }
+      const base64 = `data:image/jpeg;base64,${photo.base64String}`;
       const blob = base64转Blob(base64);
       const preview = URL.createObjectURL(blob);
       setMediaFiles((prev) => [...prev, { blob, preview }]);
@@ -349,7 +352,7 @@ export default function BehaviorScorePage() {
 
           {/* 拍照/视频上传 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">附件（拍照自动加水印）</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">附件</label>
             <div className="flex flex-wrap gap-2 mb-2">
               <button
                 type="button"

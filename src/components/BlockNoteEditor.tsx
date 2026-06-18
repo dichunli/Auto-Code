@@ -10,7 +10,7 @@ import {
 import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
 import { createClient } from "@/lib/supabase/client";
-import { compressImage, base64转Blob } from "@/lib/imageCompress";
+import { base64转Blob, 压缩图片 } from "@/lib/imageCompress";
 import { blocknoteDictionary } from "@/lib/blocknoteDictionary";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
@@ -45,7 +45,7 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
     /* 图片文件先压缩 */
     if (file.type.startsWith("image/")) {
       try {
-        uploadFile = await compressImage(file, 300);
+        uploadFile = await 压缩图片(file);
       } catch {
         /* 压缩失败用原文件 */
       }

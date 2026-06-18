@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { useUpload } from "@/hooks/useUpload";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
-import { 启动原生水印录像机 } from "@/lib/androidWatermarkVideo";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -17,7 +16,6 @@ interface Props {
   timeoutMs?: number;
   folder?: string;
   disabled?: boolean;
-  watermark?: boolean;
 }
 
 export function VideoUploader({
@@ -30,7 +28,6 @@ export function VideoUploader({
   timeoutMs = 60000,
   folder,
   disabled = false,
-  watermark = false,
 }: Props) {
   const [videos, setVideos] = useState<string[]>(existingVideos);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -204,38 +201,6 @@ export function VideoUploader({
     }
   }
 
-  /* APP 环境：调用原生水印录像机 */
-  async function handleAppWatermarkRecord() {
-    if (videosRef.current.length >= maxVideos) {
-      alert(`最多上传 ${maxVideos} 个视频`);
-      return;
-    }
-    try {
-      const filePath = await 启动原生水印录像机();
-      const fileUrl = 本地文件路径转URL(filePath);
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error("读取视频文件失败");
-      const blob = await response.blob();
-
-      if (blob.size > maxFileSizeMB * 1024 * 1024) {
-        alert(`视频大小不能超过 ${maxFileSizeMB}MB`);
-        return;
-      }
-
-      const ext = blob.type ? 视频扩展名(blob.type) : ".mp4";
-      const file = new File([blob], `watermark_record_${Date.now()}${ext}`, {
-        type: blob.type || "video/mp4",
-      });
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      await handleFiles(dt.files);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
-      alert("水印录像失败: " + msg);
-    }
-  }
-
   async function handleAppRecord() {
     await handleAppVideoSource(启动原生录像, "录像");
   }
@@ -298,7 +263,7 @@ export function VideoUploader({
               <>
                 <button
                   type="button"
-                  onClick={watermark ? handleAppWatermarkRecord : handleAppRecord}
+                  onClick={handleAppRecord}
                   disabled={上传中}
                   className={`w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
                 >
@@ -309,7 +274,7 @@ export function VideoUploader({
                       <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
-                      <span className="text-[10px]">{watermark ? "水印录像" : "录像"}</span>
+                      <span className="text-[10px]">录像</span>
                       <span className="text-[10px]">{videos.length}/{maxVideos}</span>
                     </>
                   )}

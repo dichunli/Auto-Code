@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
-import { compressImage } from "@/lib/imageCompress";
+import { 压缩图片 } from "@/lib/imageCompress";
 
 interface 知识文章 {
   id: string;
@@ -125,7 +125,7 @@ export default function EditToolPage() {
     }
     set图片上传中(true);
     try {
-      const compressed = await compressImage(file, 300);
+      const compressed = await 压缩图片(file);
       const formData = new FormData();
       formData.append("file", compressed, file.name);
 

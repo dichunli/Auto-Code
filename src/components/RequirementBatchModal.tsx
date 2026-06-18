@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
+import { 清除工单缓存 } from "@/app/work-orders/actions";
 
 interface MediaItem {
   id?: string;
@@ -250,6 +251,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
 
       reset();
       onClose();
+      await 清除工单缓存(orderId);
       router.refresh();
     } catch (err: unknown) {
       let msg = "未知错误";
@@ -420,6 +422,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                         alert("指派失败: " + error.message);
                         e.target.value = "";
                       } else {
+                        await 清除工单缓存(orderId);
                         router.refresh();
                       }
                     }}
@@ -448,6 +451,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                       if (error) {
                         alert("领单失败: " + error.message);
                       } else {
+                        await 清除工单缓存(orderId);
                         router.refresh();
                       }
                     }}
@@ -478,6 +482,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                       if (error) {
                         alert("取消失败: " + error.message);
                       } else {
+                        await 清除工单缓存(orderId);
                         router.refresh();
                       }
                     }}
@@ -504,6 +509,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                     alert("删除失败: " + error.message);
                   } else {
                     onClose();
+                    await 清除工单缓存(orderId);
                     router.refresh();
                   }
                 }}

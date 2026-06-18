@@ -89,7 +89,7 @@ export async function loadKnowledgeArticles(params: {
   } else {
     let query = supabase
       .from("knowledge_articles")
-      .select("*, knowledge_categories(name), profiles(full_name), created_by")
+      .select("*, knowledge_categories(name), profiles(full_name)")
       .order("created_at", { ascending: false })
       .limit(100);
 
