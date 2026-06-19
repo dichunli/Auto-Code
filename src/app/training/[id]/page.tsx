@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
 import { 是抖音链接, 抖音视频简化卡片 } from "@/components/DouyinVideo";
+import DeleteCourseButton from "../DeleteCourseButton";
 
 export default async function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -239,6 +240,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
               录入成绩
             </Link>
           )}
+          <DeleteCourseButton id={id} title={course.title} redirectTo="/training" />
         </div>
       </div>
 
