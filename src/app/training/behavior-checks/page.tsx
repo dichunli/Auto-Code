@@ -5,9 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { base64转Blob } from "@/lib/imageCompress";
-import { 启动原生水印相机 } from "@/lib/androidWatermarkCamera";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { useUpload } from "@/hooks/useUpload";
-import { 添加水印 } from "@/lib/imageWatermark";
 
 interface 考核记录 {
   id: string;
@@ -131,22 +130,26 @@ export default function BehaviorChecksPage() {
     fetchRecords();
   }, [fetchRecords]);
 
-  const uploadPhoto = useCallback(async (file: File, needsWatermark: boolean): Promise<string> => {
-    let uploadFile = file;
-    if (needsWatermark) {
-      const watermarkedBlob = await 添加水印(file);
-      uploadFile = new File([watermarkedBlob], file.name, { type: "image/jpeg" });
-    }
-    const { urls, errors } = await 上传([uploadFile]);
+  const uploadPhoto = useCallback(async (file: File): Promise<string> => {
+    const { urls, errors } = await 上传([file]);
     if (errors.length > 0) throw new Error(errors[0].error);
     return urls[0];
   }, [上传]);
 
-  /* APP环境：调用原生水印相机 */
+  /* APP环境：调用系统相机 */
   async function handleAppCamera() {
     try {
-      const rawBase64 = await 启动原生水印相机();
-      const base64 = `data:image/jpeg;base64,${rawBase64}`;
+      const photo = await Camera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera,
+      });
+      if (!photo.base64String) {
+        alert("拍照未获取到图片");
+        return;
+      }
+      const base64 = `data:image/jpeg;base64,${photo.base64String}`;
       const blob = base64转Blob(base64);
       const file = new File([blob], `camera_${Date.now()}.jpg`, { type: "image/jpeg" });
       setCapturedFile(file);
@@ -173,8 +176,8 @@ export default function BehaviorChecksPage() {
       const record = records.find((r) => r.id === recordId);
       if (!record) throw new Error("记录不存在");
 
-      /* 上传照片：APP 环境原生相机已带水印，浏览器环境需要前端加水印 */
-      const photoUrl = await uploadPhoto(file, !是Capacitor环境());
+      /* 上传照片 */
+      const photoUrl = await uploadPhoto(file);
 
       /* 创建行为打分记录 */
       const finalScore = record.item_score_type === "penalty" ? -Math.abs(record.item_score) : Math.abs(record.item_score);

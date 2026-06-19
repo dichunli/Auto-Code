@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 刷新工单详情 } from "@/app/work-orders/actions";
 import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
+import { 清除工单缓存 } from "@/app/work-orders/actions";
 
 interface MediaItem {
   id?: string;
@@ -316,8 +317,8 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50">
-      <div className="bg-white rounded-t-xl md:rounded-xl shadow-xl w-full md:max-w-lg md:max-h-[90vh] flex flex-col" style={{ maxHeight: "calc(100vh - env(safe-area-inset-top))" }}>
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/50">
+      <div className="!bg-white !opacity-100 rounded-t-xl md:rounded-xl shadow-xl w-full md:max-w-lg md:max-h-[90vh] flex flex-col" style={{ backgroundColor: "#ffffff", opacity: 1, maxHeight: "calc(100vh - env(safe-area-inset-top))" }}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
           <h2 className="text-base font-semibold text-gray-900">{isEdit ? "编辑客户需求" : "添加客户需求"}</h2>
           <button
@@ -387,14 +388,13 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
               />
             </div>
             <div className={`${!canEditMedia ? "opacity-70" : ""}`}>
-              <div className="text-xs text-gray-500 mb-1">需求视频（自动加水印）</div>
+              <div className="text-xs text-gray-500 mb-1">需求视频</div>
               <VideoUploader
                 existingVideos={videos}
                 onUpload={setVideos}
                 onDelete={(path) => handleDeleteMedia(path, "video")}
                 maxVideos={3}
                 disabled={!canEditMedia}
-                watermark
               />
             </div>
           </div>
@@ -430,6 +430,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                         alert("指派失败: " + error.message);
                         e.target.value = "";
                       } else {
+                        await 清除工单缓存(orderId);
                         router.refresh();
                       }
                     }}
@@ -458,6 +459,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                       if (error) {
                         alert("领单失败: " + error.message);
                       } else {
+                        await 清除工单缓存(orderId);
                         router.refresh();
                       }
                     }}
@@ -488,6 +490,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                       if (error) {
                         alert("取消失败: " + error.message);
                       } else {
+                        await 清除工单缓存(orderId);
                         router.refresh();
                       }
                     }}

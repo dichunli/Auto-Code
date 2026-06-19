@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
-import { compressImage, base64转Blob } from "@/lib/imageCompress";
+import { base64转Blob, 压缩图片 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import ItemImageUploader from "./ItemImageUploader";
@@ -1150,7 +1150,7 @@ export default function MobileItemEditor({
     }
     setLoading(true);
     try {
-      const compressed = await compressImage(file, 300);
+      const compressed = await 压缩图片(file);
       const formData = new FormData();
       formData.append("file", compressed, file.name);
 

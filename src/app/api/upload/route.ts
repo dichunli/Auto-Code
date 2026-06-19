@@ -4,6 +4,7 @@ import { promisify } from "util";
 import path from "path";
 import { 解析Multipart请求 } from "@/lib/parseMultipart";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 const execFileAsync = promisify(execFile);
 
@@ -67,11 +68,29 @@ async function convertToPdf(inputPath: string, outputDir: string): Promise<strin
 
 export async function POST(request: Request) {
   try {
-    /* 认证检查 */
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return Response.json({ error: "未登录" }, { status: 401 });
+    /* 认证检查：优先从 Authorization 头取 token（APP 环境），其次读 cookie */
+    let userId: string | null = null;
+    const authHeader = request.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.substring(7);
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (url && key) {
+        const tempClient = createSupabaseClient(url, key);
+        const { data, error } = await tempClient.auth.getUser(token);
+        if (!error && data.user) {
+          userId = data.user.id;
+        }
+      }
+    }
+
+    if (!userId) {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return Response.json({ error: "未登录" }, { status: 401 });
+      }
+      userId = user.id;
     }
 
     /* 文件大小预检（通过 Content-Length 头） */

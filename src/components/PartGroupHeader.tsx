@@ -108,7 +108,6 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     删除文件,
   } = useUpload({
     mediaType: "image",
-    compressMaxKB: 300,
     timeoutMs: 30000,
   });
 

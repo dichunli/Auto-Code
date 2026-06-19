@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
+import { useDebounce } from "@/lib/useDebounce";
 import KnowledgeImportExport from "./KnowledgeImportExport";
 import { loadKnowledgeArticles } from "./actions";
 
@@ -46,9 +47,10 @@ interface 知识文章 {
 }
 
 function extractTextFromInline(content: InlineContent[]): string {
+  if (!Array.isArray(content)) return "";
   return content
     .map((item) => {
-      if (item.type === "link" && item.content) {
+      if (item.type === "link" && Array.isArray(item.content)) {
         return extractTextFromInline(item.content);
       }
       return item.text || "";
@@ -107,6 +109,17 @@ function 获取作者名(a: 知识文章): string {
   return a.author_name || "系统";
 }
 
+function formatDate(dateStr: string): string {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return "-";
+    return d.toLocaleDateString();
+  } catch {
+    return "-";
+  }
+}
+
 function 权限标签(visibility: string) {
   const map: Record<string, { label: string; className: string }> = {
     public: { label: "公开", className: "bg-green-50 text-green-700" },
@@ -118,8 +131,8 @@ function 权限标签(visibility: string) {
 }
 
 interface Props {
-  initialArticles: unknown[];
-  initialCategories: unknown[];
+  initialArticles: 知识文章[];
+  initialCategories: 知识分类[];
   initialReadCounts: Record<string, number>;
   initialTotal: number;
   initialTotalPages: number;
@@ -136,14 +149,13 @@ export default function KnowledgeContent({
   currentUserId: serverUserId,
   isAdmin: serverIsAdmin,
 }: Props) {
-  const [articles, setArticles] = useState<知识文章[]>(initialArticles as 知识文章[]);
-  const [categories, setCategories] = useState<知识分类[]>(initialCategories as 知识分类[]);
+  const [articles, setArticles] = useState<知识文章[]>(initialArticles);
+  const [categories, setCategories] = useState<知识分类[]>(initialCategories);
   const [loading, setLoading] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
-  const [debouncedKeyword, setDebouncedKeyword] = useState("");
+  const debouncedKeyword = useDebounce(searchKeyword, 300);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [currentUserId, setCurrentUserId] = useState<string>(serverUserId);
   const [isAdmin, setIsAdmin] = useState(serverIsAdmin);
@@ -205,14 +217,10 @@ export default function KnowledgeContent({
     };
   }, [debouncedKeyword, selectedCategory, page]);
 
-  /* 搜索防抖 */
+  /* 搜索输入只更新原始状态，防抖由 useDebounce 处理 */
   function handleSearchChange(val: string) {
     setSearchKeyword(val);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => {
-      setDebouncedKeyword(val.trim());
-      setPage(1);
-    }, 300);
+    setPage(1);
   }
 
   /* 分类切换 */
@@ -437,7 +445,7 @@ export default function KnowledgeContent({
                         </p>
                         <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
                           <span>{获取作者名(a)}</span>
-                          <span>{new Date(a.created_at).toLocaleDateString()}</span>
+                          <span>{formatDate(a.created_at)}</span>
                           <span className="flex items-center gap-0.5">
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />

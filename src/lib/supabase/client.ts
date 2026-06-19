@@ -418,6 +418,30 @@ export async function 确保有session(): Promise<void> {
 }
 
 /*
+ * 获取当前 access_token（用于 API 请求头）。
+ * APP 环境优先读 APP 专属 localStorage key，浏览器环境读通用 key。
+ * 过期 token 会被跳过。
+ */
+export function 获取访问令牌(): string | null {
+  if (typeof window === "undefined") return null;
+  const keys = [APP认证存储Key, 认证存储Key];
+  for (const key of keys) {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) continue;
+    try {
+      const session = JSON.parse(raw) as { access_token?: string; expires_at?: number };
+      if (session.access_token) {
+        if (session.expires_at && Date.now() / 1000 >= session.expires_at) continue;
+        return session.access_token;
+      }
+    } catch {
+      /* 解析失败继续下一个 key */
+    }
+  }
+  return null;
+}
+
+/*
  * ╔══════════════════════════════════════════════════════════════════════╗
  * ║  登录健康检查 — 长期预防：只读诊断，绝不修改任何 session 数据          ║
  * ╠══════════════════════════════════════════════════════════════════════╣

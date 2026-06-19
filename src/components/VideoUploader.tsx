@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useUpload } from "@/hooks/useUpload";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
-import { 启动原生水印录像机 } from "@/lib/androidWatermarkVideo";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -16,7 +16,6 @@ interface Props {
   timeoutMs?: number;
   folder?: string;
   disabled?: boolean;
-  watermark?: boolean;
 }
 
 export function VideoUploader({
@@ -29,7 +28,6 @@ export function VideoUploader({
   timeoutMs = 60000,
   folder,
   disabled = false,
-  watermark = false,
 }: Props) {
   const [videos, setVideos] = useState<string[]>(existingVideos);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -123,7 +121,16 @@ export function VideoUploader({
   const handleFiles = useCallback(
     async (files: FileList) => {
       const fileArray = Array.from(files)
-        .filter((f) => f.type.startsWith("video/") || !f.type)
+        .filter((f) => {
+          /* 明确的视频 MIME 类型 */
+          if (f.type.startsWith("video/")) return true;
+          /* 部分 APP 环境返回的 MIME 类型为空或 application/octet-stream，按扩展名兜底 */
+          if (!f.type || f.type === "application/octet-stream") {
+            const ext = f.name.split(".").pop()?.toLowerCase();
+            return ["mp4", "webm", "mov", "3gp"].includes(ext || "");
+          }
+          return false;
+        })
         .slice(0, maxVideos - videosRef.current.length);
 
       if (fileArray.length === 0) {
@@ -203,38 +210,6 @@ export function VideoUploader({
     }
   }
 
-  /* APP 环境：调用原生水印录像机 */
-  async function handleAppWatermarkRecord() {
-    if (videosRef.current.length >= maxVideos) {
-      alert(`最多上传 ${maxVideos} 个视频`);
-      return;
-    }
-    try {
-      const filePath = await 启动原生水印录像机();
-      const fileUrl = 本地文件路径转URL(filePath);
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error("读取视频文件失败");
-      const blob = await response.blob();
-
-      if (blob.size > maxFileSizeMB * 1024 * 1024) {
-        alert(`视频大小不能超过 ${maxFileSizeMB}MB`);
-        return;
-      }
-
-      const ext = blob.type ? 视频扩展名(blob.type) : ".mp4";
-      const file = new File([blob], `watermark_record_${Date.now()}${ext}`, {
-        type: blob.type || "video/mp4",
-      });
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      await handleFiles(dt.files);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
-      alert("水印录像失败: " + msg);
-    }
-  }
-
   async function handleAppRecord() {
     await handleAppVideoSource(启动原生录像, "录像");
   }
@@ -297,7 +272,7 @@ export function VideoUploader({
               <>
                 <button
                   type="button"
-                  onClick={watermark ? handleAppWatermarkRecord : handleAppRecord}
+                  onClick={handleAppRecord}
                   disabled={上传中}
                   className={`w-24 h-20 rounded border border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
                 >
@@ -308,7 +283,7 @@ export function VideoUploader({
                       <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
-                      <span className="text-[10px]">{watermark ? "水印录像" : "录像"}</span>
+                      <span className="text-[10px]">录像</span>
                       <span className="text-[10px]">{videos.length}/{maxVideos}</span>
                     </>
                   )}
@@ -391,10 +366,10 @@ export function VideoUploader({
         {是APP ? "点击录像或选视频" : "支持录像或选择文件"}。单个不超过 {maxFileSizeMB}MB、{maxDurationSeconds} 秒。
       </p>
 
-      {/* 全屏视频播放器 */}
-      {viewerIndex !== null && viewerSrc && (
+      {/* 全屏视频播放器：使用 Portal 渲染到 body，避免被父级弹窗的层级/透明度影响 */}
+      {viewerIndex !== null && viewerSrc && typeof document !== "undefined" && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 touch-none"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 touch-none"
           style={{ overscrollBehaviorX: "none" }}
           onClick={() => setViewerIndex(null)}
           onTouchStart={handleTouchStart}
@@ -438,7 +413,8 @@ export function VideoUploader({
           <div className="absolute bottom-16 left-1/2 -translate-x-1/2 text-white/50 text-xs pointer-events-none md:hidden">
             上滑下一个 · 下滑上一个 · 左滑关闭
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

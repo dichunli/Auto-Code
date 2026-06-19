@@ -30,7 +30,6 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
     删除文件,
   } = useUpload({
     mediaType: "image",
-    compressMaxKB: 300,
     timeoutMs: 30000,
   });
 
