@@ -28,6 +28,7 @@
 import { useState, useEffect } from "react";
 import { createClient, 获取当前环境 } from "@/lib/supabase/client";
 import { logLogin } from "@/lib/operationLog";
+import { 账号转邮箱 } from "@/lib/loginCredentials";
 
 export default function LoginPage() {
   const [account, setAccount] = useState("");
@@ -72,10 +73,6 @@ export default function LoginPage() {
     }
   }, []);
 
-  function isPhone(value: string) {
-    return /^1[3-9]\d{9}$/.test(value);
-  }
-
   async function handleSubmit() {
     /* 防止 supabase 客户端尚未初始化时提交 */
     if (!supabase) {
@@ -101,12 +98,10 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const credentials: { password: string; email: string } = { password, email: "" };
-    if (isPhone(account)) {
-      credentials.email = "phone-" + account + "@auto.local";
-    } else {
-      credentials.email = account;
-    }
+    const credentials: { password: string; email: string } = {
+      password,
+      email: 账号转邮箱(account),
+    };
 
     try {
       const { data, error } = await Promise.race([
