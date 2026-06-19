@@ -35,9 +35,10 @@ interface Props {
   requirement?: Requirement; // 编辑模式时传入
   initialMedia?: MediaItem[]; // 编辑模式时传入现有媒体
   profiles?: Profile[];
+  项目数?: number; // 该需求下挂的维修项目数量：>0 时禁止删除
 }
 
-export default function RequirementBatchModal({ open, onClose, orderId, requirement, initialMedia = [], profiles = [] }: Props) {
+export default function RequirementBatchModal({ open, onClose, orderId, requirement, initialMedia = [], profiles = [], 项目数 = 0 }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const isEdit = !!requirement;
@@ -410,20 +411,32 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
             {isEdit && (
               <button
                 type="button"
+                disabled={saving || 项目数 > 0}
+                title={项目数 > 0 ? "该需求下有维修项目，请先删除项目再删需求" : undefined}
                 onClick={async () => {
+                  /* 防误删：需求下挂有维修项目时不允许删除（删除会使项目变成无主项目） */
+                  if (项目数 > 0) {
+                    alert(`该需求下有 ${项目数} 个维修项目，请先删除这些项目，再删除需求。`);
+                    return;
+                  }
                   if (!confirm("确定要删除这条需求吗？关联的媒体文件也会被删除。")) return;
+                  setSaving(true);
                   const { error } = await supabase
                     .from("work_order_requirements")
                     .delete()
-                    .eq("id", requirement.id);
+                    .eq("id", requirement!.id);
                   if (error) {
                     alert("删除失败: " + error.message);
+                    setSaving(false);
                   } else {
-                    onClose();
+                    /* 可靠刷新：清缓存+重新验证页面，确保删除后立即从列表消失 */
+                    await 刷新工单详情(orderId);
                     router.refresh();
+                    onClose();
+                    setSaving(false);
                   }
                 }}
-                className="mr-auto px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50"
+                className="mr-auto px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 删除
               </button>

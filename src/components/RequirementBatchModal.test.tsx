@@ -36,9 +36,17 @@ const mockSelect = vi.fn(() => ({
   }),
 }));
 
+const mockDelete = vi.fn(() => {
+  调用顺序.push("delete");
+  return {
+    eq: () => Promise.resolve({ error: null }),
+  };
+});
+
 const mockFrom = vi.fn(() => ({
   select: mockSelect,
   insert: mockInsert,
+  delete: mockDelete,
 }));
 
 const mockGetSession = vi.fn(async () => {
@@ -127,5 +135,55 @@ describe("RequirementBatchModal - 保存逻辑", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(mockInsert).not.toHaveBeenCalled();
+  });
+});
+
+describe("RequirementBatchModal - 删除防误删保护", () => {
+  const 编辑用需求 = { id: "req-1", seq: 1, description: "刹车异响" };
+
+  it("需求下有项目（项目数>0）→ 删除按钮禁用，且点击不删库", async () => {
+    const user = userEvent.setup();
+    render(
+      <RequirementBatchModal
+        open={true}
+        onClose={vi.fn()}
+        orderId="wo-1"
+        requirement={编辑用需求}
+        项目数={2}
+      />
+    );
+
+    const 删除按钮 = screen.getByRole("button", { name: "删除" });
+    expect(删除按钮).toBeDisabled();
+
+    /* 即便强行点击，也不应调用 delete */
+    await user.click(删除按钮);
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it("需求下无项目（项目数=0）→ 可删除，并调可靠刷新", async () => {
+    /* 删除会弹 confirm，mock 成确认 */
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    render(
+      <RequirementBatchModal
+        open={true}
+        onClose={vi.fn()}
+        orderId="wo-1"
+        requirement={编辑用需求}
+        项目数={0}
+      />
+    );
+
+    const 删除按钮 = screen.getByRole("button", { name: "删除" });
+    expect(删除按钮).not.toBeDisabled();
+
+    await user.click(删除按钮);
+
+    /* 删除后必须调 刷新工单详情，确保从列表可靠消失 */
+    await waitFor(() => {
+      expect(mockDelete).toHaveBeenCalled();
+      expect(mock刷新工单详情).toHaveBeenCalledWith("wo-1");
+    });
   });
 });

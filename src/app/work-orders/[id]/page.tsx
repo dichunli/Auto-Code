@@ -671,7 +671,7 @@ export default async function WorkOrderDetailPage({
               {requirements?.map((req: { id: string; seq: number; submitted_by?: string; assigned_to_profile?: { full_name?: string } | null; assignment_type?: string; notes?: string }) => (
                 <div key={req.id} className="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
                   <div className="flex items-center gap-2 flex-wrap px-4 py-3 md:px-6 md:py-4 border-b border-gray-100 bg-gray-50/50">
-                    <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} />
+                    <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} 项目数={(itemsByRequirement.get(req.id) || []).length} />
                     {req.assigned_to_profile && req.assignment_type === 'claimed' && (
                       <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px]">
                         领单: {req.assigned_to_profile.full_name}

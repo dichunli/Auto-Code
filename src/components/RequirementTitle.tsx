@@ -25,6 +25,8 @@ interface Props {
   orderId: string;
   profiles: Profile[];
   media: MediaItem[];
+  /* 该需求下挂的维修项目数量：>0 时不允许删除该需求 */
+  项目数?: number;
 }
 
 function MediaTypeIcon({ type }: { type: string }) {
@@ -52,7 +54,7 @@ function MediaTypeIcon({ type }: { type: string }) {
   return null;
 }
 
-export default function RequirementTitle({ req, orderId, profiles, media }: Props) {
+export default function RequirementTitle({ req, orderId, profiles, media, 项目数 = 0 }: Props) {
   const [open, setOpen] = useState(false);
   const hasImage = media.some((m) => m.media_type === "image");
   const hasVideo = media.some((m) => m.media_type === "video");
@@ -84,6 +86,7 @@ export default function RequirementTitle({ req, orderId, profiles, media }: Prop
         requirement={req}
         initialMedia={media || []}
         profiles={profiles}
+        项目数={项目数}
       />
     </>
   );
