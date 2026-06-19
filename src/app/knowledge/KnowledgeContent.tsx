@@ -136,6 +136,7 @@ interface Props {
   initialReadCounts: Record<string, number>;
   initialTotal: number;
   initialTotalPages: number;
+  initialSegments: string[];
   currentUserId: string;
   isAdmin: boolean;
 }
@@ -146,6 +147,7 @@ export default function KnowledgeContent({
   initialReadCounts,
   initialTotal,
   initialTotalPages,
+  initialSegments,
   currentUserId: serverUserId,
   isAdmin: serverIsAdmin,
 }: Props) {
@@ -160,6 +162,7 @@ export default function KnowledgeContent({
   const [currentUserId, setCurrentUserId] = useState<string>(serverUserId);
   const [isAdmin, setIsAdmin] = useState(serverIsAdmin);
   const [readCounts, setReadCounts] = useState<Record<string, number>>(initialReadCounts);
+  const [segments, setSegments] = useState<string[]>(initialSegments);
 
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(initialTotal);
@@ -192,6 +195,7 @@ export default function KnowledgeContent({
           setQueryError(result.error || "加载失败");
           setArticles([]);
           setCategories([]);
+          setSegments([]);
         } else {
           setArticles(result.articles || []);
           setCategories(result.categories || []);
@@ -200,6 +204,7 @@ export default function KnowledgeContent({
           setIsAdmin(result.isAdmin || false);
           setTotal(result.total || 0);
           setTotalPages(result.totalPages || 1);
+          setSegments(result.segments || []);
         }
       } catch (err: unknown) {
         if (!cancelled) {
@@ -229,21 +234,8 @@ export default function KnowledgeContent({
     setPage(1);
   }
 
-  /* 解析搜索关键词：空格分词 + 中文2字子串 */
-  const searchKeywords = useMemo(() => {
-    const raw = debouncedKeyword.trim();
-    if (!raw) return [];
-    const words = raw.split(/\s+/).filter((k: string) => k.length > 0);
-    const result = [...words];
-    for (const word of words) {
-      if (word.length >= 2) {
-        for (let i = 0; i <= word.length - 2; i++) {
-          result.push(word.slice(i, i + 2));
-        }
-      }
-    }
-    return [...new Set(result)];
-  }, [debouncedKeyword]);
+  /* 高亮关键词使用后端分词结果 */
+  const searchKeywords = useMemo(() => segments.filter((k) => k.length > 0), [segments]);
 
   const 类型标签 = useCallback((type: string) => {
     const map: Record<string, { label: string; className: string }> = {
@@ -270,7 +262,6 @@ export default function KnowledgeContent({
           categories={categories}
           onSuccess={() => {
             setSearchKeyword("");
-            setDebouncedKeyword("");
             setSelectedCategory("");
             setPage(1);
             window.location.reload();
@@ -306,7 +297,6 @@ export default function KnowledgeContent({
               type="button"
               onClick={() => {
                 setSearchKeyword("");
-                setDebouncedKeyword("");
               }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
             >

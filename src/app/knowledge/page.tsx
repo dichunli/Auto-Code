@@ -9,6 +9,7 @@ export default async function KnowledgePage() {
     initialReadCounts={result.readCounts || {}}
     initialTotal={result.total || 0}
     initialTotalPages={result.totalPages || 1}
+    initialSegments={result.segments || []}
     currentUserId={result.currentUserId || ""}
     isAdmin={result.isAdmin || false}
   />;
