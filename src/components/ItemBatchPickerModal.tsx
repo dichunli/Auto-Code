@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 刷新工单详情 } from "@/app/work-orders/actions";
 
 interface Props {
   open: boolean;
@@ -197,8 +198,11 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
         alert(`已添加 ${toInsert.length} 项；跳过 ${duplicates.length} 个重复项目：${duplicates.map((d) => d.name).join("、")}`);
       }
 
-      onClose();
+      /* 可靠刷新：清服务端缓存+重新验证页面，确保新增项目立即显示（裸 router.refresh
+       * 会命中 30 秒缓存导致「加了不显示」）。刷新完成后再关弹窗。 */
+      await 刷新工单详情(orderId);
       router.refresh();
+      onClose();
     } catch (err: unknown) {
       alert("批量添加失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
