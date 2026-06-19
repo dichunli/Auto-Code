@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 刷新工单详情 } from "@/app/work-orders/actions";
 import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
 
@@ -37,9 +38,10 @@ interface Props {
   requirement?: Requirement; // 编辑模式时传入
   initialMedia?: MediaItem[]; // 编辑模式时传入现有媒体
   profiles?: Profile[];
+  项目数?: number; // 该需求下挂的维修项目数量：>0 时禁止删除
 }
 
-export default function RequirementBatchModal({ open, onClose, orderId, requirement, initialMedia = [], profiles = [] }: Props) {
+export default function RequirementBatchModal({ open, onClose, orderId, requirement, initialMedia = [], profiles = [], 项目数 = 0 }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const isEdit = !!requirement;
@@ -113,15 +115,19 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
   const canEditMedia = !isEdit || isAdmin || currentUserId === requirement?.submitted_by;
 
   async function handleSubmit() {
+    if (saving) return; // 防止重复提交：正在保存时再次点击直接忽略
     if (!description.trim() && images.length === 0 && videos.length === 0) {
       alert("请至少填写客户需求描述或上传媒体文件");
       return;
     }
 
-    const { data: authData } = await supabase.auth.getUser();
-    const userId = authData.user?.id || null;
-
+    /* 立即进入保存中状态：按钮马上变「保存中...」并禁用，给用户即时反馈，杜绝因反应慢而重复提交 */
     setSaving(true);
+
+    /* 当前用户已在组件挂载时(useEffect)拿到并存入 currentUserId state，此处直接用，
+     * 无需再联网 getUser（环境判定修复后 session 本就健康，避免拖慢保存）。
+     * userId 为下方字段级权限校验沿用的名字，与 currentUserId 同值。 */
+    const userId = currentUserId;
     try {
       if (isEdit) {
         /* 权限校验：非提交人/管理员尝试修改受保护字段 */
@@ -248,9 +254,12 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
         });
       }
 
+      /* 先清服务端缓存并重新验证页面、刷新数据，全部完成后再关弹窗。
+       * 这样保存期间「保存中...」状态一直保持，用户有明确反馈，不会以为卡住或没存上。 */
+      await 刷新工单详情(orderId);
+      router.refresh();
       reset();
       onClose();
-      router.refresh();
     } catch (err: unknown) {
       let msg = "未知错误";
       if (err instanceof Error) {
@@ -495,20 +504,33 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
             {isEdit && (
               <button
                 type="button"
+                disabled={saving}
+                title={项目数 > 0 ? "该需求下有维修项目，请先删除项目再删需求" : undefined}
                 onClick={async () => {
+                  /* 防误删：需求下挂有维修项目时不允许删除（删除会使项目变成无主项目）。
+                   * 这里不禁用按钮，而是点击后给出明确提示，告诉用户为什么不能删、该怎么做。 */
+                  if (项目数 > 0) {
+                    alert(`该需求下有 ${项目数} 个维修项目，无法删除。\n请先删除这些维修项目，再删除需求。`);
+                    return;
+                  }
                   if (!confirm("确定要删除这条需求吗？关联的媒体文件也会被删除。")) return;
+                  setSaving(true);
                   const { error } = await supabase
                     .from("work_order_requirements")
                     .delete()
-                    .eq("id", requirement.id);
+                    .eq("id", requirement!.id);
                   if (error) {
                     alert("删除失败: " + error.message);
+                    setSaving(false);
                   } else {
-                    onClose();
+                    /* 可靠刷新：清缓存+重新验证页面，确保删除后立即从列表消失 */
+                    await 刷新工单详情(orderId);
                     router.refresh();
+                    onClose();
+                    setSaving(false);
                   }
                 }}
-                className="mr-auto px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50"
+                className="mr-auto px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 删除
               </button>
