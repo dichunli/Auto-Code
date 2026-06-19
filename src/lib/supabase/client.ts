@@ -384,10 +384,15 @@ export async function 确保有session(): Promise<void> {
     };
     if (!会话.access_token || !会话.refresh_token) return;
 
-    /* access_token 过期（当前时间超过 expires_at）也跳过，避免注入已过期 token */
-    if (会话.expires_at && Date.now() / 1000 >= 会话.expires_at) return;
-
-    /* 强制注入：不管内存有没有，一律覆盖，确保后续查询一定带 token */
+    /*
+     * 强制注入：把 access_token + refresh_token 交给 setSession。
+     * 即使 access_token 已过期也照常注入 —— setSession 会自动用 refresh_token
+     * 换取新的 access_token。这正是「确保会话就绪」能正常工作的原因。
+     *
+     * 【历史教训 2026-06-17】此处原先有「access_token 过期就 return 放弃」的判断，
+     * 导致令牌过期后兜底函数撒手不管，保存/读取携带过期 token 被 RLS 拒绝（401 / 42501）。
+     * 改为不判断过期、一律交给 setSession 续期，与 确保会话就绪 保持一致。
+     */
     await supabase.auth.setSession({
       access_token: 会话.access_token,
       refresh_token: 会话.refresh_token,

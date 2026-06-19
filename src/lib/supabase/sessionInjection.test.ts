@@ -104,7 +104,9 @@ describe("确保有session", () => {
     expect(mockState.setSession).not.toHaveBeenCalled();
   });
 
-  it("本地 session 已过期 → 不注入（避免注入过期 token）", async () => {
+  it("本地 session 已过期但有 refresh_token → 仍然注入（交给 setSession 自动续期）", async () => {
+    /* 【关键回归用例】2026-06-17 修复：过期不能放弃，否则保存/读取会带过期 token
+       被 RLS 拒绝（401 / 42501）。setSession 会用 refresh_token 自动换新 token。 */
     window.localStorage.setItem(
       认证Key,
       JSON.stringify({
@@ -115,7 +117,11 @@ describe("确保有session", () => {
     );
     const mod = await 加载模块();
     await mod.确保有session();
-    expect(mockState.setSession).not.toHaveBeenCalled();
+    expect(mockState.setSession).toHaveBeenCalledTimes(1);
+    expect(mockState.setSession).toHaveBeenCalledWith({
+      access_token: "access-1",
+      refresh_token: "refresh-1",
+    });
   });
 
   it("本地数据是无效 JSON → 不崩溃、不注入", async () => {
