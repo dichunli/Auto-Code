@@ -141,7 +141,8 @@ describe("RequirementBatchModal - 保存逻辑", () => {
 describe("RequirementBatchModal - 删除防误删保护", () => {
   const 编辑用需求 = { id: "req-1", seq: 1, description: "刹车异响" };
 
-  it("需求下有项目（项目数>0）→ 删除按钮禁用，且点击不删库", async () => {
+  it("需求下有项目（项目数>0）→ 点删除弹出提示，且不删库", async () => {
+    const alert提示 = vi.spyOn(window, "alert").mockImplementation(() => {});
     const user = userEvent.setup();
     render(
       <RequirementBatchModal
@@ -154,10 +155,12 @@ describe("RequirementBatchModal - 删除防误删保护", () => {
     );
 
     const 删除按钮 = screen.getByRole("button", { name: "删除" });
-    expect(删除按钮).toBeDisabled();
+    /* 按钮可点击（不禁用），让用户能得到提示，而不是点了没反应 */
+    expect(删除按钮).not.toBeDisabled();
 
-    /* 即便强行点击，也不应调用 delete */
     await user.click(删除按钮);
+    /* 应弹出提示说明原因，且不调用 delete */
+    expect(alert提示).toHaveBeenCalled();
     expect(mockDelete).not.toHaveBeenCalled();
   });
 

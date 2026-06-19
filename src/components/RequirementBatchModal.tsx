@@ -411,12 +411,13 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
             {isEdit && (
               <button
                 type="button"
-                disabled={saving || 项目数 > 0}
+                disabled={saving}
                 title={项目数 > 0 ? "该需求下有维修项目，请先删除项目再删需求" : undefined}
                 onClick={async () => {
-                  /* 防误删：需求下挂有维修项目时不允许删除（删除会使项目变成无主项目） */
+                  /* 防误删：需求下挂有维修项目时不允许删除（删除会使项目变成无主项目）。
+                   * 这里不禁用按钮，而是点击后给出明确提示，告诉用户为什么不能删、该怎么做。 */
                   if (项目数 > 0) {
-                    alert(`该需求下有 ${项目数} 个维修项目，请先删除这些项目，再删除需求。`);
+                    alert(`该需求下有 ${项目数} 个维修项目，无法删除。\n请先删除这些维修项目，再删除需求。`);
                     return;
                   }
                   if (!confirm("确定要删除这条需求吗？关联的媒体文件也会被删除。")) return;
