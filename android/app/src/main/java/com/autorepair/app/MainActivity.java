@@ -128,14 +128,20 @@ public class MainActivity extends BridgeActivity {
         @Override
         public void run() {
           try {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            /*
+             * 用 ACTION_GET_CONTENT 选视频：相册、文件管理器等都会响应它，
+             * 兼容性比 ACTION_OPEN_DOCUMENT 好（小米/MIUI 等机型上后者常常
+             * resolveActivity 返回 null，误报「没有可用应用」）。
+             * 不再用 resolveActivity 预检查（Android 11+ 包可见性限制下不可靠），
+             * 改为直接用 createChooser 启动，失败由 catch 兜底。
+             */
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
             intent.setType("video/*");
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            if (intent.resolveActivity(getPackageManager()) == null) {
-              injectVideoPickerEvent(null, "当前设备没有可用的视频选择应用");
-              return;
-            }
-            startActivityForResult(intent, REQUEST_CODE_VIDEO_PICK);
+            Intent chooser = Intent.createChooser(intent, "选择视频");
+            startActivityForResult(chooser, REQUEST_CODE_VIDEO_PICK);
+          } catch (android.content.ActivityNotFoundException e) {
+            injectVideoPickerEvent(null, "当前设备没有可用的视频选择应用");
           } catch (Exception e) {
             android.util.Log.e("MainActivity", "启动原生视频选择失败", e);
             injectVideoPickerEvent(null, "启动视频选择失败: " + e.getMessage());
