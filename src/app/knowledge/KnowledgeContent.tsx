@@ -263,8 +263,8 @@ export default function KnowledgeContent({
         action={{ href: "/knowledge/new", label: "新建知识" }}
       />
 
-      {/* 导入导出按钮 */}
-      <div className="mb-4">
+      {/* 导入导出按钮 — 桌面端显示 */}
+      <div className="hidden lg:block mb-4">
         <KnowledgeImportExport
           articles={articles}
           categories={categories}
@@ -339,8 +339,8 @@ export default function KnowledgeContent({
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* 分类侧边栏 */}
-        <div className="lg:col-span-1">
+        {/* 分类侧边栏 — 桌面端显示 */}
+        <div className="hidden lg:block lg:col-span-1">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-900">分类</h3>
@@ -430,7 +430,7 @@ export default function KnowledgeContent({
                             {permConfig.label}
                           </span>
                           {获取分类名(a) && (
-                            <span className="text-xs text-gray-500">{获取分类名(a)}</span>
+                            <span className="hidden lg:inline text-xs text-gray-500">{获取分类名(a)}</span>
                           )}
                         </div>
                         <h3 className="text-base font-semibold text-gray-900 mb-1">
