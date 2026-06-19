@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { MobilePageHeader } from "@/components/mobile/MobilePageHeader";
 import { useMobileToast } from "@/components/mobile/MobileToast";
 import { ImageUploader } from "@/components/ImageUploader";
+import { ImageViewer } from "@/components/ImageViewer";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
@@ -108,6 +109,15 @@ export default function MobileReceptionNewPage() {
   /* ---------- 接车检查 ---------- */
   const [mileage, setMileage] = useState("");
   const [dashboardPaths, setDashboardPaths] = useState<string[]>([]);
+
+  /* ---------- 选中车辆的照片 ---------- */
+  interface 车辆照片 {
+    category: string;
+    url: string;
+    storage_path?: string | null;
+  }
+  const [vehiclePhotos, setVehiclePhotos] = useState<车辆照片[]>([]);
+  const [vehiclePhotoPreviewIndex, setVehiclePhotoPreviewIndex] = useState<number | null>(null);
 
   /* ---------- 提交 ---------- */
   const [submitting, setSubmitting] = useState(false);
@@ -297,6 +307,30 @@ export default function MobileReceptionNewPage() {
       if (vinDecodeTimeoutRef.current) clearTimeout(vinDecodeTimeoutRef.current);
     };
   }, [newVin, isNewVehicle, supabase]);
+
+  /* ============================================================
+     选中车辆后加载车辆照片
+     ============================================================ */
+  useEffect(() => {
+    async function loadVehiclePhotos() {
+      if (!selectedVehicle) {
+        setVehiclePhotos([]);
+        return;
+      }
+      const { data } = await supabase
+        .from("vehicle_photos")
+        .select("category, url, storage_path")
+        .eq("vehicle_id", selectedVehicle.id)
+        .order("created_at", { ascending: false });
+      setVehiclePhotos(
+        ((data || []) as 车辆照片[]).map((p) => ({
+          ...p,
+          url: p.url || p.storage_path || "",
+        })).filter((p) => p.url)
+      );
+    }
+    loadVehiclePhotos();
+  }, [selectedVehicle, supabase]);
 
   /* ============================================================
      客户搜索
@@ -881,6 +915,41 @@ export default function MobileReceptionNewPage() {
                 </div>
               </div>
 
+              {/* 车辆照片 */}
+              {vehiclePhotos.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-xs text-gray-500">车辆照片</div>
+                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                    {vehiclePhotos.map((photo, index) => {
+                      const categoryLabelMap: Record<string, string> = {
+                        exterior: "外观",
+                        nameplate: "厂牌",
+                        license_front: "行驶证正本",
+                        license_back: "行驶证副本",
+                      };
+                      return (
+                        <button
+                          key={`${photo.category}-${index}`}
+                          type="button"
+                          onClick={() => setVehiclePhotoPreviewIndex(index)}
+                          className="relative shrink-0 w-16 h-16 rounded-lg border border-gray-200 overflow-hidden bg-gray-100"
+                        >
+                          <img
+                            src={photo.url}
+                            alt={categoryLabelMap[photo.category] || photo.category}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                          <span className="absolute bottom-0 left-0 right-0 text-[10px] text-white bg-black/50 text-center truncate px-1">
+                            {categoryLabelMap[photo.category] || photo.category}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* 车辆关联工单统计 */}
               {vehicleOrderStats && (
                 <div className="flex flex-wrap gap-2"
@@ -1242,8 +1311,8 @@ export default function MobileReceptionNewPage() {
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">里程表拍照</label>
-            <ImageUploader onUpload={setDashboardPaths} maxImages={3} />
+            <label className="block text-xs text-gray-500 mb-1">里程表拍照（自动加水印）</label>
+            <ImageUploader onUpload={setDashboardPaths} maxImages={3} watermark />
           </div>
         </div>
       </div>
@@ -1615,6 +1684,15 @@ export default function MobileReceptionNewPage() {
       )}
 
       {/* VIN 识别弹窗 */}
+      {vehiclePhotoPreviewIndex !== null && vehiclePhotos.length > 0 && (
+        <ImageViewer
+          src={vehiclePhotos[vehiclePhotoPreviewIndex].url}
+          images={vehiclePhotos.map((p) => p.url)}
+          currentIndex={vehiclePhotoPreviewIndex}
+          onIndexChange={setVehiclePhotoPreviewIndex}
+          onClose={() => setVehiclePhotoPreviewIndex(null)}
+        />
+      )}
       <VinCameraModal
         open={showVinCameraModal}
         onClose={() => setShowVinCameraModal(false)}

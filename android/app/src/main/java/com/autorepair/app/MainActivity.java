@@ -84,6 +84,50 @@ public class MainActivity extends BridgeActivity {
     }
   }
 
+  /* 暴露给前端的 JavaScript 接口：启动水印相机 */
+  public class WatermarkCameraBridge {
+    @android.webkit.JavascriptInterface
+    public void startCapture(String watermarkText) {
+      runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+          try {
+            Intent intent = new Intent(MainActivity.this, WatermarkCameraActivity.class);
+            if (watermarkText != null && !watermarkText.isEmpty()) {
+              intent.putExtra(WatermarkCameraActivity.EXTRA_WATERMARK_TEXT, watermarkText);
+            }
+            startActivityForResult(intent, WatermarkCameraActivity.REQUEST_CODE);
+          } catch (Exception e) {
+            android.util.Log.e("MainActivity", "启动水印相机失败", e);
+            injectWatermarkCameraEvent(null, "启动水印相机失败: " + e.getMessage());
+          }
+        }
+      });
+    }
+  }
+
+  /* 暴露给前端的 JavaScript 接口：启动水印录像机 */
+  public class WatermarkVideoBridge {
+    @android.webkit.JavascriptInterface
+    public void startCapture(String watermarkText) {
+      runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+          try {
+            Intent intent = new Intent(MainActivity.this, WatermarkVideoActivity.class);
+            if (watermarkText != null && !watermarkText.isEmpty()) {
+              intent.putExtra(WatermarkVideoActivity.EXTRA_WATERMARK_TEXT, watermarkText);
+            }
+            startActivityForResult(intent, WatermarkVideoActivity.REQUEST_CODE);
+          } catch (Exception e) {
+            android.util.Log.e("MainActivity", "启动水印录像机失败", e);
+            injectWatermarkVideoEvent(null, "启动水印录像机失败: " + e.getMessage());
+          }
+        }
+      });
+    }
+  }
+
   /* 暴露给前端的 JavaScript 接口：启动原生录像 */
   public class VideoCaptureBridge {
     @android.webkit.JavascriptInterface
@@ -169,6 +213,8 @@ public class MainActivity extends BridgeActivity {
       bridge.getWebView().addJavascriptInterface(new BarcodeScannerBridge(), "AndroidBarcodeScanner");
       bridge.getWebView().addJavascriptInterface(new LicensePlateRecognizerBridge(), "AndroidLicensePlateRecognizer");
       bridge.getWebView().addJavascriptInterface(new VinCaptureBridge(), "AndroidVinCapture");
+      bridge.getWebView().addJavascriptInterface(new WatermarkCameraBridge(), "AndroidWatermarkCamera");
+      bridge.getWebView().addJavascriptInterface(new WatermarkVideoBridge(), "AndroidWatermarkVideo");
       bridge.getWebView().addJavascriptInterface(new VideoCaptureBridge(), "AndroidVideoCapture");
       bridge.getWebView().addJavascriptInterface(new VideoPickerBridge(), "AndroidVideoPicker");
 
@@ -260,6 +306,26 @@ public class MainActivity extends BridgeActivity {
       } else {
         String error = data != null ? data.getStringExtra(VinCaptureActivity.EXTRA_ERROR) : "cancelled";
         injectVinCaptureEvent(null, error);
+      }
+    }
+
+    if (requestCode == WatermarkCameraActivity.REQUEST_CODE) {
+      if (resultCode == RESULT_OK && data != null) {
+        String base64 = data.getStringExtra(WatermarkCameraActivity.EXTRA_IMAGE_BASE64);
+        injectWatermarkCameraEvent(base64, null);
+      } else {
+        String error = data != null ? data.getStringExtra(WatermarkCameraActivity.EXTRA_ERROR) : "cancelled";
+        injectWatermarkCameraEvent(null, error);
+      }
+    }
+
+    if (requestCode == WatermarkVideoActivity.REQUEST_CODE) {
+      if (resultCode == RESULT_OK && data != null) {
+        String videoPath = data.getStringExtra(WatermarkVideoActivity.EXTRA_VIDEO_PATH);
+        injectWatermarkVideoEvent(videoPath, null);
+      } else {
+        String error = data != null ? data.getStringExtra(WatermarkVideoActivity.EXTRA_ERROR) : "cancelled";
+        injectWatermarkVideoEvent(null, error);
       }
     }
 
@@ -485,6 +551,44 @@ public class MainActivity extends BridgeActivity {
       bridge.getWebView().evaluateJavascript(js, null);
     } catch (JSONException e) {
       android.util.Log.e("MainActivity", "VIN拍照结果序列化失败", e);
+    }
+  }
+
+  /* 将水印相机结果通过自定义事件派发给前端 */
+  private void injectWatermarkCameraEvent(String imageBase64, String error) {
+    try {
+      JSONObject detail = new JSONObject();
+      if (imageBase64 != null) {
+        detail.put("image", imageBase64);
+      } else if ("cancelled".equals(error)) {
+        detail.put("cancelled", true);
+      } else {
+        detail.put("error", error != null ? error : "拍照失败");
+      }
+
+      String js = "window.dispatchEvent(new CustomEvent('nativeWatermarkCameraResult', { detail: " + detail.toString() + " }));";
+      bridge.getWebView().evaluateJavascript(js, null);
+    } catch (JSONException e) {
+      android.util.Log.e("MainActivity", "水印相机结果序列化失败", e);
+    }
+  }
+
+  /* 将水印录像机结果通过自定义事件派发给前端 */
+  private void injectWatermarkVideoEvent(String videoPath, String error) {
+    try {
+      JSONObject detail = new JSONObject();
+      if (videoPath != null) {
+        detail.put("filePath", videoPath);
+      } else if ("cancelled".equals(error)) {
+        detail.put("cancelled", true);
+      } else {
+        detail.put("error", error != null ? error : "录像失败");
+      }
+
+      String js = "window.dispatchEvent(new CustomEvent('nativeWatermarkVideoResult', { detail: " + detail.toString() + " }));";
+      bridge.getWebView().evaluateJavascript(js, null);
+    } catch (JSONException e) {
+      android.util.Log.e("MainActivity", "水印录像机结果序列化失败", e);
     }
   }
 }

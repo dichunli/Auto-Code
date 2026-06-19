@@ -69,6 +69,8 @@ dependencies {
 
     /* Guava（CameraX / ML Kit 需要） */
     implementation "com.google.guava:guava:$guavaVersion"
+    /* FFmpeg：视频加水印 */
+    implementation "com.arthenica:ffmpeg-kit-min:6.0-2"
 }
 
 apply from: 'capacitor.build.gradle'

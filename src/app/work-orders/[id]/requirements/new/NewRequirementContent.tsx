@@ -201,6 +201,11 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
   const [allServiceItems, setAllServiceItems] = useState<维修项目[]>([]);
   const [serviceItemPrices, setServiceItemPrices] = useState<维修项目车型定价[]>([]);
   const [currentUser, setCurrentUser] = useState<员工 | null>(null);
+  const [requirementSubmitters, setRequirementSubmitters] = useState({
+    submitted_by: null as string | null,
+    diagnosis_submitter_id: null as string | null,
+    remarks_submitter_id: null as string | null,
+  });
   const [searchDropdowns, setSearchDropdowns] = useState<Record<number, 搜索下拉状态>>({});
   const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const [dropdownPositions, setDropdownPositions] = useState<Record<number, { top: number; left: number }>>({});
@@ -247,11 +252,14 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     // 加载员工列表
     supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").limit(100).then(({ data }) => setProfiles((data as 员工[]) || []));
     // 获取当前用户信息
-    supabase.auth.getUser().then(({ data: authData }) => {
+    supabase.auth.getUser().then(async ({ data: authData }) => {
       if (authData?.user) {
-        supabase.from("profiles").select("id, full_name").eq("id", authData.user.id).single().then(({ data: profile }) => {
-          setCurrentUser(profile as 员工 | null);
-        });
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .eq("id", authData.user.id)
+          .single();
+        setCurrentUser(profile as 员工 | null);
       }
     });
   }, [params, supabase]);
@@ -263,7 +271,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       setExistingRequirementId(reqId);
       supabase
         .from("work_order_requirements")
-        .select("description, diagnosis, remarks")
+        .select("description, diagnosis, remarks, submitted_by, diagnosis_submitter_id, remarks_submitter_id")
         .eq("id", reqId)
         .single()
         .then(({ data }) => {
@@ -272,6 +280,11 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
               description: (data as { description?: string }).description || "",
               diagnosis: (data as { diagnosis?: string }).diagnosis || "",
               remarks: (data as { remarks?: string }).remarks || "",
+            });
+            setRequirementSubmitters({
+              submitted_by: (data as { submitted_by?: string | null }).submitted_by || null,
+              diagnosis_submitter_id: (data as { diagnosis_submitter_id?: string | null }).diagnosis_submitter_id || null,
+              remarks_submitter_id: (data as { remarks_submitter_id?: string | null }).remarks_submitter_id || null,
             });
           }
         });
@@ -897,9 +910,25 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
         reqId = existingRequirementId;
       } else {
         // 创建新需求
+        const description = requirement.description.trim();
+        const diagnosis = requirement.diagnosis.trim();
+        const remarks = requirement.remarks.trim();
+        if (!description) {
+          alert("客户需求不能为空");
+          setLoading(false);
+          return;
+        }
         const { data: req, error: reqError } = await supabase
           .from("work_order_requirements")
-          .insert({ work_order_id: orderId, description: requirement.description, diagnosis: requirement.diagnosis, remarks: requirement.remarks || null })
+          .insert({
+            work_order_id: orderId,
+            description,
+            diagnosis: diagnosis || null,
+            remarks: remarks || null,
+            submitted_by: currentUser?.id || null,
+            diagnosis_submitter_id: diagnosis ? currentUser?.id || null : null,
+            remarks_submitter_id: remarks ? currentUser?.id || null : null,
+          })
           .select("id")
           .single();
 
@@ -1035,7 +1064,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
               <span><span className="text-gray-500">客户需求:</span> <span className="font-medium text-gray-900">{requirement.description || "-"}</span></span>
               {requirement.diagnosis && <span><span className="text-gray-500">诊断:</span> {requirement.diagnosis}</span>}
               {requirement.remarks && <span><span className="text-gray-500">备注:</span> {requirement.remarks}</span>}
-              {currentUser?.full_name && <span className="text-gray-400 text-xs">提交人: {currentUser.full_name}</span>}
+              {requirementSubmitters.submitted_by && <span className="text-gray-400 text-xs">提交人: {currentUser?.id === requirementSubmitters.submitted_by ? currentUser?.full_name : "他人"}</span>}
             </div>
           ) : (
             <>
@@ -1059,8 +1088,8 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
                 <ImageUploader onUpload={setRequirementImages} existingImages={requirementImages} />
               </div>
               <div>
-                <h2 className="text-base font-semibold text-gray-900 mb-3">需求视频</h2>
-                <VideoUploader onUpload={setRequirementVideos} existingVideos={requirementVideos} />
+                <h2 className="text-base font-semibold text-gray-900 mb-3">需求视频（自动加水印）</h2>
+                <VideoUploader onUpload={setRequirementVideos} existingVideos={requirementVideos} watermark />
               </div>
             </>
           )}

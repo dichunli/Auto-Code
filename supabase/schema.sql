@@ -732,7 +732,7 @@ CREATE TABLE work_order_inspections (
 CREATE TABLE work_order_inspection_media (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   inspection_id UUID NOT NULL REFERENCES work_order_inspections(id) ON DELETE CASCADE,
-  media_type TEXT NOT NULL CHECK (media_type IN ('engine_oil_before', 'engine_oil_after', 'fluid', 'exterior', 'dashboard', 'reception_video', 'drive_belt', 'tire')),
+  media_type TEXT NOT NULL CHECK (media_type IN ('engine_oil_before', 'engine_oil_after', 'fluid', 'exterior', 'dashboard', 'reception_video', 'drive_belt', 'tire', 'inspection_video')),
   storage_path TEXT NOT NULL,
   annotations JSONB DEFAULT '[]',
   notes TEXT,

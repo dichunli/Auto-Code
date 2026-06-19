@@ -4,8 +4,8 @@ import {useState, useEffect, useRef, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
-import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { base64转Blob } from "@/lib/imageCompress";
+import { 启动原生水印相机 } from "@/lib/androidWatermarkCamera";
 import { useUpload } from "@/hooks/useUpload";
 import { 添加水印 } from "@/lib/imageWatermark";
 
@@ -131,30 +131,22 @@ export default function BehaviorChecksPage() {
     fetchRecords();
   }, [fetchRecords]);
 
-  const uploadPhoto = useCallback(async (file: File): Promise<string> => {
-    /* 先加水印 */
-    const watermarkedBlob = await 添加水印(file);
-    const watermarkedFile = new File([watermarkedBlob], file.name, { type: "image/jpeg" });
-    /* 通过 /api/upload 上传 */
-    const { urls, errors } = await 上传([watermarkedFile]);
+  const uploadPhoto = useCallback(async (file: File, needsWatermark: boolean): Promise<string> => {
+    let uploadFile = file;
+    if (needsWatermark) {
+      const watermarkedBlob = await 添加水印(file);
+      uploadFile = new File([watermarkedBlob], file.name, { type: "image/jpeg" });
+    }
+    const { urls, errors } = await 上传([uploadFile]);
     if (errors.length > 0) throw new Error(errors[0].error);
     return urls[0];
   }, [上传]);
 
-  /* APP环境：调用原生相机拍照 */
+  /* APP环境：调用原生水印相机 */
   async function handleAppCamera() {
     try {
-      const photo = await Camera.getPhoto({
-        quality: 90,
-        allowEditing: false,
-        resultType: CameraResultType.Base64,
-        source: CameraSource.Camera,
-      });
-      if (!photo.base64String) {
-        alert("拍照未获取到图片");
-        return;
-      }
-      const base64 = `data:image/jpeg;base64,${photo.base64String}`;
+      const rawBase64 = await 启动原生水印相机();
+      const base64 = `data:image/jpeg;base64,${rawBase64}`;
       const blob = base64转Blob(base64);
       const file = new File([blob], `camera_${Date.now()}.jpg`, { type: "image/jpeg" });
       setCapturedFile(file);
@@ -181,8 +173,8 @@ export default function BehaviorChecksPage() {
       const record = records.find((r) => r.id === recordId);
       if (!record) throw new Error("记录不存在");
 
-      /* 上传照片 */
-      const photoUrl = await uploadPhoto(file);
+      /* 上传照片：APP 环境原生相机已带水印，浏览器环境需要前端加水印 */
+      const photoUrl = await uploadPhoto(file, !是Capacitor环境());
 
       /* 创建行为打分记录 */
       const finalScore = record.item_score_type === "penalty" ? -Math.abs(record.item_score) : Math.abs(record.item_score);

@@ -112,13 +112,9 @@ describe("RequirementBatchModal - 保存逻辑", () => {
       expect(mockInsert).toHaveBeenCalled();
     });
 
-    /* 断言：用 getSession（读本地、不联网）拿用户，且在 insert 之前；不再调用已联网的 getUser */
-    expect(调用顺序).toContain("getSession");
+    /* 断言：保存成功后写入了数据库，并清缓存+重新验证页面（否则新需求要手动刷新才显示），
+     * 且刷新在 insert 之后。当前用户用组件挂载时已拿到的 currentUserId，保存时不再联网。 */
     expect(调用顺序).toContain("insert");
-    expect(调用顺序.indexOf("getSession")).toBeLessThan(调用顺序.indexOf("insert"));
-    expect(mockGetUser).not.toHaveBeenCalled();
-
-    /* 保存成功后必须清缓存+重新验证页面（否则新需求要手动刷新才显示），且在 insert 之后 */
     await waitFor(() => {
       expect(mock刷新工单详情).toHaveBeenCalledWith("wo-1");
     });

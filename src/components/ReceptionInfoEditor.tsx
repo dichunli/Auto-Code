@@ -102,11 +102,12 @@ export function ReceptionInfoEditor({
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">仪表照片</label>
+                <label className="block text-sm text-gray-600 mb-1">仪表照片（自动加水印）</label>
                 <ImageUploader
                   onUpload={setDashPaths}
                   existingImages={dashPaths}
                   maxImages={3}
+                  watermark
                 />
               </div>
               <div>

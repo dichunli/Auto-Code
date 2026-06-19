@@ -11,7 +11,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
 
   const { data: course } = await supabase
     .from("training_courses")
-    .select("*, profiles(full_name), knowledge_articles(title, content, content_blocks, video_url)")
+    .select("*, profiles(full_name), knowledge_articles(title, content, content_blocks, video_url), training_categories(id, name)")
     .eq("id", id)
     .single();
 
@@ -70,14 +70,9 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
     }
   }
 
-  const categoryLabels: Record<string, string> = {
-    safety: "安全",
-    technical: "技术",
-    service: "服务",
-    management: "管理",
-  };
-
   const canTakeExam = course.has_exam && myAssignment && (!myExamResult || myExamResult.status === "failed");
+
+  const categoryName = (course.training_categories as { name: string } | null)?.name || course.category || "未分类";
 
   return (
     <div className="space-y-6">
@@ -89,7 +84,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
-            {categoryLabels[course.category] || course.category}
+            {categoryName}
           </span>
           {course.is_required && (
             <span className="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-100">必修</span>

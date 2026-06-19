@@ -282,11 +282,11 @@ export default function VehicleForm() {
     if (error || !vehicleData?.id) { alert("保存失败: " + (error?.message || "未知错误")); setLoading(false); return; }
 
     const vehicleId = vehicleData.id;
-    const photoInserts: { vehicle_id: string; category: string; url: string }[] = [];
-    exteriorPhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "exterior", url }));
-    nameplatePhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "nameplate", url }));
-    licenseFrontPhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "license_front", url }));
-    licenseBackPhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "license_back", url }));
+    const photoInserts: { vehicle_id: string; category: string; url: string; storage_path: string }[] = [];
+    exteriorPhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "exterior", url, storage_path: url }));
+    nameplatePhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "nameplate", url, storage_path: url }));
+    licenseFrontPhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "license_front", url, storage_path: url }));
+    licenseBackPhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "license_back", url, storage_path: url }));
     if (photoInserts.length > 0) {
       await supabase.from("vehicle_photos").insert(photoInserts);
     }
