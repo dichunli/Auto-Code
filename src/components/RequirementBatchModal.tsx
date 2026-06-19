@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 刷新工单详情 } from "@/app/work-orders/actions";
 import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
 
@@ -82,15 +83,19 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
   }
 
   async function handleSubmit() {
+    if (saving) return; // 防止重复提交：正在保存时再次点击直接忽略
     if (!description.trim() && images.length === 0 && videos.length === 0) {
       alert("请至少填写客户需求描述或上传媒体文件");
       return;
     }
 
-    const { data: authData } = await supabase.auth.getUser();
-    const currentUserId = authData.user?.id || null;
-
+    /* 立即进入保存中状态：按钮马上变「保存中...」并禁用，给用户即时反馈，杜绝因反应慢而重复提交 */
     setSaving(true);
+
+    /* 读取当前用户：用 getSession（读本地，瞬时返回），不用 getUser（会联网，拖慢保存）。
+     * 环境判定修复后 session 本就健康，无需再调 确保有session 联网注入。 */
+    const { data: sessionData } = await supabase.auth.getSession();
+    const currentUserId = sessionData.session?.user?.id || null;
     try {
       if (isEdit) {
         // 编辑模式：更新需求
@@ -172,9 +177,12 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
         });
       }
 
+      /* 先清服务端缓存并重新验证页面、刷新数据，全部完成后再关弹窗。
+       * 这样保存期间「保存中...」状态一直保持，用户有明确反馈，不会以为卡住或没存上。 */
+      await 刷新工单详情(orderId);
+      router.refresh();
       reset();
       onClose();
-      router.refresh();
     } catch (err: unknown) {
       let msg = "未知错误";
       if (err instanceof Error) {
