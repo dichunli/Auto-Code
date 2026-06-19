@@ -25,6 +25,7 @@ interface BlockProps {
   checked?: boolean;
   name?: string;
   pdfUrl?: string;
+  allowedGroups?: string[];
 }
 
 interface TableContent {
@@ -44,6 +45,27 @@ interface BlockItem {
 
 interface Props {
   blocks: BlockItem[];
+  userGroupId?: string;
+  isAdmin?: boolean;
+}
+
+/* 根据 allowedGroups 过滤块：无权限的块及子块均隐藏 */
+function 过滤权限块(blocks: BlockItem[], userGroupId?: string, isAdmin?: boolean): BlockItem[] {
+  if (isAdmin) return blocks;
+
+  return blocks
+    .filter((block) => {
+      const allowed = block.props?.allowedGroups;
+      if (!allowed || allowed.length === 0) return true;
+      if (!userGroupId) return false;
+      return allowed.includes(userGroupId);
+    })
+    .map((block) => ({
+      ...block,
+      children: block.children
+        ? 过滤权限块(block.children, userGroupId, isAdmin)
+        : undefined,
+    }));
 }
 
 function renderInlineContent(content: InlineContent[]): React.ReactNode {
@@ -938,7 +960,7 @@ function PdfPreview({ url, onClose }: { url: string; onClose: () => void }) {
   );
 }
 
-export function BlockNoteRenderer({ blocks }: Props) {
+export function BlockNoteRenderer({ blocks, userGroupId, isAdmin }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewCaption, setPreviewCaption] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -960,13 +982,15 @@ export function BlockNoteRenderer({ blocks }: Props) {
     setPdfUrl(null);
   }, []);
 
-  if (!blocks || blocks.length === 0) {
-    return <p className="text-gray-400">暂无内容</p>;
+  const visibleBlocks = 过滤权限块(blocks, userGroupId, isAdmin);
+
+  if (!visibleBlocks || visibleBlocks.length === 0) {
+    return <p className="text-gray-400">暂无可见内容</p>;
   }
 
   return (
     <>
-      <div className="blocknote-content">{wrapListBlocks(blocks, handleImageClick, handlePdfPreview)}</div>
+      <div className="blocknote-content">{wrapListBlocks(visibleBlocks, handleImageClick, handlePdfPreview)}</div>
       {previewUrl && <ImagePreview url={previewUrl} caption={previewCaption} onClose={handleCloseImage} />}
       {pdfUrl && <PdfPreview url={pdfUrl} onClose={handleClosePdf} />}
     </>

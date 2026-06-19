@@ -15,6 +15,7 @@ import { blocknoteDictionary } from "@/lib/blocknoteDictionary";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
+import BlockPermissionModal from "./BlockPermissionModal";
 
 /* 客户端判断是否为移动设备（手机/平板） */
 function 是移动端(): boolean {
@@ -433,6 +434,27 @@ function CustomToolbarButtons({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  function handleOpenPermissionModal() {
+    const pos = editor.getTextCursorPosition();
+    const block = pos.block;
+    if (!block) {
+      alert("请先点击选中要设置权限的段落");
+      return;
+    }
+    setCurrentBlock({ id: block.id, props: block.props || {} });
+    setShowPermissionModal(true);
+  }
+
+  function handleSavePermission(groups: string[]) {
+    if (!currentBlock) return;
+    editor.updateBlock(currentBlock.id, {
+      props: {
+        ...currentBlock.props,
+        allowedGroups: groups,
+      },
+    } as never);
+  }
+
   async function handleUploadOfficeFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -475,6 +497,8 @@ function CustomToolbarButtons({
   }
 
   const [showJumpModal, setShowJumpModal] = useState(false);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [currentBlock, setCurrentBlock] = useState<{ id: string; props: Record<string, unknown> } | null>(null);
 
   return (
     <>
@@ -494,6 +518,30 @@ function CustomToolbarButtons({
 
       {showJumpModal && (
         <JumpLinkModal editor={editor} onClose={() => setShowJumpModal(false)} />
+      )}
+
+      {/* 块级权限按钮 */}
+      {!isMobile && (
+        <button
+          type="button"
+          className={btnBase}
+          onClick={handleOpenPermissionModal}
+          title="设置当前段落可见分组"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          权限
+        </button>
+      )}
+
+      {showPermissionModal && currentBlock && (
+        <BlockPermissionModal
+          open={showPermissionModal}
+          onClose={() => setShowPermissionModal(false)}
+          allowedGroups={(currentBlock.props.allowedGroups as string[] | undefined) || []}
+          onSave={handleSavePermission}
+        />
       )}
 
       {/* APP 环境：4 个独立媒体按钮 */}

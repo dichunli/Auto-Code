@@ -25,6 +25,8 @@ interface Props {
   blocks: BlockItem[];
   title: string;
   autoOpen?: boolean;
+  userGroupId?: string;
+  isAdmin?: boolean;
 }
 
 /* 页码选择器 */
@@ -115,7 +117,13 @@ function splitIntoPages(blocks: BlockItem[]): BlockItem[][] {
   return pages;
 }
 
-export function PresentationView({ blocks, title, autoOpen }: Props) {
+export function PresentationView({
+  blocks,
+  title,
+  autoOpen,
+  userGroupId,
+  isAdmin,
+}: Props) {
   const [isOpen, setIsOpen] = useState(autoOpen || false);
   const [currentPage, setCurrentPage] = useState(0);
 
@@ -233,7 +241,11 @@ export function PresentationView({ blocks, title, autoOpen }: Props) {
           {/* 内容区 */}
           <div className="flex-1 flex items-center justify-center overflow-auto px-4 py-4" ref={contentRef}>
             <div className="w-full max-w-4xl">
-              <BlockNoteRenderer blocks={pages[currentPage]} />
+              <BlockNoteRenderer
+                blocks={pages[currentPage]}
+                userGroupId={userGroupId}
+                isAdmin={isAdmin}
+              />
             </div>
           </div>
 
