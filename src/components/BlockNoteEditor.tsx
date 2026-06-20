@@ -145,13 +145,16 @@ function CustomToolbarButtons({
   uploadFile: (file: File) => Promise<string>;
   isMobile?: boolean;
 }) {
+  /* 所有 Hook 必须在组件顶部声明 */
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = useMemo(() => createClient(), []);
-
-  /* 当前光标所在块的权限信息 */
   const [currentAllowedGroups, setCurrentAllowedGroups] = useState<string[]>([]);
   const [groupNamesMap, setGroupNamesMap] = useState<Map<string, string>>(new Map());
+  const [showJumpModal, setShowJumpModal] = useState(false);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [currentBlock, setCurrentBlock] = useState<{ id: string; props: Record<string, unknown> } | null>(null);
 
   /* 加载员工分组名称 */
   useEffect(() => {
@@ -472,8 +475,6 @@ function CustomToolbarButtons({
     );
   }
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   function handleOpenPermissionModal() {
     const pos = editor.getTextCursorPosition();
     const block = pos.block;
@@ -536,10 +537,6 @@ function CustomToolbarButtons({
     }
     e.target.value = "";
   }
-
-  const [showJumpModal, setShowJumpModal] = useState(false);
-  const [showPermissionModal, setShowPermissionModal] = useState(false);
-  const [currentBlock, setCurrentBlock] = useState<{ id: string; props: Record<string, unknown> } | null>(null);
 
   return (
     <>
