@@ -5,6 +5,8 @@
  * 知识库搜索分词器会合并默认词库 + 自定义词库。
  * ============================================================ */
 
+SET statement_timeout = '120s';
+
 CREATE TABLE IF NOT EXISTS search_dictionary (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   word TEXT NOT NULL,
