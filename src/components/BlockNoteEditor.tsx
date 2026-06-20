@@ -168,6 +168,7 @@ function CustomToolbarButtons({
   }, [supabase]);
 
   /* 轮询当前光标所在块，更新权限显示 */
+  /* 分组权限弹窗打开时暂停轮询，避免弹窗因父组件频繁刷新而跳动 */
   useEffect(() => {
     function updateCurrentBlock() {
       try {
@@ -180,9 +181,12 @@ function CustomToolbarButtons({
       }
     }
     updateCurrentBlock();
-    const timer = setInterval(updateCurrentBlock, 500);
+    const timer = setInterval(() => {
+      if (showPermissionModal) return;
+      updateCurrentBlock();
+    }, 500);
     return () => clearInterval(timer);
-  }, [editor]);
+  }, [editor, showPermissionModal]);
 
   /* APP 环境：调用原生录像 */
   async function handleAppRecordVideo() {
