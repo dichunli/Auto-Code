@@ -147,6 +147,42 @@ function CustomToolbarButtons({
 }) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
+  const supabase = useMemo(() => createClient(), []);
+
+  /* 当前光标所在块的权限信息 */
+  const [currentAllowedGroups, setCurrentAllowedGroups] = useState<string[]>([]);
+  const [groupNamesMap, setGroupNamesMap] = useState<Map<string, string>>(new Map());
+
+  /* 加载员工分组名称 */
+  useEffect(() => {
+    supabase
+      .from("employee_groups")
+      .select("id, name")
+      .then(({ data }) => {
+        const map = new Map<string, string>();
+        (data || []).forEach((g) => {
+          map.set(String(g.id), String(g.name || ""));
+        });
+        setGroupNamesMap(map);
+      });
+  }, [supabase]);
+
+  /* 轮询当前光标所在块，更新权限显示 */
+  useEffect(() => {
+    function updateCurrentBlock() {
+      try {
+        const pos = editor.getTextCursorPosition();
+        const block = pos.block;
+        const allowed = ((block.props?.allowedGroups as string[]) || []).filter(Boolean);
+        setCurrentAllowedGroups(allowed);
+      } catch {
+        setCurrentAllowedGroups([]);
+      }
+    }
+    updateCurrentBlock();
+    const timer = setInterval(updateCurrentBlock, 500);
+    return () => clearInterval(timer);
+  }, [editor]);
 
   /* APP 环境：调用原生录像 */
   async function handleAppRecordVideo() {
@@ -453,6 +489,7 @@ function CustomToolbarButtons({
         allowedGroups: groups,
       },
     } as never);
+    setCurrentAllowedGroups(groups.filter(Boolean));
   }
 
   async function handleUploadOfficeFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -542,6 +579,22 @@ function CustomToolbarButtons({
           allowedGroups={(currentBlock.props.allowedGroups as string[] | undefined) || []}
           onSave={handleSavePermission}
         />
+      )}
+
+      {/* 当前段落权限标识 */}
+      {!isMobile && currentAllowedGroups.length > 0 && (
+        <div
+          className="ml-2 flex items-center gap-1 px-2 py-1 text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-lg"
+          title="当前段落已设置可见分组"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          <span className="hidden sm:inline">
+            仅：{currentAllowedGroups.map((id) => groupNamesMap.get(id) || id).join("、")}
+          </span>
+          <span className="sm:hidden">已限权</span>
+        </div>
       )}
 
       {/* APP 环境：4 个独立媒体按钮 */}
