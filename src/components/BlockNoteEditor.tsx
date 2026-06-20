@@ -8,6 +8,7 @@ import {
   BlockNoteViewEditor,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
+import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import "@blocknote/mantine/style.css";
 import { createClient } from "@/lib/supabase/client";
 import { base64转Blob, 压缩图片 } from "@/lib/imageCompress";
@@ -16,6 +17,28 @@ import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 import BlockPermissionModal from "./BlockPermissionModal";
+
+/* 扩展 BlockNote 默认 block schema，增加 allowedGroups 自定义属性 */
+/* 不扩展的话，自定义属性会在 ProseMirror 序列化时被过滤掉，导致权限设置丢失 */
+const 知识库Schema = BlockNoteSchema.create({
+  blockSpecs: Object.fromEntries(
+    Object.entries(defaultBlockSpecs).map(([类型, 配置]) => [
+      类型,
+      {
+        ...配置,
+        config: {
+          ...配置.config,
+          propSchema: {
+            ...配置.config.propSchema,
+            allowedGroups: {
+              default: [] as string[],
+            },
+          },
+        },
+      },
+    ])
+  ),
+} as never);
 
 /* 客户端判断是否为移动设备（手机/平板） */
 function 是移动端(): boolean {
@@ -78,6 +101,7 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
   /* deps 传空数组，只在组件挂载时创建一次编辑器 */
   const editor = useCreateBlockNote(
     {
+      schema: 知识库Schema,
       initialContent,
       uploadFile,
       dictionary: blocknoteDictionary,
@@ -493,7 +517,7 @@ function CustomToolbarButtons({
         ...currentBlock.props,
         allowedGroups: groups,
       },
-    } as never);
+    });
     setCurrentAllowedGroups(groups.filter(Boolean));
   }
 
