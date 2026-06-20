@@ -25,7 +25,7 @@ interface BlockProps {
   checked?: boolean;
   name?: string;
   pdfUrl?: string;
-  allowedGroups?: string[];
+  allowedGroups?: string | string[];
 }
 
 interface TableContent {
@@ -55,10 +55,15 @@ function 过滤权限块(blocks: BlockItem[], userGroupId?: string, isAdmin?: bo
 
   return blocks
     .filter((block) => {
-      const allowed = block.props?.allowedGroups;
-      if (!allowed || allowed.length === 0) return true;
+      const rawAllowed = block.props?.allowedGroups;
+      if (!rawAllowed || (Array.isArray(rawAllowed) && rawAllowed.length === 0) || (typeof rawAllowed === "string" && rawAllowed === "")) {
+        return true;
+      }
       if (!userGroupId) return false;
-      return allowed.includes(userGroupId);
+      const allowedList = Array.isArray(rawAllowed)
+        ? rawAllowed
+        : String(rawAllowed).split(",").filter(Boolean);
+      return allowedList.includes(userGroupId);
     })
     .map((block) => ({
       ...block,

@@ -30,8 +30,9 @@ const 知识库Schema = BlockNoteSchema.create({
           ...配置.config,
           propSchema: {
             ...配置.config.propSchema,
+            /* BlockNote PropSpec 只支持 boolean/number/string，不支持数组，所以用逗号分隔字符串存储 */
             allowedGroups: {
-              default: [] as string[],
+              default: "" as const,
             },
           },
         },
@@ -201,7 +202,8 @@ function CustomToolbarButtons({
       try {
         const pos = editor.getTextCursorPosition();
         const block = pos.block;
-        const allowed = ((block.props?.allowedGroups as string[]) || []).filter(Boolean);
+        const rawAllowed = (block.props?.allowedGroups as string) || "";
+        const allowed = rawAllowed.split(",").filter(Boolean);
         setCurrentAllowedGroups(allowed);
       } catch {
         setCurrentAllowedGroups([]);
@@ -512,13 +514,14 @@ function CustomToolbarButtons({
 
   function handleSavePermission(groups: string[]) {
     if (!currentBlock) return;
+    const validGroups = groups.filter(Boolean);
     editor.updateBlock(currentBlock.id, {
       props: {
         ...currentBlock.props,
-        allowedGroups: groups,
+        allowedGroups: validGroups.join(","),
       },
     });
-    setCurrentAllowedGroups(groups.filter(Boolean));
+    setCurrentAllowedGroups(validGroups);
   }
 
   async function handleUploadOfficeFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -601,7 +604,7 @@ function CustomToolbarButtons({
         <BlockPermissionModal
           open={showPermissionModal}
           onClose={() => setShowPermissionModal(false)}
-          allowedGroups={(currentBlock.props.allowedGroups as string[] | undefined) || []}
+          allowedGroups={((currentBlock.props.allowedGroups as string) || "").split(",").filter(Boolean)}
           onSave={handleSavePermission}
         />
       )}
