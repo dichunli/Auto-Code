@@ -10,6 +10,7 @@ const reportCards = [
   { href: "/reports/auto-linked-parts", title: "自动关联配件", desc: "查看自动从工单建立的配件与车型关联记录", color: "bg-yellow-50 text-yellow-700 border-yellow-100" },
   { href: "/reports/performance", title: "员工业绩", desc: "技师工单数、项目金额与工时统计", color: "bg-teal-50 text-teal-700 border-teal-100" },
   { href: "/reports/construction-stats", title: "施工用时统计", desc: "项目施工时长、中断时长与技师效率对比", color: "bg-indigo-50 text-indigo-700 border-indigo-100" },
+  { href: "/reports/knowledge-articles", title: "知识库文章统计", desc: "按月与提交人统计知识库文章提交情况", color: "bg-pink-50 text-pink-700 border-pink-100" },
 ];
 
 export default function ReportsPage() {

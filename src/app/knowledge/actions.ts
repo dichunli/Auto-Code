@@ -2,6 +2,7 @@
 
 import mammoth from "mammoth";
 import { createClient } from "@/lib/supabase/server";
+import { 中文分词 } from "@/lib/chineseSegmenter";
 
 /* ═════════════════════════════════════════════════════════════════
  * 知识库数据查询 Server Action
@@ -32,6 +33,7 @@ export async function loadKnowledgeArticles(params: {
   keyword?: string;
   category?: string;
   page?: number;
+  createdBy?: string;
 }): Promise<{
   success: boolean;
   articles?: 知识文章数据[];
@@ -41,12 +43,21 @@ export async function loadKnowledgeArticles(params: {
   isAdmin?: boolean;
   total?: number;
   totalPages?: number;
+  segments?: string[];
   error?: string;
 }> {
-  const { keyword = "", category = "", page = 1 } = params;
+  const { keyword = "", category = "", page = 1, createdBy = "" } = params;
   const pageSize = 20;
 
   const supabase = await createClient();
+
+  /* 读取管理员自定义分词 */
+  const { data: customWordsData } = await supabase
+    .from("search_dictionary")
+    .select("word")
+    .order("created_at", { ascending: false });
+  const customWords = (customWordsData || []).map((row) => String(row.word));
+  const searchKeywords = keyword.trim() ? 中文分词(keyword.trim(), customWords) : [];
 
   /* 获取当前用户 */
   const { data: { user } } = await supabase.auth.getUser();
@@ -65,27 +76,29 @@ export async function loadKnowledgeArticles(params: {
   /* 查询文章 */
   let articles: 知识文章数据[] = [];
 
-  if (keyword.trim()) {
+  if (searchKeywords.length > 0) {
     const { data, error } = await supabase.rpc("search_knowledge_articles", {
-      search_query: keyword.trim(),
+      search_keywords: searchKeywords,
     });
     if (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, segments: searchKeywords };
     }
-    articles = (data || []).map((row: Record<string, unknown>) => ({
-      id: row.id as string,
-      title: row.title as string,
-      content: row.content as string,
-      content_blocks: row.content_blocks,
-      type: row.type as string,
-      created_at: row.created_at as string,
-      category_id: row.category_id as string | null,
-      created_by: row.created_by as string | null,
-      visibility: row.visibility as string,
-      category_name: row.category_name as string | null,
-      author_name: row.author_name as string | null,
-      score: row.score as number,
-    }));
+    articles = (data || [])
+      .map((row: Record<string, unknown>) => ({
+        id: row.id as string,
+        title: row.title as string,
+        content: row.content as string,
+        content_blocks: row.content_blocks,
+        type: row.type as string,
+        created_at: row.created_at as string,
+        category_id: row.category_id as string | null,
+        created_by: row.created_by as string | null,
+        visibility: row.visibility as string,
+        category_name: row.category_name as string | null,
+        author_name: row.author_name as string | null,
+        score: row.score as number,
+      }))
+      .filter((a) => !createdBy || a.created_by === createdBy);
   } else {
     let query = supabase
       .from("knowledge_articles")
@@ -95,6 +108,10 @@ export async function loadKnowledgeArticles(params: {
 
     if (category) {
       query = query.eq("category_id", category);
+    }
+
+    if (createdBy) {
+      query = query.eq("created_by", createdBy);
     }
 
     const { data, error } = await query;
@@ -155,6 +172,7 @@ export async function loadKnowledgeArticles(params: {
     isAdmin,
     total,
     totalPages,
+    segments: searchKeywords,
   };
 }
 

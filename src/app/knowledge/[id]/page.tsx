@@ -120,6 +120,17 @@ export default async function KnowledgeDetailPage({
     redirect("/knowledge");
   }
 
+  /* 查询当前用户的员工分组 */
+  let userGroupId = "";
+  if (currentUserId) {
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("group_id")
+      .eq("id", currentUserId)
+      .single();
+    userGroupId = profileData?.group_id ? String(profileData.group_id) : "";
+  }
+
   const { data: links } = await supabase
     .from("knowledge_service_links")
     .select("service_name_id, service_item_id, service_names(name), service_items(name)")
@@ -174,8 +185,21 @@ export default async function KnowledgeDetailPage({
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* 移动端：返回知识库列表 */}
+            <Link
+              href="/knowledge"
+              className="md:hidden text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+            >
+              返回列表
+            </Link>
             {article.content_blocks && Array.isArray(article.content_blocks) && (
-              <PresentationView blocks={article.content_blocks as BlockItem[]} title={article.title} autoOpen={autoPresent} />
+              <PresentationView
+                blocks={article.content_blocks as BlockItem[]}
+                title={article.title}
+                autoOpen={autoPresent}
+                userGroupId={userGroupId}
+                isAdmin={isAdmin}
+              />
             )}
             {canEdit && (
               <>
@@ -231,7 +255,11 @@ export default async function KnowledgeDetailPage({
         {article.content_blocks && Array.isArray(article.content_blocks) ? (
           <div className="flex gap-6">
             <div className="flex-1 min-w-0">
-              <BlockNoteRenderer blocks={article.content_blocks as BlockItem[]} />
+              <BlockNoteRenderer
+                blocks={article.content_blocks as BlockItem[]}
+                userGroupId={userGroupId}
+                isAdmin={isAdmin}
+              />
             </div>
             {/* 桌面端目录 */}
             <div className="hidden lg:block w-52 flex-shrink-0">

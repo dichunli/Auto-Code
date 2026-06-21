@@ -136,8 +136,11 @@ interface Props {
   initialReadCounts: Record<string, number>;
   initialTotal: number;
   initialTotalPages: number;
+  initialSegments: string[];
   currentUserId: string;
   isAdmin: boolean;
+  initialAuthorId?: string;
+  initialAuthorName?: string;
 }
 
 export default function KnowledgeContent({
@@ -146,8 +149,11 @@ export default function KnowledgeContent({
   initialReadCounts,
   initialTotal,
   initialTotalPages,
+  initialSegments,
   currentUserId: serverUserId,
   isAdmin: serverIsAdmin,
+  initialAuthorId = "",
+  initialAuthorName = "",
 }: Props) {
   const [articles, setArticles] = useState<知识文章[]>(initialArticles);
   const [categories, setCategories] = useState<知识分类[]>(initialCategories);
@@ -160,6 +166,10 @@ export default function KnowledgeContent({
   const [currentUserId, setCurrentUserId] = useState<string>(serverUserId);
   const [isAdmin, setIsAdmin] = useState(serverIsAdmin);
   const [readCounts, setReadCounts] = useState<Record<string, number>>(initialReadCounts);
+  const [segments, setSegments] = useState<string[]>(initialSegments);
+
+  const authorId = initialAuthorId;
+  const authorName = initialAuthorName;
 
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(initialTotal);
@@ -184,6 +194,7 @@ export default function KnowledgeContent({
           keyword: debouncedKeyword,
           category: selectedCategory,
           page,
+          createdBy: authorId,
         });
 
         if (cancelled) return;
@@ -192,6 +203,7 @@ export default function KnowledgeContent({
           setQueryError(result.error || "加载失败");
           setArticles([]);
           setCategories([]);
+          setSegments([]);
         } else {
           setArticles(result.articles || []);
           setCategories(result.categories || []);
@@ -200,6 +212,7 @@ export default function KnowledgeContent({
           setIsAdmin(result.isAdmin || false);
           setTotal(result.total || 0);
           setTotalPages(result.totalPages || 1);
+          setSegments(result.segments || []);
         }
       } catch (err: unknown) {
         if (!cancelled) {
@@ -215,7 +228,7 @@ export default function KnowledgeContent({
     return () => {
       cancelled = true;
     };
-  }, [debouncedKeyword, selectedCategory, page]);
+  }, [debouncedKeyword, selectedCategory, page, authorId]);
 
   /* 搜索输入只更新原始状态，防抖由 useDebounce 处理 */
   function handleSearchChange(val: string) {
@@ -229,21 +242,8 @@ export default function KnowledgeContent({
     setPage(1);
   }
 
-  /* 解析搜索关键词：空格分词 + 中文2字子串 */
-  const searchKeywords = useMemo(() => {
-    const raw = debouncedKeyword.trim();
-    if (!raw) return [];
-    const words = raw.split(/\s+/).filter((k: string) => k.length > 0);
-    const result = [...words];
-    for (const word of words) {
-      if (word.length >= 2) {
-        for (let i = 0; i <= word.length - 2; i++) {
-          result.push(word.slice(i, i + 2));
-        }
-      }
-    }
-    return [...new Set(result)];
-  }, [debouncedKeyword]);
+  /* 高亮关键词使用后端分词结果 */
+  const searchKeywords = useMemo(() => segments.filter((k) => k.length > 0), [segments]);
 
   const 类型标签 = useCallback((type: string) => {
     const map: Record<string, { label: string; className: string }> = {
@@ -263,14 +263,44 @@ export default function KnowledgeContent({
         action={{ href: "/knowledge/new", label: "新建知识" }}
       />
 
-      {/* 导入导出按钮 */}
-      <div className="mb-4">
+      {/* 个人入口与统计 */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <Link
+          href="/knowledge/my"
+          className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          我的文章
+        </Link>
+        <Link
+          href="/reports/knowledge-articles"
+          className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          统计报表
+        </Link>
+      </div>
+
+      {/* 当前作者筛选提示 */}
+      {authorId && authorName && (
+        <div className="flex items-center gap-3 mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+          <span className="text-sm text-blue-700">
+            正在查看 <strong>{authorName}</strong> 提交的文章
+          </span>
+          <Link
+            href="/knowledge"
+            className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+          >
+            清除筛选
+          </Link>
+        </div>
+      )}
+
+      {/* 导入导出按钮 — 桌面端显示 */}
+      <div className="hidden lg:block mb-4">
         <KnowledgeImportExport
           articles={articles}
           categories={categories}
           onSuccess={() => {
             setSearchKeyword("");
-            setDebouncedKeyword("");
             setSelectedCategory("");
             setPage(1);
             window.location.reload();
@@ -306,7 +336,6 @@ export default function KnowledgeContent({
               type="button"
               onClick={() => {
                 setSearchKeyword("");
-                setDebouncedKeyword("");
               }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
             >
@@ -339,8 +368,8 @@ export default function KnowledgeContent({
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* 分类侧边栏 */}
-        <div className="lg:col-span-1">
+        {/* 分类侧边栏 — 桌面端显示 */}
+        <div className="hidden lg:block lg:col-span-1">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-900">分类</h3>
@@ -430,7 +459,7 @@ export default function KnowledgeContent({
                             {permConfig.label}
                           </span>
                           {获取分类名(a) && (
-                            <span className="text-xs text-gray-500">{获取分类名(a)}</span>
+                            <span className="hidden lg:inline text-xs text-gray-500">{获取分类名(a)}</span>
                           )}
                         </div>
                         <h3 className="text-base font-semibold text-gray-900 mb-1">

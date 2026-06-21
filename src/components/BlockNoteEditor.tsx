@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useCreateBlockNote,
   useEditorChange,
@@ -8,6 +8,7 @@ import {
   BlockNoteViewEditor,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
+import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import "@blocknote/mantine/style.css";
 import { createClient } from "@/lib/supabase/client";
 import { base64转Blob, 压缩图片 } from "@/lib/imageCompress";
@@ -15,11 +16,51 @@ import { blocknoteDictionary } from "@/lib/blocknoteDictionary";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
+import BlockPermissionModal from "./BlockPermissionModal";
+
+/* 扩展 BlockNote 默认 block schema，增加 allowedGroups 自定义属性 */
+/* BlockNote 的 block render 函数闭包引用的是原始 config.propSchema， */
+/* 所以必须直接修改 defaultBlockSpecs 里每个 spec 的 config.propSchema， */
+/* 只通过 BlockNoteSchema.create 传入新 config 不会生效。 */
+/* 另外 BlockNote 的 PropSpec 只支持 boolean/number/string，不支持数组，所以用逗号分隔字符串存储。 */
+Object.values(defaultBlockSpecs).forEach((spec) => {
+  const 带配置 = spec as unknown as {
+    config: { propSchema: Record<string, { default: unknown }> };
+  };
+  带配置.config.propSchema = {
+    ...带配置.config.propSchema,
+    allowedGroups: { default: "" as const },
+  };
+});
+
+const 知识库Schema = BlockNoteSchema.create({
+  blockSpecs: defaultBlockSpecs,
+} as never);
 
 /* 客户端判断是否为移动设备（手机/平板） */
 function 是移动端(): boolean {
   if (typeof navigator === "undefined") return false;
   return /Mobile|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+}
+
+/* 移动端：内容追加到文档末尾，并触发滚动；桌面端：插入到当前光标所在块之后 */
+function 获取编辑器插入位置(
+  editor: ReturnType<typeof useCreateBlockNote>,
+  isMobile: boolean
+) {
+  if (isMobile && editor.document.length > 0) {
+    const lastBlock = editor.document[editor.document.length - 1];
+    /* 异步滚动到底部，让新插入的块自动向上滚动到可视区域 */
+    setTimeout(() => {
+      if (typeof window === "undefined") return;
+      const editorEl = document.querySelector(".bn-editor") as HTMLElement | null;
+      if (editorEl) {
+        editorEl.scrollTop = editorEl.scrollHeight;
+      }
+    }, 50);
+    return lastBlock;
+  }
+  return editor.getTextCursorPosition().block;
 }
 
 interface Props {
@@ -77,6 +118,7 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
   /* deps 传空数组，只在组件挂载时创建一次编辑器 */
   const editor = useCreateBlockNote(
     {
+      schema: 知识库Schema,
       initialContent,
       uploadFile,
       dictionary: blocknoteDictionary,
@@ -144,8 +186,52 @@ function CustomToolbarButtons({
   uploadFile: (file: File) => Promise<string>;
   isMobile?: boolean;
 }) {
+  /* 所有 Hook 必须在组件顶部声明 */
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const supabase = useMemo(() => createClient(), []);
+  const [currentAllowedGroups, setCurrentAllowedGroups] = useState<string[]>([]);
+  const [groupNamesMap, setGroupNamesMap] = useState<Map<string, string>>(new Map());
+  const [showJumpModal, setShowJumpModal] = useState(false);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [currentBlock, setCurrentBlock] = useState<{ id: string; props: Record<string, unknown> } | null>(null);
+
+  /* 加载员工分组名称 */
+  useEffect(() => {
+    supabase
+      .from("employee_groups")
+      .select("id, name")
+      .then(({ data }) => {
+        const map = new Map<string, string>();
+        (data || []).forEach((g) => {
+          map.set(String(g.id), String(g.name || ""));
+        });
+        setGroupNamesMap(map);
+      });
+  }, [supabase]);
+
+  /* 轮询当前光标所在块，更新权限显示 */
+  /* 分组权限弹窗打开时暂停轮询，避免弹窗因父组件频繁刷新而跳动 */
+  useEffect(() => {
+    function updateCurrentBlock() {
+      try {
+        const pos = editor.getTextCursorPosition();
+        const block = pos.block;
+        const rawAllowed = (block.props?.allowedGroups as string) || "";
+        const allowed = rawAllowed.split(",").filter(Boolean);
+        setCurrentAllowedGroups(allowed);
+      } catch {
+        setCurrentAllowedGroups([]);
+      }
+    }
+    updateCurrentBlock();
+    const timer = setInterval(() => {
+      if (showPermissionModal) return;
+      updateCurrentBlock();
+    }, 500);
+    return () => clearInterval(timer);
+  }, [editor, showPermissionModal]);
 
   /* APP 环境：调用原生录像 */
   async function handleAppRecordVideo() {
@@ -174,8 +260,7 @@ function CustomToolbarButtons({
       const ext = blob.type ? 视频扩展名(blob.type) : ".mp4";
       const file = new File([blob], `record_${Date.now()}${ext}`, { type: blob.type || "video/mp4" });
       const url = await uploadFile(file);
-      const pos = editor.getTextCursorPosition();
-      editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], pos.block, "after");
+      editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], 获取编辑器插入位置(editor, isMobile), "after");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancelled")) return;
@@ -209,8 +294,7 @@ function CustomToolbarButtons({
       const ext = blob.type ? 视频扩展名(blob.type) : ".mp4";
       const file = new File([blob], `picked_${Date.now()}${ext}`, { type: blob.type || "video/mp4" });
       const url = await uploadFile(file);
-      const pos = editor.getTextCursorPosition();
-      editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], pos.block, "after");
+      editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], 获取编辑器插入位置(editor, isMobile), "after");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancelled")) return;
@@ -224,10 +308,9 @@ function CustomToolbarButtons({
   /* 通用处理：上传文件并插入到编辑器 */
   async function insertFileToEditor(file: File) {
     const url = await uploadFile(file);
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [{ type: "image", props: { url, caption: "" } }],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
@@ -269,7 +352,6 @@ function CustomToolbarButtons({
   }
 
   function handleInsertTable() {
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [
         {
@@ -293,21 +375,19 @@ function CustomToolbarButtons({
           },
         },
       ],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
 
   function handleInsertDivider() {
-    const pos = editor.getTextCursorPosition();
-    editor.insertBlocks([{ type: "divider" }], pos.block, "after");
+    editor.insertBlocks([{ type: "divider" }], 获取编辑器插入位置(editor, isMobile), "after");
   }
 
   function handleInsertCodeBlock() {
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [{ type: "codeBlock", props: { language: "javascript" } }],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
@@ -315,10 +395,9 @@ function CustomToolbarButtons({
   function handleInsertVideo() {
     const url = prompt("输入视频链接地址:");
     if (!url) return;
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [{ type: "video", props: { url, caption: "" } }],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
@@ -332,10 +411,9 @@ function CustomToolbarButtons({
       alert("请输入以 http:// 或 https:// 开头的链接");
       return;
     }
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [{ type: "video", props: { url: trimmed, caption: "" } }],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
@@ -408,10 +486,9 @@ function CustomToolbarButtons({
         xhr.send(formData);
       });
 
-      const pos = editor.getTextCursorPosition();
       editor.insertBlocks(
         [{ type: "video", props: { url: path, caption: "" } }],
-        pos.block,
+        获取编辑器插入位置(editor, isMobile),
         "after"
       );
     } catch (err: unknown) {
@@ -423,15 +500,35 @@ function CustomToolbarButtons({
   function handleInsertFile() {
     const url = prompt("输入文件链接地址:");
     if (!url) return;
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [{ type: "file", props: { url, name: "文件" } }],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  function handleOpenPermissionModal() {
+    const pos = editor.getTextCursorPosition();
+    const block = pos.block;
+    if (!block) {
+      alert("请先点击选中要设置权限的段落");
+      return;
+    }
+    setCurrentBlock({ id: block.id, props: block.props || {} });
+    setShowPermissionModal(true);
+  }
+
+  function handleSavePermission(groups: string[]) {
+    if (!currentBlock) return;
+    const validGroups = groups.filter(Boolean);
+    editor.updateBlock(currentBlock.id, {
+      props: {
+        ...currentBlock.props,
+        allowedGroups: validGroups.join(","),
+      },
+    });
+    setCurrentAllowedGroups(validGroups);
+  }
 
   async function handleUploadOfficeFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -455,7 +552,6 @@ function CustomToolbarButtons({
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "上传失败");
 
-      const pos = editor.getTextCursorPosition();
       editor.insertBlocks(
         [{
           type: "file",
@@ -465,7 +561,7 @@ function CustomToolbarButtons({
             pdfUrl: result.pdfPath || "",
           },
         }],
-        pos.block,
+        获取编辑器插入位置(editor, isMobile),
         "after"
       );
     } catch (err: unknown) {
@@ -473,8 +569,6 @@ function CustomToolbarButtons({
     }
     e.target.value = "";
   }
-
-  const [showJumpModal, setShowJumpModal] = useState(false);
 
   return (
     <>
@@ -493,7 +587,47 @@ function CustomToolbarButtons({
       )}
 
       {showJumpModal && (
-        <JumpLinkModal editor={editor} onClose={() => setShowJumpModal(false)} />
+        <JumpLinkModal editor={editor} isMobile={isMobile} onClose={() => setShowJumpModal(false)} />
+      )}
+
+      {/* 块级权限按钮 */}
+      {!isMobile && (
+        <button
+          type="button"
+          className={btnBase}
+          onClick={handleOpenPermissionModal}
+          title="设置当前段落可见分组"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          权限
+        </button>
+      )}
+
+      {showPermissionModal && currentBlock && (
+        <BlockPermissionModal
+          open={showPermissionModal}
+          onClose={() => setShowPermissionModal(false)}
+          allowedGroups={((currentBlock.props.allowedGroups as string) || "").split(",").filter(Boolean)}
+          onSave={handleSavePermission}
+        />
+      )}
+
+      {/* 当前段落权限标识 */}
+      {!isMobile && currentAllowedGroups.length > 0 && (
+        <div
+          className="ml-2 flex items-center gap-1 px-2 py-1 text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-lg"
+          title="当前段落已设置可见分组"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          <span className="hidden sm:inline">
+            仅：{currentAllowedGroups.map((id) => groupNamesMap.get(id) || id).join("、")}
+          </span>
+          <span className="sm:hidden">已限权</span>
+        </div>
       )}
 
       {/* APP 环境：4 个独立媒体按钮 */}
@@ -615,9 +749,11 @@ function CustomToolbarButtons({
 /* 跳转链接弹窗 */
 function JumpLinkModal({
   editor,
+  isMobile,
   onClose,
 }: {
   editor: ReturnType<typeof useCreateBlockNote>;
+  isMobile: boolean;
   onClose: () => void;
 }) {
   const supabase = createClient();
@@ -672,8 +808,9 @@ function JumpLinkModal({
   }, [search, supabase]);
 
   function handleInsert() {
-    const pos = editor.getTextCursorPosition();
-    const isInTable = pos.block.type === "table";
+    const 目标块 = 获取编辑器插入位置(editor, isMobile);
+    /* 移动端默认追加到末尾，不判断是否在表格内；桌面端保持原有逻辑 */
+    const isInTable = !isMobile && 目标块.type === "table";
 
     if (tab === "article" && selectedId) {
       const article = articles.find((a) => a.id === selectedId);
@@ -712,7 +849,7 @@ function JumpLinkModal({
               ],
             },
           ],
-          pos.block,
+          目标块,
           "after"
         );
       } else {
@@ -731,7 +868,7 @@ function JumpLinkModal({
               ],
             },
           ],
-          pos.block,
+          目标块,
           "after"
         );
       }
@@ -770,7 +907,7 @@ function JumpLinkModal({
                 ],
               },
             ],
-            pos.block,
+            目标块,
             "after"
           );
         } else {
@@ -788,7 +925,7 @@ function JumpLinkModal({
                 ],
               },
             ],
-            pos.block,
+            目标块,
             "after"
           );
         }

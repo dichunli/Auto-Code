@@ -31,6 +31,12 @@ interface 岗位 {
   label: string | null;
 }
 
+/* 客户端判断是否为移动设备（手机/平板） */
+function 是移动端(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Mobile|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+}
+
 export default function EditKnowledgePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -289,7 +295,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
         setLoading(false);
         return;
       }
-      if (is维修指导 && linkedVehicles.length === 0) {
+      if (is维修指导 && linkedVehicles.length === 0 && !是移动端()) {
         alert("维修指导文章必须至少关联一个适用车型");
         setLoading(false);
         return;
@@ -534,8 +540,8 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
             )}
           </div>
 
-          {/* 关联车型 */}
-          <div className="border-t border-gray-100 pt-4">
+          {/* 关联车型：移动端隐藏 */}
+          <div className="hidden md:block border-t border-gray-100 pt-4">
             <VehicleModelSelector
               value={linkedVehicles}
               onChange={setLinkedVehicles}

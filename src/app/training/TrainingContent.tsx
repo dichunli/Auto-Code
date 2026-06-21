@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
+import DeleteCourseButton from "./DeleteCourseButton";
 
 export interface 课程 {
   id: string;
@@ -146,10 +147,17 @@ export default function TrainingContent({
             onDragOver={(e) => handleDragOver(e, course.id)}
             onDrop={(e) => handleDrop(e, course.id)}
             onDragEnd={handleDragEnd}
-            className={`bg-white rounded-xl border p-5 hover:shadow-sm transition-all cursor-move ${
+            className={`relative bg-white rounded-xl border p-5 hover:shadow-sm transition-all cursor-move ${
               dragOverId === course.id ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"
             } ${dragId === course.id ? "opacity-50" : "opacity-100"}`}
           >
+            <div className="absolute top-3 right-3 z-10">
+              <DeleteCourseButton
+                id={course.id}
+                title={course.title}
+                className="text-xs px-2 py-1"
+              />
+            </div>
             <Link href={`/training/${course.id}`} className="block">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">

@@ -121,3 +121,54 @@ export async function 更新课程(
     return { success: false, error: "保存异常: " + msg };
   }
 }
+
+export async function 删除课程(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!id) {
+      return { success: false, error: "课程ID不能为空" };
+    }
+
+    const supabase = await createClient();
+
+    /* 检查是否已分配学员 */
+    const { data: assignments, error: assignError } = await 带超时(
+      supabase.from("training_assignments").select("id").eq("course_id", id).limit(1),
+      10000,
+      "查询课程分配记录"
+    );
+    if (assignError) {
+      return { success: false, error: "检查分配记录失败: " + assignError.message };
+    }
+    if (assignments && assignments.length > 0) {
+      return { success: false, error: "该课程已分配学员，无法删除。请先移除分配记录。" };
+    }
+
+    /* 检查是否有关联考题 */
+    const { data: questions, error: questionError } = await 带超时(
+      supabase.from("exam_questions").select("id").eq("course_id", id).limit(1),
+      10000,
+      "查询课程考题"
+    );
+    if (questionError) {
+      return { success: false, error: "检查考题失败: " + questionError.message };
+    }
+    if (questions && questions.length > 0) {
+      return { success: false, error: "该课程下已有考题，无法删除。请先删除相关考题。" };
+    }
+
+    const { error } = await 带超时(
+      supabase.from("training_courses").delete().eq("id", id),
+      10000,
+      "删除课程"
+    );
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[删除课程] 异常:", msg);
+    return { success: false, error: "删除异常: " + msg };
+  }
+}
