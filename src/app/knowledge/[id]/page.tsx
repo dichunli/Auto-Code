@@ -185,6 +185,13 @@ export default async function KnowledgeDetailPage({
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* 移动端：返回知识库列表 */}
+            <Link
+              href="/knowledge"
+              className="md:hidden text-sm px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+            >
+              返回列表
+            </Link>
             {article.content_blocks && Array.isArray(article.content_blocks) && (
               <PresentationView
                 blocks={article.content_blocks as BlockItem[]}
