@@ -222,12 +222,13 @@ export default function WorkOrdersContent({
         </div>
       </div>
 
-      {/* 分页 */}
-      {totalPages > 1 && (
+      {/* 分页 —— 条数始终显示，翻页按钮仅在多于一页时显示 */}
+      {total > 0 && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm text-gray-500">
             共 {total} 条，第 {page}/{totalPages} 页
           </div>
+          {totalPages > 1 && (
           <div className="flex items-center gap-2">
             <Link
               href={buildLink({ page: String(Math.max(1, page - 1)) })}
@@ -281,6 +282,7 @@ export default function WorkOrdersContent({
               </button>
             </form>
           </div>
+          )}
         </div>
       )}
 
