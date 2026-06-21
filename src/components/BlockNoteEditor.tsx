@@ -43,6 +43,26 @@ function 是移动端(): boolean {
   return /Mobile|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
 }
 
+/* 移动端：内容追加到文档末尾，并触发滚动；桌面端：插入到当前光标所在块之后 */
+function 获取编辑器插入位置(
+  editor: ReturnType<typeof useCreateBlockNote>,
+  isMobile: boolean
+) {
+  if (isMobile && editor.document.length > 0) {
+    const lastBlock = editor.document[editor.document.length - 1];
+    /* 异步滚动到底部，让新插入的块自动向上滚动到可视区域 */
+    setTimeout(() => {
+      if (typeof window === "undefined") return;
+      const editorEl = document.querySelector(".bn-editor") as HTMLElement | null;
+      if (editorEl) {
+        editorEl.scrollTop = editorEl.scrollHeight;
+      }
+    }, 50);
+    return lastBlock;
+  }
+  return editor.getTextCursorPosition().block;
+}
+
 interface Props {
   initialValue?: string;
   onChange: (jsonString: string) => void;
@@ -240,8 +260,7 @@ function CustomToolbarButtons({
       const ext = blob.type ? 视频扩展名(blob.type) : ".mp4";
       const file = new File([blob], `record_${Date.now()}${ext}`, { type: blob.type || "video/mp4" });
       const url = await uploadFile(file);
-      const pos = editor.getTextCursorPosition();
-      editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], pos.block, "after");
+      editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], 获取编辑器插入位置(editor, isMobile), "after");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancelled")) return;
@@ -275,8 +294,7 @@ function CustomToolbarButtons({
       const ext = blob.type ? 视频扩展名(blob.type) : ".mp4";
       const file = new File([blob], `picked_${Date.now()}${ext}`, { type: blob.type || "video/mp4" });
       const url = await uploadFile(file);
-      const pos = editor.getTextCursorPosition();
-      editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], pos.block, "after");
+      editor.insertBlocks([{ type: "video", props: { url, caption: "" } }], 获取编辑器插入位置(editor, isMobile), "after");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancelled")) return;
@@ -290,10 +308,9 @@ function CustomToolbarButtons({
   /* 通用处理：上传文件并插入到编辑器 */
   async function insertFileToEditor(file: File) {
     const url = await uploadFile(file);
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [{ type: "image", props: { url, caption: "" } }],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
@@ -335,7 +352,6 @@ function CustomToolbarButtons({
   }
 
   function handleInsertTable() {
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [
         {
@@ -359,21 +375,19 @@ function CustomToolbarButtons({
           },
         },
       ],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
 
   function handleInsertDivider() {
-    const pos = editor.getTextCursorPosition();
-    editor.insertBlocks([{ type: "divider" }], pos.block, "after");
+    editor.insertBlocks([{ type: "divider" }], 获取编辑器插入位置(editor, isMobile), "after");
   }
 
   function handleInsertCodeBlock() {
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [{ type: "codeBlock", props: { language: "javascript" } }],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
@@ -381,10 +395,9 @@ function CustomToolbarButtons({
   function handleInsertVideo() {
     const url = prompt("输入视频链接地址:");
     if (!url) return;
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [{ type: "video", props: { url, caption: "" } }],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
@@ -398,10 +411,9 @@ function CustomToolbarButtons({
       alert("请输入以 http:// 或 https:// 开头的链接");
       return;
     }
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [{ type: "video", props: { url: trimmed, caption: "" } }],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
@@ -474,10 +486,9 @@ function CustomToolbarButtons({
         xhr.send(formData);
       });
 
-      const pos = editor.getTextCursorPosition();
       editor.insertBlocks(
         [{ type: "video", props: { url: path, caption: "" } }],
-        pos.block,
+        获取编辑器插入位置(editor, isMobile),
         "after"
       );
     } catch (err: unknown) {
@@ -489,10 +500,9 @@ function CustomToolbarButtons({
   function handleInsertFile() {
     const url = prompt("输入文件链接地址:");
     if (!url) return;
-    const pos = editor.getTextCursorPosition();
     editor.insertBlocks(
       [{ type: "file", props: { url, name: "文件" } }],
-      pos.block,
+      获取编辑器插入位置(editor, isMobile),
       "after"
     );
   }
@@ -542,7 +552,6 @@ function CustomToolbarButtons({
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "上传失败");
 
-      const pos = editor.getTextCursorPosition();
       editor.insertBlocks(
         [{
           type: "file",
@@ -552,7 +561,7 @@ function CustomToolbarButtons({
             pdfUrl: result.pdfPath || "",
           },
         }],
-        pos.block,
+        获取编辑器插入位置(editor, isMobile),
         "after"
       );
     } catch (err: unknown) {
@@ -578,7 +587,7 @@ function CustomToolbarButtons({
       )}
 
       {showJumpModal && (
-        <JumpLinkModal editor={editor} onClose={() => setShowJumpModal(false)} />
+        <JumpLinkModal editor={editor} isMobile={isMobile} onClose={() => setShowJumpModal(false)} />
       )}
 
       {/* 块级权限按钮 */}
@@ -740,9 +749,11 @@ function CustomToolbarButtons({
 /* 跳转链接弹窗 */
 function JumpLinkModal({
   editor,
+  isMobile,
   onClose,
 }: {
   editor: ReturnType<typeof useCreateBlockNote>;
+  isMobile: boolean;
   onClose: () => void;
 }) {
   const supabase = createClient();
@@ -797,8 +808,9 @@ function JumpLinkModal({
   }, [search, supabase]);
 
   function handleInsert() {
-    const pos = editor.getTextCursorPosition();
-    const isInTable = pos.block.type === "table";
+    const 目标块 = 获取编辑器插入位置(editor, isMobile);
+    /* 移动端默认追加到末尾，不判断是否在表格内；桌面端保持原有逻辑 */
+    const isInTable = !isMobile && 目标块.type === "table";
 
     if (tab === "article" && selectedId) {
       const article = articles.find((a) => a.id === selectedId);
@@ -837,7 +849,7 @@ function JumpLinkModal({
               ],
             },
           ],
-          pos.block,
+          目标块,
           "after"
         );
       } else {
@@ -856,7 +868,7 @@ function JumpLinkModal({
               ],
             },
           ],
-          pos.block,
+          目标块,
           "after"
         );
       }
@@ -895,7 +907,7 @@ function JumpLinkModal({
                 ],
               },
             ],
-            pos.block,
+            目标块,
             "after"
           );
         } else {
@@ -913,7 +925,7 @@ function JumpLinkModal({
                 ],
               },
             ],
-            pos.block,
+            目标块,
             "after"
           );
         }
