@@ -19,26 +19,22 @@ import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL 
 import BlockPermissionModal from "./BlockPermissionModal";
 
 /* 扩展 BlockNote 默认 block schema，增加 allowedGroups 自定义属性 */
-/* 不扩展的话，自定义属性会在 ProseMirror 序列化时被过滤掉，导致权限设置丢失 */
+/* BlockNote 的 block render 函数闭包引用的是原始 config.propSchema， */
+/* 所以必须直接修改 defaultBlockSpecs 里每个 spec 的 config.propSchema， */
+/* 只通过 BlockNoteSchema.create 传入新 config 不会生效。 */
+/* 另外 BlockNote 的 PropSpec 只支持 boolean/number/string，不支持数组，所以用逗号分隔字符串存储。 */
+Object.values(defaultBlockSpecs).forEach((spec) => {
+  const 带配置 = spec as unknown as {
+    config: { propSchema: Record<string, { default: unknown }> };
+  };
+  带配置.config.propSchema = {
+    ...带配置.config.propSchema,
+    allowedGroups: { default: "" as const },
+  };
+});
+
 const 知识库Schema = BlockNoteSchema.create({
-  blockSpecs: Object.fromEntries(
-    Object.entries(defaultBlockSpecs).map(([类型, 配置]) => [
-      类型,
-      {
-        ...配置,
-        config: {
-          ...配置.config,
-          propSchema: {
-            ...配置.config.propSchema,
-            /* BlockNote PropSpec 只支持 boolean/number/string，不支持数组，所以用逗号分隔字符串存储 */
-            allowedGroups: {
-              default: "" as const,
-            },
-          },
-        },
-      },
-    ])
-  ),
+  blockSpecs: defaultBlockSpecs,
 } as never);
 
 /* 客户端判断是否为移动设备（手机/平板） */
