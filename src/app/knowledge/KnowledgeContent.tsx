@@ -255,6 +255,22 @@ export default function KnowledgeContent({
         action={{ href: "/knowledge/new", label: "新建知识" }}
       />
 
+      {/* 个人入口与统计 */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <Link
+          href="/knowledge/my"
+          className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          我的文章
+        </Link>
+        <Link
+          href="/reports/knowledge-articles"
+          className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          统计报表
+        </Link>
+      </div>
+
       {/* 导入导出按钮 — 桌面端显示 */}
       <div className="hidden lg:block mb-4">
         <KnowledgeImportExport

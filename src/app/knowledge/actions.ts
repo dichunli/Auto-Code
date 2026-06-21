@@ -33,6 +33,7 @@ export async function loadKnowledgeArticles(params: {
   keyword?: string;
   category?: string;
   page?: number;
+  createdBy?: string;
 }): Promise<{
   success: boolean;
   articles?: 知识文章数据[];
@@ -45,7 +46,7 @@ export async function loadKnowledgeArticles(params: {
   segments?: string[];
   error?: string;
 }> {
-  const { keyword = "", category = "", page = 1 } = params;
+  const { keyword = "", category = "", page = 1, createdBy = "" } = params;
   const pageSize = 20;
 
   const supabase = await createClient();
@@ -82,20 +83,22 @@ export async function loadKnowledgeArticles(params: {
     if (error) {
       return { success: false, error: error.message, segments: searchKeywords };
     }
-    articles = (data || []).map((row: Record<string, unknown>) => ({
-      id: row.id as string,
-      title: row.title as string,
-      content: row.content as string,
-      content_blocks: row.content_blocks,
-      type: row.type as string,
-      created_at: row.created_at as string,
-      category_id: row.category_id as string | null,
-      created_by: row.created_by as string | null,
-      visibility: row.visibility as string,
-      category_name: row.category_name as string | null,
-      author_name: row.author_name as string | null,
-      score: row.score as number,
-    }));
+    articles = (data || [])
+      .map((row: Record<string, unknown>) => ({
+        id: row.id as string,
+        title: row.title as string,
+        content: row.content as string,
+        content_blocks: row.content_blocks,
+        type: row.type as string,
+        created_at: row.created_at as string,
+        category_id: row.category_id as string | null,
+        created_by: row.created_by as string | null,
+        visibility: row.visibility as string,
+        category_name: row.category_name as string | null,
+        author_name: row.author_name as string | null,
+        score: row.score as number,
+      }))
+      .filter((a) => !createdBy || a.created_by === createdBy);
   } else {
     let query = supabase
       .from("knowledge_articles")
@@ -105,6 +108,10 @@ export async function loadKnowledgeArticles(params: {
 
     if (category) {
       query = query.eq("category_id", category);
+    }
+
+    if (createdBy) {
+      query = query.eq("created_by", createdBy);
     }
 
     const { data, error } = await query;
