@@ -534,8 +534,8 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
             )}
           </div>
 
-          {/* 关联车型 */}
-          <div className="border-t border-gray-100 pt-4">
+          {/* 关联车型：移动端隐藏 */}
+          <div className="hidden md:block border-t border-gray-100 pt-4">
             <VehicleModelSelector
               value={linkedVehicles}
               onChange={setLinkedVehicles}

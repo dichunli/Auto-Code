@@ -324,8 +324,8 @@ export default function NewKnowledgePage() {
             )}
           </div>
 
-          {/* 关联车型 - 使用适用车型模块 */}
-          <div className="border-t border-gray-100 pt-4">
+          {/* 关联车型 - 使用适用车型模块：移动端隐藏 */}
+          <div className="hidden md:block border-t border-gray-100 pt-4">
             <VehicleModelSelector
               value={linkedVehicles}
               onChange={setLinkedVehicles}
