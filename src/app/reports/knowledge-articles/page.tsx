@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
+import Link from "next/link";
 
 interface 文章记录 {
   id: string;
@@ -14,6 +15,7 @@ interface 月份统计 {
 }
 
 interface 提交人统计 {
+  用户ID: string;
   提交人: string;
   数量: number;
 }
@@ -29,15 +31,21 @@ export default async function KnowledgeArticleStatsPage() {
 
   /* 按月统计 */
   const 月份统计映射 = new Map<string, number>();
-  /* 按提交人统计 */
-  const 提交人统计映射 = new Map<string, number>();
+  /* 按提交人统计：key 为用户 ID，value 为 { name, count } */
+  const 提交人统计映射 = new Map<string, { name: string; count: number }>();
 
   (articles || []).forEach((article) => {
     const 月份 = article.created_at.slice(0, 7);
     月份统计映射.set(月份, (月份统计映射.get(月份) || 0) + 1);
 
+    const 用户ID = article.created_by || "unknown";
     const 提交人 = article.profiles?.full_name || "未知用户";
-    提交人统计映射.set(提交人, (提交人统计映射.get(提交人) || 0) + 1);
+    const 现有 = 提交人统计映射.get(用户ID);
+    if (现有) {
+      现有.count += 1;
+    } else {
+      提交人统计映射.set(用户ID, { name: 提交人, count: 1 });
+    }
   });
 
   const 月份统计列表: 月份统计[] = Array.from(月份统计映射.entries())
@@ -45,7 +53,7 @@ export default async function KnowledgeArticleStatsPage() {
     .sort((a, b) => b.月份.localeCompare(a.月份));
 
   const 提交人统计列表: 提交人统计[] = Array.from(提交人统计映射.entries())
-    .map(([提交人, 数量]) => ({ 提交人, 数量 }))
+    .map(([用户ID, { name, count }]) => ({ 用户ID, 提交人: name, 数量: count }))
     .sort((a, b) => b.数量 - a.数量);
 
   /* 本月提交数量 */
@@ -130,8 +138,19 @@ export default async function KnowledgeArticleStatsPage() {
                   </tr>
                 ) : (
                   提交人统计列表.map((项) => (
-                    <tr key={项.提交人} className="hover:bg-gray-50">
-                      <td className="px-5 py-3 text-gray-700">{项.提交人}</td>
+                    <tr key={项.用户ID} className="hover:bg-gray-50">
+                      <td className="px-5 py-3">
+                        {项.用户ID === "unknown" ? (
+                          <span className="text-gray-700">{项.提交人}</span>
+                        ) : (
+                          <Link
+                            href={`/knowledge?authorId=${encodeURIComponent(项.用户ID)}&authorName=${encodeURIComponent(项.提交人)}`}
+                            className="text-blue-600 hover:text-blue-700 hover:underline"
+                          >
+                            {项.提交人}
+                          </Link>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-right text-gray-900 font-medium">{项.数量}</td>
                     </tr>
                   ))

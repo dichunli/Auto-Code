@@ -139,6 +139,8 @@ interface Props {
   initialSegments: string[];
   currentUserId: string;
   isAdmin: boolean;
+  initialAuthorId?: string;
+  initialAuthorName?: string;
 }
 
 export default function KnowledgeContent({
@@ -150,6 +152,8 @@ export default function KnowledgeContent({
   initialSegments,
   currentUserId: serverUserId,
   isAdmin: serverIsAdmin,
+  initialAuthorId = "",
+  initialAuthorName = "",
 }: Props) {
   const [articles, setArticles] = useState<知识文章[]>(initialArticles);
   const [categories, setCategories] = useState<知识分类[]>(initialCategories);
@@ -163,6 +167,9 @@ export default function KnowledgeContent({
   const [isAdmin, setIsAdmin] = useState(serverIsAdmin);
   const [readCounts, setReadCounts] = useState<Record<string, number>>(initialReadCounts);
   const [segments, setSegments] = useState<string[]>(initialSegments);
+
+  const authorId = initialAuthorId;
+  const authorName = initialAuthorName;
 
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(initialTotal);
@@ -187,6 +194,7 @@ export default function KnowledgeContent({
           keyword: debouncedKeyword,
           category: selectedCategory,
           page,
+          createdBy: authorId,
         });
 
         if (cancelled) return;
@@ -220,7 +228,7 @@ export default function KnowledgeContent({
     return () => {
       cancelled = true;
     };
-  }, [debouncedKeyword, selectedCategory, page]);
+  }, [debouncedKeyword, selectedCategory, page, authorId]);
 
   /* 搜索输入只更新原始状态，防抖由 useDebounce 处理 */
   function handleSearchChange(val: string) {
@@ -270,6 +278,21 @@ export default function KnowledgeContent({
           统计报表
         </Link>
       </div>
+
+      {/* 当前作者筛选提示 */}
+      {authorId && authorName && (
+        <div className="flex items-center gap-3 mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+          <span className="text-sm text-blue-700">
+            正在查看 <strong>{authorName}</strong> 提交的文章
+          </span>
+          <Link
+            href="/knowledge"
+            className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
+          >
+            清除筛选
+          </Link>
+        </div>
+      )}
 
       {/* 导入导出按钮 — 桌面端显示 */}
       <div className="hidden lg:block mb-4">
