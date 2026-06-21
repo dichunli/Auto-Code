@@ -143,6 +143,16 @@ export default async function WorkOrdersPage(props: {
 
   const supabase = await createClient();
 
+  /* 判断能否走「数据库层分页」：
+   * - 关键词搜索匹配的是关联表字段（车牌/VIN/客户名等），SQL or 拼接会解析失败，只能内存过滤
+   * - 细分状态（待诊断/待派工/施工中等）需结合 work_order_items 实时计算 boardStage，也只能内存过滤
+   * 除这两种情况外（在修/历史/各类型/结算状态页），SQL 已能精确筛选，
+   * 可直接用数据库 range 分页，无论数据量多大都只取当前页 20 条，避免全表拉进内存。
+   */
+  const isDetailStage = !!status && !["", "active", "history", "all"].includes(status);
+  const hasKeyword = !!keyword.trim();
+  const canDbPaginate = !hasKeyword && !(isDetailStage && !type);
+
   /* ═══════════════════════════════════════
    *  第一步：数据库查询（SQL 层筛选）
    * ═══════════════════════════════════════ */
@@ -180,13 +190,21 @@ export default async function WorkOrdersPage(props: {
     }
   }
 
-  const { data, error } = await query;
+  /* 能走数据库分页时，直接在 SQL 层取当前页 20 条，避免全表数据进内存 */
+  if (canDbPaginate) {
+    const from = (page - 1) * pageSize;
+    query = query.range(from, from + pageSize - 1);
+  }
+
+  const { data, error, count } = await query;
 
   /* ═══════════════════════════════════════
    *  第二步：服务端内存筛选 + 分页
    * ═══════════════════════════════════════ */
   let orders: Order[] = [];
   let queryError: string | null = null;
+  /* 数据库分页时总数取自 SQL count；内存过滤时总数为过滤后的长度（下方赋值） */
+  let total = 0;
 
   if (error) {
     queryError = error.message;
@@ -224,12 +242,15 @@ export default async function WorkOrdersPage(props: {
     }
 
     orders = result;
+    /* 数据库分页：总数用 SQL count；内存过滤：总数用过滤后长度 */
+    total = canDbPaginate ? (count ?? 0) : orders.length;
   }
 
-  const total = orders.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const fromIdx = (page - 1) * pageSize;
-  const paginatedOrders = orders.slice(fromIdx, fromIdx + pageSize);
+  /* 数据库分页时 data 已是当前页，无需再切；内存过滤时在过滤结果上切当前页 */
+  const paginatedOrders = canDbPaginate
+    ? orders
+    : orders.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
 
   const baseParams: Record<string, string> = {
     type,

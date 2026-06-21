@@ -1,9 +1,6 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 
-interface CacheEntry {
-  data: WorkOrderDataResult;
-  timestamp: number;
-}
 
 // ── 工单关联的车型（vehicle_models 表，字段名为中文）──
 export interface 车型信息 {
@@ -160,23 +157,27 @@ interface WorkOrderDataResult {
   customerOrderCount: number | null;
 }
 
-const cache: Record<string, CacheEntry> = {};
-const CACHE_TTL = 30000; // 30秒缓存，减少短时间内重复查询
-const MAX_CACHE_SIZE = 50; // 限制缓存条目数，防止内存泄漏
+/* ═══════════════════════════════════════════════════════════════════
+ * 缓存策略说明（重要）
+ *
+ * 这里用 React 的 cache()，作用域是「单次请求」：同一次页面渲染中若多次
+ * 调用 getWorkOrderData(id) 只会真正查询一次，请求结束后自动失效。
+ *
+ * 为什么不再用「30 秒跨请求缓存」：
+ * 工单详情页是边看边改的场景（改备注/价格/配件/派工/状态等）。旧的 30 秒
+ * 缓存会导致保存后 30 秒内重新加载仍显示旧数据 —— 这是数据正确性隐患。
+ * 改用请求级缓存后，每个新请求都拿最新数据，保存后刷新即可看到最新值，
+ * 无需各写操作组件再手动清缓存。
+ * ═══════════════════════════════════════════════════════════════════ */
 
-export function clearWorkOrderDataCache(id?: string) {
-  if (id) {
-    delete cache[id];
-  } else {
-    Object.keys(cache).forEach((key) => delete cache[key]);
-  }
+/* 保留此导出仅为兼容历史调用（actions.ts 等）。请求级缓存无需手动清除，
+ * 这里实现为安全的空操作，避免调用方报错。 */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function clearWorkOrderDataCache(_id?: string) {
+  /* no-op：React cache() 在请求结束后自动失效，无需手动清理 */
 }
 
-export async function getWorkOrderData(id: string) {
-  if (cache[id] && Date.now() - cache[id].timestamp < CACHE_TTL) {
-    return cache[id].data;
-  }
-
+export const getWorkOrderData = cache(async function getWorkOrderData(id: string): Promise<WorkOrderDataResult> {
   const supabase = await createClient();
 
   // ── 第一趟（并行）：工单本身 + 全局数据 + 所有只需工单ID的关联数据 ──
@@ -377,12 +378,5 @@ export async function getWorkOrderData(id: string) {
     customerOrderCount: customerOrderCount ?? null,
   };
 
-  // 写入缓存前检查大小限制，超出则淘汰最旧条目
-  const keys = Object.keys(cache);
-  if (keys.length >= MAX_CACHE_SIZE) {
-    const oldest = keys.reduce((a, b) => (cache[a].timestamp < cache[b].timestamp ? a : b));
-    delete cache[oldest];
-  }
-  cache[id] = { data: result, timestamp: Date.now() };
   return result;
-}
+});
