@@ -31,7 +31,15 @@ export default function BlockPermissionModal({ open, onClose, allowedGroups, onS
       .select("id, name")
       .order("sort_order", { ascending: true })
       .then(({ data }) => {
-        setGroups((data || []).map((g) => ({ id: String(g.id), name: String(g.name || "") })));
+        const list = (data || []).map((g) => ({ id: String(g.id), name: String(g.name || "") }));
+        setGroups(list);
+        /* 当前段落未设置过权限时，默认选中"管理层"分组 */
+        if (allowedGroups.length === 0) {
+          const 管理层 = list.find((g) => g.name === "管理层");
+          if (管理层) {
+            setSelected(new Set([管理层.id]));
+          }
+        }
         setLoading(false);
       });
   }, [open, allowedGroups, supabase]);
