@@ -1453,32 +1453,11 @@ export default function MobileItemEditor({
                     </button>
                   );
                 })}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setOpen(true);
-                    setShowPartModal(true);
-                  }}
-                  className="w-full text-left text-xs text-green-600 font-medium py-1"
-                >
-                  + 配件
-                </button>
               </div>
             )}
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(true);
-              setShowPartModal(true);
-            }}
-            className="mt-1 text-xs text-gray-400 hover:text-blue-600"
-          >
-            配件：无（点击添加）
-          </button>
+          <span className="mt-1 text-xs text-gray-400">配件：无</span>
         )}
         {item.description && (
           <div className="text-xs text-gray-400 mt-1 line-clamp-1">备注: {item.description}</div>
@@ -1864,15 +1843,6 @@ export default function MobileItemEditor({
               <section className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-bold text-amber-800">项目配件 <span className="text-amber-600 font-normal">({partGroups.length} 种 / {parts.length} 项)</span></h4>
-                  {!isLocked && (
-                    <button
-                      type="button"
-                      onClick={() => setShowPartModal(true)}
-                      className="text-xs text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-100 transition-colors"
-                    >
-                      + 添加配件
-                    </button>
-                  )}
                 </div>
                 {partGroups.length > 0 ? (
                   <div className="space-y-1.5">
@@ -1911,7 +1881,7 @@ export default function MobileItemEditor({
                     })}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-500">暂无配件，点击上方按钮添加</p>
+                  <p className="text-xs text-gray-500">暂无配件</p>
                 )}
               </section>
             </div>
