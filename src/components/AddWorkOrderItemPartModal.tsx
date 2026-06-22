@@ -79,7 +79,7 @@ interface Props {
   onClose: () => void;
   onSuccess: () => void;
   itemId: string;
-  serviceNameId?: string | null;
+  serviceItemId?: string | null;
   itemName: string;
   vehicleModelId?: string | null;
   vin?: string | null;
@@ -90,7 +90,7 @@ export function AddWorkOrderItemPartModal({
   onClose,
   onSuccess,
   itemId,
-  serviceNameId,
+  serviceItemId,
   itemName,
   vehicleModelId,
   vin,
@@ -198,14 +198,14 @@ export function AddWorkOrderItemPartModal({
     setExistingPartNameIds(new Set());
     setExistingPartIds(new Set());
 
-    if (serviceNameId) {
+    if (serviceItemId) {
       setLoading(true);
       // 同时查预置配件 + 当前项目已存在的配件
       Promise.all([
         supabase
-          .from("service_name_part_names")
+          .from("service_item_part_names")
           .select("part_name_id, quantity, part_names(id, name, unit, default_quantity)")
-          .eq("service_name_id", serviceNameId)
+          .eq("service_item_id", serviceItemId)
           .order("sort_order", { ascending: true }),
         supabase
           .from("work_order_item_parts")
@@ -245,7 +245,7 @@ export function AddWorkOrderItemPartModal({
       setPresetParts([]);
     }
      
-  }, [open, serviceNameId, itemId]);
+  }, [open, serviceItemId, itemId]);
 
   // 搜索配件名称
   const doSearch = useCallback(
@@ -484,7 +484,7 @@ export function AddWorkOrderItemPartModal({
               {/* 预置配件 */}
               {serviceNameId && (
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">系统预置配件</h3>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">关联配件（点击选择）</h3>
                   {loading ? (
                     <p className="text-xs text-gray-400">加载中...</p>
                   ) : presetParts.length === 0 ? (
@@ -514,8 +514,10 @@ export function AddWorkOrderItemPartModal({
                               <span className="text-sm font-medium text-gray-900">
                                 {preset.part_names?.name || "未命名配件"}
                               </span>
-                              <span className="text-xs text-gray-400 ml-2">
-                                默认数量: {preset.quantity}
+                              <span className="text-xs text-gray-500 ml-2">
+                                {preset.quantity != null
+                                  ? `× ${preset.quantity} ${preset.part_names?.unit || "件"}`
+                                  : `单位: ${preset.part_names?.unit || "件"}`}
                               </span>
                             </div>
                           </label>
