@@ -199,10 +199,11 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
       }
 
       /* 可靠刷新：清服务端缓存+重新验证页面，确保新增项目立即显示（裸 router.refresh
-       * 会命中 30 秒缓存导致「加了不显示」）。刷新完成后再关弹窗。 */
+       * 会命中 30 秒缓存导致「加了不显示」）。
+       * 先关弹窗再刷新，避免工单数据量大时用户感觉弹窗卡住。 */
+      onClose();
       await 刷新工单详情(orderId);
       router.refresh();
-      onClose();
     } catch (err: unknown) {
       alert("批量添加失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {

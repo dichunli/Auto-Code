@@ -256,11 +256,12 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
       }
 
       /* 先清服务端缓存并重新验证页面、刷新数据，全部完成后再关弹窗。
-       * 这样保存期间「保存中...」状态一直保持，用户有明确反馈，不会以为卡住或没存上。 */
+       * 这样保存期间「保存中...」状态一直保持，用户有明确反馈，不会以为卡住或没存上。
+       * 工单数据量大时，将关闭弹窗放在刷新之前，避免用户感觉弹窗卡住。 */
+      onClose();
+      reset();
       await 刷新工单详情(orderId);
       router.refresh();
-      reset();
-      onClose();
     } catch (err: unknown) {
       let msg = "未知错误";
       if (err instanceof Error) {
