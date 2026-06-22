@@ -13,7 +13,7 @@ function 是APP环境(userAgent: string): boolean {
   );
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const userAgent = request.headers.get("user-agent") || "";
   const { pathname } = request.nextUrl;
 
