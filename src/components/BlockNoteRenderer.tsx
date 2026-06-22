@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, type JSX } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, type JSX } from "react";
 import { createPortal } from "react-dom";
 import { 是抖音链接, 抖音视频卡片 } from "./DouyinVideo";
 
@@ -484,6 +484,7 @@ function ImageWithFallback({
         src={src}
         alt={alt}
         className="max-w-full rounded-lg cursor-zoom-in"
+        loading="lazy"
         onError={() => setError(true)}
       />
       {/* 移动端触摸提示 */}
@@ -987,7 +988,11 @@ export function BlockNoteRenderer({ blocks, userGroupId, isAdmin }: Props) {
     setPdfUrl(null);
   }, []);
 
-  const visibleBlocks = 过滤权限块(blocks, userGroupId, isAdmin);
+  const visibleBlocks = useMemo(() => 过滤权限块(blocks, userGroupId, isAdmin), [blocks, userGroupId, isAdmin]);
+  const renderedContent = useMemo(
+    () => wrapListBlocks(visibleBlocks, handleImageClick, handlePdfPreview),
+    [visibleBlocks, handleImageClick, handlePdfPreview]
+  );
 
   if (!visibleBlocks || visibleBlocks.length === 0) {
     return <p className="text-gray-400">暂无可见内容</p>;
@@ -995,7 +1000,7 @@ export function BlockNoteRenderer({ blocks, userGroupId, isAdmin }: Props) {
 
   return (
     <>
-      <div className="blocknote-content">{wrapListBlocks(visibleBlocks, handleImageClick, handlePdfPreview)}</div>
+      <div className="blocknote-content">{renderedContent}</div>
       {previewUrl && <ImagePreview url={previewUrl} caption={previewCaption} onClose={handleCloseImage} />}
       {pdfUrl && <PdfPreview url={pdfUrl} onClose={handleClosePdf} />}
     </>

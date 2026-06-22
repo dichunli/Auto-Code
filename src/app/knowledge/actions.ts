@@ -804,3 +804,56 @@ export async function syncKnowledgeModelsFromVin(rawVin: string): Promise<{
     matchedModels,
   };
 }
+
+/* ========== 知识库阅读记录延迟加载 Server Action ========== */
+
+interface 阅读记录 {
+  user_id: string;
+  read_date: string;
+  created_at: string;
+  full_name: string;
+}
+
+export async function loadKnowledgeArticleReads(articleId: string): Promise<{
+  success: boolean;
+  reads?: 阅读记录[];
+  error?: string;
+}> {
+  try {
+    const supabase = await createClient();
+
+    const { data: readsRaw, error } = await supabase
+      .from("knowledge_article_reads")
+      .select("user_id, read_date, read_at")
+      .eq("article_id", articleId)
+      .order("read_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    if (!readsRaw || readsRaw.length === 0) {
+      return { success: true, reads: [] };
+    }
+
+    const userIds = [...new Set(readsRaw.map((r) => r.user_id))];
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", userIds);
+
+    const profileMap = new Map((profiles || []).map((p) => [p.id, p.full_name]));
+    const reads = readsRaw.map((r) => ({
+      user_id: r.user_id,
+      read_date: r.read_date,
+      created_at: r.read_at,
+      full_name: profileMap.get(r.user_id) || "未知用户",
+    }));
+
+    return { success: true, reads };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: "加载阅读记录失败: " + msg };
+  }
+}
