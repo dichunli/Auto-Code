@@ -1839,51 +1839,6 @@ export default function MobileItemEditor({
                 </section>
               )}
 
-              {/* 项目配件 — 移到底部并高亮 */}
-              <section className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-amber-800">项目配件 <span className="text-amber-600 font-normal">({partGroups.length} 种 / {parts.length} 项)</span></h4>
-                </div>
-                {partGroups.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {partGroups.map((group) => {
-                      const firstPart = group.parts[0];
-                      const branchCount = group.parts.length;
-                      const totalQty = group.parts.reduce((sum, p) => sum + (p.quantity || 0), 0);
-                      const totalPrice = group.parts.reduce((sum, p) => sum + (p.total_price || (p.unit_price * p.quantity) || 0), 0);
-                      return (
-                        <button
-                          key={firstPart.part_name_id || firstPart.name}
-                          type="button"
-                          onClick={() => {
-                            setSelectedPartForDetail(firstPart);
-                            setDetailActiveBranchId(firstPart.id);
-                          }}
-                          className="w-full flex items-center justify-between text-xs py-1.5 border-b border-amber-200 last:border-0 text-left"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <span className="text-gray-900 font-medium">{group.name}</span>
-                            {branchCount > 1 && (
-                              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">
-                                {branchCount}个分支
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0 ml-2">
-                            <span className="text-gray-600">x{totalQty}</span>
-                            <span className="text-gray-600">¥{totalPrice}</span>
-                            <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-500">暂无配件</p>
-                )}
-              </section>
             </div>
           </div>
         </div>
