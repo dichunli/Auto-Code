@@ -6,13 +6,13 @@ import { AddWorkOrderItemPartModal } from "./AddWorkOrderItemPartModal";
 
 interface Props {
   itemId: string;
-  serviceNameId?: string | null;
+  serviceItemId?: string | null;
   itemName: string;
   vehicleModelId?: string | null;
   vin?: string | null;
 }
 
-export default function AddItemPartButton({ itemId, serviceNameId, itemName, vehicleModelId, vin }: Props) {
+export default function AddItemPartButton({ itemId, serviceItemId, itemName, vehicleModelId, vin }: Props) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -29,7 +29,7 @@ export default function AddItemPartButton({ itemId, serviceNameId, itemName, veh
         <AddWorkOrderItemPartModal
           open={open}
           itemId={itemId}
-          serviceNameId={serviceNameId}
+          serviceItemId={serviceItemId}
           itemName={itemName}
           vehicleModelId={vehicleModelId}
           vin={vin}

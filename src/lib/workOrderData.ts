@@ -88,7 +88,7 @@ export interface 维修项目 {
   is_customer_part?: boolean | null;
   sort_order?: number | null;
   created_at?: string | null;
-  service_items?: { service_name_id?: string | null; [key: string]: unknown } | null;
+  service_items?: { id?: string | null; [key: string]: unknown } | null;
   outsource_order_items?: unknown[] | null;
   [key: string]: unknown;
 }
@@ -223,7 +223,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     supabase.from("work_order_items").select(`
       *,
       profiles!work_order_items_mechanic_id_fkey(full_name),
-      service_items(sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, service_name_id),
+      service_items(id, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value),
       outsourced_supplier:suppliers(name),
       work_order_item_media(id, work_order_item_id, storage_path, media_type),
       work_order_item_mechanics(work_order_item_id, mechanic_id, share_pct, profiles(full_name)),
@@ -252,11 +252,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
   const vehicleModelId = (order as Record<string, unknown> | null)?.vehicles ? ((order as Record<string, unknown>).vehicles as Record<string, unknown> | undefined)?.vehicle_model_id as string | undefined : undefined;
   const itemIds = items?.map((i: unknown) => (i as Record<string, unknown>).id as string) || [];
   const serviceItemIds = [...new Set(items?.map((i: unknown) => (i as Record<string, unknown>).service_item_id as string).filter(Boolean) || [])];
-  const serviceNameIds = [...new Set(items?.map((i: unknown) => ((i as Record<string, unknown>).service_items as Record<string, unknown> | undefined)?.service_name_id as string).filter(Boolean) || [])];
-  const knowledgeConditions = [
-    ...serviceItemIds.map((sid: string) => `service_item_id.eq.${sid}`),
-    ...serviceNameIds.map((sid: string) => `service_name_id.eq.${sid}`),
-  ];
+  const knowledgeConditions = serviceItemIds.map((sid: string) => `service_item_id.eq.${sid}`);
 
   // ── 第二趟（并行）：依赖第一趟结果的查询一次性发出 ──
   // 配件分支(依赖项目ID)、知识库关联(依赖项目)、车型指导文章(依赖车型ID)、3个统计数(依赖车辆/客户ID)

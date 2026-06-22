@@ -61,7 +61,7 @@ interface ItemData {
   submitter_id?: string | null;
   inspector_id?: string | null;
   service_item_id?: string | null;
-  service_items?: { service_name_id?: string | null } | null;
+  service_items?: { id?: string | null } | null;
   outsourced_supplier?: { name?: string } | null;
   outsource_order_items?: OutsourceOrderItem[] | null;
 }
@@ -443,13 +443,13 @@ export default function MobileItemEditor({
       setPresetParts([]);
       doPartSearch("");
 
-      const serviceNameId = item.service_items?.service_name_id;
-      if (serviceNameId) {
+      const serviceItemId = item.service_item_id;
+      if (serviceItemId) {
         setPresetLoading(true);
         supabase
-          .from("service_name_part_names")
+          .from("service_item_part_names")
           .select("part_name_id, quantity, part_names(id, name, unit, default_quantity)")
-          .eq("service_name_id", serviceNameId)
+          .eq("service_item_id", serviceItemId)
           .order("sort_order", { ascending: true })
           .then(({ data }) => {
             const loaded = (data || [])
@@ -520,7 +520,7 @@ export default function MobileItemEditor({
         setLinkedPartIds(new Set());
       }
     }
-  }, [showPartModal, item.service_items?.service_name_id, vehicleModelId, supabase]);
+  }, [showPartModal, item.service_item_id, vehicleModelId, supabase]);
 
   /* 按技师等级分配预览 */
   useEffect(() => {

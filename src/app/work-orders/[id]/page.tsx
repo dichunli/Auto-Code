@@ -196,26 +196,21 @@ export default async function WorkOrderDetailPage({
 
   interface KnowledgeLink {
     service_item_id?: string;
-    service_name_id?: string;
     knowledge_articles?: { id?: string } | null;
     [key: string]: unknown;
   }
   interface WorkOrderItem {
     id: string;
     service_item_id?: string | null;
-    service_items?: { service_name_id?: string | null } | null;
+    service_items?: { id?: string | null } | null;
     [key: string]: unknown;
   }
   // 按项目分组知识库文章（先建索引 + Set 去重，O(n+k)）
   const knowledgeByItem: Record<string, KnowledgeLink[]> = {};
   const itemIdsByServiceItemId: Record<string, string[]> = {};
-  const itemIdsByServiceNameId: Record<string, string[]> = {};
   items?.forEach((item: WorkOrderItem) => {
     if (item.service_item_id) {
       (itemIdsByServiceItemId[item.service_item_id] ||= []).push(item.id);
-    }
-    if (item.service_items?.service_name_id) {
-      (itemIdsByServiceNameId[item.service_items.service_name_id] ||= []).push(item.id);
     }
   });
   const knowledgeSeen = new Set<string>();
@@ -223,9 +218,6 @@ export default async function WorkOrderDetailPage({
     const matchedItemIds = new Set<string>();
     if (link.service_item_id) {
       (itemIdsByServiceItemId[link.service_item_id] || []).forEach((id) => matchedItemIds.add(id));
-    }
-    if (link.service_name_id) {
-      (itemIdsByServiceNameId[link.service_name_id] || []).forEach((id) => matchedItemIds.add(id));
     }
     matchedItemIds.forEach((itemId) => {
       const key = `${itemId}:${link.knowledge_articles?.id}`;
@@ -716,7 +708,7 @@ export default async function WorkOrderDetailPage({
                             is_outsourced?: boolean;
                             is_customer_part?: boolean;
                             service_item_id?: string | null;
-                            service_items?: { service_name_id?: string | null } | null;
+                            service_items?: { id?: string | null } | null;
                             total_price?: number;
                             description?: string;
                             rework_reason?: string;
@@ -856,7 +848,7 @@ export default async function WorkOrderDetailPage({
                                 <div className={`flex items-center gap-2 flex-shrink-0 sticky right-0 pl-2 ${item.item_type === 'labor' ? 'bg-blue-50' : 'bg-gray-50'}`}>
                                   <AddItemPartButton
                                     itemId={item.id}
-                                    serviceNameId={item.service_items?.service_name_id}
+                                    serviceItemId={item.service_item_id}
                                     itemName={item.alias_name || item.name}
                                     vehicleModelId={vehicleModelId}
                                     vin={vehicleVin}
