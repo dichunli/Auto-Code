@@ -1457,7 +1457,16 @@ export default function MobileItemEditor({
             )}
           </div>
         ) : (
-          <span className="mt-1 text-xs text-gray-400">配件：无</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowPartModal(true);
+            }}
+            className="mt-1 text-xs text-gray-400 hover:text-blue-600"
+          >
+            配件：无
+          </button>
         )}
         {item.description && (
           <div className="text-xs text-gray-400 mt-1 line-clamp-1">备注: {item.description}</div>
@@ -2148,10 +2157,10 @@ export default function MobileItemEditor({
                     {partSearchQuery.trim() === "" && (
                       <div>
                         {presetLoading ? (
-                          <p className="text-xs text-gray-400">加载推荐配件...</p>
+                          <p className="text-xs text-gray-400">加载关联配件...</p>
                         ) : presetParts.length > 0 ? (
                           <div className="space-y-1.5">
-                            <p className="text-xs text-gray-500">推荐配件</p>
+                            <p className="text-xs text-gray-500">关联配件（点击添加）</p>
                             {presetParts.map((preset) => {
                               const alreadySelected = selectedPartNames.some((sp) => sp.part_name_id === preset.part_name_id);
                               return (
@@ -2159,13 +2168,12 @@ export default function MobileItemEditor({
                                   key={preset.part_name_id}
                                   type="button"
                                   onClick={() => addPresetPart(preset)}
-                                  className={`w-full text-left px-3 py-2 text-sm rounded-lg border border-amber-200 ${
-                                    alreadySelected ? "bg-blue-50 border-blue-300 hover:bg-blue-100" : "bg-amber-50 hover:bg-amber-100"
+                                  className={`w-full text-left px-3 py-2.5 text-sm rounded-lg border ${
+                                    alreadySelected ? "bg-blue-50 border-blue-300 hover:bg-blue-100" : "bg-amber-50 border-amber-200 hover:bg-amber-100"
                                   }`}
                                 >
-                                  <span className="font-medium">{preset.name}</span>
-                                  <span className="text-xs text-gray-400 ml-2">单位: {preset.unit}</span>
-                                  {preset.quantity != null && <span className="text-xs text-gray-400 ml-2">默认数量: {preset.quantity}</span>}
+                                  <span className="font-medium text-gray-900">{preset.name}</span>
+                                  <span className="text-xs text-gray-500 ml-2">× {preset.quantity ?? 1} {preset.unit}</span>
                                   {alreadySelected && <span className="text-xs text-blue-600 ml-2">已选择 · 点击取消</span>}
                                 </button>
                               );

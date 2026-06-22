@@ -484,7 +484,7 @@ export function AddWorkOrderItemPartModal({
               {/* 预置配件 */}
               {serviceNameId && (
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">系统预置配件</h3>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">关联配件（点击选择）</h3>
                   {loading ? (
                     <p className="text-xs text-gray-400">加载中...</p>
                   ) : presetParts.length === 0 ? (
@@ -514,8 +514,10 @@ export function AddWorkOrderItemPartModal({
                               <span className="text-sm font-medium text-gray-900">
                                 {preset.part_names?.name || "未命名配件"}
                               </span>
-                              <span className="text-xs text-gray-400 ml-2">
-                                默认数量: {preset.quantity}
+                              <span className="text-xs text-gray-500 ml-2">
+                                {preset.quantity != null
+                                  ? `× ${preset.quantity} ${preset.part_names?.unit || "件"}`
+                                  : `单位: ${preset.part_names?.unit || "件"}`}
                               </span>
                             </div>
                           </label>

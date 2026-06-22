@@ -223,7 +223,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     supabase.from("work_order_items").select(`
       *,
       profiles!work_order_items_mechanic_id_fkey(full_name),
-      service_items(sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value),
+      service_items(sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, service_name_id),
       outsourced_supplier:suppliers(name),
       work_order_item_media(id, work_order_item_id, storage_path, media_type),
       work_order_item_mechanics(work_order_item_id, mechanic_id, share_pct, profiles(full_name)),
