@@ -28,10 +28,21 @@ interface BlockProps {
   allowedGroups?: string | string[];
 }
 
+interface TableCell {
+  type: "tableCell";
+  props: {
+    textAlignment?: string;
+    backgroundColor?: string;
+    colspan?: number;
+    rowspan?: number;
+  };
+  content: InlineContent[];
+}
+
 interface TableContent {
   type: "tableContent";
   rows: {
-    cells: InlineContent[][][];
+    cells: (InlineContent[][] | TableCell)[];
   }[];
 }
 
@@ -260,21 +271,28 @@ function renderBlock(block: BlockItem, onImageClick?: (url: string, caption: str
             <tbody>
               {tableContent.rows.map((row, rowIdx) => (
                 <tr key={rowIdx} className={isLayout ? "" : rowIdx === 0 ? "bg-gray-50" : ""}>
-                  {row.cells.map((cell, cellIdx) => (
-                    <td
-                      key={cellIdx}
-                      className={isLayout
-                        ? "px-3 py-2 align-top"
-                        : "border border-gray-300 px-3 py-2 min-w-[80px]"
-                      }
-                    >
-                      {Array.isArray(cell) ? cell.map((inline, inlineIdx) => (
-                        <span key={inlineIdx}>
-                          {renderInlineContent(Array.isArray(inline) ? inline : [inline])}
-                        </span>
-                      )) : null}
-                    </td>
-                  ))}
+                  {row.cells.map((cell, cellIdx) => {
+                    /* BlockNote 0.51+ 单元格可能是 TableCell 对象或 InlineContent[][] */
+                    const cellContents: InlineContent[][] =
+                      typeof cell === "object" && cell !== null && "type" in cell && cell.type === "tableCell"
+                        ? [cell.content]
+                        : (cell as InlineContent[][]);
+                    return (
+                      <td
+                        key={cellIdx}
+                        className={isLayout
+                          ? "px-3 py-2 align-top"
+                          : "border border-gray-300 px-3 py-2 min-w-[80px]"
+                        }
+                      >
+                        {cellContents.map((paragraph, pIdx) => (
+                          <p key={pIdx} className={pIdx > 0 ? "mt-1" : ""}>
+                            {renderInlineContent(paragraph)}
+                          </p>
+                        ))}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
