@@ -8,7 +8,6 @@ import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
 import { BlockNoteTOC } from "@/components/BlockNoteTOC";
 import { PresentationView } from "@/components/PresentationView";
 import { KnowledgeDeleteButton } from "@/components/KnowledgeDeleteButton";
-import KnowledgeVehicleLinks from "@/components/KnowledgeVehicleLinks";
 import { 是抖音链接, 抖音视频简化卡片 } from "@/components/DouyinVideo";
 
 interface 维修项目关联 {
@@ -16,12 +15,7 @@ interface 维修项目关联 {
   service_items: { name: string } | null;
 }
 
-interface 阅读记录 {
-  user_id: string;
-  read_date: string;
-  created_at: string;
-  full_name: string;
-}
+import { KnowledgeReadList } from "@/components/KnowledgeReadList";
 
 interface BlockItem {
   id: string;
@@ -51,56 +45,20 @@ export default async function KnowledgeDetailPage({
   const autoPresent = sp.present === "1";
   const supabase = await createClient();
 
+  /* 先获取当前用户和文章详情（用户权限判断依赖文章） */
+  const { data: { user: currentUser } } = await supabase.auth.getUser();
+  const currentUserId = currentUser?.id;
+
   const { data: article } = await supabase
     .from("knowledge_articles")
     .select("*, knowledge_categories(name), profiles(full_name)")
     .eq("id", id)
     .single();
 
-  /* 查询阅读次数 */
-  const { count: readCount } = await supabase
-    .from("knowledge_article_reads")
-    .select("*", { count: "exact", head: true })
-    .eq("article_id", id);
-
-  /* 查询阅读记录，再单独查用户名 */
-  const { data: readsRaw } = await supabase
-    .from("knowledge_article_reads")
-    .select("user_id, read_date, read_at")
-    .eq("article_id", id)
-    .order("read_at", { ascending: false })
-    .limit(50);
-
-  let readList: 阅读记录[] = [];
-  if (readsRaw && readsRaw.length > 0) {
-    const userIds = [...new Set(readsRaw.map((r) => r.user_id))];
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", userIds);
-    const profileMap = new Map((profiles || []).map((p) => [p.id, p.full_name]));
-    readList = readsRaw.map((r) => ({
-      user_id: r.user_id,
-      read_date: r.read_date,
-      created_at: r.read_at,
-      full_name: profileMap.get(r.user_id) || "未知用户",
-    }));
-  }
-
-  /* 记录阅读（登录用户才记录，不阻塞页面加载） */
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    void supabase.from("knowledge_article_reads").upsert(
-      { article_id: id, user_id: user.id, read_date: new Date().toISOString().split("T")[0] },
-      { onConflict: "article_id,user_id,read_date" }
-    ).then(() => {}).catch(() => {});
-  }
-
   if (!article) notFound();
 
   /* 权限检查 */
-  const { data: { user: currentUser } } = await supabase.auth.getUser();
-  const currentUserId = currentUser?.id;
+  const isOwner = article.created_by === currentUserId;
   let isAdmin = false;
   if (currentUserId) {
     const { data: roleData } = await supabase
@@ -112,12 +70,19 @@ export default async function KnowledgeDetailPage({
     ).filter(Boolean) as string[];
     isAdmin = roleNames.includes("admin");
   }
-  const isOwner = article.created_by === currentUserId;
   const canView = isAdmin || isOwner || article.visibility === "public" || article.visibility === "internal";
   const canEdit = isAdmin || isOwner;
 
   if (!canView) {
     redirect("/knowledge");
+  }
+
+  /* 记录阅读（登录用户才记录，不阻塞页面加载） */
+  if (currentUserId) {
+    void supabase.from("knowledge_article_reads").upsert(
+      { article_id: id, user_id: currentUserId, read_date: new Date().toISOString().split("T")[0] },
+      { onConflict: "article_id,user_id,read_date" }
+    ).then(() => {}).catch(() => {});
   }
 
   /* 查询当前用户的员工分组 */
@@ -131,15 +96,23 @@ export default async function KnowledgeDetailPage({
     userGroupId = profileData?.group_id ? String(profileData.group_id) : "";
   }
 
-  const { data: links } = await supabase
-    .from("knowledge_service_links")
-    .select("service_name_id, service_item_id, service_names(name), service_items(name)")
-    .eq("article_id", id);
+  /* 并行查询：阅读次数、维修项目关联 */
+  const [
+    readCountResult,
+    linksResult,
+  ] = await Promise.all([
+    supabase
+      .from("knowledge_article_reads")
+      .select("*", { count: "exact", head: true })
+      .eq("article_id", id),
+    supabase
+      .from("knowledge_service_links")
+      .select("service_name_id, service_item_id, service_names(name), service_items(name)")
+      .eq("article_id", id),
+  ]);
 
-  const { data: vehicleLinks } = await supabase
-    .from("knowledge_vehicle_links")
-    .select("vehicle_models(id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准)")
-    .eq("article_id", id);
+  const readCount = readCountResult.count ?? 0;
+  const links = linksResult.data;
 
   return (
     <div>
@@ -275,10 +248,6 @@ export default async function KnowledgeDetailPage({
           />
         ) : null}
 
-        {vehicleLinks && vehicleLinks.length > 0 && (
-          <KnowledgeVehicleLinks vehicleLinks={vehicleLinks} />
-        )}
-
         {links && links.length > 0 && (
           <div className="mt-8 pt-6 border-t border-gray-100">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">关联维修项目</h3>
@@ -297,30 +266,7 @@ export default async function KnowledgeDetailPage({
 
         {/* 阅读人列表 */}
         {readCount !== null && readCount >= 0 && (
-          <div className="mt-6 pt-6 border-t border-gray-100">
-            <details className="bg-gray-50 rounded-lg border border-gray-200">
-              <summary className="px-4 py-3 text-sm font-medium text-gray-700 cursor-pointer select-none flex items-center justify-between">
-                <span>📖 阅读记录（{readCount} 次{(readList.length > 0) ? ` · ${readList.length} 人` : ""}）</span>
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </summary>
-              <div className="px-4 pb-4 border-t border-gray-100">
-                {readList.length > 0 ? (
-                  <div className="mt-3 space-y-2 max-h-60 overflow-y-auto">
-                    {readList.map((record, index) => (
-                      <div key={index} className="flex items-center justify-between text-sm py-1.5 px-2 rounded hover:bg-white">
-                        <span className="text-gray-700">{record.full_name}</span>
-                        <span className="text-gray-400 text-xs">{new Date(record.created_at).toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-3 text-sm text-gray-400">暂无详细阅读记录</p>
-                )}
-              </div>
-            </details>
-          </div>
+          <KnowledgeReadList articleId={id} readCount={readCount} />
         )}
 
         <div className="mt-8">
