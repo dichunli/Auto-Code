@@ -5,6 +5,7 @@ import {
   useCreateBlockNote,
   useEditorChange,
   FormattingToolbar,
+  BlockNoteViewEditor,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
@@ -153,24 +154,28 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
           padding-bottom: 40vh;
         }
       `}</style>
-      <div className="sticky top-0 z-30 bg-gray-50 border-b border-gray-200">
-        {/* 上层：文字格式工具栏 */}
-        <div className="px-2 py-1.5 border-b border-gray-200">
-          <FormattingToolbar />
-        </div>
-        {/* 下层：媒体按钮和其他功能按钮 */}
-        <div className="px-2 py-1.5 flex items-center gap-1 flex-wrap">
-          <CustomToolbarButtons editor={editor} uploadFile={uploadFile} isMobile={是移动端()} />
-        </div>
-      </div>
       <BlockNoteView
         editor={editor}
         formattingToolbar={false}
+        renderEditor={false}
         tableHandles={true}
         sideMenu={true}
         slashMenu={true}
         linkToolbar={true}
-      />
+      >
+        {/* 固定工具栏 — 显示在编辑器上方，移动端滚动时 sticky 跟随 */}
+        <div className="sticky top-0 z-30 bg-gray-50 border-b border-gray-200">
+          {/* 上层：文字格式工具栏 */}
+          <div className="px-2 py-1.5 border-b border-gray-200">
+            <FormattingToolbar />
+          </div>
+          {/* 下层：媒体按钮和其他功能按钮 */}
+          <div className="px-2 py-1.5 flex items-center gap-1 flex-wrap">
+            <CustomToolbarButtons editor={editor} uploadFile={uploadFile} isMobile={是移动端()} />
+          </div>
+        </div>
+        <BlockNoteViewEditor />
+      </BlockNoteView>
     </div>
   );
 }
