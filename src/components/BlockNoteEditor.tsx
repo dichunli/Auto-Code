@@ -512,11 +512,16 @@ function CustomToolbarButtons({
   }
 
   function handleOpenPermissionModal() {
-    const pos = editor.getTextCursorPosition();
-    const block = pos.block;
+    let block = editor.getTextCursorPosition().block;
     if (!block) {
       alert("请先点击选中要设置权限的段落");
       return;
+    }
+    /* 如果光标在表格单元格内，向上查找到表格块本身 */
+    while (block.type !== "table") {
+      const parent = editor.getParentBlock(block);
+      if (!parent) break;
+      block = parent;
     }
     setCurrentBlock({ id: block.id, props: block.props || {} });
     setShowPermissionModal(true);
