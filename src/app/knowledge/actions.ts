@@ -40,6 +40,7 @@ export async function loadKnowledgeArticles(params: {
   categories?: 知识分类数据[];
   readCounts?: Record<string, number>;
   currentUserId?: string;
+  currentUserGroupId?: string;
   isAdmin?: boolean;
   total?: number;
   totalPages?: number;
@@ -63,6 +64,7 @@ export async function loadKnowledgeArticles(params: {
   const { data: { user } } = await supabase.auth.getUser();
   const currentUserId = user?.id || "";
   let isAdmin = false;
+  let currentUserGroupId = "";
   if (currentUserId) {
     const { data: roleData } = await supabase
       .from("profile_roles")
@@ -71,6 +73,13 @@ export async function loadKnowledgeArticles(params: {
     isAdmin = (roleData || []).some(
       (d: { roles?: { name?: string } | null }) => d.roles?.name === "admin"
     );
+
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("group_id")
+      .eq("id", currentUserId)
+      .single();
+    currentUserGroupId = profileData?.group_id ? String(profileData.group_id) : "";
   }
 
   /* 查询文章 */
@@ -169,6 +178,7 @@ export async function loadKnowledgeArticles(params: {
     categories: (categoriesData || []) as 知识分类数据[],
     readCounts,
     currentUserId,
+    currentUserGroupId,
     isAdmin,
     total,
     totalPages,

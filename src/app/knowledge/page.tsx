@@ -26,6 +26,7 @@ export default async function KnowledgePage({
       initialTotalPages={result.totalPages || 1}
       initialSegments={result.segments || []}
       currentUserId={result.currentUserId || ""}
+      initialUserGroupId={result.currentUserGroupId || ""}
       isAdmin={result.isAdmin || false}
       initialAuthorId={authorId}
       initialAuthorName={authorName}
