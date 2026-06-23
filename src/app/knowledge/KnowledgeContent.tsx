@@ -22,6 +22,9 @@ interface InlineContent {
 
 interface BlockItem {
   type: string;
+  props?: {
+    allowedGroups?: string | string[];
+  };
   content?: InlineContent[] | { type: string; rows: unknown[] };
   children?: BlockItem[];
 }
@@ -71,9 +74,38 @@ function extractTextFromBlocks(blocks: BlockItem[]): string {
   return parts.join(" ");
 }
 
-function extractSummary(a: 知识文章): string {
+/* 根据 allowedGroups 过滤块：无权限的块及子块均隐藏 */
+function 过滤权限块(blocks: BlockItem[], userGroupId?: string, isAdmin?: boolean): BlockItem[] {
+  if (isAdmin) return blocks;
+
+  return blocks
+    .filter((block) => {
+      const rawAllowed = block.props?.allowedGroups;
+      if (
+        !rawAllowed ||
+        (Array.isArray(rawAllowed) && rawAllowed.length === 0) ||
+        (typeof rawAllowed === "string" && rawAllowed === "")
+      ) {
+        return true;
+      }
+      if (!userGroupId) return false;
+      const allowedList = Array.isArray(rawAllowed)
+        ? rawAllowed
+        : String(rawAllowed).split(",").filter(Boolean);
+      return allowedList.includes(userGroupId);
+    })
+    .map((block) => ({
+      ...block,
+      children: block.children
+        ? 过滤权限块(block.children, userGroupId, isAdmin)
+        : undefined,
+    }));
+}
+
+function extractSummary(a: 知识文章, userGroupId: string, isAdmin: boolean): string {
   if (a.content_blocks && Array.isArray(a.content_blocks)) {
-    const text = extractTextFromBlocks(a.content_blocks);
+    const visibleBlocks = 过滤权限块(a.content_blocks, userGroupId, isAdmin);
+    const text = extractTextFromBlocks(visibleBlocks);
     return text.slice(0, 120) || "暂无内容";
   }
   return a.content?.replace(/<[^>]*>/g, "").slice(0, 120) || "暂无内容";
@@ -138,6 +170,7 @@ interface Props {
   initialTotalPages: number;
   initialSegments: string[];
   currentUserId: string;
+  initialUserGroupId?: string;
   isAdmin: boolean;
   initialAuthorId?: string;
   initialAuthorName?: string;
@@ -151,6 +184,7 @@ export default function KnowledgeContent({
   initialTotalPages,
   initialSegments,
   currentUserId: serverUserId,
+  initialUserGroupId = "",
   isAdmin: serverIsAdmin,
   initialAuthorId = "",
   initialAuthorName = "",
@@ -164,6 +198,7 @@ export default function KnowledgeContent({
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
 
   const [currentUserId, setCurrentUserId] = useState<string>(serverUserId);
+  const [userGroupId, setUserGroupId] = useState(initialUserGroupId);
   const [isAdmin, setIsAdmin] = useState(serverIsAdmin);
   const [readCounts, setReadCounts] = useState<Record<string, number>>(initialReadCounts);
   const [segments, setSegments] = useState<string[]>(initialSegments);
@@ -209,6 +244,7 @@ export default function KnowledgeContent({
           setCategories(result.categories || []);
           setReadCounts(result.readCounts || {});
           setCurrentUserId(result.currentUserId || "");
+          setUserGroupId(result.currentUserGroupId || "");
           setIsAdmin(result.isAdmin || false);
           setTotal(result.total || 0);
           setTotalPages(result.totalPages || 1);
@@ -469,8 +505,8 @@ export default function KnowledgeContent({
                         </h3>
                         <p className="text-sm text-gray-500 line-clamp-2">
                           {searchKeywords.length > 0
-                            ? 高亮文本(extractSummary(a), searchKeywords)
-                            : extractSummary(a)}
+                            ? 高亮文本(extractSummary(a, userGroupId, isAdmin), searchKeywords)
+                            : extractSummary(a, userGroupId, isAdmin)}
                         </p>
                         <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
                           <span>{获取作者名(a)}</span>
