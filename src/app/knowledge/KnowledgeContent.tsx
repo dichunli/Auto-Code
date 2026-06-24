@@ -74,38 +74,27 @@ function extractTextFromBlocks(blocks: BlockItem[]): string {
   return parts.join(" ");
 }
 
-/* 根据 allowedGroups 过滤块：无权限的块及子块均隐藏 */
-function 过滤权限块(blocks: BlockItem[], userGroupId?: string, isAdmin?: boolean): BlockItem[] {
-  if (isAdmin) return blocks;
-
+/* 列表摘要专用：只要段落设置了「可见分组」权限，就一律剔除（不分角色、不分分组）。
+   摘要是列表预览给所有人看的，带权限的内容不应出现在这里。 */
+function 剔除受限块(blocks: BlockItem[]): BlockItem[] {
   return blocks
     .filter((block) => {
       const rawAllowed = block.props?.allowedGroups;
-      if (
-        !rawAllowed ||
-        (Array.isArray(rawAllowed) && rawAllowed.length === 0) ||
-        (typeof rawAllowed === "string" && rawAllowed === "")
-      ) {
-        return true;
-      }
-      if (!userGroupId) return false;
-      const allowedList = Array.isArray(rawAllowed)
-        ? rawAllowed
-        : String(rawAllowed).split(",").filter(Boolean);
-      return allowedList.includes(userGroupId);
+      const 已设权限 =
+        (Array.isArray(rawAllowed) && rawAllowed.length > 0) ||
+        (typeof rawAllowed === "string" && rawAllowed.trim() !== "");
+      return !已设权限;
     })
     .map((block) => ({
       ...block,
-      children: block.children
-        ? 过滤权限块(block.children, userGroupId, isAdmin)
-        : undefined,
+      children: block.children ? 剔除受限块(block.children) : undefined,
     }));
 }
 
-function extractSummary(a: 知识文章, userGroupId: string, isAdmin: boolean): string {
+function extractSummary(a: 知识文章): string {
   if (a.content_blocks && Array.isArray(a.content_blocks)) {
-    const visibleBlocks = 过滤权限块(a.content_blocks, userGroupId, isAdmin);
-    const text = extractTextFromBlocks(visibleBlocks);
+    const 公开块 = 剔除受限块(a.content_blocks);
+    const text = extractTextFromBlocks(公开块);
     return text.slice(0, 120) || "暂无内容";
   }
   return a.content?.replace(/<[^>]*>/g, "").slice(0, 120) || "暂无内容";
@@ -170,7 +159,6 @@ interface Props {
   initialTotalPages: number;
   initialSegments: string[];
   currentUserId: string;
-  initialUserGroupId?: string;
   isAdmin: boolean;
   initialAuthorId?: string;
   initialAuthorName?: string;
@@ -184,7 +172,6 @@ export default function KnowledgeContent({
   initialTotalPages,
   initialSegments,
   currentUserId: serverUserId,
-  initialUserGroupId = "",
   isAdmin: serverIsAdmin,
   initialAuthorId = "",
   initialAuthorName = "",
@@ -198,7 +185,6 @@ export default function KnowledgeContent({
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
 
   const [currentUserId, setCurrentUserId] = useState<string>(serverUserId);
-  const [userGroupId, setUserGroupId] = useState(initialUserGroupId);
   const [isAdmin, setIsAdmin] = useState(serverIsAdmin);
   const [readCounts, setReadCounts] = useState<Record<string, number>>(initialReadCounts);
   const [segments, setSegments] = useState<string[]>(initialSegments);
@@ -244,7 +230,6 @@ export default function KnowledgeContent({
           setCategories(result.categories || []);
           setReadCounts(result.readCounts || {});
           setCurrentUserId(result.currentUserId || "");
-          setUserGroupId(result.currentUserGroupId || "");
           setIsAdmin(result.isAdmin || false);
           setTotal(result.total || 0);
           setTotalPages(result.totalPages || 1);
@@ -505,8 +490,8 @@ export default function KnowledgeContent({
                         </h3>
                         <p className="text-sm text-gray-500 line-clamp-2">
                           {searchKeywords.length > 0
-                            ? 高亮文本(extractSummary(a, userGroupId, isAdmin), searchKeywords)
-                            : extractSummary(a, userGroupId, isAdmin)}
+                            ? 高亮文本(extractSummary(a), searchKeywords)
+                            : extractSummary(a)}
                         </p>
                         <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
                           <span>{获取作者名(a)}</span>
