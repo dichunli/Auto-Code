@@ -81,7 +81,10 @@ interface ItemPart {
   notes?: string | null;
   part_id?: string | null;
   part_name_id?: string | null;
+  branch_group_id?: string | null;
   category?: string | null;
+  is_selected?: boolean | null;
+  document_name?: string | null;
   pickedQty?: number;
 }
 
@@ -326,11 +329,11 @@ export default function MobileItemEditor({
   /* 配件列表展开状态 */
   const [partsExpanded, setPartsExpanded] = useState(false);
 
-  /* 按配件名称分组 */
+  /* 按"配件名称目录"(branch_group_id)分组：同一目录的分支归一组，同名也能是独立目录 */
   const partGroups = useMemo(() => {
     const map = new Map<string, ItemPart[]>();
     for (const p of parts) {
-      const key = p.part_name_id || p.name;
+      const key = p.branch_group_id || p.part_name_id || p.id;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(p);
     }
@@ -347,6 +350,9 @@ export default function MobileItemEditor({
 
   /* 替换配件弹窗 */
   const [replacePartTarget, setReplacePartTarget] = useState<ItemPart | null>(null);
+
+  /* 添加分支弹窗（给当前配件名称新增一个具体配件分支） */
+  const [addBranchTarget, setAddBranchTarget] = useState<ItemPart | null>(null);
 
   /* 配件详情弹窗图片上传 */
   const detailFileInputRef = useRef<HTMLInputElement>(null);
@@ -1021,6 +1027,24 @@ export default function MobileItemEditor({
     refresh();
   }
 
+  /* 删除整个配件名称目录（该 branch_group_id 下所有分支） */
+  async function handleDeleteGroup(target: ItemPart) {
+    const ids = target.branch_group_id
+      ? parts.filter((p) => p.branch_group_id === target.branch_group_id).map((p) => p.id)
+      : [target.id];
+    if (ids.length === 0) return;
+    if (!confirm(`确定删除配件「${target.name}」及其全部 ${ids.length} 个分支？`)) return;
+    setLoading(true);
+    const { error } = await supabase.from("work_order_item_parts").delete().in("id", ids);
+    setLoading(false);
+    if (error) {
+      alert("删除失败: " + error.message);
+      return;
+    }
+    setSelectedPartForDetail(null);
+    refresh();
+  }
+
   /* 保存配件数量 */
   async function savePartQuantity(partId: string, qty: number) {
     if (qty < 1) {
@@ -1028,7 +1052,13 @@ export default function MobileItemEditor({
       return;
     }
     setLoading(true);
-    const { error } = await supabase.from("work_order_item_parts").update({ quantity: qty }).eq("id", partId);
+    /* 数量为目录级：同步更新该目录(branch_group_id)下所有分支 */
+    const target = parts.find((p) => p.id === partId);
+    let q = supabase.from("work_order_item_parts").update({ quantity: qty });
+    q = target?.branch_group_id
+      ? q.eq("branch_group_id", target.branch_group_id)
+      : q.eq("id", partId);
+    const { error } = await q;
     setLoading(false);
     if (error) {
       alert("保存失败: " + error.message);
@@ -1115,6 +1145,94 @@ export default function MobileItemEditor({
     }
 
     setSelectedPartForDetail(null);
+    refresh();
+  }
+
+  /* 给当前目录(branch_group_id)添加分支（同一目录下新增具体配件） */
+  async function handleAddBranches(target: ItemPart, newParts: PickerPart[]) {
+    if (newParts.length === 0) return;
+    setLoading(true);
+    /* 同目录已有选中分支则新加的都设 false；若该目录还没有选中（遗留），把第一条设为选中 */
+    let 组已有选中 = parts.some((p) => p.branch_group_id === target.branch_group_id && p.is_selected);
+    const inserts = newParts.map((np) => {
+      const pb = np.part_brands;
+      const brandName = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
+      const 设为选中 = !组已有选中;
+      if (设为选中) 组已有选中 = true;
+      return {
+        work_order_item_id: item.id,
+        part_id: np.id,
+        /* 沿用目标的目录与配件名称，归到同一目录成为分支 */
+        branch_group_id: target.branch_group_id,
+        part_name_id: target.part_name_id,
+        name: target.name,
+        part_number: np.part_number || "",
+        unit: np.unit || target.unit || "件",
+        brand: brandName,
+        specification: np.specification_text || np.part_specifications?.name || "",
+        unit_cost: np.unit_cost,
+        unit_price: np.unit_price,
+        /* 数量为目录级，继承目标目录当前数量 */
+        quantity: target.quantity ?? 1,
+        customer_opinion: "pending",
+        is_selected: 设为选中,
+      };
+    });
+    const { error } = await supabase.from("work_order_item_parts").insert(inserts);
+    setLoading(false);
+    setAddBranchTarget(null);
+    if (error) {
+      alert("添加分支失败: " + error.message);
+      return;
+    }
+    refresh();
+  }
+
+  /* 添加空分支：归入当前目录，其余信息后续手动填写 */
+  async function handleAddEmptyBranch(target: ItemPart) {
+    if (!target.branch_group_id) {
+      alert("当前配件没有目录信息，无法添加分支");
+      return;
+    }
+    setLoading(true);
+    /* 该目录还没有选中分支（遗留）时，把这条空分支设为选中，避免合计漏算 */
+    const 组已有选中 = parts.some((p) => p.branch_group_id === target.branch_group_id && p.is_selected);
+    const { error } = await supabase.from("work_order_item_parts").insert({
+      work_order_item_id: item.id,
+      branch_group_id: target.branch_group_id,
+      part_name_id: target.part_name_id,
+      name: target.name,
+      /* 数量为目录级，继承目标目录当前数量 */
+      quantity: target.quantity ?? 1,
+      customer_opinion: "pending",
+      is_selected: !组已有选中,
+    });
+    setLoading(false);
+    if (error) {
+      alert("添加空分支失败: " + error.message);
+      return;
+    }
+    refresh();
+  }
+
+  /* 设为默认分支：同组内只能有一条被选中，其它同组分支自动取消 */
+  async function handleSetDefaultBranch(branchId: string, siblingIds: string[]) {
+    setLoading(true);
+    const { error } = await supabase
+      .from("work_order_item_parts")
+      .update({ is_selected: true })
+      .eq("id", branchId);
+    if (!error && siblingIds.length > 0) {
+      await supabase
+        .from("work_order_item_parts")
+        .update({ is_selected: false })
+        .in("id", siblingIds);
+    }
+    setLoading(false);
+    if (error) {
+      alert("设置默认分支失败: " + error.message);
+      return;
+    }
     refresh();
   }
 
@@ -1211,6 +1329,8 @@ export default function MobileItemEditor({
     }
     setLoading(true);
 
+    /* 每个新增配件都各自成为一个独立目录（branch_group_id 由数据库默认生成），
+       是该目录唯一分支，即为选中分支 is_selected=true。同名也是独立目录。 */
     const inserts: Record<string, unknown>[] = [];
     for (const sp of selectedPartNames) {
       inserts.push({
@@ -1220,6 +1340,7 @@ export default function MobileItemEditor({
         unit: sp.unit,
         quantity: sp.quantity,
         customer_opinion: "pending",
+        is_selected: true,
       });
     }
     for (const sp of selectedRealParts) {
@@ -1236,6 +1357,7 @@ export default function MobileItemEditor({
         unit_price: sp.unit_price,
         quantity: sp.quantity,
         customer_opinion: "pending",
+        is_selected: true,
       });
     }
 
@@ -1421,17 +1543,19 @@ export default function MobileItemEditor({
               <div className="mt-1.5 space-y-1 pl-2 border-l-2 border-gray-200">
                 {partGroups.map((group) => {
                   const branchCount = group.parts.length;
-                  const firstPart = group.parts[0];
-                  const totalQty = group.parts.reduce((sum, p) => sum + (p.quantity || 0), 0);
-                  const totalPrice = group.parts.reduce((sum, p) => sum + (p.total_price || (p.unit_price * p.quantity) || 0), 0);
+                  /* 默认分支：组内被选中的那条（无则兜底第一条），列表行只显示它 */
+                  const 默认分支 = group.parts.find((p) => p.is_selected) || group.parts[0];
+                  const 行数量 = 默认分支.quantity || 0;
+                  const 行金额 = (默认分支.unit_price || 0) * (默认分支.quantity || 0);
+                  const 品规 = [默认分支.brand, 默认分支.specification].filter(Boolean).join(" · ");
                   return (
                     <button
-                      key={firstPart.part_name_id || firstPart.name}
+                      key={默认分支.part_name_id || 默认分支.name}
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedPartForDetail(firstPart);
-                        setDetailActiveBranchId(firstPart.id);
+                        setSelectedPartForDetail(默认分支);
+                        setDetailActiveBranchId(默认分支.id);
                       }}
                       className="w-full flex items-center justify-between text-xs py-1 text-left"
                     >
@@ -1442,10 +1566,13 @@ export default function MobileItemEditor({
                             {branchCount}个分支
                           </span>
                         )}
+                        {品规 && (
+                          <span className="ml-1.5 text-[10px] text-gray-400">{品规}</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-2">
-                        <span className="text-gray-500">x{totalQty}</span>
-                        <span className="text-gray-500">¥{totalPrice}</span>
+                        <span className="text-gray-500">x{行数量}</span>
+                        <span className="text-gray-500">¥{行金额}</span>
                         <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
@@ -1453,6 +1580,22 @@ export default function MobileItemEditor({
                     </button>
                   );
                 })}
+                {/* 配件列表底部：直接添加配件入口 */}
+                {!isLocked && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowPartModal(true);
+                    }}
+                    className="w-full flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 py-1 mt-0.5"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>添加配件</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -2434,7 +2577,9 @@ export default function MobileItemEditor({
 
       {/* 配件详情弹窗 */}
       {selectedPartForDetail && (() => {
-        const branchParts = selectedPartForDetail.part_name_id
+        const branchParts = selectedPartForDetail.branch_group_id
+          ? parts.filter((p) => p.branch_group_id === selectedPartForDetail.branch_group_id)
+          : selectedPartForDetail.part_name_id
           ? parts.filter((p) => p.part_name_id === selectedPartForDetail.part_name_id)
           : [selectedPartForDetail];
         const activeBranch = branchParts.find((p) => p.id === detailActiveBranchId) || branchParts[0];
@@ -2475,12 +2620,42 @@ export default function MobileItemEditor({
               </div>
               {/* 内容 */}
               <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 text-sm">
-                {/* 分支选择（多分支时显示可滑动卡片） */}
-                {branchParts.length > 1 && (
+                {/* 配件分支：选择已有分支 + 添加新分支 */}
+                {(branchParts.length > 1 || (!isLocked && activeBranch.branch_group_id)) && (
                   <div>
-                    <p className="text-xs text-gray-500 mb-2">左右滑动查看分支 ({branchParts.length} 个)</p>
-                    <div className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory -mx-1 px-1">
-                      {branchParts.map((bp, idx) => (
+                    <div className="flex items-center justify-between mb-2 gap-2">
+                      <p className="text-xs text-gray-500 shrink-0">
+                        {branchParts.length > 1 ? `配件分支（${branchParts.length} 个，左右滑动查看）` : "配件分支"}
+                      </p>
+                      {!isLocked && activeBranch.branch_group_id && (
+                        <div className="flex items-center gap-3 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleAddEmptyBranch(activeBranch)}
+                            disabled={loading}
+                            className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800 disabled:opacity-50"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            空分支
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAddBranchTarget(activeBranch)}
+                            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            选择配件
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {branchParts.length > 1 && (
+                      <div className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory -mx-1 px-1">
+                        {branchParts.map((bp, idx) => (
                         <button
                           key={bp.id}
                           type="button"
@@ -2491,8 +2666,35 @@ export default function MobileItemEditor({
                               : "bg-white border-gray-200 hover:bg-gray-50"
                           }`}
                         >
-                          <div className={`text-xs font-medium mb-1 ${bp.id === activeBranch.id ? "text-blue-700" : "text-gray-700"}`}>
-                            分支 {idx + 1}
+                          <div className="flex items-center justify-between mb-1">
+                            <div className={`text-xs font-medium ${bp.id === activeBranch.id ? "text-blue-700" : "text-gray-700"}`}>
+                              分支 {idx + 1}
+                            </div>
+                            {bp.is_selected ? (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">选中</span>
+                            ) : (
+                              !isLocked && (
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const siblings = branchParts.filter((p) => p.id !== bp.id).map((p) => p.id);
+                                    handleSetDefaultBranch(bp.id, siblings);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.stopPropagation();
+                                      const siblings = branchParts.filter((p) => p.id !== bp.id).map((p) => p.id);
+                                      handleSetDefaultBranch(bp.id, siblings);
+                                    }
+                                  }}
+                                  className="text-[10px] px-1.5 py-0.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50"
+                                >
+                                  设为选中
+                                </span>
+                              )
+                            )}
                           </div>
                           <div className="space-y-0.5">
                             {bp.part_number && (
@@ -2512,8 +2714,9 @@ export default function MobileItemEditor({
                             </div>
                           </div>
                         </button>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2542,6 +2745,30 @@ export default function MobileItemEditor({
                       <span className="text-gray-900 font-mono text-xs">{activeBranch.part_number || "-"}</span>
                     </div>
                   )}
+                  {/* 单据名称（供应商采购单上的名称，可能与配件名称不同） */}
+                  {detailEditing ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 text-xs">单据名称</span>
+                      <input
+                        type="text"
+                        key={activeBranch.id + "-docname"}
+                        defaultValue={activeBranch.document_name || ""}
+                        onBlur={(e) => {
+                          const val = e.target.value.trim() || null;
+                          if (val !== (activeBranch.document_name || null)) {
+                            savePartField(activeBranch.id, "document_name", val);
+                          }
+                        }}
+                        placeholder="采购单名称"
+                        className="w-32 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                      />
+                    </div>
+                  ) : activeBranch.document_name ? (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 text-xs">单据名称</span>
+                      <span className="text-gray-900 text-xs">{activeBranch.document_name}</span>
+                    </div>
+                  ) : null}
                   {/* 数量 + 库存 */}
                   <div className="grid grid-cols-2 gap-3">
                     {detailEditing ? (
@@ -2860,7 +3087,7 @@ export default function MobileItemEditor({
 
                 {/* 操作按钮 */}
                 {detailEditing && (
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex flex-wrap gap-2 pt-2">
                     <button
                       type="button"
                       onClick={() => {
@@ -2868,7 +3095,7 @@ export default function MobileItemEditor({
                         setSelectedPartForDetail(null);
                       }}
                       disabled={loading}
-                      className="flex-1 px-3 py-2 text-xs text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 disabled:opacity-50"
+                      className="flex-1 min-w-[5rem] px-3 py-2 text-xs text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 disabled:opacity-50"
                     >
                       替换配件
                     </button>
@@ -2876,10 +3103,20 @@ export default function MobileItemEditor({
                       type="button"
                       onClick={() => deletePart(activeBranch.id, activeBranch.name)}
                       disabled={loading}
-                      className="flex-1 px-3 py-2 text-xs text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                      className="flex-1 min-w-[5rem] px-3 py-2 text-xs text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50"
                     >
-                      删除
+                      {branchParts.length > 1 ? "删本分支" : "删除"}
                     </button>
+                    {branchParts.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteGroup(activeBranch)}
+                        disabled={loading}
+                        className="flex-1 min-w-[5rem] px-3 py-2 text-xs text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+                      >
+                        删整个配件
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -2911,6 +3148,18 @@ export default function MobileItemEditor({
           vehicleModelId={vehicleModelId}
           defaultNameQuery={replacePartTarget.name}
           replacedPartName={replacePartTarget.name}
+          compact
+        />
+      )}
+
+      {/* 添加分支选择器 */}
+      {addBranchTarget && (
+        <PartPickerModal
+          open={true}
+          onClose={() => setAddBranchTarget(null)}
+          onConfirm={(parts) => handleAddBranches(addBranchTarget, parts)}
+          vehicleModelId={vehicleModelId}
+          defaultNameQuery={addBranchTarget.name}
           compact
         />
       )}

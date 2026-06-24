@@ -265,6 +265,7 @@ export default async function WorkOrderDetailPage({
   interface PartBranch {
     id: string;
     part_name_id?: string | null;
+    branch_group_id?: string | null;
     alias_name?: string;
     parts?: { name?: string } | null;
     name?: string;
@@ -286,7 +287,7 @@ export default async function WorkOrderDetailPage({
     const parts = partsByItem[itemId] as PartBranch[];
     const groups: Record<string, { name: string; parts: PartBranch[] }> = {};
     for (const p of parts) {
-      const key = p.part_name_id || `no_name_${p.id}`;
+      const key = p.branch_group_id || p.part_name_id || `no_name_${p.id}`;
       if (!groups[key]) {
         groups[key] = {
           name: p.alias_name || p.parts?.name || p.name || p.part_names?.name || '未命名配件',
@@ -329,6 +330,8 @@ export default async function WorkOrderDetailPage({
     totalCommission += comm.diagnosis + comm.repair + comm.sales + comm.qc;
   }
   for (const p of itemParts || []) {
+    /* 只对被选中的默认分支计提成（未选中的备选分支不卖给客户、不计提成） */
+    if (!p.is_selected) continue;
     const revenue = (p.quantity || 0) * (p.unit_price || 0);
     const cost = (p.quantity || 0) * (p.unit_cost || 0);
     const comm = calculatePartCommission(p.parts, p.part_names, revenue, cost);
@@ -755,7 +758,10 @@ export default async function WorkOrderDetailPage({
                                 notes: (p.notes as string) || null,
                                 part_id: (p.part_id as string) || null,
                                 part_name_id: (p.part_name_id as string) || null,
+                                branch_group_id: (p.branch_group_id as string) || null,
                                 category: (p.part_names as { part_categories?: { name?: string } | null } | null)?.part_categories?.name || (p.parts as { part_categories?: { name?: string } | null } | null)?.part_categories?.name || null,
+                                is_selected: (p.is_selected as boolean) || false,
+                                document_name: (p.document_name as string) || null,
                                 pickedQty: pickingByPart[p.id as string] || 0,
                               }))}
                               partInventory={inventoryByPart}
