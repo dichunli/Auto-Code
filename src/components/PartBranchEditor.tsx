@@ -443,6 +443,10 @@ export default function PartBranchEditor({
     if (!confirm("确定删除此配件分支吗？")) return;
     setSaving(true);
     const { error } = await supabase.from("work_order_item_parts").delete().eq("id", part.id);
+    /* 删的若是选中分支，则把同目录剩余分支的第一条设为选中，保证始终有一条被选中 */
+    if (!error && part.is_selected && siblingIds.length > 0) {
+      await supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", siblingIds[0]);
+    }
     setSaving(false);
     if (error) {
       alert("删除失败: " + error.message);

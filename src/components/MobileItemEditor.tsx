@@ -1016,8 +1016,21 @@ export default function MobileItemEditor({
   /* 删除已有配件 */
   async function deletePart(partId: string, partName: string) {
     if (!confirm(`确定删除配件「${partName}」？`)) return;
+    const target = parts.find((p) => p.id === partId);
     setLoading(true);
     const { error } = await supabase.from("work_order_item_parts").delete().eq("id", partId);
+    /* 删的若是选中分支，则把同目录剩余分支的第一条设为选中，保证始终有一条被选中 */
+    if (!error && target?.is_selected && target.branch_group_id) {
+      const remaining = parts.filter(
+        (p) => p.branch_group_id === target.branch_group_id && p.id !== partId
+      );
+      if (remaining.length > 0) {
+        await supabase
+          .from("work_order_item_parts")
+          .update({ is_selected: true })
+          .eq("id", remaining[0].id);
+      }
+    }
     setLoading(false);
     if (error) {
       alert("删除失败: " + error.message);
