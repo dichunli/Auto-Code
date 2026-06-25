@@ -269,7 +269,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
           *,
           part_names(name, unit, category_id, part_categories(name), sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value),
           parts(*, part_categories(name), part_brands(name))
-        `).in("work_order_item_id", itemIds).order("sort_order", { ascending: true }).order("created_at", { ascending: true })
+        `).in("work_order_item_id", itemIds).order("sort_order", { ascending: true }).order("created_at", { ascending: true }).order("id", { ascending: true })
       : Promise.resolve({ data: [] }),
 
     knowledgeConditions.length > 0
