@@ -663,10 +663,13 @@ export default async function WorkOrderDetailPage({
               )}
             </div>
             <div className="divide-y divide-gray-300">
-              {requirements?.map((req: { id: string; seq: number; submitted_by?: string; assigned_to_profile?: { full_name?: string } | null; assignment_type?: string; notes?: string }) => (
+              {requirements?.map((req: { id: string; seq: number; submitted_by?: string; assigned_to_profile?: { full_name?: string } | null; assignment_type?: string; notes?: string }, reqIdx: number) => {
+                /* 显示用序号：按当前列表位置，删中间需求后自动重排（需求1/2/3…） */
+                const 显示序号 = reqIdx + 1;
+                return (
                 <div key={req.id} className="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
                   <div className="flex items-center gap-2 flex-wrap px-4 py-3 md:px-6 md:py-4 border-b border-gray-100 bg-gray-50/50">
-                    <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} 项目数={(itemsByRequirement.get(req.id) || []).length} />
+                    <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} 项目数={(itemsByRequirement.get(req.id) || []).length} displaySeq={显示序号} />
                     {req.assigned_to_profile && req.assignment_type === 'claimed' && (
                       <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px]">
                         领单: {req.assigned_to_profile.full_name}
@@ -782,7 +785,7 @@ export default async function WorkOrderDetailPage({
                             <div className="hidden md:block overflow-x-auto relative">
                               <div className="flex items-center min-w-max">
                                 <div className="flex items-center gap-2 flex-shrink-0">
-                                  <span className="text-xs text-gray-400 font-mono">{req.seq}.{itemIdx + 1}</span>
+                                  <span className="text-xs text-gray-400 font-mono">{显示序号}.{itemIdx + 1}</span>
                                   <span className="font-medium text-gray-900">{item.alias_name || item.name}</span>
                                   {item.alias_name && (
                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">别名</span>
@@ -964,7 +967,7 @@ export default async function WorkOrderDetailPage({
                                       {groups.map((group, groupIdx) => (
                                         <div key={group.repId} className="space-y-2">
                                           <PartGroupHeader
-                                            seqLabel={`${req.seq}.${itemIdx + 1}.${groupIdx + 1}`}
+                                            seqLabel={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}`}
                                             name={group.name}
                                             parts={group.parts}
                                             isLocked={isLocked}
@@ -998,7 +1001,7 @@ export default async function WorkOrderDetailPage({
                                               itemId={item.id}
                                               inventoryQty={pInventory}
                                               suppliers={suppliers || []}
-                                              seqLabel={`${req.seq}.${itemIdx + 1}.${groupIdx + 1}.${branchIdx + 1}`}
+                                              seqLabel={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}.${branchIdx + 1}`}
                                               canDelete={group.parts.length > 1}
                                               siblingIds={group.parts.filter((sp: PartBranch) => sp.id !== p.id).map((sp: PartBranch) => sp.id)}
                                               vehicleModelId={vehicleModelId}
@@ -1074,7 +1077,8 @@ export default async function WorkOrderDetailPage({
                         })()}
                       </div>
                 </div>
-              ))}
+                );
+              })}
               {(!requirements || requirements.length === 0) && (
                 <div className="px-6 py-8 text-center text-gray-400">暂无需求记录</div>
               )}
