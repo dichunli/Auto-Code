@@ -7,6 +7,7 @@ import { formatCurrency } from "@/lib/utils";
 import { PartPickerModal } from "./PartPickerModal";
 import { ImageViewer } from "./ImageViewer";
 import { useUpload } from "@/hooks/useUpload";
+import { 标记本地编辑配件 } from "@/lib/localEditSignal";
 
 interface PartBranch {
   id: string;
@@ -174,7 +175,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       part_name_id: parts[0].part_name_id || null,
       name: parts[0].name || null,
       unit: parts[0].unit || parts[0].part_names?.unit || parts[0].parts?.unit || "件",
-      quantity: null,
+      quantity: parts[0].quantity ?? null,
       customer_opinion: "pending",
       is_selected: false,
     });
@@ -203,22 +204,36 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     const val = qty.trim() === "" ? null : parseInt(qty, 10);
     if (val !== null && (isNaN(val) || val < 1)) return;
     setSaving(true);
-    if (parts[0]) {
+    // 数量是整组共用：同组所有分支一起更新（修复"只改第一个分支导致选中其他分支时小计算错"）
+    const ids = parts.map((p) => p.id).filter(Boolean);
+    if (ids.length > 0) {
+      ids.forEach((id) => 标记本地编辑配件(id));
       const { error } = await supabase
         .from("work_order_item_parts")
         .update({ quantity: val })
-        .eq("id", parts[0].id);
+        .in("id", ids);
       setSaving(false);
       if (error) {
         alert("保存数量失败: " + error.message);
         return;
       }
+      // 广播给小计/费用合计组件：同组每个分支都通知，局部更新不刷整页
+      ids.forEach((id) => {
+        window.dispatchEvent(
+          new CustomEvent("wo-part-update", {
+            detail: { itemId, partId: id, quantity: val ?? 0 },
+          })
+        );
+      });
+    } else {
+      setSaving(false);
     }
-    router.refresh();
   }
 
   async function saveNotes() {
     if (!parts[0]) return;
+    // 标记本地编辑，避免实时同步刷整页（备注本就局部更新，无需刷）
+    标记本地编辑配件(parts[0].id);
     const { error } = await supabase
       .from("work_order_item_parts")
       .update({ notes })

@@ -34,10 +34,10 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
 
   async function handleAdd() {
     setAdding(true);
-    // 查询当前分支的 part_name_id，用于新分支
+    // 查询当前分支的 part_name_id、数量，用于新分支（数量整组共用）
     const { data: current } = await supabase
       .from("work_order_item_parts")
-      .select("part_name_id, name, unit")
+      .select("part_name_id, name, unit, quantity")
       .eq("id", partId)
       .single();
 
@@ -46,7 +46,7 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       part_name_id: current?.part_name_id || null,
       name: current?.name || null,
       unit: current?.unit || "件",
-      quantity: 1,
+      quantity: current?.quantity ?? null,
       customer_opinion: "pending",
     });
 
