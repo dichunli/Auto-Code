@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { usePriceVisibility } from "./PriceVisibilityContext";
+import { 标记本地编辑配件 } from "@/lib/localEditSignal";
 
 function toFixed2(val: string | number | null | undefined): string {
   if (val === "" || val === null || val === undefined) return "";
@@ -85,6 +86,26 @@ export default function PartBranchEditor({
     setLocalArrived(part.is_arrived || false);
     setLocalOpinion(part.customer_opinion || "pending");
   }, [part.is_selected, part.is_purchased, part.is_arrived, part.customer_opinion]);
+
+  // 监听同组分支的选中广播：自己被选中→点亮，自己作为兄弟被取消→灭掉
+  // （配合不刷整页的局部更新，保证单选互斥仍然正确）
+  useEffect(() => {
+    function handleSelectSync(e: Event) {
+      const detail = (e as CustomEvent).detail as {
+        partId?: string;
+        is_selected?: boolean;
+        siblingResetIds?: string[];
+      } | null;
+      if (!detail) return;
+      if (detail.partId === part.id && detail.is_selected !== undefined) {
+        setLocalSelected(detail.is_selected);
+      } else if (detail.siblingResetIds?.includes(part.id)) {
+        setLocalSelected(false);
+      }
+    }
+    window.addEventListener("wo-part-update", handleSelectSync as EventListener);
+    return () => window.removeEventListener("wo-part-update", handleSelectSync as EventListener);
+  }, [part.id]);
 
   // 只有一个分支时默认选中
   useEffect(() => {
@@ -248,6 +269,8 @@ export default function PartBranchEditor({
 
   async function saveField(field: string, value: string) {
     setSaving(true);
+    // 标记这条配件是"自己刚改的"，避免实时同步把整页刷掉
+    标记本地编辑配件(part.id);
     const updateData: Record<string, string | number | null> = {};
     if (field === "unit_cost" || field === "unit_price" || field === "cost_price") {
       updateData[field] = value === "" ? null : parseFloat(value);
@@ -535,7 +558,7 @@ export default function PartBranchEditor({
       {/* 所有内容一行显示 */}
       <div className="flex items-center flex-nowrap gap-x-3 gap-y-1 overflow-x-auto">
         {/* 选中（单选：空心圆带点） */}
-        <label className={`relative w-4 h-4 cursor-pointer ${isLocked || saving ? "opacity-50" : ""}`}>
+        <label className={`relative w-4 h-4 cursor-pointer ${isLocked ? "opacity-50" : ""}`}>
           <input
             type="checkbox"
             checked={localSelected}
@@ -543,13 +566,17 @@ export default function PartBranchEditor({
               const next = !localSelected;
               if (!canDelete && !next) return;
               setLocalSelected(next);
-              setSaving(true);
-              // 单选：选中当前时，取消同组其他分支的选中状态
+              // 标记这些分支是"自己刚改的"，避免实时同步把整页刷掉（自己/别人改动区分）
+              标记本地编辑配件(part.id);
+              if (next) siblingIds.forEach((id) => 标记本地编辑配件(id));
+              // 选中态已立即生效，写库放后台并行执行（不再整行变灰，性能优化）
+              const writes = [];
               if (next && siblingIds.length > 0) {
-                await supabase.from("work_order_item_parts").update({ is_selected: false }).in("id", siblingIds);
+                writes.push(supabase.from("work_order_item_parts").update({ is_selected: false }).in("id", siblingIds));
               }
-              const { error } = await supabase.from("work_order_item_parts").update({ is_selected: next }).eq("id", part.id);
-              setSaving(false);
+              writes.push(supabase.from("work_order_item_parts").update({ is_selected: next }).eq("id", part.id));
+              const results = await Promise.all(writes);
+              const error = results.find((r) => r.error)?.error;
               if (error) {
                 alert("操作失败: " + error.message);
                 setLocalSelected(!next);
@@ -567,7 +594,7 @@ export default function PartBranchEditor({
                 })
               );
             }}
-            disabled={isLocked || saving}
+            disabled={isLocked}
             className="peer sr-only"
           />
           <span className="absolute inset-0 rounded-full border-2 border-gray-300 peer-checked:border-blue-600 bg-white flex items-center justify-center transition-colors">

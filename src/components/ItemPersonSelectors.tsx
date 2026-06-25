@@ -33,8 +33,10 @@ interface Props {
 
 export function ItemPersonSelectors({ itemId, submitterId, inspectorId, profiles, mechanicGroups, existingMechanics }: Props) {
   const [openInspector, setOpenInspector] = useState(false);
+  // 本地保存当前质检人ID，保存成功后只更新这里、不刷新整页（性能优化）
+  const [currentInspectorId, setCurrentInspectorId] = useState<string | null>(inspectorId ?? null);
 
-  const inspectorName = profiles.find((p) => p.id === inspectorId)?.full_name || "未分配";
+  const inspectorName = profiles.find((p) => p.id === currentInspectorId)?.full_name || "未分配";
 
   return (
     <div className="flex items-center gap-1.5 text-xs">
@@ -58,8 +60,9 @@ export function ItemPersonSelectors({ itemId, submitterId, inspectorId, profiles
         open={openInspector}
         itemId={itemId}
         profiles={profiles}
-        inspectorId={inspectorId}
+        inspectorId={currentInspectorId}
         onClose={() => setOpenInspector(false)}
+        onSaved={(newId) => setCurrentInspectorId(newId)}
       />
     </div>
   );

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 
 interface Profile {
   id: string;
@@ -15,10 +14,11 @@ interface Props {
   profiles: Profile[];
   inspectorId?: string | null;
   onClose: () => void;
+  /* 保存成功后回调，传回新的质检人ID，由父组件更新显示，避免刷新整页（性能优化） */
+  onSaved?: (newInspectorId: string | null) => void;
 }
 
-export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onClose }: Props) {
-  const router = useRouter();
+export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onClose, onSaved }: Props) {
   const supabase = createClient();
   const [selected, setSelected] = useState<string>(inspectorId || "");
   const [loading, setLoading] = useState(false);
@@ -36,7 +36,8 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
       alert("保存失败: " + error.message);
       return;
     }
-    router.refresh();
+    // 写库成功后才通知父组件更新显示，保证数据正确性
+    onSaved?.(selected || null);
     onClose();
   }
 
@@ -57,7 +58,7 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
       alert("领单失败: " + error.message);
       return;
     }
-    router.refresh();
+    onSaved?.(user.id);
     onClose();
   }
 
@@ -73,7 +74,7 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
       alert("取消失败: " + error.message);
       return;
     }
-    router.refresh();
+    onSaved?.(null);
     onClose();
   }
 
