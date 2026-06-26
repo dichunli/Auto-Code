@@ -17,11 +17,11 @@ body {
   color: var(--foreground);
 }
 
-/* 分支切换时详情内容的淡入上滑动画 */
-@keyframes branchSwitchFadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+/* 分支切换时详情内容的淡入淡出动画 */
+@keyframes branchSwitchFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .branch-switch-anim {
-  animation: branchSwitchFadeIn 0.22s ease-out;
+  animation: branchSwitchFade 0.25s ease-in-out;
 }
