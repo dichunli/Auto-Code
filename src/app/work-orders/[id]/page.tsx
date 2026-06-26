@@ -965,7 +965,9 @@ export default async function WorkOrderDetailPage({
                                       extraIdMap={extraIdMap}
                                     >
                                       {groups.map((group, groupIdx) => (
-                                        <div key={group.repId} className="space-y-2 rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2.5">
+                                        <div key={group.repId} className="rounded-lg border border-gray-300 overflow-hidden bg-white shadow-sm">
+                                          {/* 配件名称目录：蓝色标题栏（父级） */}
+                                          <div className="bg-blue-50 px-3 py-2 border-b border-gray-200">
                                           <PartGroupHeader
                                             seqLabel={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}`}
                                             name={group.name}
@@ -974,7 +976,10 @@ export default async function WorkOrderDetailPage({
                                             itemId={item.id}
                                             existingImages={group.images}
                                           />
-                                          <div className="space-y-3 pl-4 border-l-[3px] border-blue-300 ml-2 mt-2">
+                                          </div>
+                                          {/* 配件分支区：白底 + 蓝色缩进导轨（子级） */}
+                                          <div className="px-3 py-3">
+                                          <div className="space-y-3 pl-4 border-l-[3px] border-blue-300 ml-1">
                                             {group.parts.map((p: PartBranch, branchIdx: number) => {
                                           const pPickedQty = pickingByPart[p.id] || 0;
                                           const pReturnQty = returnByPart[p.id] || 0;
@@ -1063,6 +1068,7 @@ export default async function WorkOrderDetailPage({
                                           );
                                         })}
                                       </div>
+                                          </div>
                                     </div>
                                   ))}
                                 </SortableList>
