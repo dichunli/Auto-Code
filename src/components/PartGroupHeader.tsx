@@ -436,7 +436,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         {/* 左侧可滚动内容区 */}
         <div className="flex-1 flex items-center gap-1.5 overflow-x-auto min-w-0">
           <span className="text-xs text-gray-400 font-mono shrink-0">{seqLabel}</span>
-          <span className="font-medium text-sm shrink-0 text-gray-800">
+          <span className="font-semibold text-[15px] shrink-0 text-gray-900">
             {name}
           </span>
 

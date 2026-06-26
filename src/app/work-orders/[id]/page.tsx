@@ -965,7 +965,7 @@ export default async function WorkOrderDetailPage({
                                       extraIdMap={extraIdMap}
                                     >
                                       {groups.map((group, groupIdx) => (
-                                        <div key={group.repId} className="space-y-2">
+                                        <div key={group.repId} className="space-y-2 rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2.5">
                                           <PartGroupHeader
                                             seqLabel={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}`}
                                             name={group.name}
@@ -974,7 +974,7 @@ export default async function WorkOrderDetailPage({
                                             itemId={item.id}
                                             existingImages={group.images}
                                           />
-                                          <div className="space-y-3 pl-3 border-l-2 border-gray-300 ml-1">
+                                          <div className="space-y-3 pl-4 border-l-[3px] border-blue-300 ml-2 mt-2">
                                             {group.parts.map((p: PartBranch, branchIdx: number) => {
                                           const pPickedQty = pickingByPart[p.id] || 0;
                                           const pReturnQty = returnByPart[p.id] || 0;
