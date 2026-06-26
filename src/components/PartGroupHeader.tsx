@@ -11,6 +11,7 @@ import { useUpload } from "@/hooks/useUpload";
 interface PartBranch {
   id: string;
   part_name_id?: string | null;
+  branch_group_id?: string | null;
   name?: string | null;
   unit?: string | null;
   quantity?: number | null;
@@ -146,12 +147,12 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     return () => window.removeEventListener("wo-part-update", handleUpdate as EventListener);
   }, [parts]);
 
-  // 该配件组下所有分支的单价与小计（使用 liveParts 实现实时刷新）
+  // 该目录的单价与小计：按"被选中分支"计（小计 = 目录数量 × 选中分支销售价）
   const { unitPrice, subtotal } = useMemo(() => {
-    const total = liveParts.reduce((sum, p) => sum + ((p.quantity || 0) * (p.unit_price || 0)), 0);
-    const prices = liveParts.map((p) => p.unit_price).filter((v): v is number => v != null && v > 0);
-    const price = prices.length > 0 ? prices[0] : 0;
-    return { unitPrice: price, subtotal: total };
+    const selected = liveParts.find((p) => p.is_selected) || liveParts[0];
+    const price = selected?.unit_price || 0;
+    const qty = selected?.quantity || 0;
+    return { unitPrice: price, subtotal: price * qty };
   }, [liveParts]);
 
   useEffect(() => {
@@ -171,10 +172,11 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     }
     const { error } = await supabase.from("work_order_item_parts").insert({
       work_order_item_id: itemId,
+      branch_group_id: parts[0].branch_group_id || null,
       part_name_id: parts[0].part_name_id || null,
       name: parts[0].name || null,
       unit: parts[0].unit || parts[0].part_names?.unit || parts[0].parts?.unit || "件",
-      quantity: null,
+      quantity: parts[0].quantity ?? null,
       customer_opinion: "pending",
       is_selected: false,
     });
@@ -204,10 +206,12 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     if (val !== null && (isNaN(val) || val < 1)) return;
     setSaving(true);
     if (parts[0]) {
-      const { error } = await supabase
-        .from("work_order_item_parts")
-        .update({ quantity: val })
-        .eq("id", parts[0].id);
+      /* 数量为目录级：同步更新该目录(branch_group_id)下所有分支 */
+      let q = supabase.from("work_order_item_parts").update({ quantity: val });
+      q = parts[0].branch_group_id
+        ? q.eq("branch_group_id", parts[0].branch_group_id)
+        : q.eq("id", parts[0].id);
+      const { error } = await q;
       setSaving(false);
       if (error) {
         alert("保存数量失败: " + error.message);
@@ -432,7 +436,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         {/* 左侧可滚动内容区 */}
         <div className="flex-1 flex items-center gap-1.5 overflow-x-auto min-w-0">
           <span className="text-xs text-gray-400 font-mono shrink-0">{seqLabel}</span>
-          <span className="font-medium text-sm shrink-0 text-gray-800">
+          <span className="font-semibold text-[15px] shrink-0 text-gray-900">
             {name}
           </span>
 

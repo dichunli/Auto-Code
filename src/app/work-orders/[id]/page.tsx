@@ -265,6 +265,7 @@ export default async function WorkOrderDetailPage({
   interface PartBranch {
     id: string;
     part_name_id?: string | null;
+    branch_group_id?: string | null;
     alias_name?: string;
     parts?: { name?: string } | null;
     name?: string;
@@ -286,7 +287,7 @@ export default async function WorkOrderDetailPage({
     const parts = partsByItem[itemId] as PartBranch[];
     const groups: Record<string, { name: string; parts: PartBranch[] }> = {};
     for (const p of parts) {
-      const key = p.part_name_id || `no_name_${p.id}`;
+      const key = p.branch_group_id || p.part_name_id || `no_name_${p.id}`;
       if (!groups[key]) {
         groups[key] = {
           name: p.alias_name || p.parts?.name || p.name || p.part_names?.name || '未命名配件',
@@ -329,6 +330,8 @@ export default async function WorkOrderDetailPage({
     totalCommission += comm.diagnosis + comm.repair + comm.sales + comm.qc;
   }
   for (const p of itemParts || []) {
+    /* 只对被选中的默认分支计提成（未选中的备选分支不卖给客户、不计提成） */
+    if (!p.is_selected) continue;
     const revenue = (p.quantity || 0) * (p.unit_price || 0);
     const cost = (p.quantity || 0) * (p.unit_cost || 0);
     const comm = calculatePartCommission(p.parts, p.part_names, revenue, cost);
@@ -660,10 +663,13 @@ export default async function WorkOrderDetailPage({
               )}
             </div>
             <div className="divide-y divide-gray-300">
-              {requirements?.map((req: { id: string; seq: number; submitted_by?: string; assigned_to_profile?: { full_name?: string } | null; assignment_type?: string; notes?: string }) => (
+              {requirements?.map((req: { id: string; seq: number; submitted_by?: string; assigned_to_profile?: { full_name?: string } | null; assignment_type?: string; notes?: string }, reqIdx: number) => {
+                /* 显示用序号：按当前列表位置，删中间需求后自动重排（需求1/2/3…） */
+                const 显示序号 = reqIdx + 1;
+                return (
                 <div key={req.id} className="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
                   <div className="flex items-center gap-2 flex-wrap px-4 py-3 md:px-6 md:py-4 border-b border-gray-100 bg-gray-50/50">
-                    <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} 项目数={(itemsByRequirement.get(req.id) || []).length} />
+                    <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} 项目数={(itemsByRequirement.get(req.id) || []).length} displaySeq={显示序号} />
                     {req.assigned_to_profile && req.assignment_type === 'claimed' && (
                       <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px]">
                         领单: {req.assigned_to_profile.full_name}
@@ -755,7 +761,10 @@ export default async function WorkOrderDetailPage({
                                 notes: (p.notes as string) || null,
                                 part_id: (p.part_id as string) || null,
                                 part_name_id: (p.part_name_id as string) || null,
+                                branch_group_id: (p.branch_group_id as string) || null,
                                 category: (p.part_names as { part_categories?: { name?: string } | null } | null)?.part_categories?.name || (p.parts as { part_categories?: { name?: string } | null } | null)?.part_categories?.name || null,
+                                is_selected: (p.is_selected as boolean) || false,
+                                document_name: (p.document_name as string) || null,
                                 pickedQty: pickingByPart[p.id as string] || 0,
                               }))}
                               partInventory={inventoryByPart}
@@ -776,7 +785,7 @@ export default async function WorkOrderDetailPage({
                             <div className="hidden md:block overflow-x-auto relative">
                               <div className="flex items-center min-w-max">
                                 <div className="flex items-center gap-2 flex-shrink-0">
-                                  <span className="text-xs text-gray-400 font-mono">{req.seq}.{itemIdx + 1}</span>
+                                  <span className="text-xs text-gray-400 font-mono">{显示序号}.{itemIdx + 1}</span>
                                   <span className="font-medium text-gray-900">{item.alias_name || item.name}</span>
                                   {item.alias_name && (
                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">别名</span>
@@ -956,16 +965,21 @@ export default async function WorkOrderDetailPage({
                                       extraIdMap={extraIdMap}
                                     >
                                       {groups.map((group, groupIdx) => (
-                                        <div key={group.repId} className="space-y-2">
+                                        <div key={group.repId} className="rounded-lg border border-gray-300 overflow-hidden bg-white shadow-sm">
+                                          {/* 配件名称目录：蓝色标题栏（父级） */}
+                                          <div className="bg-blue-50 px-3 py-2 border-b border-gray-200">
                                           <PartGroupHeader
-                                            seqLabel={`${req.seq}.${itemIdx + 1}.${groupIdx + 1}`}
+                                            seqLabel={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}`}
                                             name={group.name}
                                             parts={group.parts}
                                             isLocked={isLocked}
                                             itemId={item.id}
                                             existingImages={group.images}
                                           />
-                                          <div className="space-y-3 pl-3 border-l-2 border-gray-300 ml-1">
+                                          </div>
+                                          {/* 配件分支区：白底 + 蓝色缩进导轨（子级） */}
+                                          <div className="px-3 py-3">
+                                          <div className="space-y-3 pl-4 border-l-[3px] border-blue-300 ml-1">
                                             {group.parts.map((p: PartBranch, branchIdx: number) => {
                                           const pPickedQty = pickingByPart[p.id] || 0;
                                           const pReturnQty = returnByPart[p.id] || 0;
@@ -992,7 +1006,7 @@ export default async function WorkOrderDetailPage({
                                               itemId={item.id}
                                               inventoryQty={pInventory}
                                               suppliers={suppliers || []}
-                                              seqLabel={`${req.seq}.${itemIdx + 1}.${groupIdx + 1}.${branchIdx + 1}`}
+                                              seqLabel={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}.${branchIdx + 1}`}
                                               canDelete={group.parts.length > 1}
                                               siblingIds={group.parts.filter((sp: PartBranch) => sp.id !== p.id).map((sp: PartBranch) => sp.id)}
                                               vehicleModelId={vehicleModelId}
@@ -1054,6 +1068,7 @@ export default async function WorkOrderDetailPage({
                                           );
                                         })}
                                       </div>
+                                          </div>
                                     </div>
                                   ))}
                                 </SortableList>
@@ -1068,7 +1083,8 @@ export default async function WorkOrderDetailPage({
                         })()}
                       </div>
                 </div>
-              ))}
+                );
+              })}
               {(!requirements || requirements.length === 0) && (
                 <div className="px-6 py-8 text-center text-gray-400">暂无需求记录</div>
               )}

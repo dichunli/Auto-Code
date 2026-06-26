@@ -72,6 +72,7 @@ interface InsertPartRow {
   unit_price?: number | null;
   quantity?: number | null;
   customer_opinion: string;
+  is_selected?: boolean;
 }
 
 interface Props {
@@ -377,6 +378,7 @@ export function AddWorkOrderItemPartModal({
         unit: sp.unit,
         quantity: sp.quantity,
         customer_opinion: "pending",
+        is_selected: true,
       });
     }
 
@@ -395,6 +397,7 @@ export function AddWorkOrderItemPartModal({
         unit_price: sp.unit_price,
         quantity: sp.quantity,
         customer_opinion: "pending",
+        is_selected: true,
       });
     }
 
