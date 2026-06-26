@@ -2673,10 +2673,10 @@ export default function MobileItemEditor({
                           key={bp.id}
                           type="button"
                           onClick={() => setDetailActiveBranchId(bp.id)}
-                          className={`flex-shrink-0 w-36 p-2.5 rounded-xl border text-left snap-start transition-colors ${
+                          className={`flex-shrink-0 w-36 p-2.5 rounded-xl border text-left snap-start transition-all duration-200 ${
                             bp.id === activeBranch.id
-                              ? "bg-blue-50 border-blue-400 shadow-sm"
-                              : "bg-white border-gray-200 hover:bg-gray-50"
+                              ? "bg-blue-50 border-blue-400 shadow-md ring-2 ring-blue-200 scale-[1.03]"
+                              : "bg-white border-gray-200 hover:bg-gray-50 active:scale-95"
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1">
@@ -2733,8 +2733,8 @@ export default function MobileItemEditor({
                   </div>
                 )}
 
-                {/* 基本信息 */}
-                <div className="space-y-2">
+                {/* 基本信息（按当前分支 key，切换分支时重新播放淡入动画） */}
+                <div key={activeBranch.id} className="space-y-2 branch-switch-anim">
                   {/* 编码 */}
                   {detailEditing ? (
                     <div className="flex items-center justify-between">
