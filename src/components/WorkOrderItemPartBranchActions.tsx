@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 标记本地结构编辑 } from "@/lib/localEditSignal";
 
 interface Props {
   partId: string;
@@ -29,6 +30,7 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       alert("删除失败: " + error.message);
       return;
     }
+    标记本地结构编辑(itemId);
     router.refresh();
   }
 
@@ -55,6 +57,7 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       alert("添加失败: " + error.message);
       return;
     }
+    标记本地结构编辑(itemId);
     router.refresh();
   }
 

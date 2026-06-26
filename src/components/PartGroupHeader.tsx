@@ -7,7 +7,7 @@ import { formatCurrency } from "@/lib/utils";
 import { PartPickerModal } from "./PartPickerModal";
 import { ImageViewer } from "./ImageViewer";
 import { useUpload } from "@/hooks/useUpload";
-import { 标记本地编辑配件 } from "@/lib/localEditSignal";
+import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localEditSignal";
 
 interface PartBranch {
   id: string;
@@ -147,12 +147,12 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     return () => window.removeEventListener("wo-part-update", handleUpdate as EventListener);
   }, [parts]);
 
-  // 该配件组下所有分支的单价与小计（使用 liveParts 实现实时刷新）
+  // 配件组小计 = 选中分支的 数量 × 单价（与项目小计、底部合计口径一致：只算选中分支）
   const { unitPrice, subtotal } = useMemo(() => {
-    const total = liveParts.reduce((sum, p) => sum + ((p.quantity || 0) * (p.unit_price || 0)), 0);
-    const prices = liveParts.map((p) => p.unit_price).filter((v): v is number => v != null && v > 0);
-    const price = prices.length > 0 ? prices[0] : 0;
-    return { unitPrice: price, subtotal: total };
+    const selected = liveParts.find((p) => p.is_selected);
+    const price = selected?.unit_price || 0;
+    const qty = selected?.quantity || 0;
+    return { unitPrice: price, subtotal: price * qty };
   }, [liveParts]);
 
   useEffect(() => {
@@ -184,6 +184,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       alert("添加失败: " + error.message);
       return;
     }
+    标记本地结构编辑(itemId || "");
     router.refresh();
   }
 
@@ -197,6 +198,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       alert("删除失败: " + error.message);
       return;
     }
+    标记本地结构编辑(itemId || "");
     router.refresh();
   }
 
@@ -423,6 +425,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     setShowModal(false);
     setPendingName(null);
     setSelectedRealPart(null);
+    标记本地结构编辑(itemId || "");
     router.refresh();
   }
 

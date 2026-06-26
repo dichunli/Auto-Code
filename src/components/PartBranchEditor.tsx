@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { usePriceVisibility } from "./PriceVisibilityContext";
-import { 标记本地编辑配件 } from "@/lib/localEditSignal";
+import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localEditSignal";
 
 function toFixed2(val: string | number | null | undefined): string {
   if (val === "" || val === null || val === undefined) return "";
@@ -71,6 +71,8 @@ export default function PartBranchEditor({
   const clickTimer = useRef<NodeJS.Timeout | null>(null);
 
   function refresh() {
+    // 结构性改动(删分支/关联编码)自己刷新拉新数据，标记后避免实时同步重复刷
+    标记本地结构编辑(itemId || "");
     router.refresh();
   }
 
@@ -78,6 +80,8 @@ export default function PartBranchEditor({
   const [localSelected, setLocalSelected] = useState(part.is_selected || false);
   const [localPurchased, setLocalPurchased] = useState(part.is_purchased || false);
   const [localArrived, setLocalArrived] = useState(part.is_arrived || false);
+  // 已删除：删除成功后立即隐藏本行（视觉瞬间消失），不等整页刷新
+  const [deleted, setDeleted] = useState(false);
   const [localOpinion, setLocalOpinion] = useState(part.customer_opinion || "pending");
 
   useEffect(() => {
@@ -426,6 +430,7 @@ export default function PartBranchEditor({
     const next = !localPurchased;
     setLocalPurchased(next);
     setSaving(true);
+    标记本地编辑配件(part.id);
     const { error } = await supabase
       .from("work_order_item_parts")
       .update({ is_purchased: next })
@@ -446,6 +451,7 @@ export default function PartBranchEditor({
     const next = !localArrived;
     setLocalArrived(next);
     setSaving(true);
+    标记本地编辑配件(part.id);
     const { error } = await supabase
       .from("work_order_item_parts")
       .update({ is_arrived: next })
@@ -465,13 +471,57 @@ export default function PartBranchEditor({
     }
     if (!confirm("确定删除此配件分支吗？")) return;
     setSaving(true);
+
+    // 实时查该组存活分支（可靠判断能否删 + 删后补选，不依赖页面加载时的静态数据）
+    let 同组: { id: string; is_selected?: boolean | null }[] = [];
+    if (part.part_name_id) {
+      const { data } = await supabase
+        .from("work_order_item_parts")
+        .select("id, is_selected, sort_order")
+        .eq("work_order_item_id", itemId)
+        .eq("part_name_id", part.part_name_id)
+        .order("sort_order", { ascending: true });
+      同组 = data || [];
+    }
+    // 至少保留一个分支
+    if (同组.length > 0 && 同组.length <= 1) {
+      setSaving(false);
+      alert("至少需要保留一个配件分支");
+      return;
+    }
+
+    标记本地编辑配件(part.id);
+    // 删的若是选中分支，先广播"被删分支不选中"，小计立即不再算它
+    if (localSelected) {
+      window.dispatchEvent(
+        new CustomEvent("wo-part-update", {
+          detail: { itemId, partId: part.id, is_selected: false },
+        })
+      );
+    }
     const { error } = await supabase.from("work_order_item_parts").delete().eq("id", part.id);
-    setSaving(false);
     if (error) {
+      setSaving(false);
       alert("删除失败: " + error.message);
       return;
     }
-    refresh();
+    // 立即隐藏本行（瞬间消失）
+    setDeleted(true);
+
+    // 删除后：若该组剩余分支已无选中，把第一条设为选中（基于实时查到的真实数据，可靠）
+    const 剩余 = 同组.filter((p) => p.id !== part.id);
+    if (剩余.length > 0 && !剩余.some((p) => p.is_selected)) {
+      const 第一条id = 剩余[0].id;
+      await supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", 第一条id);
+      标记本地编辑配件(第一条id);
+      window.dispatchEvent(
+        new CustomEvent("wo-part-update", {
+          detail: { itemId, partId: 第一条id, is_selected: true, siblingResetIds: [] },
+        })
+      );
+    }
+    setSaving(false);
+    // 不整页刷新：行已移除、选中已转移、小计已更新（避免远程刷整页的空白卡顿）
   }
 
   // 供应商推荐排序
@@ -552,6 +602,9 @@ export default function PartBranchEditor({
   }
 
   const partName = part.alias_name || part.parts?.name || part.name || part.part_names?.name || "未命名配件";
+
+  // 已删除：立即隐藏本行，不等整页刷新
+  if (deleted) return null;
 
   return (
     <div className={`bg-white rounded border border-gray-100 p-2 ${saving ? "opacity-50" : ""}`}>
@@ -814,6 +867,7 @@ export default function PartBranchEditor({
                 const next = localOpinion === "agree" ? "pending" : "agree";
                 setLocalOpinion(next);
                 setSaving(true);
+                标记本地编辑配件(part.id);
                 supabase.from("work_order_item_parts").update({ customer_opinion: next }).eq("id", part.id).then(({ error }) => {
                   setSaving(false);
                   if (error) {
@@ -832,6 +886,7 @@ export default function PartBranchEditor({
               const next = localOpinion === "reject" ? "pending" : "reject";
               setLocalOpinion(next);
               setSaving(true);
+              标记本地编辑配件(part.id);
               supabase.from("work_order_item_parts").update({ customer_opinion: next }).eq("id", part.id).then(({ error }) => {
                 setSaving(false);
                 if (error) {

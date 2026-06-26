@@ -31,3 +31,28 @@ export function 是否自己刚改的配件(分支id: string, 窗口毫秒: numb
   }
   return true;
 }
+
+// 项目ID -> 自己最近"结构性改动"(加/删分支等需自己刷新)的时间戳
+const 最近本地结构编辑 = new Map<string, number>();
+
+/**
+ * 标记：某个维修项目刚被自己"结构性改动"(加/删分支、删组、换名等)。
+ * 这类操作自己会 router.refresh 拉到最新(含别人的改动)，
+ * 所以实时同步无需再为这次改动重复刷整页。
+ */
+export function 标记本地结构编辑(项目id: string): void {
+  if (!项目id) return;
+  最近本地结构编辑.set(项目id, Date.now());
+}
+
+/** 判断：某个项目是否刚被自己结构性改动(在有效窗口内) */
+export function 是否自己刚结构改动的项目(项目id: string, 窗口毫秒: number = 默认窗口): boolean {
+  if (!项目id) return false;
+  const t = 最近本地结构编辑.get(项目id);
+  if (!t) return false;
+  if (Date.now() - t > 窗口毫秒) {
+    最近本地结构编辑.delete(项目id);
+    return false;
+  }
+  return true;
+}
