@@ -34,8 +34,14 @@ export default function ItemSubtotalDisplay({ itemId, itemTotalPrice, parts }: P
         quantity?: number;
         is_selected?: boolean;
         siblingResetIds?: string[];
+        deleted?: boolean;
       };
       if (detail.itemId !== itemId) return;
+      // 分支被删除：从计算中移除该条
+      if (detail.deleted) {
+        setPartsState((prev) => prev.filter((p) => p.id !== detail.partId));
+        return;
+      }
       setPartsState((prev) => {
         let next = prev.map((p) => {
           if (p.id !== detail.partId) return p;

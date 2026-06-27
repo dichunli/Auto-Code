@@ -491,14 +491,6 @@ export default function PartBranchEditor({
     }
 
     标记本地编辑配件(part.id);
-    // 删的若是选中分支，先广播"被删分支不选中"，小计立即不再算它
-    if (localSelected) {
-      window.dispatchEvent(
-        new CustomEvent("wo-part-update", {
-          detail: { itemId, partId: part.id, is_selected: false },
-        })
-      );
-    }
     const { error } = await supabase.from("work_order_item_parts").delete().eq("id", part.id);
     if (error) {
       setSaving(false);
@@ -507,6 +499,12 @@ export default function PartBranchEditor({
     }
     // 立即隐藏本行（瞬间消失）
     setDeleted(true);
+    // 广播"已删除"，让小计/费用合计组件把这条从计算中彻底移除（不再残留金额）
+    window.dispatchEvent(
+      new CustomEvent("wo-part-update", {
+        detail: { itemId, partId: part.id, deleted: true },
+      })
+    );
 
     // 删除后：若该组剩余分支已无选中，把第一条设为选中（基于实时查到的真实数据，可靠）
     const 剩余 = 同组.filter((p) => p.id !== part.id);

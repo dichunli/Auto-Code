@@ -126,10 +126,16 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         unit_price?: number;
         quantity?: number;
         is_selected?: boolean;
+        deleted?: boolean;
       };
       if (!detail) return;
       const partIds = parts.map((p) => p.id);
       if (!partIds.includes(detail.partId)) return;
+      // 分支被删除：从本组计算中移除该条（小计不再残留它的金额）
+      if (detail.deleted) {
+        setLiveParts((prev) => prev.filter((p) => p.id !== detail.partId));
+        return;
+      }
       setLiveParts((prev) =>
         prev.map((p) =>
           p.id === detail.partId

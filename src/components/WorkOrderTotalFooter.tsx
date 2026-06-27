@@ -39,7 +39,13 @@ export default function WorkOrderTotalFooter({ items, parts, advancePaymentTotal
         quantity?: number;
         is_selected?: boolean;
         siblingResetIds?: string[];
+        deleted?: boolean;
       };
+      // 分支被删除：从计算中移除该条
+      if (detail.deleted) {
+        setPartsState((prev) => prev.filter((p) => p.id !== detail.partId));
+        return;
+      }
       setPartsState((prev) => {
         let next = prev.map((p) => {
           if (p.id !== detail.partId) return p;
