@@ -471,55 +471,39 @@ export default function PartBranchEditor({
     }
     if (!confirm("确定删除此配件分支吗？")) return;
     setSaving(true);
-
-    // 实时查该组存活分支（可靠判断能否删 + 删后补选，不依赖页面加载时的静态数据）
-    let 同组: { id: string; is_selected?: boolean | null }[] = [];
-    if (part.part_name_id) {
-      const { data } = await supabase
-        .from("work_order_item_parts")
-        .select("id, is_selected, sort_order")
-        .eq("work_order_item_id", itemId)
-        .eq("part_name_id", part.part_name_id)
-        .order("sort_order", { ascending: true });
-      同组 = data || [];
-    }
-    // 至少保留一个分支
-    if (同组.length > 0 && 同组.length <= 1) {
-      setSaving(false);
-      alert("至少需要保留一个配件分支");
-      return;
-    }
-
     标记本地编辑配件(part.id);
-    const { error } = await supabase.from("work_order_item_parts").delete().eq("id", part.id);
+
+    // 原子删除：数据库一个事务完成"删分支 + 转移选中"，远程不稳也不会做一半（避免0选中）
+    const { data, error } = await supabase.rpc("delete_part_branch", { p_part_id: part.id });
+    setSaving(false);
+
     if (error) {
-      setSaving(false);
       alert("删除失败: " + error.message);
       return;
     }
+    const result = data as { success: boolean; error?: string; new_selected_id?: string | null };
+    if (!result?.success) {
+      alert(result?.error || "删除失败");
+      return;
+    }
+
     // 立即隐藏本行（瞬间消失）
     setDeleted(true);
-    // 广播"已删除"，让小计/费用合计组件把这条从计算中彻底移除（不再残留金额）
+    // 广播"已删除"：小计/费用合计组件把这条从计算中彻底移除
     window.dispatchEvent(
       new CustomEvent("wo-part-update", {
         detail: { itemId, partId: part.id, deleted: true },
       })
     );
-
-    // 删除后：若该组剩余分支已无选中，把第一条设为选中（基于实时查到的真实数据，可靠）
-    const 剩余 = 同组.filter((p) => p.id !== part.id);
-    if (剩余.length > 0 && !剩余.some((p) => p.is_selected)) {
-      const 第一条id = 剩余[0].id;
-      await supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", 第一条id);
-      标记本地编辑配件(第一条id);
+    // 若数据库转移了选中，广播让新选中分支点亮、小计按它重算
+    if (result.new_selected_id) {
+      标记本地编辑配件(result.new_selected_id);
       window.dispatchEvent(
         new CustomEvent("wo-part-update", {
-          detail: { itemId, partId: 第一条id, is_selected: true, siblingResetIds: [] },
+          detail: { itemId, partId: result.new_selected_id, is_selected: true, siblingResetIds: [] },
         })
       );
     }
-    setSaving(false);
-    // 不整页刷新：行已移除、选中已转移、小计已更新（避免远程刷整页的空白卡顿）
   }
 
   // 供应商推荐排序
