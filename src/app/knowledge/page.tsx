@@ -21,7 +21,6 @@ export default async function KnowledgePage({
     <KnowledgeContent
       initialArticles={result.articles || []}
       initialCategories={result.categories || []}
-      initialReadCounts={result.readCounts || {}}
       initialTotal={result.total || 0}
       initialTotalPages={result.totalPages || 1}
       initialSegments={result.segments || []}

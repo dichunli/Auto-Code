@@ -23,11 +23,9 @@ function 是外部图片(url: string): boolean {
   }
 }
 
-/* 递归扫描并替换外部图片 */
+/* 递归扫描并替换外部图片，同级块并行处理 */
 export async function 处理外部图片(blocks: BlockItem[]): Promise<BlockItem[]> {
-  const result: BlockItem[] = [];
-
-  for (const block of blocks) {
+  const tasks = blocks.map(async (block) => {
     const newBlock: BlockItem = { ...block };
 
     if (block.type === "image" && typeof block.props?.url === "string") {
@@ -53,8 +51,8 @@ export async function 处理外部图片(blocks: BlockItem[]): Promise<BlockItem
       newBlock.children = await 处理外部图片(block.children);
     }
 
-    result.push(newBlock);
-  }
+    return newBlock;
+  });
 
-  return result;
+  return Promise.all(tasks);
 }
