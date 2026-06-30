@@ -32,6 +32,8 @@ interface Props {
   media: MediaItem[];
   /* 该需求下挂的维修项目数量：>0 时不允许删除该需求 */
   项目数?: number;
+  /* 显示用序号（按当前列表位置，删中间项后自动重排）；缺省时回退到存储的 seq */
+  displaySeq?: number;
 }
 
 function MediaTypeIcon({ type }: { type: string }) {
@@ -59,7 +61,7 @@ function MediaTypeIcon({ type }: { type: string }) {
   return null;
 }
 
-export default function RequirementTitle({ req, orderId, profiles, media, 项目数 = 0 }: Props) {
+export default function RequirementTitle({ req, orderId, profiles, media, 项目数 = 0, displaySeq }: Props) {
   const [open, setOpen] = useState(false);
   const hasImage = media.some((m) => m.media_type === "image");
   const hasVideo = media.some((m) => m.media_type === "video");
@@ -73,7 +75,7 @@ export default function RequirementTitle({ req, orderId, profiles, media, 项目
           onClick={() => setOpen(true)}
           className="text-left text-sm text-gray-900 hover:text-blue-600 transition-colors"
         >
-          <span className="text-blue-600 mr-1">需求{req.seq}</span>
+          <span className="text-blue-600 mr-1">需求{displaySeq ?? req.seq}</span>
           <span className="font-medium">{req.description}</span>
         </button>
         {(hasImage || hasVideo || hasAudio) && (

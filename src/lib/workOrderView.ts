@@ -45,6 +45,7 @@ export interface InspectionRecord {
 export interface PartBranch {
   id: string;
   part_name_id?: string | null;
+  branch_group_id?: string | null;
   alias_name?: string;
   parts?: { name?: string } | null;
   name?: string;
@@ -271,7 +272,7 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
     const parts = partsByItem[itemId] as PartBranch[];
     const groups: Record<string, { name: string; parts: PartBranch[] }> = {};
     for (const p of parts) {
-      const key = p.part_name_id || `no_name_${p.id}`;
+      const key = p.branch_group_id || p.part_name_id || `no_name_${p.id}`;
       if (!groups[key]) {
         groups[key] = {
           name: p.alias_name || p.parts?.name || p.name || p.part_names?.name || '未命名配件',
@@ -314,6 +315,8 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
     totalCommission += comm.diagnosis + comm.repair + comm.sales + comm.qc;
   }
   for (const p of itemParts || []) {
+    /* 只对被选中的默认分支计提成（未选中的备选分支不卖给客户、不计提成） */
+    if (!p.is_selected) continue;
     const revenue = (p.quantity || 0) * (p.unit_price || 0);
     const cost = (p.quantity || 0) * (p.unit_cost || 0);
     const comm = calculatePartCommission(p.parts, p.part_names, revenue, cost);

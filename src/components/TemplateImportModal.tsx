@@ -117,8 +117,10 @@ export function TemplateImportModal({ vehicleId, orderId, onClose, onSuccess }: 
 
         if (itemErr || !createdItem) throw itemErr || new Error("导入项目失败");
 
-        // 3. 导入配件
-        for (const part of item.vehicle_maintenance_template_parts || []) {
+        // 3. 导入配件（按模板顺序写入 sort_order，保证显示顺序与模板一致）
+        const 配件列表 = item.vehicle_maintenance_template_parts || [];
+        for (let 序 = 0; 序 < 配件列表.length; 序++) {
+          const part = 配件列表[序];
           const { error: partErr } = await supabase.from("work_order_item_parts").insert({
             work_order_item_id: createdItem.id,
             part_name_id: part.part_name_id,
@@ -130,6 +132,8 @@ export function TemplateImportModal({ vehicleId, orderId, onClose, onSuccess }: 
             unit_cost: part.unit_cost,
             unit_price: part.unit_price,
             customer_opinion: "agree",
+            sort_order: 序,
+            is_selected: true,
           });
           if (partErr) throw partErr;
         }

@@ -12,6 +12,7 @@ import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localE
 interface PartBranch {
   id: string;
   part_name_id?: string | null;
+  branch_group_id?: string | null;
   name?: string | null;
   unit?: string | null;
   quantity?: number | null;
@@ -178,6 +179,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     }
     const { error } = await supabase.from("work_order_item_parts").insert({
       work_order_item_id: itemId,
+      branch_group_id: parts[0].branch_group_id || null,
       part_name_id: parts[0].part_name_id || null,
       name: parts[0].name || null,
       unit: parts[0].unit || parts[0].part_names?.unit || parts[0].parts?.unit || "件",
@@ -456,7 +458,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         {/* 左侧可滚动内容区 */}
         <div className="flex-1 flex items-center gap-1.5 overflow-x-auto min-w-0">
           <span className="text-xs text-gray-400 font-mono shrink-0">{seqLabel}</span>
-          <span className="font-medium text-sm shrink-0 text-gray-800">
+          <span className="font-semibold text-[15px] shrink-0 text-gray-900">
             {name}
           </span>
 
