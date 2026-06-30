@@ -225,6 +225,7 @@ export function Navbar() {
   const supabase = useMemo(() => createClient(), []);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
     async function fetchCounts() {
@@ -303,7 +304,7 @@ export function Navbar() {
     try {
       await supabase.auth.signOut();
     } catch {
-      // 忽略登出错误，强制跳转
+      /* 忽略登出错误，强制跳转 */
     }
     router.push("/login");
     router.refresh();
@@ -365,7 +366,7 @@ export function Navbar() {
             个人信息
           </Link>
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className="w-full px-3 py-2 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors text-left"
           >
             退出登录
@@ -379,6 +380,35 @@ export function Navbar() {
           className="fixed inset-0 bg-black/50 z-20 md:hidden"
           onClick={() => setMobileOpen(false)}
         />
+      )}
+
+      {/* 退出登录确认弹窗 */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-sm mx-4">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">退出登录</h3>
+            <p className="text-sm text-gray-500 mb-6">确定要退出当前账号吗？</p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  handleLogout();
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700"
+              >
+                确定退出
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
