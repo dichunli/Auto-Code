@@ -86,10 +86,15 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
     initialContent ? JSON.stringify(initialContent) : ""
   );
   const debouncedContent = useDebounce(editorContent, 500);
+  const onChangeRef = useRef(onChange);
 
   useEffect(() => {
-    onChange(debouncedContent);
-  }, [debouncedContent, onChange]);
+    onChangeRef.current = onChange;
+  });
+
+  useEffect(() => {
+    onChangeRef.current(debouncedContent);
+  }, [debouncedContent]);
 
   const uploadFile = useCallback(async (file: File) => {
     let uploadFile = file;

@@ -8,14 +8,6 @@
 
 import { 中文分词 } from "./chineseSegmenter";
 
-interface BlockItem {
-  id: string;
-  type: string;
-  props: Record<string, unknown>;
-  content?: unknown;
-  children?: BlockItem[];
-}
-
 /* 从内容块中提取纯文本，用于生成搜索文本 */
 function 提取内容块文本(内容块: unknown): string {
   if (!Array.isArray(内容块)) return "";
