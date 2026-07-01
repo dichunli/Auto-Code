@@ -174,9 +174,9 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   async function handleAddBranch() {
     if (!itemId || !parts[0]) return;
     setSaving(true);
-    if (parts.length === 1) {
-      await supabase.from("work_order_item_parts").update({ is_selected: false }).eq("id", parts[0].id);
-    }
+    // 铁律：每个目录有且仅有一个选中分支。组里已有选中→新分支不选中；
+    // 组里没有选中（遗留脏数据）→ 新分支自动补为选中。不动已有老分支。
+    const 组已有选中 = liveParts.some((p) => p.is_selected);
     const { error } = await supabase.from("work_order_item_parts").insert({
       work_order_item_id: itemId,
       branch_group_id: parts[0].branch_group_id || null,
@@ -185,7 +185,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       unit: parts[0].unit || parts[0].part_names?.unit || parts[0].parts?.unit || "件",
       quantity: parts[0].quantity ?? null,
       customer_opinion: "pending",
-      is_selected: false,
+      is_selected: !组已有选中,
     });
     setSaving(false);
     if (error) {
