@@ -47,9 +47,11 @@ interface Props {
   isLocked: boolean;
   itemId?: string;
   existingImages?: string[];
+  // 加分支成功后回调（把数据库返回的真实整行交给父组件追加，实现即时出现、免整页刷新）
+  onBranchAdded?: (newRow: PartBranch) => void;
 }
 
-export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemId, existingImages = [] }: Props) {
+export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemId, existingImages = [], onBranchAdded }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -177,23 +179,48 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     // 铁律：每个目录有且仅有一个选中分支。组里已有选中→新分支不选中；
     // 组里没有选中（遗留脏数据）→ 新分支自动补为选中。不动已有老分支。
     const 组已有选中 = liveParts.some((p) => p.is_selected);
-    const { error } = await supabase.from("work_order_item_parts").insert({
+    const 新分支选中 = !组已有选中;
+    const 新配件数量 = parts[0].quantity ?? null;
+    const { data: inserted, error } = await supabase.from("work_order_item_parts").insert({
       work_order_item_id: itemId,
       branch_group_id: parts[0].branch_group_id || null,
       part_name_id: parts[0].part_name_id || null,
       name: parts[0].name || null,
       unit: parts[0].unit || parts[0].part_names?.unit || parts[0].parts?.unit || "件",
-      quantity: parts[0].quantity ?? null,
+      quantity: 新配件数量,
       customer_opinion: "pending",
-      is_selected: !组已有选中,
-    });
+      is_selected: 新分支选中,
+    }).select(`
+        *,
+        part_names(name, unit, category_id, part_categories(name), sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value),
+        parts(*, part_categories(name), part_brands(name))
+      `).single();
     setSaving(false);
-    if (error) {
-      alert("添加失败: " + error.message);
+    if (error || !inserted) {
+      alert("添加失败: " + (error?.message || "未知错误"));
       return;
     }
+    // 标记本地结构编辑，避免实时同步把整页刷掉
     标记本地结构编辑(itemId || "");
-    router.refresh();
+    if (onBranchAdded) {
+      // 本地即时追加新行（免整页刷新）。同时广播给小计/费用合计，让它们把新分支纳入计算。
+      onBranchAdded(inserted as unknown as PartBranch);
+      window.dispatchEvent(
+        new CustomEvent("wo-part-update", {
+          detail: {
+            itemId,
+            partId: (inserted as { id: string }).id,
+            added: true,
+            unit_price: (inserted as { unit_price?: number }).unit_price ?? 0,
+            quantity: 新配件数量 ?? 0,
+            is_selected: 新分支选中,
+          },
+        })
+      );
+    } else {
+      // 兜底：无回调时退回整页刷新（保证任何调用方都不会坏）
+      router.refresh();
+    }
   }
 
   async function handleDeleteGroup() {

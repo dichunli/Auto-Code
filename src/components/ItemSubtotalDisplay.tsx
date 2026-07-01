@@ -35,11 +35,21 @@ export default function ItemSubtotalDisplay({ itemId, itemTotalPrice, parts }: P
         is_selected?: boolean;
         siblingResetIds?: string[];
         deleted?: boolean;
+        added?: boolean;
       };
       if (detail.itemId !== itemId) return;
       // 分支被删除：从计算中移除该条
       if (detail.deleted) {
         setPartsState((prev) => prev.filter((p) => p.id !== detail.partId));
+        return;
+      }
+      // 新增分支：追加到计算集合（此后它的改价/选中才能被纳入小计）
+      if (detail.added) {
+        setPartsState((prev) =>
+          prev.some((p) => p.id === detail.partId)
+            ? prev
+            : [...prev, { id: detail.partId, unit_price: detail.unit_price || 0, quantity: detail.quantity || 0, is_selected: detail.is_selected || false }]
+        );
         return;
       }
       setPartsState((prev) => {

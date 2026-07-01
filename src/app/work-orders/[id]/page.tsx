@@ -2,15 +2,13 @@ import { getWorkOrderData } from "@/lib/workOrderData";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import FaultLightIcon from "@/components/FaultLightIcon";
-import { calculateItemCommission, calculatePartCommission } from "@/lib/commission";
-import { getPartWorkflowStatus } from "@/lib/partWorkflow";
+import { calculateItemCommission } from "@/lib/commission";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
 import { ReceptionInfoEditor } from "@/components/ReceptionInfoEditor";
 import { BatchEditWrapper } from "@/components/BatchEditWrapper";
 import { TemplateImportWrapper } from "@/components/TemplateImportWrapper";
-import { PartWorkflowActions } from "@/components/PartWorkflowActions";
 import { ConstructionControls } from "@/components/ConstructionControls";
 import { WorkOrderItemActions } from "@/components/WorkOrderItemActions";
 import { ItemPersonSelectors } from "@/components/ItemPersonSelectors";
@@ -24,9 +22,7 @@ import { ItemNotesEditor } from "@/components/ItemNotesEditor";
 import AddItemPartButton from "@/components/AddItemPartButton";
 import AddRequirementButton from "@/components/AddRequirementButton";
 import AddRequirementItemsButton from "@/components/AddRequirementItemsButton";
-import PartBranchEditor from "@/components/PartBranchEditor";
-import { PartBranchImages } from "@/components/PartBranchImages";
-import PartGroupHeader from "@/components/PartGroupHeader";
+import ItemPartGroup from "@/components/ItemPartGroup";
 import { WorkOrderToggleProvider, ShowCommission, ShowTimer } from "@/components/WorkOrderToggleContext";
 import { WorkOrderToggleBar } from "@/components/WorkOrderToggleBar";
 import PrintDropdown from "@/components/PrintDropdown";
@@ -706,112 +702,22 @@ export default async function WorkOrderDetailPage({
                                       extraIdMap={extraIdMap}
                                     >
                                       {groups.map((group, groupIdx) => (
-                                        <div key={group.repId} className="rounded-lg border border-gray-300 overflow-hidden bg-white shadow-sm">
-                                          {/* 配件名称目录：蓝色标题栏（父级） */}
-                                          <div className="bg-blue-50 px-3 py-2 border-b border-gray-200">
-                                          <PartGroupHeader
-                                            seqLabel={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}`}
-                                            name={group.name}
-                                            parts={group.parts}
-                                            isLocked={isLocked}
-                                            itemId={item.id}
-                                            existingImages={group.images}
-                                          />
-                                          </div>
-                                          {/* 配件分支区：白底 + 蓝色缩进导轨（子级） */}
-                                          <div className="px-3 py-3">
-                                          <div className="space-y-3 pl-4 border-l-[3px] border-blue-300 ml-1">
-                                            {group.parts.map((p: PartBranch, branchIdx: number) => {
-                                          const pPickedQty = pickingByPart[p.id] || 0;
-                                          const pReturnQty = returnByPart[p.id] || 0;
-                                          const pNetPicked = pPickedQty - pReturnQty;
-                                          const pInventory = inventoryByPart[p.part_id] || 0;
-                                          const pHasPendingSupplierReturn = pendingSupplierReturnByPart[p.id] || false;
-                                          const pStatus = getPartWorkflowStatus({
-                                            unit_cost: p.unit_cost,
-                                            unit_price: p.unit_price,
-                                            customer_opinion: p.customer_opinion,
-                                            is_purchased: p.is_purchased,
-                                            is_arrived: p.is_arrived,
-                                            part_id: p.part_id,
-                                            quantity: p.quantity,
-                                            inventoryQty: pInventory,
-                                            pickedQty: pNetPicked,
-                                            hasReturnRecords: pReturnQty > 0,
-                                            hasPendingSupplierReturn: pHasPendingSupplierReturn,
-                                          });
-                                          return (
-                                            <PartBranchEditor
-                                              key={p.id}
-                                              part={p}
-                                              itemId={item.id}
-                                              inventoryQty={pInventory}
-                                              suppliers={suppliers || []}
-                                              seqLabel={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}.${branchIdx + 1}`}
-                                              canDelete={group.parts.length > 1}
-                                              siblingIds={group.parts.filter((sp: PartBranch) => sp.id !== p.id).map((sp: PartBranch) => sp.id)}
-                                              vehicleModelId={vehicleModelId}
-                                              isLocked={isLocked}
-                                            >
-                                              {/* 空分支已到货 → 入库登记 */}
-                                              {p.is_arrived && !p.part_id && (
-                                                <Link
-                                                  href={`/inventory/in?auto_fill=1&branch_id=${encodeURIComponent(p.id)}&part_number=${encodeURIComponent(p.part_number || '')}&name=${encodeURIComponent(p.name || p.part_names?.name || '')}&unit=${encodeURIComponent(p.unit || p.part_names?.unit || '')}&brand=${encodeURIComponent(p.brand || '')}&specification=${encodeURIComponent(p.specification || '')}&unit_cost=${p.unit_cost || ''}&supplier=${encodeURIComponent(p.supplier_name || '')}`}
-                                                  className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 inline-block"
-                                                >
-                                                  入库登记
-                                                </Link>
-                                              )}
-                                              <div className="flex items-center flex-wrap gap-2">
-                                                <PartWorkflowActions
-                                                  status={pStatus}
-                                                  partName={p.alias_name || p.parts?.name || p.name || p.part_names?.name || "未命名配件"}
-                                                  workOrderItemPartId={p.id}
-                                                  partId={p.part_id}
-                                                  quantity={p.quantity}
-                                                  pickedQty={pNetPicked}
-                                                  returnQty={pReturnQty}
-                                                  suppliers={suppliers || []}
-                                                  logisticsCompanies={logisticsCompanies || []}
-                                                  locked={isLocked}
-                                                />
-                                              </div>
-                                              <ShowCommission>
-                                                {/* 配件提成 */}
-                                                {(() => {
-                                                  const revenue = (p.quantity || 0) * (p.unit_price || 0);
-                                                  const cost = (p.quantity || 0) * (p.unit_cost || 0);
-                                                  const comm = calculatePartCommission(p.parts, p.part_names, revenue, cost);
-                                                  if (comm.sales === 0 && comm.repair === 0 && comm.picking === 0 && comm.diagnosis === 0 && comm.qc === 0) return null;
-                                                  return (
-                                                    <div className="flex flex-wrap gap-2 text-xs">
-                                                      <span className="text-gray-400">提成:</span>
-                                                      {comm.sales > 0 && <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded">销售 {comm.sales.toFixed(2)}元</span>}
-                                                      {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
-                                                      {comm.picking > 0 && <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">领料 {comm.picking.toFixed(2)}元</span>}
-                                                      {comm.diagnosis > 0 && <span className="text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">诊断 {comm.diagnosis.toFixed(2)}元</span>}
-                                                      {comm.qc > 0 && <span className="text-pink-600 bg-pink-50 px-1.5 py-0.5 rounded">质检 {comm.qc.toFixed(2)}元</span>}
-                                                    </div>
-                                                  );
-                                                })()}
-                                              </ShowCommission>
-                                              {/* 物流信息 */}
-                                              {p.logistics_agreement && (
-                                                <span className="text-gray-400 text-[10px]">物流公司: {p.logistics_agreement}</span>
-                                              )}
-                                              {/* 备注 */}
-                                              {p.notes && (
-                                                <span className="text-gray-400 text-xs">{p.notes}</span>
-                                              )}
-                                              {/* 配件分支图片 */}
-                                              <PartBranchImages images={imagesByPart[p.id] || []} />
-                                            </PartBranchEditor>
-                                          );
-                                        })}
-                                      </div>
-                                          </div>
-                                    </div>
-                                  ))}
+                                        <ItemPartGroup
+                                          key={group.repId}
+                                          group={group}
+                                          itemId={item.id}
+                                          seqPrefix={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}`}
+                                          isLocked={isLocked}
+                                          vehicleModelId={vehicleModelId}
+                                          suppliers={suppliers || []}
+                                          logisticsCompanies={logisticsCompanies || []}
+                                          pickingByPart={pickingByPart}
+                                          returnByPart={returnByPart}
+                                          inventoryByPart={inventoryByPart}
+                                          pendingSupplierReturnByPart={pendingSupplierReturnByPart}
+                                          imagesByPart={imagesByPart}
+                                        />
+                                      ))}
                                 </SortableList>
                                   );
                                 })()}
