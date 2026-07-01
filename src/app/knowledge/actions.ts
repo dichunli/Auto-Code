@@ -78,44 +78,63 @@ export async function loadKnowledgeArticles(params: {
   let articles: 知识文章数据[] = [];
   let total = 0;
 
+  /* 构建筛选条件 */
+  function 应用筛选条件(
+    query: ReturnType<typeof supabase.from>,
+  ): ReturnType<typeof supabase.from> {
+    if (category) query = query.eq("category_id", category);
+    if (createdBy) query = query.eq("created_by", createdBy);
+    return query;
+  }
+
   if (searchKeywords.length > 0) {
-    /* 搜索模式：使用全文搜索 RPC，结果在服务端分页 */
-    const { data, error } = await supabase.rpc("search_knowledge_articles", {
-      search_keywords: searchKeywords,
-    });
+    /* 搜索模式：对标题和内容做 ilike 全库搜索，带分页 */
+    let countQuery = supabase
+      .from("knowledge_articles")
+      .select("*", { count: "exact", head: true });
+    countQuery = 应用筛选条件(countQuery);
+    for (const kw of searchKeywords) {
+      countQuery = countQuery.or(`title.ilike.%${kw}%,content.ilike.%${kw}%`);
+    }
+    const { count, error: countError } = await countQuery;
+    if (countError) {
+      return { success: false, error: countError.message, segments: searchKeywords };
+    }
+    total = count || 0;
+
+    let query = supabase
+      .from("knowledge_articles")
+      .select("*, knowledge_categories(name), profiles(full_name)")
+      .order("created_at", { ascending: false })
+      .range(fromIdx, toIdx);
+    query = 应用筛选条件(query);
+    for (const kw of searchKeywords) {
+      query = query.or(`title.ilike.%${kw}%,content.ilike.%${kw}%`);
+    }
+
+    const { data, error } = await query;
     if (error) {
       return { success: false, error: error.message, segments: searchKeywords };
     }
-    const all = (data || [])
-      .map((row: Record<string, unknown>) => ({
-        id: row.id as string,
-        title: row.title as string,
-        content: row.content as string,
-        content_blocks: row.content_blocks,
-        type: row.type as string,
-        created_at: row.created_at as string,
-        category_id: row.category_id as string | null,
-        created_by: row.created_by as string | null,
-        visibility: row.visibility as string,
-        category_name: row.category_name as string | null,
-        author_name: row.author_name as string | null,
-        score: row.score as number,
-      }))
-      .filter((a) => !createdBy || a.created_by === createdBy);
-
-    total = all.length;
-    articles = all.slice(fromIdx, fromIdx + pageSize);
+    articles = (data || []).map((a: Record<string, unknown>) => ({
+      id: a.id as string,
+      title: a.title as string,
+      content: a.content as string,
+      content_blocks: a.content_blocks,
+      type: a.type as string,
+      created_at: a.created_at as string,
+      category_id: a.category_id as string | null,
+      created_by: a.created_by as string | null,
+      visibility: a.visibility as string,
+      category_name: (a.knowledge_categories as { name: string } | null)?.name || null,
+      author_name: (a.profiles as { full_name: string } | null)?.full_name || null,
+    }));
   } else {
     /* 普通列表模式：数据库层真实分页 */
     let countQuery = supabase
       .from("knowledge_articles")
       .select("*", { count: "exact", head: true });
-    if (category) {
-      countQuery = countQuery.eq("category_id", category);
-    }
-    if (createdBy) {
-      countQuery = countQuery.eq("created_by", createdBy);
-    }
+    countQuery = 应用筛选条件(countQuery);
     const { count, error: countError } = await countQuery;
     if (countError) {
       return { success: false, error: countError.message };
@@ -127,13 +146,7 @@ export async function loadKnowledgeArticles(params: {
       .select("*, knowledge_categories(name), profiles(full_name)")
       .order("created_at", { ascending: false })
       .range(fromIdx, toIdx);
-
-    if (category) {
-      query = query.eq("category_id", category);
-    }
-    if (createdBy) {
-      query = query.eq("created_by", createdBy);
-    }
+    query = 应用筛选条件(query);
 
     const { data, error } = await query;
     if (error) {
