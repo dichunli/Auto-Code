@@ -97,7 +97,10 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   const unit = parts[0]?.unit || parts[0]?.part_names?.unit || parts[0]?.parts?.unit || "件";
   const category = parts[0]?.part_names?.part_categories?.name || parts[0]?.parts?.part_categories?.name;
 
-  const defaultQty = parts[0]?.quantity != null ? String(parts[0].quantity) : "";
+  // 数量为目录级（同组各分支应一致）。以"选中分支"的数量为准，与小计口径对齐；
+  // 若无选中则退回第一条。这样即使历史数据数量不一致，显示也与计价一致。
+  const 计价分支 = parts.find((p) => p.is_selected) || parts[0];
+  const defaultQty = 计价分支?.quantity != null ? String(计价分支.quantity) : "";
   const [qty, setQty] = useState(defaultQty);
 
   const [notes, setNotes] = useState(parts[0]?.notes || "");
@@ -129,6 +132,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         unit_price?: number;
         quantity?: number;
         is_selected?: boolean;
+        siblingResetIds?: string[];
         deleted?: boolean;
       };
       if (!detail) return;
@@ -139,8 +143,8 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         setLiveParts((prev) => prev.filter((p) => p.id !== detail.partId));
         return;
       }
-      setLiveParts((prev) =>
-        prev.map((p) =>
+      setLiveParts((prev) => {
+        let next = prev.map((p) =>
           p.id === detail.partId
             ? {
                 ...p,
@@ -149,8 +153,16 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
                 is_selected: detail.is_selected !== undefined ? detail.is_selected : p.is_selected,
               }
             : p
-        )
-      );
+        );
+        // 单选互斥：某分支被选中时，把同组其它分支重置为未选中
+        // （否则小计的 find(is_selected) 会拾到旧的选中分支，导致单价/小计算错）
+        if (detail.is_selected === true && detail.siblingResetIds && detail.siblingResetIds.length > 0) {
+          next = next.map((p) =>
+            detail.siblingResetIds!.includes(p.id) ? { ...p, is_selected: false } : p
+          );
+        }
+        return next;
+      });
     }
     window.addEventListener("wo-part-update", handleUpdate as EventListener);
     return () => window.removeEventListener("wo-part-update", handleUpdate as EventListener);
