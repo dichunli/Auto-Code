@@ -1029,6 +1029,9 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
             is_arrived: part.is_arrived || false,
             supplier_name: part.supplier_name || null,
             logistics_agreement: part.logistics_agreement || null,
+            // 新增配件各自成为独立目录(branch_group_id 由数据库默认生成)，
+            // 是该目录唯一分支即选中分支，否则整组0选中会导致小计¥0
+            is_selected: true,
           });
           if (partError) throw partError;
         }
