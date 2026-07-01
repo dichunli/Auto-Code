@@ -790,6 +790,9 @@ export function PendingReceiptList() {
     const newRow: Record<string, unknown> = {
       work_order_item_id: original.work_order_item_id,
       part_name_id: original.part_name_id,
+      // 补货行归回原配件的同一目录，避免自成一组；原行为选中默认分支，补货行不选中
+      branch_group_id: original.branch_group_id,
+      is_selected: false,
       part_id: original.part_id,
       part_number: original.part_number,
       name: original.name,
