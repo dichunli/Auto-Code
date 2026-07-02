@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/PageHeader";
 import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelector";
 import { 处理外部图片 } from "@/lib/processExternalImages";
 import { syncKnowledgeModelsFromVin } from "../../actions";
+import { 生成知识库搜索文本 } from "@/lib/knowledgeSearch";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
@@ -59,7 +60,6 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
   });
 
   /* 权限状态 */
-  const [canEdit, setCanEdit] = useState(false);
   const [checkingPermission, setCheckingPermission] = useState(true);
 
   /* 搜索添加维修项目名称 */
@@ -125,7 +125,6 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       const isOwner = article.created_by === currentUserId;
       const hasEditPermission = isAdmin || isOwner;
 
-      setCanEdit(hasEditPermission);
       setCheckingPermission(false);
 
       if (!hasEditPermission) {
@@ -301,11 +300,21 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
         return;
       }
 
-      /* 处理外部图片：自动下载到本地 */
+      /* 处理外部图片：并行下载到本地 */
       let contentBlocks = form.content_blocks ? JSON.parse(form.content_blocks) : null;
       if (contentBlocks && Array.isArray(contentBlocks)) {
         contentBlocks = await 处理外部图片(contentBlocks);
       }
+
+      /* 生成搜索文本（中文分词后空格拼接） */
+      const categoryName = categories.find((c) => c.id === form.category_id)?.name || "";
+      const searchText = 生成知识库搜索文本({
+        title: form.title,
+        content: form.content,
+        content_blocks: contentBlocks,
+        categoryName,
+        authorName: "",
+      });
 
       /* 获取当前用户 */
       const { data: { user: currentUser } } = await supabase.auth.getUser();
@@ -322,6 +331,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
           video_url: form.type === "video" ? form.video_url || null : null,
           visibility: form.visibility,
           created_by: currentUser?.id,
+          search_text: searchText,
         })
         .eq("id", articleId)
         .select();
@@ -366,8 +376,9 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       if (roleUpdateError) {
         alert("文章已保存，但岗位权限更新失败：" + roleUpdateError);
       }
-      /* 强制完整刷新，避免缓存显示旧数据 */
-      window.location.href = `/knowledge/${articleId}`;
+      /* 保存成功后软跳转到详情页 */
+      router.push(`/knowledge/${articleId}`);
+      router.refresh();
     } catch (err: unknown) {
       let message = "保存失败";
       if (err instanceof Error) {

@@ -591,11 +591,23 @@ export function 检查登录健康状况(): 登录健康结果 {
 export function 记录登录健康检查(): 登录健康结果 {
   const 结果 = 检查登录健康状况();
   if (!结果.健康) {
-    console.warn(
-      "[登录健康检查] ⚠️ 发现登录态异常：\n  - " + 结果.问题.join("\n  - "),
-      "\n详情:",
-      结果.详情
+    /*
+     * 对于「存储不一致」的情况，Supabase 客户端刷新 token 后会自动更新 localStorage，
+     * 但 cookie 可能滞后一个周期，这是正常的、不会导致功能问题。
+     * 如果页面能正常加载数据，忽略此警告即可。
+     * 只在有真正的严重问题时才打 warn 日志。
+     */
+    const 严重问题 = 结果.问题.filter((p) =>
+      !p.includes("localStorage 与 cookie 中的登录态不一致")
     );
+
+    if (严重问题.length > 0) {
+      console.warn(
+        "[登录健康检查] ⚠️ 发现登录态异常：\n  - " + 严重问题.join("\n  - "),
+        "\n详情:",
+        结果.详情
+      );
+    }
   }
   return 结果;
 }

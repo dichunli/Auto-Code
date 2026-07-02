@@ -4,17 +4,16 @@ import { useState, useRef } from "react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 
 interface Props {
-  toolId: string;
-  toolName: string;
-  toolCode: string;
+  location: string;
 }
 
-export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
+export default function LocationQrCode({ location }: Props) {
   const [open, setOpen] = useState(false);
-  const qrValue = `tool:${toolId}`;
+  const qrValue = `location:${location}`;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   function 打印标签纸() {
+    /* 适配 5cm × 3cm 条码标签纸（50mm 宽 × 30mm 高） */
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -25,7 +24,6 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
       return;
     }
 
-    /* 适配 5cm × 3cm 条码标签纸（50mm 宽 × 30mm 高） */
     const 样式 = `
       @page { size: 50mm 30mm; margin: 0; }
       body {
@@ -66,7 +64,7 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>工具标签 - ${toolName}</title>
+          <title>仓位码 - ${location}</title>
           <style>
             ${样式}
             .no-print {
@@ -86,9 +84,9 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
         <body>
           <div class="print-box">
             <div class="left">
-              <div class="title">${toolName}</div>
+              <div class="title">${location}</div>
             </div>
-            <div class="qr"><img src="${dataUrl}" alt="二维码" /></div>
+            <div class="qr"><img src="${dataUrl}" alt="仓位码" /></div>
           </div>
           <button class="no-print" onclick="window.print();">点击打印</button>
           <script>
@@ -104,25 +102,37 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
     打印窗口.document.close();
   }
 
+  if (!location) return null;
+
   return (
     <>
-      {/* 桌面版：文字按钮 */}
+      {/* 桌面版图标按钮 */}
       <button
         type="button"
-        onClick={() => setOpen(true)}
-        className="hidden lg:inline-flex text-xs px-2 py-1 text-blue-600 border border-blue-200 rounded hover:bg-blue-50"
-      >
-        二维码
-      </button>
-
-      {/* 移动端：纯图标按钮（默认显示） */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-gray-600 hover:text-blue-600 hover:bg-blue-50 active:scale-95 transition-transform"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        className="hidden sm:inline-flex ml-1 text-blue-600 hover:text-blue-800"
+        title="打印仓位码"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+        </svg>
+      </button>
+
+      {/* 移动端图标按钮 */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        className="sm:hidden ml-1 text-blue-600 hover:text-blue-800"
+        title="打印仓位码"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
         </svg>
       </button>
 
@@ -136,24 +146,22 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center space-y-3">
-              <h3 className="text-base font-semibold text-gray-900">工具二维码</h3>
-              <p className="text-sm text-gray-600">{toolName}</p>
-              <p className="text-xs text-gray-400">编码：{toolCode}</p>
+              <h3 className="text-base font-semibold text-gray-900">仓位码</h3>
+              <p className="text-sm text-gray-600">{location}</p>
               <div className="flex justify-center p-4 bg-white rounded-lg relative">
                 <QRCodeSVG value={qrValue} size={200} level="M" />
-                {/* 隐藏的 canvas 用于生成打印图片 */}
                 <div className="absolute opacity-0 pointer-events-none">
                   <QRCodeCanvas value={qrValue} size={200} level="M" ref={canvasRef} />
                 </div>
               </div>
-              <p className="text-xs text-gray-400">扫码可直接借用或归还该工具</p>
+              <p className="text-xs text-gray-400">扫码可识别仓位位置</p>
             </div>
             <div className="mt-5 flex justify-end gap-2">
               {/* 桌面端显示打印按钮 */}
               <button
                 type="button"
                 onClick={打印标签纸}
-                className="hidden lg:inline-flex px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                className="hidden sm:inline-flex px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
                 打印二维码
               </button>
