@@ -51,12 +51,12 @@ export default function LocationQrCode({ location }: Props) {
         align-items: center;
       }
       .title {
-        font-size: 16px;
+        font-size: 20px;
         font-weight: bold;
-        line-height: 1.3;
+        line-height: 1.2;
         word-break: break-all;
       }
-      .qr img { width: 12mm; height: 12mm; }
+      .qr img { width: 10mm; height: 10mm; }
     `;
 
     打印窗口.document.write(`
