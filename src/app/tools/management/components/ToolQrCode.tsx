@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { useState, useRef } from "react";
+import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 
 interface Props {
   toolId: string;
@@ -12,6 +12,121 @@ interface Props {
 export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
   const [open, setOpen] = useState(false);
   const qrValue = `tool:${toolId}`;
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  function 打开打印窗口(样式: string) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const dataUrl = canvas.toDataURL("image/png");
+    const 打印窗口 = window.open("", "_blank", "width=700,height=500");
+    if (!打印窗口) {
+      alert("请允许浏览器打开弹窗，否则无法打印");
+      return;
+    }
+
+    打印窗口.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>工具二维码 - ${toolName}</title>
+          <style>
+            ${样式}
+            .no-print {
+              margin-top: 16px;
+              padding: 8px 20px;
+              font-size: 14px;
+              cursor: pointer;
+              border: 1px solid #ccc;
+              background: #fff;
+              border-radius: 6px;
+            }
+            @media print {
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-box">
+            <div class="title">${toolName}</div>
+            <div class="code">${toolCode}</div>
+            <div class="qr"><img src="${dataUrl}" alt="二维码" /></div>
+          </div>
+          <button class="no-print" onclick="window.print();">点击打印</button>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 300);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    打印窗口.document.close();
+  }
+
+  function 打印A4() {
+    const 样式 = `
+      @page { size: A4; margin: 15mm; }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        text-align: center;
+        padding: 40px 20px;
+        margin: 0;
+      }
+      .print-box { display: inline-block; }
+      .title { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
+      .code { font-size: 14px; color: #666; margin-bottom: 24px; }
+      .qr img { width: 200px; height: 200px; }
+    `;
+    打开打印窗口(样式);
+  }
+
+  function 打印标签纸() {
+    /* 适配 5cm × 3cm 条码标签纸（50mm 宽 × 30mm 高） */
+    const 样式 = `
+      @page { size: 50mm 30mm; margin: 0; }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        text-align: center;
+        margin: 0;
+        padding: 0;
+        width: 50mm;
+        height: 30mm;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+      .print-box {
+        width: 50mm;
+        height: 30mm;
+        padding: 2mm;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+      }
+      .title {
+        font-size: 9px;
+        font-weight: bold;
+        line-height: 1.2;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin-bottom: 1mm;
+      }
+      .code {
+        font-size: 7px;
+        color: #666;
+        margin-bottom: 1mm;
+      }
+      .qr img { width: 18mm; height: 18mm; }
+    `;
+    打开打印窗口(样式);
+  }
 
   return (
     <>
@@ -48,16 +163,35 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
               <h3 className="text-base font-semibold text-gray-900">工具二维码</h3>
               <p className="text-sm text-gray-600">{toolName}</p>
               <p className="text-xs text-gray-400">编码：{toolCode}</p>
-              <div className="flex justify-center p-4 bg-white rounded-lg">
+              <div className="flex justify-center p-4 bg-white rounded-lg relative">
                 <QRCodeSVG value={qrValue} size={200} level="M" />
+                {/* 隐藏的 canvas 用于生成打印图片 */}
+                <div className="absolute opacity-0 pointer-events-none">
+                  <QRCodeCanvas value={qrValue} size={200} level="M" ref={canvasRef} />
+                </div>
               </div>
               <p className="text-xs text-gray-400">扫码可直接借用或归还该工具</p>
             </div>
-            <div className="mt-5 flex justify-end">
+            <div className="mt-5 flex justify-end gap-2">
+              {/* 桌面端显示打印按钮 */}
+              <button
+                type="button"
+                onClick={打印标签纸}
+                className="hidden sm:inline-flex px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+              >
+                打印（5×3cm 标签纸）
+              </button>
+              <button
+                type="button"
+                onClick={打印A4}
+                className="hidden sm:inline-flex px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                打印（A4）
+              </button>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 关闭
               </button>
