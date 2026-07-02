@@ -109,10 +109,9 @@ export default function ToolManagementPage() {
           .in(
             "tool_id",
             tools.map((t) => t.id)
-          )
-          .is("returned_at", null);
+          );
         const map = new Map<string, 借用记录>();
-        ((记录数据 as 借用记录[]) || []).forEach((r) => {
+        ((记录数据 as 借用记录[]) || []).filter(r => r.returned_at === null).forEach((r) => {
           map.set(r.tool_id, r);
         });
         set未归还记录(map);
