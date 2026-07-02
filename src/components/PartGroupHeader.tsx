@@ -176,6 +176,17 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     return { unitPrice: price, subtotal: price * qty };
   }, [liveParts]);
 
+  // 数量框跟随"选中分支"（计价分支）：切换选中或该分支数量变化时同步，
+  // 保证输入框显示的数量与小计计价口径一致。只在"选中分支的 id 或数量"变化时更新，
+  // 避免因其它分支改价广播触发的 liveParts 变化打断用户正在输入的数量。
+  const 选中分支信息 = useMemo(() => {
+    const sel = liveParts.find((p) => p.is_selected) || liveParts[0];
+    return { id: sel?.id, quantity: sel?.quantity };
+  }, [liveParts]);
+  useEffect(() => {
+    setQty(选中分支信息.quantity != null ? String(选中分支信息.quantity) : "");
+  }, [选中分支信息.id, 选中分支信息.quantity]);
+
   useEffect(() => {
     if (showModal) {
       setNameQuery("");
