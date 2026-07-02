@@ -7,6 +7,7 @@ import { formatCurrency } from "@/lib/utils";
 import { PartPickerModal } from "./PartPickerModal";
 import { ImageViewer } from "./ImageViewer";
 import { useUpload } from "@/hooks/useUpload";
+import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localEditSignal";
 
 interface PartBranch {
   id: string;
@@ -46,9 +47,11 @@ interface Props {
   isLocked: boolean;
   itemId?: string;
   existingImages?: string[];
+  // 加分支成功后回调（把数据库返回的真实整行交给父组件追加，实现即时出现、免整页刷新）
+  onBranchAdded?: (newRow: PartBranch) => void;
 }
 
-export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemId, existingImages = [] }: Props) {
+export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemId, existingImages = [], onBranchAdded }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -94,7 +97,10 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   const unit = parts[0]?.unit || parts[0]?.part_names?.unit || parts[0]?.parts?.unit || "件";
   const category = parts[0]?.part_names?.part_categories?.name || parts[0]?.parts?.part_categories?.name;
 
-  const defaultQty = parts[0]?.quantity != null ? String(parts[0].quantity) : "";
+  // 数量为目录级（同组各分支应一致）。以"选中分支"的数量为准，与小计口径对齐；
+  // 若无选中则退回第一条。这样即使历史数据数量不一致，显示也与计价一致。
+  const 计价分支 = parts.find((p) => p.is_selected) || parts[0];
+  const defaultQty = 计价分支?.quantity != null ? String(计价分支.quantity) : "";
   const [qty, setQty] = useState(defaultQty);
 
   const [notes, setNotes] = useState(parts[0]?.notes || "");
@@ -126,12 +132,19 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         unit_price?: number;
         quantity?: number;
         is_selected?: boolean;
+        siblingResetIds?: string[];
+        deleted?: boolean;
       };
       if (!detail) return;
       const partIds = parts.map((p) => p.id);
       if (!partIds.includes(detail.partId)) return;
-      setLiveParts((prev) =>
-        prev.map((p) =>
+      // 分支被删除：从本组计算中移除该条（小计不再残留它的金额）
+      if (detail.deleted) {
+        setLiveParts((prev) => prev.filter((p) => p.id !== detail.partId));
+        return;
+      }
+      setLiveParts((prev) => {
+        let next = prev.map((p) =>
           p.id === detail.partId
             ? {
                 ...p,
@@ -140,20 +153,39 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
                 is_selected: detail.is_selected !== undefined ? detail.is_selected : p.is_selected,
               }
             : p
-        )
-      );
+        );
+        // 单选互斥：某分支被选中时，把同组其它分支重置为未选中
+        // （否则小计的 find(is_selected) 会拾到旧的选中分支，导致单价/小计算错）
+        if (detail.is_selected === true && detail.siblingResetIds && detail.siblingResetIds.length > 0) {
+          next = next.map((p) =>
+            detail.siblingResetIds!.includes(p.id) ? { ...p, is_selected: false } : p
+          );
+        }
+        return next;
+      });
     }
     window.addEventListener("wo-part-update", handleUpdate as EventListener);
     return () => window.removeEventListener("wo-part-update", handleUpdate as EventListener);
   }, [parts]);
 
-  // 该目录的单价与小计：按"被选中分支"计（小计 = 目录数量 × 选中分支销售价）
+  // 配件组小计 = 选中分支的 数量 × 单价（与项目小计、底部合计口径一致：只算选中分支）
   const { unitPrice, subtotal } = useMemo(() => {
-    const selected = liveParts.find((p) => p.is_selected) || liveParts[0];
+    const selected = liveParts.find((p) => p.is_selected);
     const price = selected?.unit_price || 0;
     const qty = selected?.quantity || 0;
     return { unitPrice: price, subtotal: price * qty };
   }, [liveParts]);
+
+  // 数量框跟随"选中分支"（计价分支）：切换选中或该分支数量变化时同步，
+  // 保证输入框显示的数量与小计计价口径一致。只在"选中分支的 id 或数量"变化时更新，
+  // 避免因其它分支改价广播触发的 liveParts 变化打断用户正在输入的数量。
+  const 选中分支信息 = useMemo(() => {
+    const sel = liveParts.find((p) => p.is_selected) || liveParts[0];
+    return { id: sel?.id, quantity: sel?.quantity };
+  }, [liveParts]);
+  useEffect(() => {
+    setQty(选中分支信息.quantity != null ? String(选中分支信息.quantity) : "");
+  }, [选中分支信息.id, 选中分支信息.quantity]);
 
   useEffect(() => {
     if (showModal) {
@@ -167,25 +199,50 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   async function handleAddBranch() {
     if (!itemId || !parts[0]) return;
     setSaving(true);
-    if (parts.length === 1) {
-      await supabase.from("work_order_item_parts").update({ is_selected: false }).eq("id", parts[0].id);
-    }
-    const { error } = await supabase.from("work_order_item_parts").insert({
+    // 业务铁律：本操作是"给已有目录加分支"，该目录必然已有一个选中分支存在，
+    // 所以新分支【永远不选中】(固定 false)，不动已有老分支。
+    // （只有"新建目录"——走"添加配件"那条路——的首个/唯一分支才默认选中。）
+    const 新配件数量 = parts[0].quantity ?? null;
+    const { data: inserted, error } = await supabase.from("work_order_item_parts").insert({
       work_order_item_id: itemId,
       branch_group_id: parts[0].branch_group_id || null,
       part_name_id: parts[0].part_name_id || null,
       name: parts[0].name || null,
       unit: parts[0].unit || parts[0].part_names?.unit || parts[0].parts?.unit || "件",
-      quantity: parts[0].quantity ?? null,
+      quantity: 新配件数量,
       customer_opinion: "pending",
       is_selected: false,
-    });
+    }).select(`
+        *,
+        part_names(name, unit, category_id, part_categories(name), sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value),
+        parts(*, part_categories(name), part_brands(name))
+      `).single();
     setSaving(false);
-    if (error) {
-      alert("添加失败: " + error.message);
+    if (error || !inserted) {
+      alert("添加失败: " + (error?.message || "未知错误"));
       return;
     }
-    router.refresh();
+    // 标记本地结构编辑，避免实时同步把整页刷掉
+    标记本地结构编辑(itemId || "");
+    if (onBranchAdded) {
+      // 本地即时追加新行（免整页刷新）。同时广播给小计/费用合计，让它们把新分支纳入计算。
+      onBranchAdded(inserted as unknown as PartBranch);
+      window.dispatchEvent(
+        new CustomEvent("wo-part-update", {
+          detail: {
+            itemId,
+            partId: (inserted as { id: string }).id,
+            added: true,
+            unit_price: (inserted as { unit_price?: number }).unit_price ?? 0,
+            quantity: 新配件数量 ?? 0,
+            is_selected: false,
+          },
+        })
+      );
+    } else {
+      // 兜底：无回调时退回整页刷新（保证任何调用方都不会坏）
+      router.refresh();
+    }
   }
 
   async function handleDeleteGroup() {
@@ -198,6 +255,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       alert("删除失败: " + error.message);
       return;
     }
+    标记本地结构编辑(itemId || "");
     router.refresh();
   }
 
@@ -205,24 +263,36 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     const val = qty.trim() === "" ? null : parseInt(qty, 10);
     if (val !== null && (isNaN(val) || val < 1)) return;
     setSaving(true);
-    if (parts[0]) {
-      /* 数量为目录级：同步更新该目录(branch_group_id)下所有分支 */
-      let q = supabase.from("work_order_item_parts").update({ quantity: val });
-      q = parts[0].branch_group_id
-        ? q.eq("branch_group_id", parts[0].branch_group_id)
-        : q.eq("id", parts[0].id);
-      const { error } = await q;
+    // 数量是整组共用：同组所有分支一起更新（修复"只改第一个分支导致选中其他分支时小计算错"）
+    const ids = parts.map((p) => p.id).filter(Boolean);
+    if (ids.length > 0) {
+      ids.forEach((id) => 标记本地编辑配件(id));
+      const { error } = await supabase
+        .from("work_order_item_parts")
+        .update({ quantity: val })
+        .in("id", ids);
       setSaving(false);
       if (error) {
         alert("保存数量失败: " + error.message);
         return;
       }
+      // 广播给小计/费用合计组件：同组每个分支都通知，局部更新不刷整页
+      ids.forEach((id) => {
+        window.dispatchEvent(
+          new CustomEvent("wo-part-update", {
+            detail: { itemId, partId: id, quantity: val ?? 0 },
+          })
+        );
+      });
+    } else {
+      setSaving(false);
     }
-    router.refresh();
   }
 
   async function saveNotes() {
     if (!parts[0]) return;
+    // 标记本地编辑，避免实时同步刷整页（备注本就局部更新，无需刷）
+    标记本地编辑配件(parts[0].id);
     const { error } = await supabase
       .from("work_order_item_parts")
       .update({ notes })
@@ -412,6 +482,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     setShowModal(false);
     setPendingName(null);
     setSelectedRealPart(null);
+    标记本地结构编辑(itemId || "");
     router.refresh();
   }
 

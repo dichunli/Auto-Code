@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useState, useCallback } from "react";
 
@@ -10,11 +9,10 @@ interface Props {
 }
 
 export function CustomerOpinionToggle({ itemId, opinion }: Props) {
-  const router = useRouter();
   const supabase = createClient();
   const [updating, setUpdating] = useState(false);
-
-  const current = opinion || "pending";
+  // 用本地状态保存当前客户意见，保存成功后只更新这个按钮，不刷新整页（性能优化）
+  const [current, setCurrent] = useState(opinion || "pending");
 
   const updateOpinion = useCallback(async (newOpinion: string) => {
     if (updating) return;
@@ -28,8 +26,9 @@ export function CustomerOpinionToggle({ itemId, opinion }: Props) {
       alert("更新失败: " + error.message);
       return;
     }
-    router.refresh();
-  }, [itemId, opinion, router, supabase, updating]);
+    // 写库成功后才更新本地显示，保证数据正确性
+    setCurrent(newOpinion);
+  }, [itemId, supabase, updating]);
 
   function handleClick() {
     if (current === "agree") {

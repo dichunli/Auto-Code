@@ -41,6 +41,7 @@ interface PartBranchRow {
   is_arrived: boolean | null;
   work_order_item_id: string;
   part_name_id: string | null;
+  branch_group_id: string | null;
   part_id: string | null;
   part_number: string | null;
   notes: string | null;
@@ -191,7 +192,7 @@ export function PartBranchStatusList({ status }: Props) {
         .select(`
           id, name, brand, specification, unit, quantity, unit_cost, unit_price,
           customer_opinion, supplier_name, is_purchased, is_arrived,
-          work_order_item_id, part_name_id, part_id, part_number, notes,
+          work_order_item_id, part_name_id, branch_group_id, part_id, part_number, notes,
           part_names(name, category_id, part_categories(name)),
           parts(
             id, part_number, name, quantity, unit_cost, unit_price,
@@ -737,10 +738,15 @@ export function PartBranchStatusList({ status }: Props) {
     const { error } = await supabase.from("work_order_item_parts").insert({
       work_order_item_id: row.work_order_item_id,
       part_name_id: row.part_name_id,
+      // 归回原配件的同一目录，避免新分支自成一组；不显式设 branch_group_id
+      // 会被数据库默认值生成新目录ID(自成一组的病根)
+      branch_group_id: row.branch_group_id,
       name: row.name,
       quantity: row.quantity,
       unit: row.unit,
       customer_opinion: "pending",
+      // 原行为该目录默认(选中)分支，新增分支默认不选中，维持"每目录仅一个选中"
+      is_selected: false,
     });
     setSavingId(null);
     if (error) { alert("添加失败: " + error.message); return; }

@@ -81,3 +81,29 @@ scripts/
 certificates
 # 构建产物副本
 .next-new/
+
+# 数据库同步/导出的临时文件（含数据，禁止提交）——只锚定根目录，不影响 supabase/migrations/
+/remote-auth.sql
+/remote-data-only.sql
+/remote-full-dump.sql
+/remote_data.sql
+/full-remote-data.sql
+/full_remote_schema.sql
+/insert-profiles.sql
+
+# 本地化部署/数据同步脚本（本机用，不入库）
+/backup-db.bat
+/restore-db.bat
+/setup-autostart.bat
+/supabase-start.bat
+/supabase-stop.bat
+/use-local.bat
+/use-remote.bat
+/sync-auth.js
+/sync-users.bat
+/数据库本地化使用说明.md
+
+# Supabase 本地开发的导入产物与备份
+/supabase/migrations/20240101000000_full_schema.sql
+/supabase/migrations_backup/
+/supabase/snippets/

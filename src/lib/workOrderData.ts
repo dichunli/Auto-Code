@@ -198,6 +198,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     { data: advancePaymentRecords },
     { data: followUps },
     { data: history },
+    { data: itemPartsRaw },
   ] = await Promise.all([
     supabase.from("work_orders").select(`*, vehicles(*, vehicle_models(*)), customers(*)`).eq("id", id).single(),
     supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
@@ -240,6 +241,15 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     supabase.from("advance_payment_records").select("*, profiles(full_name)").eq("work_order_id", id).order("paid_at", { ascending: true }),
     supabase.from("follow_ups").select("id, scheduled_at, completed_at, method, result, notes").eq("work_order_id", id).order("scheduled_at", { ascending: true }),
     supabase.from("work_order_history").select("id, from_status, to_status, created_at").eq("work_order_id", id).order("created_at", { ascending: true }),
+
+    // 配件分支：直接经 work_order_items 关联按工单ID过滤，无需等项目ID，故并入第一趟。
+    // !inner 保证只取属于本工单的配件，与旧的 .in(itemIds) 口径完全一致。
+    supabase.from("work_order_item_parts").select(`
+        *,
+        part_names(name, unit, category_id, part_categories(name), sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value),
+        parts(*, part_categories(name), part_brands(name)),
+        work_order_items!inner(work_order_id)
+      `).eq("work_order_items.work_order_id", id).order("sort_order", { ascending: true }).order("created_at", { ascending: true }).order("id", { ascending: true }),
   ]);
 
   if (orderError) {
@@ -250,28 +260,33 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
   const vehicleId = (order as Record<string, unknown> | null)?.vehicle_id as string | undefined;
   const customerId = (order as Record<string, unknown> | null)?.customer_id as string | undefined;
   const vehicleModelId = (order as Record<string, unknown> | null)?.vehicles ? ((order as Record<string, unknown>).vehicles as Record<string, unknown> | undefined)?.vehicle_model_id as string | undefined : undefined;
-  const itemIds = items?.map((i: unknown) => (i as Record<string, unknown>).id as string) || [];
   const serviceItemIds = [...new Set(items?.map((i: unknown) => (i as Record<string, unknown>).service_item_id as string).filter(Boolean) || [])];
   const knowledgeConditions = serviceItemIds.map((sid: string) => `service_item_id.eq.${sid}`);
 
-  // ── 第二趟（并行）：依赖第一趟结果的查询一次性发出 ──
-  // 配件分支(依赖项目ID)、知识库关联(依赖项目)、车型指导文章(依赖车型ID)、3个统计数(依赖车辆/客户ID)
+  // 剥掉仅用于过滤的关联字段，保持配件行数据结构与旧版一致
+  const itemParts = (itemPartsRaw as Record<string, unknown>[] | null)?.map((p) => {
+    if (p.work_order_items !== undefined) delete p.work_order_items;
+    return p;
+  }) ?? [];
+
+  // 配件分支ID / 库存配件ID：配件已在第一趟查出，这些依赖它的查询即可提到第二趟
+  const itemPartIds = itemParts.map((p) => p.id as string);
+  const partIds = itemParts.map((p) => p.part_id as string).filter(Boolean);
+
+  // ── 第二趟（并行）：合并原第二趟(知识库/统计)与原第三趟(媒体/领料/退料/库存)。
+  // 因配件已在第一趟拿到，两批查询的依赖此刻都已就绪，可一次性并行发出，省一次远程往返。──
   const [
-    { data: itemParts },
     { data: knowledgeLinksRaw },
     { data: vlinks },
     { count: historyOrderCount },
     { data: otherOrdersByType },
     { count: customerOrderCount },
+    { data: partMedia },
+    { data: pickingRecords },
+    { data: returnRecords },
+    { data: supplierReturnRecords },
+    { data: partBatches },
   ] = await Promise.all([
-    itemIds.length > 0
-      ? supabase.from("work_order_item_parts").select(`
-          *,
-          part_names(name, unit, category_id, part_categories(name), sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value),
-          parts(*, part_categories(name), part_brands(name))
-        `).in("work_order_item_id", itemIds).order("sort_order", { ascending: true }).order("created_at", { ascending: true }).order("id", { ascending: true })
-      : Promise.resolve({ data: [] }),
-
     knowledgeConditions.length > 0
       ? supabase.from("knowledge_service_links").select(`
           article_id, service_item_id, service_name_id,
@@ -295,6 +310,13 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     customerId
       ? supabase.from("work_orders").select("*", { count: "exact", head: true }).eq("customer_id", customerId)
       : Promise.resolve({ count: 0 }),
+
+    // ↓ 原第三趟：依赖配件分支ID / 库存配件ID
+    itemPartIds.length > 0 ? supabase.from("work_order_item_part_media").select("id, work_order_item_part_id, storage_path, media_type").in("work_order_item_part_id", itemPartIds) : Promise.resolve({ data: [] }),
+    itemPartIds.length > 0 ? supabase.from("part_picking_records").select("work_order_item_part_id, quantity").in("work_order_item_part_id", itemPartIds) : Promise.resolve({ data: [] }),
+    itemPartIds.length > 0 ? supabase.from("part_return_records").select("work_order_item_part_id, quantity").in("work_order_item_part_id", itemPartIds) : Promise.resolve({ data: [] }),
+    itemPartIds.length > 0 ? supabase.from("supplier_return_records").select("work_order_item_part_id, status").in("work_order_item_part_id", itemPartIds) : Promise.resolve({ data: [] }),
+    partIds.length > 0 ? supabase.from("part_batches").select("part_id, quantity").in("part_id", partIds) : Promise.resolve({ data: [] }),
   ]);
 
   // 从嵌套查询结果中提取关联数据，保持与原有数据结构一致
@@ -332,25 +354,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     }
   });
 
-  // ── 第三趟（并行）：依赖配件分支ID(itemPartIds)的查询 ──
-  const itemPartIds = itemParts?.map((p: unknown) => (p as Record<string, unknown>).id as string) || [];
-  const partIds = itemParts?.map((p: unknown) => (p as Record<string, unknown>).part_id as string).filter(Boolean) || [];
-
-  const [
-    { data: partMedia },
-    { data: pickingRecords },
-    { data: returnRecords },
-    { data: supplierReturnRecords },
-    { data: partBatches },
-  ] = await Promise.all([
-    itemPartIds.length > 0 ? supabase.from("work_order_item_part_media").select("id, work_order_item_part_id, storage_path, media_type").in("work_order_item_part_id", itemPartIds) : Promise.resolve({ data: [] }),
-    itemPartIds.length > 0 ? supabase.from("part_picking_records").select("work_order_item_part_id, quantity").in("work_order_item_part_id", itemPartIds) : Promise.resolve({ data: [] }),
-    itemPartIds.length > 0 ? supabase.from("part_return_records").select("work_order_item_part_id, quantity").in("work_order_item_part_id", itemPartIds) : Promise.resolve({ data: [] }),
-    itemPartIds.length > 0 ? supabase.from("supplier_return_records").select("work_order_item_part_id, status").in("work_order_item_part_id", itemPartIds) : Promise.resolve({ data: [] }),
-    partIds.length > 0 ? supabase.from("part_batches").select("part_id, quantity").in("part_id", partIds) : Promise.resolve({ data: [] }),
-  ]);
-
-  // knowledge links 过滤（数据已在第二趟查出，此处仅做内存过滤，无网络请求）
+  // ── 内存过滤：knowledge links（数据已在第二趟查出，此处仅内存处理，无网络请求）──
   // 维修指导类型(guide)或分类为"维修指导"的文章需要同时匹配车型
   const guideArticleIds = (vlinks || []).map((v: unknown) => (v as Record<string, unknown>).article_id as string);
   const knowledgeLinks = (knowledgeLinksRaw || []).filter((link: unknown) => {

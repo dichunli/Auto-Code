@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 标记本地结构编辑 } from "@/lib/localEditSignal";
 
 interface Props {
   partId: string;
@@ -29,24 +30,26 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       alert("删除失败: " + error.message);
       return;
     }
+    标记本地结构编辑(itemId);
     router.refresh();
   }
 
   async function handleAdd() {
     setAdding(true);
-    // 查询当前分支的 part_name_id，用于新分支
+    // 查询当前分支的 part_name_id、目录ID、数量，用于新分支（同目录、数量整组共用）
     const { data: current } = await supabase
       .from("work_order_item_parts")
-      .select("part_name_id, name, unit")
+      .select("part_name_id, branch_group_id, name, unit, quantity")
       .eq("id", partId)
       .single();
 
     const { error } = await supabase.from("work_order_item_parts").insert({
       work_order_item_id: itemId,
       part_name_id: current?.part_name_id || null,
+      branch_group_id: current?.branch_group_id || null,
       name: current?.name || null,
       unit: current?.unit || "件",
-      quantity: 1,
+      quantity: current?.quantity ?? null,
       customer_opinion: "pending",
     });
 
@@ -55,6 +58,7 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       alert("添加失败: " + error.message);
       return;
     }
+    标记本地结构编辑(itemId);
     router.refresh();
   }
 

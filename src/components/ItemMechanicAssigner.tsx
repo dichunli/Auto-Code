@@ -29,9 +29,11 @@ interface Props {
 
 export function ItemMechanicAssigner({ itemId, profiles, mechanicGroups, existingMechanics }: Props) {
   const [open, setOpen] = useState(false);
+  // 本地保存当前施工人列表，保存成功后只更新这里、不刷新整页（性能优化）
+  const [mechanics, setMechanics] = useState<ExistingMechanic[]>(existingMechanics);
 
-  const names = existingMechanics.length > 0
-    ? existingMechanics.map((m) => m.profiles?.full_name || "-").join(", ")
+  const names = mechanics.length > 0
+    ? mechanics.map((m) => m.profiles?.full_name || "-").join(", ")
     : "未分配";
 
   return (
@@ -48,8 +50,9 @@ export function ItemMechanicAssigner({ itemId, profiles, mechanicGroups, existin
         itemId={itemId}
         profiles={profiles}
         mechanicGroups={mechanicGroups}
-        existingMechanics={existingMechanics}
+        existingMechanics={mechanics}
         onClose={() => setOpen(false)}
+        onSaved={(newMechanics) => setMechanics(newMechanics)}
       />
     </>
   );

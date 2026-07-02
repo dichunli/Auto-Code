@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 
@@ -10,19 +9,21 @@ interface Props {
 }
 
 export function ItemNotesEditor({ itemId, description }: Props) {
-  const router = useRouter();
   const supabase = createClient();
   const [open, setOpen] = useState(false);
+  // 用本地状态保存已生效的备注，保存成功后只更新这一小块，不刷新整页（性能优化）
+  const [savedDesc, setSavedDesc] = useState(description || "");
   const [value, setValue] = useState(description || "");
   const [saving, setSaving] = useState(false);
 
-  const hasNote = !!(description && description.trim());
+  const hasNote = !!(savedDesc && savedDesc.trim());
 
   async function handleSave() {
     setSaving(true);
+    const trimmed = value.trim();
     const { error } = await supabase
       .from("work_order_items")
-      .update({ description: value.trim() || null })
+      .update({ description: trimmed || null })
       .eq("id", itemId);
     setSaving(false);
     if (error) {
@@ -30,11 +31,12 @@ export function ItemNotesEditor({ itemId, description }: Props) {
       return;
     }
     setOpen(false);
-    router.refresh();
+    // 写库成功后才更新本地显示，保证数据正确性
+    setSavedDesc(trimmed);
   }
 
   function handleCancel() {
-    setValue(description || "");
+    setValue(savedDesc);
     setOpen(false);
   }
 
@@ -51,7 +53,7 @@ export function ItemNotesEditor({ itemId, description }: Props) {
         {hasNote ? (
           <>
             <span className="text-gray-400">备注:</span>
-            <span className="ml-1 max-w-[120px] truncate">{description}</span>
+            <span className="ml-1 max-w-[120px] truncate">{savedDesc}</span>
             <span className="text-blue-500 ml-1">✎</span>
           </>
         ) : (

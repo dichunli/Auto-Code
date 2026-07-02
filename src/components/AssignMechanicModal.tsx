@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 
 interface Profile {
   id: string;
@@ -28,10 +27,11 @@ interface Props {
   mechanicGroups: MechanicGroup[];
   existingMechanics: ExistingMechanic[];
   onClose: () => void;
+  /* 保存成功后回调，传回新的施工人列表，由父组件更新显示，避免刷新整页（性能优化） */
+  onSaved?: (mechanics: ExistingMechanic[]) => void;
 }
 
-export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, existingMechanics, onClose }: Props) {
-  const router = useRouter();
+export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, existingMechanics, onClose, onSaved }: Props) {
   const supabase = createClient();
   const [mode, setMode] = useState<"person" | "group">("person");
   const [selectedPersons, setSelectedPersons] = useState<string[]>(existingMechanics.map((m) => m.mechanic_id));
@@ -121,7 +121,9 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
       alert("领单失败: " + error.message);
       return;
     }
-    router.refresh();
+    // 写库成功后才通知父组件更新显示
+    const fullName = profiles.find((p) => p.id === user.id)?.full_name || "-";
+    onSaved?.([{ mechanic_id: user.id, share_pct: 100, profiles: { full_name: fullName } }]);
     onClose();
   }
 
@@ -153,7 +155,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
       alert("取消失败: " + error.message);
       return;
     }
-    router.refresh();
+    onSaved?.([]);
     onClose();
   }
 
@@ -237,7 +239,14 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
       return;
     }
 
-    router.refresh();
+    // 写库成功后才通知父组件更新显示
+    onSaved?.(
+      mechanicIds.map((id) => ({
+        mechanic_id: id,
+        share_pct: ratios[id] ?? 100,
+        profiles: { full_name: profiles.find((p) => p.id === id)?.full_name || "-" },
+      }))
+    );
     onClose();
   }
 

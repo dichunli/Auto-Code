@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { usePriceVisibility } from "./PriceVisibilityContext";
+import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localEditSignal";
 
 function toFixed2(val: string | number | null | undefined): string {
   if (val === "" || val === null || val === undefined) return "";
@@ -70,6 +71,8 @@ export default function PartBranchEditor({
   const clickTimer = useRef<NodeJS.Timeout | null>(null);
 
   function refresh() {
+    // 结构性改动(删分支/关联编码)自己刷新拉新数据，标记后避免实时同步重复刷
+    标记本地结构编辑(itemId || "");
     router.refresh();
   }
 
@@ -77,6 +80,8 @@ export default function PartBranchEditor({
   const [localSelected, setLocalSelected] = useState(part.is_selected || false);
   const [localPurchased, setLocalPurchased] = useState(part.is_purchased || false);
   const [localArrived, setLocalArrived] = useState(part.is_arrived || false);
+  // 已删除：删除成功后立即隐藏本行（视觉瞬间消失），不等整页刷新
+  const [deleted, setDeleted] = useState(false);
   const [localOpinion, setLocalOpinion] = useState(part.customer_opinion || "pending");
 
   useEffect(() => {
@@ -86,15 +91,45 @@ export default function PartBranchEditor({
     setLocalOpinion(part.customer_opinion || "pending");
   }, [part.is_selected, part.is_purchased, part.is_arrived, part.customer_opinion]);
 
+  // 监听同组分支的选中广播：自己被选中→点亮，自己作为兄弟被取消→灭掉
+  // （配合不刷整页的局部更新，保证单选互斥仍然正确）
+  useEffect(() => {
+    function handleSelectSync(e: Event) {
+      const detail = (e as CustomEvent).detail as {
+        partId?: string;
+        is_selected?: boolean;
+        siblingResetIds?: string[];
+      } | null;
+      if (!detail) return;
+      if (detail.partId === part.id && detail.is_selected !== undefined) {
+        setLocalSelected(detail.is_selected);
+      } else if (detail.siblingResetIds?.includes(part.id)) {
+        setLocalSelected(false);
+      }
+    }
+    window.addEventListener("wo-part-update", handleSelectSync as EventListener);
+    return () => window.removeEventListener("wo-part-update", handleSelectSync as EventListener);
+  }, [part.id]);
+
   // 只有一个分支时默认选中
   useEffect(() => {
     if (!canDelete && part.is_selected !== true) {
       setLocalSelected(true);
       supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", part.id).then(({ error }) => {
-        if (error) setLocalSelected(false);
+        if (error) {
+          setLocalSelected(false);
+          return;
+        }
+        // 广播给组头/小计/费用合计，避免它们的 liveParts 仍以为本条未选中
+        // （否则加分支时读到过期状态，会把新分支也误设为选中，导致同组两个选中）
+        window.dispatchEvent(
+          new CustomEvent("wo-part-update", {
+            detail: { itemId, partId: part.id, is_selected: true, siblingResetIds: [] },
+          })
+        );
       });
     }
-  }, [canDelete, part.is_selected, part.id, supabase]);
+  }, [canDelete, part.is_selected, part.id, supabase, itemId]);
 
   // 字段编辑状态
   const [editForm, setEditForm] = useState({
@@ -248,6 +283,8 @@ export default function PartBranchEditor({
 
   async function saveField(field: string, value: string) {
     setSaving(true);
+    // 标记这条配件是"自己刚改的"，避免实时同步把整页刷掉
+    标记本地编辑配件(part.id);
     const updateData: Record<string, string | number | null> = {};
     if (field === "unit_cost" || field === "unit_price" || field === "cost_price") {
       updateData[field] = value === "" ? null : parseFloat(value);
@@ -403,6 +440,7 @@ export default function PartBranchEditor({
     const next = !localPurchased;
     setLocalPurchased(next);
     setSaving(true);
+    标记本地编辑配件(part.id);
     const { error } = await supabase
       .from("work_order_item_parts")
       .update({ is_purchased: next })
@@ -423,6 +461,7 @@ export default function PartBranchEditor({
     const next = !localArrived;
     setLocalArrived(next);
     setSaving(true);
+    标记本地编辑配件(part.id);
     const { error } = await supabase
       .from("work_order_item_parts")
       .update({ is_arrived: next })
@@ -436,23 +475,47 @@ export default function PartBranchEditor({
   }
 
   async function handleDelete() {
-    if (!canDelete) {
-      alert("至少需要保留一个配件分支");
+    // 选中分支不可删除：保证每个目录始终有且仅有一个选中分支，
+    // 也免去"删了选中分支后由谁替补"的随机问题。要删它，先选中别的分支。
+    if (localSelected) {
+      alert("选中的分支不能删除。如需删除，请先选中其它分支作为默认，再删除本条。");
       return;
     }
     if (!confirm("确定删除此配件分支吗？")) return;
     setSaving(true);
-    const { error } = await supabase.from("work_order_item_parts").delete().eq("id", part.id);
-    /* 删的若是选中分支，则把同目录剩余分支的第一条设为选中，保证始终有一条被选中 */
-    if (!error && part.is_selected && siblingIds.length > 0) {
-      await supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", siblingIds[0]);
-    }
+    标记本地编辑配件(part.id);
+
+    // 原子删除：数据库一个事务完成"删分支 + 转移选中"，远程不稳也不会做一半（避免0选中）
+    const { data, error } = await supabase.rpc("delete_part_branch", { p_part_id: part.id });
     setSaving(false);
+
     if (error) {
       alert("删除失败: " + error.message);
       return;
     }
-    refresh();
+    const result = data as { success: boolean; error?: string; new_selected_id?: string | null };
+    if (!result?.success) {
+      alert(result?.error || "删除失败");
+      return;
+    }
+
+    // 立即隐藏本行（瞬间消失）
+    setDeleted(true);
+    // 广播"已删除"：小计/费用合计组件把这条从计算中彻底移除
+    window.dispatchEvent(
+      new CustomEvent("wo-part-update", {
+        detail: { itemId, partId: part.id, deleted: true },
+      })
+    );
+    // 若数据库转移了选中，广播让新选中分支点亮、小计按它重算
+    if (result.new_selected_id) {
+      标记本地编辑配件(result.new_selected_id);
+      window.dispatchEvent(
+        new CustomEvent("wo-part-update", {
+          detail: { itemId, partId: result.new_selected_id, is_selected: true, siblingResetIds: [] },
+        })
+      );
+    }
   }
 
   // 供应商推荐排序
@@ -534,29 +597,39 @@ export default function PartBranchEditor({
 
   const partName = part.alias_name || part.parts?.name || part.name || part.part_names?.name || "未命名配件";
 
+  // 已删除：立即隐藏本行，不等整页刷新
+  if (deleted) return null;
+
   return (
-    <div className={`bg-white rounded border border-gray-100 p-2 ${saving ? "opacity-50" : ""}`}>
+    <div className={`rounded border p-2 transition-colors ${saving ? "opacity-50" : ""} ${
+      localSelected ? "bg-yellow-50/30 border-yellow-200" : "bg-white border-gray-100"
+    }`}>
       {/* 所有内容一行显示 */}
       <div className="flex items-center flex-nowrap gap-x-3 gap-y-1 overflow-x-auto">
-        {/* 选中（单选：空心圆带点） */}
-        <label className={`relative w-4 h-4 cursor-pointer ${isLocked || saving ? "opacity-50" : ""}`}>
+        {/* 选中（单选：空心圆带点）。选中分支不可取消、不可删除，切换靠选中其它分支 */}
+        <label className={`relative w-4 h-4 cursor-pointer ${isLocked ? "opacity-50" : ""}`}>
           <input
             type="checkbox"
             checked={localSelected}
             onChange={async () => {
-              const next = !localSelected;
-              if (!canDelete && !next) return;
+              // 已选中的分支不允许取消（避免出现 0 选中）；要换默认分支就点其它分支
+              if (localSelected) return;
+              const next = true;
               setLocalSelected(next);
-              setSaving(true);
-              // 单选：选中当前时，取消同组其他分支的选中状态
-              if (next && siblingIds.length > 0) {
-                await supabase.from("work_order_item_parts").update({ is_selected: false }).in("id", siblingIds);
+              // 标记这些分支是"自己刚改的"，避免实时同步把整页刷掉（自己/别人改动区分）
+              标记本地编辑配件(part.id);
+              siblingIds.forEach((id) => 标记本地编辑配件(id));
+              // 选中态已立即生效，写库放后台并行执行（不再整行变灰，性能优化）
+              const writes = [];
+              if (siblingIds.length > 0) {
+                writes.push(supabase.from("work_order_item_parts").update({ is_selected: false }).in("id", siblingIds));
               }
-              const { error } = await supabase.from("work_order_item_parts").update({ is_selected: next }).eq("id", part.id);
-              setSaving(false);
+              writes.push(supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", part.id));
+              const results = await Promise.all(writes);
+              const error = results.find((r) => r.error)?.error;
               if (error) {
                 alert("操作失败: " + error.message);
-                setLocalSelected(!next);
+                setLocalSelected(false);
                 return;
               }
               // 广播给小计/费用合计组件
@@ -565,13 +638,13 @@ export default function PartBranchEditor({
                   detail: {
                     itemId,
                     partId: part.id,
-                    is_selected: next,
-                    siblingResetIds: next ? siblingIds : [],
+                    is_selected: true,
+                    siblingResetIds: siblingIds,
                   },
                 })
               );
             }}
-            disabled={isLocked || saving}
+            disabled={isLocked}
             className="peer sr-only"
           />
           <span className="absolute inset-0 rounded-full border-2 border-gray-300 peer-checked:border-blue-600 bg-white flex items-center justify-center transition-colors">
@@ -791,6 +864,7 @@ export default function PartBranchEditor({
                 const next = localOpinion === "agree" ? "pending" : "agree";
                 setLocalOpinion(next);
                 setSaving(true);
+                标记本地编辑配件(part.id);
                 supabase.from("work_order_item_parts").update({ customer_opinion: next }).eq("id", part.id).then(({ error }) => {
                   setSaving(false);
                   if (error) {
@@ -809,6 +883,7 @@ export default function PartBranchEditor({
               const next = localOpinion === "reject" ? "pending" : "reject";
               setLocalOpinion(next);
               setSaving(true);
+              标记本地编辑配件(part.id);
               supabase.from("work_order_item_parts").update({ customer_opinion: next }).eq("id", part.id).then(({ error }) => {
                 setSaving(false);
                 if (error) {
@@ -944,14 +1019,15 @@ export default function PartBranchEditor({
           <span className="text-[10px] text-gray-400">库存: {inventoryQty}</span>
         )}
 
-        {/* 删除 */}
+        {/* 删除：选中分支不可删（避免0选中/替补随机）；灰掉并提示先选别的 */}
         {!isLocked && (
           <button
             type="button"
             onClick={handleDelete}
-            disabled={saving || !canDelete}
+            disabled={saving || localSelected}
+            title={localSelected ? "选中的分支不能删除，请先选中其它分支" : "删除此分支"}
             className={`text-[10px] px-1 disabled:opacity-50 ${
-              canDelete ? "text-red-600 hover:text-red-700" : "text-gray-300 cursor-not-allowed"
+              localSelected ? "text-gray-300 cursor-not-allowed" : "text-red-600 hover:text-red-700"
             }`}
           >
             删除
