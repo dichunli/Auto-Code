@@ -475,8 +475,10 @@ export default function PartBranchEditor({
   }
 
   async function handleDelete() {
-    if (!canDelete) {
-      alert("至少需要保留一个配件分支");
+    // 选中分支不可删除：保证每个目录始终有且仅有一个选中分支，
+    // 也免去"删了选中分支后由谁替补"的随机问题。要删它，先选中别的分支。
+    if (localSelected) {
+      alert("选中的分支不能删除。如需删除，请先选中其它分支作为默认，再删除本条。");
       return;
     }
     if (!confirm("确定删除此配件分支吗？")) return;
@@ -599,32 +601,35 @@ export default function PartBranchEditor({
   if (deleted) return null;
 
   return (
-    <div className={`bg-white rounded border border-gray-100 p-2 ${saving ? "opacity-50" : ""}`}>
+    <div className={`rounded border p-2 transition-colors ${saving ? "opacity-50" : ""} ${
+      localSelected ? "bg-yellow-50 border-yellow-300" : "bg-white border-gray-100"
+    }`}>
       {/* 所有内容一行显示 */}
       <div className="flex items-center flex-nowrap gap-x-3 gap-y-1 overflow-x-auto">
-        {/* 选中（单选：空心圆带点） */}
+        {/* 选中（单选：空心圆带点）。选中分支不可取消、不可删除，切换靠选中其它分支 */}
         <label className={`relative w-4 h-4 cursor-pointer ${isLocked ? "opacity-50" : ""}`}>
           <input
             type="checkbox"
             checked={localSelected}
             onChange={async () => {
-              const next = !localSelected;
-              if (!canDelete && !next) return;
+              // 已选中的分支不允许取消（避免出现 0 选中）；要换默认分支就点其它分支
+              if (localSelected) return;
+              const next = true;
               setLocalSelected(next);
               // 标记这些分支是"自己刚改的"，避免实时同步把整页刷掉（自己/别人改动区分）
               标记本地编辑配件(part.id);
-              if (next) siblingIds.forEach((id) => 标记本地编辑配件(id));
+              siblingIds.forEach((id) => 标记本地编辑配件(id));
               // 选中态已立即生效，写库放后台并行执行（不再整行变灰，性能优化）
               const writes = [];
-              if (next && siblingIds.length > 0) {
+              if (siblingIds.length > 0) {
                 writes.push(supabase.from("work_order_item_parts").update({ is_selected: false }).in("id", siblingIds));
               }
-              writes.push(supabase.from("work_order_item_parts").update({ is_selected: next }).eq("id", part.id));
+              writes.push(supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", part.id));
               const results = await Promise.all(writes);
               const error = results.find((r) => r.error)?.error;
               if (error) {
                 alert("操作失败: " + error.message);
-                setLocalSelected(!next);
+                setLocalSelected(false);
                 return;
               }
               // 广播给小计/费用合计组件
@@ -633,8 +638,8 @@ export default function PartBranchEditor({
                   detail: {
                     itemId,
                     partId: part.id,
-                    is_selected: next,
-                    siblingResetIds: next ? siblingIds : [],
+                    is_selected: true,
+                    siblingResetIds: siblingIds,
                   },
                 })
               );
@@ -1014,14 +1019,15 @@ export default function PartBranchEditor({
           <span className="text-[10px] text-gray-400">库存: {inventoryQty}</span>
         )}
 
-        {/* 删除 */}
+        {/* 删除：选中分支不可删（避免0选中/替补随机）；灰掉并提示先选别的 */}
         {!isLocked && (
           <button
             type="button"
             onClick={handleDelete}
-            disabled={saving || !canDelete}
+            disabled={saving || localSelected}
+            title={localSelected ? "选中的分支不能删除，请先选中其它分支" : "删除此分支"}
             className={`text-[10px] px-1 disabled:opacity-50 ${
-              canDelete ? "text-red-600 hover:text-red-700" : "text-gray-300 cursor-not-allowed"
+              localSelected ? "text-gray-300 cursor-not-allowed" : "text-red-600 hover:text-red-700"
             }`}
           >
             删除
