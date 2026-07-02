@@ -602,7 +602,7 @@ export default function PartBranchEditor({
 
   return (
     <div className={`rounded border p-2 transition-colors ${saving ? "opacity-50" : ""} ${
-      localSelected ? "bg-yellow-50 border-yellow-300" : "bg-white border-gray-100"
+      localSelected ? "bg-yellow-50/50 border-yellow-200" : "bg-white border-gray-100"
     }`}>
       {/* 所有内容一行显示 */}
       <div className="flex items-center flex-nowrap gap-x-3 gap-y-1 overflow-x-auto">
