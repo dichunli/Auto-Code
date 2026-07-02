@@ -116,10 +116,20 @@ export default function PartBranchEditor({
     if (!canDelete && part.is_selected !== true) {
       setLocalSelected(true);
       supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", part.id).then(({ error }) => {
-        if (error) setLocalSelected(false);
+        if (error) {
+          setLocalSelected(false);
+          return;
+        }
+        // 广播给组头/小计/费用合计，避免它们的 liveParts 仍以为本条未选中
+        // （否则加分支时读到过期状态，会把新分支也误设为选中，导致同组两个选中）
+        window.dispatchEvent(
+          new CustomEvent("wo-part-update", {
+            detail: { itemId, partId: part.id, is_selected: true, siblingResetIds: [] },
+          })
+        );
       });
     }
-  }, [canDelete, part.is_selected, part.id, supabase]);
+  }, [canDelete, part.is_selected, part.id, supabase, itemId]);
 
   // 字段编辑状态
   const [editForm, setEditForm] = useState({

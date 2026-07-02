@@ -201,7 +201,26 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     setSaving(true);
     // 铁律：每个目录有且仅有一个选中分支。组里已有选中→新分支不选中；
     // 组里没有选中（遗留脏数据）→ 新分支自动补为选中。不动已有老分支。
-    const 组已有选中 = liveParts.some((p) => p.is_selected);
+    // 关键：以「数据库真实选中情况」为准判断，不信任可能过期的前端 liveParts
+    // （前端状态过期会导致把新分支也误设为选中，同组出现两个选中，金额算错）。
+    const 目录ID = parts[0].branch_group_id || null;
+    let 组已有选中: boolean;
+    {
+      let q = supabase
+        .from("work_order_item_parts")
+        .select("id", { count: "exact", head: true })
+        .eq("work_order_item_id", itemId)
+        .eq("is_selected", true);
+      // 目录键：优先 branch_group_id，为空时回退 part_name_id（与显示分组口径一致）
+      q = 目录ID ? q.eq("branch_group_id", 目录ID) : q.eq("part_name_id", parts[0].part_name_id || "");
+      const { count, error: cntErr } = await q;
+      if (cntErr) {
+        setSaving(false);
+        alert("添加失败: " + cntErr.message);
+        return;
+      }
+      组已有选中 = (count ?? 0) > 0;
+    }
     const 新分支选中 = !组已有选中;
     const 新配件数量 = parts[0].quantity ?? null;
     const { data: inserted, error } = await supabase.from("work_order_item_parts").insert({
