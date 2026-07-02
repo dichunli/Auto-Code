@@ -103,18 +103,29 @@ export default function ToolManagementPage() {
 
       /* 加载未归还记录 */
       if (tools.length > 0) {
-        const { data: 记录数据 } = await supabase
-          .from("tool_borrow_records")
-          .select("*, employees(name)")
-          .in(
-            "tool_id",
-            tools.map((t) => t.id)
-          );
-        const map = new Map<string, 借用记录>();
-        ((记录数据 as 借用记录[]) || []).filter(r => r.returned_at === null).forEach((r) => {
-          map.set(r.tool_id, r);
-        });
-        set未归还记录(map);
+        try {
+          const { data: 记录数据, error: 记录错误 } = await supabase
+            .from("tool_borrow_records")
+            .select("*")
+            .in(
+              "tool_id",
+              tools.map((t) => t.id)
+            );
+
+          if (!记录错误) {
+            const map = new Map<string, 借用记录>();
+            ((记录数据 as 借用记录[]) || []).filter(r => r.returned_at === null).forEach((r) => {
+              map.set(r.tool_id, r);
+            });
+            set未归还记录(map);
+          } else {
+            console.log("未归还记录查询失败，继续执行", 记录错误);
+            set未归还记录(new Map());
+          }
+        } catch (e) {
+          console.log("查询错误，继续执行", e);
+          set未归还记录(new Map());
+        }
       } else {
         set未归还记录(new Map());
       }
@@ -454,12 +465,12 @@ export default function ToolManagementPage() {
                       <img
                         src={工具.image_url}
                         alt={工具.name}
-                        className="w-12 h-12 rounded-lg object-cover border border-gray-100 flex-shrink-0"
+                        className="w-20 h-20 rounded-lg object-cover border border-gray-100 flex-shrink-0"
                         loading="lazy"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-gray-400 flex-shrink-0">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-gray-400 flex-shrink-0">
+                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
@@ -518,10 +529,19 @@ export default function ToolManagementPage() {
                             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                             </svg>
-                            <span className="truncate">{知识库映射.get(工具.knowledge_article_id) || "使用说明"}</span>
+                            <span className="truncate">查看使用说明</span>
                           </Link>
                         ) : (
-                          <div className="flex-1"></div>
+                          <Link
+                            href={`/tools/management/${工具.id}/edit`}
+                            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 flex-1 min-w-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                            <span className="truncate">暂无使用说明，点击添加</span>
+                          </Link>
                         )}
 
                         {/* 借用/归还按钮 */}
