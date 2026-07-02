@@ -321,19 +321,29 @@ export default function ToolManagementPage() {
                   return (
                     <tr key={工具.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        {工具.image_url ? (
-                          <img
-                            src={工具.image_url}
-                            alt={工具.name}
-                            className="w-10 h-10 rounded object-cover border border-gray-200"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-gray-400 text-xs">无图</div>
-                        )}
+                        <Link href={`/tools/management/${工具.id}`}>
+                          {工具.image_url ? (
+                            <img
+                              src={工具.image_url}
+                              alt={工具.name}
+                              className="w-10 h-10 rounded object-cover border border-gray-200 hover:opacity-80 transition-opacity"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-gray-400 text-xs">无图</div>
+                          )}
+                        </Link>
                       </td>
-                      <td className="px-4 py-3 font-medium text-gray-900">{工具.code}</td>
-                      <td className="px-4 py-3 text-gray-700">{工具.name}</td>
+                      <td className="px-4 py-3 font-medium">
+                        <Link href={`/tools/management/${工具.id}`} className="text-gray-900 hover:text-blue-600">
+                          {工具.code}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link href={`/tools/management/${工具.id}`} className="text-gray-700 hover:text-blue-600">
+                          {工具.name}
+                        </Link>
+                      </td>
                       <td className="px-4 py-3">{状态显示(工具.status)}</td>
                       <td className="px-4 py-3 text-gray-600">{工具.location || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">
