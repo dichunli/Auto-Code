@@ -274,6 +274,25 @@ export default function ToolManagementPage() {
           </div>
         )}
 
+        {/* 扫码枪隐藏输入框（桌面端支持扫码枪） */}
+        <input
+          id="扫码枪输入"
+          type="text"
+          className="absolute w-0 h-0 opacity-0"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              const val = (e.target as HTMLInputElement).value.trim();
+              if (val.startsWith("tool:")) {
+                const toolId = val.slice(5);
+                if (toolId) {
+                  window.location.href = `/tools/borrow-scan?id=${encodeURIComponent(toolId)}`;
+                }
+              }
+              (e.target as HTMLInputElement).value = "";
+            }
+          }}
+        />
+
         <div className="mb-4 bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex flex-wrap items-center gap-3">
             <input
@@ -293,7 +312,20 @@ export default function ToolManagementPage() {
             >
               重置
             </button>
-            <ToolScanButton />
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById("扫码枪输入") as HTMLInputElement;
+                if (el) el.focus();
+              }}
+              className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 flex items-center gap-2 cursor-pointer"
+              title="点击后扫码枪扫描工具二维码，自动跳转到借还页面"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              扫码借还
+            </button>
           </div>
         </div>
       </div>
