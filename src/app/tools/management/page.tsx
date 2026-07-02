@@ -482,7 +482,12 @@ export default function ToolManagementPage() {
                       {/* 第一行：工具名称 + 编辑按钮 */}
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <div className="font-semibold text-gray-900 text-sm truncate">{工具.name}</div>
+                          <Link
+                            href={`/tools/management/${工具.id}`}
+                            className="font-semibold text-gray-900 text-sm truncate hover:text-blue-600"
+                          >
+                            {工具.name}
+                          </Link>
                         </div>
                         {是管理员 && (
                           <Link
