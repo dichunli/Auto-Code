@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import ToolQrCode from "./components/ToolQrCode";
 import ToolScanButton from "./components/ToolScanButton";
 import ToolBorrowReturnModal from "./components/ToolBorrowReturnModal";
+import LocationQrCode from "./components/LocationQrCode";
 
 interface 工具 {
   id: string;
@@ -377,7 +378,10 @@ export default function ToolManagementPage() {
                         </Link>
                       </td>
                       <td className="px-4 py-3">{状态显示(工具.status)}</td>
-                      <td className="px-4 py-3 text-gray-600">{工具.location || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {工具.location || "-"}
+                        {工具.location && <LocationQrCode location={工具.location} />}
+                      </td>
                       <td className="px-4 py-3 text-gray-600">
                         {未归还?.employees?.name || "-"}
                       </td>
@@ -561,6 +565,7 @@ export default function ToolManagementPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                           </svg>
                           <span>{工具.location}</span>
+                          <LocationQrCode location={工具.location} />
                         </div>
                       )}
 

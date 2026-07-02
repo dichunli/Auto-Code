@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import ToolBorrowReturnModal from "../components/ToolBorrowReturnModal";
+import LocationQrCode from "../components/LocationQrCode";
 
 interface 工具 {
   id: string;
@@ -210,7 +211,10 @@ export default function ToolDetailPage() {
             </div>
             <div>
               <div className="text-gray-400 text-xs mb-0.5">存放位置</div>
-              <div className="text-gray-900">{工具.location || "-"}</div>
+              <div className="text-gray-900 flex items-center gap-1">
+                {工具.location || "-"}
+                {工具.location && <LocationQrCode location={工具.location} />}
+              </div>
             </div>
             <div>
               <div className="text-gray-400 text-xs mb-0.5">当前借用人</div>
