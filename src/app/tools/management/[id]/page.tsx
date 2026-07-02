@@ -90,9 +90,8 @@ export default function ToolDetailPage() {
             .from("tool_borrow_records")
             .select("*")
             .eq("tool_id", id)
-            .is("returned_at", null)
             .maybeSingle();
-          if (记录) {
+          if (记录 && (记录 as 借用记录).returned_at === null) {
             set未归还记录(记录 as 借用记录);
           }
         } catch (e) {

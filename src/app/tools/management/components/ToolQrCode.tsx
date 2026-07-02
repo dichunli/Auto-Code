@@ -14,7 +14,7 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
   const qrValue = `tool:${toolId}`;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  function 打开打印窗口(样式: string) {
+  function 打印标签纸() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -25,49 +25,6 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
       return;
     }
 
-    打印窗口.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>工具二维码 - ${toolName}</title>
-          <style>
-            ${样式}
-            .no-print {
-              margin-top: 16px;
-              padding: 8px 20px;
-              font-size: 14px;
-              cursor: pointer;
-              border: 1px solid #ccc;
-              background: #fff;
-              border-radius: 6px;
-            }
-            @media print {
-              .no-print { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="print-box">
-            <div class="title">${toolName}</div>
-            <div class="code">${toolCode}</div>
-            <div class="qr"><img src="${dataUrl}" alt="二维码" /></div>
-          </div>
-          <button class="no-print" onclick="window.print();">点击打印</button>
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-              }, 300);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    打印窗口.document.close();
-  }
-
-  function 打印标签纸() {
     /* 适配 5cm × 3cm 条码标签纸（50mm 宽 × 30mm 高） */
     const 样式 = `
       @page { size: 50mm 30mm; margin: 0; }
@@ -103,6 +60,7 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
       }
       .qr img { width: 10mm; height: 10mm; }
     `;
+
     打印窗口.document.write(`
       <!DOCTYPE html>
       <html>
@@ -195,7 +153,7 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
               <button
                 type="button"
                 onClick={打印标签纸}
-                className="hidden sm:inline-flex px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                className="hidden lg:inline-flex px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
                 打印二维码
               </button>
