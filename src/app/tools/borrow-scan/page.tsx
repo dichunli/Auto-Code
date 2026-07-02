@@ -93,11 +93,15 @@ export default function ToolBorrowScanPage() {
           .from("tool_borrow_records")
           .select("*, profiles(full_name)")
           .eq("tool_id", toolId)
-          .is("returned_at", null)
           .order("borrowed_at", { ascending: false })
           .limit(1)
-          .single();
-        set未归还记录((recordData as 借用记录) || null);
+          .maybeSingle();
+        const rec = recordData as 借用记录;
+        if (rec && rec.returned_at === null) {
+          set未归还记录(rec);
+        } else {
+          set未归还记录(null);
+        }
 
         /* 浏览器环境：加载员工列表供选择 */
         if (!是App) {

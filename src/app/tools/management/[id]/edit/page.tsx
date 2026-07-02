@@ -204,216 +204,276 @@ export default function EditToolPage() {
     return (
       <div>
         <PageHeader title="编辑工具" />
-        <div className="text-sm text-gray-500 py-8">加载中...</div>
+        <div className="text-sm text-gray-500 py-12 text-center">加载中...</div>
       </div>
     );
   }
 
   return (
     <div>
-      <PageHeader title="编辑工具" />
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white rounded-xl border border-gray-200 p-6 max-w-2xl space-y-5"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              工具编码 *
-            </label>
-            <input
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={表单.code}
-              onChange={(e) => set表单({ ...表单, code: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              工具名称 *
-            </label>
-            <input
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={表单.name}
-              onChange={(e) => set表单({ ...表单, name: e.target.value })}
-            />
-          </div>
-        </div>
+      {/* 桌面版头部 */}
+      <div className="hidden sm:block">
+        <PageHeader title="编辑工具" />
+      </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">存放位置</label>
-          {!使用新位置 ? (
-            <div className="flex gap-2">
-              <select
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={表单.location}
-                onChange={(e) => set表单({ ...表单, location: e.target.value })}
-              >
-                <option value="">请选择存放位置</option>
-                {位置列表.map((loc) => (
-                  <option key={loc} value={loc}>{loc}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => {
-                  set使用新位置(true);
-                  set新位置("");
-                }}
-                className="px-3 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50"
-              >
-                + 新增位置
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="输入新的存放位置"
-                value={新位置}
-                onChange={(e) => set新位置(e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  set使用新位置(false);
-                  set新位置("");
-                }}
-                className="px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                选已有位置
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">工具图片</label>
-          <div className="flex items-center gap-3">
-            {图片地址 ? (
-              <div className="relative w-20 h-20 rounded-lg border border-gray-200 overflow-hidden">
-                <img src={图片地址} alt="工具图片" className="w-full h-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => set图片地址("")}
-                  className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
-                >
-                  ×
-                </button>
-              </div>
-            ) : null}
-            <label className="px-4 py-2 text-sm font-medium text-blue-600 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 cursor-pointer disabled:opacity-50">
-              {图片上传中 ? "上传中..." : "更换图片"}
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                disabled={图片上传中}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) 上传图片(file);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-          </div>
-          <p className="text-xs text-gray-400 mt-1">支持 jpg/png/webp，会自动压缩至 300KB 以内</p>
-        </div>
-
-        <div className="relative">
-          <label className="block text-sm font-medium text-gray-700 mb-1">使用说明</label>
-          <input
-            type="text"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="关联知识库文章..."
-            value={知识搜索}
-            onChange={(e) => {
-              set知识搜索(e.target.value);
-              set显示知识下拉(true);
-            }}
-            onFocus={() => set显示知识下拉(true)}
-          />
-          {表单.knowledge_article_id && (
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-xs text-gray-600">已选择：{知识结果.find((k) => k.id === 表单.knowledge_article_id)?.title || "已选择文章"}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  set表单({ ...表单, knowledge_article_id: "" });
-                  set知识搜索("");
-                }}
-                className="text-xs text-red-600 hover:text-red-800"
-              >
-                清除
-              </button>
-            </div>
-          )}
-          {显示知识下拉 && (知识搜索.trim() || 知识结果.length > 0) && (
-            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-              {知识搜索中 ? (
-                <div className="px-4 py-2 text-sm text-gray-500">搜索中...</div>
-              ) : 知识结果.length > 0 ? (
-                知识结果.map((k) => (
-                  <button
-                    key={k.id}
-                    type="button"
-                    onClick={() => {
-                      set表单({ ...表单, knowledge_article_id: k.id });
-                      set知识搜索(k.title);
-                      set显示知识下拉(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
-                  >
-                    {k.title}
-                  </button>
-                ))
-              ) : (
-                <div className="px-4 py-2 text-sm text-gray-500">未找到匹配文章</div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">补充说明</label>
-          <textarea
-            rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="填写工具的补充说明、注意事项等"
-            value={表单.instructions}
-            onChange={(e) => set表单({ ...表单, instructions: e.target.value })}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">状态</label>
-          <select
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={表单.status}
-            onChange={(e) => set表单({ ...表单, status: e.target.value })}
-          >
-            <option value="available">在库</option>
-            <option value="borrowed">借出</option>
-            <option value="scrapped">报废</option>
-          </select>
-        </div>
-
-        <div className="flex gap-3 justify-end pt-4">
+      {/* 移动端头部 */}
+      <div className="sm:hidden sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center justify-between">
           <button
             type="button"
-            onClick={() => router.push("/tools/management")}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            onClick={() => router.back()}
+            className="w-9 h-9 -ml-2 rounded-lg flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-50"
           >
-            取消
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
           </button>
-          <button
-            type="submit"
-            disabled={保存中 || 图片上传中}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {保存中 ? "保存中..." : "保存"}
-          </button>
+          <h1 className="text-base font-semibold text-gray-900">编辑工具</h1>
+          <div className="w-9"></div>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="px-4 sm:px-0 pb-24">
+        <div className="bg-white sm:rounded-xl sm:border sm:border-gray-200 sm:p-6 sm:max-w-2xl space-y-5">
+          {/* 编码和名称 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                工具编码 <span className="text-red-500">*</span>
+              </label>
+              <input
+                required
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                value={表单.code}
+                onChange={(e) => set表单({ ...表单, code: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                工具名称 <span className="text-red-500">*</span>
+              </label>
+              <input
+                required
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                value={表单.name}
+                onChange={(e) => set表单({ ...表单, name: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {/* 存放位置 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">存放位置</label>
+            {!使用新位置 ? (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+                  value={表单.location}
+                  onChange={(e) => set表单({ ...表单, location: e.target.value })}
+                >
+                  <option value="">请选择存放位置</option>
+                  {位置列表.map((loc) => (
+                    <option key={loc} value={loc}>{loc}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    set使用新位置(true);
+                    set新位置("");
+                  }}
+                  className="px-4 py-2.5 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 bg-white"
+                >
+                  + 新增位置
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  placeholder="输入新的存放位置"
+                  value={新位置}
+                  onChange={(e) => set新位置(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    set使用新位置(false);
+                    set新位置("");
+                  }}
+                  className="px-4 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white"
+                >
+                  选已有位置
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 工具图片 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">工具图片</label>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              {图片地址 ? (
+                <div className="relative">
+                  <div className="w-24 h-24 rounded-lg border border-gray-200 overflow-hidden">
+                    <img src={图片地址} alt="工具图片" className="w-full h-full object-cover" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => set图片地址("")}
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-sm shadow-sm"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <div className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+              )}
+              <label className="px-4 py-2.5 text-sm font-medium text-blue-600 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 cursor-pointer disabled:opacity-50 inline-flex items-center gap-2">
+                {图片上传中 ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    上传中...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {图片地址 ? "更换图片" : "上传图片"}
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  disabled={图片上传中}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) 上传图片(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">支持 jpg/png/webp，会自动压缩至 300KB 以内</p>
+          </div>
+
+          {/* 关联知识库 */}
+          <div className="relative">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">关联知识库</label>
+            <input
+              type="text"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              placeholder="搜索知识库文章..."
+              value={知识搜索}
+              onChange={(e) => {
+                set知识搜索(e.target.value);
+                set显示知识下拉(true);
+              }}
+              onFocus={() => set显示知识下拉(true)}
+            />
+            {表单.knowledge_article_id && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-sm text-gray-600">已选择：{知识结果.find((k) => k.id === 表单.knowledge_article_id)?.title || "已选择文章"}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    set表单({ ...表单, knowledge_article_id: "" });
+                    set知识搜索("");
+                  }}
+                  className="text-sm text-red-500 hover:text-red-700"
+                >
+                  清除
+                </button>
+              </div>
+            )}
+            {显示知识下拉 && (知识搜索.trim() || 知识结果.length > 0) && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                {知识搜索中 ? (
+                  <div className="px-4 py-3 text-sm text-gray-400">搜索中...</div>
+                ) : 知识结果.length > 0 ? (
+                  知识结果.map((k) => (
+                    <button
+                      key={k.id}
+                      type="button"
+                      onClick={() => {
+                        set表单({ ...表单, knowledge_article_id: k.id });
+                        set知识搜索(k.title);
+                        set显示知识下拉(false);
+                      }}
+                      className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0"
+                    >
+                      {k.title}
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-4 py-3 text-sm text-gray-400">未找到匹配文章</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 补充说明 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">补充说明</label>
+            <textarea
+              rows={4}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+              placeholder="填写工具的补充说明、注意事项等"
+              value={表单.instructions}
+              onChange={(e) => set表单({ ...表单, instructions: e.target.value })}
+            />
+          </div>
+
+          {/* 状态 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">状态</label>
+            <select
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+              value={表单.status}
+              onChange={(e) => set表单({ ...表单, status: e.target.value })}
+            >
+              <option value="available">在库</option>
+              <option value="borrowed">借出</option>
+              <option value="scrapped">报废</option>
+            </select>
+          </div>
+        </div>
+
+        {/* 底部操作按钮 */}
+        <div className="fixed sm:static bottom-0 left-0 right-0 bg-white sm:bg-transparent border-t sm:border-0 border-gray-200 px-4 sm:px-0 py-3 sm:py-4 sm:mt-0 sm:max-w-2xl">
+          <div className="flex flex-row-reverse gap-3">
+            <button
+              type="submit"
+              disabled={保存中 || 图片上传中}
+              className="flex-1 sm:flex-none px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {保存中 ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  保存中...
+                </span>
+              ) : (
+                "保存"
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/tools/management")}
+              className="flex-1 sm:flex-none px-6 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+            >
+              取消
+            </button>
+          </div>
         </div>
       </form>
     </div>

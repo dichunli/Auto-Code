@@ -12,6 +12,7 @@ import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import "@blocknote/mantine/style.css";
 import { createClient } from "@/lib/supabase/client";
 import { base64转Blob, 压缩图片 } from "@/lib/imageCompress";
+import { useDebounce } from "@/lib/useDebounce";
 import { blocknoteDictionary } from "@/lib/blocknoteDictionary";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
@@ -80,6 +81,21 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
     }
   });
 
+  /* 编辑器内容本地状态，用于防抖后通知父组件，减少大文章编辑时的重渲染 */
+  const [editorContent, setEditorContent] = useState(() =>
+    initialContent ? JSON.stringify(initialContent) : ""
+  );
+  const debouncedContent = useDebounce(editorContent, 500);
+  const onChangeRef = useRef(onChange);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+
+  useEffect(() => {
+    onChangeRef.current(debouncedContent);
+  }, [debouncedContent]);
+
   const uploadFile = useCallback(async (file: File) => {
     let uploadFile = file;
 
@@ -128,7 +144,7 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
 
   useEditorChange(() => {
     const json = JSON.stringify(editor.document);
-    onChange(json);
+    setEditorContent(json);
   }, editor);
 
   return (

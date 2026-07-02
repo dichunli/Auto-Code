@@ -182,7 +182,9 @@ export default async function KnowledgeDetailPage({
                 >
                   编辑
                 </Link>
-                <KnowledgeDeleteButton articleId={id} />
+                <div className="ml-6">
+                  <KnowledgeDeleteButton articleId={id} canDelete={canEdit} />
+                </div>
               </>
             )}
           </div>

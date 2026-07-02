@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/PageHeader";
 import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelector";
 import { 处理外部图片 } from "@/lib/processExternalImages";
 import { syncKnowledgeModelsFromVin } from "../actions";
+import { 生成知识库搜索文本 } from "@/lib/knowledgeSearch";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
@@ -166,11 +167,21 @@ export default function NewKnowledgePage() {
         return;
       }
 
-      /* 处理外部图片：自动下载到本地 */
+      /* 处理外部图片：并行下载到本地 */
       let contentBlocks = form.content_blocks ? JSON.parse(form.content_blocks) : null;
       if (contentBlocks && Array.isArray(contentBlocks)) {
         contentBlocks = await 处理外部图片(contentBlocks);
       }
+
+      /* 生成搜索文本（中文分词后空格拼接） */
+      const categoryName = categories.find((c) => c.id === form.category_id)?.name || "";
+      const searchText = 生成知识库搜索文本({
+        title: form.title,
+        content: form.content,
+        content_blocks: contentBlocks,
+        categoryName,
+        authorName: "",
+      });
 
       const { data: article, error } = await supabase
         .from("knowledge_articles")
@@ -182,6 +193,7 @@ export default function NewKnowledgePage() {
           content_blocks: contentBlocks,
           video_url: form.type === "video" ? form.video_url || null : null,
           visibility: form.visibility,
+          search_text: searchText,
         })
         .select("id")
         .single();

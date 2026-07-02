@@ -6,22 +6,25 @@ import { createClient } from "@/lib/supabase/client";
 
 interface Props {
   articleId: string;
+  /** 服务端已计算好的权限，传入后跳过客户端异步检查，避免按钮位置跳动 */
+  canDelete?: boolean;
 }
 
-export function KnowledgeDeleteButton({ articleId }: Props) {
+export function KnowledgeDeleteButton({ articleId, canDelete: serverCanDelete }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [deleting, setDeleting] = useState(false);
-  const [canDelete, setCanDelete] = useState(false);
+  const [canDelete, setCanDelete] = useState(serverCanDelete || false);
 
-  /* 检查删除权限 */
+  /* 如果服务端未传入权限，回退到客户端检查 */
   useEffect(() => {
+    if (serverCanDelete !== undefined) return;
+
     async function checkPermission() {
       const { data: userData } = await supabase.auth.getUser();
       const currentUserId = userData?.user?.id;
       if (!currentUserId) return;
 
-      /* 获取文章创建者 */
       const { data: article } = await supabase
         .from("knowledge_articles")
         .select("created_by")
@@ -30,7 +33,6 @@ export function KnowledgeDeleteButton({ articleId }: Props) {
 
       const isOwner = article?.created_by === currentUserId;
 
-      /* 检查是否是管理员 */
       const { data: roleData } = await supabase
         .from("profile_roles")
         .select("roles(name)")
@@ -44,7 +46,7 @@ export function KnowledgeDeleteButton({ articleId }: Props) {
       setCanDelete(isAdmin || isOwner);
     }
     checkPermission();
-  }, [articleId, supabase]);
+  }, [articleId, supabase, serverCanDelete]);
 
   async function handleDelete() {
     if (!confirm("确定要删除这篇文章吗？删除后不可恢复。")) return;

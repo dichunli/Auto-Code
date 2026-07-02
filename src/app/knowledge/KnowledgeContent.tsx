@@ -154,7 +154,6 @@ function 权限标签(visibility: string) {
 interface Props {
   initialArticles: 知识文章[];
   initialCategories: 知识分类[];
-  initialReadCounts: Record<string, number>;
   initialTotal: number;
   initialTotalPages: number;
   initialSegments: string[];
@@ -167,7 +166,6 @@ interface Props {
 export default function KnowledgeContent({
   initialArticles,
   initialCategories,
-  initialReadCounts,
   initialTotal,
   initialTotalPages,
   initialSegments,
@@ -186,7 +184,6 @@ export default function KnowledgeContent({
 
   const [currentUserId, setCurrentUserId] = useState<string>(serverUserId);
   const [isAdmin, setIsAdmin] = useState(serverIsAdmin);
-  const [readCounts, setReadCounts] = useState<Record<string, number>>(initialReadCounts);
   const [segments, setSegments] = useState<string[]>(initialSegments);
 
   const authorId = initialAuthorId;
@@ -228,7 +225,6 @@ export default function KnowledgeContent({
         } else {
           setArticles(result.articles || []);
           setCategories(result.categories || []);
-          setReadCounts(result.readCounts || {});
           setCurrentUserId(result.currentUserId || "");
           setIsAdmin(result.isAdmin || false);
           setTotal(result.total || 0);
@@ -462,7 +458,6 @@ export default function KnowledgeContent({
                 const config = 类型标签(a.type);
                 const permConfig = 权限标签(a.visibility || "public");
                 const canEdit = isAdmin || a.created_by === currentUserId;
-                const reads = readCounts[a.id] || 0;
 
                 return (
                   <Link
@@ -496,13 +491,6 @@ export default function KnowledgeContent({
                         <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
                           <span>{获取作者名(a)}</span>
                           <span>{formatDate(a.created_at)}</span>
-                          <span className="flex items-center gap-0.5">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                            {reads}
-                          </span>
                         </div>
                       </div>
                       {canEdit && (
