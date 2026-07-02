@@ -219,6 +219,8 @@ export default function LoginPage() {
         .login-hint { margin-top:24px; text-align:center; font-size:12px; color:#9ca3af; }
         /* 移动端：内容靠上对齐，防止键盘弹出遮挡输入框 */
         @media (max-width:767px){ .login-root { align-items:flex-start; padding-top:60px; } }
+        /* 隐藏兼容模式按钮和提示（所有设备统一隐藏） */
+        .login-compat-btn { display:none; } .login-compat-hint { display:none; }
       `}} />
       <noscript>
         <div style={{ padding: "20px", textAlign: "center", color: "#dc2626", background: "#fef2f2", borderRadius: "8px", margin: "20px" }}>
@@ -291,7 +293,8 @@ export default function LoginPage() {
             </button>
 
             {/* 原生登录按钮（旧版WebView fallback，用dangerouslySetInnerHTML插入真正的原生HTML） */}
-            <div dangerouslySetInnerHTML={{ __html: `
+            {/* 移动端（屏幕宽度≤767px）自动隐藏此按钮，因为现代手机浏览器和APP的WebView都支持React 19 */}
+            <div className="login-compat-btn" dangerouslySetInnerHTML={{ __html: `
               <button type="button"
                 onclick="if(window._nativeLoginInit){window._nativeLoginInit();}else{alert('登录脚本加载中，请稍后再试');}"
                 style="margin-top:8px;padding:12px;font-size:14px;font-weight:500;color:#fff;background:#2563eb;border:none;border-radius:8px;cursor:pointer;width:100%;"
@@ -303,6 +306,7 @@ export default function LoginPage() {
             {/* 调试信息显示 */}
             <div
               id="debug-info"
+              className="login-compat-hint"
               style={{
                 marginTop: "8px",
                 fontSize: "11px",
