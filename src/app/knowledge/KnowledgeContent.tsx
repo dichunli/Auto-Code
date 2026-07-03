@@ -179,6 +179,7 @@ export default function KnowledgeContent({
   const [loading, setLoading] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
   const debouncedKeyword = useDebounce(searchKeyword, 300);
+  const [searchMode, setSearchMode] = useState<"keyword" | "semantic">("semantic");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
 
@@ -213,6 +214,7 @@ export default function KnowledgeContent({
           category: selectedCategory,
           page,
           createdBy: authorId,
+          searchMode,
         });
 
         if (cancelled) return;
@@ -245,7 +247,7 @@ export default function KnowledgeContent({
     return () => {
       cancelled = true;
     };
-  }, [debouncedKeyword, selectedCategory, page, authorId]);
+  }, [debouncedKeyword, selectedCategory, page, authorId, searchMode]);
 
   /* 搜索输入只更新原始状态，防抖由 useDebounce 处理 */
   function handleSearchChange(val: string) {
@@ -327,6 +329,31 @@ export default function KnowledgeContent({
 
       {/* 搜索栏 */}
       <div className="mb-6">
+        {/* 搜索模式切换 */}
+        <div className="flex items-center gap-2 mb-2">
+          <button
+            type="button"
+            onClick={() => setSearchMode("semantic")}
+            className={`text-xs px-3 py-1 rounded-full transition-colors ${
+              searchMode === "semantic"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+            }`}
+          >
+            AI 语义搜索
+          </button>
+          <button
+            type="button"
+            onClick={() => setSearchMode("keyword")}
+            className={`text-xs px-3 py-1 rounded-full transition-colors ${
+              searchMode === "keyword"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+            }`}
+          >
+            关键词搜索
+          </button>
+        </div>
         <div className="relative">
           <input
             type="text"
