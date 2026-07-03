@@ -1522,7 +1522,11 @@ export default async function WorkOrderDetailPage({
         }))}
         advancePaymentTotal={advancePaymentTotal}
       />
-      <WorkOrderRealtimeSync itemIds={items?.map((i: { id: string }) => i.id) || []} />
+      <WorkOrderRealtimeSync
+        orderId={order.id}
+        itemIds={items?.map((i: { id: string }) => i.id) || []}
+        partIds={(itemParts || []).map((p: { id: string }) => p.id)}
+      />
     </WorkOrderToggleProvider>
   );
 }

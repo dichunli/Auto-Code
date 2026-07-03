@@ -13,7 +13,7 @@ interface Props {
 
 // 工单详情页实时同步：订阅本工单相关的多张表，任意一端（桌面/移动/采购）
 // 改动后，其他端自动刷新。过滤精准到本工单，不会被别的工单干扰。
-export function WorkOrderRealtimeSync({ orderId, itemIds, partIds }: Props) {
+export function WorkOrderRealtimeSync({ orderId, itemIds = [], partIds = [] }: Props) {
   const supabase = createClient();
   const router = useRouter();
 
