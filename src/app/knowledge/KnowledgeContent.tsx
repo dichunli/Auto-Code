@@ -178,8 +178,8 @@ export default function KnowledgeContent({
   const [categories, setCategories] = useState<知识分类[]>(initialCategories);
   const [loading, setLoading] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchMode, setSearchMode] = useState<"keyword" | "semantic">("keyword");
   const debouncedKeyword = useDebounce(searchKeyword, 300);
-  const [searchMode, setSearchMode] = useState<"keyword" | "semantic">("semantic");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
 

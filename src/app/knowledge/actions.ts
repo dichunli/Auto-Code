@@ -102,7 +102,7 @@ export async function loadKnowledgeArticles(params: {
   let 语义搜索完成 = false;
 
   if (keyword.trim() && searchMode === "semantic") {
-    /* 语义搜索模式：用百度 Embedding-V1 转向量 → pgvector 余弦相似度 */
+    /* 语义搜索模式：用百度 Embedding-V1 转向量 → pgvector 混合打分 */
     try {
       const 查询向量 = await 文字转向量(keyword.trim());
 

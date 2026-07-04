@@ -8,7 +8,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelector";
 import { 处理外部图片 } from "@/lib/processExternalImages";
-import { syncKnowledgeModelsFromVin, 生成文章向量 } from "../../actions";
+import { syncKnowledgeModelsFromVin } from "../../actions";
 import { 生成知识库搜索文本 } from "@/lib/knowledgeSearch";
 
 const BlockNoteEditor = dynamic(
@@ -329,56 +329,60 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
         throw new Error("更新失败，请检查是否有编辑权限");
       }
 
-      /* 并行删除旧的关联（3 个互不依赖的删除同时执行） */
-      const [delNameResult, delVehicleResult, delRoleResult] = await Promise.all([
-        supabase.from("knowledge_service_links").delete().eq("article_id", articleId),
-        supabase.from("knowledge_vehicle_links").delete().eq("article_id", articleId),
-        supabase.from("knowledge_article_roles").delete().eq("article_id", articleId),
-      ]);
+      /* 三条关联数据链条并行执行：删除旧的 → 插入新的，互不阻塞 */
+      const 任务链: Promise<{ 类型: string; 错误?: string }>[] = [];
 
-      if (delNameResult.error) throw delNameResult.error;
-      if (delVehicleResult.error) throw delVehicleResult.error;
+      /* 链条1：维修项目名称关联 */
+      任务链.push((async () => {
+        const { error: delErr } = await supabase.from("knowledge_service_links").delete().eq("article_id", articleId);
+        if (delErr) return { 类型: "项目", 错误: delErr.message };
+        if (linkedNames.length > 0) {
+          const { error: insErr } = await supabase.from("knowledge_service_links").insert(
+            linkedNames.map((n) => ({ article_id: articleId, service_name_id: n.id }))
+          );
+          if (insErr) return { 类型: "项目", 错误: insErr.message };
+        }
+        return { 类型: "项目" };
+      })());
 
-      /* 更新岗位权限关联（失败不阻塞文章保存） */
-      let roleUpdateError = "";
-      if (delRoleResult.error) {
-        roleUpdateError = delRoleResult.error.message;
-      } else if (form.visibility === "role" && selectedRoles.length > 0) {
-        const roleLinks = selectedRoles.map((roleName) => ({ article_id: articleId, role_name: roleName }));
-        const { error: insertRoleError } = await supabase.from("knowledge_article_roles").insert(roleLinks);
-        if (insertRoleError) roleUpdateError = insertRoleError.message;
-      }
+      /* 链条2：车型关联 */
+      任务链.push((async () => {
+        const { error: delErr } = await supabase.from("knowledge_vehicle_links").delete().eq("article_id", articleId);
+        if (delErr) return { 类型: "车型", 错误: delErr.message };
+        if (linkedVehicles.length > 0) {
+          const { error: insErr } = await supabase.from("knowledge_vehicle_links").insert(
+            linkedVehicles.map((v) => ({ article_id: articleId, vehicle_model_id: Number(v.id) }))
+          );
+          if (insErr) return { 类型: "车型", 错误: insErr.message };
+        }
+        return { 类型: "车型" };
+      })());
 
-      /* 并行插入新的关联（2 个互不依赖的插入同时执行） */
-      const insertTasks: Promise<unknown>[] = [];
-      if (linkedNames.length > 0) {
-        const nameLinks = linkedNames.map((n) => ({ article_id: articleId, service_name_id: n.id }));
-        insertTasks.push(
-          supabase.from("knowledge_service_links").insert(nameLinks).then((r) => {
-            if (r.error) throw r.error;
-          })
-        );
+      /* 链条3：岗位权限关联 */
+      任务链.push((async () => {
+        const { error: delErr } = await supabase.from("knowledge_article_roles").delete().eq("article_id", articleId);
+        if (delErr) return { 类型: "岗位", 错误: delErr.message };
+        if (form.visibility === "role" && selectedRoles.length > 0) {
+          const { error: insErr } = await supabase.from("knowledge_article_roles").insert(
+            selectedRoles.map((roleName) => ({ article_id: articleId, role_name: roleName }))
+          );
+          if (insErr) return { 类型: "岗位", 错误: insErr.message };
+        }
+        return { 类型: "岗位" };
+      })());
+
+      const 结果数组 = await Promise.all(任务链);
+
+      /* 检查结果：项目/车型关联失败则报错，岗位失败仅提示 */
+      for (const r of 结果数组) {
+        if (r.错误 && r.类型 !== "岗位") throw new Error(`${r.类型}关联更新失败: ${r.错误}`);
       }
-      if (linkedVehicles.length > 0) {
-        const vehicleLinks = linkedVehicles.map((v) => ({
-          article_id: articleId,
-          vehicle_model_id: Number(v.id),
-        }));
-        insertTasks.push(
-          supabase.from("knowledge_vehicle_links").insert(vehicleLinks).then((r) => {
-            if (r.error) throw r.error;
-          })
-        );
-      }
-      if (insertTasks.length > 0) {
-        await Promise.all(insertTasks);
-      }
+      const roleResult = 结果数组.find((r) => r.类型 === "岗位");
+      const roleUpdateError = roleResult?.错误 || "";
 
       if (roleUpdateError) {
         alert("文章已保存，但岗位权限更新失败：" + roleUpdateError);
       }
-      /* 异步生成语义向量（不阻塞页面跳转） */
-      生成文章向量(articleId, form.title, form.content, contentBlocks).catch(() => {});
       /* 保存成功后软跳转到详情页 */
       router.push(`/knowledge/${articleId}`);
       router.refresh();
