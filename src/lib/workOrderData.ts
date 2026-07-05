@@ -186,7 +186,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
   const [
     { data: order, error: orderError },
     { data: profiles },
-    { data: mechanicGroups },
+    { data: employeeGroups },
     { data: suppliers },
     { data: logisticsCompanies },
     { data: outsourceOrder },
@@ -201,8 +201,10 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     { data: itemPartsRaw },
   ] = await Promise.all([
     supabase.from("work_orders").select(`*, vehicles(*, vehicle_models(*)), customers(*)`).eq("id", id).single(),
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
-    supabase.from("mechanic_groups").select("*, mechanic_group_members(mechanic_id, profiles(full_name))"),
+    supabase.from("profiles").select("id, full_name, group_id, profile_roles(roles(name)), mechanic_levels(sort_order)").eq("is_active", true).order("full_name"),
+    // 派工"按组派工"使用员工档案的真实分组(employee_groups)，组员来自 profiles.group_id。
+    // 原读的 mechanic_groups 是另一套且无数据，导致按组派工空白。
+    supabase.from("employee_groups").select("id, name").order("sort_order", { ascending: true }),
     supabase.from("suppliers").select("id, name").order("name"),
     supabase.from("logistics_companies").select("id, name").order("name"),
     supabase
@@ -255,6 +257,33 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
   if (orderError) {
     console.error("[workOrderData] order query error:", orderError.message, "code:", orderError.code);
   }
+
+  // 组ID → 组名 映射（用于给员工附上组名，供派工按人排序）
+  const 组名Map = new Map(((employeeGroups as { id: string; name: string }[] | null) || []).map((g) => [g.id, g.name]));
+
+  // 给每个员工附加：是否技师(含 mechanic 角色)、组名。供派工"按人派工"排序用。
+  // 直接写回 profiles 对象（extra 字段对其它使用方无害）。
+  type ProfileRaw = { id: string; full_name: string; group_id?: string | null; profile_roles?: { roles?: { name?: string } | null }[] | null; mechanic_levels?: { sort_order?: number } | null; is_mechanic?: boolean; group_name?: string | null; level_sort?: number };
+  const 全部员工 = (profiles as ProfileRaw[] | null) || [];
+  全部员工.forEach((p) => {
+    p.is_mechanic = (p.profile_roles || []).some((pr) => pr.roles?.name === "mechanic");
+    p.group_name = p.group_id ? (组名Map.get(p.group_id) || null) : null;
+    // 技师等级 sort_order：越大等级越高；无等级给 -1（排最后）
+    p.level_sort = typeof p.mechanic_levels?.sort_order === "number" ? p.mechanic_levels.sort_order : -1;
+  });
+
+  // 把员工分组(employee_groups)组装成派工弹窗需要的形状：
+  // { id, name, mechanic_group_members: [{ mechanic_id, profiles:{full_name} }] }
+  // 组员 = profiles 中 group_id 指向该组的在职员工。空组不显示。
+  const mechanicGroups = ((employeeGroups as { id: string; name: string }[] | null) || [])
+    .map((g) => ({
+      id: g.id,
+      name: g.name,
+      mechanic_group_members: 全部员工
+        .filter((p) => p.group_id === g.id)
+        .map((p) => ({ mechanic_id: p.id, profiles: { full_name: p.full_name } })),
+    }))
+    .filter((g) => g.mechanic_group_members.length > 0);
 
   // 提取第一趟结果中的关联 ID，供第二趟使用
   const vehicleId = (order as Record<string, unknown> | null)?.vehicle_id as string | undefined;
