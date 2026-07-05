@@ -85,6 +85,19 @@ export default function PartBranchEditor({
   const [deleted, setDeleted] = useState(false);
   const [localOpinion, setLocalOpinion] = useState(part.customer_opinion || "pending");
 
+  // 字段编辑状态（声明在监听器之前，供实时同步/兜底同步的 setEditForm 使用）
+  const [editForm, setEditForm] = useState({
+    part_number: part.part_number || "",
+    brand: part.brand || "",
+    specification: part.specification || "",
+    unit_cost: toFixed2(part.unit_cost),
+    cost_price: toFixed2(part.cost_price),
+    unit_price: toFixed2(part.unit_price),
+    supplier_name: part.supplier_name || "",
+    quantity: part.quantity != null ? String(part.quantity) : "1",
+    document_name: part.document_name || part.parts?.document_name || "",
+  });
+
   useEffect(() => {
     setLocalSelected(part.is_selected || false);
     setLocalPurchased(part.is_purchased || false);
@@ -168,19 +181,6 @@ export default function PartBranchEditor({
       });
     }
   }, [canDelete, part.is_selected, part.id, supabase, itemId]);
-
-  // 字段编辑状态
-  const [editForm, setEditForm] = useState({
-    part_number: part.part_number || "",
-    brand: part.brand || "",
-    specification: part.specification || "",
-    unit_cost: toFixed2(part.unit_cost),
-    cost_price: toFixed2(part.cost_price),
-    unit_price: toFixed2(part.unit_price),
-    supplier_name: part.supplier_name || "",
-    quantity: part.quantity != null ? String(part.quantity) : "1",
-    document_name: part.document_name || part.parts?.document_name || "",
-  });
 
   // 兜底：part prop 变化（点提示条整页刷新后拿到新数据）时，把输入框同步为最新值；
   // 正在本行打字则跳过，避免打断输入。
