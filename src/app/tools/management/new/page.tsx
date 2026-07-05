@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { ImageUploader } from "@/components/ImageUploader";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
-import { 压缩图片 } from "@/lib/imageCompress";
-
 interface 知识文章 {
   id: string;
   title: string;
@@ -21,7 +20,6 @@ export default function NewToolPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [保存中, set保存中] = useState(false);
-  const [图片上传中, set图片上传中] = useState(false);
   const [加载中, set加载中] = useState(true);
 
   const [表单, set表单] = useState({
@@ -33,7 +31,7 @@ export default function NewToolPage() {
     status: "available",
   });
 
-  const [图片地址, set图片地址] = useState("");
+  const [图片地址, set图片地址] = useState<string[]>([]);
   const [知识搜索, set知识搜索] = useState("");
   const [知识结果, set知识结果] = useState<知识文章[]>([]);
   const [知识搜索中, set知识搜索中] = useState(false);
@@ -101,32 +99,6 @@ export default function NewToolPage() {
     初始化();
   }, [supabase]);
 
-  async function 上传图片(file: File) {
-    if (!file.type.startsWith("image/")) {
-      alert("请选择图片文件");
-      return;
-    }
-    set图片上传中(true);
-    try {
-      const compressed = await 压缩图片(file);
-      const formData = new FormData();
-      formData.append("file", compressed, file.name);
-
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "上传失败");
-      set图片地址(result.path);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      alert("图片上传失败: " + msg);
-    } finally {
-      set图片上传中(false);
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const code = 表单.code.trim();
@@ -161,7 +133,7 @@ export default function NewToolPage() {
         .insert({
           code,
           name,
-          image_url: 图片地址 || null,
+          image_url: 图片地址.length > 0 ? 图片地址.join(",") : null,
           instructions: 表单.instructions.trim() || null,
           knowledge_article_id: 表单.knowledge_article_id || null,
           location: finalLocation || null,
@@ -302,57 +274,12 @@ export default function NewToolPage() {
           {/* 工具图片 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">工具图片</label>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              {图片地址 ? (
-                <div className="relative">
-                  <div className="w-24 h-24 rounded-lg border border-gray-200 overflow-hidden">
-                    <img src={图片地址} alt="工具图片" className="w-full h-full object-cover" />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => set图片地址("")}
-                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-sm shadow-sm"
-                  >
-                    ×
-                  </button>
-                </div>
-              ) : (
-                <div className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-              )}
-              <label className="px-4 py-2.5 text-sm font-medium text-blue-600 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 cursor-pointer disabled:opacity-50 inline-flex items-center gap-2">
-                {图片上传中 ? (
-                  <>
-                    <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    上传中...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    {图片地址 ? "更换图片" : "上传图片"}
-                  </>
-                )}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  disabled={图片上传中}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) 上传图片(file);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            </div>
-            <p className="text-xs text-gray-400 mt-2">支持 jpg/png/webp，会自动压缩至 300KB 以内</p>
+            <ImageUploader
+              onUpload={(paths) => set图片地址((prev) => [...prev, ...paths])}
+              onDelete={(path) => set图片地址((prev) => prev.filter((p) => p !== path))}
+              existingImages={图片地址}
+              maxImages={5}
+            />
           </div>
 
           {/* 关联知识库 */}
@@ -442,7 +369,7 @@ export default function NewToolPage() {
           <div className="flex flex-row-reverse gap-3">
             <button
               type="submit"
-              disabled={保存中 || 图片上传中}
+              disabled={保存中}
               className="flex-1 sm:flex-none px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {保存中 ? (
