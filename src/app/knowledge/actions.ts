@@ -3,6 +3,7 @@
 import mammoth from "mammoth";
 import { createClient } from "@/lib/supabase/server";
 import { 中文分词 } from "@/lib/chineseSegmenter";
+import { 文字转向量, 生成嵌入文本 } from "@/lib/baiduEmbedding";
 
 /* ═════════════════════════════════════════════════════════════════
  * 知识库数据查询 Server Action
@@ -34,6 +35,8 @@ export async function loadKnowledgeArticles(params: {
   category?: string;
   page?: number;
   createdBy?: string;
+  /** 搜索模式：keyword=关键词全文检索  semantic=语义搜索 */
+  searchMode?: "keyword" | "semantic";
 }): Promise<{
   success: boolean;
   articles?: 知识文章数据[];
@@ -45,23 +48,32 @@ export async function loadKnowledgeArticles(params: {
   segments?: string[];
   error?: string;
 }> {
-  const { keyword = "", category = "", page = 1, createdBy = "" } = params;
+  const { keyword = "", category = "", page = 1, createdBy = "", searchMode = "keyword" } = params;
   const pageSize = 20;
   const fromIdx = (page - 1) * pageSize;
   const toIdx = fromIdx + pageSize - 1;
 
   const supabase = await createClient();
 
-  /* 读取管理员自定义分词 */
-  const { data: customWordsData } = await supabase
-    .from("search_dictionary")
-    .select("word")
-    .order("created_at", { ascending: false });
-  const customWords = (customWordsData || []).map((row) => String(row.word));
-  const searchKeywords = keyword.trim() ? 中文分词(keyword.trim(), customWords) : [];
+  /* 只在需要搜索时才加载分词字典（节省一次查询） */
+  const searchKeywords = keyword.trim()
+    ? await (async () => {
+        const { data: customWordsData } = await supabase
+          .from("search_dictionary")
+          .select("word")
+          .order("created_at", { ascending: false });
+        const customWords = (customWordsData || []).map((row) => String(row.word));
+        return 中文分词(keyword.trim(), customWords);
+      })()
+    : [];
 
-  /* 获取当前用户 */
-  const { data: { user } } = await supabase.auth.getUser();
+  /* 并行：同时获取用户信息 + 分类列表（这两个和数据查询互不依赖） */
+  const [userResult, categoriesResult] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("knowledge_categories").select("*").order("sort_order", { ascending: true }).limit(100),
+  ]);
+
+  const { data: { user } } = userResult;
   const currentUserId = user?.id || "";
   let isAdmin = false;
   if (currentUserId) {
@@ -87,49 +99,144 @@ export async function loadKnowledgeArticles(params: {
     return query;
   }
 
-  if (searchKeywords.length > 0) {
-    /* 搜索模式：对标题和内容做 ilike 全库搜索，带分页 */
-    let countQuery = supabase
-      .from("knowledge_articles")
-      .select("*", { count: "exact", head: true });
-    countQuery = 应用筛选条件(countQuery);
-    for (const kw of searchKeywords) {
-      countQuery = countQuery.or(`title.ilike.%${kw}%,content.ilike.%${kw}%`);
-    }
-    const { count, error: countError } = await countQuery;
-    if (countError) {
-      return { success: false, error: countError.message, segments: searchKeywords };
-    }
-    total = count || 0;
+  let 语义搜索完成 = false;
 
-    let query = supabase
-      .from("knowledge_articles")
-      .select("*, knowledge_categories(name), profiles(full_name)")
-      .order("created_at", { ascending: false })
-      .range(fromIdx, toIdx);
-    query = 应用筛选条件(query);
-    for (const kw of searchKeywords) {
-      query = query.or(`title.ilike.%${kw}%,content.ilike.%${kw}%`);
-    }
+  if (keyword.trim() && searchMode === "semantic") {
+    /* 语义搜索模式：用百度 Embedding-V1 转向量 → pgvector 混合打分 */
+    try {
+      const 查询向量 = await 文字转向量(keyword.trim());
 
-    const { data, error } = await query;
-    if (error) {
-      return { success: false, error: error.message, segments: searchKeywords };
+      const { data: rpcResults, error: rpcError } = await supabase
+        .rpc("search_knowledge_semantic", {
+          query_embedding: 查询向量,
+          p_category_id: category || null,
+          p_limit: pageSize,
+          p_offset: fromIdx,
+        });
+
+      if (rpcError) throw rpcError;
+
+      const allResults = (rpcResults || []) as Array<{
+        id: string; title: string; content: string; content_blocks: unknown;
+        type: string; created_at: string; category_id: string | null;
+        category_name: string | null; author_name: string | null;
+        visibility: string; created_by: string | null; similarity: number;
+        total_count: number;
+      }>;
+
+      total = allResults.length > 0 ? Number(allResults[0].total_count) : 0;
+
+      articles = allResults.map((r) => ({
+        id: r.id,
+        title: r.title,
+        content: r.content,
+        content_blocks: r.content_blocks,
+        type: r.type,
+        created_at: r.created_at,
+        category_id: r.category_id,
+        created_by: r.created_by,
+        visibility: r.visibility,
+        category_name: r.category_name,
+        author_name: r.author_name,
+        score: Math.round(r.similarity * 100),
+      }));
+
+      /* 语义搜索无结果 → 自动回退关键词搜索（兼容尚无向量的旧文章） */
+      if (total === 0) {
+        console.log("[knowledge] 语义搜索无结果，自动回退关键词搜索");
+        searchKeywords.push(...(keyword.trim() ? [keyword.trim()] : []));
+      } else {
+        语义搜索完成 = true;
+      }
+    } catch (err: unknown) {
+      /* 语义搜索失败时回退到关键词搜索 */
+      console.warn("[knowledge] 语义搜索失败，回退到关键词搜索:", err instanceof Error ? err.message : String(err));
+      searchKeywords.push(...(keyword.trim() ? [keyword.trim()] : []));
     }
-    articles = (data || []).map((a: Record<string, unknown>) => ({
-      id: a.id as string,
-      title: a.title as string,
-      content: a.content as string,
-      content_blocks: a.content_blocks,
-      type: a.type as string,
-      created_at: a.created_at as string,
-      category_id: a.category_id as string | null,
-      created_by: a.created_by as string | null,
-      visibility: a.visibility as string,
-      category_name: (a.knowledge_categories as { name: string } | null)?.name || null,
-      author_name: (a.profiles as { full_name: string } | null)?.full_name || null,
-    }));
-  } else {
+  }
+
+  if (!语义搜索完成 && searchKeywords.length > 0) {
+    /* 搜索模式：调用全文检索 RPC（数据库层分页+筛选，只传当前页数据） */
+    const { data: rpcResults, error: rpcError } = await supabase
+      .rpc("search_knowledge_articles", {
+        search_keywords: searchKeywords,
+        p_category_id: category || null,
+        p_limit: pageSize,
+        p_offset: fromIdx,
+      });
+
+    if (rpcError) {
+      /* RPC 失败，回退到 ilike */
+      console.warn("[knowledge] RPC 全文检索失败，回退到 ilike:", rpcError.message);
+      let countQuery = supabase
+        .from("knowledge_articles")
+        .select("*", { count: "exact", head: true });
+      countQuery = 应用筛选条件(countQuery);
+      for (const kw of searchKeywords) {
+        countQuery = countQuery.or(`title.ilike.%${kw}%,content.ilike.%${kw}%`);
+      }
+      const { count, error: countError } = await countQuery;
+      if (countError) {
+        return { success: false, error: countError.message, segments: searchKeywords };
+      }
+      total = count || 0;
+
+      let query = supabase
+        .from("knowledge_articles")
+        .select("*, knowledge_categories(name), profiles(full_name)")
+        .order("created_at", { ascending: false })
+        .range(fromIdx, toIdx);
+      query = 应用筛选条件(query);
+      for (const kw of searchKeywords) {
+        query = query.or(`title.ilike.%${kw}%,content.ilike.%${kw}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        return { success: false, error: error.message, segments: searchKeywords };
+      }
+      articles = (data || []).map((a: Record<string, unknown>) => ({
+        id: a.id as string,
+        title: a.title as string,
+        content: a.content as string,
+        content_blocks: a.content_blocks,
+        type: a.type as string,
+        created_at: a.created_at as string,
+        category_id: a.category_id as string | null,
+        created_by: a.created_by as string | null,
+        visibility: a.visibility as string,
+        category_name: (a.knowledge_categories as { name: string } | null)?.name || null,
+        author_name: (a.profiles as { full_name: string } | null)?.full_name || null,
+      }));
+    } else {
+      /* RPC v3 成功：数据库已分页+筛选，附带 total_count */
+      const allResults = (rpcResults || []) as Array<{
+        id: string; title: string; content: string; content_blocks: unknown;
+        type: string; created_at: string; category_id: string | null;
+        category_name: string | null; author_name: string | null;
+        visibility: string; created_by: string | null; score: number;
+        total_count: number;
+      }>;
+
+      /* 数据库已做分页和分类筛选，直接取结果 */
+      total = allResults.length > 0 ? Number(allResults[0].total_count) : 0;
+
+      articles = allResults.map((r) => ({
+        id: r.id,
+        title: r.title,
+        content: r.content,
+        content_blocks: r.content_blocks,
+        type: r.type,
+        created_at: r.created_at,
+        category_id: r.category_id,
+        created_by: r.created_by,
+        visibility: r.visibility,
+        category_name: r.category_name,
+        author_name: r.author_name,
+        score: r.score,
+      }));
+    }
+  } else if (!语义搜索完成) {
     /* 普通列表模式：数据库层真实分页 */
     let countQuery = supabase
       .from("knowledge_articles")
@@ -167,19 +274,12 @@ export async function loadKnowledgeArticles(params: {
     }));
   }
 
-  /* 查询分类 */
-  const { data: categoriesData } = await supabase
-    .from("knowledge_categories")
-    .select("*")
-    .order("sort_order", { ascending: true })
-    .limit(100);
-
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return {
     success: true,
     articles,
-    categories: (categoriesData || []) as 知识分类数据[],
+    categories: (categoriesResult.data || []) as 知识分类数据[],
     currentUserId,
     isAdmin,
     total,
@@ -671,6 +771,26 @@ import { 标准化VIN } from "@/lib/vinValidator";
  * 知识库通过VIN同步车型
  * VIN解码后匹配本地车型库，未匹配到则自动创建
  */
+/* 为文章生成并保存语义向量（文章保存后异步调用，不阻塞保存） */
+export async function 生成文章向量(文章ID: string, 标题: string, 内容: string, 内容块?: unknown): Promise<void> {
+  try {
+    const supabase = await createClient();
+    const 嵌入文本 = 生成嵌入文本(标题, 内容, 内容块);
+    if (!嵌入文本) return;
+
+    const 向量 = await 文字转向量(嵌入文本);
+    if (!向量 || 向量.length === 0) return;
+
+    await supabase
+      .from("knowledge_articles")
+      .update({ embedding: 向量 })
+      .eq("id", 文章ID);
+  } catch (err: unknown) {
+    /* 向量生成失败不影响文章正常使用，仅语义搜索不可用 */
+    console.warn("[knowledge] 向量生成失败:", err instanceof Error ? err.message : String(err));
+  }
+}
+
 export async function syncKnowledgeModelsFromVin(rawVin: string): Promise<{
   success: boolean;
   matchedModels?: Array<{
@@ -732,12 +852,13 @@ export async function syncKnowledgeModelsFromVin(rawVin: string): Promise<{
     return { success: false, error: "VIN解码失败，未找到车型信息" };
   }
 
-  /* 匹配本地车型库 */
+  /* 匹配本地车型库：只查匹配品牌的记录，避免全表扫描（9.6 万条 → 几百条） */
+  const vmBrand = (vinDecodeModel.Brand || "").toLowerCase().trim();
   const { data: localModels } = await supabase
     .from("vehicle_models")
-    .select("id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准");
+    .select("id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准")
+    .ilike("品牌", `%${vmBrand}%`);
 
-  const vmBrand = (vinDecodeModel.Brand || "").toLowerCase().trim();
   const vmSeries = (vinDecodeModel.Series || "").toLowerCase().trim();
   const vmModel = (vinDecodeModel.Model || "").toLowerCase().trim();
   const vmEngine = (vinDecodeModel.Engine_no || "").toLowerCase().trim();

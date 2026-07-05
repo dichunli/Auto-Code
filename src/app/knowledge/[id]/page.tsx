@@ -45,62 +45,14 @@ export default async function KnowledgeDetailPage({
   const autoPresent = sp.present === "1";
   const supabase = await createClient();
 
-  /* 先获取当前用户和文章详情（用户权限判断依赖文章） */
-  const { data: { user: currentUser } } = await supabase.auth.getUser();
-  const currentUserId = currentUser?.id;
-
-  const { data: article } = await supabase
-    .from("knowledge_articles")
-    .select("*, knowledge_categories(name), profiles(full_name)")
-    .eq("id", id)
-    .single();
-
-  if (!article) notFound();
-
-  /* 权限检查 */
-  const isOwner = article.created_by === currentUserId;
-  let isAdmin = false;
-  if (currentUserId) {
-    const { data: roleData } = await supabase
-      .from("profile_roles")
-      .select("roles(name)")
-      .eq("profile_id", currentUserId);
-    const roleNames = (roleData || []).map(
-      (d: { roles?: { name?: string } | null }) => d.roles?.name
-    ).filter(Boolean) as string[];
-    isAdmin = roleNames.includes("admin");
-  }
-  const canView = isAdmin || isOwner || article.visibility === "public" || article.visibility === "internal";
-  const canEdit = isAdmin || isOwner;
-
-  if (!canView) {
-    redirect("/knowledge");
-  }
-
-  /* 记录阅读（登录用户才记录，不阻塞页面加载） */
-  if (currentUserId) {
-    void supabase.from("knowledge_article_reads").upsert(
-      { article_id: id, user_id: currentUserId, read_date: new Date().toISOString().split("T")[0] },
-      { onConflict: "article_id,user_id,read_date" }
-    ).then(() => {}).catch(() => {});
-  }
-
-  /* 查询当前用户的员工分组 */
-  let userGroupId = "";
-  if (currentUserId) {
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("group_id")
-      .eq("id", currentUserId)
-      .single();
-    userGroupId = profileData?.group_id ? String(profileData.group_id) : "";
-  }
-
-  /* 并行查询：阅读次数、维修项目关联 */
-  const [
-    readCountResult,
-    linksResult,
-  ] = await Promise.all([
+  /* 第 1 轮并行：互不依赖的查询同时发出 */
+  const [userResult, articleResult, readCountResult, linksResult] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase
+      .from("knowledge_articles")
+      .select("*, knowledge_categories(name), profiles(full_name)")
+      .eq("id", id)
+      .single(),
     supabase
       .from("knowledge_article_reads")
       .select("*", { count: "exact", head: true })
@@ -111,8 +63,47 @@ export default async function KnowledgeDetailPage({
       .eq("article_id", id),
   ]);
 
+  const { data: { user: currentUser } } = userResult;
+  const { data: article } = articleResult;
+  const currentUserId = currentUser?.id;
   const readCount = readCountResult.count ?? 0;
   const links = linksResult.data;
+
+  if (!article) notFound();
+
+  /* 第 2 轮并行：依赖 userId 的查询同时发出（无登录用户则跳过） */
+  let isAdmin = false;
+  let userGroupId = "";
+  if (currentUserId) {
+    const [roleResult, profileResult] = await Promise.all([
+      supabase.from("profile_roles").select("roles(name)").eq("profile_id", currentUserId),
+      supabase.from("profiles").select("group_id").eq("id", currentUserId).single(),
+    ]);
+
+    const { data: roleData } = roleResult;
+    const roleNames = (roleData || []).map(
+      (d: { roles?: { name?: string } | null }) => d.roles?.name
+    ).filter(Boolean) as string[];
+    isAdmin = roleNames.includes("admin");
+
+    const { data: profileData } = profileResult;
+    userGroupId = profileData?.group_id ? String(profileData.group_id) : "";
+
+    /* 记录阅读（不阻塞页面加载） */
+    void supabase.from("knowledge_article_reads").upsert(
+      { article_id: id, user_id: currentUserId, read_date: new Date().toISOString().split("T")[0] },
+      { onConflict: "article_id,user_id,read_date" }
+    ).then(() => {}).catch(() => {});
+  }
+
+  /* 权限检查 */
+  const isOwner = article.created_by === currentUserId;
+  const canView = isAdmin || isOwner || article.visibility === "public" || article.visibility === "internal";
+  const canEdit = isAdmin || isOwner;
+
+  if (!canView) {
+    redirect("/knowledge");
+  }
 
   return (
     <div>
