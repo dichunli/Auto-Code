@@ -69,6 +69,7 @@ export default function PartBranchEditor({
   const { showPrices } = usePriceVisibility();
   const [saving, setSaving] = useState(false);
   const clickTimer = useRef<NodeJS.Timeout | null>(null);
+  const 根容器Ref = useRef<HTMLDivElement>(null);
 
   function refresh() {
     // 结构性改动(删分支/关联编码)自己刷新拉新数据，标记后避免实时同步重复刷
@@ -93,12 +94,27 @@ export default function PartBranchEditor({
 
   // 监听同组分支的选中广播：自己被选中→点亮，自己作为兄弟被取消→灭掉
   // （配合不刷整页的局部更新，保证单选互斥仍然正确）
+  // 另：来自实时同步(fromRealtime)的推送，把价格/数量/意见等字段同步进本行显示，
+  // 让观察方无需整页刷新即可秒级看到别人对本条的改动。
   useEffect(() => {
     function handleSelectSync(e: Event) {
       const detail = (e as CustomEvent).detail as {
         partId?: string;
         is_selected?: boolean;
         siblingResetIds?: string[];
+        fromRealtime?: boolean;
+        unit_price?: number;
+        unit_cost?: number | null;
+        cost_price?: number | null;
+        quantity?: number;
+        part_number?: string | null;
+        brand?: string | null;
+        specification?: string | null;
+        supplier_name?: string | null;
+        document_name?: string | null;
+        customer_opinion?: string | null;
+        is_purchased?: boolean;
+        is_arrived?: boolean;
       } | null;
       if (!detail) return;
       if (detail.partId === part.id && detail.is_selected !== undefined) {
@@ -106,9 +122,31 @@ export default function PartBranchEditor({
       } else if (detail.siblingResetIds?.includes(part.id)) {
         setLocalSelected(false);
       }
+      // 实时推送且是本行：同步其余可见字段（跳过正在打字的本行，避免打断输入）
+      if (detail.fromRealtime && detail.partId === part.id) {
+        if (detail.customer_opinion !== undefined && detail.customer_opinion !== null) setLocalOpinion(detail.customer_opinion);
+        if (detail.is_purchased !== undefined) setLocalPurchased(detail.is_purchased);
+        if (detail.is_arrived !== undefined) setLocalArrived(detail.is_arrived);
+        const 本行有焦点 = 根容器Ref.current?.contains(document.activeElement);
+        if (!本行有焦点) {
+          setEditForm((prev) => ({
+            ...prev,
+            unit_price: detail.unit_price !== undefined ? toFixed2(detail.unit_price) : prev.unit_price,
+            unit_cost: detail.unit_cost !== undefined ? toFixed2(detail.unit_cost) : prev.unit_cost,
+            cost_price: detail.cost_price !== undefined ? toFixed2(detail.cost_price) : prev.cost_price,
+            quantity: detail.quantity !== undefined ? String(detail.quantity) : prev.quantity,
+            part_number: detail.part_number !== undefined && detail.part_number !== null ? detail.part_number : prev.part_number,
+            brand: detail.brand !== undefined && detail.brand !== null ? detail.brand : prev.brand,
+            specification: detail.specification !== undefined && detail.specification !== null ? detail.specification : prev.specification,
+            supplier_name: detail.supplier_name !== undefined && detail.supplier_name !== null ? detail.supplier_name : prev.supplier_name,
+            document_name: detail.document_name !== undefined && detail.document_name !== null ? detail.document_name : prev.document_name,
+          }));
+        }
+      }
     }
     window.addEventListener("wo-part-update", handleSelectSync as EventListener);
     return () => window.removeEventListener("wo-part-update", handleSelectSync as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [part.id]);
 
   // 只有一个分支时默认选中
@@ -143,6 +181,25 @@ export default function PartBranchEditor({
     quantity: part.quantity != null ? String(part.quantity) : "1",
     document_name: part.document_name || part.parts?.document_name || "",
   });
+
+  // 兜底：part prop 变化（点提示条整页刷新后拿到新数据）时，把输入框同步为最新值；
+  // 正在本行打字则跳过，避免打断输入。
+  useEffect(() => {
+    const 本行有焦点 = 根容器Ref.current?.contains(document.activeElement);
+    if (本行有焦点) return;
+    setEditForm({
+      part_number: part.part_number || "",
+      brand: part.brand || "",
+      specification: part.specification || "",
+      unit_cost: toFixed2(part.unit_cost),
+      cost_price: toFixed2(part.cost_price),
+      unit_price: toFixed2(part.unit_price),
+      supplier_name: part.supplier_name || "",
+      quantity: part.quantity != null ? String(part.quantity) : "1",
+      document_name: part.document_name || part.parts?.document_name || "",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [part.part_number, part.brand, part.specification, part.unit_cost, part.cost_price, part.unit_price, part.supplier_name, part.quantity, part.document_name]);
 
   // 供应商推荐相关状态
   const [vehicleInfo, setVehicleInfo] = useState<{ 厂商?: string; 品牌?: string; 车系?: string }>({});
@@ -601,7 +658,7 @@ export default function PartBranchEditor({
   if (deleted) return null;
 
   return (
-    <div className={`rounded border p-2 transition-colors ${saving ? "opacity-50" : ""} ${
+    <div ref={根容器Ref} className={`rounded border p-2 transition-colors ${saving ? "opacity-50" : ""} ${
       localSelected ? "bg-yellow-50/30 border-yellow-200" : "bg-white border-gray-100"
     }`}>
       {/* 所有内容一行显示 */}

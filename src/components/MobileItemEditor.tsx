@@ -329,10 +329,46 @@ export default function MobileItemEditor({
   /* 配件列表展开状态 */
   const [partsExpanded, setPartsExpanded] = useState(false);
 
+  /* 实时同步：别人改配件字段(价格/数量/选中/意见等)后，WorkOrderRealtimeSync 广播
+     wo-part-update(fromRealtime)。移动端把这些新值合并到本地显示，秒级更新、不刷屏。
+     注意：只合并"已存在分支的字段改动"，不处理加/删分支（那些走顶部提示条整页刷新）。 */
+  const [实时覆盖, set实时覆盖] = useState<Record<string, Partial<ItemPart>>>({});
+  useEffect(() => { set实时覆盖({}); }, [parts]); // 整页刷新后以 prop 为准，清空覆盖
+  useEffect(() => {
+    function onRealtime(e: Event) {
+      const d = (e as CustomEvent).detail as (Partial<ItemPart> & { partId?: string; fromRealtime?: boolean }) | null;
+      if (!d || !d.fromRealtime || !d.partId) return;
+      const pid = d.partId;
+      set实时覆盖((prev) => {
+        const patch: Partial<ItemPart> = {};
+        if (d.unit_price !== undefined) patch.unit_price = d.unit_price;
+        if (d.unit_cost !== undefined) patch.unit_cost = d.unit_cost as number | null;
+        if (d.cost_price !== undefined) patch.cost_price = d.cost_price as number | null;
+        if (d.quantity !== undefined) patch.quantity = d.quantity;
+        if (d.is_selected !== undefined) patch.is_selected = d.is_selected;
+        if (d.part_number !== undefined) patch.part_number = d.part_number;
+        if (d.brand !== undefined) patch.brand = d.brand;
+        if (d.specification !== undefined) patch.specification = d.specification;
+        if (d.supplier_name !== undefined) patch.supplier_name = d.supplier_name;
+        if (d.customer_opinion !== undefined) patch.customer_opinion = d.customer_opinion;
+        if (d.is_purchased !== undefined) patch.is_purchased = d.is_purchased;
+        if (d.is_arrived !== undefined) patch.is_arrived = d.is_arrived;
+        return { ...prev, [pid]: { ...prev[pid], ...patch } };
+      });
+    }
+    window.addEventListener("wo-part-update", onRealtime as EventListener);
+    return () => window.removeEventListener("wo-part-update", onRealtime as EventListener);
+  }, []);
+
+  const parts合并 = useMemo(
+    () => parts.map((p) => (实时覆盖[p.id] ? { ...p, ...实时覆盖[p.id] } : p)),
+    [parts, 实时覆盖]
+  );
+
   /* 按"配件名称目录"(branch_group_id)分组：同一目录的分支归一组，同名也能是独立目录 */
   const partGroups = useMemo(() => {
     const map = new Map<string, ItemPart[]>();
-    for (const p of parts) {
+    for (const p of parts合并) {
       const key = p.branch_group_id || p.part_name_id || p.id;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(p);
@@ -341,7 +377,7 @@ export default function MobileItemEditor({
       name: items[0].name,
       parts: items,
     }));
-  }, [parts]);
+  }, [parts合并]);
 
   /* 配件详情弹窗 */
   const [selectedPartForDetail, setSelectedPartForDetail] = useState<ItemPart | null>(null);
@@ -2591,9 +2627,9 @@ export default function MobileItemEditor({
       {/* 配件详情弹窗 */}
       {selectedPartForDetail && (() => {
         const branchParts = selectedPartForDetail.branch_group_id
-          ? parts.filter((p) => p.branch_group_id === selectedPartForDetail.branch_group_id)
+          ? parts合并.filter((p) => p.branch_group_id === selectedPartForDetail.branch_group_id)
           : selectedPartForDetail.part_name_id
-          ? parts.filter((p) => p.part_name_id === selectedPartForDetail.part_name_id)
+          ? parts合并.filter((p) => p.part_name_id === selectedPartForDetail.part_name_id)
           : [selectedPartForDetail];
         const activeBranch = branchParts.find((p) => p.id === detailActiveBranchId) || branchParts[0];
         return (

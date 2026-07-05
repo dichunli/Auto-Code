@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, 确保有session, 获取访问令牌 } from "@/lib/supabase/client";
 import { 是否自己刚改的配件, 是否自己刚结构改动的项目 } from "@/lib/localEditSignal";
 
 interface Props {
@@ -11,64 +11,111 @@ interface Props {
   partIds: string[];
 }
 
-// 工单详情页实时同步：订阅本工单相关的多张表，任意一端（桌面/移动/采购）
-// 改动后，其他端自动刷新。过滤精准到本工单，不会被别的工单干扰。
+// 工单详情页实时同步（混合策略）：
+//  · 改金额/数量/选中等（UPDATE，高频）→ 直接用推送新值秒级更新界面，不刷整页。
+//    只改已存在分支的字段，带完整新值，不会拼出错数据。
+//  · 加/删分支、其它表变化（低频/结构变化）→ 弹"点击刷新"提示条，用户点一下干净整页刷新，
+//    避免结构变化时合计偏差或显示不一致。
 export function WorkOrderRealtimeSync({ orderId, itemIds = [], partIds = [] }: Props) {
   const supabase = createClient();
   const router = useRouter();
+  const [有更新, set有更新] = useState(false);
 
   useEffect(() => {
     if (!orderId) return;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
 
-    // 配件表改动：区分自己/别人，避免自己的局部更新触发整页刷新
-    const onPartChange = (payload: { new?: unknown; old?: unknown }) => {
-      const newRow = payload.new as { id?: string; work_order_item_id?: string } | null;
-      const oldRow = payload.old as { id?: string; work_order_item_id?: string } | null;
-      const 变化的分支id = newRow?.id || oldRow?.id || "";
-      const 所属项目id = newRow?.work_order_item_id || oldRow?.work_order_item_id || "";
-      if (是否自己刚改的配件(变化的分支id)) return;
-      if (是否自己刚结构改动的项目(所属项目id)) return;
-      router.refresh();
-    };
+    (async () => {
+      // 先确保登录 session 注入实时连接，否则以匿名身份连接会被 RLS 挡掉推送
+      await 确保有session();
+      const token = 获取访问令牌();
+      if (token) {
+        try { supabase.realtime.setAuth(token); } catch { /* 忽略 */ }
+      }
+      if (cancelled) return;
 
-    // 其余表改动：直接刷新（这些多为状态/付款/派工等非高频局部编辑，刷新最省心且正确）
-    const onOtherChange = () => router.refresh();
+      const onPartChange = (payload: { eventType?: string; new?: unknown; old?: unknown }) => {
+        const newRow = payload.new as Record<string, unknown> | null;
+        const oldRow = payload.old as Record<string, unknown> | null;
+        const 变化的分支id = (newRow?.id as string) || (oldRow?.id as string) || "";
+        const 所属项目id = (newRow?.work_order_item_id as string) || (oldRow?.work_order_item_id as string) || "";
+        if (是否自己刚改的配件(变化的分支id)) return;
+        if (是否自己刚结构改动的项目(所属项目id)) return;
 
-    const channel = supabase.channel(`wo_sync_${orderId}`);
+        // 改字段（UPDATE）：秒级广播更新，不刷整页
+        if (payload.eventType === "UPDATE" && newRow) {
+          window.dispatchEvent(
+            new CustomEvent("wo-part-update", {
+              detail: {
+                itemId: 所属项目id,
+                partId: 变化的分支id,
+                unit_price: typeof newRow.unit_price === "number" ? newRow.unit_price : newRow.unit_price == null ? 0 : Number(newRow.unit_price),
+                unit_cost: newRow.unit_cost,
+                cost_price: newRow.cost_price,
+                quantity: typeof newRow.quantity === "number" ? newRow.quantity : newRow.quantity == null ? 0 : Number(newRow.quantity),
+                is_selected: !!newRow.is_selected,
+                part_number: newRow.part_number,
+                brand: newRow.brand,
+                specification: newRow.specification,
+                supplier_name: newRow.supplier_name,
+                document_name: newRow.document_name,
+                customer_opinion: newRow.customer_opinion,
+                is_purchased: newRow.is_purchased,
+                is_arrived: newRow.is_arrived,
+                fromRealtime: true,
+              },
+            })
+          );
+          return;
+        }
+        // 加/删分支（INSERT/DELETE，结构变化）→ 提示条
+        set有更新(true);
+      };
+      // 其它表（状态/付款/派工/领料等）变化 → 提示条
+      const onOtherChange = () => set有更新(true);
 
-    // 工单主体（状态、金额汇总、折扣等）
-    channel.on("postgres_changes", { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${orderId}` }, onOtherChange);
-    // 工时/配件项目、需求、检验、付款、质检、预收款（都挂 work_order_id）
-    channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_items", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
-    channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_requirements", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
-    channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_inspections", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
-    channel.on("postgres_changes", { event: "*", schema: "public", table: "payments", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
-    channel.on("postgres_changes", { event: "*", schema: "public", table: "quality_checks", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
-    channel.on("postgres_changes", { event: "*", schema: "public", table: "advance_payment_records", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
-
-    // 配件分支、派工（挂 work_order_item_id，按本工单的项目ID列表过滤）
-    if (itemIds.length > 0) {
-      const itemFilter = `work_order_item_id=in.(${itemIds.join(",")})`;
-      channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_item_parts", filter: itemFilter }, onPartChange);
-      channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_item_mechanics", filter: itemFilter }, onOtherChange);
-    }
-
-    // 领料/退料/供应商退货（挂 work_order_item_part_id，按本工单的配件ID列表过滤）
-    if (partIds.length > 0) {
-      const partFilter = `work_order_item_part_id=in.(${partIds.join(",")})`;
-      channel.on("postgres_changes", { event: "*", schema: "public", table: "part_picking_records", filter: partFilter }, onOtherChange);
-      channel.on("postgres_changes", { event: "*", schema: "public", table: "part_return_records", filter: partFilter }, onOtherChange);
-      channel.on("postgres_changes", { event: "*", schema: "public", table: "supplier_return_records", filter: partFilter }, onOtherChange);
-    }
-
-    channel.subscribe();
+      channel = supabase.channel(`wo_sync_${orderId}`);
+      channel.on("postgres_changes", { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${orderId}` }, onOtherChange);
+      channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_items", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
+      channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_requirements", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
+      channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_inspections", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
+      channel.on("postgres_changes", { event: "*", schema: "public", table: "payments", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
+      channel.on("postgres_changes", { event: "*", schema: "public", table: "quality_checks", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
+      channel.on("postgres_changes", { event: "*", schema: "public", table: "advance_payment_records", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
+      if (itemIds.length > 0) {
+        const itemFilter = `work_order_item_id=in.(${itemIds.join(",")})`;
+        channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_item_parts", filter: itemFilter }, onPartChange);
+        channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_item_mechanics", filter: itemFilter }, onOtherChange);
+      }
+      if (partIds.length > 0) {
+        const partFilter = `work_order_item_part_id=in.(${partIds.join(",")})`;
+        channel.on("postgres_changes", { event: "*", schema: "public", table: "part_picking_records", filter: partFilter }, onOtherChange);
+        channel.on("postgres_changes", { event: "*", schema: "public", table: "part_return_records", filter: partFilter }, onOtherChange);
+        channel.on("postgres_changes", { event: "*", schema: "public", table: "supplier_return_records", filter: partFilter }, onOtherChange);
+      }
+      channel.subscribe();
+    })();
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
     };
-    // itemIds/partIds 用字符串化做依赖，内容变化才重订阅
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, router, orderId, itemIds.join(","), partIds.join(",")]);
 
-  return null;
+  if (!有更新) return null;
+
+  return (
+    <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[200] px-1">
+      <button
+        type="button"
+        onClick={() => { set有更新(false); router.refresh(); }}
+        className="flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500 text-white text-sm font-medium shadow-lg hover:bg-amber-600 active:scale-95 transition"
+      >
+        <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse" />
+        配件增删或其它改动，点击刷新
+      </button>
+    </div>
+  );
 }
