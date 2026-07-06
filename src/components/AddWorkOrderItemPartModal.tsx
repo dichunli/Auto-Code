@@ -487,7 +487,7 @@ export function AddWorkOrderItemPartModal({
               </div>
 
               {/* 预置配件 */}
-              {serviceNameId && (
+              {serviceItemId && (
                 <div>
                   <h3 className="text-sm font-medium text-gray-700 mb-2">关联配件（点击选择）</h3>
                   {loading ? (

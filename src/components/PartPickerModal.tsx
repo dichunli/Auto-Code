@@ -226,16 +226,13 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       result = result.filter((p) => p.quantity <= 0);
     }
 
-    // 优先排序：与当前车型匹配的配件排在前面
-    if (vehicleModelId && linkedPartIds.size > 0) {
-      result.sort((a, b) => {
-        const aLinked = linkedPartIds.has(a.id);
-        const bLinked = linkedPartIds.has(b.id);
-        if (aLinked && !bLinked) return -1;
-        if (!aLinked && bLinked) return 1;
-        return 0;
-      });
-    }
+    // 排序：① 适用本车型（已关联）的配件置顶  ② 其余（含车型内部）按库存数量降序
+    result.sort((a, b) => {
+      const aLinked = vehicleModelId && linkedPartIds.has(a.id) ? 1 : 0;
+      const bLinked = vehicleModelId && linkedPartIds.has(b.id) ? 1 : 0;
+      if (aLinked !== bLinked) return bLinked - aLinked; // 车型匹配置顶
+      return (b.quantity || 0) - (a.quantity || 0); // 库存数量降序
+    });
 
     return result;
   }, [parts, stockFilter, vehicleModelId, linkedPartIds]);
