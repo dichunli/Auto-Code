@@ -223,7 +223,9 @@ export function AddWorkOrderItemPartModal({
             .filter((row: { part_name_id: string }) => !existingNameIds.has(row.part_name_id))
             .map((row: { part_name_id: string; quantity: number | null; part_names: PartName | null }) => ({
               part_name_id: row.part_name_id,
-              quantity: row.quantity ?? row.part_names?.default_quantity ?? null,
+              // 严格按项目预设的数量：预设没填就留空(null)，由工单里红框提醒按实车确定，
+              // 不用配件名称的默认数量兜底。
+              quantity: row.quantity ?? null,
               part_names: row.part_names,
             }))
         );
