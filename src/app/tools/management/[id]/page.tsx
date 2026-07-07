@@ -6,6 +6,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import ToolBorrowReturnModal from "../components/ToolBorrowReturnModal";
 import LocationQrCode from "../components/LocationQrCode";
+import { ImageViewer } from "@/components/ImageViewer";
+import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
 
 interface 工具 {
   id: string;
@@ -53,6 +55,7 @@ export default function ToolDetailPage() {
   const [加载中, set加载中] = useState(true);
   const [借还弹窗打开, set借还弹窗打开] = useState(false);
   const [是管理员, set是管理员] = useState(false);
+  const [预览图索引, set预览图索引] = useState<number | null>(null);
 
   useEffect(() => {
     async function 加载() {
@@ -198,11 +201,9 @@ export default function ToolDetailPage() {
                   key={i}
                   src={url}
                   alt={`${工具.name} ${i + 1}`}
-                  className="w-24 h-24 rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-80"
-                  onClick={() => {
-                    const viewer = window.open(url, "_blank");
-                    if (viewer) viewer.opener = null;
-                  }}
+                  className="w-full rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-80"
+                  style={{ maxWidth: 300 }}
+                  onClick={() => set预览图索引(i)}
                 />
               ))}
             </div>
@@ -259,13 +260,26 @@ export default function ToolDetailPage() {
           </div>
         )}
 
-        {/* 补充说明 */}
-        {工具.instructions && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <div className="text-sm font-medium text-gray-900 mb-2">补充说明</div>
-            <p className="text-sm text-gray-600 whitespace-pre-wrap">{工具.instructions}</p>
-          </div>
-        )}
+        {/* 工具说明 */}
+        {工具.instructions && (() => {
+          try {
+            const blocks = JSON.parse(工具.instructions);
+            if (Array.isArray(blocks) && blocks.length > 0) {
+              return (
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="text-sm font-medium text-gray-900 mb-2">工具说明</div>
+                  <BlockNoteRenderer blocks={blocks} />
+                </div>
+              );
+            }
+          } catch {}
+          return (
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="text-sm font-medium text-gray-900 mb-2">工具说明</div>
+              <p className="text-sm text-gray-600 whitespace-pre-wrap">{工具.instructions}</p>
+            </div>
+          );
+        })()}
 
         {/* 借用/归还按钮 */}
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3">
@@ -292,6 +306,17 @@ export default function ToolDetailPage() {
           router.push("/tools/management");
         }}
       />
+
+      {/* 图片大图预览 */}
+      {预览图索引 !== null && 工具.image_url && (
+        <ImageViewer
+          src={工具.image_url.split(",").filter(Boolean)[预览图索引]}
+          images={工具.image_url.split(",").filter(Boolean)}
+          currentIndex={预览图索引}
+          onIndexChange={(i) => set预览图索引(i)}
+          onClose={() => set预览图索引(null)}
+        />
+      )}
     </div>
   );
 }

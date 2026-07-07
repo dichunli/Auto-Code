@@ -13,11 +13,12 @@ interface Props {
   existingImages?: string[];
   maxImages?: number;
   bucket?: string;
+  disableCamera?: boolean;
   folder?: string;
   disabled?: boolean;
 }
 
-export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImages = 5, folder, disabled = false }: Props) {
+export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImages = 5, folder, disabled = false, disableCamera = false }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileId = `img-upload-${useId()}`;
   const [images, setImages] = useState<string[]>(existingImages);
@@ -159,7 +160,8 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
           <div className="flex items-center gap-1">
             {是Capacitor环境() ? (
               <>
-                {/* APP环境：拍照 + 相册 */}
+                {/* APP环境：拍照（可禁用） */}
+                {!disableCamera && (
                 <button
                   type="button"
                   onClick={handleAppCamera}
@@ -176,28 +178,31 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
                     </svg>
                   )}
                 </button>
-                <label
-                  htmlFor={fileId}
-                  className={`w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : "cursor-pointer"}`}
+                )}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={上传中}
+                  className={`w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50" : ""}`}
                   title="相册"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                </label>
+                </button>
                 <input
-                  id={fileId}
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   multiple
-                  className="hidden"
+                  className="sr-only"
                   onChange={handleFileChange}
                 />
               </>
             ) : (
               <>
-                {/* 非APP移动端：拍照 */}
+                {/* 非APP移动端：拍照（可禁用） */}
+                {!disableCamera && (
                 <label
                   className={`md:hidden w-14 h-14 rounded-lg border border-dashed border-blue-300 flex items-center justify-center text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
                   title="拍照"
@@ -218,10 +223,13 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
                     onChange={handleFileChange}
                   />
                 </label>
+                )}
                 {/* 移动端相册 */}
-                <label
-                  htmlFor={fileId}
-                  className={`md:hidden w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : "cursor-pointer"}`}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={上传中}
+                  className={`md:hidden w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50" : ""}`}
                   title="相册"
                 >
                   {上传中 ? (
@@ -231,11 +239,13 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                   )}
-                </label>
+                </button>
                 {/* PC端：相册 */}
-                <label
-                  htmlFor={fileId}
-                  className={`hidden md:flex w-14 h-14 rounded-lg border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50 pointer-events-none" : ""}`}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={上传中}
+                  className={`hidden md:flex w-14 h-14 rounded-lg border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50" : ""}`}
                   title="相册"
                 >
                   {上传中 ? (
@@ -248,14 +258,13 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
                       <span className="text-[10px]">相册</span>
                     </>
                   )}
-                </label>
+                </button>
                 <input
-                  id={fileId}
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   multiple
-                  className="hidden"
+                  className="sr-only"
                   onChange={handleFileChange}
                 />
               </>
