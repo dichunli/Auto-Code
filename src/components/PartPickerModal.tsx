@@ -47,6 +47,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
   const [partNumber, setPartNumber] = useState("");
   const [oeNumberQuery, setOeNumberQuery] = useState("");
   const [nameQuery, setNameQuery] = useState("");
+  const [brandQuery, setBrandQuery] = useState("");
   const [specQuery, setSpecQuery] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [stockFilter, setStockFilter] = useState("all"); // all, inStock, outOfStock
@@ -119,6 +120,22 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       query = query.ilike("name", `%${nameQuery.trim()}%`);
     }
 
+    // 品牌：先查匹配的品牌ID，再按 brand_id 过滤（parts.brand_id 关联 part_brands）
+    if (brandQuery.trim()) {
+      const { data: brandRows } = await supabase
+        .from("part_brands")
+        .select("id")
+        .ilike("name", `%${brandQuery.trim()}%`);
+      const brandIds = (brandRows || []).map((b) => b.id);
+      if (brandIds.length === 0) {
+        // 没有匹配品牌，直接返回空
+        setParts([]);
+        setLoading(false);
+        return;
+      }
+      query = query.in("brand_id", brandIds);
+    }
+
     // 规格（specification_text）
     if (specQuery.trim()) {
       query = query.ilike("specification_text", `%${specQuery.trim()}%`);
@@ -138,7 +155,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       setParts((data as Part[]) || []);
     }
     setLoading(false);
-  }, [supabase, partNumber, oeNumberQuery, nameQuery, specQuery, categoryId]);
+  }, [supabase, partNumber, oeNumberQuery, nameQuery, brandQuery, specQuery, categoryId]);
 
   // 使用指定名称搜索（用于默认名称和扫码后的搜索）
   const doSearchWithName = useCallback(async (searchName: string) => {
@@ -211,6 +228,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       }
       setSelectedIds(new Set());
       setSelectedQtyMap({});
+      setBrandQuery("");
     }
      
   }, [open]);
@@ -251,7 +269,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
         setSelectedQtyMap((q) => { const n = { ...q }; delete n[id]; return n; });
       } else {
         next.add(id);
-        setSelectedQtyMap((q) => ({ ...q, [id]: 1 }));
+        // 选中不预填数量，数量留空由用户填
       }
       return next;
     });
@@ -277,20 +295,22 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
         for (const id of pageIds) next.add(id);
         return next;
       });
-      setSelectedQtyMap((q) => {
-        const n = { ...q };
-        for (const id of pageIds) { if (!n[id]) n[id] = 1; }
-        return n;
-      });
+      // 选中不自动填数量（数量留空，由用户填，或到工单里按实际填）
     }
   }
 
-  function updateQuantity(id: string, qty: number) {
-    if (qty < 1 || isNaN(qty)) {
-      toggleSelect(id);
-      return;
-    }
-    setSelectedQtyMap((prev) => ({ ...prev, [id]: qty }));
+  // 更新数量：空值 → 移除该键（表示留空）；有效正数 → 记录
+  function updateQuantity(id: string, raw: string) {
+    setSelectedQtyMap((prev) => {
+      const n = { ...prev };
+      const num = Number(raw);
+      if (raw.trim() === "" || isNaN(num) || num < 1) {
+        delete n[id];
+      } else {
+        n[id] = num;
+      }
+      return n;
+    });
   }
 
   // 已选配件数据
@@ -299,7 +319,8 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
   function handleConfirm() {
     const selected = selectedParts.map((p) => ({
       ...p,
-      selectedQuantity: selectedQtyMap[p.id] ?? 1,
+      // 不自动填 1：用户没填数量则不传（下游存 null，工单里红框提醒）
+      selectedQuantity: selectedQtyMap[p.id],
     }));
     onConfirm(selected);
     setSelectedIds(new Set());
@@ -457,8 +478,9 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
                         <input
                           type="number"
                           min={1}
-                          value={selectedQtyMap[part.id] ?? 1}
-                          onChange={(e) => updateQuantity(part.id, parseInt(e.target.value) || 1)}
+                          value={selectedQtyMap[part.id] ?? ""}
+                          onChange={(e) => updateQuantity(part.id, e.target.value)}
+                          placeholder="数量"
                           className="w-12 px-1 py-0.5 border border-gray-200 rounded text-xs text-center"
                         />
                       </div>
@@ -533,7 +555,8 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
                 type="text"
                 value={partNumber}
                 onChange={(e) => setPartNumber(e.target.value)}
-                placeholder="编号/零件号"
+                onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+                placeholder="编号/零件号（可扫码枪）"
                 className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
               />
             </div>
@@ -543,18 +566,31 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
                 type="text"
                 value={oeNumberQuery}
                 onChange={(e) => setOeNumberQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
                 placeholder="OE原厂编码"
                 className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
               />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 whitespace-nowrap">名称/品牌:</span>
+              <span className="text-sm text-gray-600 whitespace-nowrap">名称:</span>
               <input
                 type="text"
                 value={nameQuery}
                 onChange={(e) => setNameQuery(e.target.value)}
-                placeholder="名称/品牌"
-                className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+                placeholder="配件名称"
+                className="w-32 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 whitespace-nowrap">品牌:</span>
+              <input
+                type="text"
+                value={brandQuery}
+                onChange={(e) => setBrandQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+                placeholder="品牌"
+                className="w-28 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -563,8 +599,9 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
                 type="text"
                 value={specQuery}
                 onChange={(e) => setSpecQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
                 placeholder="规格/型号"
-                className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                className="w-32 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -805,8 +842,9 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
                           <input
                             type="number"
                             min={1}
-                            value={selectedQtyMap[part.id] ?? 1}
-                            onChange={(e) => updateQuantity(part.id, parseInt(e.target.value) || 1)}
+                            value={selectedQtyMap[part.id] ?? ""}
+                            onChange={(e) => updateQuantity(part.id, e.target.value)}
+                            placeholder="数量"
                             className="w-14 px-1 py-0.5 border border-gray-200 rounded text-xs text-center"
                           />
                         </div>

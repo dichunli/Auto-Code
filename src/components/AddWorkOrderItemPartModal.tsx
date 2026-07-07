@@ -287,7 +287,7 @@ export function AddWorkOrderItemPartModal({
           specification: part.specification_text || part.part_specifications?.name || "",
           unit_cost: part.unit_cost,
           unit_price: part.unit_price,
-          quantity: part.selectedQuantity ?? 1,
+          quantity: part.selectedQuantity ?? null,
         });
       }
       return next;
