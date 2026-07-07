@@ -118,6 +118,9 @@ export function AddWorkOrderItemPartModal({
   const [searchResults, setSearchResults] = useState<PartName[]>([]);
   const [searching, setSearching] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 搜索后：先点选一个候选配件名称，填数量，再点"确认添加"才加入（不自动添加）
+  const [pickedName, setPickedName] = useState<PartName | null>(null);
+  const [pickedQty, setPickedQty] = useState<string>("");
 
   // 配件选择器弹窗
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -130,6 +133,8 @@ export function AddWorkOrderItemPartModal({
     setSelectedRealParts([]);
     setSearchQuery("");
     setSearchResults([]);
+    setPickedName(null);
+    setPickedQty("");
     setExistingPartNameIds(new Set());
     setExistingPartIds(new Set());
 
@@ -228,22 +233,32 @@ export function AddWorkOrderItemPartModal({
     }
   }
 
-  // 从搜索结果中添加配件名称
-  function addFromSearch(part: PartName) {
+  // 点选搜索结果为"候选"（不立即添加），带出默认数量供修改
+  function pickFromSearch(part: PartName) {
     const exists = selectedPartNames.find((sp) => sp.part_name_id === part.id);
     if (exists) {
       alert("该配件已选择");
       return;
     }
+    setPickedName(part);
+    setPickedQty(part.default_quantity != null ? String(part.default_quantity) : "");
+  }
+
+  // 确认添加候选配件名称（填好数量后）
+  function confirmAddPicked() {
+    if (!pickedName) return;
+    const qtyNum = pickedQty.trim() === "" ? null : Number(pickedQty);
     setSelectedPartNames((prev) => [
       ...prev,
       {
-        part_name_id: part.id,
-        name: part.name,
-        unit: part.unit || "件",
-        quantity: part.default_quantity ?? null,
+        part_name_id: pickedName.id,
+        name: pickedName.name,
+        unit: pickedName.unit || "件",
+        quantity: qtyNum,
       },
     ]);
+    setPickedName(null);
+    setPickedQty("");
     setSearchQuery("");
     setSearchResults([]);
   }
@@ -450,16 +465,19 @@ export function AddWorkOrderItemPartModal({
                         (sp) => sp.part_name_id === part.id
                       );
                       const alreadyExists = existingPartNameIds.has(part.id);
+                      const isPicked = pickedName?.id === part.id;
                       const disabled = alreadySelected || alreadyExists;
                       return (
                         <button
                           key={part.id}
                           type="button"
-                          onClick={() => !disabled && addFromSearch(part)}
+                          onClick={() => !disabled && pickFromSearch(part)}
                           disabled={disabled}
                           className={`w-full text-left px-3 py-2 text-sm border-b border-gray-100 last:border-0 ${
                             disabled
                               ? "text-gray-400 bg-gray-50 cursor-not-allowed"
+                              : isPicked
+                              ? "bg-blue-50"
                               : "hover:bg-gray-50"
                           }`}
                         >
@@ -473,6 +491,9 @@ export function AddWorkOrderItemPartModal({
                           {alreadyExists && !alreadySelected && (
                             <span className="text-xs text-gray-400 ml-2">已添加</span>
                           )}
+                          {isPicked && !disabled && (
+                            <span className="text-xs text-blue-600 ml-2">已点选</span>
+                          )}
                         </button>
                       );
                     })}
@@ -480,6 +501,36 @@ export function AddWorkOrderItemPartModal({
                 )}
                 {searchQuery.trim() && !searching && searchResults.length === 0 && (
                   <p className="text-xs text-gray-400 mt-1">未找到匹配配件</p>
+                )}
+
+                {/* 点选候选后：填数量 + 确认添加 */}
+                {pickedName && (
+                  <div className="mt-2 flex items-center gap-2 p-2 rounded-lg border border-blue-200 bg-blue-50">
+                    <span className="text-sm font-medium text-blue-800 flex-1 truncate">{pickedName.name}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={pickedQty}
+                      onChange={(e) => setPickedQty(e.target.value)}
+                      placeholder="数量"
+                      className="w-16 px-1.5 py-1 border border-blue-200 rounded text-xs text-right bg-white"
+                    />
+                    <span className="text-xs text-blue-500">{pickedName.unit || "件"}</span>
+                    <button
+                      type="button"
+                      onClick={confirmAddPicked}
+                      className="px-3 py-1 text-xs text-white bg-blue-600 rounded-lg hover:bg-blue-700 shrink-0"
+                    >
+                      确认添加
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setPickedName(null); setPickedQty(""); }}
+                      className="text-xs text-gray-400 hover:text-gray-600 shrink-0"
+                    >
+                      取消
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
