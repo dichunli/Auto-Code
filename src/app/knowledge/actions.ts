@@ -2,8 +2,9 @@
 
 import mammoth from "mammoth";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { 中文分词 } from "@/lib/chineseSegmenter";
-import { 文字转向量, 生成嵌入文本 } from "@/lib/baiduEmbedding";
+import { 文字转向量, 文档转向量, 生成嵌入文本 } from "@/lib/localEmbedding";
 
 /* ═════════════════════════════════════════════════════════════════
  * 知识库数据查询 Server Action
@@ -102,10 +103,38 @@ export async function loadKnowledgeArticles(params: {
   let 语义搜索完成 = false;
 
   if (keyword.trim() && searchMode === "semantic") {
-    /* 语义搜索模式：用百度 Embedding-V1 转向量 → pgvector 混合打分 */
+    /* 语义搜索模式：本地模型转向量 → pgvector 纯向量搜索 → 代码层同义词扩展 + 关键词加分 */
     try {
+      /* 查询同义词映射表 */
+      const { data: synonymData } = await supabase
+        .from("synonym_mapping")
+        .select("term, synonyms");
+
+      const 扩展词列表 = [keyword.trim()];
+      if (synonymData?.length) {
+        for (const row of synonymData) {
+          const 原词 = String(row.term || "");
+          const 同义词组 = (Array.isArray(row.synonyms) ? row.synonyms : []) as string[];
+          if (!原词) continue;
+
+          /* 双向匹配 */
+          const 所有相关词 = [原词, ...同义词组];
+          const 是否命中 = 所有相关词.some(
+            (词) => keyword.includes(词) || 词.includes(keyword)
+          );
+
+          if (是否命中) {
+            扩展词列表.push(...所有相关词);
+          }
+        }
+      }
+
+      const 搜索词数组 = [...new Set(扩展词列表)];
+
+      /* 用原始关键词生成向量 */
       const 查询向量 = await 文字转向量(keyword.trim());
 
+      /* 用已验证稳定的 v3 纯向量搜索函数 */
       const { data: rpcResults, error: rpcError } = await supabase
         .rpc("search_knowledge_semantic", {
           query_embedding: 查询向量,
@@ -126,37 +155,138 @@ export async function loadKnowledgeArticles(params: {
 
       total = allResults.length > 0 ? Number(allResults[0].total_count) : 0;
 
-      articles = allResults.map((r) => ({
-        id: r.id,
-        title: r.title,
-        content: r.content,
-        content_blocks: r.content_blocks,
-        type: r.type,
-        created_at: r.created_at,
-        category_id: r.category_id,
-        created_by: r.created_by,
-        visibility: r.visibility,
-        category_name: r.category_name,
-        author_name: r.author_name,
-        score: Math.round(r.similarity * 100),
-      }));
+      /* 在代码层做同义词关键词加分 + 重排序 */
+      articles = allResults.map((r) => {
+        /* 全文：标题 + 内容字段 + content_blocks */
+        const 全文 = (r.title || "") + " " + (r.content || "") + " " + (() => {
+          try { return JSON.stringify(r.content_blocks); } catch { return ""; }
+        })();
+        /* 计算关键词命中加分 */
+        let 关键词加分 = 0;
+        for (const 词 of 搜索词数组) {
+          const 命中 = 全文.toLowerCase().includes(词.toLowerCase());
+          if (命中 && (r.title || "").toLowerCase().includes(词.toLowerCase())) 关键词加分 += 20;
+          else if (命中) 关键词加分 += 10;
+        }
+        /* 最终分 = 语义相似度 × 40% + 关键词加分归一化 × 60% */
+        const 关键词归一化 = Math.min(关键词加分, 50) / 50;
+        const 最终分 = r.similarity * 0.4 + 关键词归一化 * 0.6;
 
-      /* 语义搜索无结果 → 自动回退关键词搜索（兼容尚无向量的旧文章） */
-      if (total === 0) {
-        console.log("[knowledge] 语义搜索无结果，自动回退关键词搜索");
-        searchKeywords.push(...(keyword.trim() ? [keyword.trim()] : []));
-      } else {
-        语义搜索完成 = true;
+        return {
+          id: r.id,
+          title: r.title,
+          content: r.content,
+          content_blocks: r.content_blocks,
+          type: r.type,
+          created_at: r.created_at,
+          category_id: r.category_id,
+          created_by: r.created_by,
+          visibility: r.visibility,
+          category_name: r.category_name,
+          author_name: r.author_name,
+          score: Math.round(最终分 * 100),
+        };
+      });
+
+      /* 按最终分降序重排 */
+      articles.sort((a, b) => b.score - a.score);
+
+      /* 从 content_blocks 提取纯文本（用于关键词匹配） */
+      function 提取内容块文本(块: unknown): string {
+        if (!块) return "";
+        try { return JSON.stringify(块); } catch { return ""; }
       }
+
+      /* 过滤：必须至少命中一个搜索词，最多 15 条 */
+      const 过滤前数量 = articles.length;
+      articles = articles.filter((a) => {
+        const 全文 = (a.title || "") + " " + (a.content || "") + " " + 提取内容块文本(a.content_blocks);
+        const 命中关键词 = 搜索词数组.some(
+          (词) => 全文.toLowerCase().includes(词.toLowerCase())
+        );
+        return 命中关键词;
+      }).slice(0, 15);
+      if (过滤前数量 > articles.length || articles.length < 过滤前数量) {
+        console.log(`[knowledge] 过滤低分结果: ${过滤前数量} → ${articles.length} 条 (最高分: ${articles.length > 0 ? articles[0].score : 0})`);
+        if (total > 0 && 过滤前数量 > 0) {
+          total = Math.max(articles.length, Math.round(total * (articles.length / 过滤前数量)));
+        }
+      }
+
+      /* 始终补充关键词搜索结果，合并去重（语义结果优先） */
+      if (搜索词数组.length > 1) {
+        console.log(`[knowledge] 语义搜索命中 ${total} 条，同义词扩展 ${搜索词数组.length - 1} 个`);
+      }
+      语义搜索完成 = true;
+      /* 把扩展词加入关键词搜索，用于补充没有向量的文章 */
+      searchKeywords.push(...搜索词数组);
     } catch (err: unknown) {
-      /* 语义搜索失败时回退到关键词搜索 */
-      console.warn("[knowledge] 语义搜索失败，回退到关键词搜索:", err instanceof Error ? err.message : String(err));
-      searchKeywords.push(...(keyword.trim() ? [keyword.trim()] : []));
+      const 错误详情 = err instanceof Error
+        ? err.message
+        : (err && typeof err === "object" && "message" in err)
+          ? String((err as Record<string, unknown>).message)
+          : String(err);
+      console.warn("[knowledge] 语义搜索失败，回退到关键词搜索:", 错误详情);
+      /* 语义搜索失败时，至少用原始关键词搜索 */
+      if (keyword.trim()) {
+        searchKeywords.push(keyword.trim());
+      }
     }
   }
 
-  if (!语义搜索完成 && searchKeywords.length > 0) {
-    /* 搜索模式：调用全文检索 RPC（数据库层分页+筛选，只传当前页数据） */
+  if (语义搜索完成 && searchKeywords.length > 0) {
+    /* 语义搜索已返回结果，关键词搜索补充没有向量的文章（合并去重） */
+    const 已有ID = new Set(articles.map((a) => a.id));
+    const { data: rpcResults, error: rpcError } = await supabase
+      .rpc("search_knowledge_articles", {
+        search_keywords: searchKeywords,
+        p_category_id: category || null,
+        p_limit: pageSize * 3,   /* 取更多结果用于合并去重 */
+        p_offset: 0,
+      });
+
+    if (!rpcError && rpcResults) {
+      const allKWResults = rpcResults as Array<{
+        id: string; title: string; content: string; content_blocks: unknown;
+        type: string; created_at: string; category_id: string | null;
+        category_name: string | null; author_name: string | null;
+        visibility: string; created_by: string | null; score: number;
+        total_count: number;
+      }>;
+
+      let 补充计数 = 0;
+      for (const r of allKWResults) {
+        if (!已有ID.has(r.id)) {
+          articles.push({
+            id: r.id,
+            title: r.title,
+            content: r.content,
+            content_blocks: r.content_blocks,
+            type: r.type,
+            created_at: r.created_at,
+            category_id: r.category_id,
+            created_by: r.created_by,
+            visibility: r.visibility,
+            category_name: r.category_name,
+            author_name: r.author_name,
+            score: r.score, /* 关键词分数 */
+          });
+          已有ID.add(r.id);
+          补充计数++;
+        }
+      }
+      total = articles.length;
+      if (补充计数 > 0) {
+        console.log(`[knowledge] 关键词补充: +${补充计数} 篇（无向量的文章）`);
+      }
+    }
+
+    /* 按分数降序重排合并结果 */
+    articles.sort((a, b) => b.score - a.score);
+  } else if (语义搜索完成 && !keyword.trim()) {
+    /* 语义模式但无搜索词 → 显示全部（与普通列表一致） */
+  } else if (!语义搜索完成 && searchKeywords.length > 0) {
+    /* 纯关键词搜索模式 */
     const { data: rpcResults, error: rpcError } = await supabase
       .rpc("search_knowledge_articles", {
         search_keywords: searchKeywords,
@@ -767,6 +897,67 @@ function blockToDocxElement(
 import { vin17DecodeVin } from "@/lib/17vin/client";
 import { 标准化VIN } from "@/lib/vinValidator";
 
+/* ═════════════════════════════════════════════════════════════════
+ * 批量生成全部文章向量
+ * 查询所有没有 embedding 的文章，逐条生成并保存
+ * ═════════════════════════════════════════════════════════════════ */
+export async function 批量生成全部文章向量(): Promise<{
+  success: boolean;
+  已处理: number;
+  已跳过: number;
+  error?: string;
+}> {
+  const supabase = await createClient();
+
+  const { data: articles, error: queryError } = await supabase
+    .from("knowledge_articles")
+    .select("id, title, content, content_blocks")
+    .is("embedding", null)
+    .limit(200);
+
+  if (queryError) {
+    return { success: false, 已处理: 0, 已跳过: 0, error: queryError.message };
+  }
+
+  if (!articles || articles.length === 0) {
+    return { success: true, 已处理: 0, 已跳过: 0, error: "所有文章已有向量" };
+  }
+
+  let 已处理 = 0;
+  let 已跳过 = 0;
+
+  for (const article of articles) {
+    const 文章ID = String(article.id);
+    const 标题 = String(article.title || "");
+    const 内容 = String(article.content || "");
+
+    try {
+      const 嵌入文本 = 生成嵌入文本(标题, 内容, article.content_blocks);
+      if (!嵌入文本) { 已跳过++; continue; }
+
+      const 向量 = await 文档转向量(嵌入文本);
+      if (!向量 || 向量.length === 0) { 已跳过++; continue; }
+
+      const { error: updateError } = await supabase
+        .from("knowledge_articles")
+        .update({ embedding: 向量 })
+        .eq("id", 文章ID);
+
+      if (updateError) {
+        console.warn(`[knowledge] 批量向量化失败 [${文章ID.slice(0, 8)}]:`, updateError.message);
+        已跳过++;
+      } else {
+        已处理++;
+        console.log(`[knowledge] 批量向量化 [${已处理}/${articles.length}]: ${标题.slice(0, 30)}`);
+      }
+    } catch (err: unknown) {
+      已跳过++;
+    }
+  }
+
+  return { success: true, 已处理, 已跳过 };
+}
+
 /**
  * 知识库通过VIN同步车型
  * VIN解码后匹配本地车型库，未匹配到则自动创建
@@ -776,15 +967,29 @@ export async function 生成文章向量(文章ID: string, 标题: string, 内�
   try {
     const supabase = await createClient();
     const 嵌入文本 = 生成嵌入文本(标题, 内容, 内容块);
-    if (!嵌入文本) return;
+    console.log(`[knowledge] 生成文章向量: id=${文章ID}, 文本长度=${嵌入文本.length}, 前50字="${嵌入文本.slice(0, 50)}"`);
+    if (!嵌入文本) {
+      console.warn("[knowledge] 向量生成跳过: 嵌入文本为空");
+      return;
+    }
 
-    const 向量 = await 文字转向量(嵌入文本);
-    if (!向量 || 向量.length === 0) return;
+    /* 用文档嵌入（"passage:" 前缀），与搜索时的 "query:" 前缀区分 */
+    const 向量 = await 文档转向量(嵌入文本);
+    if (!向量 || 向量.length === 0) {
+      console.warn("[knowledge] 向量生成跳过: 返回空向量");
+      return;
+    }
 
-    await supabase
+    console.log(`[knowledge] 向量已生成: 维度=${向量.length}, 前3值=[${向量.slice(0, 3).map(v => v.toFixed(4)).join(", ")}]`);
+    const { error: updateError } = await supabase
       .from("knowledge_articles")
       .update({ embedding: 向量 })
       .eq("id", 文章ID);
+    if (updateError) {
+      console.error("[knowledge] 向量写入失败:", updateError.message);
+    } else {
+      console.log(`[knowledge] 向量写入成功: id=${文章ID}`);
+    }
   } catch (err: unknown) {
     /* 向量生成失败不影响文章正常使用，仅语义搜索不可用 */
     console.warn("[knowledge] 向量生成失败:", err instanceof Error ? err.message : String(err));
@@ -988,5 +1193,35 @@ export async function loadKnowledgeArticleReads(articleId: string): Promise<{
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return { success: false, error: "加载阅读记录失败: " + msg };
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════
+ * 分词词典管理 Server Action（绕过 RLS）
+ * ═════════════════════════════════════════════════════════════════ */
+
+export async function 添加分词(词: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase.from("search_dictionary").insert({ word: 词, created_by: null });
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function 删除分词(词: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase.from("search_dictionary").delete().eq("word", 词);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
