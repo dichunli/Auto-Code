@@ -395,7 +395,7 @@ export default function SynonymsPage() {
                 <div className="flex items-start gap-2">
                   <span className="font-medium text-gray-500 min-w-[60px]">效果：</span>
                   <span className="text-gray-600">
-                    搜"刹车异响" → 自动扩展为搜索"刹车异响 + 制动 + 制动系统 + 刹车片"
+                    搜&ldquo;刹车异响&rdquo; → 自动扩展为搜索&ldquo;刹车异响 + 制动 + 制动系统 + 刹车片&rdquo;
                   </span>
                 </div>
               </div>
@@ -404,7 +404,7 @@ export default function SynonymsPage() {
             <div>
               <h3 className="text-sm font-medium text-gray-700 mb-2">建议</h3>
               <ul className="text-sm text-gray-500 space-y-1.5 list-disc list-inside">
-                <li>原词用最常用的说法（如"刹车"而不是"制动"）</li>
+                <li>原词用最常用的说法（如&ldquo;刹车&rdquo;而不是&ldquo;制动&rdquo;）</li>
                 <li>同义词列全各种叫法（俗称、学名、别名）</li>
                 <li>不要设太多同义词（每词 2~5 个最佳）</li>
                 <li>添加后立即生效，无需重启</li>
