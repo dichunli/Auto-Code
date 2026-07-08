@@ -14,11 +14,12 @@ interface Props {
   maxImages?: number;
   bucket?: string;
   disableCamera?: boolean;
+  cameraOnly?: boolean;
   folder?: string;
   disabled?: boolean;
 }
 
-export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImages = 5, folder, disabled = false, disableCamera = false }: Props) {
+export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImages = 5, folder, disabled = false, disableCamera = false, cameraOnly = false }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileId = `img-upload-${useId()}`;
   const [images, setImages] = useState<string[]>(existingImages);
@@ -179,25 +180,29 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
                   )}
                 </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={上传中}
-                  className={`w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50" : ""}`}
-                  title="相册"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="sr-only"
-                  onChange={handleFileChange}
-                />
+                {!cameraOnly && (
+                  <>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={上传中}
+                    className={`w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50" : ""}`}
+                    title="相册"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="sr-only"
+                    onChange={handleFileChange}
+                  />
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -224,49 +229,53 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
                   />
                 </label>
                 )}
-                {/* 移动端相册 */}
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={上传中}
-                  className={`md:hidden w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50" : ""}`}
-                  title="相册"
-                >
-                  {上传中 ? (
-                    <span className="text-xs">{总进度 || "..."}</span>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  )}
-                </button>
-                {/* PC端：相册 */}
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={上传中}
-                  className={`hidden md:flex w-14 h-14 rounded-lg border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50" : ""}`}
-                  title="相册"
-                >
-                  {上传中 ? (
-                    <span className="text-xs">{总进度 || "上传中..."}</span>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {!cameraOnly && (
+                  <>
+                  {/* 移动端相册 */}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={上传中}
+                    className={`md:hidden w-14 h-14 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50" : ""}`}
+                    title="相册"
+                  >
+                    {上传中 ? (
+                      <span className="text-xs">{总进度 || "..."}</span>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
-                      <span className="text-[10px]">相册</span>
-                    </>
-                  )}
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="sr-only"
-                  onChange={handleFileChange}
-                />
+                    )}
+                  </button>
+                  {/* PC端：相册 */}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={上传中}
+                    className={`hidden md:flex w-14 h-14 rounded-lg border border-dashed border-gray-300 flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors select-none ${上传中 ? "opacity-50" : ""}`}
+                    title="相册"
+                  >
+                    {上传中 ? (
+                      <span className="text-xs">{总进度 || "上传中..."}</span>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-[10px]">相册</span>
+                      </>
+                    )}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="sr-only"
+                    onChange={handleFileChange}
+                  />
+                  </>
+                )}
               </>
             )}
           </div>

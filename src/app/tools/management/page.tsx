@@ -208,6 +208,11 @@ export default function ToolManagementPage() {
           description="管理维修工具台账，支持扫码借用和归还"
           action={{ href: "/tools/management/new", label: "新建工具" }}
         />
+        <div className="flex items-center gap-3 -mt-4 mb-4">
+          <Link href="/tools/management/records" className="text-sm text-blue-600 hover:underline">
+            查看借还记录
+          </Link>
+        </div>
       </div>
 
       {/* 移动端头部（默认显示） */}
@@ -355,9 +360,9 @@ export default function ToolManagementPage() {
                     <tr key={工具.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <Link href={`/tools/management/${工具.id}`}>
-                          {工具.image_url ? (
+                          {(工具.image_url ? 工具.image_url.split(",").filter(Boolean)[0] : "") ? (
                             <img
-                              src={工具.image_url}
+                              src={工具.image_url!.split(",").filter(Boolean)[0]}
                               alt={工具.name}
                               className="w-10 h-10 rounded object-cover border border-gray-200 hover:opacity-80 transition-opacity"
                               loading="lazy"
@@ -507,9 +512,9 @@ export default function ToolManagementPage() {
                   {/* 卡片主体：横向布局 */}
                   <div className="p-3 flex gap-3">
                     {/* 左侧图片 */}
-                    {工具.image_url ? (
+                    {(工具.image_url ? 工具.image_url.split(",").filter(Boolean)[0] : "") ? (
                       <img
-                        src={工具.image_url}
+                        src={工具.image_url!.split(",").filter(Boolean)[0]}
                         alt={工具.name}
                         className="w-20 h-20 rounded-lg object-cover border border-gray-100 flex-shrink-0"
                         loading="lazy"

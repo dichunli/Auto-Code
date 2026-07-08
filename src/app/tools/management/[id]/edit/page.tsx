@@ -33,6 +33,8 @@ export default function EditToolPage() {
     instructions: "",
     location: "",
     status: "available",
+    require_return_photos: false,
+    require_location_scan: false,
   });
   const [位置列表, set位置列表] = useState<工具[]>([]);
   const [使用新位置, set使用新位置] = useState(false);
@@ -58,6 +60,8 @@ export default function EditToolPage() {
           instructions: tool.instructions || "",
           location: tool.location || "",
           status: tool.status || "available",
+          require_return_photos: tool.require_return_photos || false,
+          require_location_scan: tool.require_location_scan || false,
         });
         set图片地址(tool.image_url ? tool.image_url.split(",").filter(Boolean) : []);
 
@@ -97,6 +101,8 @@ export default function EditToolPage() {
         instructions: 表单.instructions.trim() || null,
         location: finalLocation || null,
         status: 表单.status,
+        require_return_photos: 表单.require_return_photos,
+        require_location_scan: 表单.require_location_scan,
       }).eq("id", id);
 
       if (error) throw error;
@@ -134,6 +140,28 @@ export default function EditToolPage() {
                 <option value="in_use">使用中</option>
                 <option value="maintenance">维护中</option>
               </select>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-gray-700">归还验收设置</label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={表单.require_return_photos}
+                  onChange={(e) => set表单({ ...表单, require_return_photos: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">归还时需拍照验收（确认齐全及摆放规范）</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={表单.require_location_scan}
+                  onChange={(e) => set表单({ ...表单, require_location_scan: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">归还需扫描仓位码（10秒内完成）</span>
+              </label>
             </div>
 
             <div>

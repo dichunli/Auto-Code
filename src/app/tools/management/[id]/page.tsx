@@ -52,6 +52,7 @@ export default function ToolDetailPage() {
   const [工具, set工具] = useState<工具 | null>(null);
   const [知识标题, set知识标题] = useState("");
   const [未归还记录, set未归还记录] = useState<借用记录 | null>(null);
+  const [归还照片列表, set归还照片列表] = useState<{ id: string; photo_url: string }[]>([]);
   const [加载中, set加载中] = useState(true);
   const [借还弹窗打开, set借还弹窗打开] = useState(false);
   const [是管理员, set是管理员] = useState(false);
@@ -96,6 +97,16 @@ export default function ToolDetailPage() {
             .maybeSingle();
           if (记录 && (记录 as 借用记录).returned_at === null) {
             set未归还记录(记录 as 借用记录);
+          }
+          /* 加载归还照片 */
+          const recId = (记录 as 借用记录)?.id;
+          if (recId) {
+            const { data: photos } = await supabase
+              .from("tool_return_photos")
+              .select("id, photo_url")
+              .eq("borrow_record_id", recId)
+              .order("created_at", { ascending: false });
+            set归还照片列表((photos || []) as { id: string; photo_url: string }[]);
           }
         } catch (e) {
           /* 忽略借用人查询错误 */
@@ -195,14 +206,14 @@ export default function ToolDetailPage() {
             );
           }
           return (
-            <div className="flex flex-wrap gap-2 justify-center">
+            <div className="flex gap-3 overflow-x-auto pb-2 justify-center">
               {图片列表.map((url, i) => (
                 <img
                   key={i}
                   src={url}
                   alt={`${工具.name} ${i + 1}`}
-                  className="w-full rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-80"
-                  style={{ maxWidth: 300 }}
+                  className="flex-shrink-0 rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-80"
+                  style={{ width: 300, height: 225 }}
                   onClick={() => set预览图索引(i)}
                 />
               ))}
@@ -238,6 +249,24 @@ export default function ToolDetailPage() {
                 <div className="text-gray-400 text-xs mb-0.5">借用时间</div>
                 <div className="text-gray-900">
                   {new Date(未归还记录.borrowed_at).toLocaleString("zh-CN")}
+                </div>
+              </div>
+            )}
+            {/* 归还验收照片 */}
+            {归还照片列表.length > 0 && (
+              <div>
+                <div className="text-gray-400 text-xs mb-2">归还验收照片</div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {归还照片列表.map((photo) => (
+                    <img
+                      key={photo.id}
+                      src={photo.photo_url}
+                      alt="归还验收"
+                      className="w-20 h-20 rounded-lg object-cover border border-gray-200 flex-shrink-0 cursor-pointer hover:opacity-80"
+                      onClick={() => set预览图索引(归还照片列表.findIndex((p) => p.photo_url === photo.photo_url))}
+                      loading="lazy"
+                    />
+                  ))}
                 </div>
               </div>
             )}
