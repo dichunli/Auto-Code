@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { PartPickerModal } from "./PartPickerModal";
+import ScanAddPartsModal from "./ScanAddPartsModal";
 import { 标记本地结构编辑 } from "@/lib/localEditSignal";
 
 interface PartName {
@@ -124,6 +125,7 @@ export function AddWorkOrderItemPartModal({
 
   // 配件选择器弹窗
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
 
   // 弹窗打开时加载预置配件
   useEffect(() => {
@@ -545,13 +547,22 @@ export function AddWorkOrderItemPartModal({
                 选择实际库存配件，会自动带入编号、品牌、价格等信息
               </p>
 
-              <button
-                type="button"
-                onClick={() => setPickerOpen(true)}
-                className="w-full py-3 border-2 border-dashed border-blue-300 rounded-xl text-blue-600 hover:bg-blue-50 hover:border-blue-400 transition-colors text-sm font-medium"
-              >
-                + 选择配件
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                  className="flex-1 py-3 border-2 border-dashed border-blue-300 rounded-xl text-blue-600 hover:bg-blue-50 hover:border-blue-400 transition-colors text-sm font-medium"
+                >
+                  + 选择配件
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScanOpen(true)}
+                  className="flex-1 py-3 border-2 border-dashed border-green-300 rounded-xl text-green-600 hover:bg-green-50 hover:border-green-400 transition-colors text-sm font-medium"
+                >
+                  📷 扫码添加
+                </button>
+              </div>
 
               {/* 已选库存配件列表 */}
               {selectedRealParts.length > 0 && (
@@ -688,6 +699,13 @@ export function AddWorkOrderItemPartModal({
         onClose={() => setPickerOpen(false)}
         onConfirm={handlePickerConfirm}
         vehicleModelId={vehicleModelId}
+      />
+
+      {/* 扫码添加弹窗（连续扫码、重扫+1、可改数量），结果复用同一入库回调 */}
+      <ScanAddPartsModal
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onConfirm={handlePickerConfirm}
       />
     </>,
     document.body

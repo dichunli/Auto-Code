@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import BarcodeScanModal from "./BarcodeScanModal";
@@ -68,6 +68,25 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
 
   // 扫码弹窗
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+
+  // 编号智能提示：输入≥2字符防抖模糊查，出候选下拉
+  const [pnSuggests, setPnSuggests] = useState<{ id: string; part_number: string; name: string }[]>([]);
+  const [showPnSuggests, setShowPnSuggests] = useState(false);
+  const pnSuggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (pnSuggestTimer.current) clearTimeout(pnSuggestTimer.current);
+    const kw = partNumber.trim();
+    if (kw.length < 2) { setPnSuggests([]); return; }
+    pnSuggestTimer.current = setTimeout(async () => {
+      const { data } = await supabase
+        .from("parts")
+        .select("id, part_number, name")
+        .ilike("part_number", `%${kw}%`)
+        .limit(8);
+      setPnSuggests(data || []);
+    }, 250);
+    return () => { if (pnSuggestTimer.current) clearTimeout(pnSuggestTimer.current); };
+  }, [partNumber, supabase]);
 
   // 加载配件分类
   useEffect(() => {
@@ -551,14 +570,34 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 whitespace-nowrap">编号/零件号:</span>
-              <input
-                type="text"
-                value={partNumber}
-                onChange={(e) => setPartNumber(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
-                placeholder="编号/零件号（可扫码枪）"
-                className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={partNumber}
+                  onChange={(e) => { setPartNumber(e.target.value); setShowPnSuggests(true); }}
+                  onFocus={() => setShowPnSuggests(true)}
+                  onBlur={() => setTimeout(() => setShowPnSuggests(false), 150)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { setShowPnSuggests(false); doSearch(); } }}
+                  placeholder="编号/零件号（可扫码枪）"
+                  className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                />
+                {showPnSuggests && pnSuggests.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-64 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                    {pnSuggests.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { setPartNumber(s.part_number); setShowPnSuggests(false); doSearch(); }}
+                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0"
+                      >
+                        <span className="font-mono text-blue-700">{s.part_number}</span>
+                        <span className="text-xs text-gray-500 ml-2">{s.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 whitespace-nowrap">OE号:</span>
