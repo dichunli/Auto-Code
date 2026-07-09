@@ -233,6 +233,83 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
     setLoading(false);
   }, [supabase]);
 
+  // 扫码提示
+  const [scanToast, setScanToast] = useState("");
+  const scanToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 扫码枪手动模式（自动识别没认出时兜底）：专用输入框，扫码/输码回车必中
+  const [gunMode, setGunMode] = useState(false);
+  const [gunCode, setGunCode] = useState("");
+  const gunInputRef = useRef<HTMLInputElement>(null);
+  // 扫码命中：按 编码/条码 精确匹配，命中则加入已选并数量+1
+  const handleScanCode = useCallback(async (rawCode: string) => {
+    const kw = rawCode.trim();
+    if (!kw) return;
+    const { data } = await supabase
+      .from("parts")
+      .select("id, part_number, oe_number, name, unit, quantity, min_stock, unit_cost, unit_price, location, specification_text, part_name_id, barcode, part_names(name, unit), part_brands(name), part_specifications(name), part_categories(name), suppliers(name)")
+      .or(`part_number.eq.${kw},barcode.eq.${kw}`)
+      .limit(2);
+    let toast = "";
+    if (!data || data.length === 0) {
+      toast = `✗ 未找到编码「${kw}」`;
+    } else if (data.length > 1) {
+      toast = `编码「${kw}」匹配多个，请手动选择`;
+    } else {
+      const hit = data[0] as unknown as Part;
+      setParts((prev) => (prev.some((p) => p.id === hit.id) ? prev : [hit, ...prev]));
+      setSelectedIds((prev) => new Set(prev).add(hit.id));
+      let newQty = 1;
+      setSelectedQtyMap((prev) => { newQty = (prev[hit.id] || 0) + 1; return { ...prev, [hit.id]: newQty }; });
+      toast = `✓ 已扫入 ${hit.name} ×${newQty}`;
+    }
+    setScanToast(toast);
+    if (scanToastTimer.current) clearTimeout(scanToastTimer.current);
+    scanToastTimer.current = setTimeout(() => setScanToast(""), 2500);
+  }, [supabase]);
+
+  // 全局扫码识别：靠输入速度判断——一串字符极快到达(每字符<40ms)且以回车结尾即判为扫码。
+  // 手动慢速打字不受影响；扫码时拦截字符避免落入搜索框污染。
+  useEffect(() => {
+    if (!open || gunMode) return; // 扫码枪手动模式下由专用输入框处理，关闭全局识别避免冲突
+    let buffer = "";
+    let lastTime = 0;
+    let fastCount = 0;
+    function onKeyDown(e: KeyboardEvent) {
+      const now = Date.now();
+      const gap = now - lastTime;
+      lastTime = now;
+      if (e.key === "Enter") {
+        // 快速连击累计足够(≥3)且缓冲够长→判为扫码
+        if (buffer.length >= 3 && fastCount >= buffer.length - 1) {
+          e.preventDefault();
+          const code = buffer;
+          buffer = ""; fastCount = 0;
+          handleScanCode(code);
+        } else {
+          buffer = ""; fastCount = 0;
+        }
+        return;
+      }
+      if (e.key.length === 1) {
+        if (gap > 100) { buffer = ""; fastCount = 0; } // 间隔过大→新序列(手动输入)
+        buffer += e.key;
+        if (gap < 40) {
+          fastCount++;
+          // 快速连击(扫码枪)→拦截，避免字符落入搜索框污染
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [open, gunMode, handleScanCode]);
+
+  // 开启扫码枪模式时聚焦专用输入框
+  useEffect(() => {
+    if (gunMode) setTimeout(() => gunInputRef.current?.focus(), 50);
+  }, [gunMode]);
+
   // 打开时自动查询一次，如果有默认名称搜索词则填入
   useEffect(() => {
     if (open) {
@@ -553,7 +630,18 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
         <div className="bg-white rounded-xl border border-gray-200 w-full max-w-[1400px] mx-4 max-h-[90vh] flex flex-col">
         {/* 标题 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">选择配件</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">选择配件</h2>
+            <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              可直接扫码枪扫码，自动加入并累计数量
+            </span>
+            {scanToast && (
+              <span className={`text-sm font-medium px-2 py-0.5 rounded ${scanToast.startsWith("✓") ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+                {scanToast}
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -667,12 +755,32 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
             </button>
             <button
               type="button"
-              onClick={() => setShowBarcodeScanner(true)}
-              className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+              onClick={() => setGunMode((v) => !v)}
+              className={`px-4 py-1.5 text-sm rounded-lg border ${gunMode ? "bg-green-600 text-white border-green-600" : "bg-white text-green-700 border-green-300 hover:bg-green-50"}`}
+              title="自动识别没认出扫码时，开启此模式，用专用框扫码必中"
             >
-              扫码
+              {gunMode ? "扫码枪模式：开" : "扫码枪模式"}
             </button>
           </div>
+
+          {/* 扫码枪手动模式：专用输入框（自动识别的兜底） */}
+          {gunMode && (
+            <div className="flex items-center gap-2 p-2 rounded-lg border border-green-300 bg-green-50">
+              <span className="inline-flex items-center gap-1.5 text-sm text-green-700 shrink-0">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                扫码中…
+              </span>
+              <input
+                ref={gunInputRef}
+                type="text"
+                value={gunCode}
+                onChange={(e) => setGunCode(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleScanCode(gunCode); setGunCode(""); } }}
+                placeholder="扫码枪对准扫，或输入编码后回车"
+                className="flex-1 px-3 py-1.5 border border-green-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+              />
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2">
