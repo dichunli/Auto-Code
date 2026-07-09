@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  serverExternalPackages: ["mammoth", "docx"],
+  serverExternalPackages: ["mammoth", "docx", "@xenova/transformers", "onnxruntime-node", "sharp"],
   experimental: {
     serverActions: {
       bodySizeLimit: "100mb",

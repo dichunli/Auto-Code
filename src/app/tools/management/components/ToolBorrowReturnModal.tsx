@@ -10,6 +10,8 @@ interface 工具 {
   name: string;
   image_url: string | null;
   status: string;
+  require_return_photos?: boolean;
+  require_location_scan?: boolean;
 }
 
 interface 借用记录 {
@@ -191,9 +193,9 @@ export default function ToolBorrowReturnModal({
         </div>
 
         <div className="flex gap-3">
-          {工具.image_url ? (
+          {(工具.image_url ? 工具.image_url.split(",").filter(Boolean)[0] : "") ? (
             <img
-              src={工具.image_url}
+              src={工具.image_url!.split(",").filter(Boolean)[0]}
               alt={工具.name}
               className="w-16 h-16 rounded-lg object-cover border border-gray-200"
             />
@@ -273,7 +275,11 @@ export default function ToolBorrowReturnModal({
                   {提交中 ? "提交中..." : "确认借用"}
                 </button>
               )}
-              {是归还 && (
+              {是归还 && (工具.require_return_photos || 工具.require_location_scan) && !是App ? (
+                <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg text-center">
+                  该工具需扫码/拍照归还，请在手机端 APP 操作
+                </div>
+              ) : 是归还 && (
                 <button
                   type="button"
                   onClick={提交归还}

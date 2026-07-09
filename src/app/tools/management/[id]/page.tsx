@@ -6,6 +6,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import ToolBorrowReturnModal from "../components/ToolBorrowReturnModal";
 import LocationQrCode from "../components/LocationQrCode";
+import { ImageViewer } from "@/components/ImageViewer";
+import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
 
 interface 工具 {
   id: string;
@@ -50,9 +52,11 @@ export default function ToolDetailPage() {
   const [工具, set工具] = useState<工具 | null>(null);
   const [知识标题, set知识标题] = useState("");
   const [未归还记录, set未归还记录] = useState<借用记录 | null>(null);
+  const [归还照片列表, set归还照片列表] = useState<{ id: string; photo_url: string }[]>([]);
   const [加载中, set加载中] = useState(true);
   const [借还弹窗打开, set借还弹窗打开] = useState(false);
   const [是管理员, set是管理员] = useState(false);
+  const [预览图索引, set预览图索引] = useState<number | null>(null);
 
   useEffect(() => {
     async function 加载() {
@@ -93,6 +97,16 @@ export default function ToolDetailPage() {
             .maybeSingle();
           if (记录 && (记录 as 借用记录).returned_at === null) {
             set未归还记录(记录 as 借用记录);
+          }
+          /* 加载归还照片 */
+          const recId = (记录 as 借用记录)?.id;
+          if (recId) {
+            const { data: photos } = await supabase
+              .from("tool_return_photos")
+              .select("id, photo_url")
+              .eq("borrow_record_id", recId)
+              .order("created_at", { ascending: false });
+            set归还照片列表((photos || []) as { id: string; photo_url: string }[]);
           }
         } catch (e) {
           /* 忽略借用人查询错误 */
@@ -176,25 +190,36 @@ export default function ToolDetailPage() {
       </div>
 
       <div className="px-4 py-4 space-y-4">
-        {/* 工具图片 */}
-        {工具.image_url ? (
-          <div className="flex justify-center">
-            <img
-              src={工具.image_url}
-              alt={工具.name}
-              className="w-full max-w-sm rounded-xl object-cover border border-gray-200"
-            />
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <div className="w-full max-w-sm h-48 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-              <svg className="w-16 h-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
+        {/* 工具图片（多图 + 点击放大） */}
+        {(() => {
+          const 图片列表 = 工具.image_url ? 工具.image_url.split(",").filter(Boolean) : [];
+          if (图片列表.length === 0) {
+            return (
+              <div className="flex justify-center">
+                <div className="w-full max-w-sm h-48 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                  <svg className="w-16 h-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div className="flex gap-3 overflow-x-auto pb-2 justify-center">
+              {图片列表.map((url, i) => (
+                <img
+                  key={i}
+                  src={url}
+                  alt={`${工具.name} ${i + 1}`}
+                  className="flex-shrink-0 rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-80"
+                  style={{ width: 300, height: 225 }}
+                  onClick={() => set预览图索引(i)}
+                />
+              ))}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* 基本信息 */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
@@ -227,6 +252,24 @@ export default function ToolDetailPage() {
                 </div>
               </div>
             )}
+            {/* 归还验收照片 */}
+            {归还照片列表.length > 0 && (
+              <div>
+                <div className="text-gray-400 text-xs mb-2">归还验收照片</div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {归还照片列表.map((photo) => (
+                    <img
+                      key={photo.id}
+                      src={photo.photo_url}
+                      alt="归还验收"
+                      className="w-20 h-20 rounded-lg object-cover border border-gray-200 flex-shrink-0 cursor-pointer hover:opacity-80"
+                      onClick={() => set预览图索引(归还照片列表.findIndex((p) => p.photo_url === photo.photo_url))}
+                      loading="lazy"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -246,13 +289,26 @@ export default function ToolDetailPage() {
           </div>
         )}
 
-        {/* 补充说明 */}
-        {工具.instructions && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <div className="text-sm font-medium text-gray-900 mb-2">补充说明</div>
-            <p className="text-sm text-gray-600 whitespace-pre-wrap">{工具.instructions}</p>
-          </div>
-        )}
+        {/* 工具说明 */}
+        {工具.instructions && (() => {
+          try {
+            const blocks = JSON.parse(工具.instructions);
+            if (Array.isArray(blocks) && blocks.length > 0) {
+              return (
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="text-sm font-medium text-gray-900 mb-2">工具说明</div>
+                  <BlockNoteRenderer blocks={blocks} />
+                </div>
+              );
+            }
+          } catch {}
+          return (
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="text-sm font-medium text-gray-900 mb-2">工具说明</div>
+              <p className="text-sm text-gray-600 whitespace-pre-wrap">{工具.instructions}</p>
+            </div>
+          );
+        })()}
 
         {/* 借用/归还按钮 */}
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3">
@@ -279,6 +335,17 @@ export default function ToolDetailPage() {
           router.push("/tools/management");
         }}
       />
+
+      {/* 图片大图预览 */}
+      {预览图索引 !== null && 工具.image_url && (
+        <ImageViewer
+          src={工具.image_url.split(",").filter(Boolean)[预览图索引]}
+          images={工具.image_url.split(",").filter(Boolean)}
+          currentIndex={预览图索引}
+          onIndexChange={(i) => set预览图索引(i)}
+          onClose={() => set预览图索引(null)}
+        />
+      )}
     </div>
   );
 }

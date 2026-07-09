@@ -89,6 +89,44 @@ export default function SettingsPage() {
           </a>
         </div>
 
+        {/* 语义搜索同义词入口 */}
+        <div className="flex items-center justify-between pb-5 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">语义搜索同义词</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              管理语义搜索的同义词扩展，搜&ldquo;刹车&rdquo;自动关联&ldquo;制动&rdquo;
+            </p>
+          </div>
+          <a
+            href="/settings/synonyms"
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            前往设置
+            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
+        {/* 文章向量生成入口 */}
+        <div className="flex items-center justify-between pb-5 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">文章向量生成</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              批量为旧文章生成语义搜索向量，生成后才能被语义搜索匹配
+            </p>
+          </div>
+          <a
+            href="/settings/embeddings"
+            className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            前往设置
+            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+
         <div>
           <h2 className="text-base font-semibold text-gray-900 mb-4">重复开单授权码</h2>
           <p className="text-sm text-gray-500 mb-4">

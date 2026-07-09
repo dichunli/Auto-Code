@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 中文分词 } from "@/lib/chineseSegmenter";
+import { 添加分词, 删除分词 } from "@/app/knowledge/actions";
 
 export default function SegmentDictionaryPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -57,11 +58,11 @@ export default function SegmentDictionaryPage() {
     }
 
     setSaving(true);
-    const { error } = await supabase.from("search_dictionary").insert({ word });
+    const result = await 添加分词(word);
     setSaving(false);
 
-    if (error) {
-      alert("添加失败: " + error.message);
+    if (!result.success) {
+      alert("添加失败: " + (result.error || "未知错误"));
       return;
     }
 
@@ -73,11 +74,11 @@ export default function SegmentDictionaryPage() {
     if (!confirm(`确定要删除分词「${word}」吗？`)) return;
 
     setSaving(true);
-    const { error } = await supabase.from("search_dictionary").delete().eq("word", word);
+    const result = await 删除分词(word);
     setSaving(false);
 
-    if (error) {
-      alert("删除失败: " + error.message);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
 
