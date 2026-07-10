@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import BarcodeScanModal from "./BarcodeScanModal";
@@ -47,6 +47,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
   const [partNumber, setPartNumber] = useState("");
   const [oeNumberQuery, setOeNumberQuery] = useState("");
   const [nameQuery, setNameQuery] = useState("");
+  const [brandQuery, setBrandQuery] = useState("");
   const [specQuery, setSpecQuery] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [stockFilter, setStockFilter] = useState("all"); // all, inStock, outOfStock
@@ -67,6 +68,25 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
 
   // 扫码弹窗
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+
+  // 编号智能提示：输入≥2字符防抖模糊查，出候选下拉
+  const [pnSuggests, setPnSuggests] = useState<{ id: string; part_number: string; name: string }[]>([]);
+  const [showPnSuggests, setShowPnSuggests] = useState(false);
+  const pnSuggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (pnSuggestTimer.current) clearTimeout(pnSuggestTimer.current);
+    const kw = partNumber.trim();
+    if (kw.length < 2) { setPnSuggests([]); return; }
+    pnSuggestTimer.current = setTimeout(async () => {
+      const { data } = await supabase
+        .from("parts")
+        .select("id, part_number, name")
+        .ilike("part_number", `%${kw}%`)
+        .limit(8);
+      setPnSuggests(data || []);
+    }, 250);
+    return () => { if (pnSuggestTimer.current) clearTimeout(pnSuggestTimer.current); };
+  }, [partNumber, supabase]);
 
   // 加载配件分类
   useEffect(() => {
@@ -119,6 +139,22 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       query = query.ilike("name", `%${nameQuery.trim()}%`);
     }
 
+    // 品牌：先查匹配的品牌ID，再按 brand_id 过滤（parts.brand_id 关联 part_brands）
+    if (brandQuery.trim()) {
+      const { data: brandRows } = await supabase
+        .from("part_brands")
+        .select("id")
+        .ilike("name", `%${brandQuery.trim()}%`);
+      const brandIds = (brandRows || []).map((b) => b.id);
+      if (brandIds.length === 0) {
+        // 没有匹配品牌，直接返回空
+        setParts([]);
+        setLoading(false);
+        return;
+      }
+      query = query.in("brand_id", brandIds);
+    }
+
     // 规格（specification_text）
     if (specQuery.trim()) {
       query = query.ilike("specification_text", `%${specQuery.trim()}%`);
@@ -138,7 +174,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       setParts((data as Part[]) || []);
     }
     setLoading(false);
-  }, [supabase, partNumber, oeNumberQuery, nameQuery, specQuery, categoryId]);
+  }, [supabase, partNumber, oeNumberQuery, nameQuery, brandQuery, specQuery, categoryId]);
 
   // 使用指定名称搜索（用于默认名称和扫码后的搜索）
   const doSearchWithName = useCallback(async (searchName: string) => {
@@ -197,6 +233,83 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
     setLoading(false);
   }, [supabase]);
 
+  // 扫码提示
+  const [scanToast, setScanToast] = useState("");
+  const scanToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 扫码枪手动模式（自动识别没认出时兜底）：专用输入框，扫码/输码回车必中
+  const [gunMode, setGunMode] = useState(false);
+  const [gunCode, setGunCode] = useState("");
+  const gunInputRef = useRef<HTMLInputElement>(null);
+  // 扫码命中：按 编码/条码 精确匹配，命中则加入已选并数量+1
+  const handleScanCode = useCallback(async (rawCode: string) => {
+    const kw = rawCode.trim();
+    if (!kw) return;
+    const { data } = await supabase
+      .from("parts")
+      .select("id, part_number, oe_number, name, unit, quantity, min_stock, unit_cost, unit_price, location, specification_text, part_name_id, barcode, part_names(name, unit), part_brands(name), part_specifications(name), part_categories(name), suppliers(name)")
+      .or(`part_number.eq.${kw},barcode.eq.${kw}`)
+      .limit(2);
+    let toast = "";
+    if (!data || data.length === 0) {
+      toast = `✗ 未找到编码「${kw}」`;
+    } else if (data.length > 1) {
+      toast = `编码「${kw}」匹配多个，请手动选择`;
+    } else {
+      const hit = data[0] as unknown as Part;
+      setParts((prev) => (prev.some((p) => p.id === hit.id) ? prev : [hit, ...prev]));
+      setSelectedIds((prev) => new Set(prev).add(hit.id));
+      let newQty = 1;
+      setSelectedQtyMap((prev) => { newQty = (prev[hit.id] || 0) + 1; return { ...prev, [hit.id]: newQty }; });
+      toast = `✓ 已扫入 ${hit.name} ×${newQty}`;
+    }
+    setScanToast(toast);
+    if (scanToastTimer.current) clearTimeout(scanToastTimer.current);
+    scanToastTimer.current = setTimeout(() => setScanToast(""), 2500);
+  }, [supabase]);
+
+  // 全局扫码识别：靠输入速度判断——一串字符极快到达(每字符<40ms)且以回车结尾即判为扫码。
+  // 手动慢速打字不受影响；扫码时拦截字符避免落入搜索框污染。
+  useEffect(() => {
+    if (!open || gunMode) return; // 扫码枪手动模式下由专用输入框处理，关闭全局识别避免冲突
+    let buffer = "";
+    let lastTime = 0;
+    let fastCount = 0;
+    function onKeyDown(e: KeyboardEvent) {
+      const now = Date.now();
+      const gap = now - lastTime;
+      lastTime = now;
+      if (e.key === "Enter") {
+        // 快速连击累计足够(≥3)且缓冲够长→判为扫码
+        if (buffer.length >= 3 && fastCount >= buffer.length - 1) {
+          e.preventDefault();
+          const code = buffer;
+          buffer = ""; fastCount = 0;
+          handleScanCode(code);
+        } else {
+          buffer = ""; fastCount = 0;
+        }
+        return;
+      }
+      if (e.key.length === 1) {
+        if (gap > 100) { buffer = ""; fastCount = 0; } // 间隔过大→新序列(手动输入)
+        buffer += e.key;
+        if (gap < 40) {
+          fastCount++;
+          // 快速连击(扫码枪)→拦截，避免字符落入搜索框污染
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [open, gunMode, handleScanCode]);
+
+  // 开启扫码枪模式时聚焦专用输入框
+  useEffect(() => {
+    if (gunMode) setTimeout(() => gunInputRef.current?.focus(), 50);
+  }, [gunMode]);
+
   // 打开时自动查询一次，如果有默认名称搜索词则填入
   useEffect(() => {
     if (open) {
@@ -211,6 +324,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       }
       setSelectedIds(new Set());
       setSelectedQtyMap({});
+      setBrandQuery("");
     }
      
   }, [open]);
@@ -226,16 +340,13 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       result = result.filter((p) => p.quantity <= 0);
     }
 
-    // 优先排序：与当前车型匹配的配件排在前面
-    if (vehicleModelId && linkedPartIds.size > 0) {
-      result.sort((a, b) => {
-        const aLinked = linkedPartIds.has(a.id);
-        const bLinked = linkedPartIds.has(b.id);
-        if (aLinked && !bLinked) return -1;
-        if (!aLinked && bLinked) return 1;
-        return 0;
-      });
-    }
+    // 排序：① 适用本车型（已关联）的配件置顶  ② 其余（含车型内部）按库存数量降序
+    result.sort((a, b) => {
+      const aLinked = vehicleModelId && linkedPartIds.has(a.id) ? 1 : 0;
+      const bLinked = vehicleModelId && linkedPartIds.has(b.id) ? 1 : 0;
+      if (aLinked !== bLinked) return bLinked - aLinked; // 车型匹配置顶
+      return (b.quantity || 0) - (a.quantity || 0); // 库存数量降序
+    });
 
     return result;
   }, [parts, stockFilter, vehicleModelId, linkedPartIds]);
@@ -254,7 +365,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
         setSelectedQtyMap((q) => { const n = { ...q }; delete n[id]; return n; });
       } else {
         next.add(id);
-        setSelectedQtyMap((q) => ({ ...q, [id]: 1 }));
+        // 选中不预填数量，数量留空由用户填
       }
       return next;
     });
@@ -280,20 +391,22 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
         for (const id of pageIds) next.add(id);
         return next;
       });
-      setSelectedQtyMap((q) => {
-        const n = { ...q };
-        for (const id of pageIds) { if (!n[id]) n[id] = 1; }
-        return n;
-      });
+      // 选中不自动填数量（数量留空，由用户填，或到工单里按实际填）
     }
   }
 
-  function updateQuantity(id: string, qty: number) {
-    if (qty < 1 || isNaN(qty)) {
-      toggleSelect(id);
-      return;
-    }
-    setSelectedQtyMap((prev) => ({ ...prev, [id]: qty }));
+  // 更新数量：空值 → 移除该键（表示留空）；有效正数 → 记录
+  function updateQuantity(id: string, raw: string) {
+    setSelectedQtyMap((prev) => {
+      const n = { ...prev };
+      const num = Number(raw);
+      if (raw.trim() === "" || isNaN(num) || num < 1) {
+        delete n[id];
+      } else {
+        n[id] = num;
+      }
+      return n;
+    });
   }
 
   // 已选配件数据
@@ -302,7 +415,8 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
   function handleConfirm() {
     const selected = selectedParts.map((p) => ({
       ...p,
-      selectedQuantity: selectedQtyMap[p.id] ?? 1,
+      // 不自动填 1：用户没填数量则不传（下游存 null，工单里红框提醒）
+      selectedQuantity: selectedQtyMap[p.id],
     }));
     onConfirm(selected);
     setSelectedIds(new Set());
@@ -460,8 +574,9 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
                         <input
                           type="number"
                           min={1}
-                          value={selectedQtyMap[part.id] ?? 1}
-                          onChange={(e) => updateQuantity(part.id, parseInt(e.target.value) || 1)}
+                          value={selectedQtyMap[part.id] ?? ""}
+                          onChange={(e) => updateQuantity(part.id, e.target.value)}
+                          placeholder="数量"
                           className="w-12 px-1 py-0.5 border border-gray-200 rounded text-xs text-center"
                         />
                       </div>
@@ -515,7 +630,18 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
         <div className="bg-white rounded-xl border border-gray-200 w-full max-w-[1400px] mx-4 max-h-[90vh] flex flex-col">
         {/* 标题 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">选择配件</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">选择配件</h2>
+            <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              可直接扫码枪扫码，自动加入并累计数量
+            </span>
+            {scanToast && (
+              <span className={`text-sm font-medium px-2 py-0.5 rounded ${scanToast.startsWith("✓") ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+                {scanToast}
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -532,13 +658,34 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 whitespace-nowrap">编号/零件号:</span>
-              <input
-                type="text"
-                value={partNumber}
-                onChange={(e) => setPartNumber(e.target.value)}
-                placeholder="编号/零件号"
-                className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={partNumber}
+                  onChange={(e) => { setPartNumber(e.target.value); setShowPnSuggests(true); }}
+                  onFocus={() => setShowPnSuggests(true)}
+                  onBlur={() => setTimeout(() => setShowPnSuggests(false), 150)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { setShowPnSuggests(false); doSearch(); } }}
+                  placeholder="编号/零件号（可扫码枪）"
+                  className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                />
+                {showPnSuggests && pnSuggests.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-64 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                    {pnSuggests.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { setPartNumber(s.part_number); setShowPnSuggests(false); doSearch(); }}
+                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0"
+                      >
+                        <span className="font-mono text-blue-700">{s.part_number}</span>
+                        <span className="text-xs text-gray-500 ml-2">{s.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 whitespace-nowrap">OE号:</span>
@@ -546,18 +693,31 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
                 type="text"
                 value={oeNumberQuery}
                 onChange={(e) => setOeNumberQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
                 placeholder="OE原厂编码"
                 className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
               />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 whitespace-nowrap">名称/品牌:</span>
+              <span className="text-sm text-gray-600 whitespace-nowrap">名称:</span>
               <input
                 type="text"
                 value={nameQuery}
                 onChange={(e) => setNameQuery(e.target.value)}
-                placeholder="名称/品牌"
-                className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+                placeholder="配件名称"
+                className="w-32 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 whitespace-nowrap">品牌:</span>
+              <input
+                type="text"
+                value={brandQuery}
+                onChange={(e) => setBrandQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+                placeholder="品牌"
+                className="w-28 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -566,8 +726,9 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
                 type="text"
                 value={specQuery}
                 onChange={(e) => setSpecQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
                 placeholder="规格/型号"
-                className="w-40 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                className="w-32 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -594,12 +755,32 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
             </button>
             <button
               type="button"
-              onClick={() => setShowBarcodeScanner(true)}
-              className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+              onClick={() => setGunMode((v) => !v)}
+              className={`px-4 py-1.5 text-sm rounded-lg border ${gunMode ? "bg-green-600 text-white border-green-600" : "bg-white text-green-700 border-green-300 hover:bg-green-50"}`}
+              title="自动识别没认出扫码时，开启此模式，用专用框扫码必中"
             >
-              扫码
+              {gunMode ? "扫码枪模式：开" : "扫码枪模式"}
             </button>
           </div>
+
+          {/* 扫码枪手动模式：专用输入框（自动识别的兜底） */}
+          {gunMode && (
+            <div className="flex items-center gap-2 p-2 rounded-lg border border-green-300 bg-green-50">
+              <span className="inline-flex items-center gap-1.5 text-sm text-green-700 shrink-0">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                扫码中…
+              </span>
+              <input
+                ref={gunInputRef}
+                type="text"
+                value={gunCode}
+                onChange={(e) => setGunCode(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleScanCode(gunCode); setGunCode(""); } }}
+                placeholder="扫码枪对准扫，或输入编码后回车"
+                className="flex-1 px-3 py-1.5 border border-green-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+              />
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2">
@@ -808,8 +989,9 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
                           <input
                             type="number"
                             min={1}
-                            value={selectedQtyMap[part.id] ?? 1}
-                            onChange={(e) => updateQuantity(part.id, parseInt(e.target.value) || 1)}
+                            value={selectedQtyMap[part.id] ?? ""}
+                            onChange={(e) => updateQuantity(part.id, e.target.value)}
+                            placeholder="数量"
                             className="w-14 px-1 py-0.5 border border-gray-200 rounded text-xs text-center"
                           />
                         </div>

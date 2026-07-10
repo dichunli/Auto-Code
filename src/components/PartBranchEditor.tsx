@@ -159,7 +159,6 @@ export default function PartBranchEditor({
     }
     window.addEventListener("wo-part-update", handleSelectSync as EventListener);
     return () => window.removeEventListener("wo-part-update", handleSelectSync as EventListener);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [part.id]);
 
   // 只有一个分支时默认选中
@@ -198,7 +197,6 @@ export default function PartBranchEditor({
       quantity: part.quantity != null ? String(part.quantity) : "1",
       document_name: part.document_name || part.parts?.document_name || "",
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [part.part_number, part.brand, part.specification, part.unit_cost, part.cost_price, part.unit_price, part.supplier_name, part.quantity, part.document_name]);
 
   // 供应商推荐相关状态

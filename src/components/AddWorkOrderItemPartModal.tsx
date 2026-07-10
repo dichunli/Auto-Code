@@ -4,8 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { PartPickerModal } from "./PartPickerModal";
-import { searchVinFilters, syncOeFromVin } from "@/app/parts/actions";
-import { 标准化VIN } from "@/lib/vinValidator";
+import { 标记本地结构编辑 } from "@/lib/localEditSignal";
 
 interface PartName {
   id: string;
@@ -94,7 +93,6 @@ export function AddWorkOrderItemPartModal({
   serviceItemId,
   itemName,
   vehicleModelId,
-  vin,
 }: Props) {
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
@@ -120,72 +118,12 @@ export function AddWorkOrderItemPartModal({
   const [searchResults, setSearchResults] = useState<PartName[]>([]);
   const [searching, setSearching] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 搜索后：先点选一个候选配件名称，填数量，再点"确认添加"才加入（不自动添加）
+  const [pickedName, setPickedName] = useState<PartName | null>(null);
+  const [pickedQty, setPickedQty] = useState<string>("");
 
   // 配件选择器弹窗
   const [pickerOpen, setPickerOpen] = useState(false);
-
-  // VIN查三滤
-  const 保养件品牌列表 = ["博世", "马勒", "曼牌", "索菲玛", "汉格斯特", "科德宝"];
-  const [filterBrand, setFilterBrand] = useState(保养件品牌列表[0]);
-  const [filterLoading, setFilterLoading] = useState(false);
-  interface 三滤结果项 {
-    type: "oil" | "air" | "cabin";
-    typeName: string;
-    oeNumber: string;
-    partNumber: string;
-    name: string;
-    brand: string;
-    manufacturerBrand: string;
-    category: string;
-    remark: string;
-  }
-  const [filterResults, setFilterResults] = useState<三滤结果项[]>([]);
-  const [filterError, setFilterError] = useState("");
-
-  // 自动识别三滤OE号提示
-  interface 三滤提示 {
-    partNameId: string;
-    name: string;
-    oeNumber: string;
-    matchedModelCount: number;
-    creating: boolean;
-  }
-  const [filterHints, setFilterHints] = useState<三滤提示[]>([]);
-
-  /* 精准判断三滤名称 */
-  function isFilterName(name: string): boolean {
-    return name === "机油滤" || name === "机油滤清器" || name === "空气滤" || name === "空气滤清器" || name === "空调滤" || name === "空调滤清器";
-  }
-
-  /* 记录已查过的partNameId，防止重复查询 */
-  const checkedHintIds = useRef<Set<string>>(new Set());
-
-  /* 自动识别三滤并查OE号 */
-  useEffect(() => {
-    if (!open || !vin) return;
-    for (const sp of selectedPartNames) {
-      if (checkedHintIds.current.has(sp.part_name_id)) continue;
-      if (!isFilterName(sp.name)) {
-        checkedHintIds.current.add(sp.part_name_id);
-        continue;
-      }
-      checkedHintIds.current.add(sp.part_name_id);
-      /* 异步查OE号 */
-      (async () => {
-        try {
-          const res = await syncOeFromVin(标准化VIN(vin), sp.name);
-          if (res.success && res.oeNumber) {
-            setFilterHints((prev) => [
-              ...prev.filter((h) => h.partNameId !== sp.part_name_id),
-              { partNameId: sp.part_name_id, name: sp.name, oeNumber: res.oeNumber, matchedModelCount: res.matchedModelIds?.length || 0, creating: false },
-            ]);
-          }
-        } catch {
-          /* 忽略查询失败 */
-        }
-      })();
-    }
-  }, [selectedPartNames, vin, open]);
 
   // 弹窗打开时加载预置配件
   useEffect(() => {
@@ -193,9 +131,10 @@ export function AddWorkOrderItemPartModal({
 
     setSelectedPartNames([]);
     setSelectedRealParts([]);
-    setFilterHints([]);
     setSearchQuery("");
     setSearchResults([]);
+    setPickedName(null);
+    setPickedQty("");
     setExistingPartNameIds(new Set());
     setExistingPartIds(new Set());
 
@@ -223,7 +162,9 @@ export function AddWorkOrderItemPartModal({
             .filter((row: { part_name_id: string }) => !existingNameIds.has(row.part_name_id))
             .map((row: { part_name_id: string; quantity: number | null; part_names: PartName | null }) => ({
               part_name_id: row.part_name_id,
-              quantity: row.quantity ?? row.part_names?.default_quantity ?? null,
+              // 严格按项目预设的数量：预设没填就留空(null)，由工单里红框提醒按实车确定，
+              // 不用配件名称的默认数量兜底。
+              quantity: row.quantity ?? null,
               part_names: row.part_names,
             }))
         );
@@ -292,22 +233,32 @@ export function AddWorkOrderItemPartModal({
     }
   }
 
-  // 从搜索结果中添加配件名称
-  function addFromSearch(part: PartName) {
+  // 点选搜索结果为"候选"（不立即添加），带出默认数量供修改
+  function pickFromSearch(part: PartName) {
     const exists = selectedPartNames.find((sp) => sp.part_name_id === part.id);
     if (exists) {
       alert("该配件已选择");
       return;
     }
+    setPickedName(part);
+    setPickedQty(part.default_quantity != null ? String(part.default_quantity) : "");
+  }
+
+  // 确认添加候选配件名称（填好数量后）
+  function confirmAddPicked() {
+    if (!pickedName) return;
+    const qtyNum = pickedQty.trim() === "" ? null : Number(pickedQty);
     setSelectedPartNames((prev) => [
       ...prev,
       {
-        part_name_id: part.id,
-        name: part.name,
-        unit: part.unit || "件",
-        quantity: part.default_quantity ?? null,
+        part_name_id: pickedName.id,
+        name: pickedName.name,
+        unit: pickedName.unit || "件",
+        quantity: qtyNum,
       },
     ]);
+    setPickedName(null);
+    setPickedQty("");
     setSearchQuery("");
     setSearchResults([]);
   }
@@ -315,7 +266,6 @@ export function AddWorkOrderItemPartModal({
   // 移除已选配件名称
   function removeSelectedName(partNameId: string) {
     setSelectedPartNames((prev) => prev.filter((sp) => sp.part_name_id !== partNameId));
-    setFilterHints((prev) => prev.filter((h) => h.partNameId !== partNameId));
   }
 
   // 处理从配件选择器返回的配件
@@ -337,7 +287,7 @@ export function AddWorkOrderItemPartModal({
           specification: part.specification_text || part.part_specifications?.name || "",
           unit_cost: part.unit_cost,
           unit_price: part.unit_price,
-          quantity: part.selectedQuantity ?? 1,
+          quantity: part.selectedQuantity ?? null,
         });
       }
       return next;
@@ -349,6 +299,13 @@ export function AddWorkOrderItemPartModal({
   function updateRealQuantity(partId: string, qty: number | null) {
     setSelectedRealParts((prev) =>
       prev.map((sp) => (sp.part_id === partId ? { ...sp, quantity: qty } : sp))
+    );
+  }
+
+  // 修改已选配件名称的数量（留空则为 null，工单里红框提醒按实车定）
+  function updateNameQuantity(partNameId: string, qty: number | null) {
+    setSelectedPartNames((prev) =>
+      prev.map((sp) => (sp.part_name_id === partNameId ? { ...sp, quantity: qty } : sp))
     );
   }
 
@@ -401,6 +358,10 @@ export function AddWorkOrderItemPartModal({
       });
     }
 
+    // 标记本项目为"自己刚结构改动"，避免实时同步把自己的新增当成别人的改动弹提示条。
+    // onSuccess 会 router.refresh 拉到最新（含新增配件），无需再点提示条。
+    标记本地结构编辑(itemId);
+
     const { error } = await supabase.from("work_order_item_parts").insert(inserts);
 
     setSaving(false);
@@ -412,51 +373,6 @@ export function AddWorkOrderItemPartModal({
     onSuccess();
   }
 
-  // VIN查三滤
-  async function handleSearchFilters() {
-    if (!vin) {
-      setFilterError("该工单没有VIN码，无法查询");
-      return;
-    }
-    const vinValid = /^[A-HJ-NPR-Z0-9]{17}$/.test(标准化VIN(vin));
-    if (!vinValid) {
-      setFilterError("VIN码格式不正确（应为17位大写字母与数字）");
-      return;
-    }
-    setFilterLoading(true);
-    setFilterError("");
-    setFilterResults([]);
-    const result = await searchVinFilters(标准化VIN(vin), filterBrand);
-    setFilterLoading(false);
-    if (!result.success) {
-      setFilterError(result.error || "查询失败");
-      return;
-    }
-    if (!result.data || result.data.length === 0) {
-      setFilterError(`未找到该车型「${filterBrand}」品牌的三滤OE号`);
-      return;
-    }
-    setFilterResults(result.data);
-  }
-
-  // 从三滤结果添加到已选
-  function addFilterToSelected(filter: 三滤结果项) {
-    // 添加到配件名称列表
-    const exists = selectedPartNames.find((sp) => sp.name === filter.typeName);
-    if (exists) {
-      alert("该配件已选择");
-      return;
-    }
-    setSelectedPartNames((prev) => [
-      ...prev,
-      {
-        part_name_id: "vin_" + filter.type + "_" + Date.now(),
-        name: filter.typeName + " (OE:" + filter.oeNumber + ")",
-        unit: "个",
-        quantity: 1,
-      },
-    ]);
-  }
 
   if (!open) return null;
 
@@ -485,7 +401,7 @@ export function AddWorkOrderItemPartModal({
               </div>
 
               {/* 预置配件 */}
-              {serviceNameId && (
+              {serviceItemId && (
                 <div>
                   <h3 className="text-sm font-medium text-gray-700 mb-2">关联配件（点击选择）</h3>
                   {loading ? (
@@ -549,16 +465,19 @@ export function AddWorkOrderItemPartModal({
                         (sp) => sp.part_name_id === part.id
                       );
                       const alreadyExists = existingPartNameIds.has(part.id);
+                      const isPicked = pickedName?.id === part.id;
                       const disabled = alreadySelected || alreadyExists;
                       return (
                         <button
                           key={part.id}
                           type="button"
-                          onClick={() => !disabled && addFromSearch(part)}
+                          onClick={() => !disabled && pickFromSearch(part)}
                           disabled={disabled}
                           className={`w-full text-left px-3 py-2 text-sm border-b border-gray-100 last:border-0 ${
                             disabled
                               ? "text-gray-400 bg-gray-50 cursor-not-allowed"
+                              : isPicked
+                              ? "bg-blue-50"
                               : "hover:bg-gray-50"
                           }`}
                         >
@@ -572,6 +491,9 @@ export function AddWorkOrderItemPartModal({
                           {alreadyExists && !alreadySelected && (
                             <span className="text-xs text-gray-400 ml-2">已添加</span>
                           )}
+                          {isPicked && !disabled && (
+                            <span className="text-xs text-blue-600 ml-2">已点选</span>
+                          )}
                         </button>
                       );
                     })}
@@ -580,75 +502,43 @@ export function AddWorkOrderItemPartModal({
                 {searchQuery.trim() && !searching && searchResults.length === 0 && (
                   <p className="text-xs text-gray-400 mt-1">未找到匹配配件</p>
                 )}
+
+                {/* 点选候选后：填数量 + 确认添加 */}
+                {pickedName && (
+                  <div className="mt-2 flex items-center gap-2 p-2 rounded-lg border border-blue-200 bg-blue-50">
+                    <span className="text-sm font-medium text-blue-800 flex-1 truncate">{pickedName.name}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={pickedQty}
+                      onChange={(e) => setPickedQty(e.target.value)}
+                      placeholder="数量"
+                      className="w-16 px-1.5 py-1 border border-blue-200 rounded text-xs text-right bg-white"
+                    />
+                    <span className="text-xs text-blue-500">{pickedName.unit || "件"}</span>
+                    <button
+                      type="button"
+                      onClick={confirmAddPicked}
+                      className="px-3 py-1 text-xs text-white bg-blue-600 rounded-lg hover:bg-blue-700 shrink-0"
+                    >
+                      确认添加
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setPickedName(null); setPickedQty(""); }}
+                      className="text-xs text-gray-400 hover:text-gray-600 shrink-0"
+                    >
+                      取消
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* 右侧：库存配件 + VIN查三滤 */}
+            {/* 右侧：从库存选择配件 */}
             <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 min-h-0">
-              {vin && (
-                <div>
-                  <div className="text-sm font-medium text-orange-700 bg-orange-50 px-3 py-1.5 rounded-lg inline-block mb-3">
-                    方式二：VIN查三滤
-                  </div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs text-gray-500 shrink-0">品牌：</span>
-                    <select
-                      value={filterBrand}
-                      onChange={(e) => setFilterBrand(e.target.value)}
-                      className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    >
-                      {保养件品牌列表.map((b) => (
-                        <option key={b} value={b}>{b}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSearchFilters}
-                    disabled={filterLoading}
-                    className="w-full py-2 border-2 border-dashed border-orange-300 rounded-xl text-orange-600 hover:bg-orange-50 hover:border-orange-400 transition-colors text-sm font-medium disabled:opacity-50"
-                  >
-                    {filterLoading ? "查询中..." : `查询 ${filterBrand} 机油滤/空气滤/空调滤`}
-                  </button>
-                  {filterError && <p className="text-xs text-red-500 mt-1">{filterError}</p>}
-                  {filterResults.length > 0 && (
-                    <div className="mt-2 space-y-2">
-                      {filterResults.map((f, idx) => (
-                        <div key={idx} className="p-2.5 rounded-lg border border-orange-200 bg-orange-50/50">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-medium text-orange-700">{f.typeName}</span>
-                                {f.manufacturerBrand && (
-                                  <span className="text-[10px] px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded">{f.manufacturerBrand}</span>
-                                )}
-                              </div>
-                              <div className="text-sm font-medium text-gray-900 truncate">{f.name}</div>
-                              <div className="text-xs text-gray-500">
-                                OE号: <span className="font-mono">{f.oeNumber}</span>
-                                {f.partNumber && f.partNumber !== f.oeNumber && (
-                                  <span> | 配件号: <span className="font-mono">{f.partNumber}</span></span>
-                                )}
-                              </div>
-                              {f.remark && <div className="text-xs text-gray-400 mt-0.5">{f.remark}</div>}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => addFilterToSelected(f)}
-                              className="ml-2 px-3 py-1 text-xs text-white bg-orange-500 rounded-lg hover:bg-orange-600 shrink-0"
-                            >
-                              添加
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
               <div className="text-sm font-medium text-green-700 bg-green-50 px-3 py-1.5 rounded-lg inline-block">
-                方式三：从库存选择配件
+                方式二：从库存选择配件
               </div>
 
               <p className="text-xs text-gray-500">
@@ -660,7 +550,7 @@ export function AddWorkOrderItemPartModal({
                 onClick={() => setPickerOpen(true)}
                 className="w-full py-3 border-2 border-dashed border-blue-300 rounded-xl text-blue-600 hover:bg-blue-50 hover:border-blue-400 transition-colors text-sm font-medium"
               >
-                + 选择配件
+                + 选择配件（支持扫码枪，直接扫）
               </button>
 
               {/* 已选库存配件列表 */}
@@ -717,32 +607,8 @@ export function AddWorkOrderItemPartModal({
           </div>
 
           {/* 已选汇总 */}
-          {(selectedPartNames.length > 0 || selectedRealParts.length > 0 || filterHints.length > 0) && (
+          {(selectedPartNames.length > 0 || selectedRealParts.length > 0) && (
             <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 flex-shrink-0">
-              {/* 三滤OE号提示 */}
-              {filterHints.length > 0 && (
-                <div className="mb-3 space-y-1.5">
-                  {filterHints.map((h) => (
-                    <div key={h.partNameId} className="flex items-center gap-2 text-xs">
-                      <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded">
-                        {h.name} OE号：{h.oeNumber}
-                        {h.matchedModelCount > 0 && (
-                          <span className="ml-1 text-orange-600">（已匹配{h.matchedModelCount}个车型）</span>
-                        )}
-                      </span>
-                      <a
-                        href={`/parts/new?oeNumber=${encodeURIComponent(h.oeNumber)}&name=${encodeURIComponent(h.name)}&vin=${encodeURIComponent(vin || "")}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 underline"
-                      >
-                        创建配件
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              )}
-
               <h3 className="text-sm font-medium text-gray-700 mb-2">
                 已选择 ({totalSelected}个)
               </h3>
@@ -750,13 +616,26 @@ export function AddWorkOrderItemPartModal({
                 {selectedPartNames.map((sp) => (
                   <span
                     key={sp.part_name_id}
-                    className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-md"
+                    className="inline-flex items-center gap-1 pl-2 pr-1 py-1 bg-blue-100 text-blue-800 text-xs rounded-md"
                   >
-                    {sp.name} x{sp.quantity ?? 1}
+                    {sp.name}
+                    <span className="text-blue-500">×</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={sp.quantity ?? ""}
+                      onChange={(e) => updateNameQuantity(sp.part_name_id, e.target.value === "" ? null : Number(e.target.value))}
+                      placeholder="数量"
+                      className={`w-12 px-1 py-0.5 rounded text-xs text-center bg-white border ${
+                        sp.quantity == null ? "border-red-300 bg-red-50" : "border-blue-200"
+                      }`}
+                      title={sp.quantity == null ? "未填数量：将留空，工单里红框提醒按实车确定" : "数量"}
+                    />
+                    {sp.unit && <span className="text-blue-500">{sp.unit}</span>}
                     <button
                       type="button"
                       onClick={() => removeSelectedName(sp.part_name_id)}
-                      className="text-blue-600 hover:text-blue-800"
+                      className="text-blue-600 hover:text-blue-800 ml-0.5"
                     >
                       ×
                     </button>
@@ -810,6 +689,7 @@ export function AddWorkOrderItemPartModal({
         onConfirm={handlePickerConfirm}
         vehicleModelId={vehicleModelId}
       />
+
     </>,
     document.body
   );
