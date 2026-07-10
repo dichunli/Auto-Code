@@ -7,13 +7,11 @@
  * - 模型缓存目录：./.cache/transformers
  * ═════════════════════════════════════════════════════════════════ */
 
-import { pipeline, env } from "@xenova/transformers";
 import type { FeatureExtractionPipeline } from "@xenova/transformers";
 
-/* 配置 Transformers.js */
-env.cacheDir = "./.cache/transformers";
-/* 国内网络用 hf-mirror.com 镜像下载模型 */
-env.remoteHost = "https://hf-mirror.com";
+/* @xenova/transformers 含原生依赖(sharp/onnxruntime)，顶层静态引入会在 build 打包/收集
+ * 页面数据时被加载，在部分环境(如 Node24/Windows)编译或加载失败导致 build 报错。
+ * 改为"用到时才动态 import"：仅在真正生成向量时加载，build 不再触碰它，功能运行时不变。 */
 
 /* 模型名称 */
 const 模型名称 = "Xenova/multilingual-e5-small";
@@ -29,7 +27,13 @@ async function 获取嵌入管道(): Promise<FeatureExtractionPipeline | null> {
   if (嵌入管道) return 嵌入管道;
   if (加载中) return 加载中;
 
-  加载中 = pipeline("feature-extraction", 模型名称)
+  加载中 = (async () => {
+    /* 动态加载，避免 build 期静态打包原生依赖 */
+    const { pipeline, env } = await import("@xenova/transformers");
+    env.cacheDir = "./.cache/transformers";
+    env.remoteHost = "https://hf-mirror.com"; // 国内用镜像下载模型
+    return pipeline("feature-extraction", 模型名称);
+  })()
     .then((pipe) => {
       嵌入管道 = pipe;
       加载中 = null;
