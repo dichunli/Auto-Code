@@ -211,19 +211,35 @@ export default function PartBranchEditor({
   const supplierButtonRef = useRef<HTMLButtonElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
-  // 系统中关联的编码、品牌和规格列表
-  const [availablePartNumbers, setAvailablePartNumbers] = useState<string[]>([]);
+  // 系统中关联的品牌和规格列表
   const [availableBrands, setAvailableBrands] = useState<string[]>([]);
   const [availableSpecs, setAvailableSpecs] = useState<string[]>([]);
+
+  // 编码智能候选（全库模糊查，输入≥2字符出下拉）
+  const [编码候选, set编码候选] = useState<{ id: string; part_number: string; name: string }[]>([]);
+  const [显示编码候选, set显示编码候选] = useState(false);
+  const 编码候选Timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (编码候选Timer.current) clearTimeout(编码候选Timer.current);
+    const kw = editForm.part_number.trim();
+    if (kw.length < 2) { set编码候选([]); return; }
+    编码候选Timer.current = setTimeout(async () => {
+      const { data } = await supabase
+        .from("parts")
+        .select("id, part_number, name")
+        .ilike("part_number", `%${kw}%`)
+        .limit(8);
+      set编码候选(data || []);
+    }, 250);
+    return () => { if (编码候选Timer.current) clearTimeout(编码候选Timer.current); };
+  }, [editForm.part_number, supabase]);
 
   useEffect(() => {
     if (!part.part_name_id) return;
     supabase.from("parts").select("part_number, brand_id, specification_id").eq("part_name_id", part.part_name_id).then(({ data }) => {
       if (!data) return;
-      const partNumbers = [...new Set(data.map((p: { part_number: string | null; brand_id: string | null; specification_id: string | null }) => p.part_number).filter(Boolean))];
-      const brandIds = [...new Set(data.map((p) => p.brand_id).filter(Boolean))];
-      const specIds = [...new Set(data.map((p) => p.specification_id).filter(Boolean))];
-      setAvailablePartNumbers(partNumbers);
+      const brandIds = [...new Set(data.map((p: { brand_id: string | null; specification_id: string | null }) => p.brand_id).filter(Boolean))];
+      const specIds = [...new Set(data.map((p: { brand_id: string | null; specification_id: string | null }) => p.specification_id).filter(Boolean))];
       Promise.all([
         brandIds.length > 0 ? supabase.from("part_brands").select("name").in("id", brandIds) : Promise.resolve({ data: [] }),
         specIds.length > 0 ? supabase.from("part_specifications").select("name").in("id", specIds) : Promise.resolve({ data: [] }),
@@ -731,31 +747,53 @@ export default function PartBranchEditor({
           库存: {inventoryQty}
         </span>
 
-        {/* 编码（可输入选择） */}
+        {/* 编码（可输入/扫码，全库智能候选） */}
         <div className="flex items-center gap-1">
           <span className="text-[10px] text-gray-400 min-w-[2.5em] text-right">编码</span>
-          <input
-            type="text"
-            list={`pn-list-${part.id}`}
-            value={editForm.part_number}
-            onChange={(e) => setEditForm((prev) => ({ ...prev, part_number: e.target.value }))}
-            onBlur={async () => {
-              await saveField("part_number", editForm.part_number);
-              if (editForm.part_number && availablePartNumbers.includes(editForm.part_number)) {
-                await autoFillByPartNumber(editForm.part_number);
-              }
-            }}
-            disabled={isLocked || saving}
-            className="w-24 px-1 py-0.5 border border-gray-200 rounded text-xs disabled:bg-gray-50"
-            placeholder="配件编码"
-          />
-          {availablePartNumbers.length > 0 && (
-            <datalist id={`pn-list-${part.id}`}>
-              {availablePartNumbers.map((n) => (
-                <option key={n} value={n} />
-              ))}
-            </datalist>
-          )}
+          <div className="relative">
+            <input
+              type="text"
+              value={editForm.part_number}
+              onChange={(e) => { setEditForm((prev) => ({ ...prev, part_number: e.target.value })); set显示编码候选(true); }}
+              onFocus={() => set显示编码候选(true)}
+              onKeyDown={async (e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  set显示编码候选(false);
+                  await saveField("part_number", editForm.part_number);
+                  if (editForm.part_number.trim()) await autoFillByPartNumber(editForm.part_number.trim());
+                }
+              }}
+              onBlur={async () => {
+                setTimeout(() => set显示编码候选(false), 150);
+                await saveField("part_number", editForm.part_number);
+              }}
+              disabled={isLocked || saving}
+              className="w-24 px-1 py-0.5 border border-gray-200 rounded text-xs disabled:bg-gray-50"
+              placeholder="配件编码"
+            />
+            {显示编码候选 && 编码候选.length > 0 && (
+              <div className="absolute z-20 mt-1 w-56 max-h-52 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                {编码候选.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={async () => {
+                      setEditForm((prev) => ({ ...prev, part_number: c.part_number }));
+                      set显示编码候选(false);
+                      await saveField("part_number", c.part_number);
+                      await autoFillByPartNumber(c.part_number);
+                    }}
+                    className="w-full text-left px-2 py-1 text-xs hover:bg-blue-50 border-b border-gray-50 last:border-0"
+                  >
+                    <span className="font-mono text-blue-700">{c.part_number}</span>
+                    <span className="text-gray-500 ml-2">{c.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 品牌 */}
