@@ -775,7 +775,6 @@ export default function PartBranchEditor({
               type="text"
               value={editForm.part_number}
               onChange={(e) => { setEditForm((prev) => ({ ...prev, part_number: e.target.value })); set显示编码候选(true); }}
-              onFocus={() => set显示编码候选(true)}
               onKeyDown={async (e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -792,7 +791,7 @@ export default function PartBranchEditor({
               className="w-24 px-1 py-0.5 border border-gray-200 rounded text-xs disabled:bg-gray-50"
               placeholder="配件编码"
             />
-            {显示编码候选 && 编码候选.length > 0 && (
+            {显示编码候选 && editForm.part_number.trim().length >= 2 && 编码候选.length > 0 && (
               <div
                 className="fixed z-[200] max-h-52 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg"
                 style={{ top: 编码下拉Pos.top, left: 编码下拉Pos.left, width: 编码下拉Pos.width }}
