@@ -219,6 +219,25 @@ export default function PartBranchEditor({
   const [编码候选, set编码候选] = useState<{ id: string; part_number: string; name: string }[]>([]);
   const [显示编码候选, set显示编码候选] = useState(false);
   const 编码候选Timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 分支行是 overflow-x-auto 容器会裁掉绝对定位下拉，故候选用 fixed 定位逃出容器
+  const 编码InputRef = useRef<HTMLInputElement>(null);
+  const [编码下拉Pos, set编码下拉Pos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 224 });
+  useEffect(() => {
+    if (!显示编码候选) return;
+    function updatePos() {
+      const el = 编码InputRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      set编码下拉Pos({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 224) });
+    }
+    updatePos();
+    window.addEventListener("scroll", updatePos, true);
+    window.addEventListener("resize", updatePos);
+    return () => {
+      window.removeEventListener("scroll", updatePos, true);
+      window.removeEventListener("resize", updatePos);
+    };
+  }, [显示编码候选, 编码候选]);
   useEffect(() => {
     if (编码候选Timer.current) clearTimeout(编码候选Timer.current);
     const kw = editForm.part_number.trim();
@@ -752,6 +771,7 @@ export default function PartBranchEditor({
           <span className="text-[10px] text-gray-400 min-w-[2.5em] text-right">编码</span>
           <div className="relative">
             <input
+              ref={编码InputRef}
               type="text"
               value={editForm.part_number}
               onChange={(e) => { setEditForm((prev) => ({ ...prev, part_number: e.target.value })); set显示编码候选(true); }}
@@ -773,7 +793,10 @@ export default function PartBranchEditor({
               placeholder="配件编码"
             />
             {显示编码候选 && 编码候选.length > 0 && (
-              <div className="absolute z-20 mt-1 w-56 max-h-52 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+              <div
+                className="fixed z-[200] max-h-52 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg"
+                style={{ top: 编码下拉Pos.top, left: 编码下拉Pos.left, width: 编码下拉Pos.width }}
+              >
                 {编码候选.map((c) => (
                   <button
                     key={c.id}
