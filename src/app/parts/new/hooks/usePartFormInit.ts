@@ -261,6 +261,53 @@ export default function usePartFormInit(
     loadPart();
   }, [searchParams, supabase, setSelectedPartName, setSelectedBrand, setSelectedSupplier, setSelectedSpecs, setSelectedVehicleModels, setOeNumber, setDocNameQuery, setForm, setPartImages, setStockLocations]);
 
+  /* 2b. 从工单分支"创建配件"带入的预填（编码/名称/叶子目录/单位/采购价/销售价/品牌/规格） */
+  useEffect(() => {
+    if (isEditMode) return;
+    const fromBranch = searchParams.get("from_branch");
+    if (!fromBranch) return;
+
+    const pn = searchParams.get("part_number") || "";
+    const pnid = searchParams.get("part_name_id") || "";
+    const unit = searchParams.get("unit") || "";
+    const 采购价 = searchParams.get("unit_cost") || "";
+    const 销售价 = searchParams.get("unit_price") || "";
+    const brand = searchParams.get("brand") || "";
+    const spec = searchParams.get("spec") || "";
+
+    if (pn) setPartNumber(pn.toUpperCase());
+
+    (async () => {
+      // 叶子目录（配件名称）：按 id 带出，作为该配件所属名称
+      if (pnid) {
+        const { data: partName } = await supabase.from("part_names").select("*, part_categories(*)").eq("id", pnid).single();
+        if (partName) {
+          setSelectedPartName(partName);
+          setForm((prev) => ({
+            ...prev,
+            name: partName.name || "",
+            unit: unit || partName.unit || "件",
+            categoryName: (Array.isArray(partName.part_categories) ? partName.part_categories[0]?.name : partName.part_categories?.name) || "",
+            purchase_price: 采购价,
+            unit_price: 销售价,
+          }));
+        }
+      } else {
+        setForm((prev) => ({ ...prev, unit: unit || prev.unit, purchase_price: 采购价, unit_price: 销售价 }));
+      }
+      // 品牌：库里能匹配到就带入
+      if (brand) {
+        const { data: b } = await supabase.from("part_brands").select("id, name").eq("name", brand).maybeSingle();
+        if (b) setSelectedBrand({ id: b.id, name: b.name });
+      }
+      // 规格：库里能匹配到就带入
+      if (spec) {
+        const { data: s } = await supabase.from("specifications").select("id, name").eq("name", spec).maybeSingle();
+        if (s) setSelectedSpecs([{ id: s.id, name: s.name }]);
+      }
+    })();
+  }, [searchParams, isEditMode, supabase, setPartNumber, setSelectedPartName, setSelectedBrand, setSelectedSpecs, setForm]);
+
   /* 3. 编辑数据加载 */
   useEffect(() => {
     if (!editId) return;
