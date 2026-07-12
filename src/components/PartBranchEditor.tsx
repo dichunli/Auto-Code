@@ -911,25 +911,6 @@ export default function PartBranchEditor({
               </div>
             )}
           </div>
-          {/* 编码有值但系统无此配件(未关联 part_id)→ 可创建配件到配件库 */}
-          {!isLocked && editForm.part_number.trim() && !part.part_id && (
-            <button
-              type="button"
-              onClick={() => {
-                const p = new URLSearchParams({ from_branch: "1", part_number: editForm.part_number.trim() });
-                if (part.part_name_id) p.set("part_name_id", part.part_name_id);
-                if (editForm.unit_cost) p.set("unit_cost", editForm.unit_cost);
-                if (editForm.unit_price) p.set("unit_price", editForm.unit_price);
-                if (editForm.brand) p.set("brand", editForm.brand);
-                if (editForm.specification) p.set("spec", editForm.specification);
-                window.open(`/parts/new?${p.toString()}`, "_blank");
-              }}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shrink-0"
-              title="系统中没有此配件，点击创建到配件库"
-            >
-              创建配件
-            </button>
-          )}
         </div>
 
         {/* 品牌 */}
@@ -1265,6 +1246,29 @@ export default function PartBranchEditor({
 
         {children}
       </div>
+
+      {/* 编码有值但系统无此配件(未关联 part_id)→ 可创建配件到配件库。
+          放在横向滚动行之外，避免被挤出可视区看不见。 */}
+      {!isLocked && editForm.part_number.trim() && !part.part_id && (
+        <div className="mt-1 pl-7">
+          <button
+            type="button"
+            onClick={() => {
+              const p = new URLSearchParams({ from_branch: "1", part_number: editForm.part_number.trim() });
+              if (part.part_name_id) p.set("part_name_id", part.part_name_id);
+              if (editForm.unit_cost) p.set("unit_cost", editForm.unit_cost);
+              if (editForm.unit_price) p.set("unit_price", editForm.unit_price);
+              if (editForm.brand) p.set("brand", editForm.brand);
+              if (editForm.specification) p.set("spec", editForm.specification);
+              window.open(`/parts/new?${p.toString()}`, "_blank");
+            }}
+            className="text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200"
+            title="系统中没有此配件，点击创建到配件库"
+          >
+            ＋ 系统无此编码，创建配件「{editForm.part_number.trim()}」
+          </button>
+        </div>
+      )}
 
       {/* 编码命中但名称与分组不符：a 替换分组名 / b 新建分组（c：本组已有具体配件时只给新建分组，仍需确认） */}
       {名称不符询问 && (
