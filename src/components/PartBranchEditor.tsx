@@ -219,6 +219,14 @@ export default function PartBranchEditor({
   const [编码候选, set编码候选] = useState<{ id: string; part_number: string; name: string }[]>([]);
   const [显示编码候选, set显示编码候选] = useState(false);
   const [编码高亮, set编码高亮] = useState(-1); // 上下键高亮的候选索引，-1 为无
+
+  // 编码命中但"配件叶子名与本分组名不符"时的询问框
+  interface 编码命中 {
+    id: string; part_number: string | null; name: string; part_name_id: string | null;
+    brand: string; specification: string; unit_cost: number | null; unit_price: number | null;
+    document_name: string | null; 叶子名: string;
+  }
+  const [名称不符询问, set名称不符询问] = useState<{ hit: 编码命中; 本组已有具体配件: boolean } | null>(null);
   const 编码候选Timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 分支行是 overflow-x-auto 容器会裁掉绝对定位下拉，故候选用 fixed 定位逃出容器
   const 编码InputRef = useRef<HTMLInputElement>(null);
@@ -418,56 +426,120 @@ export default function PartBranchEditor({
   }
 
   // 通过编码自动填充配件信息
-  async function autoFillByPartNumber(partNumber: string) {
-    if (!partNumber || !part.part_name_id) return;
-    const { data } = await supabase
-      .from("parts")
-      .select("id, brand_id, specification_id, unit_cost, unit_price, document_name, part_brands(name), part_specifications(name)")
-      .eq("part_name_id", part.part_name_id)
-      .eq("part_number", partNumber)
-      .maybeSingle();
-    if (!data) return;
-
-    const pb = data.part_brands as { name: string } | { name: string }[] | null;
-    const ps = data.part_specifications as { name: string } | { name: string }[] | null;
-    const newBrand = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
-    const newSpec = (Array.isArray(ps) ? ps[0]?.name : ps?.name) || "";
-    const newDocName = data.document_name || "";
+  /* 把命中的库存配件补齐到本分支（写入 part_id + 品牌/规格/价格等）。
+   * 可选覆盖 part_name_id（"替换分组名/新建分组"时用）。 */
+  async function 应用命中配件(hit: 编码命中, 覆盖?: { part_name_id?: string; branch_group_id?: string; is_selected?: boolean }) {
     setEditForm((prev) => ({
       ...prev,
-      brand: newBrand,
-      specification: newSpec,
-      unit_cost: data.unit_cost != null ? toFixed2(data.unit_cost) : prev.unit_cost,
-      unit_price: data.unit_price != null ? toFixed2(data.unit_price) : prev.unit_price,
-      document_name: newDocName || prev.document_name,
+      brand: hit.brand,
+      specification: hit.specification,
+      unit_cost: hit.unit_cost != null ? toFixed2(hit.unit_cost) : prev.unit_cost,
+      unit_price: hit.unit_price != null ? toFixed2(hit.unit_price) : prev.unit_price,
+      document_name: hit.document_name || prev.document_name,
     }));
-
     setSaving(true);
-    const { error } = await supabase.from("work_order_item_parts").update({
-      brand: newBrand || null,
-      specification: newSpec || null,
-      unit_cost: data.unit_cost,
-      unit_price: data.unit_price,
-      document_name: newDocName || null,
-      part_id: data.id,
-    }).eq("id", part.id);
+    标记本地编辑配件(part.id);
+    const 更新: Record<string, unknown> = {
+      brand: hit.brand || null,
+      specification: hit.specification || null,
+      unit_cost: hit.unit_cost,
+      unit_price: hit.unit_price,
+      document_name: hit.document_name || null,
+      part_id: hit.id,
+    };
+    if (覆盖?.part_name_id !== undefined) 更新.part_name_id = 覆盖.part_name_id;
+    if (覆盖?.branch_group_id !== undefined) 更新.branch_group_id = 覆盖.branch_group_id;
+    if (覆盖?.is_selected !== undefined) 更新.is_selected = 覆盖.is_selected;
+    const { error } = await supabase.from("work_order_item_parts").update(更新).eq("id", part.id);
     setSaving(false);
-    if (error) {
-      alert("自动填充失败: " + error.message);
+    if (error) { alert("补齐配件失败: " + error.message); return; }
+    if (hit.unit_price != null) {
+      window.dispatchEvent(new CustomEvent("wo-part-update", { detail: { itemId, partId: part.id, unit_price: hit.unit_price } }));
+    }
+    // 若改了目录归属(替换分组名/新建分组)，需刷新拉取最新分组结构
+    if (覆盖) { 标记本地结构编辑(itemId); router.refresh(); }
+  }
+
+  // 输入/扫码编码后：全库按编码精确查配件，按"叶子名与分组名"关系决定补齐或询问
+  async function autoFillByPartNumber(partNumber: string) {
+    const kw = partNumber.trim();
+    if (!kw) return;
+    // 全库精确查（不限本目录），带出叶子目录名
+    const { data } = await supabase
+      .from("parts")
+      .select("id, part_number, part_name_id, unit_cost, unit_price, document_name, part_names(name), part_brands(name), part_specifications(name)")
+      .eq("part_number", kw)
+      .limit(2);
+    if (!data || data.length === 0) return; // 系统无此编码：保留编码，留待"创建配件"(后续步骤)
+    if (data.length > 1) { alert(`编码「${kw}」对应多个配件，请用编码后的候选或搜索精确选择`); return; }
+
+    const d = data[0];
+    const pb = d.part_brands as { name: string } | { name: string }[] | null;
+    const ps = d.part_specifications as { name: string } | { name: string }[] | null;
+    const pn = d.part_names as { name: string } | { name: string }[] | null;
+    const 叶子名 = (Array.isArray(pn) ? pn[0]?.name : pn?.name) || "";
+    const hit: 编码命中 = {
+      id: d.id, part_number: d.part_number, name: 叶子名, part_name_id: d.part_name_id,
+      brand: (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "",
+      specification: (Array.isArray(ps) ? ps[0]?.name : ps?.name) || "",
+      unit_cost: d.unit_cost, unit_price: d.unit_price, document_name: d.document_name, 叶子名,
+    };
+
+    const 分组名 = (part.part_names?.name || part.name || "").trim();
+    const 免询问 = 叶子名 === 分组名 || (分组名 !== "" && 叶子名.startsWith(分组名 + "-"));
+    if (免询问) {
+      // 名称一致/以"分组名-"开头 → 直接补齐（叶子目录用命中配件的，保持一致）
+      await 应用命中配件(hit, hit.part_name_id ? { part_name_id: hit.part_name_id } : undefined);
       return;
     }
-    // 广播价格变更给小计/费用合计组件
-    if (data.unit_price != null) {
-      window.dispatchEvent(
-        new CustomEvent("wo-part-update", {
-          detail: {
-            itemId,
-            partId: part.id,
-            unit_price: data.unit_price,
-          },
-        })
-      );
+
+    // 名称不符 → 弹询问(a/b/c)。先查本组是否已有具体配件（决定能否"替换分组名"）
+    let 本组已有具体配件 = false;
+    if (part.branch_group_id) {
+      const { count } = await supabase
+        .from("work_order_item_parts")
+        .select("id", { count: "exact", head: true })
+        .eq("branch_group_id", part.branch_group_id)
+        .not("part_id", "is", null)
+        .neq("id", part.id);
+      本组已有具体配件 = (count ?? 0) > 0;
     }
+    set名称不符询问({ hit, 本组已有具体配件 });
+  }
+
+  // a) 替换分组名：把本分组(同 branch_group_id)所有分支的叶子目录改成命中配件的，再补齐本分支
+  async function 处理替换分组名() {
+    const q = 名称不符询问; if (!q) return;
+    set名称不符询问(null);
+    if (part.branch_group_id && q.hit.part_name_id) {
+      标记本地结构编辑(itemId);
+      await supabase.from("work_order_item_parts")
+        .update({ part_name_id: q.hit.part_name_id })
+        .eq("branch_group_id", part.branch_group_id);
+    }
+    await 应用命中配件(q.hit, { part_name_id: q.hit.part_name_id || undefined });
+  }
+
+  // b) 新建分组：把本分支移到一个新目录(新 branch_group_id + 命中叶子目录)，作为唯一分支选中
+  async function 处理新建分组() {
+    const q = 名称不符询问; if (!q) return;
+    set名称不符询问(null);
+    const 新组id = (globalThis.crypto?.randomUUID?.() as string) || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    // 若本分支原来是选中分支，且原组还有其它分支，先把原组另一条设为选中，避免原组 0 选中
+    if (localSelected && part.branch_group_id) {
+      const { data: 兄弟 } = await supabase.from("work_order_item_parts")
+        .select("id").eq("branch_group_id", part.branch_group_id).neq("id", part.id)
+        .order("sort_order", { ascending: true }).limit(1);
+      if (兄弟 && 兄弟[0]) {
+        标记本地编辑配件(兄弟[0].id);
+        await supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", 兄弟[0].id);
+      }
+    }
+    await 应用命中配件(q.hit, {
+      part_name_id: q.hit.part_name_id || undefined,
+      branch_group_id: 新组id,
+      is_selected: true, // 新组唯一分支
+    });
   }
 
   // 检查库存中是否有完全匹配的配件
@@ -1174,6 +1246,52 @@ export default function PartBranchEditor({
 
         {children}
       </div>
+
+      {/* 编码命中但名称与分组不符：a 替换分组名 / b 新建分组（c：本组已有具体配件时只给新建分组，仍需确认） */}
+      {名称不符询问 && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/50" onClick={() => set名称不符询问(null)}>
+          <div className="bg-white rounded-xl border border-gray-200 p-5 w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-gray-900 mb-2">配件名称与分组不一致</h3>
+            <p className="text-sm text-gray-600 mb-1">
+              编码 <span className="font-mono text-blue-700">{名称不符询问.hit.part_number}</span> 对应的配件属于
+              「<span className="font-medium">{名称不符询问.hit.叶子名}</span>」，
+              与本分组「<span className="font-medium">{part.part_names?.name || part.name || "-"}</span>」不一致。
+            </p>
+            {名称不符询问.本组已有具体配件 ? (
+              <p className="text-xs text-amber-600 mb-3">本分组下已有具体配件，不能改分组名，只能把这条移到新分组。</p>
+            ) : (
+              <p className="text-xs text-gray-400 mb-3">请选择处理方式：</p>
+            )}
+            <div className="space-y-2">
+              {!名称不符询问.本组已有具体配件 && (
+                <button
+                  type="button"
+                  onClick={处理替换分组名}
+                  className="w-full px-4 py-2.5 text-sm text-left rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                >
+                  <span className="font-medium">替换分组名</span>
+                  <span className="text-xs text-blue-500 ml-2">把本分组改名为「{名称不符询问.hit.叶子名}」并补齐本分支</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={处理新建分组}
+                className="w-full px-4 py-2.5 text-sm text-left rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
+              >
+                <span className="font-medium">新建分组</span>
+                <span className="text-xs text-green-600 ml-2">把本分支移到新分组「{名称不符询问.hit.叶子名}」</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => set名称不符询问(null)}
+                className="w-full px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
