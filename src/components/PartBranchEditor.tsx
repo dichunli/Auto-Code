@@ -218,6 +218,7 @@ export default function PartBranchEditor({
   // 编码智能候选（全库模糊查，输入≥2字符出下拉）
   const [编码候选, set编码候选] = useState<{ id: string; part_number: string; name: string }[]>([]);
   const [显示编码候选, set显示编码候选] = useState(false);
+  const [编码高亮, set编码高亮] = useState(-1); // 上下键高亮的候选索引，-1 为无
   const 编码候选Timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 分支行是 overflow-x-auto 容器会裁掉绝对定位下拉，故候选用 fixed 定位逃出容器
   const 编码InputRef = useRef<HTMLInputElement>(null);
@@ -249,6 +250,7 @@ export default function PartBranchEditor({
         .ilike("part_number", `%${kw}%`)
         .limit(8);
       set编码候选(data || []);
+      set编码高亮(-1); // 候选刷新，重置高亮
     }, 250);
     return () => { if (编码候选Timer.current) clearTimeout(编码候选Timer.current); };
   }, [editForm.part_number, supabase]);
@@ -776,12 +778,31 @@ export default function PartBranchEditor({
               value={editForm.part_number}
               onChange={(e) => { setEditForm((prev) => ({ ...prev, part_number: e.target.value })); set显示编码候选(true); }}
               onKeyDown={async (e) => {
+                const 有候选 = 显示编码候选 && editForm.part_number.trim().length >= 2 && 编码候选.length > 0;
+                if (e.key === "ArrowDown" && 有候选) {
+                  e.preventDefault();
+                  set编码高亮((i) => (i + 1) % 编码候选.length);
+                  return;
+                }
+                if (e.key === "ArrowUp" && 有候选) {
+                  e.preventDefault();
+                  set编码高亮((i) => (i <= 0 ? 编码候选.length - 1 : i - 1));
+                  return;
+                }
                 if (e.key === "Enter") {
                   e.preventDefault();
+                  // 有高亮候选则选它，否则用当前输入
+                  const 选中 = 有候选 && 编码高亮 >= 0 ? 编码候选[编码高亮] : null;
+                  const 编码 = 选中 ? 选中.part_number : editForm.part_number.trim();
+                  if (选中) setEditForm((prev) => ({ ...prev, part_number: 选中.part_number }));
                   set显示编码候选(false);
-                  await saveField("part_number", editForm.part_number);
-                  if (editForm.part_number.trim()) await autoFillByPartNumber(editForm.part_number.trim());
+                  set编码高亮(-1);
+                  if (编码) {
+                    await saveField("part_number", 编码);
+                    await autoFillByPartNumber(编码);
+                  }
                 }
+                if (e.key === "Escape") { set显示编码候选(false); set编码高亮(-1); }
               }}
               onBlur={async () => {
                 setTimeout(() => set显示编码候选(false), 150);
@@ -796,18 +817,20 @@ export default function PartBranchEditor({
                 className="fixed z-[200] max-h-52 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg"
                 style={{ top: 编码下拉Pos.top, left: 编码下拉Pos.left, width: 编码下拉Pos.width }}
               >
-                {编码候选.map((c) => (
+                {编码候选.map((c, idx) => (
                   <button
                     key={c.id}
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => set编码高亮(idx)}
                     onClick={async () => {
                       setEditForm((prev) => ({ ...prev, part_number: c.part_number }));
                       set显示编码候选(false);
+                      set编码高亮(-1);
                       await saveField("part_number", c.part_number);
                       await autoFillByPartNumber(c.part_number);
                     }}
-                    className="w-full text-left px-2 py-1 text-xs hover:bg-blue-50 border-b border-gray-50 last:border-0"
+                    className={`w-full text-left px-2 py-1 text-xs border-b border-gray-50 last:border-0 ${idx === 编码高亮 ? "bg-blue-100" : "hover:bg-blue-50"}`}
                   >
                     <span className="font-mono text-blue-700">{c.part_number}</span>
                     <span className="text-gray-500 ml-2">{c.name}</span>
