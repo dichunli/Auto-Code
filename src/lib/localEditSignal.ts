@@ -14,10 +14,19 @@ const 最近本地编辑 = new Map<string, number>();
 // 默认有效窗口（毫秒）：覆盖写库 + 远程实时推送回来的延迟
 const 默认窗口 = 5000;
 
+// 本机"最近任意操作"的时间戳：任何本地改动都会更新它。
+// 用于抑制"自己操作引起的连锁更新"(如改配件触发数据库重算工单合计)误弹刷新提示。
+let 最近本机操作时间 = 0;
+export function 标记本机操作(): void { 最近本机操作时间 = Date.now(); }
+export function 是否本机最近操作(窗口毫秒: number = 6000): boolean {
+  return 最近本机操作时间 > 0 && Date.now() - 最近本机操作时间 <= 窗口毫秒;
+}
+
 /** 标记：某条配件分支是"自己刚改的" */
 export function 标记本地编辑配件(分支id: string): void {
   if (!分支id) return;
   最近本地编辑.set(分支id, Date.now());
+  标记本机操作();
 }
 
 /** 判断：某条配件分支是否是"自己刚改的"（在有效窗口内） */
@@ -43,6 +52,7 @@ const 最近本地结构编辑 = new Map<string, number>();
 export function 标记本地结构编辑(项目id: string): void {
   if (!项目id) return;
   最近本地结构编辑.set(项目id, Date.now());
+  标记本机操作();
 }
 
 /** 判断：某个项目是否刚被自己结构性改动(在有效窗口内) */
