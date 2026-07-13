@@ -219,6 +219,9 @@ export default function PartBranchEditor({
   const [编码候选, set编码候选] = useState<{ id: string; part_number: string; name: string }[]>([]);
   const [显示编码候选, set显示编码候选] = useState(false);
   const [编码高亮, set编码高亮] = useState(-1); // 上下键高亮的候选索引，-1 为无
+  // 当前编码是否在系统中精确存在（null=未知/未查，true/false=已查）。
+  // 决定"创建配件"按钮：查不到才显示——与是否已有 part_id 无关（避免残留旧关联误判）。
+  const [编码在系统, set编码在系统] = useState<boolean | null>(null);
 
   // 编码命中但"配件叶子名与本分组名不符"时的询问框
   interface 编码命中 {
@@ -250,8 +253,9 @@ export default function PartBranchEditor({
   useEffect(() => {
     if (编码候选Timer.current) clearTimeout(编码候选Timer.current);
     const kw = editForm.part_number.trim();
-    if (kw.length < 2) { set编码候选([]); return; }
+    if (kw.length < 2) { set编码候选([]); set编码在系统(null); return; }
     编码候选Timer.current = setTimeout(async () => {
+      // 模糊候选（下拉用）
       const { data } = await supabase
         .from("parts")
         .select("id, part_number, name")
@@ -259,6 +263,12 @@ export default function PartBranchEditor({
         .limit(8);
       set编码候选(data || []);
       set编码高亮(-1); // 候选刷新，重置高亮
+      // 精确存在性（创建按钮用）：当前编码在系统中是否精确存在
+      const { count } = await supabase
+        .from("parts")
+        .select("id", { count: "exact", head: true })
+        .eq("part_number", kw);
+      set编码在系统((count ?? 0) > 0);
     }, 250);
     return () => { if (编码候选Timer.current) clearTimeout(编码候选Timer.current); };
   }, [editForm.part_number, supabase]);
@@ -1249,7 +1259,7 @@ export default function PartBranchEditor({
 
       {/* 编码有值但系统无此配件(未关联 part_id)→ 可创建配件到配件库。
           放在横向滚动行之外，避免被挤出可视区看不见。 */}
-      {!isLocked && editForm.part_number.trim() && !part.part_id && (
+      {!isLocked && editForm.part_number.trim().length >= 2 && 编码在系统 === false && (
         <div className="mt-1 pl-7">
           <button
             type="button"
