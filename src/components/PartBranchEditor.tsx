@@ -222,6 +222,9 @@ export default function PartBranchEditor({
   // 当前编码是否在系统中精确存在（null=未知/未查，true/false=已查）。
   // 决定"创建配件"按钮：查不到才显示——与是否已有 part_id 无关（避免残留旧关联误判）。
   const [编码在系统, set编码在系统] = useState<boolean | null>(null);
+  // 编码是否"录入完成"（失焦/回车/选候选后为 true；打字过程中为 false）。
+  // 创建按钮只在录入完成后才判断显示，避免边打字边弹。
+  const [编码已录入, set编码已录入] = useState(false);
 
   // 编码命中但"配件叶子名与本分组名不符"时的询问框
   interface 编码命中 {
@@ -858,7 +861,7 @@ export default function PartBranchEditor({
               ref={编码InputRef}
               type="text"
               value={editForm.part_number}
-              onChange={(e) => { setEditForm((prev) => ({ ...prev, part_number: e.target.value })); set显示编码候选(true); }}
+              onChange={(e) => { setEditForm((prev) => ({ ...prev, part_number: e.target.value })); set显示编码候选(true); set编码已录入(false); }}
               onKeyDown={async (e) => {
                 const 有候选 = 显示编码候选 && editForm.part_number.trim().length >= 2 && 编码候选.length > 0;
                 if (e.key === "ArrowDown" && 有候选) {
@@ -883,12 +886,14 @@ export default function PartBranchEditor({
                     await saveField("part_number", 编码);
                     await autoFillByPartNumber(编码);
                   }
+                  set编码已录入(true); // 回车=录入完成
                 }
                 if (e.key === "Escape") { set显示编码候选(false); set编码高亮(-1); }
               }}
               onBlur={async () => {
                 setTimeout(() => set显示编码候选(false), 150);
                 await saveField("part_number", editForm.part_number);
+                set编码已录入(true); // 失焦=录入完成
               }}
               disabled={isLocked || saving}
               className="w-24 px-1 py-0.5 border border-gray-200 rounded text-xs disabled:bg-gray-50"
@@ -909,6 +914,7 @@ export default function PartBranchEditor({
                       setEditForm((prev) => ({ ...prev, part_number: c.part_number }));
                       set显示编码候选(false);
                       set编码高亮(-1);
+                      set编码已录入(true);
                       await saveField("part_number", c.part_number);
                       await autoFillByPartNumber(c.part_number);
                     }}
@@ -1259,7 +1265,7 @@ export default function PartBranchEditor({
 
       {/* 编码有值但系统无此配件(未关联 part_id)→ 可创建配件到配件库。
           放在横向滚动行之外，避免被挤出可视区看不见。 */}
-      {!isLocked && editForm.part_number.trim().length >= 2 && 编码在系统 === false && (
+      {!isLocked && 编码已录入 && editForm.part_number.trim().length >= 2 && 编码在系统 === false && (
         <div className="mt-1 pl-7">
           <button
             type="button"
