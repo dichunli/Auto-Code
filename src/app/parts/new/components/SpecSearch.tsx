@@ -10,16 +10,24 @@ interface SpecSearchProps {
   selectedSpecs: LinkedItem[];
   onSelectSpecsChange: (items: LinkedItem[]) => void;
   selectedPartName: PartNameItem | null;
+  /* 实时回传输入框里正在打的字（供"没选中也带回分支"用） */
+  onQueryChange?: (q: string) => void;
 }
 
 export default function SpecSearch({
   selectedSpecs,
   onSelectSpecsChange,
   selectedPartName,
+  onQueryChange,
 }: SpecSearchProps) {
   const supabase = useMemo(() => createClient(), []);
 
   const [query, setQuery] = useState("");
+
+  // 把当前正在打的字实时回传给父组件
+  useEffect(() => {
+    onQueryChange?.(query);
+  }, [query, onQueryChange]);
   const [results, setResults] = useState<{ id: string; name: string }[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
