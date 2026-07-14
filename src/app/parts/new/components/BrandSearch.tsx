@@ -16,16 +16,24 @@ interface BrandSearchProps {
   selectedBrand: LinkedItem | null;
   onSelectBrand: (item: LinkedItem | null) => void;
   selectedPartName: PartNameItem | null;
+  /* 实时回传输入框里正在打的字（供"没选中也带回分支"用） */
+  onQueryChange?: (q: string) => void;
 }
 
 export default function BrandSearch({
   selectedBrand,
   onSelectBrand,
   selectedPartName,
+  onQueryChange,
 }: BrandSearchProps) {
   const supabase = useMemo(() => createClient(), []);
 
   const [query, setQuery] = useState("");
+
+  // 把当前正在打的字实时回传给父组件
+  useEffect(() => {
+    onQueryChange?.(query);
+  }, [query, onQueryChange]);
   const [results, setResults] = useState<IdNameItem[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [focus, setFocus] = useState(false);

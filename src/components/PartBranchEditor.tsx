@@ -4,13 +4,24 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { usePriceVisibility } from "./PriceVisibilityContext";
+import { PartPickerModal } from "./PartPickerModal";
 import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localEditSignal";
+import PartForm, { PartFormDraft } from "@/app/parts/new/PartForm";
 
 function toFixed2(val: string | number | null | undefined): string {
   if (val === "" || val === null || val === undefined) return "";
   const num = typeof val === "string" ? parseFloat(val) : val;
   if (isNaN(num)) return "";
   return num.toFixed(2);
+}
+
+/* 命中配件的叶子名是否"免询问"直接补齐：
+   叶子名 == 分组名，或 叶子名 以「分组名-」「分组名 」(- 或空格分隔)开头。 */
+function 名称免询问(叶子名: string, 分组名: string): boolean {
+  const a = (叶子名 || "").trim();
+  const b = (分组名 || "").trim();
+  if (!b) return false;
+  return a === b || a.startsWith(b + "-") || a.startsWith(b + " ");
 }
 
 interface PartData {
@@ -225,6 +236,32 @@ export default function PartBranchEditor({
   // 编码是否"录入完成"（失焦/回车/选候选后为 true；打字过程中为 false）。
   // 创建按钮只在录入完成后才判断显示，避免边打字边弹。
   const [编码已录入, set编码已录入] = useState(false);
+  // 放大镜"选择配件"弹窗（按当前分组名预过滤，从系统已有配件里挑）
+  const [选择器打开, set选择器打开] = useState(false);
+  // 点"创建配件"后记下等待创建的编码；切回本页焦点时，若该编码已在系统建好则自动关联带回本分支
+  const 等待创建编码 = useRef<string | null>(null);
+  const autoFill引用 = useRef<(code: string) => void>(() => {});
+  useEffect(() => {
+    function onFocus() {
+      const code = 等待创建编码.current;
+      if (!code) return;
+      等待创建编码.current = null;
+      // 该编码若已在新窗口建好，autoFill 会查到并关联补齐；没建则查不到、无副作用
+      autoFill引用.current(code);
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  // 创建配件弹窗：开关 + 预填数据 + 实时草稿（供"没保存也带回分支"用）
+  const [创建弹窗打开, set创建弹窗打开] = useState(false);
+  const [创建预填, set创建预填] = useState<{
+    part_number?: string; name?: string; part_name_id?: string;
+    purchase_price?: string; reference_purchase_price?: string; unit_price?: string;
+    brand?: string; specification?: string; document_name?: string;
+  } | null>(null);
+  const 创建草稿 = useRef<PartFormDraft | null>(null);
+  const 创建已保存 = useRef(false);
 
   // 编码命中但"配件叶子名与本分组名不符"时的询问框
   interface 编码命中 {
@@ -444,6 +481,7 @@ export default function PartBranchEditor({
   async function 应用命中配件(hit: 编码命中, 覆盖?: { part_name_id?: string; branch_group_id?: string; is_selected?: boolean }) {
     setEditForm((prev) => ({
       ...prev,
+      part_number: hit.part_number || prev.part_number,
       brand: hit.brand,
       specification: hit.specification,
       unit_cost: hit.unit_cost != null ? toFixed2(hit.unit_cost) : prev.unit_cost,
@@ -453,6 +491,7 @@ export default function PartBranchEditor({
     setSaving(true);
     标记本地编辑配件(part.id);
     const 更新: Record<string, unknown> = {
+      part_number: hit.part_number || null,
       brand: hit.brand || null,
       specification: hit.specification || null,
       unit_cost: hit.unit_cost,
@@ -471,6 +510,110 @@ export default function PartBranchEditor({
     }
     // 若改了目录归属(替换分组名/新建分组)，需刷新拉取最新分组结构
     if (覆盖) { 标记本地结构编辑(itemId); router.refresh(); }
+  }
+
+  // 打开"创建配件"弹窗：把本分支已填的信息带入新建窗口
+  function 打开创建弹窗() {
+    创建草稿.current = null;
+    创建已保存.current = false;
+    set创建预填({
+      part_number: editForm.part_number.trim() || undefined,
+      part_name_id: part.part_name_id || undefined,
+      name: part.name || undefined,
+      purchase_price: editForm.unit_cost || undefined,
+      reference_purchase_price: editForm.cost_price || undefined,
+      unit_price: editForm.unit_price || undefined,
+      brand: editForm.brand || undefined,
+      specification: editForm.specification || undefined,
+      document_name: editForm.document_name || undefined,
+    });
+    set创建弹窗打开(true);
+  }
+
+  // 新建配件"保存成功"：按新配件 id 查库，把完整信息 + part_id 关联写回本分支
+  async function 创建保存成功(partId: string) {
+    创建已保存.current = true;
+    set创建弹窗打开(false);
+    const { data } = await supabase
+      .from("parts")
+      .select("part_number, name, part_name_id, unit_cost, unit_price, purchase_price, document_name, part_brands(name), part_specifications(name)")
+      .eq("id", partId)
+      .single();
+    if (!data) { router.refresh(); return; }
+    const pb = data.part_brands as { name: string } | { name: string }[] | null;
+    const ps = data.part_specifications as { name: string } | { name: string }[] | null;
+    const 品牌 = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || null;
+    const 规格 = (Array.isArray(ps) ? ps[0]?.name : ps?.name) || null;
+    // 采购价：配件表用 purchase_price，分支用 unit_cost
+    const 采购价 = data.purchase_price ?? data.unit_cost ?? null;
+    const 销售价 = data.unit_price ?? null;
+    setEditForm((prev) => ({
+      ...prev,
+      part_number: data.part_number || prev.part_number,
+      brand: 品牌 || "",
+      specification: 规格 || "",
+      unit_cost: 采购价 != null ? toFixed2(采购价) : prev.unit_cost,
+      unit_price: 销售价 != null ? toFixed2(销售价) : prev.unit_price,
+      document_name: data.document_name || prev.document_name,
+    }));
+    标记本地编辑配件(part.id);
+    const 更新: Record<string, unknown> = {
+      part_id: partId,
+      part_number: data.part_number || null,
+      brand: 品牌,
+      specification: 规格,
+      unit_cost: 采购价,
+      unit_price: 销售价,
+      document_name: data.document_name || null,
+    };
+    // 叶子目录：新建配件带了配件名称，且本分支还没归属名称时，一并写入
+    if (data.part_name_id && !part.part_name_id) 更新.part_name_id = data.part_name_id;
+    const { error } = await supabase.from("work_order_item_parts").update(更新).eq("id", part.id);
+    if (error) { alert("补齐配件失败: " + error.message); return; }
+    if (销售价 != null) {
+      window.dispatchEvent(new CustomEvent("wo-part-update", { detail: { itemId, partId: part.id, unit_price: 销售价 } }));
+    }
+    标记本地结构编辑(itemId);
+    router.refresh();
+  }
+
+  // 关闭弹窗但未保存：把用户在弹窗里填的文字带回本分支（不写 part_id，仅显示，暂不关联系统配件）
+  async function 创建取消带回() {
+    set创建弹窗打开(false);
+    if (创建已保存.current) return; // 已通过保存流程处理，避免重复带回
+    const d = 创建草稿.current;
+    if (!d) return;
+    const 采购价 = (d.purchase_price || "").trim();
+    const 销售价 = (d.unit_price || "").trim();
+    const 品牌 = (d.brand || "").trim();
+    const 规格 = (d.specification || "").trim();
+    const 单据名 = (d.document_name || "").trim();
+    const 编码 = (d.part_number || "").trim();
+    // 全空则不带回
+    if (!采购价 && !销售价 && !品牌 && !规格 && !单据名 && !编码) return;
+    setEditForm((prev) => ({
+      ...prev,
+      part_number: 编码 || prev.part_number,
+      brand: 品牌 || prev.brand,
+      specification: 规格 || prev.specification,
+      unit_cost: 采购价 ? toFixed2(采购价) : prev.unit_cost,
+      unit_price: 销售价 ? toFixed2(销售价) : prev.unit_price,
+      document_name: 单据名 || prev.document_name,
+    }));
+    标记本地编辑配件(part.id);
+    const 更新: Record<string, unknown> = {};
+    if (编码) 更新.part_number = 编码;
+    if (品牌) 更新.brand = 品牌;
+    if (规格) 更新.specification = 规格;
+    if (采购价) 更新.unit_cost = parseFloat(采购价);
+    if (销售价) 更新.unit_price = parseFloat(销售价);
+    if (单据名) 更新.document_name = 单据名;
+    if (Object.keys(更新).length === 0) return;
+    const { error } = await supabase.from("work_order_item_parts").update(更新).eq("id", part.id);
+    if (error) { alert("带回信息失败: " + error.message); return; }
+    if (销售价) {
+      window.dispatchEvent(new CustomEvent("wo-part-update", { detail: { itemId, partId: part.id, unit_price: parseFloat(销售价) } }));
+    }
   }
 
   // 输入/扫码编码后：全库按编码精确查配件，按"叶子名与分组名"关系决定补齐或询问
@@ -499,7 +642,7 @@ export default function PartBranchEditor({
     };
 
     const 分组名 = (part.part_names?.name || part.name || "").trim();
-    const 免询问 = 叶子名 === 分组名 || (分组名 !== "" && 叶子名.startsWith(分组名 + "-"));
+    const 免询问 = 名称免询问(叶子名, 分组名);
     if (免询问) {
       // 名称一致/以"分组名-"开头 → 直接补齐（叶子目录用命中配件的，保持一致）
       await 应用命中配件(hit, hit.part_name_id ? { part_name_id: hit.part_name_id } : undefined);
@@ -519,6 +662,12 @@ export default function PartBranchEditor({
     }
     set名称不符询问({ hit, 本组已有具体配件 });
   }
+
+  // 把最新的编码补齐函数挂到 ref 上：切回本页(focus)时用它按编码把新建好的配件带回本分支。
+  // 用 useEffect 更新(而非渲染期写 ref)，既满足 React 规则，又保证拿到最新的 part/editForm 闭包。
+  useEffect(() => {
+    autoFill引用.current = autoFillByPartNumber;
+  });
 
   // a) 替换分组名：把本分组(同 branch_group_id)所有分支的叶子目录改成命中配件的，再补齐本分支
   async function 处理替换分组名() {
@@ -553,6 +702,37 @@ export default function PartBranchEditor({
       branch_group_id: 新组id,
       is_selected: true, // 新组唯一分支
     });
+  }
+
+  // 放大镜"选择配件"选中后：转成命中结构，按名称规则补齐/弹询问（复用编码补齐逻辑）
+  async function 从选择器选中(parts: { id: string; part_number: string; part_name_id: string | null; unit_cost: number | null; unit_price: number | null; specification_text: string | null; part_names?: { name?: string | null } | null; part_brands?: { name?: string | null } | null; part_specifications?: { name?: string | null } | null; name?: string }[]) {
+    set选择器打开(false);
+    const p = parts[0];
+    if (!p) return;
+    const 叶子名 = p.part_names?.name || p.name || "";
+    const hit: 编码命中 = {
+      id: p.id, part_number: p.part_number, name: 叶子名, part_name_id: p.part_name_id,
+      brand: p.part_brands?.name || "",
+      specification: p.part_specifications?.name || p.specification_text || "",
+      unit_cost: p.unit_cost, unit_price: p.unit_price, document_name: null, 叶子名,
+    };
+    const 分组名 = (part.part_names?.name || part.name || "").trim();
+    const 免询问 = 名称免询问(叶子名, 分组名);
+    if (免询问) {
+      await 应用命中配件(hit, hit.part_name_id ? { part_name_id: hit.part_name_id } : undefined);
+      return;
+    }
+    let 本组已有具体配件 = false;
+    if (part.branch_group_id) {
+      const { count } = await supabase
+        .from("work_order_item_parts")
+        .select("id", { count: "exact", head: true })
+        .eq("branch_group_id", part.branch_group_id)
+        .not("part_id", "is", null)
+        .neq("id", part.id);
+      本组已有具体配件 = (count ?? 0) > 0;
+    }
+    set名称不符询问({ hit, 本组已有具体配件 });
   }
 
   // 检查库存中是否有完全匹配的配件
@@ -927,6 +1107,20 @@ export default function PartBranchEditor({
               </div>
             )}
           </div>
+          {/* 放大镜：按当前分组名查系统已有配件 */}
+          {!isLocked && (
+            <button
+              type="button"
+              onClick={() => set选择器打开(true)}
+              disabled={saving}
+              className="shrink-0 text-gray-400 hover:text-blue-600 disabled:opacity-50 px-0.5"
+              title="按配件名称查找系统配件"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* 品牌 */}
@@ -1269,20 +1463,50 @@ export default function PartBranchEditor({
         <div className="mt-1 pl-7">
           <button
             type="button"
-            onClick={() => {
-              const p = new URLSearchParams({ from_branch: "1", part_number: editForm.part_number.trim() });
-              if (part.part_name_id) p.set("part_name_id", part.part_name_id);
-              if (editForm.unit_cost) p.set("unit_cost", editForm.unit_cost);
-              if (editForm.unit_price) p.set("unit_price", editForm.unit_price);
-              if (editForm.brand) p.set("brand", editForm.brand);
-              if (editForm.specification) p.set("spec", editForm.specification);
-              window.open(`/parts/new?${p.toString()}`, "_blank");
-            }}
+            onClick={打开创建弹窗}
             className="text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200"
             title="系统中没有此配件，点击创建到配件库"
           >
             ＋ 系统无此编码，创建配件「{editForm.part_number.trim()}」
           </button>
+        </div>
+      )}
+
+      {/* 放大镜"选择配件"弹窗：按当前分组名预过滤、车型高亮，选中后补齐本分支 */}
+      {选择器打开 && (
+        <PartPickerModal
+          open={选择器打开}
+          onClose={() => set选择器打开(false)}
+          onConfirm={从选择器选中}
+          vehicleModelId={vehicleModelId}
+          defaultNameQuery={part.part_names?.name || part.name || ""}
+        />
+      )}
+
+      {/* 创建配件弹窗：带入本分支已填信息；保存成功→关联带回；未保存关闭→仅带回文字 */}
+      {创建弹窗打开 && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50" onClick={创建取消带回}>
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-6xl max-h-[90vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+              <h3 className="text-lg font-semibold text-gray-900">创建配件</h3>
+              <button
+                type="button"
+                onClick={创建取消带回}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                title="关闭（会把已填信息带回本分支）"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="p-6">
+              <PartForm
+                onSaved={创建保存成功}
+                onCancel={创建取消带回}
+                onDraftChange={(d) => { 创建草稿.current = d; }}
+                prefillData={创建预填 || undefined}
+              />
+            </div>
+          </div>
         </div>
       )}
 
