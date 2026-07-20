@@ -8,9 +8,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["mammoth", "docx", "@xenova/transformers", "onnxruntime-node", "sharp"],
   experimental: {
     serverActions: {
-      bodySizeLimit: "100mb",
+      bodySizeLimit: "2gb",
     },
-    proxyClientMaxBodySize: 100 * 1024 * 1024, /* 100MB */
+    proxyClientMaxBodySize: 2 * 1024 * 1024 * 1024, /* 2GB */
   },
   async headers() {
     return [

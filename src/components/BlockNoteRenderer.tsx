@@ -531,19 +531,56 @@ interface 双指缩放起点 {
   positionY: number;
 }
 
-/* 图片预览弹窗：支持缩放、拖拽平移、滚轮缩放、双击放大 */
-function ImagePreview({ url, caption, onClose }: { url: string; caption?: string; onClose: () => void }) {
+interface 预览图片 {
+  url: string;
+  caption: string;
+}
+
+/* 递归收集所有图片块（含嵌套子块），顺序与渲染顺序一致，供预览弹窗翻页 */
+function 收集图片(blocks: BlockItem[]): 预览图片[] {
+  const result: 预览图片[] = [];
+  for (const block of blocks) {
+    if (block.type === "image" && block.props?.url) {
+      result.push({ url: block.props.url, caption: block.props.caption || "" });
+    }
+    if (block.children && block.children.length > 0) {
+      result.push(...收集图片(block.children));
+    }
+  }
+  return result;
+}
+
+/* 图片预览弹窗：支持缩放、拖拽平移、滚轮缩放、双击放大、多图翻页 */
+function ImagePreview({ images, initialIndex, onClose }: { images: 预览图片[]; initialIndex: number; onClose: () => void }) {
+  const [index, setIndex] = useState(initialIndex);
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<拖拽起点>({ x: 0, y: 0, px: 0, py: 0 });
   const pinchStartRef = useRef<双指缩放起点 | null>(null);
+  const touchStartXRef = useRef(0);
   const touchStartYRef = useRef(0);
   const imgRef = useRef<HTMLImageElement>(null);
+
+  const current = images[index];
+  const 有上一张 = index > 0;
+  const 有下一张 = index < images.length - 1;
+
+  /* 切换到指定序号的图片，越界不动作（不循环），切换后恢复原始大小和位置 */
+  function 切换图片(newIndex: number) {
+    if (newIndex < 0 || newIndex >= images.length) return;
+    setIndex(newIndex);
+    setScale(1);
+    setPosition({ x: 0, y: 0 });
+    setIsDragging(false);
+    pinchStartRef.current = null;
+  }
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") 切换图片(index - 1);
+      if (e.key === "ArrowRight") 切换图片(index + 1);
       if (e.key === "+" || e.key === "=") handleZoomIn();
       if (e.key === "-") handleZoomOut();
       if (e.key === "0") handleReset();
@@ -554,7 +591,7 @@ function ImagePreview({ url, caption, onClose }: { url: string; caption?: string
       document.removeEventListener("keydown", handleKey);
       document.body.style.overflow = "";
     };
-  }, [onClose, scale, position]);
+  }, [onClose, scale, position, index]);
 
   function getImageCenter(): { x: number; y: number } | null {
     if (!imgRef.current) return null;
@@ -628,6 +665,7 @@ function ImagePreview({ url, caption, onClose }: { url: string; caption?: string
 
   function handleTouchStart(e: React.TouchEvent) {
     if (e.touches.length === 1) {
+      touchStartXRef.current = e.touches[0].clientX;
       touchStartYRef.current = e.touches[0].clientY;
       setIsDragging(true);
       pinchStartRef.current = null;
@@ -680,11 +718,20 @@ function ImagePreview({ url, caption, onClose }: { url: string; caption?: string
     if (e.touches.length === 0) {
       setIsDragging(false);
       pinchStartRef.current = null;
-      /* 单指滑动关闭：仅在未缩放状态下生效，避免误操作 */
+      /* 未缩放状态下：左右滑动翻页，上下滑动关闭；已放大时滑动仍是拖动图片 */
       if (scale <= 1) {
+        const dx = e.changedTouches[0].clientX - touchStartXRef.current;
         const dy = e.changedTouches[0].clientY - touchStartYRef.current;
-        if (Math.abs(dy) > 80) {
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+          /* 水平滑动：右滑看上一张，左滑看下一张 */
+          切换图片(dx > 0 ? index - 1 : index + 1);
+          /* 已到头翻不动时也回弹居中 */
+          setPosition({ x: 0, y: 0 });
+        } else if (Math.abs(dy) > 80 && Math.abs(dy) > Math.abs(dx)) {
           onClose();
+        } else {
+          /* 小幅拖动松手后回弹居中 */
+          setPosition({ x: 0, y: 0 });
         }
       }
     } else if (e.touches.length === 1) {
@@ -762,6 +809,12 @@ function ImagePreview({ url, caption, onClose }: { url: string; caption?: string
             重置
           </button>
         </div>
+        {/* 页码提示：多图时显示 */}
+        {images.length > 1 && (
+          <span className="text-white/80 text-sm">
+            {index + 1} / {images.length}
+          </span>
+        )}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -788,8 +841,8 @@ function ImagePreview({ url, caption, onClose }: { url: string; caption?: string
 
       <img
         ref={imgRef}
-        src={url}
-        alt={caption || ""}
+        src={current.url}
+        alt={current.caption}
         className="max-w-[95vw] sm:max-w-[90vw] max-h-[80vh] sm:max-h-[90vh] object-contain select-none"
         style={{
           transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
@@ -804,26 +857,85 @@ function ImagePreview({ url, caption, onClose }: { url: string; caption?: string
         draggable={false}
       />
 
+      {/* 桌面端左右翻页箭头：多图且未到头时显示，移动端隐藏 */}
+      {有上一张 && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); 切换图片(index - 1); }}
+          className="hidden sm:flex absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white rounded-full w-11 h-11 items-center justify-center transition-colors"
+          title="上一张（←）"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+      )}
+      {有下一张 && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); 切换图片(index + 1); }}
+          className="hidden sm:flex absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white rounded-full w-11 h-11 items-center justify-center transition-colors"
+          title="下一张（→）"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      )}
+
       {/* 移动端操作提示 */}
       <div className="absolute bottom-6 left-0 right-0 text-center text-white/50 text-xs sm:hidden">
-        <p>双击放大 · 双指缩放 · 拖拽移动</p>
+        <p>{images.length > 1 ? "双击放大 · 双指缩放 · 左右滑动翻页" : "双击放大 · 双指缩放 · 拖拽移动"}</p>
       </div>
 
-      {caption && (
+      {current.caption && (
         <div className="absolute bottom-12 sm:bottom-6 left-0 right-0 text-center text-white/70 text-sm px-4">
-          {caption}
+          {current.caption}
         </div>
       )}
     </div>
   );
 }
 
-/* 视频播放器：支持原生全屏，不支持时 fallback 到弹窗全屏 */
+/* 判断是否为移动端（触屏设备） */
+function 是移动端(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
+}
+
+/* 判断是否为 APP WebView（仅在 APP 内显示），区别于普通手机浏览器 */
+function 是APP环境(): boolean {
+  if (typeof window === "undefined") return false;
+  return !!(window as unknown as Record<string, unknown>).AndroidVideoCapture
+    || !!(window as unknown as Record<string, unknown>).AndroidVideoPicker;
+}
+
+/* 视频播放器：移动端用自定义弹窗全屏（避免原生全屏翻转），桌面端用原生全屏。
+   手机上若浏览器不读取视频旋转标记（画面宽>高），则用 CSS 旋转 90° 补偿。 */
 function VideoPlayer({ src, caption }: { src: string; caption: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [showModal, setShowModal] = useState(false);
+  /* 是否需要 CSS 旋转补偿：手机浏览器不读 MP4 旋转标记时，视频宽>高就需要转 */
+  const [需要旋转, set需要旋转] = useState(false);
+  const [视频原始宽, set视频原始宽] = useState(0);
+  const [视频原始高, set视频原始高] = useState(0);
+
+  function 处理元数据(e: React.SyntheticEvent<HTMLVideoElement>) {
+    const v = e.currentTarget;
+    if (是移动端() && !是APP环境() && v.videoWidth > v.videoHeight) {
+      set需要旋转(true);
+      set视频原始宽(v.videoWidth);
+      set视频原始高(v.videoHeight);
+    }
+  }
 
   async function handleFullscreen() {
+    if (是移动端()) {
+      setShowModal(true);
+      try { await videoRef.current?.play(); } catch { /* 自动播放可能被阻止 */ }
+      return;
+    }
+
     const v = videoRef.current;
     if (!v) return;
     const el = v as HTMLVideoElement & {
@@ -845,25 +957,68 @@ function VideoPlayer({ src, caption }: { src: string; caption: string }) {
       }
     } catch {
       setShowModal(true);
-      try {
-        await videoRef.current?.play();
-      } catch {
-        /* 自动播放可能被浏览器阻止，用户可手动点击播放 */
-      }
+      try { await videoRef.current?.play(); } catch { /* 自动播放可能被阻止 */ }
     }
+  }
+
+  /* APP WebView 里必须强制 transform:none */
+  const videoResetStyle: React.CSSProperties = 是APP环境()
+    ? { transform: "none", WebkitTransform: "none" }
+    : {};
+
+  /* 渲染视频元素（内联或弹窗共用） */
+  function 渲染视频(容器类名: string, 视频类名: string, 视频样式?: React.CSSProperties) {
+    if (需要旋转 && 视频原始宽 > 0 && 视频原始高 > 0) {
+      /* 容器 aspect-ratio 用旋转后的比例（高/宽），视频 rotate(90deg) + object-fit:contain 填满 */
+      return (
+        <div
+          className={容器类名}
+          style={{
+            aspectRatio: `${视频原始高} / ${视频原始宽}`,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <video
+            ref={videoRef}
+            src={src}
+            controls
+            playsInline
+            className={视频类名}
+            preload="metadata"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              transform: "rotate(90deg)",
+              transformOrigin: "center center",
+              display: "block",
+              ...videoResetStyle,
+              ...视频样式,
+            }}
+            onLoadedMetadata={处理元数据}
+          />
+        </div>
+      );
+    }
+    return (
+      <video
+        ref={videoRef}
+        src={src}
+        controls
+        playsInline
+        className={视频类名}
+        preload="metadata"
+        style={{ ...videoResetStyle, ...视频样式 }}
+        onLoadedMetadata={处理元数据}
+      />
+    );
   }
 
   return (
     <>
       <div className="relative inline-block group">
-        <video
-          ref={videoRef}
-          src={src}
-          controls
-          playsInline
-          className="max-w-full rounded-lg"
-          preload="metadata"
-        />
+        {渲染视频("max-w-full", "max-w-full rounded-lg")}
         <button
           type="button"
           onClick={handleFullscreen}
@@ -877,26 +1032,21 @@ function VideoPlayer({ src, caption }: { src: string; caption: string }) {
       </div>
       {showModal && typeof document !== "undefined" && createPortal(
         <div
-          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center touch-none"
+          className="fixed inset-0 z-[100] bg-black flex items-center justify-center"
+          style={{ transform: "none" }}
           onClick={() => setShowModal(false)}
           onTouchMove={(e) => e.preventDefault()}
         >
-          <video
-            src={src}
-            controls
-            autoPlay
-            className="max-w-[95vw] max-h-[95vh] rounded"
-            onClick={(e) => e.stopPropagation()}
-          />
+          {渲染视频("w-full h-full flex items-center justify-center", "max-w-full max-h-full w-auto h-auto object-contain")}
           {caption && (
-            <div className="absolute bottom-6 left-0 right-0 text-center text-white/70 text-sm px-4">
+            <div className="absolute bottom-8 left-0 right-0 text-center text-white/70 text-sm px-4">
               {caption}
             </div>
           )}
           <button
             type="button"
             onClick={() => setShowModal(false)}
-            className="absolute top-4 right-4 text-white/80 hover:text-white p-2 rounded-lg hover:bg-white/10"
+            className="absolute top-4 right-4 text-white/80 hover:text-white p-2 rounded-lg hover:bg-white/10 z-10"
             title="关闭"
           >
             <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -985,28 +1135,30 @@ function PdfPreview({ url, onClose }: { url: string; onClose: () => void }) {
 }
 
 export function BlockNoteRenderer({ blocks, userGroupId, isAdmin }: Props) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewCaption, setPreviewCaption] = useState<string>("");
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
-  const handleImageClick = useCallback((url: string, caption: string) => {
-    setPreviewUrl(url);
-    setPreviewCaption(caption);
-  }, []);
+  const visibleBlocks = useMemo(() => 过滤权限块(blocks, userGroupId, isAdmin), [blocks, userGroupId, isAdmin]);
+  /* 收集全部可见图片（已过滤无权限的块），供预览弹窗翻页 */
+  const 图片列表 = useMemo(() => 收集图片(visibleBlocks), [visibleBlocks]);
+
+  const handleImageClick = useCallback((url: string) => {
+    const idx = 图片列表.findIndex((img) => img.url === url);
+    setPreviewIndex(idx >= 0 ? idx : 0);
+  }, [图片列表]);
 
   const handlePdfPreview = useCallback((url: string) => {
     setPdfUrl(url);
   }, []);
 
   const handleCloseImage = useCallback(() => {
-    setPreviewUrl(null);
+    setPreviewIndex(null);
   }, []);
 
   const handleClosePdf = useCallback(() => {
     setPdfUrl(null);
   }, []);
 
-  const visibleBlocks = useMemo(() => 过滤权限块(blocks, userGroupId, isAdmin), [blocks, userGroupId, isAdmin]);
   const renderedContent = useMemo(
     () => wrapListBlocks(visibleBlocks, handleImageClick, handlePdfPreview),
     [visibleBlocks, handleImageClick, handlePdfPreview]
@@ -1019,7 +1171,13 @@ export function BlockNoteRenderer({ blocks, userGroupId, isAdmin }: Props) {
   return (
     <>
       <div className="blocknote-content">{renderedContent}</div>
-      {previewUrl && <ImagePreview url={previewUrl} caption={previewCaption} onClose={handleCloseImage} />}
+      {previewIndex !== null && 图片列表.length > 0 && (
+        <ImagePreview
+          images={图片列表}
+          initialIndex={Math.min(previewIndex, 图片列表.length - 1)}
+          onClose={handleCloseImage}
+        />
+      )}
       {pdfUrl && <PdfPreview url={pdfUrl} onClose={handleClosePdf} />}
     </>
   );

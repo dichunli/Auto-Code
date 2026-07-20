@@ -23,15 +23,31 @@ export function VideoUploader({
   onDelete,
   existingVideos = [],
   maxVideos = 3,
-  maxFileSizeMB = 100,
-  maxDurationSeconds = 60,
-  timeoutMs = 60000,
+  maxFileSizeMB = 4096,
+  maxDurationSeconds = 0,
+  timeoutMs = 600000,
   folder,
   disabled = false,
 }: Props) {
   const [videos, setVideos] = useState<string[]>(existingVideos);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const viewerSrc = viewerIndex !== null ? videos[viewerIndex] : null;
+  /* 视频旋转补偿：手机浏览器不读 MP4 旋转标记时，layout 宽>高就需要 CSS 旋转 */
+  const [需要旋转视频, set需要旋转视频] = useState(false);
+  const [视频原始宽_Ref, set视频原始宽] = useState(0);
+  const [视频原始高_Ref, set视频原始高] = useState(0);
+
+  function 处理视频元数据(e: React.SyntheticEvent<HTMLVideoElement>) {
+    const v = e.currentTarget;
+    /* 仅手机浏览器（排除 APP）且画面宽>高时才补偿旋转 */
+    if (!是Capacitor环境() && v.videoWidth > v.videoHeight) {
+      set需要旋转视频(true);
+      set视频原始宽(v.videoWidth);
+      set视频原始高(v.videoHeight);
+    } else {
+      set需要旋转视频(false);
+    }
+  }
 
   /* 外部传入的已有视频变化时同步到内部状态（如编辑模式异步加载已有视频） */
   useEffect(() => {
@@ -108,6 +124,7 @@ export function VideoUploader({
   const {
     上传,
     上传中,
+    进度,
     总进度,
     错误: uploadError,
   } = useUpload({
@@ -156,7 +173,8 @@ export function VideoUploader({
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
+    console.log("[VideoUploader] 选中文件:", files[0].name, "大小:", (files[0].size / 1024 / 1024).toFixed(1) + "MB");
     handleFiles(files);
     e.target.value = "";
   }
@@ -191,7 +209,7 @@ export function VideoUploader({
       if (!response.ok) throw new Error("读取视频文件失败");
       const blob = await response.blob();
 
-      if (blob.size > maxFileSizeMB * 1024 * 1024) {
+      if (maxFileSizeMB > 0 && blob.size > maxFileSizeMB * 1024 * 1024) {
         alert(`视频大小不能超过 ${maxFileSizeMB}MB`);
         return;
       }
@@ -358,12 +376,29 @@ export function VideoUploader({
         )}
       </div>
 
+      {/* 上传进度条 — 覆盖上传按钮区域，非常显眼 */}
+      {上传中 && (
+        <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2 animate-pulse">
+          <div className="flex items-center justify-between text-sm font-medium text-blue-700">
+            <span>{总进度 === "校验中..." ? "正在检测视频..." : "正在上传视频"}</span>
+            <span>{进度}%</span>
+          </div>
+          <div className="w-full h-3 bg-blue-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${进度}%` }}
+            />
+          </div>
+          <p className="text-xs text-blue-500">请勿关闭页面，上传中...</p>
+        </div>
+      )}
+
       {uploadError && (
         <p className="text-xs text-red-500 bg-red-50 rounded px-2 py-1">{uploadError}</p>
       )}
 
       <p className="text-[10px] text-gray-400">
-        {是APP ? "点击录像或选视频" : "支持录像或选择文件"}。单个不超过 {maxFileSizeMB}MB、{maxDurationSeconds} 秒。
+        {是APP ? "点击录像或选视频" : "支持录像或选择文件"}。{maxFileSizeMB > 0 ? `单个不超过 ${maxFileSizeMB >= 1024 ? `${maxFileSizeMB / 1024}GB` : `${maxFileSizeMB}MB`}` : "大小不限"}{maxDurationSeconds > 0 ? `、时长不超过 ${maxDurationSeconds} 秒` : ""}。
       </p>
 
       {/* 全屏视频播放器：使用 Portal 渲染到 body，避免被父级弹窗的层级/透明度影响 */}
@@ -376,14 +411,43 @@ export function VideoUploader({
           onTouchEnd={handleTouchEnd}
           onTouchMove={(e) => e.preventDefault()}
         >
-          <video
-            key={viewerSrc}
-            src={viewerSrc}
-            className="max-w-[95vw] max-h-[95vh] rounded"
-            controls
-            autoPlay
-            onClick={(e) => e.stopPropagation()}
-          />
+          {需要旋转视频 && 视频原始宽_Ref > 0 && 视频原始高_Ref > 0 ? (
+            <div
+              style={{
+                aspectRatio: `${视频原始高_Ref} / ${视频原始宽_Ref}`,
+                maxWidth: "95vw",
+                maxHeight: "95vh",
+                overflow: "hidden",
+              }}
+            >
+              <video
+                key={viewerSrc}
+                src={viewerSrc}
+                className="w-full h-full rounded"
+                controls
+                autoPlay
+                playsInline
+                style={{
+                  objectFit: "contain",
+                  transform: "rotate(90deg)",
+                  transformOrigin: "center center",
+                }}
+                onLoadedMetadata={处理视频元数据}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          ) : (
+            <video
+              key={viewerSrc}
+              src={viewerSrc}
+              className="max-w-[95vw] max-h-[95vh] rounded"
+              controls
+              autoPlay
+              playsInline
+              onLoadedMetadata={处理视频元数据}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
           {/* 关闭按钮 */}
           <button
             type="button"

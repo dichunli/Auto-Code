@@ -15,6 +15,7 @@ import { base64转Blob, 压缩图片 } from "@/lib/imageCompress";
 import { useDebounce } from "@/lib/useDebounce";
 import { blocknoteDictionary } from "@/lib/blocknoteDictionary";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { 分片上传文件, 需要分片上传 } from "@/lib/chunkedUpload";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 import BlockPermissionModal from "./BlockPermissionModal";
@@ -97,34 +98,66 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
   }, [debouncedContent]);
 
   const uploadFile = useCallback(async (file: File) => {
-    let uploadFile = file;
+    const 是视频 = file.type.startsWith("video/");
 
-    /* 图片文件先压缩 */
-    if (file.type.startsWith("image/")) {
-      try {
-        uploadFile = await 压缩图片(file);
-      } catch {
-        /* 压缩失败用原文件 */
-      }
+    /* 视频大小上限 4GB */
+    if (是视频 && file.size > 4096 * 1024 * 1024) {
+      throw new Error(`视频不能超过 4GB（当前 ${Math.round(file.size / 1024 / 1024)}MB）`);
     }
 
-    const formData = new FormData();
-    formData.append("file", uploadFile, file.name);
-
-    /* 30 秒超时 */
+    /* 超时：图片 30 秒，视频 10 分钟（视频体积大，传得久） */
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const timeoutId = setTimeout(() => controller.abort(), 是视频 ? 600000 : 30000);
 
     try {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-      });
+      let path: string;
+
+      if (是视频 && 需要分片上传(file)) {
+        /* 大视频走分片上传（>100MB），支持断点续传，显示进度 */
+        set正在上传(true);
+        set上传进度(0);
+        const result = await 分片上传文件(file, undefined, (pct) => set上传进度(pct), controller.signal);
+        set正在上传(false);
+        path = result.path;
+      } else if (是视频) {
+        /* 小视频走裸 body 流式上传 */
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: file,
+          signal: controller.signal,
+          headers: {
+            "X-File-Name": encodeURIComponent(file.name),
+            "Content-Type": file.type || "application/octet-stream",
+          },
+        });
+        clearTimeout(timeoutId);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "上传失败");
+        path = data.path;
+      } else {
+        /* 图片先压缩，走 multipart 上传 */
+        let 上传文件: File | Blob = file;
+        if (file.type.startsWith("image/")) {
+          try {
+            上传文件 = await 压缩图片(file);
+          } catch {
+            /* 压缩失败用原文件 */
+          }
+        }
+        const formData = new FormData();
+        formData.append("file", 上传文件, file.name);
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "上传失败");
+        path = data.path;
+      }
       clearTimeout(timeoutId);
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "上传失败");
-      return result.path;
+      return path;
     } catch (err: unknown) {
       clearTimeout(timeoutId);
       throw err;
@@ -216,6 +249,8 @@ function CustomToolbarButtons({
   const [showJumpModal, setShowJumpModal] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [currentBlock, setCurrentBlock] = useState<{ id: string; props: Record<string, unknown> } | null>(null);
+  const [上传进度, set上传进度] = useState(0);
+  const [正在上传, set正在上传] = useState(false);
 
   /* 加载员工分组名称 */
   useEffect(() => {
@@ -266,10 +301,6 @@ function CustomToolbarButtons({
       const response = await fetch(fileUrl);
       if (!response.ok) throw new Error("读取视频文件失败");
       const blob = await response.blob();
-      if (blob.size > 500 * 1024 * 1024) {
-        alert("视频大小不能超过 500MB");
-        return;
-      }
       /* 根据实际 MIME 类型选择正确扩展名，避免把 .3gp 强制存成 .mp4 */
       function 视频扩展名(mimeType: string): string {
         if (mimeType === "video/3gpp") return ".3gp";
@@ -301,10 +332,6 @@ function CustomToolbarButtons({
       const response = await fetch(fileUrl);
       if (!response.ok) throw new Error("读取视频文件失败");
       const blob = await response.blob();
-      if (blob.size > 500 * 1024 * 1024) {
-        alert("视频大小不能超过 500MB");
-        return;
-      }
       function 视频扩展名(mimeType: string): string {
         if (mimeType === "video/3gpp") return ".3gp";
         if (mimeType === "video/webm") return ".webm";
@@ -442,69 +469,49 @@ function CustomToolbarButtons({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    /* 限制 500MB */
-    if (file.size > 500 * 1024 * 1024) {
-      alert("视频大小不能超过 500MB");
+    /* 视频大小上限 4GB */
+    if (file.size > 4096 * 1024 * 1024) {
+      alert(`视频不能超过 4GB（当前 ${Math.round(file.size / 1024 / 1024)}MB）`);
       e.target.value = "";
       return;
     }
 
-    /* 限制 30分钟 */
     try {
-      const duration = await new Promise<number>((resolve, reject) => {
-        const video = document.createElement("video");
-        const url = URL.createObjectURL(file);
-        const timer = setTimeout(() => {
-          URL.revokeObjectURL(url);
-          reject(new Error("读取视频信息超时"));
-        }, 10000);
-        video.onloadedmetadata = () => {
-          clearTimeout(timer);
-          URL.revokeObjectURL(url);
-          resolve(video.duration);
-        };
-        video.onerror = () => {
-          clearTimeout(timer);
-          URL.revokeObjectURL(url);
-          reject(new Error("无法读取视频信息"));
-        };
-        video.src = url;
-      });
-      if (duration > 30 * 60) {
-        alert("视频时长不能超过 30 分钟");
-        e.target.value = "";
-        return;
-      }
-    } catch {
-      /* 无法读取时长时继续上传 */
-    }
+      let path: string;
 
-    try {
-      /* 使用 XHR 上传，支持进度 */
-      const path = await new Promise<string>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/upload");
-        xhr.timeout = 300000; /* 5分钟超时 */
+      if (需要分片上传(file)) {
+        /* 大视频走分片上传（>100MB），支持断点续传，显示进度 */
+        set正在上传(true);
+        set上传进度(0);
+        const result = await 分片上传文件(file, undefined, (pct) => set上传进度(pct));
+        set正在上传(false);
+        path = result.path;
+      } else {
+        /* 小视频走 XHR 裸 body 流式上传 */
+        path = await new Promise<string>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "/api/upload");
+          xhr.timeout = 600000; /* 10分钟超时 */
+          xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
+          xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
 
-        xhr.onload = () => {
-          try {
-            const result = JSON.parse(xhr.responseText);
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve(result.path);
-            } else {
-              reject(new Error(result.error || "上传失败"));
+          xhr.onload = () => {
+            try {
+              const result = JSON.parse(xhr.responseText);
+              if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(result.path);
+              } else {
+                reject(new Error(result.error || "上传失败"));
+              }
+            } catch {
+              reject(new Error("服务器返回格式异常"));
             }
-          } catch {
-            reject(new Error("服务器返回格式异常"));
-          }
-        };
-        xhr.onerror = () => reject(new Error("网络错误"));
-        xhr.ontimeout = () => reject(new Error("上传超时"));
-
-        const formData = new FormData();
-        formData.append("file", file, file.name);
-        xhr.send(formData);
-      });
+          };
+          xhr.onerror = () => reject(new Error("网络错误"));
+          xhr.ontimeout = () => reject(new Error("上传超时"));
+          xhr.send(file);
+        });
+      }
 
       editor.insertBlocks(
         [{ type: "video", props: { url: path, caption: "" } }],
@@ -701,6 +708,19 @@ function CustomToolbarButtons({
             <input ref={videoFileInputRef} type="file" accept="video/*" className="sr-only" onChange={handleUploadVideo} />
           </label>
         </>
+      )}
+
+      {/* 分片上传进度条（大视频上传时显示） */}
+      {正在上传 && (
+        <div className="flex items-center gap-2 px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg animate-pulse">
+          <div className="flex-1 h-1.5 bg-blue-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${上传进度}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-blue-600 font-medium whitespace-nowrap">{上传进度}%</span>
+        </div>
       )}
 
       {!isMobile && (
