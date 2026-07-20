@@ -107,3 +107,9 @@ certificates
 /supabase/migrations/20240101000000_full_schema.sql
 /supabase/migrations_backup/
 /supabase/snippets/
+
+# 本地语义搜索模型缓存（体积大，不入库）
+/.cache/
+
+# Windows 系统文件
+desktop.ini
