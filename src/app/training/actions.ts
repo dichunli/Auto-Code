@@ -16,6 +16,7 @@ interface 新建课程数据 {
   points?: number;
   has_exam?: boolean;
   exam_mode?: string;
+  topic_ids?: string[];
 }
 
 type 更新课程数据 = 新建课程数据;
@@ -44,7 +45,7 @@ export async function 创建课程(data: 新建课程数据): Promise<{ success:
 
     const supabase = await createClient();
 
-    const { error } = await 带超时(
+    const { data: created, error } = await 带超时(
       supabase.from("training_courses").insert({
         title: data.title.trim(),
         description: data.description?.trim() || null,
@@ -59,7 +60,7 @@ export async function 创建课程(data: 新建课程数据): Promise<{ success:
         points: data.points ?? 0,
         has_exam: data.has_exam ?? false,
         exam_mode: data.has_exam ? data.exam_mode : "online",
-      }),
+      }).select("id").single(),
       10000,
       "保存课程到数据库"
     );
@@ -67,6 +68,16 @@ export async function 创建课程(data: 新建课程数据): Promise<{ success:
     if (error) {
       return { success: false, error: error.message };
     }
+
+    /* 同步专题关联 */
+    if (created && data.topic_ids && data.topic_ids.length > 0) {
+      const topicRows = data.topic_ids.map((topicId) => ({
+        course_id: created.id,
+        topic_id: topicId,
+      }));
+      await supabase.from("training_course_topics").insert(topicRows);
+    }
+
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -114,11 +125,51 @@ export async function 更新课程(
     if (error) {
       return { success: false, error: error.message };
     }
+
+    /* 同步专题关联：先删后插 */
+    if (data.topic_ids !== undefined) {
+      await supabase.from("training_course_topics").delete().eq("course_id", id);
+      if (data.topic_ids.length > 0) {
+        const topicRows = data.topic_ids.map((topicId) => ({
+          course_id: id,
+          topic_id: topicId,
+        }));
+        await supabase.from("training_course_topics").insert(topicRows);
+      }
+    }
+
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[更新课程] 异常:", msg);
     return { success: false, error: "保存异常: " + msg };
+  }
+}
+
+export async function 删除学员分配(assignmentId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!assignmentId) {
+      return { success: false, error: "分配记录ID不能为空" };
+    }
+
+    const supabase = await createClient();
+
+    /* 删除分配记录，关联的 training_progress、exam_answers、exam_results 会通过 CASCADE 自动删除 */
+    const { error } = await 带超时(
+      supabase.from("training_assignments").delete().eq("id", assignmentId),
+      10000,
+      "删除学员分配记录"
+    );
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[删除学员分配] 异常:", msg);
+    return { success: false, error: "删除异常: " + msg };
   }
 }
 

@@ -65,7 +65,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     label: "知识库",
     href: "/knowledge",
-    permission: "knowledge:read",
+    permission: "knowledge:read" as Permission,
     desc: "维修指导、常见问题、资料查阅",
     color: "bg-cyan-500",
   },
@@ -148,8 +148,21 @@ export default async function MobileHomePage() {
         ))}
       </div>
 
-      {/* 个人信息 — 所有登录用户可见，不受权限过滤 */}
+      {/* 所有登录用户可见，不受权限过滤 */}
       <div className="grid grid-cols-2 gap-3 pt-2">
+        <Link
+          href="/training"
+          className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center text-center gap-2 active:scale-95 transition-transform"
+        >
+          <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" />
+            </svg>
+          </div>
+          <div className="text-sm font-medium text-gray-900">培训课程</div>
+          <div className="text-xs text-gray-500 leading-tight">在线学习、考试测评</div>
+        </Link>
         <Link
           href="/profile"
           className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center text-center gap-2 active:scale-95 transition-transform"

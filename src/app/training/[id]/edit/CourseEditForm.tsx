@@ -31,18 +31,29 @@ interface Course {
 interface 课程分类 {
   id: string;
   name: string;
+  parent_id: string | null;
+}
+
+interface 专题 {
+  id: string;
+  name: string;
 }
 
 export default function CourseEditForm({
   course,
   categories,
+  topics,
+  initialTopicIds,
 }: {
   course: Course;
   categories: 课程分类[];
+  topics: 专题[];
+  initialTopicIds: string[];
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [videoUrl, setVideoUrl] = useState(course.video_url || "");
+  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>(initialTopicIds);
 
   const [form, setForm] = useState({
     title: course.title || "",
@@ -78,6 +89,7 @@ export default function CourseEditForm({
           points: form.points ? parseInt(form.points) : 0,
           has_exam: form.has_exam,
           exam_mode: form.has_exam ? form.exam_mode : "online",
+          topic_ids: selectedTopicIds,
         }),
         new Promise<{ success: boolean; error?: string }>((_, reject) =>
           setTimeout(() => reject(new Error("保存超时，请检查网络后重试")), 15000)
@@ -118,7 +130,9 @@ export default function CourseEditForm({
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
             >
               {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {c.parent_id ? "└ " : ""}{c.name}
+                </option>
               ))}
             </select>
           </div>
@@ -134,6 +148,31 @@ export default function CourseEditForm({
             </select>
           </div>
         </div>
+        {topics.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">专题（可多选）</label>
+            <div className="flex flex-wrap gap-2">
+              {topics.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedTopicIds((prev) =>
+                      prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id]
+                    );
+                  }}
+                  className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                    selectedTopicIds.includes(t.id)
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"
+                  }`}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">课程描述</label>
           <textarea
@@ -163,9 +202,8 @@ export default function CourseEditForm({
               maxVideos={1}
               existingVideos={videoUrl ? [videoUrl] : []}
               onUpload={(paths) => setVideoUrl(paths[0] || "")}
-              maxFileSizeMB={500}
-              maxDurationSeconds={1800}
-              timeoutMs={300000}
+              maxDurationSeconds={0}
+              timeoutMs={600000}
               folder="training"
             />
           </div>

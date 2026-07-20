@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
 import { 是抖音链接, 抖音视频简化卡片 } from "@/components/DouyinVideo";
 import DeleteCourseButton from "../DeleteCourseButton";
+import DeleteAssignmentButton from "../DeleteAssignmentButton";
 
 export default async function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -259,6 +260,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
                 <th className="px-4 py-2 text-left font-medium text-gray-500">分数</th>
                 <th className="px-4 py-2 text-left font-medium text-gray-500">考试</th>
                 <th className="px-4 py-2 text-left font-medium text-gray-500">截止日期</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-500">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -303,12 +305,15 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-500">{a.due_date || "-"}</td>
+                    <td className="px-4 py-3">
+                      <DeleteAssignmentButton assignmentId={a.id} 学员姓名={a.profiles?.full_name || "未知"} />
+                    </td>
                   </tr>
                 );
               })}
               {(!assignments || assignments.length === 0) && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                     暂无分配记录
                   </td>
                 </tr>
