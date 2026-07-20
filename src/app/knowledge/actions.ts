@@ -1200,15 +1200,37 @@ export async function loadKnowledgeArticleReads(articleId: string): Promise<{
  * 分词词典管理 Server Action（绕过 RLS）
  * ═════════════════════════════════════════════════════════════════ */
 
+/** 加载自定义分词列表（Server Action，用 admin 客户端绕过 RLS） */
+export async function 加载分词列表(): Promise<{ success: boolean; data?: string[]; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    const { data, error } = await supabase
+      .from("search_dictionary")
+      .select("word")
+      .order("created_at", { ascending: false });
+    if (error) {
+      console.error("[加载分词列表] 数据库错误:", error.message);
+      return { success: false, error: error.message };
+    }
+    const words = (data || []).map((row: { word: unknown }) => String(row.word));
+    return { success: true, data: words };
+  } catch (err: unknown) {
+    console.error("[加载分词列表] 异常:", err instanceof Error ? err.message : String(err));
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function 添加分词(词: string): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = createAdminClient();
     const { error } = await supabase.from("search_dictionary").insert({ word: 词, created_by: null });
     if (error) {
+      console.error("[添加分词] 数据库错误:", error.message, "| code:", error.code, "| details:", error.details);
       return { success: false, error: error.message };
     }
     return { success: true };
   } catch (err: unknown) {
+    console.error("[添加分词] 异常:", err instanceof Error ? err.message : String(err));
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

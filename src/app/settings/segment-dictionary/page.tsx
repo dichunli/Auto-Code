@@ -1,50 +1,31 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { 中文分词 } from "@/lib/chineseSegmenter";
-import { 添加分词, 删除分词 } from "@/app/knowledge/actions";
+import { 加载分词列表, 添加分词, 删除分词 } from "@/app/knowledge/actions";
 
 export default function SegmentDictionaryPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [words, setWords] = useState<string[]>([]);
   const [newWord, setNewWord] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [previewInput, setPreviewInput] = useState("捷达A5点烟器保险位置");
 
   useEffect(() => {
     async function load() {
       setLoading(true);
-
-      /* 检查管理员权限 */
-      const { data: userData } = await supabase.auth.getUser();
-      const currentUserId = userData.user?.id || "";
-      let admin = false;
-      if (currentUserId) {
-        const { data: roleData } = await supabase
-          .from("profile_roles")
-          .select("roles(name)")
-          .eq("profile_id", currentUserId);
-        admin = (roleData || []).some(
-          (d: { roles?: { name?: string } | null }) => d.roles?.name === "admin"
-        );
+      const result = await 加载分词列表();
+      if (result.success && result.data) {
+        setWords(result.data);
+      } else {
+        setLoadError(result.error || "加载失败");
       }
-      setIsAdmin(admin);
-
-      /* 读取自定义分词 */
-      const { data } = await supabase
-        .from("search_dictionary")
-        .select("word")
-        .order("created_at", { ascending: false });
-      setWords((data || []).map((row) => String(row.word)));
-
       setLoading(false);
     }
     load();
-  }, [supabase]);
+  }, []);
 
   async function handleAdd() {
     const word = newWord.trim();
@@ -101,12 +82,19 @@ export default function SegmentDictionaryPage() {
     );
   }
 
-  if (!isAdmin) {
+  if (loadError) {
     return (
       <div>
         <PageHeader title="搜索分词词典" description="管理知识库搜索的自定义分词" />
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500">
-          只有管理员可以访问此页面
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+          <p className="text-red-500 mb-4">加载失败：{loadError}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+          >
+            重试
+          </button>
         </div>
       </div>
     );
