@@ -35,7 +35,7 @@ function 构建分类树(flatList: 课程分类[]): 课程分类[] {
 }
 
 /* 递归渲染分类行 */
-function 分类行({
+function CategoryRow({
   item,
   depth,
   onEdit,
@@ -94,7 +94,7 @@ function 分类行({
         </td>
       </tr>
       {hasChildren && expanded && item.children!.map((child) => (
-        <分类行
+        <CategoryRow
           key={child.id}
           item={child}
           depth={depth + 1}
@@ -366,7 +366,7 @@ export default function TrainingCategoriesContent({
             </thead>
             <tbody className="divide-y divide-gray-100">
               {分类树.map((item) => (
-                <分类行
+                <CategoryRow
                   key={item.id}
                   item={item}
                   depth={0}

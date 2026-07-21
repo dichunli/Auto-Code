@@ -64,7 +64,7 @@ function 获取子孙分类ID(cat: 课程分类): string[] {
 }
 
 /* 递归渲染分类树节点 */
-function 分类树节点({
+function CategoryTreeNode({
   item,
   depth,
   selectedId,
@@ -109,7 +109,7 @@ function 分类树节点({
         {item.name}
       </button>
       {hasChildren && expanded && item.children!.map((child) => (
-        <分类树节点
+        <CategoryTreeNode
           key={child.id}
           item={child}
           depth={depth + 1}
@@ -325,7 +325,7 @@ export default function TrainingContent({
                 全部
               </button>
               {分类树.map((node) => (
-                <分类树节点
+                <CategoryTreeNode
                   key={node.id}
                   item={node}
                   depth={0}
