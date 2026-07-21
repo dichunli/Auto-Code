@@ -76,6 +76,7 @@ const navItems: NavItem[] = [
     children: [
       { href: "/training", label: "课程列表" },
       { href: "/training/categories", label: "课程分类" },
+      { href: "/training/topics", label: "专题管理" },
       { href: "/training/exam-manage", label: "考题管理" },
       { href: "/training/exam-grade", label: "简答题判卷" },
       { href: "/training/behavior-items", label: "行为项目" },
