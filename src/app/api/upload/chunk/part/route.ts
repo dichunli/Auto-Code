@@ -43,12 +43,7 @@ export async function POST(request: Request) {
   const 分片路径 = path.join(分片目录, `chunk_${chunkIndex}`);
   try {
     await access(分片路径);
-    /* 分片已存在，标记为已完成 */
-    if (!meta.completedChunks.includes(chunkIndex)) {
-      meta.completedChunks.push(chunkIndex);
-      meta.updatedAt = Date.now();
-      await 写入元数据(uploadId, meta);
-    }
+    /* 分片已存在，直接返回成功（幂等）。完成状态以磁盘文件为准，无需更新 meta.json */
     return Response.json({ index: chunkIndex, received: true });
   } catch {
     /* 分片不存在，继续上传 */

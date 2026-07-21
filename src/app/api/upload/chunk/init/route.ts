@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readdir, readFile, rm } from "fs/promises";
+import { mkdir, writeFile, readdir, readFile, rm, access } from "fs/promises";
 import path from "path";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
@@ -219,5 +219,6 @@ export async function POST(request: Request) {
   }
 }
 
-/* 导出供其他端点使用 */
-export { CHUNK_DIR, CHUNK_SIZE, UPLOAD_DIR, 分片元数据, 验证身份, 读取元数据, 写入元数据, 删除分片目录, 获取分片目录, 允许的扩展名 };
+/* 导出供其他端点使用（类型单独用 export type，满足 isolatedModules 要求） */
+export type { 分片元数据 };
+export { CHUNK_DIR, CHUNK_SIZE, UPLOAD_DIR, 验证身份, 读取元数据, 写入元数据, 删除分片目录, 获取分片目录, 允许的扩展名 };
