@@ -1,5 +1,5 @@
--- 培训课程：无限分级 + 专题标签
--- 日期：2026-07-13
+/* 培训课程：无限分级 + 专题标签
+   日期：2026-07-13 */
 
 /* ========================================
    1. 分类支持无限层级（加 parent_id）
@@ -40,13 +40,15 @@ CREATE INDEX IF NOT EXISTS idx_training_course_topics_topic ON training_course_t
 ALTER TABLE training_topics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE training_course_topics ENABLE ROW LEVEL SECURITY;
 
--- 专题：认证用户可读写
+/* 专题：认证用户可读写（先删再建，重复执行不报错） */
+DROP POLICY IF EXISTS "认证用户可读写专题" ON training_topics;
 CREATE POLICY "认证用户可读写专题" ON training_topics
   FOR ALL TO authenticated
   USING (true)
   WITH CHECK (true);
 
--- 课程-专题关联：认证用户可读写
+/* 课程-专题关联：认证用户可读写（先删再建，重复执行不报错） */
+DROP POLICY IF EXISTS "认证用户可读写课程专题关联" ON training_course_topics;
 CREATE POLICY "认证用户可读写课程专题关联" ON training_course_topics
   FOR ALL TO authenticated
   USING (true)
