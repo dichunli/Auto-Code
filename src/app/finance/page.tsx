@@ -3,6 +3,17 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 
+/* 收支流水（含关联账户与分类，多对一关联运行时是对象） */
+interface 收支流水 {
+  id: string;
+  type: string;
+  amount: number | null;
+  description: string | null;
+  transaction_date: string;
+  finance_accounts: { name: string | null } | null;
+  finance_categories: { name: string | null } | null;
+}
+
 export default async function FinancePage() {
   const supabase = await createClient();
 
@@ -173,7 +184,7 @@ export default async function FinancePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {recentTransactions.data?.map((t: { id: string; type: string; amount: number | null; description: string | null; transaction_date: string; finance_categories: { name: string | null } | null; finance_accounts: { name: string | null } | null }) => (
+              {(recentTransactions.data as unknown as 收支流水[] | null)?.map((t) => (
                 <tr key={t.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-gray-600">{formatDate(t.transaction_date)}</td>
                   <td className="px-6 py-4">
