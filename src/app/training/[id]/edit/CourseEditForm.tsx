@@ -148,9 +148,9 @@ export default function CourseEditForm({
             </select>
           </div>
         </div>
-        {topics.length > 0 && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">专题（可多选）</label>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">专题（可多选）</label>
+          {topics.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {topics.map((t) => (
                 <button
@@ -171,8 +171,10 @@ export default function CourseEditForm({
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="text-xs text-gray-400">暂无启用中的专题，可先到专题管理中添加</p>
+          )}
+        </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">课程描述</label>
           <textarea
