@@ -10,7 +10,8 @@ interface Props {
   onClose: () => void;
   orderId: string;
   requirementId: string;
-  vehicleModelId?: number | null;
+  /* 车型ID是 uuid 字符串（vehicle_models.id），此前误声明为 number */
+  vehicleModelId?: string | null;
 }
 
 type ServiceItem = {

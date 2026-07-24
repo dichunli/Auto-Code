@@ -73,8 +73,10 @@ export default async function PartBoardPage({
     .order("created_at", { ascending: false })
     .limit(300);
 
-  const partIds = parts?.map((p: WorkOrderItemPart) => p.id) || [];
-  const relatedPartIds = parts?.map((p: WorkOrderItemPart) => p.part_id).filter(Boolean) || [];
+  /* supabase 类型把多对一关联推断成数组，运行时实为对象，此处断言为页面真实形状 */
+  const 配件列表 = (parts || []) as unknown as WorkOrderItemPart[];
+  const partIds = 配件列表.map((p) => p.id);
+  const relatedPartIds = 配件列表.map((p) => p.part_id).filter(Boolean);
 
   const [{ data: pickingRecords }, { data: returnRecords }, { data: supplierReturnRecords }, { data: partBatches }] =
     await Promise.all([
@@ -119,11 +121,11 @@ export default async function PartBoardPage({
     { key: "picked", label: "已领料" },
   ];
 
-  const processedParts = (parts || []).map((p: WorkOrderItemPart) => {
+  const processedParts = 配件列表.map((p) => {
     const pPickedQty = pickingByPart[p.id] || 0;
     const pReturnQty = returnByPart[p.id] || 0;
     const pNetPicked = pPickedQty - pReturnQty;
-    const pInventory = inventoryByPart[p.part_id] || 0;
+    const pInventory = inventoryByPart[p.part_id as string] || 0;
     const pHasPendingSupplierReturn = pendingSupplierReturnByPart[p.id] || false;
 
     const status = getPartWorkflowStatus({

@@ -4,7 +4,7 @@ import { buildWorkOrderView, type WorkOrderViewInput } from "./workOrderView";
 // 构造一个最小可用的输入，测试时按需覆盖个别字段
 function 造输入(覆盖: Partial<WorkOrderViewInput> = {}): WorkOrderViewInput {
   return {
-    order: { status: "received", vehicles: null },
+    order: { id: "o1", status: "received", vehicles: null },
     requirements: [],
     items: [],
     itemMedia: [],
@@ -28,14 +28,14 @@ function 造输入(覆盖: Partial<WorkOrderViewInput> = {}): WorkOrderViewInput
 describe("预收款净额 advancePaymentTotal", () => {
   it("多笔预收款累加", () => {
     const v = buildWorkOrderView(造输入({
-      advancePaymentRecords: [{ amount: 100 }, { amount: 50 }],
+      advancePaymentRecords: [{ id: "a1", amount: 100 }, { id: "a2", amount: 50 }],
     }));
     expect(v.advancePaymentTotal).toBe(150);
   });
 
   it("扣除已退款金额", () => {
     const v = buildWorkOrderView(造输入({
-      advancePaymentRecords: [{ amount: 200, refunded_amount: 80 }],
+      advancePaymentRecords: [{ id: "a1", amount: 200, refunded_amount: 80 }],
     }));
     expect(v.advancePaymentTotal).toBe(120);
   });
@@ -129,13 +129,13 @@ describe("配件分组 partGroupsByItem", () => {
 
 describe("工单锁定状态 isLocked", () => {
   it("已结算/已交付/待结算为锁定", () => {
-    expect(buildWorkOrderView(造输入({ order: { status: "settled", vehicles: null } })).isLocked).toBe(true);
-    expect(buildWorkOrderView(造输入({ order: { status: "delivered", vehicles: null } })).isLocked).toBe(true);
-    expect(buildWorkOrderView(造输入({ order: { status: "pending_settlement", vehicles: null } })).isLocked).toBe(true);
+    expect(buildWorkOrderView(造输入({ order: { id: "o1", status: "settled", vehicles: null } })).isLocked).toBe(true);
+    expect(buildWorkOrderView(造输入({ order: { id: "o1", status: "delivered", vehicles: null } })).isLocked).toBe(true);
+    expect(buildWorkOrderView(造输入({ order: { id: "o1", status: "pending_settlement", vehicles: null } })).isLocked).toBe(true);
   });
 
   it("施工中等状态不锁定", () => {
-    expect(buildWorkOrderView(造输入({ order: { status: "received", vehicles: null } })).isLocked).toBe(false);
+    expect(buildWorkOrderView(造输入({ order: { id: "o1", status: "received", vehicles: null } })).isLocked).toBe(false);
   });
 });
 

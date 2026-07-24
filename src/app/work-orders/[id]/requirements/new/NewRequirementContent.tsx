@@ -8,7 +8,7 @@ import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
 import { ReworkSelectModal } from "@/components/ReworkSelectModal";
 import { PriceValue } from "@/components/PriceVisibilityContext";
-import { calculateItemCommission, calculatePartCommission } from "@/lib/commission";
+import { calculateItemCommission, calculatePartCommission, type CommissionSource } from "@/lib/commission";
 import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
 
 /* ==================== 类型定义 ==================== */
@@ -249,8 +249,6 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     supabase.from("logistics_companies").select("*").order("name").limit(100).then(({ data }) => setLogisticsCompanies((data as 物流公司[]) || []));
     // 加载所有标准项目（含分类信息）
     supabase.from("service_items").select("*, service_categories(name)").order("name").limit(100).then(({ data }) => setAllServiceItems((data as 维修项目[]) || []));
-    // 加载员工列表
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").limit(100).then(({ data }) => setProfiles((data as 员工[]) || []));
     // 获取当前用户信息
     supabase.auth.getUser().then(async ({ data: authData }) => {
       if (authData?.user) {
@@ -353,7 +351,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
   function updateItem(index: number, field: keyof 项目行, value: string | boolean) {
     const next = [...items];
      
-    (next[index] as Record<string, unknown>)[field] = value;
+    (next[index] as unknown as Record<string, unknown>)[field] = value;
 
     if (field === "category_id") {
       next[index].service_name_id = "";
@@ -396,7 +394,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
   function updatePart(itemIndex: number, partIndex: number, field: keyof 配件行, value: string | boolean) {
     const next = [...items];
      
-    (next[itemIndex].parts[partIndex] as Record<string, unknown>)[field] = value;
+    (next[itemIndex].parts[partIndex] as unknown as Record<string, unknown>)[field] = value;
 
     if (field === "part_name_id") {
       next[itemIndex].parts[partIndex].part_id = "";
@@ -466,9 +464,10 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       next[itemIndex].parts[partIndex].part_number = partNumber.trim();
       setItems(next);
       // 加载该配件名称下的具体配件列表
-      if (m.part_names?.id) {
-        supabase.from("parts").select("*, part_brands(name)").eq("part_name_id", m.part_names.id).order("created_at").then(({ data }) => {
-          setPartsByName((prev) => ({ ...prev, [m.part_names!.id]: (data as 配件实例[]) || [] }));
+      const 配件名称ID = m.part_names?.id;
+      if (配件名称ID) {
+        supabase.from("parts").select("*, part_brands(name)").eq("part_name_id", 配件名称ID).order("created_at").then(({ data }) => {
+          setPartsByName((prev) => ({ ...prev, [配件名称ID]: (data as 配件实例[]) || [] }));
         });
       }
     }
@@ -790,6 +789,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       const unitPrice = vPrice?.toString() ?? si.default_price?.toString() ?? "";
       return {
         category_id: si.category_id || "",
+        service_name_id: "",
         service_item_id: si.id,
         name: si.name || "",
         alias_name: "",
@@ -882,7 +882,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     const revenue = (parseFloat(item.quantity) || 1) * (parseFloat(item.unit_price) || 0);
     const serviceItem = allServiceItems.find((s) => s.id === item.service_item_id);
     const category = categories.find((c) => c.id === item.category_id);
-    return calculateItemCommission(item, serviceItem, null, category, revenue, 0);
+    return calculateItemCommission(item as unknown as CommissionSource, serviceItem as unknown as CommissionSource | undefined, null, category as unknown as CommissionSource | undefined, revenue, 0);
   }
 
   // 计算配件预估提成
@@ -894,7 +894,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     const cost = qty * (parseFloat(part.unit_cost) || 0);
     const partInstance = (partsByName[part.part_name_id] || []).find((p) => p.id === part.part_id);
     const partName = partNames.find((pn) => pn.id === part.part_name_id);
-    return calculatePartCommission(partInstance, partName, revenue, cost);
+    return calculatePartCommission(partInstance as unknown as CommissionSource | undefined, partName as unknown as CommissionSource | undefined, revenue, cost);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -1610,8 +1610,8 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
               <div><span className="text-gray-400">配件编号：</span>{partMatchModal.matchedPart.part_number || "-"}</div>
               <div><span className="text-gray-400">品牌：</span>{partMatchModal.matchedPart.part_brands?.name || "-"}</div>
               <div><span className="text-gray-400">规格：</span>{partMatchModal.matchedPart.specification_text || "-"}</div>
-              <div><span className="text-gray-400">成本价：</span><PriceValue value={partMatchModal.matchedPart.unit_cost} /></div>
-              <div><span className="text-gray-400">销售价：</span><PriceValue value={partMatchModal.matchedPart.unit_price} /></div>
+              <div><span className="text-gray-400">成本价：</span><PriceValue value={partMatchModal.matchedPart.unit_cost ?? null} /></div>
+              <div><span className="text-gray-400">销售价：</span><PriceValue value={partMatchModal.matchedPart.unit_price ?? null} /></div>
             </div>
             <div className="flex gap-3 justify-end">
               <button

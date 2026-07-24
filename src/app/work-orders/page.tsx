@@ -314,7 +314,7 @@ export default async function WorkOrdersPage(props: {
             </div>
           </div>
           <div className="flex-1" />
-          <WorkOrderSearch keyword={keyword} baseParams={baseParams} />
+          <WorkOrderSearch keyword={keyword} />
         </div>
       )}
 
@@ -329,7 +329,7 @@ export default async function WorkOrdersPage(props: {
             </Link>
           </div>
           <div className="flex-1" />
-          <WorkOrderSearch keyword={keyword} baseParams={baseParams} />
+          <WorkOrderSearch keyword={keyword} />
         </div>
       )}
 

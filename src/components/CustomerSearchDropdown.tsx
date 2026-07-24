@@ -7,7 +7,8 @@ import { SearchDropdown } from "./SearchDropdown";
 export interface CustomerTag {
   id: string;
   name: string;
-  color: string;
+  /* 库里允许 NULL，展示时已用 || 兜底 */
+  color: string | null;
 }
 
 export interface Customer {
@@ -19,7 +20,7 @@ export interface Customer {
   customer_tags?: { tags: CustomerTag }[] | null;
 }
 
-export function StarDisplay({ level }: { level?: number }) {
+export function StarDisplay({ level }: { level?: number | null }) {
   if (!level || level < 1) return null;
   const stars = Array.from({ length: 5 }, (_, i) => (i < level ? "★" : "☆"));
   return (
@@ -29,7 +30,7 @@ export function StarDisplay({ level }: { level?: number }) {
   );
 }
 
-export function TagDisplay({ tags }: { tags?: { tags: CustomerTag | CustomerTag[] }[] | null }) {
+export function TagDisplay({ tags }: { tags?: { tags: CustomerTag | CustomerTag[] | null }[] | null }) {
   if (!tags || tags.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1 mt-1">

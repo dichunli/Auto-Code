@@ -274,7 +274,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
         setTireChecks(data.tire_checks || { fl: "", fr: "", rl: "", rr: "" });
         setNotes(data.notes || "");
 
-        const media = data.work_order_inspection_media || [];
+        const media = (data.work_order_inspection_media || []) as InspectionMedia[];
         const oilBeforeMedia = media.find((m) => m.media_type === "engine_oil_before");
         const oilAfterMedia = media.find((m) => m.media_type === "engine_oil_after");
         if (oilBeforeMedia) {

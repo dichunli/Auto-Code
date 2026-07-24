@@ -1,4 +1,10 @@
 import { calculateItemCommission, calculatePartCommission } from "@/lib/commission";
+import type { CommissionSource } from "@/lib/commission";
+import type {
+  工单信息, 维修项目, 配件分支, 维修需求, 媒体记录, 项目技师,
+  知识库链接, 检查记录, 预收款记录, 其他工单,
+  领料记录, 退料记录, 供应商退货记录, 配件批次,
+} from "@/lib/workOrderData";
 
 /**
  * 工单详情页「数据加工」——把 getWorkOrderData 查出的零散数据，
@@ -27,6 +33,7 @@ export interface MediaRecord {
   inspection_id?: string;
   storage_path?: string;
   media_type?: string;
+  annotations?: { x1: number; y1: number; x2: number; y2: number }[] | null;
   [key: string]: unknown;
 }
 
@@ -64,41 +71,31 @@ export interface PartGroupInfo {
 }
 
 // ── 内部计算用到的零散记录形状 ──
-interface BatchRecord { part_id?: string; quantity?: number; [key: string]: unknown }
-interface PickingRecord { work_order_item_part_id?: string; quantity?: number; [key: string]: unknown }
-interface ReturnRecord { work_order_item_part_id?: string; quantity?: number; [key: string]: unknown }
-interface SupplierReturnRecord { work_order_item_part_id?: string; status?: string; [key: string]: unknown }
 interface KnowledgeLink {
-  service_item_id?: string;
+  service_item_id?: string | null;
   knowledge_articles?: { id?: string } | null;
   [key: string]: unknown;
 }
-interface WorkOrderItem {
-  id: string;
-  service_item_id?: string | null;
-  service_items?: { id?: string | null } | null;
-  [key: string]: unknown;
-}
 
-// ── 函数入参：getWorkOrderData 的结果（按页面实际访问的字段声明） ──
+// ── 函数入参：getWorkOrderData 的结果（与 WorkOrderDataResult 对齐）──
 export interface WorkOrderViewInput {
-  order: { vehicles?: { vehicle_model_id?: string; vin?: string } | null; status: string; [key: string]: unknown } | null;
-  requirements: unknown[] | null;
-  items: Array<{ id: string; service_item_id?: string | null; service_items?: unknown; total_price?: number; quantity?: number; unit_price?: number; unit_cost?: number; sort_order?: number; requirement_id?: string | null; [key: string]: unknown }> | null;
-  itemMedia: unknown[];
-  itemMechanics: Array<{ work_order_item_id: string; [key: string]: unknown }> | null;
-  requirementMedia: unknown[];
-  knowledgeLinks: unknown[];
-  itemParts: Array<{ work_order_item_id: string; is_arrived?: boolean; part_id?: string | null; quantity?: number; unit_price?: number; unit_cost?: number; parts?: unknown; part_names?: unknown; sort_order?: number; created_at?: string; [key: string]: unknown }> | null;
-  partMedia: unknown[] | null;
-  pickingRecords: unknown[] | null;
-  returnRecords: unknown[] | null;
-  supplierReturnRecords: unknown[] | null;
-  partBatches: unknown[] | null;
-  inspections: unknown[] | null;
-  inspectionMedia: unknown[];
-  advancePaymentRecords: unknown[] | null;
-  otherOrdersByType: unknown[] | null;
+  order: 工单信息 | null;
+  requirements: 维修需求[] | null;
+  items: 维修项目[] | null;
+  itemMedia: 媒体记录[];
+  itemMechanics: 项目技师[];
+  requirementMedia: 媒体记录[];
+  knowledgeLinks: 知识库链接[];
+  itemParts: 配件分支[] | null;
+  partMedia: 媒体记录[] | null;
+  pickingRecords: 领料记录[] | null;
+  returnRecords: 退料记录[] | null;
+  supplierReturnRecords: 供应商退货记录[] | null;
+  partBatches: 配件批次[] | null;
+  inspections: 检查记录[] | null;
+  inspectionMedia: 媒体记录[];
+  advancePaymentRecords: 预收款记录[] | null;
+  otherOrdersByType: 其他工单[] | null;
 }
 
 export function buildWorkOrderView(input: WorkOrderViewInput) {
@@ -110,7 +107,7 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
 
   // 预收款净额（从记录表实时计算，扣除已退款）
   const advancePaymentTotal = (advancePaymentRecords || []).reduce(
-    (sum: number, r: { amount?: number; refunded_amount?: number }) => sum + (r.amount || 0) - (r.refunded_amount || 0),
+    (sum, r) => sum + (r.amount || 0) - (r.refunded_amount || 0),
     0
   );
 
@@ -120,14 +117,14 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
   const vehicleVin = order?.vehicles?.vin;
 
   // 统计同车辆其他类型工单
-  const typeCountMap: Record<string, { count: number; orders: { id: string; order_no: string }[] }> = {};
+  const typeCountMap: Record<string, { count: number; orders: { id: string; order_no?: string | null }[] }> = {};
   const typeLabelMapForDisplay: Record<string, string> = {
     appointment: "预约工单",
     quote: "历史报价单",
     cancelled: "作废工单",
     maintenance: "保养工单",
   };
-  (otherOrdersByType || []).forEach((o: { order_type?: string; id: string; order_no: string }) => {
+  (otherOrdersByType || []).forEach((o) => {
     const t = o.order_type || "normal";
     if (t === "normal") return; // 正常工单不显示
     if (!typeCountMap[t]) {
@@ -138,97 +135,100 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
   });
 
   // 查询未关联具体配件但已到货的分支，用于入库自动填写
-  const pendingInboundParts = itemParts?.filter((p: { is_arrived?: boolean; part_id?: string | null }) => p.is_arrived && !p.part_id) || [];
+  const pendingInboundParts = itemParts?.filter((p) => p.is_arrived && !p.part_id) || [];
 
   // 按项目分组施工人
-  const mechanicsByItem: Record<string, unknown[]> = {};
+  const mechanicsByItem: Record<string, 项目技师[]> = {};
   if (itemMechanics) {
     for (const m of itemMechanics) {
       const itemId = m.work_order_item_id;
+      if (!itemId) continue;
       if (!mechanicsByItem[itemId]) mechanicsByItem[itemId] = [];
       mechanicsByItem[itemId].push(m);
     }
   }
 
   // 按项目分组配件，并按 sort_order 排序
-  const partsByItem: Record<string, ItemPart[]> = {};
-  itemParts?.forEach((p: ItemPart) => {
-    if (!partsByItem[p.work_order_item_id]) partsByItem[p.work_order_item_id] = [];
-    partsByItem[p.work_order_item_id].push(p);
+  const partsByItem: Record<string, 配件分支[]> = {};
+  itemParts?.forEach((p) => {
+    /* 库中 work_order_item_id 必填；断言仅为保留原"按 undefined 归组"的旧行为 */
+    const 项目ID = p.work_order_item_id as string;
+    if (!partsByItem[项目ID]) partsByItem[项目ID] = [];
+    partsByItem[项目ID].push(p);
   });
   Object.values(partsByItem).forEach((arr) => {
     arr.sort((a, b) => {
       const sortDiff = (a.sort_order || 0) - (b.sort_order || 0);
       if (sortDiff !== 0) return sortDiff;
-      const timeA = a.created_at ? new Date(a.created_at as string).getTime() : 0;
-      const timeB = b.created_at ? new Date(b.created_at as string).getTime() : 0;
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
       return (timeA || 0) - (timeB || 0);
     });
   });
 
   // items 按 sort_order 排序（兼容未执行迁移的情况）
-  const sortedItems = (items || []).slice().sort((a: SortableRecord, b: SortableRecord) => (a.sort_order || 0) - (b.sort_order || 0));
+  const sortedItems = (items || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
   // 按需求分组多媒体
   const mediaByRequirement: Record<string, MediaRecord[]> = {};
-  (requirementMedia as MediaRecord[] | null)?.forEach((m: MediaRecord) => {
+  (requirementMedia as unknown as MediaRecord[] | null)?.forEach((m) => {
     if (!mediaByRequirement[m.requirement_id!]) mediaByRequirement[m.requirement_id!] = [];
     mediaByRequirement[m.requirement_id!].push(m);
   });
 
   // 按项目分组图片
   const imagesByItem: Record<string, MediaRecord[]> = {};
-  (itemMedia as MediaRecord[] | null)?.forEach((m: MediaRecord) => {
+  (itemMedia as unknown as MediaRecord[] | null)?.forEach((m) => {
     if (!imagesByItem[m.work_order_item_id!]) imagesByItem[m.work_order_item_id!] = [];
     imagesByItem[m.work_order_item_id!].push(m);
   });
 
   // 按配件分支分组图片
   const imagesByPart: Record<string, MediaRecord[]> = {};
-  (partMedia as MediaRecord[] | null)?.forEach((m: MediaRecord) => {
+  (partMedia as unknown as MediaRecord[] | null)?.forEach((m) => {
     if (!imagesByPart[m.work_order_item_part_id!]) imagesByPart[m.work_order_item_part_id!] = [];
     imagesByPart[m.work_order_item_part_id!].push(m);
   });
 
   // 按检查记录分组媒体
   const mediaByInspection: Record<string, MediaRecord[]> = {};
-  (input.inspectionMedia as MediaRecord[] | null)?.forEach((m: MediaRecord) => {
+  (input.inspectionMedia as unknown as MediaRecord[] | null)?.forEach((m) => {
     if (!mediaByInspection[m.inspection_id!]) mediaByInspection[m.inspection_id!] = [];
     mediaByInspection[m.inspection_id!].push(m);
   });
 
   // 配件库存聚合
   const inventoryByPart: Record<string, number> = {};
-  (partBatches as BatchRecord[] | null)?.forEach((b: BatchRecord) => {
+  (partBatches || []).forEach((b) => {
     inventoryByPart[b.part_id!] = (inventoryByPart[b.part_id!] || 0) + (b.quantity || 0);
   });
 
   // 领料 / 退库 / 退货聚合
   const pickingByPart: Record<string, number> = {};
-  (pickingRecords as PickingRecord[] | null)?.forEach((r: PickingRecord) => {
+  (pickingRecords || []).forEach((r) => {
     pickingByPart[r.work_order_item_part_id!] = (pickingByPart[r.work_order_item_part_id!] || 0) + (r.quantity || 0);
   });
 
   const returnByPart: Record<string, number> = {};
-  (returnRecords as ReturnRecord[] | null)?.forEach((r: ReturnRecord) => {
+  (returnRecords || []).forEach((r) => {
     returnByPart[r.work_order_item_part_id!] = (returnByPart[r.work_order_item_part_id!] || 0) + (r.quantity || 0);
   });
 
   const pendingSupplierReturnByPart: Record<string, boolean> = {};
-  (supplierReturnRecords as SupplierReturnRecord[] | null)?.forEach((r: SupplierReturnRecord) => {
+  (supplierReturnRecords || []).forEach((r) => {
     if (r.status === "pending") pendingSupplierReturnByPart[r.work_order_item_part_id!] = true;
   });
 
   // 按项目分组知识库文章（先建索引 + Set 去重，O(n+k)）
   const knowledgeByItem: Record<string, KnowledgeLink[]> = {};
   const itemIdsByServiceItemId: Record<string, string[]> = {};
-  (items as WorkOrderItem[] | null)?.forEach((item: WorkOrderItem) => {
+  (items || []).forEach((item) => {
     if (item.service_item_id) {
       (itemIdsByServiceItemId[item.service_item_id] ||= []).push(item.id);
     }
   });
   const knowledgeSeen = new Set<string>();
-  (knowledgeLinks as KnowledgeLink[] | null)?.forEach((link: KnowledgeLink) => {
+  (knowledgeLinks || []).forEach((link) => {
     const matchedItemIds = new Set<string>();
     if (link.service_item_id) {
       (itemIdsByServiceItemId[link.service_item_id] || []).forEach((id) => matchedItemIds.add(id));
@@ -246,8 +246,8 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
   // ========== 预计算：消除渲染时重复遍历和 O(m×n) 匹配 ==========
 
   // 1. 需求→项目映射（避免 requirements.map 内部反复 filter sortedItems）
-  const itemsByRequirement = new Map<string, RequirementItem[]>();
-  for (const item of sortedItems as RequirementItem[]) {
+  const itemsByRequirement = new Map<string, 维修项目[]>();
+  for (const item of sortedItems) {
     if (item.requirement_id) {
       const arr = itemsByRequirement.get(item.requirement_id);
       if (arr) arr.push(item);
@@ -256,20 +256,20 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
   }
 
   // 2. inspections 预分组（避免重复 filter 4 次）
-  const receptionInspections: InspectionRecord[] = [];
-  const conditionInspections: InspectionRecord[] = [];
-  for (const insp of (inspections || []) as InspectionRecord[]) {
+  const receptionInspections: 检查记录[] = [];
+  const conditionInspections: 检查记录[] = [];
+  for (const insp of (inspections || [])) {
     if (insp.inspection_type === 'reception') receptionInspections.push(insp);
     else if (insp.inspection_type === 'inspection') conditionInspections.push(insp);
   }
 
   // 3. 未关联需求的项目（避免重复 filter）
-  const orphanItems = (sortedItems as RequirementItem[]).filter((item) => !item.requirement_id);
+  const orphanItems = sortedItems.filter((item) => !item.requirement_id);
 
   // 4. 配件按项目预分组 + 预排序 + 预计算 extraIdMap（避免渲染时重复计算）
   const partGroupsByItem = new Map<string, PartGroupInfo[]>();
   for (const itemId of Object.keys(partsByItem)) {
-    const parts = partsByItem[itemId] as PartBranch[];
+    const parts = partsByItem[itemId] as unknown as PartBranch[];
     const groups: Record<string, { name: string; parts: PartBranch[] }> = {};
     for (const p of parts) {
       const key = p.branch_group_id || p.part_name_id || `no_name_${p.id}`;
@@ -305,8 +305,8 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
   let totalCommission = 0;
   for (const item of items || []) {
     const comm = calculateItemCommission(
-      item,
-      item.service_items,
+      item as unknown as CommissionSource,
+      item.service_items as unknown as CommissionSource | null,
       null,
       null,
       item.total_price || 0,
@@ -319,7 +319,12 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
     if (!p.is_selected) continue;
     const revenue = (p.quantity || 0) * (p.unit_price || 0);
     const cost = (p.quantity || 0) * (p.unit_cost || 0);
-    const comm = calculatePartCommission(p.parts, p.part_names, revenue, cost);
+    const comm = calculatePartCommission(
+      p.parts as unknown as CommissionSource | null,
+      p.part_names as unknown as CommissionSource | null,
+      revenue,
+      cost
+    );
     totalCommission += comm.sales + comm.repair + comm.picking + comm.diagnosis + comm.qc;
   }
 

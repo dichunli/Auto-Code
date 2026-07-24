@@ -5,8 +5,13 @@ import { createClient } from "@/lib/supabase/server";
 // ── 工单关联的车型（vehicle_models 表，字段名为中文）──
 export interface 车型信息 {
   id?: string;
+  品牌?: string | null;
+  车系?: string | null;
+  车型?: string | null;
   排量?: string | null;
   变速箱类型?: string | null;
+  变速箱详情?: string | null;
+  发动机型号?: string | null;
   年份?: string | null;
   vehicle_model_id?: string | null;
   [key: string]: unknown;
@@ -89,7 +94,7 @@ export interface 维修项目 {
   sort_order?: number | null;
   created_at?: string | null;
   service_items?: { id?: string | null; [key: string]: unknown } | null;
-  outsource_order_items?: unknown[] | null;
+  outsource_order_items?: 外包单项目[] | null;
   [key: string]: unknown;
 }
 
@@ -125,35 +130,208 @@ export interface 配件分支 {
   [key: string]: unknown;
 }
 
+// ── 员工档案（profiles，派工/提交人显示用）──
+export interface 员工档案 {
+  id: string;
+  full_name?: string | null;
+  group_id?: string | null;
+  profile_roles?: { roles?: { name?: string | null } | null }[] | null;
+  mechanic_levels?: { sort_order?: number | null } | null;
+  is_mechanic?: boolean;
+  group_name?: string | null;
+  level_sort?: number;
+}
+
+// ── 技师组（派工弹窗"按组派工"用，由 employee_groups + profiles 组装）──
+export interface 技师组成员 {
+  mechanic_id: string;
+  profiles: { full_name?: string | null } | null;
+}
+export interface 技师组 {
+  id: string;
+  name: string;
+  mechanic_group_members: 技师组成员[];
+}
+
+// ── 维修需求（work_order_requirements）──
+export interface 维修需求 {
+  id: string;
+  seq?: number;
+  submitted_by?: string | null;
+  assigned_to?: string | null;
+  assigned_to_profile?: { full_name?: string | null } | null;
+  assignment_type?: string | null;
+  notes?: string | null;
+  [key: string]: unknown;
+}
+
+// ── 媒体记录（需求/项目/配件/检查的照片视频）──
+export interface 媒体记录 {
+  id?: string;
+  requirement_id?: string;
+  work_order_item_id?: string;
+  work_order_item_part_id?: string;
+  inspection_id?: string;
+  storage_path?: string | null;
+  media_type?: string | null;
+  annotations?: { x1: number; y1: number; x2: number; y2: number }[] | null;
+  [key: string]: unknown;
+}
+
+// ── 项目施工人（work_order_item_mechanics）──
+export interface 项目技师 {
+  work_order_item_id?: string;
+  mechanic_id?: string;
+  share_pct?: number | null;
+  profiles?: { full_name?: string | null } | null;
+  [key: string]: unknown;
+}
+
+// ── 知识库链接（knowledge_service_links）──
+export interface 知识库链接 {
+  article_id?: string;
+  service_item_id?: string | null;
+  service_name_id?: string | null;
+  knowledge_articles?: { id?: string; title?: string | null; type?: string | null; [key: string]: unknown } | null;
+  [key: string]: unknown;
+}
+
+// ── 检查记录（work_order_inspections，接车检查/车况检查）──
+export interface 检查记录 {
+  id: string;
+  inspection_type?: string;
+  created_at?: string | null;
+  notes?: string | null;
+  submitter_id?: string | null;
+  inspection_mileage?: number | null;
+  dashboard_fault_lights?: string[] | null;
+  engine_oil_before_level?: number | null;
+  engine_oil_after_level?: number | null;
+  drive_belt_status?: string | null;
+  tire_checks?: Record<string, string> | null;
+  light_checks?: Record<string, string> | null;
+  coolant_ph?: number | null;
+  brake_fluid_water?: number | null;
+  battery_health?: number | null;
+  battery_voltage?: number | null;
+  front_brake_pad_thickness?: number | null;
+  rear_brake_pad_thickness?: number | null;
+  exhaust_hc?: number | null;
+  exhaust_co?: number | null;
+  exhaust_no?: number | null;
+  exhaust_co2?: number | null;
+  exhaust_o2?: number | null;
+  [key: string]: unknown;
+}
+
+// ── 质检记录 ──
+export interface 质检记录 {
+  id: string;
+  result?: string | null;
+  created_at?: string | null;
+  notes?: string | null;
+  profiles?: { full_name?: string | null } | null;
+}
+
+// ── 支付记录 ──
+export interface 支付记录 {
+  id: string;
+  method?: string | null;
+  amount?: number | null;
+  paid_at?: string | null;
+}
+
+// ── 预收款记录 ──
+export interface 预收款记录 {
+  id: string;
+  amount?: number | null;
+  refunded_amount?: number | null;
+  refunded_at?: string | null;
+  method?: string | null;
+  refund_method?: string | null;
+  collector_name?: string | null;
+  paid_at?: string | null;
+  profiles?: { full_name?: string | null } | null;
+  [key: string]: unknown;
+}
+
+// ── 回访记录 ──
+export interface 回访记录 {
+  id: string;
+  scheduled_at?: string | null;
+  completed_at?: string | null;
+  method?: string | null;
+  result?: string | null;
+  notes?: string | null;
+}
+
+// ── 状态变更历史 ──
+export interface 状态历史 {
+  id: string;
+  from_status?: string | null;
+  to_status?: string | null;
+  created_at?: string | null;
+}
+
+// ── 供应商 / 物流公司 ──
+export interface 供应商 { id: string; name: string }
+export interface 物流公司 { id: string; name: string }
+
+// ── 外包单（outsource_orders + outsource_order_items）──
+export interface 外包单项目 {
+  id: string;
+  work_order_item_id?: string | null;
+  service_item_id?: string | null;
+  service_name?: string | null;
+  amount?: number | null;
+}
+export interface 外包单 {
+  id: string;
+  order_no?: string | null;
+  is_paid?: boolean | null;
+  created_at?: string | null;
+  suppliers?: { name?: string | null } | null;
+  outsource_order_items?: 外包单项目[] | null;
+}
+
+// ── 同车辆其他类型工单 ──
+export interface 其他工单 { id: string; order_no?: string | null; order_type?: string | null }
+
+// ── 领料/退料/供应商退货/库存批次 ──
+export interface 领料记录 { work_order_item_part_id?: string; quantity?: number | null }
+export interface 退料记录 { work_order_item_part_id?: string; quantity?: number | null }
+export interface 供应商退货记录 { work_order_item_part_id?: string; status?: string | null }
+export interface 配件批次 { part_id?: string; quantity?: number | null }
+
 interface WorkOrderDataResult {
   order: 工单信息 | null;
-  requirements: unknown[] | null;
-  profiles: unknown[] | null;
-  requirementMedia: unknown[];
+  requirements: 维修需求[] | null;
+  profiles: 员工档案[] | null;
+  requirementMedia: 媒体记录[];
   items: 维修项目[] | null;
-  itemsError: unknown;
-  itemMedia: unknown[];
-  itemMechanics: unknown[];
-  mechanicGroups: unknown[] | null;
-  knowledgeLinks: unknown[];
+  itemsError: { message: string } | null;
+  itemMedia: 媒体记录[];
+  itemMechanics: 项目技师[];
+  mechanicGroups: 技师组[];
+  knowledgeLinks: 知识库链接[];
   itemParts: 配件分支[] | null;
-  partMedia: unknown[] | null;
-  pickingRecords: unknown[] | null;
-  returnRecords: unknown[] | null;
-  supplierReturnRecords: unknown[] | null;
-  partBatches: unknown[] | null;
-  qualityChecks: unknown[] | null;
-  payments: unknown[] | null;
-  advancePaymentRecords: unknown[] | null;
-  followUps: unknown[] | null;
-  history: unknown[] | null;
-  suppliers: unknown[] | null;
-  logisticsCompanies: unknown[] | null;
-  inspections: unknown[] | null;
-  inspectionMedia: unknown[];
-  outsourceOrder: unknown | null;
+  partMedia: 媒体记录[] | null;
+  pickingRecords: 领料记录[] | null;
+  returnRecords: 退料记录[] | null;
+  supplierReturnRecords: 供应商退货记录[] | null;
+  partBatches: 配件批次[] | null;
+  qualityChecks: 质检记录[] | null;
+  payments: 支付记录[] | null;
+  advancePaymentRecords: 预收款记录[] | null;
+  followUps: 回访记录[] | null;
+  history: 状态历史[] | null;
+  suppliers: 供应商[] | null;
+  logisticsCompanies: 物流公司[] | null;
+  inspections: 检查记录[] | null;
+  inspectionMedia: 媒体记录[];
+  outsourceOrder: 外包单 | null;
   historyOrderCount: number | null;
-  otherOrdersByType: unknown[] | null;
+  otherOrdersByType: 其他工单[] | null;
   customerOrderCount: number | null;
 }
 
@@ -350,15 +528,15 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
 
   // 从嵌套查询结果中提取关联数据，保持与原有数据结构一致
   // 从嵌套查询结果中提取关联数据
-  const requirementMedia: unknown[] = [];
-  const itemMedia: unknown[] = [];
-  const itemMechanics: unknown[] = [];
-  const inspectionMedia: unknown[] = [];
+  const requirementMedia: 媒体记录[] = [];
+  const itemMedia: 媒体记录[] = [];
+  const itemMechanics: 项目技师[] = [];
+  const inspectionMedia: 媒体记录[] = [];
 
   requirements?.forEach((req: unknown) => {
     const r = req as Record<string, unknown>;
     if (r.work_order_requirement_media) {
-      requirementMedia.push(...(r.work_order_requirement_media as unknown[]));
+      requirementMedia.push(...(r.work_order_requirement_media as 媒体记录[]));
       delete r.work_order_requirement_media;
     }
   });
@@ -366,11 +544,11 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
   items?.forEach((item: unknown) => {
     const it = item as Record<string, unknown>;
     if (it.work_order_item_media) {
-      itemMedia.push(...(it.work_order_item_media as unknown[]));
+      itemMedia.push(...(it.work_order_item_media as 媒体记录[]));
       delete it.work_order_item_media;
     }
     if (it.work_order_item_mechanics) {
-      itemMechanics.push(...(it.work_order_item_mechanics as unknown[]));
+      itemMechanics.push(...(it.work_order_item_mechanics as 项目技师[]));
       delete it.work_order_item_mechanics;
     }
   });
@@ -378,7 +556,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
   inspections?.forEach((insp: unknown) => {
     const i = insp as Record<string, unknown>;
     if (i.work_order_inspection_media) {
-      inspectionMedia.push(...(i.work_order_inspection_media as unknown[]));
+      inspectionMedia.push(...(i.work_order_inspection_media as 媒体记录[]));
       delete i.work_order_inspection_media;
     }
   });
@@ -407,5 +585,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     customerOrderCount: customerOrderCount ?? null,
   };
 
-  return result;
+  /* supabase-js 会把多对一关联（如 assigned_to_profile、vehicles）在类型上推断成数组，
+   * 但运行时实际是对象。这里做一次边界断言，让下游页面拿到真实形状的类型。 */
+  return result as unknown as WorkOrderDataResult;
 });
