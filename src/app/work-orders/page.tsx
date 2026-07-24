@@ -4,6 +4,7 @@ import Link from "next/link";
 import WorkOrdersContent from "./WorkOrdersContent";
 import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
 import WorkOrderSearch from "@/components/WorkOrderSearch";
+import { 保养单草稿前缀 } from "@/lib/maintenance";
 
 /* ═════════════════════════════════════════════════════════════════
  * 工单列表页 — Server Component
@@ -170,6 +171,10 @@ export default async function WorkOrdersPage(props: {
   /* 工单类型筛选（SQL 层） */
   if (type) {
     query = query.eq("order_type", type);
+    /* 保养单列表排除未保存的草稿（DRAFT- 前缀单号） */
+    if (type === "maintenance") {
+      query = query.not("order_no", "like", 保养单草稿前缀 + "%");
+    }
   }
 
   /* 状态筛选（SQL 层能处理的） */
