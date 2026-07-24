@@ -177,6 +177,40 @@ export function clearWorkOrderDataCache(_id?: string) {
   /* no-op：React cache() 在请求结束后自动失效，无需手动清理 */
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+ * 基础数据内存缓存（30 分钟）
+ *
+ * 员工/员工分组/供应商/物流公司是全厂通用数据，几乎不变，但每次打开工单
+ * 详情页都要各查一次境外数据库（1~2 秒/次）。缓存 30 分钟可显著减少境外
+ * 往返、降低超时概率。数据变动时由管理页面调用 清基础数据缓存() 主动清除，
+ * 因此不会出现"新增了员工但详情页看不到"的延迟。
+ *
+ * 缓存存于本机服务器进程内存（PM2 单实例），重启自动清空，无一致性问题。
+ * ═══════════════════════════════════════════════════════════════════ */
+const 基础缓存 = new Map<string, { data: unknown; 时间: number }>();
+const 基础缓存时长 = 30 * 60 * 1000; // 30 分钟
+
+/** 清空基础数据缓存（员工/分组/供应商/物流公司变动后调用） */
+export function 清基础数据缓存(): void {
+  基础缓存.clear();
+}
+
+/** 带缓存的查询：缓存新鲜（30分钟内）直接返回，否则查询后写入缓存 */
+async function 缓存查询<T>(
+  key: string,
+  查询: () => Promise<{ data: T }>
+): Promise<{ data: T }> {
+  const 条目 = 基础缓存.get(key);
+  if (条目 && Date.now() - 条目.时间 < 基础缓存时长) {
+    return { data: 条目.data as T };
+  }
+  const result = await 查询();
+  if (result.data) {
+    基础缓存.set(key, { data: result.data, 时间: Date.now() });
+  }
+  return result;
+}
+
 export const getWorkOrderData = cache(async function getWorkOrderData(id: string): Promise<WorkOrderDataResult> {
   const supabase = await createClient();
 
@@ -201,12 +235,12 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     { data: itemPartsRaw },
   ] = await Promise.all([
     supabase.from("work_orders").select(`*, vehicles(*, vehicle_models(*)), customers(*)`).eq("id", id).single(),
-    supabase.from("profiles").select("id, full_name, group_id, profile_roles(roles(name)), mechanic_levels(sort_order)").eq("is_active", true).order("full_name"),
+    缓存查询("profiles", () => supabase.from("profiles").select("id, full_name, group_id, profile_roles(roles(name)), mechanic_levels(sort_order)").eq("is_active", true).order("full_name")),
     // 派工"按组派工"使用员工档案的真实分组(employee_groups)，组员来自 profiles.group_id。
     // 原读的 mechanic_groups 是另一套且无数据，导致按组派工空白。
-    supabase.from("employee_groups").select("id, name").order("sort_order", { ascending: true }),
-    supabase.from("suppliers").select("id, name").order("name"),
-    supabase.from("logistics_companies").select("id, name").order("name"),
+    缓存查询("employee_groups", () => supabase.from("employee_groups").select("id, name").order("sort_order", { ascending: true })),
+    缓存查询("suppliers", () => supabase.from("suppliers").select("id, name").order("name")),
+    缓存查询("logistics_companies", () => supabase.from("logistics_companies").select("id, name").order("name")),
     supabase
       .from("outsource_orders")
       .select("id, order_no, is_paid, created_at, suppliers(name), outsource_order_items(id, work_order_item_id, service_item_id, service_name, amount)")

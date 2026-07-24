@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { clearWorkOrderDataCache } from "@/lib/workOrderData";
+import { clearWorkOrderDataCache, 清基础数据缓存 } from "@/lib/workOrderData";
 
 /**
  * 清除指定工单的详情页缓存。
@@ -10,6 +10,15 @@ import { clearWorkOrderDataCache } from "@/lib/workOrderData";
  */
 export async function 清除工单缓存(orderId: string): Promise<void> {
   clearWorkOrderDataCache(orderId);
+}
+
+/**
+ * 清除基础数据缓存（员工/员工分组/供应商/物流公司）。
+ * 在对应管理页面新增/编辑/删除后调用，详情页立即拿到最新基础数据，
+ * 不用等 30 分钟缓存自然过期。
+ */
+export async function 刷新基础数据缓存(): Promise<void> {
+  清基础数据缓存();
 }
 
 /* ═════════════════════════════════════════════════════════════════

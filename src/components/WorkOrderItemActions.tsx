@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { EditWorkOrderItemModal } from "./EditWorkOrderItemModal";
@@ -14,7 +13,6 @@ interface Props {
 }
 
 export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, unitPrice }: Props) {
-  const router = useRouter();
   const supabase = createClient();
   const [deleting, setDeleting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -28,7 +26,13 @@ export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, un
       alert("删除失败: " + error.message);
       return;
     }
-    router.refresh();
+    /* 局部更新：广播删除事件，项目行（ItemRowWrapper）立即隐藏、
+     * 页底合计（WorkOrderTotalFooter）同步移除该项目，不整页刷新 */
+    window.dispatchEvent(
+      new CustomEvent("wo-item-update", {
+        detail: { itemId, deleted: true },
+      })
+    );
   }
 
   return (

@@ -25,10 +25,32 @@ interface Props {
 // 工单详情页底部冻结的费用合计栏
 export default function WorkOrderTotalFooter({ items, parts, advancePaymentTotal = 0 }: Props) {
   const [partsState, setPartsState] = useState<PartLite[]>(parts);
+  const [itemsState, setItemsState] = useState<ItemLite[]>(items);
 
   useEffect(() => {
     setPartsState(parts);
   }, [JSON.stringify(parts)]);
+  useEffect(() => {
+    setItemsState(items);
+  }, [JSON.stringify(items)]);
+
+  // 监听项目修改（编辑项目弹窗改单价/数量后广播），同步重算合计
+  useEffect(() => {
+    function handleItemUpdate(e: Event) {
+      const detail = (e as CustomEvent).detail as { itemId: string; total_price?: number; deleted?: boolean };
+      // 项目被删除：从合计中移除
+      if (detail.deleted) {
+        setItemsState((prev) => prev.filter((it) => it.id !== detail.itemId));
+        return;
+      }
+      if (detail.total_price === undefined) return;
+      setItemsState((prev) =>
+        prev.map((it) => (it.id === detail.itemId ? { ...it, total_price: detail.total_price! } : it))
+      );
+    }
+    window.addEventListener("wo-item-update", handleItemUpdate as EventListener);
+    return () => window.removeEventListener("wo-item-update", handleItemUpdate as EventListener);
+  }, []);
 
   useEffect(() => {
     function handleUpdate(e: Event) {
@@ -79,14 +101,14 @@ export default function WorkOrderTotalFooter({ items, parts, advancePaymentTotal
   }, []);
 
   // 工时合计 = 所有项目的 total_price 之和
-  const laborTotal = items.reduce((sum, it) => sum + (it.total_price || 0), 0);
+  const laborTotal = itemsState.reduce((sum, it) => sum + (it.total_price || 0), 0);
   // 配件合计 = 所有被选中分支的 unit_price * quantity 之和
   const partsTotal = partsState.reduce(
     (sum, p) => sum + (p.is_selected ? p.unit_price * p.quantity : 0),
     0
   );
   // 应收合计 = 每个项目小计之和（项目工时费 + 该项目被选中配件费）
-  const grandTotal = items.reduce((sum, it) => {
+  const grandTotal = itemsState.reduce((sum, it) => {
     const itemPartsTotal = partsState
       .filter((p) => p.itemId === it.id && p.is_selected)
       .reduce((s, p) => s + p.unit_price * p.quantity, 0);

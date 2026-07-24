@@ -3,6 +3,7 @@
 import {useState, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { PageHeader } from "@/components/PageHeader";
 
 export default function NewEmployeeGroupPage() {
@@ -33,6 +34,7 @@ export default function NewEmployeeGroupPage() {
       return;
     }
 
+    await 刷新基础数据缓存();
     router.push("/employee-groups");
     router.refresh();
   }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { useRouter } from "next/navigation";
 import {useState, useMemo} from "react";
 
@@ -38,6 +39,7 @@ export function EmployeeGroupList({ groups }: Props) {
       return;
     }
 
+    await 刷新基础数据缓存();
     router.refresh();
   }
 

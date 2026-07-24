@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { 清基础数据缓存 } from "@/lib/workOrderData";
 
 export async function DELETE(
   _request: Request,
@@ -48,5 +49,6 @@ export async function DELETE(
     return NextResponse.json({ error: userError.message }, { status: 500 });
   }
 
+  清基础数据缓存();
   return NextResponse.json({ ok: true });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { 清基础数据缓存 } from "@/lib/workOrderData";
 
 interface ContactInput {
   name: string;
@@ -134,5 +135,6 @@ export async function POST(request: Request) {
     }
   }
 
+  清基础数据缓存();
   return NextResponse.json({ id: userId });
 }

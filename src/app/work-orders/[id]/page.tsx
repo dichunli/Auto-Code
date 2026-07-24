@@ -8,6 +8,14 @@ import { notFound } from "next/navigation";
 import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
 import { ReceptionInfoEditor } from "@/components/ReceptionInfoEditor";
 import { BatchEditWrapper } from "@/components/BatchEditWrapper";
+import { CreateMaintenanceWrapper } from "@/components/CreateMaintenanceWrapper";
+import { MaintenanceImportWrapper } from "@/components/MaintenanceImportWrapper";
+import { MaintenanceActionWrapper } from "@/components/MaintenanceActionWrapper";
+import { SaveMaintenanceButton } from "@/components/SaveMaintenanceButton";
+import { CancelCreateMaintenanceButton } from "@/components/CancelCreateMaintenanceButton";
+import { BusinessTypeToggle } from "@/components/BusinessTypeToggle";
+import ItemNameDisplay from "@/components/ItemNameDisplay";
+import ItemRowWrapper from "@/components/ItemRowWrapper";
 import { TemplateImportWrapper } from "@/components/TemplateImportWrapper";
 import { ConstructionControls } from "@/components/ConstructionControls";
 import { WorkOrderItemActions } from "@/components/WorkOrderItemActions";
@@ -65,7 +73,7 @@ export default async function WorkOrderDetailPage({
     mediaByRequirement, imagesByItem, imagesByPart, mediaByInspection,
     inventoryByPart, pickingByPart, returnByPart, pendingSupplierReturnByPart,
     knowledgeByItem, isLocked,
-    itemsByRequirement, receptionInspections, conditionInspections, orphanItems,
+    itemsByRequirement, receptionInspections, conditionInspections,
     partGroupsByItem, totalCommission,
   } = buildWorkOrderView({
     order, requirements, items, itemMedia, itemMechanics, requirementMedia,
@@ -75,13 +83,47 @@ export default async function WorkOrderDetailPage({
   } as unknown as WorkOrderViewInput);
 
 
+  // 保养单标识
+  const 是保养单 = order.order_type === "maintenance";
+  // 保养单默认只读，除非带 edit=1 参数
+  const 保养编辑模式 = typeof sp.edit === "string" && sp.edit === "1";
+  // 创建模式：刚创建的保养单，保存后生效，取消则删除
+  const 创建模式 = typeof sp.creating === "string" && sp.creating === "1";
+  const 实际锁定 = 是保养单 ? !保养编辑模式 : isLocked;
+  // 编辑链接：保留现有查询参数并加上 edit=1
+  const 编辑链接 = (() => {
+    const p = new URLSearchParams();
+    const fromWo = typeof sp.from_work_order === "string" ? sp.from_work_order : "";
+    if (fromWo) p.set("from_work_order", fromWo);
+    p.set("edit", "1");
+    return `/work-orders/${id}?${p.toString()}`;
+  })();
+  // 保存链接：返回只读模式
+  const 保存链接 = (() => {
+    const p = new URLSearchParams();
+    const fromWo = typeof sp.from_work_order === "string" ? sp.from_work_order : "";
+    if (fromWo) p.set("from_work_order", fromWo);
+    return `/work-orders/${id}?${p.toString()}`;
+  })();
+
   return (
     <WorkOrderToggleProvider>
     <WorkOrderTabBar tabs={tabsParam} />
     <div className="pb-20">
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <h1 className="text-xs md:text-base font-semibold text-gray-900">工单 {order.order_no}</h1>
+          <h1 className={`text-xs md:text-base font-semibold ${是保养单 ? "text-red-700" : "text-gray-900"}`}>
+            {是保养单
+              ? 创建模式
+                ? "保养单（未保存）"
+                : `保养单 ${order.order_no.replace(/^WO-/, "BY-")}`
+              : `工单 ${order.order_no}`}
+          </h1>
+          {是保养单 && (
+            <span className="px-3 py-1 rounded-full bg-red-100 border border-red-400 text-red-700 text-xs font-bold">
+              保养工单
+            </span>
+          )}
         </div>
 
         {/* 移动端：折叠操作菜单 */}
@@ -143,6 +185,42 @@ export default async function WorkOrderDetailPage({
       </div>
 
       <div className="space-y-4">
+        {/* 保养单提示横幅 */}
+        {是保养单 && (
+          <div className="bg-red-50 border-2 border-red-400 rounded-xl px-5 py-3 flex items-center gap-3">
+            <svg className="w-6 h-6 text-red-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <div className="flex-1">
+              <div className="text-sm font-bold text-red-800">
+                {创建模式 ? "正在创建保养单" : "当前工单为保养单"}
+              </div>
+              <div className="text-xs text-red-600">
+                {创建模式
+                  ? "已复制工单内容，编辑后点击保存生成保养单，取消则不生成"
+                  : 保养编辑模式
+                  ? "编辑模式——修改完成后请保存"
+                  : "保养单默认只读，点击编辑按钮可修改"}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {!保养编辑模式 ? (
+                <a
+                  href={编辑链接}
+                  className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors"
+                >
+                  编辑
+                </a>
+              ) : (
+                <>
+                  {创建模式 && <CancelCreateMaintenanceButton orderId={id} />}
+                  <SaveMaintenanceButton orderId={id} label={创建模式 ? "保存保养单" : undefined} />
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* 主内容 */}
           {/* 基本信息 */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
@@ -360,17 +438,28 @@ export default async function WorkOrderDetailPage({
             <div className="hidden md:flex px-6 py-4 border-b border-gray-100 items-center justify-between">
               <h2 className="text-base font-semibold text-gray-900">客户需求与诊断</h2>
               <div className="flex items-center gap-3">
-                {!isLocked && (
+                {!实际锁定 && (
                   <>
                     <AddRequirementButton orderId={id} autoOpen={sp.newReq === "1"} />
                   </>
                 )}
                 <Link href={`/work-orders/${id}/reception/new`} className="text-sm text-orange-600 hover:text-orange-700">+ 接车检查</Link>
                 <Link href={`/work-orders/${id}/inspection/new`} className="text-sm text-green-600 hover:text-green-700">+ 车况检查</Link>
-                {!isLocked && (
+                {!实际锁定 && (
                   <>
                     {order.vehicle_id && (
-                      <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />
+                      <>
+                        <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />
+                        <MaintenanceActionWrapper
+                          vehicleId={order.vehicle_id}
+                          customerId={order.customer_id}
+                          orderId={id}
+                          orderNo={order.order_no}
+                          plateNumber={order.vehicles?.plate_number || ""}
+                          modelInfo={[order.vehicles?.brand, order.vehicles?.model].filter(Boolean).join(" ")}
+                          customerName={order.customers?.name || ""}
+                        />
+                      </>
                     )}
                     <BatchEditWrapper
                       orderId={id}
@@ -385,11 +474,24 @@ export default async function WorkOrderDetailPage({
             </div>
             {/* 移动端按钮栏（无标题，+需求、接车检查、车况检查、保养模板、批量修改） */}
             <div className="md:hidden px-4 py-3 border-b border-gray-100 flex items-center flex-wrap gap-2">
-              {!isLocked && <AddRequirementButton orderId={id} autoOpen={sp.newReq === "1"} />}
+              {!实际锁定 && <AddRequirementButton orderId={id} autoOpen={sp.newReq === "1"} />}
               <Link href={`/work-orders/${id}/reception/new`} className="text-xs text-orange-600 hover:text-orange-700">+ 接车检查</Link>
               <Link href={`/work-orders/${id}/inspection/new`} className="text-xs text-green-600 hover:text-green-700">+ 车况检查</Link>
-              {!isLocked && order.vehicle_id && <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />}
-              {!isLocked && (
+              {!实际锁定 && order.vehicle_id && (
+                <>
+                  <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />
+                  <MaintenanceActionWrapper
+                    vehicleId={order.vehicle_id}
+                    customerId={order.customer_id}
+                    orderId={id}
+                    orderNo={order.order_no}
+                    plateNumber={order.vehicles?.plate_number || ""}
+                    modelInfo={[order.vehicles?.brand, order.vehicles?.model].filter(Boolean).join(" ")}
+                    customerName={order.customers?.name || ""}
+                  />
+                </>
+              )}
+              {!实际锁定 && (
                 <BatchEditWrapper
                   orderId={id}
                   items={items || []}
@@ -420,7 +522,7 @@ export default async function WorkOrderDetailPage({
                     <span className="hidden md:inline text-xs text-gray-400">
                       提交: {(profiles || []).find((p: { id?: string; full_name?: string }) => p.id === req.submitted_by)?.full_name || "-"}
                     </span>
-                    {!isLocked && (
+                    {!实际锁定 && (
                       <div className="flex items-center gap-2 ml-auto">
                         <RequirementActions
                           requirement={req}
@@ -467,7 +569,8 @@ export default async function WorkOrderDetailPage({
                               tableName="work_order_items"
                             >
                               {reqItems.map((item: ReqItem, itemIdx: number) => (
-                                <div key={item.id} className={`rounded-lg px-4 py-3 text-sm mb-2 ${item.item_type === 'labor' ? 'bg-blue-50/60 border-l-4 border-blue-300' : 'bg-gray-50/60 border-l-4 border-gray-300'}`}>
+                                <ItemRowWrapper key={item.id} itemId={item.id}>
+                                <div className={`rounded-lg px-4 py-3 text-sm mb-2 ${item.item_type === 'labor' ? 'bg-blue-50/60 border-l-4 border-blue-300' : 'bg-gray-50/60 border-l-4 border-gray-300'}`}>
                             {/* 移动端项目卡片 */}
                             <MobileItemEditor
                               item={item}
@@ -482,7 +585,7 @@ export default async function WorkOrderDetailPage({
                                   ? `/knowledge/${knowledgeByItem[item.id][0].knowledge_articles.id}`
                                   : undefined
                               }
-                              isLocked={isLocked}
+                              isLocked={实际锁定}
                               parts={(partsByItem[item.id] || []).map((p: Record<string, unknown>) => ({
                                 id: p.id as string,
                                 name: (p.name as string) || (p.part_names as { name?: string } | null)?.name || "",
@@ -523,10 +626,7 @@ export default async function WorkOrderDetailPage({
                               <div className="flex items-center min-w-max">
                                 <div className="flex items-center gap-2 flex-shrink-0">
                                   <span className="text-xs text-gray-400 font-mono">{显示序号}.{itemIdx + 1}</span>
-                                  <span className="font-medium text-gray-900">{item.alias_name || item.name}</span>
-                                  {item.alias_name && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">别名</span>
-                                  )}
+                                  <ItemNameDisplay itemId={item.id} name={item.name || ""} aliasName={item.alias_name} />
                                   <ItemPersonSelectors
                                     itemId={item.id}
                                     submitterId={item.submitter_id}
@@ -539,15 +639,7 @@ export default async function WorkOrderDetailPage({
                                   <div className="ml-6">
                                     <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion} />
                                   </div>
-                                  {item.business_type !== 'normal' && (
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                                      item.business_type === 'insurance' ? 'bg-purple-50 text-purple-700' :
-                                      item.business_type === 'gift' ? 'bg-pink-50 text-pink-700' :
-                                      'bg-orange-50 text-orange-700'
-                                    }`}>
-                                      {item.business_type === 'insurance' ? '保险' : item.business_type === 'gift' ? '赠送' : '返工'}
-                                    </span>
-                                  )}
+                                  <BusinessTypeToggle itemId={item.id} businessType={item.business_type || "normal"} disabled={实际锁定} />
                                   <div className="ml-4">
                                     <ItemFlagsToggle
                                       itemId={item.id}
@@ -586,7 +678,7 @@ export default async function WorkOrderDetailPage({
                                     <ItemImageUploader
                                       itemId={item.id}
                                       existingImages={imagesByItem[item.id]?.map((m) => m.storage_path).filter(Boolean) as string[] || []}
-                                      isLocked={isLocked}
+                                      isLocked={实际锁定}
                                     />
                                   </div>
                                 </div>
@@ -663,7 +755,7 @@ export default async function WorkOrderDetailPage({
                               })()}
                             </ShowCommission>
                             {/* 施工状态控制 */}
-                            {item.item_type === 'labor' && !isLocked && (
+                            {item.item_type === 'labor' && !实际锁定 && (
                               <ShowTimer>
                                 <div className="hidden md:block">
                                   <ConstructionControls
@@ -707,7 +799,7 @@ export default async function WorkOrderDetailPage({
                                           group={group}
                                           itemId={item.id}
                                           seqPrefix={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}`}
-                                          isLocked={isLocked}
+                                          isLocked={实际锁定}
                                           vehicleModelId={vehicleModelId}
                                           suppliers={suppliers || []}
                                           logisticsCompanies={logisticsCompanies || []}
@@ -724,6 +816,7 @@ export default async function WorkOrderDetailPage({
                               </div>
                             )}
                                 </div>
+                                </ItemRowWrapper>
                               ))}
                             </SortableList>
                           );
@@ -737,103 +830,6 @@ export default async function WorkOrderDetailPage({
               )}
             </div>
           </div>
-
-          {/* 未关联需求的项目 */}
-          {orphanItems.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h2 className="text-base font-semibold text-gray-900">其他维修项目</h2>
-              </div>
-              <div>
-                {(() => {
-                  return (
-                    <SortableList ids={orphanItems.map((it) => it.id)} groupKey={`orphan_${id}`} tableName="work_order_items">
-                      {orphanItems.map((item) => (
-                        <div key={item.id} className={`px-6 py-4 text-sm flex items-center justify-between ${item.item_type === 'labor' ? 'bg-blue-50/60 border-l-4 border-blue-300' : 'bg-gray-50/60 border-l-4 border-gray-300'}`}>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-gray-900">{item.alias_name || item.name}</span>
-                      {item.alias_name && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">别名</span>}
-                      <span className="text-gray-500">({item.item_type === 'labor' ? '工时' : item.item_type === 'part' ? '配件' : '其他'})</span>
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                        item.customer_opinion === 'agree' ? 'bg-green-50 text-green-700' :
-                        item.customer_opinion === 'reject' ? 'bg-red-50 text-red-700' :
-                        'bg-gray-50 text-gray-500'
-                      }`}>
-                        {item.customer_opinion === 'agree' ? '✓ 同意' : item.customer_opinion === 'reject' ? '✗ 拒绝' : '待确认'}
-                      </span>
-                      {item.business_type !== 'normal' && (
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                          item.business_type === 'insurance' ? 'bg-purple-50 text-purple-700' :
-                          item.business_type === 'gift' ? 'bg-pink-50 text-pink-700' :
-                          'bg-orange-50 text-orange-700'
-                        }`}>
-                          {item.business_type === 'insurance' ? '保险' : item.business_type === 'gift' ? '赠送' : '返工'}
-                        </span>
-                      )}
-                      {item.is_outsourced && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">外包</span>
-                      )}
-                      {/* 外包单信息（来自 outsource_order_items） */}
-                      {item.outsource_order_items && Array.isArray(item.outsource_order_items) && item.outsource_order_items.length > 0 && outsourceOrder && (
-                        <div className="text-[10px] text-gray-500 mt-1">
-                          {item.outsource_order_items.map((oi: { id: string; service_name?: string; amount?: number }) => (
-                            <span key={oi.id} className="inline-flex items-center gap-1">
-                              <span className="text-gray-400">{outsourceOrder.order_no}</span>
-                              <span className="text-gray-600">{oi.service_name}</span>
-                              <span className="text-gray-600">¥{oi.amount}</span>
-                              {outsourceOrder.suppliers?.name && (
-                                <span className="text-gray-400">{outsourceOrder.suppliers.name}</span>
-                              )}
-                              {outsourceOrder.is_paid ? (
-                                <span className="text-green-600">已支付</span>
-                              ) : (
-                                <span className="text-orange-600">未支付</span>
-                              )}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {item.is_customer_part && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700">自带配件</span>
-                      )}
-                      {item.business_type === 'rework' && item.rework_reason && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600">
-                          {item.rework_reason === 'part_quality' ? '配件质量' : '施工原因'}
-                          {item.rework_loss_amount > 0 ? ` · 损失${formatCurrency(item.rework_loss_amount)}` : ''}
-                        </span>
-                      )}
-                      <ShowCommission>
-                        {/* 项目提成 */}
-                        {(() => {
-                          const comm = calculateItemCommission(
-                            item,
-                            item.service_items,
-                            null,
-                            null,
-                            item.total_price || 0,
-                            0
-                          );
-                          if (comm.diagnosis === 0 && comm.repair === 0 && comm.sales === 0 && comm.qc === 0) return null;
-                          return (
-                            <div className="flex flex-wrap gap-1.5">
-                              {comm.diagnosis > 0 && <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">诊断提{comm.diagnosis.toFixed(0)}</span>}
-                              {comm.repair > 0 && <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修提{comm.repair.toFixed(0)}</span>}
-                              {comm.sales > 0 && <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded">销售提{comm.sales.toFixed(0)}</span>}
-                              {comm.qc > 0 && <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">质检提{comm.qc.toFixed(0)}</span>}
-                            </div>
-                          );
-                        })()}
-                      </ShowCommission>
-                    </div>
-                    <span className="font-medium">{formatCurrency(item.total_price)}</span>
-                  </div>
-                ))}
-              </SortableList>
-                  );
-                })()}
-              </div>
-            </div>
-          )}
 
           {/* 接车照片 */}
           {order.dashboard_photos?.length > 0 && (

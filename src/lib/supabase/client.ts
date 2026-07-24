@@ -21,6 +21,46 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { stringFromBase64URL, stringToBase64URL, createChunks } from "@supabase/ssr";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { 标记本机操作 } from "@/lib/localEditSignal";
+
+/* ═══ 写操作自动标记本机操作 ═══
+ * 所有经过本客户端的写库操作（insert/update/upsert/delete/rpc）在调用时自动
+ * 标记本机操作()。工单详情页的实时同步以此区分"自己改的"和"别人改的"：
+ * 自己改的不再误弹"点击刷新"提示条，别人改的照常提示。
+ * 只加副作用（打标记），不修改任何查询行为、参数和返回结果。 */
+function 标记化查询构造器(builder: Record<string, unknown>): Record<string, unknown> {
+  for (const 方法名 of ["insert", "update", "upsert", "delete"] as const) {
+    const 原方法 = builder[方法名];
+    if (typeof 原方法 === "function") {
+      builder[方法名] = (...args: unknown[]) => {
+        标记本机操作();
+        return (原方法 as (...a: unknown[]) => unknown).apply(builder, args);
+      };
+    }
+  }
+  return builder;
+}
+
+/** 包装 supabase 客户端：from() 返回的写方法、rpc() 调用时自动标记本机操作。
+ *  方法不存在时（如测试 mock 的简化客户端）跳过包装，不报错。 */
+export function 包装写操作标记<T extends { from?: (relation: string) => unknown; rpc?: (...args: unknown[]) => unknown }>(client: T): T {
+  if (typeof client.from === "function") {
+    const 原始from = client.from.bind(client);
+    client.from = ((relation: string) =>
+      标记化查询构造器(原始from(relation) as Record<string, unknown>)
+    ) as unknown as T["from"];
+  }
+
+  if (typeof client.rpc === "function") {
+    const 原始rpc = client.rpc.bind(client);
+    client.rpc = ((...args: unknown[]) => {
+      标记本机操作();
+      return 原始rpc(...args);
+    }) as unknown as T["rpc"];
+  }
+
+  return client;
+}
 
 /*
  * cookie 单段最大字节数：与 @supabase/ssr 的 createChunks 默认值（MAX_CHUNK_SIZE=3180）保持一致。
@@ -238,7 +278,7 @@ export function createClient() {
   if (是Capacitor环境()) {
     /* APP 环境：缓存单例。登录后 onAuthStateChange 会自动更新 session，无需重复创建。 */
     if (!appClient) {
-      appClient = createSupabaseClient(
+      appClient = 包装写操作标记(createSupabaseClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
@@ -250,7 +290,7 @@ export function createClient() {
             detectSessionInUrl: false,
           },
         }
-      );
+      ));
     }
     return appClient;
   }
@@ -277,7 +317,7 @@ export function createClient() {
   }
 
   if (!browserClient) {
-    browserClient = createSupabaseClient(
+    browserClient = 包装写操作标记(createSupabaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -289,7 +329,7 @@ export function createClient() {
           detectSessionInUrl: false,
         },
       }
-    );
+    ));
   }
   return browserClient;
 }
