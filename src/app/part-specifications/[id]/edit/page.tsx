@@ -48,9 +48,9 @@ export default function EditPartSpecificationPage() {
         part_names: { name: string; part_categories: { name: string } | null } | null;
       }
       setLinkedNames(
-        (links || []).map((l: LinkRow) => ({
+        ((links || []) as unknown as LinkRow[]).map((l) => ({
           id: l.part_name_id,
-          name: l.part_names?.name,
+          name: l.part_names?.name ?? "",
           category_name: l.part_names?.part_categories?.name,
         }))
       );
@@ -72,7 +72,7 @@ export default function EditPartSpecificationPage() {
         .or(`name.ilike.%${pnQuery.trim()}%,search_keywords.ilike.%${pnQuery.trim()}%`)
         .order("name")
         .limit(10);
-      setPnResults(data || []);
+      setPnResults((data || []) as unknown as PartNameResult[]);
       setPnSearching(false);
     }, 300);
     return () => clearTimeout(t);

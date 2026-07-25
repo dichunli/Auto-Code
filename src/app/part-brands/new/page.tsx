@@ -55,7 +55,7 @@ export default function NewPartBrandPage() {
   function handleStartCreate() {
     setName(query.trim());
     setShowForm(true);
-    supabase.from("part_names").select("id, name, part_categories(name)").order("name").limit(100).then(({ data }) => setPartNames(data || []));
+    supabase.from("part_names").select("id, name, part_categories(name)").order("name").limit(100).then(({ data }) => setPartNames((data || []) as unknown as 配件名称[]));
   }
 
   function toggleId(id: string) {

@@ -39,7 +39,10 @@ export default function EditPartNamePage() {
     id: string;
     name: string;
     auto_link_vehicle_model?: boolean;
+    auto_match_17vin_models?: boolean;
     is_consumable?: boolean;
+    require_scan_check?: boolean;
+    require_location_check?: boolean;
     sales_commission_type?: string | null;
     sales_commission_value?: number | null;
     diagnosis_commission_type?: string | null;
@@ -140,8 +143,8 @@ export default function EditPartNamePage() {
         specification_id: string;
         part_specifications?: { name?: string } | null;
       }
-      setLinkedBrands((brandLinks || []).map((l: BrandLink) => ({ id: l.brand_id, name: l.part_brands?.name })).filter((x: LinkedItem) => x.name));
-      setLinkedSpecs((specLinks || []).map((l: SpecLink) => ({ id: l.specification_id, name: l.part_specifications?.name })).filter((x: LinkedItem) => x.name));
+      setLinkedBrands(((brandLinks || []) as unknown as BrandLink[]).map((l) => ({ id: l.brand_id, name: l.part_brands?.name ?? "" })).filter((x) => x.name));
+      setLinkedSpecs(((specLinks || []) as unknown as SpecLink[]).map((l) => ({ id: l.specification_id, name: l.part_specifications?.name ?? "" })).filter((x) => x.name));
       setLoading(false);
     }
     load();
@@ -181,11 +184,11 @@ export default function EditPartNamePage() {
         is_consumable: cat.is_consumable || false,
         require_scan_check: cat.require_scan_check || false,
         require_location_check: cat.require_location_check || false,
-        sales_type: cat.sales_commission_type || "", sales_value: cat.sales_commission_value?.toString() || "",
-        diagnosis_type: cat.diagnosis_commission_type || "", diagnosis_value: cat.diagnosis_commission_value?.toString() || "",
-        repair_type: cat.repair_commission_type || "", repair_value: cat.repair_commission_value?.toString() || "",
-        qc_type: cat.qc_commission_type || "", qc_value: cat.qc_commission_value?.toString() || "",
-        picking_type: cat.picking_commission_type || "", picking_value: cat.picking_commission_value?.toString() || "",
+        sales_type: (cat.sales_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed", sales_value: cat.sales_commission_value?.toString() || "",
+        diagnosis_type: (cat.diagnosis_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed", diagnosis_value: cat.diagnosis_commission_value?.toString() || "",
+        repair_type: (cat.repair_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed", repair_value: cat.repair_commission_value?.toString() || "",
+        qc_type: (cat.qc_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed", qc_value: cat.qc_commission_value?.toString() || "",
+        picking_type: (cat.picking_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed", picking_value: cat.picking_commission_value?.toString() || "",
       }));
     } else {
       setForm((prev) => ({ ...prev, category_id: categoryId }));

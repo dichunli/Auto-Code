@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { vin17DecodeVin, vin17GetModelListFromPartNumber, vin17GetModelListFromPartNumberForAftermarket, vin17SearchFiltersByVin, vin17SearchAftermarketParts } from "@/lib/17vin/client";
 import { 判断三滤类型, 精准三滤类型 } from "@/lib/filterType";
-import { 车型库匹配字段 } from "@/lib/vehicleModelFields";
+import { 车型库匹配字段, type 车型库行 } from "@/lib/vehicleModelFields";
 import { 标准化字符串, 标准化大写 } from "@/lib/stringNormalize";
 import { 标准化VIN } from "@/lib/vinValidator";
 import { 生成完整系统码, 配件系统码前缀, 提取系统码序号 } from "@/lib/systemCode";
@@ -357,9 +357,9 @@ async function matchVin17ModelsToLocal(
   }
 
   /* 2. ID匹配不上，回退到字段模糊匹配 */
-  const { data: localModels } = await supabase
+  const { data: localModels } = (await supabase
     .from("vehicle_models")
-    .select(车型库匹配字段);
+    .select(车型库匹配字段)) as unknown as { data: 车型库行[] | null };
 
   const matchedIds: number[] = [];
 
@@ -423,9 +423,9 @@ async function matchVinDecodeModelToLocal(
     Model_year?: string;
   }
 ): Promise<number[]> {
-  const { data: localModels } = await supabase
+  const { data: localModels } = (await supabase
     .from("vehicle_models")
-    .select(车型库匹配字段);
+    .select(车型库匹配字段)) as unknown as { data: 车型库行[] | null };
 
   const vmBrand = (vinModel.Brand || "").toLowerCase().trim();
   const vmSeries = (vinModel.Series || "").toLowerCase().trim();

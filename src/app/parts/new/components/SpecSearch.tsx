@@ -33,12 +33,14 @@ export default function SpecSearch({
       return;
     }
     setSearching(true);
+    /* 先取出局部常量，async 函数里才能保持非空收窄 */
+    const partNameId = selectedPartName.id;
     async function doSearch() {
       const { data: linkedData } = await supabase
         .from("part_specifications")
         .select("id, name, part_name_specifications!inner(part_name_id)")
         .ilike("name", `%${value}%`)
-        .eq("part_name_specifications.part_name_id", selectedPartName.id)
+        .eq("part_name_specifications.part_name_id", partNameId)
         .limit(10);
       const linked = (linkedData || [])
         .map((s: unknown) => ({

@@ -63,7 +63,7 @@ export default function EditPartBrandPage() {
 
       setName(brand.name || "");
       setLinkedNames(
-        (links || []).map((l: PartNameBrandLink) => ({
+        ((links || []) as unknown as PartNameBrandLink[]).map((l) => ({
           id: l.part_name_id,
           name: l.part_names?.name ?? "",
           category_name: l.part_names?.part_categories?.name,
@@ -87,7 +87,7 @@ export default function EditPartBrandPage() {
         .or(`name.ilike.%${pnQuery.trim()}%,search_keywords.ilike.%${pnQuery.trim()}%`)
         .order("name")
         .limit(10);
-      setPnResults(data || []);
+      setPnResults((data || []) as unknown as PartNameResult[]);
       setPnSearching(false);
     }, 300);
     return () => clearTimeout(t);

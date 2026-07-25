@@ -150,7 +150,7 @@ export default function NewPartNamePage() {
         .or(`name.ilike.%${q.trim()}%,search_keywords.ilike.%${q.trim()}%`)
         .order("name")
         .limit(20);
-      setResults(data || []);
+      setResults((data || []) as unknown as SearchResult[]);
       setSearching(false);
     },
     [supabase]
@@ -180,15 +180,15 @@ export default function NewPartNamePage() {
         category_id: categoryId,
         auto_link_vehicle_model: cat.auto_link_vehicle_model || false,
         is_consumable: cat.is_consumable || false,
-        sales_type: cat.sales_commission_type || "",
+        sales_type: (cat.sales_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed",
         sales_value: cat.sales_commission_value?.toString() || "",
-        diagnosis_type: cat.diagnosis_commission_type || "",
+        diagnosis_type: (cat.diagnosis_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed",
         diagnosis_value: cat.diagnosis_commission_value?.toString() || "",
-        repair_type: cat.repair_commission_type || "",
+        repair_type: (cat.repair_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed",
         repair_value: cat.repair_commission_value?.toString() || "",
-        qc_type: cat.qc_commission_type || "",
+        qc_type: (cat.qc_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed",
         qc_value: cat.qc_commission_value?.toString() || "",
-        picking_type: cat.picking_commission_type || "",
+        picking_type: (cat.picking_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed",
         picking_value: cat.picking_commission_value?.toString() || "",
       }));
     } else {

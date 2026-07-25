@@ -100,10 +100,10 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
   }
 
   const [
-    { data: vehicleModels },
+    { data: vehicleModelsRaw },
     { data: stockLocations },
     { data: specialPrices },
-    { data: vehiclePrices },
+    { data: vehiclePricesRaw },
     { data: images },
     { data: specs },
   ] = await Promise.all([
@@ -114,6 +114,10 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
     supabase.from("part_images").select("*").eq("part_id", id).order("sort_order", { ascending: true }),
     supabase.from("parts_specifications").select("*, part_specifications(name)").eq("part_id", id),
   ]);
+
+  /* 车型库中文字段导致 supabase 类型解析失败，断言为页面真实形状（多对一关联运行时是对象） */
+  const vehicleModels = vehicleModelsRaw as unknown as VehicleModelRow[] | null;
+  const vehiclePrices = vehiclePricesRaw as unknown as VehiclePriceRow[] | null;
 
   return (
     <div className="p-6 space-y-6">
@@ -302,9 +306,9 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
                 return (
                   <tr key={vp.id}>
                     <td className="px-4 py-2">{name}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(vp.sales_price)}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(vp.vip_price)}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(vp.standard_price)}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency(vp.sales_price ?? null)}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency(vp.vip_price ?? null)}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency(vp.standard_price ?? null)}</td>
                   </tr>
                 );
               })}
@@ -334,7 +338,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
                 return (
                   <tr key={sp.id}>
                     <td className="px-4 py-2">{label}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(sp.price)}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency(sp.price ?? null)}</td>
                   </tr>
                 );
               })}
