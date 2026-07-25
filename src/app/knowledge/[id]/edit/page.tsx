@@ -123,8 +123,8 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       const { data: nameLinks } = nameLinksResult;
       const { data: vehicleLinks } = vehicleLinksResult;
 
-      const roleNames = (roleData || []).map(
-        (d: { roles?: { name?: string } | null }) => d.roles?.name
+      const roleNames = ((roleData || []) as unknown as { roles?: { name?: string } | null }[]).map(
+        (d) => d.roles?.name
       ).filter(Boolean) as string[];
       const isAdmin = roleNames.includes("admin");
       const isOwner = article.created_by === currentUserId;
@@ -160,7 +160,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
             .filter((l) => l.service_name_id)
             .map((l) => ({
               id: l.service_name_id as string,
-              name: (l.service_names as { name: string } | null)?.name || "",
+              name: (l.service_names as unknown as { name: string } | null)?.name || "",
             }))
         );
       }
@@ -168,14 +168,16 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       if (vehicleLinks) {
         setLinkedVehicles(
           vehicleLinks.map((v) => {
-            const vm = (v as { vehicle_models: { id: number; 品牌: string; 车系: string; 车型: string | null; 年款: number | null } | null }).vehicle_models;
+            const vm = (v as unknown as { vehicle_models: { id: number; 品牌: string; 车系: string; 车型: string | null; 年款: number | null } | null }).vehicle_models;
+            /* 键名必须与 VehicleModelSelector 的 LinkedItem 一致（此前误用 model/yearStart，导致已关联车型回显空白） */
             return {
               id: String(vm?.id || ""),
+              name: `${vm?.品牌 || ""} ${vm?.车系 || ""} ${vm?.车型 || ""}`.trim(),
               brand: vm?.品牌 || "",
               series: vm?.车系 || "",
-              model: vm?.车型 || "",
-              yearStart: vm?.年款 || undefined,
-              yearEnd: vm?.年款 || undefined,
+              model_name: vm?.车型 || "",
+              year_start: vm?.年款 || undefined,
+              year_end: vm?.年款 || undefined,
             };
           })
         );

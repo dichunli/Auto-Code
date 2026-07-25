@@ -1,5 +1,6 @@
 import { loadKnowledgeArticles } from "./actions";
 import KnowledgeContent from "./KnowledgeContent";
+import type { ComponentProps } from "react";
 
 export default async function KnowledgePage({
   searchParams,
@@ -19,7 +20,7 @@ export default async function KnowledgePage({
 
   return (
     <KnowledgeContent
-      initialArticles={result.articles || []}
+      initialArticles={(result.articles || []) as unknown as ComponentProps<typeof KnowledgeContent>["initialArticles"]}
       initialCategories={result.categories || []}
       initialTotal={result.total || 0}
       initialTotalPages={result.totalPages || 1}

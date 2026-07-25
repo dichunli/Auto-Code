@@ -128,7 +128,7 @@ export default function KnowledgeImportExport({ articles, onSuccess }: Props) {
       const result = await 生成Word文档({
         title: article.title,
         content: article.content,
-        content_blocks: article.content_blocks as BlockNoteBlock[] | null,
+        content_blocks: article.content_blocks as unknown as Parameters<typeof 生成Word文档>[0]["content_blocks"],
         type: article.type,
         knowledge_categories: article.knowledge_categories,
         profiles: article.profiles,
