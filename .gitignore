@@ -117,3 +117,4 @@ certificates
 desktop.ini
 smoke-test-failure.png
 !scripts/smoke-test.mjs
+!scripts/patrol-pages.mjs
