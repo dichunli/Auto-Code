@@ -126,28 +126,33 @@ export default function WorkOrdersContent({
 
   return (
     <div>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">工单号</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">车牌号</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">VIN</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">车型</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">客户名称</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">电话</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">单位</th>
-                {!type && <th className="px-6 py-3 text-left font-medium text-gray-500">状态</th>}
-                <th className="px-6 py-3 text-left font-medium text-gray-500">金额</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">创建时间</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">操作</th>
+            <thead>
+              <tr className="bg-slate-100/70 border-b border-gray-200">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">工单号</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">车牌号</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">VIN</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">车型</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">客户名称</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">电话</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">单位</th>
+                {!type && <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">状态</th>}
+                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600">金额</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">创建时间</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">操作</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {orders.map((order: Order) => (
-                <tr key={order.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium text-gray-900">
+            <tbody>
+              {orders.map((order: Order, 行号: number) => (
+                <tr
+                  key={order.id}
+                  className={`border-b border-gray-100 last:border-0 transition-colors ${
+                    行号 % 2 === 0 ? "bg-white" : "bg-slate-50/70"
+                  } hover:bg-blue-50/70`}
+                >
+                  <td className="px-6 py-3.5 font-medium text-gray-900">
                     <button
                       type="button"
                       onClick={() => openOrderTab(order.id)}
@@ -156,14 +161,14 @@ export default function WorkOrdersContent({
                       {order.order_no}
                     </button>
                   </td>
-                  <td className="px-6 py-4 text-gray-900">{order.vehicles?.plate_number || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600 font-mono whitespace-nowrap">{order.vehicles?.vin || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{order.vehicles?.brand} {order.vehicles?.model}</td>
-                  <td className="px-6 py-4 text-gray-900">{order.customers?.name || "-"}</td>
-                  <td className="px-6 py-4 text-gray-500">{order.customers?.phone || "-"}</td>
-                  <td className="px-6 py-4 text-gray-500">{order.customers?.company || "-"}</td>
+                  <td className="px-6 py-3.5 text-gray-900 font-medium">{order.vehicles?.plate_number || "-"}</td>
+                  <td className="px-6 py-3.5 text-gray-500 font-mono text-xs whitespace-nowrap">{order.vehicles?.vin || "-"}</td>
+                  <td className="px-6 py-3.5 text-gray-600">{order.vehicles?.brand} {order.vehicles?.model}</td>
+                  <td className="px-6 py-3.5 text-gray-900">{order.customers?.name || "-"}</td>
+                  <td className="px-6 py-3.5 text-gray-500">{order.customers?.phone || "-"}</td>
+                  <td className="px-6 py-3.5 text-gray-500">{order.customers?.company || "-"}</td>
                   {!type && (
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-3.5">
                       <span
                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           STAGE_COLORS[order.boardStage] || "bg-gray-100 text-gray-800"
@@ -173,9 +178,9 @@ export default function WorkOrdersContent({
                       </span>
                     </td>
                   )}
-                  <td className="px-6 py-4 text-gray-900">{formatCurrency(order.total_cost)}</td>
-                  <td className="px-6 py-4 text-gray-500">{formatDate(order.created_at)}</td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-3.5 text-right font-medium text-gray-900 tabular-nums">{formatCurrency(order.total_cost)}</td>
+                  <td className="px-6 py-3.5 text-gray-400 text-xs whitespace-nowrap">{formatDate(order.created_at)}</td>
+                  <td className="px-6 py-3.5">
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
