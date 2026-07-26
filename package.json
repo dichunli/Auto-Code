@@ -12,7 +12,10 @@
     "test:db": "vitest run supabase/tests",
     "test:watch": "vitest",
     "test:smoke": "node scripts/smoke-test.mjs",
-    "test:patrol": "node scripts/patrol-pages.mjs"
+    "test:patrol": "node scripts/patrol-pages.mjs",
+    "test:flows": "node scripts/flow-tests.mjs",
+    "test:realtime": "node scripts/realtime-test.mjs",
+    "test:perm": "node scripts/permission-test.mjs"
   },
   "dependencies": {
     "@blocknote/core": "^0.51.2",

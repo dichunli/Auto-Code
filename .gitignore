@@ -118,3 +118,6 @@ desktop.ini
 smoke-test-failure.png
 !scripts/smoke-test.mjs
 !scripts/patrol-pages.mjs
+!scripts/flow-tests.mjs
+!scripts/realtime-test.mjs
+!scripts/permission-test.mjs
