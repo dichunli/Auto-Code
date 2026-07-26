@@ -256,7 +256,18 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       return;
     }
     标记本地结构编辑(itemId || "");
-    router.refresh();
+    /* 局部更新：逐分支广播 deleted（小计/合计同步移除），再广播重查该项目配件
+     * （ItemPartsLive 重查后目录立即消失），不整页刷新 */
+    for (const id of ids) {
+      window.dispatchEvent(
+        new CustomEvent("wo-part-update", {
+          detail: { itemId, partId: id, deleted: true },
+        })
+      );
+    }
+    window.dispatchEvent(
+      new CustomEvent("wo-parts-reload", { detail: { itemId } })
+    );
   }
 
   async function saveQuantity() {
