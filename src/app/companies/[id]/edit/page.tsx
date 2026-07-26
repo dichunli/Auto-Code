@@ -80,7 +80,7 @@ export default function EditCompanyPage() {
         .select("id, plate_number, brand, model, customers(name)")
         .eq("company_id", id)
         .order("created_at", { ascending: false });
-      setVehicles(vehicleData || []);
+      setVehicles((vehicleData || []) as unknown as Vehicle[]);
       setLoading(false);
     }
     load();

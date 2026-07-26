@@ -21,8 +21,8 @@ interface 新建课程数据 {
 
 type 更新课程数据 = 新建课程数据;
 
-/* 包装 Promise，防止网络异常导致请求无限挂起 */
-async function 带超时<T>(promise: Promise<T>, 毫秒: number, 操作名: string): Promise<T> {
+/* 包装 Promise，防止网络异常导致请求无限挂起（supabase 查询构建器是 PromiseLike） */
+async function 带超时<T>(promise: PromiseLike<T>, 毫秒: number, 操作名: string): Promise<T> {
   let timer: NodeJS.Timeout | null = null;
   const 超时Promise = new Promise<T>((_, reject) => {
     timer = setTimeout(() => {

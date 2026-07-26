@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { EmployeeTree } from "./EmployeeTree";
+import type { ComponentProps } from "react";
 
 export default async function EmployeesPage({ searchParams }: { searchParams?: Promise<{ active?: string }> }) {
   const params = await searchParams;
@@ -68,7 +69,7 @@ export default async function EmployeesPage({ searchParams }: { searchParams?: P
 
       <EmployeeTree
         groups={groups || []}
-        employees={(employees as Record<string, unknown>[]) || []}
+        employees={(employees || []) as unknown as ComponentProps<typeof EmployeeTree>["employees"]}
       />
     </div>
   );

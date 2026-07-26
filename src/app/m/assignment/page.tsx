@@ -61,7 +61,7 @@ export default async function MobileAssignmentListPage() {
           </div>
           {availableOrders && availableOrders.length > 0 ? (
             <div className="space-y-3">
-              {availableOrders.map((order: 工单) => (
+              {(availableOrders as unknown as 工单[]).map((order) => (
                 <Link
                   key={order.id}
                   href={`/work-orders/${order.id}`}
@@ -99,7 +99,7 @@ export default async function MobileAssignmentListPage() {
           </div>
           {activeOrders && activeOrders.length > 0 ? (
             <div className="space-y-3">
-              {activeOrders.map((order: 工单) => (
+              {(activeOrders as unknown as 工单[]).map((order) => (
                 <Link
                   key={order.id}
                   href={`/work-orders/${order.id}`}

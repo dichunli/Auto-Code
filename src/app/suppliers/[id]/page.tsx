@@ -157,7 +157,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           .from("supplier_part_categories")
           .select("part_categories(name)")
           .eq("supplier_id", id);
-        setCategories((catData as CategoryLink[] || []).map((c) => c.part_categories?.name).filter(Boolean) as string[]);
+        setCategories((catData as unknown as CategoryLink[] || []).map((c) => c.part_categories?.name).filter(Boolean) as string[]);
       } catch { setCategories([]); }
 
       // 关联配件名称
@@ -166,7 +166,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           .from("supplier_part_names")
           .select("part_names(name)")
           .eq("supplier_id", id);
-        setPartNames((pnData as PartNameLink[] || []).map((p) => p.part_names?.name).filter(Boolean) as string[]);
+        setPartNames((pnData as unknown as PartNameLink[] || []).map((p) => p.part_names?.name).filter(Boolean) as string[]);
       } catch { setPartNames([]); }
 
       // 关联品牌
@@ -175,7 +175,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           .from("supplier_part_brands")
           .select("part_brands(name)")
           .eq("supplier_id", id);
-        setBrands((bData as BrandLink[] || []).map((b) => b.part_brands?.name).filter(Boolean) as string[]);
+        setBrands((bData as unknown as BrandLink[] || []).map((b) => b.part_brands?.name).filter(Boolean) as string[]);
       } catch { setBrands([]); }
 
       // 关联车型
@@ -184,7 +184,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
           .from("supplier_vehicle_models")
           .select("vehicle_models(厂商,品牌,车系)")
           .eq("supplier_id", id);
-        setVehicles((vData as SupplierVehicleLink[] || []).map((v) => {
+        setVehicles((vData as unknown as SupplierVehicleLink[] || []).map((v) => {
           const vm = v.vehicle_models;
           const parts = [vm?.厂商, vm?.品牌, vm?.车系].filter(Boolean);
           return parts.join(" ") || "-";
@@ -415,7 +415,7 @@ export default function SupplierDetailPage({ params }: { params: Promise<{ id: s
               <div>
                 <span className="text-gray-500">推荐等级：</span>
                 <span className="text-amber-500 font-medium">
-                  {supplier.recommendation_level > 0 ? "⭐".repeat(supplier.recommendation_level) : "不推荐"}
+                  {(supplier.recommendation_level || 0) > 0 ? "⭐".repeat(supplier.recommendation_level as number) : "不推荐"}
                 </span>
               </div>
               {supplier.notes && (

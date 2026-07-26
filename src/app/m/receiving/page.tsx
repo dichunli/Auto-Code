@@ -35,7 +35,7 @@ export default async function MobileReceivingListPage() {
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {orders && orders.length > 0 ? (
-          orders.map((order: 采购单) => (
+          (orders as unknown as 采购单[]).map((order) => (
             <Link
               key={order.id}
               href={`/procurement/${order.id}`}

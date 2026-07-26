@@ -54,7 +54,7 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
     const headers = exportHeaders.map((h) => h.label);
     const rows = customers.map((c) =>
       exportHeaders.map((h) => {
-        const val = (c as Record<string, unknown>)[h.key];
+        const val = (c as unknown as Record<string, unknown>)[h.key];
         return val === null || val === undefined ? "" : String(val);
       })
     );
@@ -87,7 +87,7 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
         return;
       }
 
-      const headers: string[] = rows[0];
+      const headers = rows[0].map((h) => String(h ?? ""));
       const dataRows = rows.slice(1);
 
       // 建立列名映射
@@ -127,7 +127,7 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
           record.id_card = String(row[colMap["id_card"]] || "").trim() || null;
         }
         if (colMap["star_level"] !== undefined) {
-          const s = parseInt(row[colMap["star_level"]]);
+          const s = parseInt(row[colMap["star_level"]] as string);
           record.star_level = isNaN(s) ? null : Math.max(1, Math.min(5, s));
         }
         if (colMap["notes"] !== undefined) {

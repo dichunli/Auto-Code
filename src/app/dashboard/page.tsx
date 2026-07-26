@@ -116,7 +116,7 @@ async function getDashboardStats() {
       const pPickedQty = pickingByPart[p.id] || 0;
       const pReturnQty = returnByPart[p.id] || 0;
       const pNetPicked = pPickedQty - pReturnQty;
-      const pInventory = inventoryByPart[p.part_id] || 0;
+      const pInventory = inventoryByPart[p.part_id as string] || 0;
       const pHasPendingSupplierReturn = pendingSupplierReturnByPart[p.id] || false;
 
       const status = getPartWorkflowStatus({

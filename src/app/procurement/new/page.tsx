@@ -131,7 +131,7 @@ export default function NewPurchaseOrderPage() {
           supplier_id: string;
           part_brands?: { name?: string } | null;
         }
-        (vData || []).forEach((r: VehicleModelLink) => {
+        ((vData || []) as unknown as VehicleModelLink[]).forEach((r) => {
           const s = map.get(r.supplier_id);
           const vm = r.vehicle_models;
           if (s && vm) {
@@ -140,17 +140,17 @@ export default function NewPurchaseOrderPage() {
             if (vm.车系 && !s.vehicleSeries.includes(vm.车系)) s.vehicleSeries.push(vm.车系);
           }
         });
-        (catData || []).forEach((r: CategoryLink) => {
+        ((catData || []) as unknown as CategoryLink[]).forEach((r) => {
           const s = map.get(r.supplier_id);
           const name = r.part_categories?.name;
           if (s && name && !s.categoryNames.includes(name)) s.categoryNames.push(name);
         });
-        (pnData || []).forEach((r: PartNameLink) => {
+        ((pnData || []) as unknown as PartNameLink[]).forEach((r) => {
           const s = map.get(r.supplier_id);
           const name = r.part_names?.name;
           if (s && name && !s.partNameList.includes(name)) s.partNameList.push(name);
         });
-        (bData || []).forEach((r: BrandLink) => {
+        ((bData || []) as unknown as BrandLink[]).forEach((r) => {
           const s = map.get(r.supplier_id);
           const name = r.part_brands?.name;
           if (s && name && !s.brandNames.includes(name)) s.brandNames.push(name);
@@ -189,7 +189,7 @@ export default function NewPurchaseOrderPage() {
             } | null;
           } | null;
         }
-        const branches: PendingBranch[] = (data || []).map((b: BranchRow) => {
+        const branches: PendingBranch[] = ((data || []) as unknown as BranchRow[]).map((b) => {
           const vm = b.work_order_items?.work_orders?.vehicles?.vehicle_models;
           return {
             id: b.id,

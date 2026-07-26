@@ -31,7 +31,8 @@ export async function createClient() {
       name: 认证Cookie名称,
       secure: isSecure,
       httpOnly: true,
-      sameSite: "Lax",
+      /* SameSite 属性值浏览器不区分大小写，类型定义要求小写 */
+      sameSite: "lax",
       path: "/",
     },
     cookies: {
@@ -45,7 +46,7 @@ export async function createClient() {
               ...options,
               secure: isSecure,
               httpOnly: true,
-              sameSite: "Lax",
+              sameSite: "lax",
               path: "/",
             })
           );

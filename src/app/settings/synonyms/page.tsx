@@ -34,8 +34,8 @@ export default function SynonymsPage() {
           .from("profile_roles")
           .select("roles(name)")
           .eq("profile_id", currentUserId);
-        admin = (roleData || []).some(
-          (d: { roles?: { name?: string } | null }) => d.roles?.name === "admin"
+        admin = ((roleData || []) as unknown as { roles?: { name?: string } | null }[]).some(
+          (d) => d.roles?.name === "admin"
         );
       }
       setIsAdmin(admin);

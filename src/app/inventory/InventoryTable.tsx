@@ -560,7 +560,7 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
         .filter((r, idx) => r.spec_name && insertedPartIds[idx])
         .map((r, idx) => ({
           part_id: insertedPartIds[idx],
-          specification_id: specMap.get(r.spec_name),
+          specification_id: specMap.get(r.spec_name as string),
         }))
         .filter((l): l is { part_id: string; specification_id: string } => !!l.specification_id);
 

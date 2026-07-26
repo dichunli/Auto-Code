@@ -341,7 +341,7 @@ export default async function VehicleDetailPage({
               {customerTagData && customerTagData.length > 0 && (
                 <div className="flex items-center gap-2 text-sm flex-wrap">
                   <span className="text-gray-500">标签：</span>
-                  {(customerTagData as CustomerTag[]).map((tag, i) => (
+                  {(customerTagData as unknown as CustomerTag[]).map((tag, i) => (
                     tag.tags ? (
                       <span
                         key={i}

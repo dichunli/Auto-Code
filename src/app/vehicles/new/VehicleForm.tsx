@@ -246,12 +246,12 @@ export default function VehicleForm() {
       return;
     }
 
-    // VIN 唯一性校验
+    // VIN 唯一性校验（此前误写成 form.标准化VIN(vin)，填 VIN 保存必报错，已改为库函数调用）
     if (form.vin.trim()) {
       const { data: existingVin } = await supabase
         .from("vehicles")
         .select("id")
-        .eq("vin", form.标准化VIN(vin))
+        .eq("vin", 标准化VIN(form.vin))
         .maybeSingle();
       if (existingVin) {
         alert("该 VIN 码已被使用，请更换");
@@ -400,7 +400,7 @@ export default function VehicleForm() {
                       .limit(5);
 
                     if (data && data.length > 0) {
-                      const m = data[0] as {
+                      const m = data[0] as unknown as {
                         id: number;
                         品牌: string | null;
                         车系: string | null;

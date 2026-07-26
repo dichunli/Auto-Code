@@ -1,6 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 
+/* 退料记录（含配件和批次） */
+interface 退料记录 {
+  id: string;
+  quantity?: number | null;
+  reason?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  parts?: { name?: string | null; part_number?: string | null } | null;
+  part_batches?: { batch_no?: string | null } | null;
+}
+
 export default async function PurchaseReturnsPage() {
   const supabase = await createClient();
   const { data: returns } = await supabase
@@ -30,7 +41,7 @@ export default async function PurchaseReturnsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {returns?.map((r: Record<string, unknown>) => (
+              {returns?.map((r: 退料记录) => (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="font-medium text-gray-900">{r.parts?.name}</div>
@@ -51,7 +62,7 @@ export default async function PurchaseReturnsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-gray-500">
-                    {new Date(r.created_at).toLocaleDateString()}
+                    {r.created_at ? new Date(r.created_at).toLocaleDateString() : "-"}
                   </td>
                 </tr>
               ))}

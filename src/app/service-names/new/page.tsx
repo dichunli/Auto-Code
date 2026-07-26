@@ -126,7 +126,7 @@ export default function NewServiceNamePage() {
         .or(`name.ilike.%${q.trim()}%,search_keywords.ilike.%${q.trim()}%`)
         .order("name")
         .limit(20);
-      setResults(data || []);
+      setResults((data || []) as unknown as { id: string; name: string; service_categories?: { name: string } | null }[]);
       setSearching(false);
     },
     [supabase]
@@ -154,13 +154,13 @@ export default function NewServiceNamePage() {
       setForm((prev) => ({
         ...prev,
         category_id: categoryId,
-        sales_type: cat.sales_commission_type || "",
+        sales_type: (cat.sales_commission_type || "") as "" | "fixed" | "revenue_pct" | "profit_pct",
         sales_value: cat.sales_commission_value?.toString() || "",
-        diagnosis_type: cat.diagnosis_commission_type || "",
+        diagnosis_type: (cat.diagnosis_commission_type || "") as "" | "fixed" | "revenue_pct" | "profit_pct",
         diagnosis_value: cat.diagnosis_commission_value?.toString() || "",
-        repair_type: cat.repair_commission_type || "",
+        repair_type: (cat.repair_commission_type || "") as "" | "fixed" | "revenue_pct" | "profit_pct",
         repair_value: cat.repair_commission_value?.toString() || "",
-        qc_type: cat.qc_commission_type || "",
+        qc_type: (cat.qc_commission_type || "") as "" | "fixed" | "revenue_pct" | "profit_pct",
         qc_value: cat.qc_commission_value?.toString() || "",
       }));
     } else {

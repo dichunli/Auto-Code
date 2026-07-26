@@ -83,15 +83,18 @@ export default async function ConstructionStatsPage({
     .eq("status", "completed");
 
   const allMechanics = Array.from(
-    new Set((mechanicList || []).map((s: { mechanic_name: string | null }) => s.mechanic_name).filter(Boolean))
+    new Set((mechanicList || []).map((s: { mechanic_name: string | null }) => s.mechanic_name).filter((n): n is string => !!n))
   ).sort();
 
   // 按维修项目+车型+施工人分组聚合
-  const groupedMap = new Map<string, GroupedStat>();
+  /* 聚合中间态：工单ID用 Set 去重，平均值最后统一算 */
+  type 聚集中 = Omit<GroupedStat, "work_order_ids" | "avg_construction_seconds" | "avg_pause_seconds" | "avg_total_seconds"> & { work_order_ids: Set<string> };
+  const groupedMap = new Map<string, 聚集中>();
   for (const s of (stats || []) as ConstructionStat[]) {
     const key = [s.item_name, s.vehicle_brand || "", s.vehicle_series || "", s.vehicle_model_name || "", s.mechanic_name].join("|");
-    if (!groupedMap.has(key)) {
-      groupedMap.set(key, {
+    let g = groupedMap.get(key);
+    if (!g) {
+      g = {
         item_name: s.item_name,
         vehicle_brand: s.vehicle_brand,
         vehicle_series: s.vehicle_series,
@@ -103,9 +106,9 @@ export default async function ConstructionStatsPage({
         total_pause_seconds: 0,
         total_total_seconds: 0,
         work_order_ids: new Set<string>(),
-      });
+      };
+      groupedMap.set(key, g);
     }
-    const g = groupedMap.get(key);
     g.count++;
     g.total_construction_seconds += s.construction_seconds || 0;
     g.total_pause_seconds += s.pause_seconds || 0;
@@ -252,9 +255,9 @@ export default async function ConstructionStatsPage({
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-600">{s.mechanic_name}</td>
-                  <td className="px-4 py-3 text-gray-600">{formatDuration(s.construction_seconds)}</td>
-                  <td className="px-4 py-3 text-gray-600">{formatDuration(s.pause_seconds)}</td>
-                  <td className="px-4 py-3 font-medium text-gray-900">{formatDuration(s.total_seconds)}</td>
+                  <td className="px-4 py-3 text-gray-600">{formatDuration(s.construction_seconds || 0)}</td>
+                  <td className="px-4 py-3 text-gray-600">{formatDuration(s.pause_seconds || 0)}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900">{formatDuration(s.total_seconds || 0)}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">
                     {s.completed_at ? new Date(s.completed_at).toLocaleString("zh-CN") : "-"}
                   </td>

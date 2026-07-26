@@ -54,11 +54,11 @@ export default async function VehicleModelsPage({
 
   const total = count || 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const models = (data as Record<string, unknown>[]) || [];
+  const models = ((data as unknown as Record<string, unknown>[]) || []);
 
   return (
     <VehicleModelsContent
-      models={models as Parameters<typeof VehicleModelsContent>[0]["models"]}
+      models={models as unknown as Parameters<typeof VehicleModelsContent>[0]["models"]}
       total={total}
       page={page}
       keyword={keyword}

@@ -9,7 +9,9 @@ import DeleteCourseButton from "./DeleteCourseButton";
 export interface 课程 {
   id: string;
   category: string;
+  category_id?: string | null;
   category_name?: string;
+  created_by?: string | null;
   is_required: boolean;
   title: string;
   description: string | null;

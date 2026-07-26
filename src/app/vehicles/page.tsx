@@ -154,7 +154,7 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {vehicles?.map((v: { id: string; plate_number: string; vin: string | null; brand: string | null; model: string | null; engine_no: string | null; chassis_code: string | null; color: string | null; year: number | null; mileage: number | null; customers: { name: string; phone: string } | null; companies: { name: string } | null }, idx: number) => (
+              {(vehicles as unknown as { id: string; plate_number: string; vin: string | null; brand: string | null; model: string | null; engine_no: string | null; chassis_code: string | null; color: string | null; year: number | null; mileage: number | null; customers: { name: string; phone: string } | null; companies: { name: string } | null }[] | null)?.map((v, idx: number) => (
                 <tr key={v.id} className="hover:bg-gray-50">
                   <td className="px-4 py-4 text-gray-500 text-sm">{(page - 1) * pageSize + idx + 1}</td>
                   <td className="px-6 py-4 font-medium text-gray-900">

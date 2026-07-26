@@ -216,7 +216,7 @@ export default function ServiceItemsContent({ items, categories }: Props) {
         return;
       }
 
-      const headers: string[] = rows[0];
+      const headers = rows[0] as string[];
       const dataRows = rows.slice(1);
 
       setImportMsg("正在加载分类数据...");
@@ -258,10 +258,10 @@ export default function ServiceItemsContent({ items, categories }: Props) {
           category_id: categoryId,
           name: String(record["项目名称"]).trim(),
           description: record["项目说明"] ? String(record["项目说明"]).trim() : null,
-          default_price: record["销售价"] ? parseFloat(record["销售价"]) : null,
-          vip_price: record["VIP价"] ? parseFloat(record["VIP价"]) : null,
-          customer_parts_price: record["自带配件价"] ? parseFloat(record["自带配件价"]) : null,
-          company_price: record["单位价"] ? parseFloat(record["单位价"]) : null,
+          default_price: record["销售价"] ? parseFloat(record["销售价"] as string) : null,
+          vip_price: record["VIP价"] ? parseFloat(record["VIP价"] as string) : null,
+          customer_parts_price: record["自带配件价"] ? parseFloat(record["自带配件价"] as string) : null,
+          company_price: record["单位价"] ? parseFloat(record["单位价"] as string) : null,
         });
       }
 

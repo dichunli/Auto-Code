@@ -243,7 +243,7 @@ export default function VehicleModelsContent({ models, total, page, keyword, col
         setImporting(false);
         return;
       }
-      const headers: string[] = rows[0];
+      const headers = rows[0].map((h) => String(h ?? ""));
       const dataRows = rows.slice(1);
 
       const allRecords: Record<string, unknown>[] = [];
@@ -281,7 +281,7 @@ export default function VehicleModelsContent({ models, total, page, keyword, col
         }
       }
 
-      const newRecords = allRecords.filter((r) => !existingIds.has(r.id));
+      const newRecords = allRecords.filter((r) => !existingIds.has(r.id as number));
       const skippedCount = allRecords.length - newRecords.length;
 
       if (newRecords.length === 0) {

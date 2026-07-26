@@ -77,7 +77,7 @@ export default async function DashboardPage({
   }
 
   const mechanicMap: Record<string, { name: string; score: number }> = {};
-  topMechanics?.forEach((m: 技师绩效原始数据) => {
+  (topMechanics as unknown as 技师绩效原始数据[] | null)?.forEach((m) => {
     const id = m.mechanic_id;
     if (!mechanicMap[id]) mechanicMap[id] = { name: m.profiles?.full_name || "未知", score: 0 };
     mechanicMap[id].score += m.points;
@@ -130,7 +130,7 @@ export default async function DashboardPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {recentOrders?.map((order: { id: string; order_no: string; status: string; total_cost: number | null; vehicles: { plate_number: string | null; brand: string | null; model: string | null } | null }) => (
+                {(recentOrders as unknown as { id: string; order_no: string; status: string; total_cost: number | null; vehicles: { plate_number: string | null; brand: string | null; model: string | null } | null }[] | null)?.map((order) => (
                   <tr key={order.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 font-medium text-gray-900">
                       <Link href={`/work-orders/${order.id}`} className="hover:text-blue-600">{order.order_no}</Link>

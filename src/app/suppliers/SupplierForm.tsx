@@ -106,9 +106,9 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
         supabase.from("supplier_part_brands").select("part_brand_id, part_brands(name)").eq("supplier_id", supplierId),
       ]);
 
-      setLinkedCategories(catRes.status === "fulfilled" ? (catRes.value.data || []).map((c: { part_category_id: string; part_categories?: { name?: string | null } | null }) => ({ id: c.part_category_id, name: c.part_categories?.name || "" })) : []);
-      setLinkedPartNames(pnRes.status === "fulfilled" ? (pnRes.value.data || []).map((p: { part_name_id: string; part_names?: { name?: string | null } | null }) => ({ id: p.part_name_id, name: p.part_names?.name || "" })) : []);
-      setLinkedBrands(brandRes.status === "fulfilled" ? (brandRes.value.data || []).map((b: { part_brand_id: string; part_brands?: { name?: string | null } | null }) => ({ id: b.part_brand_id, name: b.part_brands?.name || "" })) : []);
+      setLinkedCategories(catRes.status === "fulfilled" ? ((catRes.value.data || []) as unknown as { part_category_id: string; part_categories?: { name?: string | null } | null }[]).map((c) => ({ id: c.part_category_id, name: c.part_categories?.name || "" })) : []);
+      setLinkedPartNames(pnRes.status === "fulfilled" ? ((pnRes.value.data || []) as unknown as { part_name_id: string; part_names?: { name?: string | null } | null }[]).map((p) => ({ id: p.part_name_id, name: p.part_names?.name || "" })) : []);
+      setLinkedBrands(brandRes.status === "fulfilled" ? ((brandRes.value.data || []) as unknown as { part_brand_id: string; part_brands?: { name?: string | null } | null }[]).map((b) => ({ id: b.part_brand_id, name: b.part_brands?.name || "" })) : []);
 
       // 加载关联车型
       try {
@@ -116,7 +116,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
           .from("supplier_vehicle_models")
           .select("vehicle_model_id, vehicle_models(品牌,车系,车型,年款,排量)")
           .eq("supplier_id", supplierId);
-        setLinkedVehicles((vData || []).map((v: { vehicle_model_id: number; vehicle_models?: { 品牌?: string | null; 车系?: string | null; 车型?: string | null; 年款?: number | null; 排量?: string | null } | null }) => {
+        setLinkedVehicles(((vData || []) as unknown as { vehicle_model_id: number; vehicle_models?: { 品牌?: string | null; 车系?: string | null; 车型?: string | null; 年款?: number | null; 排量?: string | null } | null }[]).map((v) => {
           const vm = v.vehicle_models;
           const parts = [vm?.品牌, vm?.车系, vm?.车型].filter(Boolean);
           if (vm?.年款) parts.push(`${vm.年款}款`);
@@ -177,7 +177,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
         .select("id,厂商,品牌,车系")
         .or(`厂商.ilike.%${q}%,品牌.ilike.%${q}%,车系.ilike.%${q}%`)
         .limit(15);
-      setVehicleResults(data || []);
+      setVehicleResults((data || []) as unknown as { id: number; 厂商?: string | null; 品牌?: string | null; 车系?: string | null }[]);
     }, 300);
     return () => clearTimeout(t);
   }, [vehicleQuery, supabase]);
@@ -309,7 +309,8 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
         }
       }
     } else {
-      const { data: inserted, error } = await supabase.from("suppliers").insert({ ...basePayload, ...extPayload }).select("id").single();
+      /* 扩展字段是迁移后加的，supabase 生成类型里没有，故对合并后的 payload 做一次边界断言 */
+      const { data: inserted, error } = await supabase.from("suppliers").insert(({ ...basePayload, ...extPayload }) as unknown as Record<string, never>).select("id").single();
       if (error) {
         if (error.message?.includes("column") || error.code === "42703") {
           const { data: inserted2, error: baseError } = await supabase.from("suppliers").insert(basePayload).select("id").single();

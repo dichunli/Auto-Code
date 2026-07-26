@@ -59,7 +59,16 @@ export interface 车型库行 {
   变速箱类型?: string | null;
   变速箱代号?: string | null;
   底盘代号?: string | null;
+  /* 后期补充的同义列（与 底盘代号/变速箱代号 并存于 vehicle_models 表） */
+  底盘型号?: string | null;
+  变速箱型号?: string | null;
   驱动方式?: string | null;
   车身类型?: string | null;
   排放标准?: string | null;
+}
+
+/* 补充：VehicleModelSelector 用到的轮胎规格字段（同属 vehicle_models 表） */
+export interface 车型库行含轮胎 extends 车型库行 {
+  前轮胎规格?: string | null;
+  后轮胎规格?: string | null;
 }

@@ -1,6 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
+/* 待检查工单（含车牌和客户） */
+interface 检查工单 {
+  id: string;
+  order_no?: string | null;
+  mileage_in?: number | null;
+  vehicles?: { plate_number?: string | null; brand?: string | null; model?: string | null } | null;
+  customers?: { name?: string | null; phone?: string | null } | null;
+}
+
 export default async function MobileInspectionListPage() {
   const supabase = await createClient();
 
@@ -28,7 +37,7 @@ export default async function MobileInspectionListPage() {
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {orders && orders.length > 0 ? (
-          orders.map((order: Record<string, unknown>) => (
+          (orders as unknown as 检查工单[]).map((order) => (
             <Link
               key={order.id}
               href={`/work-orders/${order.id}/inspection/new`}

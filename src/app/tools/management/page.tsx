@@ -143,8 +143,8 @@ export default function ToolManagementPage() {
         interface 角色关联 {
           roles: { name: string } | null;
         }
-        const roleNames = (roleData || [])
-          .map((r: 角色关联) => r.roles?.name)
+        const roleNames = ((roleData || []) as unknown as 角色关联[])
+          .map((r) => r.roles?.name)
           .filter(Boolean) as string[];
         set是管理员(roleNames.includes("admin"));
       }

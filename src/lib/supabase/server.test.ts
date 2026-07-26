@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /* ============================================================
    Mock 外部依赖
    ============================================================ */
-const mockCreateServerClient = vi.fn(() => ({ mockServerClient: true }));
+const mockCreateServerClient = vi.fn<(...args: unknown[]) => { mockServerClient: boolean }>(() => ({ mockServerClient: true }));
 
 vi.mock("@supabase/ssr", () => ({
   createServerClient: (...args: unknown[]) => mockCreateServerClient(...args),
@@ -88,7 +88,7 @@ describe("createClient", () => {
     const { createClient } = await 加载模块();
     await createClient();
 
-    const [, , options] = mockCreateServerClient.mock.calls[0] as [
+    const [, , options] = mockCreateServerClient.mock.calls[0] as unknown as [
       string,
       string,
       {
@@ -108,7 +108,7 @@ describe("createClient", () => {
     const { createClient } = await 加载模块();
     await createClient();
 
-    const [, , options] = mockCreateServerClient.mock.calls[0] as [
+    const [, , options] = mockCreateServerClient.mock.calls[0] as unknown as [
       string,
       string,
       {

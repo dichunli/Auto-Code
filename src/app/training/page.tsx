@@ -84,7 +84,7 @@ export default async function TrainingPage() {
     );
   }
 
-  const typedCourses: 课程[] = ((courses as 课程[]) || []).map((c) => ({
+  const typedCourses: 课程[] = ((courses as unknown as 课程[]) || []).map((c) => ({
     ...c,
     category_name: categoriesMap.get(String(c.category_id || "")) || c.category || "",
     profiles: { full_name: profilesMap.get(String(c.created_by || "")) || "" },

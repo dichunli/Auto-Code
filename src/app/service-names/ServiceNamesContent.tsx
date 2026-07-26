@@ -145,7 +145,7 @@ export default function ServiceNamesContent({ initialData }: { initialData: Serv
           continue;
         }
 
-        const categoryId = categoryMap.get(record["分类名称"]);
+        const categoryId = categoryMap.get(record["分类名称"] as string);
         if (!categoryId) {
           errors.push(`第 ${rowNum} 行: 分类"${record["分类名称"]}"不存在，请先创建该分类`);
           continue;
@@ -184,10 +184,10 @@ export default function ServiceNamesContent({ initialData }: { initialData: Serv
           .from("service_names")
           .select("name")
           .in("name", namesBatch);
-        (existing as ExistingRow[] || []).forEach((row) => existingNames.add(row.name));
+        ((existing as unknown as ExistingRow[]) || []).forEach((row) => existingNames.add(row.name));
       }
 
-      const toInsert = records.filter((r) => !existingNames.has(r.name));
+      const toInsert = records.filter((r) => !existingNames.has(String(r.name)));
       const duplicateInDb = records.length - toInsert.length;
 
       if (toInsert.length === 0) {

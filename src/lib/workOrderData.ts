@@ -26,7 +26,8 @@ export interface 车辆信息 {
   vin?: string | null;
   color?: string | null;
   engine_no?: string | null;
-  vehicle_model_id?: string | null;
+  /* 车型库外键（vehicle_models.id 是 INTEGER） */
+  vehicle_model_id?: number | null;
   vehicle_models?: 车型信息 | null;
   [key: string]: unknown;
 }

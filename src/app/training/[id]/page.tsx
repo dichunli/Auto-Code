@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
+import type { ComponentProps } from "react";
 import { 是抖音链接, 抖音视频简化卡片 } from "@/components/DouyinVideo";
 import DeleteCourseButton from "../DeleteCourseButton";
 import DeleteAssignmentButton from "../DeleteAssignmentButton";
@@ -340,7 +341,7 @@ function CourseContent({ content }: { content: string }) {
   }
 
   if (parsedBlocks) {
-    return <BlockNoteRenderer blocks={parsedBlocks} />;
+    return <BlockNoteRenderer blocks={parsedBlocks as unknown as ComponentProps<typeof BlockNoteRenderer>["blocks"]} />;
   }
 
   /* 旧数据或空数组，按纯文本显示 */

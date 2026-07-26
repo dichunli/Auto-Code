@@ -54,7 +54,12 @@ export async function resolvePartSellingPrice(
       .single(),
   ]);
 
-  const specials = (specialRes.data || []) as Record<string, unknown>[];
+  const specials = (specialRes.data || []) as unknown as {
+    vehicle_id?: string | null;
+    customer_id?: string | null;
+    price?: number | null;
+    companies?: { name?: string | null } | null;
+  }[];
   const vehiclePrice = vehicleRes.data as {
     sales_price?: number;
     vip_price?: number;

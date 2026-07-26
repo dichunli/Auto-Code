@@ -175,7 +175,7 @@ export default function EditVehiclePage() {
             .eq("id", data.vehicle_model_id)
             .single();
           if (vmData) {
-            const vm = vmData as { id: number; 品牌?: string | null; 车系?: string | null; 车型?: string | null; 年款?: number | null; 销售版本?: string | null; 排量?: string | null; 发动机型号?: string | null };
+            const vm = vmData as unknown as { id: number; 品牌?: string | null; 车系?: string | null; 车型?: string | null; 年款?: number | null; 销售版本?: string | null; 排量?: string | null; 发动机型号?: string | null };
             setVehicleModelDetail({ id: vm.id, 排量: vm.排量 || null });
             const parts = [
               vm.年款 ? `${vm.年款}款` : null,
@@ -434,7 +434,7 @@ export default function EditVehiclePage() {
                     .limit(5);
 
                   if (data && data.length > 0) {
-                    const m = data[0] as {
+                    const m = data[0] as unknown as {
                       id: number;
                       品牌: string | null;
                       车系: string | null;

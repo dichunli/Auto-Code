@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import type { 车型库行 } from "@/lib/vehicleModelFields";
 import VehiclePriceModal from "@/components/VehiclePriceModal";
 import VehiclePriceEditModal from "@/components/VehiclePriceEditModal";
 import VehicleDeleteModal from "@/components/VehicleDeleteModal";
@@ -274,13 +275,13 @@ export default function NewServiceItemPage() {
       setForm((prev) => ({
         ...prev,
         category_id: categoryId,
-        sales_type: cat.sales_commission_type || "",
+        sales_type: (cat.sales_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed",
         sales_value: cat.sales_commission_value?.toString() || "",
-        diagnosis_type: cat.diagnosis_commission_type || "",
+        diagnosis_type: (cat.diagnosis_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed",
         diagnosis_value: cat.diagnosis_commission_value?.toString() || "",
-        repair_type: cat.repair_commission_type || "",
+        repair_type: (cat.repair_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed",
         repair_value: cat.repair_commission_value?.toString() || "",
-        qc_type: cat.qc_commission_type || "",
+        qc_type: (cat.qc_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed",
         qc_value: cat.qc_commission_value?.toString() || "",
       }));
     } else {
@@ -394,7 +395,7 @@ export default function NewServiceItemPage() {
         }
         const groupPrice = appendMode && pendingGroupPrices ? pendingGroupPrices : { price: basePrice, vip_price: baseVip, customer_parts_price: baseCp, company_price: baseCo };
         const targetGroupKey = vehiclePrices.find((p) => getPriceKey(p) === editingGroupKey)?.group_key || editingGroupKey;
-        const newEntries = data.map((m: { id: number; 品牌?: string | null; 车系?: string | null; 车型?: string | null; 年款?: number | null; 排量?: string | null; 发动机型号?: string | null; 底盘型号?: string | null; 变速箱型号?: string | null }) => ({
+        const newEntries = (data as unknown as 车型库行[]).map((m) => ({
           vehicle_model_id: m.id,
           vehicle_name: formatVehicleName(m),
           price: groupPrice.price,
@@ -433,7 +434,7 @@ export default function NewServiceItemPage() {
         return;
       }
       const newGroupKey = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const newEntries = data.map((m: { id: number; 品牌?: string | null; 车系?: string | null; 车型?: string | null; 年款?: number | null; 排量?: string | null; 发动机型号?: string | null; 底盘型号?: string | null; 变速箱型号?: string | null }) => ({
+      const newEntries = (data as unknown as 车型库行[]).map((m) => ({
         vehicle_model_id: m.id,
         vehicle_name: formatVehicleName(m),
         price: basePrice,
@@ -848,8 +849,8 @@ export default function NewServiceItemPage() {
                               setSpSelectedVehicle({ id: v.id, info });
                               setSpVehicleResults([]);
                               if (v.customers?.name && !spSelectedCustomer) {
-                                setSpSelectedCustomer({ id: v.customer_id, name: v.customers.name });
-                                setSpCustomerQuery(v.customers.name);
+                                setSpSelectedCustomer({ id: v.customer_id || "", name: v.customers.name || "" });
+                                setSpCustomerQuery(v.customers.name || "");
                               }
                             }}
                             className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0"

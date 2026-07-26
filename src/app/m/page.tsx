@@ -112,8 +112,8 @@ export default async function MobileHomePage() {
       interface 角色关联 {
         roles: { name: string } | null;
       }
-      roles = (data || [])
-        .map((r: 角色关联) => r.roles?.name)
+      roles = ((data || []) as unknown as 角色关联[])
+        .map((r) => r.roles?.name)
         .filter(Boolean) as string[];
     }
   }
