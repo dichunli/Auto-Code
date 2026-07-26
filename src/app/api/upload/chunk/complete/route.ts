@@ -6,6 +6,7 @@ import {
   验证身份, 读取元数据, 删除分片目录, 获取分片目录,
   UPLOAD_DIR, 允许的扩展名,
 } from "../init/route";
+import { 异步处理视频 } from "@/lib/videoProcessing";
 
 /* ======================== POST: 合并分片 ======================== */
 
@@ -80,6 +81,9 @@ export async function POST(request: Request) {
 
     /* 删除分片目录 */
     await 删除分片目录(uploadId);
+
+    /* 视频：异步生成封面 + 转码压缩（不阻塞上传响应） */
+    异步处理视频(finalPath);
 
     const relativePath = `${subDir}/${fileName}`;
     return Response.json({ path: `/api/media/${relativePath}` });

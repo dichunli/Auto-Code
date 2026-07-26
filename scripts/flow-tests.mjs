@@ -72,12 +72,27 @@ function 记录(步骤, 通过, 详情 = "") {
 /* ---------- 清理（无论成败都执行） ---------- */
 async function 清理(工单id) {
   try {
-    if (工单id) {
-      await api("DELETE", `work_order_item_parts?work_order_item_id=in.(select id from work_order_items where work_order_id=eq.${工单id})`);
-      await api("DELETE", `work_order_requirement_media?requirement_id=in.(select id from work_order_requirements where work_order_id=eq.${工单id})`);
-      await api("DELETE", `work_order_requirements?work_order_id=eq.${工单id}`);
-      await api("DELETE", `work_order_items?work_order_id=eq.${工单id}`);
-      await api("DELETE", `work_orders?id=eq.${工单id}`);
+    /* 1. 按名字找到全部测试客户，先删他们的工单链（防止某次失败留下的外键拦截） */
+    const 客户们 = await api("GET", `customers?name=eq.${encodeURIComponent(客户名)}&select=id`);
+    const 客户ids = (客户们 || []).map((c) => c.id);
+    const 待删工单 = new Set();
+    if (工单id) 待删工单.add(工单id);
+    if (客户ids.length > 0) {
+      const 工单们 = await api("GET", `work_orders?customer_id=in.(${客户ids.join(",")})&select=id`);
+      for (const w of 工单们 || []) 待删工单.add(w.id);
+    }
+    for (const wid of 待删工单) {
+      const 项目们 = await api("GET", `work_order_items?work_order_id=eq.${wid}&select=id`);
+      for (const it of 项目们 || []) {
+        await api("DELETE", `work_order_item_parts?work_order_item_id=eq.${it.id}`);
+      }
+      const 需求们 = await api("GET", `work_order_requirements?work_order_id=eq.${wid}&select=id`);
+      for (const r of 需求们 || []) {
+        await api("DELETE", `work_order_requirement_media?requirement_id=eq.${r.id}`);
+      }
+      await api("DELETE", `work_order_requirements?work_order_id=eq.${wid}`);
+      await api("DELETE", `work_order_items?work_order_id=eq.${wid}`);
+      await api("DELETE", `work_orders?id=eq.${wid}`);
     }
     /* 财务流水 */
     await api("DELETE", `finance_transactions?description=eq.${encodeURIComponent(流水备注)}`);
@@ -93,8 +108,11 @@ async function 清理(工单id) {
         if (名称行?.[0]?.category_id) await api("DELETE", `part_categories?id=eq.${名称行[0].category_id}`);
       }
     }
-    /* 车辆（按车牌和测试VIN） */
+    /* 车辆（本次的按车牌/VIN，历史残留按客户ID，先删车再删人才不被外键拦） */
     await api("DELETE", `vehicles?or=(plate_number.eq.${encodeURIComponent(车牌)},vin.eq.${测试VIN})`);
+    if (客户ids.length > 0) {
+      await api("DELETE", `vehicles?customer_id=in.(${客户ids.join(",")})`);
+    }
     /* 客户 */
     await api("DELETE", `customers?name=eq.${encodeURIComponent(客户名)}`);
   } catch (e) {

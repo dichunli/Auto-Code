@@ -34,6 +34,7 @@ import SortableList from "@/components/SortableList";
 import ItemImageUploader from "@/components/ItemImageUploader";
 import { WorkOrderRealtimeSync } from "@/components/WorkOrderRealtimeSync";
 import MobileItemEditor from "@/components/MobileItemEditor";
+import LazyVideo from "@/components/LazyVideo";
 import { buildWorkOrderView } from "@/lib/workOrderView";
 import type { ComponentProps } from "react";
 import type { CommissionSource } from "@/lib/commission";
@@ -858,7 +859,7 @@ export default async function WorkOrderDetailPage({
                           <div className="text-xs text-gray-500 mb-1">环车检查视频</div>
                           <div className="flex flex-wrap gap-2">
                             {receptionVideos.map((m, idx: number) => (
-                              <video key={idx} src={m.storage_path} className="w-48 h-32 rounded border border-gray-200 object-cover" controls preload="metadata" />
+                              <LazyVideo key={idx} src={m.storage_path || ""} className="w-48 h-32 rounded border border-gray-200" />
                             ))}
                           </div>
                         </div>
@@ -1312,7 +1313,7 @@ export default async function WorkOrderDetailPage({
                           <div className="text-xs text-gray-500 mb-1">检查视频</div>
                           <div className="flex flex-wrap gap-2">
                             {inspectionVideos.map((m, idx: number) => (
-                              <video key={idx} src={m.storage_path} className="w-48 h-32 rounded border border-gray-200 object-cover" controls preload="metadata" />
+                              <LazyVideo key={idx} src={m.storage_path || ""} className="w-48 h-32 rounded border border-gray-200" />
                             ))}
                           </div>
                         </div>
