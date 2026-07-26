@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { stat } from "fs/promises";
+import { stat, access } from "fs/promises";
 import { createReadStream } from "fs";
 import path from "path";
 import { Readable } from "stream";
@@ -94,15 +94,25 @@ export async function GET(
     const ext = path.extname(filePath).toLowerCase();
     const contentType = mimeTypes[ext] || "application/octet-stream";
 
+    /* 视频：存在转码压缩版（.opt.mp4）时优先分发，原文件保留但不再直接流出 */
+    let 分发路径 = resolvedPath;
+    const 是视频音频 = 视频音频扩展名.has(ext);
+    if (是视频音频) {
+      const 压缩版路径 = `${resolvedPath}.opt.mp4`;
+      try {
+        await access(压缩版路径);
+        分发路径 = 压缩版路径;
+      } catch { /* 没有压缩版就用原文件 */ }
+    }
+
     /* 获取文件大小 */
     let fileStats;
     try {
-      fileStats = await stat(resolvedPath);
+      fileStats = await stat(分发路径);
     } catch {
       return NextResponse.json({ error: "文件不存在" }, { status: 404 });
     }
     const fileSize = fileStats.size;
-    const 是视频音频 = 视频音频扩展名.has(ext);
 
     /* ── 视频/音频：流式传输 + Range 支持 ── */
     if (是视频音频) {
@@ -124,7 +134,7 @@ export async function GET(
         if (end >= fileSize) end = fileSize - 1;
 
         /* 用 createReadStream 的 start/end 选项，直接从磁盘流式读取指定范围 */
-        const nodeStream = createReadStream(resolvedPath, { start, end });
+        const nodeStream = createReadStream(分发路径, { start, end });
         const webStream = nodeStreamToWebStream(nodeStream);
 
         return new NextResponse(webStream, {
@@ -140,7 +150,7 @@ export async function GET(
       }
 
       /* 无 Range 请求：流式传输整个文件 */
-      const nodeStream = createReadStream(resolvedPath);
+      const nodeStream = createReadStream(分发路径);
       const webStream = nodeStreamToWebStream(nodeStream);
 
       return new NextResponse(webStream, {

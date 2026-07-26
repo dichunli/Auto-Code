@@ -8,6 +8,7 @@ import path from "path";
 import { 解析Multipart请求 } from "@/lib/parseMultipart";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { 异步处理视频 } from "@/lib/videoProcessing";
 
 const execFileAsync = promisify(execFile);
 
@@ -137,6 +138,9 @@ export async function POST(request: Request) {
     const finalPath = path.join(dir, fileName);
 
     await writeFile(finalPath, fileBuffer);
+
+    /* 视频：异步生成封面 + 转码压缩（不阻塞上传响应） */
+    异步处理视频(finalPath);
 
     /* 返回相对路径 */
     const relativePath = `${subDir}/${fileName}`;
