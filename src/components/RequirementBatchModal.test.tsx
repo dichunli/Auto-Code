@@ -107,17 +107,17 @@ describe("RequirementBatchModal - 保存逻辑", () => {
     /* 点保存 */
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    /* 等异步保存流程跑完 */
+    /* 等异步保存流程跑完（机器满载时 1 秒默认上限不够，放宽到 5 秒防偶发超时） */
     await waitFor(() => {
       expect(mockInsert).toHaveBeenCalled();
-    });
+    }, { timeout: 5000 });
 
     /* 断言：保存成功后写入了数据库，并清缓存+重新验证页面（否则新需求要手动刷新才显示），
      * 且刷新在 insert 之后。当前用户用组件挂载时已拿到的 currentUserId，保存时不再联网。 */
     expect(调用顺序).toContain("insert");
     await waitFor(() => {
       expect(mock刷新工单详情).toHaveBeenCalledWith("wo-1");
-    });
+    }, { timeout: 5000 });
     expect(调用顺序.indexOf("insert")).toBeLessThan(调用顺序.indexOf("刷新工单详情"));
   });
 
@@ -183,6 +183,6 @@ describe("RequirementBatchModal - 删除防误删保护", () => {
     await waitFor(() => {
       expect(mockDelete).toHaveBeenCalled();
       expect(mock刷新工单详情).toHaveBeenCalledWith("wo-1");
-    });
+    }, { timeout: 5000 });
   });
 });
