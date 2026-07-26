@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 
 interface ServiceItem {
   id: string;
@@ -31,7 +31,6 @@ export function EditWorkOrderItemModal({
   currentUnitPrice,
   onClose,
 }: Props) {
-  const router = useRouter();
   const supabase = createClient();
   const [aliasName, setAliasName] = useState(currentAlias || "");
   const [quantity, setQuantity] = useState(String(currentQuantity || 1));
@@ -88,10 +87,13 @@ export function EditWorkOrderItemModal({
   async function handleSave() {
     setLoading(true);
 
+    const 新数量 = parseFloat(quantity) || 1;
+    const 新单价 = parseFloat(unitPrice) || 0;
+
     const updateData: Record<string, unknown> = {
       alias_name: aliasName.trim() || null,
-      quantity: parseFloat(quantity) || 1,
-      unit_price: parseFloat(unitPrice) || 0,
+      quantity: 新数量,
+      unit_price: 新单价,
     };
 
     if (selectedServiceItem) {
@@ -113,12 +115,31 @@ export function EditWorkOrderItemModal({
       alert("保存失败: " + error.message);
       return;
     }
-    router.refresh();
+
+    /* 局部更新：广播项目变更事件，项目名/小计/页底合计各自监听更新，
+     * 不整页刷新（整页刷新要 20 次境外查询，慢且可能超时显示旧数据）。
+     * total_price 与数据库生成列同公式（quantity * unit_price），转分处理浮点。 */
+    window.dispatchEvent(
+      new CustomEvent("wo-item-update", {
+        detail: {
+          itemId,
+          name: updateData.name as string | undefined,
+          alias_name: updateData.alias_name,
+          quantity: 新数量,
+          unit_price: 新单价,
+          total_price: Math.round(新数量 * 新单价 * 100) / 100,
+        },
+      })
+    );
     onClose();
   }
 
-  return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 ${open ? "" : "hidden"}`}>
+  // Portal 到 body：逃出项目行 sticky 操作区的层叠上下文，
+  // 否则遮罩 z-50 只在 sticky 上下文内有效，会被配件行穿透
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">编辑维修项目</h2>
 
@@ -228,6 +249,7 @@ export function EditWorkOrderItemModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

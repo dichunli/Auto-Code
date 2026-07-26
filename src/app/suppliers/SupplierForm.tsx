@@ -3,6 +3,7 @@
 import {useState, useEffect, useRef, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { PageHeader } from "@/components/PageHeader";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -385,6 +386,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
       }
     } catch { /* 忽略 */ }
 
+    await 刷新基础数据缓存();
     router.push("/suppliers");
     router.refresh();
   }

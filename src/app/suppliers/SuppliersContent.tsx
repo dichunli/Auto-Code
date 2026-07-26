@@ -3,6 +3,7 @@
 import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
+import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 
@@ -93,6 +94,7 @@ export default function SuppliersContent({ initialSuppliers }: { initialSupplier
       alert("删除失败: " + error.message);
       return;
     }
+    await 刷新基础数据缓存();
     loadSuppliers(query, regionFilter);
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface Requirement {
@@ -20,8 +20,9 @@ export default function RequirementActions({
   requirement: Requirement;
   profiles: Profile[];
 }) {
-  const router = useRouter();
   const supabase = createClient();
+  // 本地保存当前指派人：保存成功后只更新按钮和标签，不整页刷新
+  const [当前指派, 设置当前指派] = useState<string | null>(requirement.assigned_to);
 
   async function handleAssign(assignedToId: string, type: "assigned" | "claimed") {
     const { data: authData } = await supabase.auth.getUser();
@@ -38,14 +39,27 @@ export default function RequirementActions({
 
     if (error) {
       alert("操作失败: " + error.message);
-    } else {
-      router.refresh();
+      return;
     }
+
+    /* 局部更新：更新按钮状态 + 广播指派事件（标题栏标签监听后更新），不整页刷新 */
+    设置当前指派(assignedToId || null);
+    const 指派人 = profiles.find((p) => p.id === assignedToId);
+    window.dispatchEvent(
+      new CustomEvent("wo-requirement-assigned", {
+        detail: {
+          requirementId: requirement.id,
+          assignedTo: assignedToId || null,
+          assignmentType: assignedToId ? type : null,
+          fullName: 指派人?.full_name || "",
+        },
+      })
+    );
   }
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      {!requirement.assigned_to && (
+      {!当前指派 && (
         <>
           <select
             className="text-xs px-1 py-0.5 border border-gray-300 rounded"
@@ -74,7 +88,7 @@ export default function RequirementActions({
           </button>
         </>
       )}
-      {requirement.assigned_to && (
+      {当前指派 && (
         <button
           onClick={() => handleAssign("", "assigned")}
           className="text-xs text-gray-500 hover:text-gray-700"

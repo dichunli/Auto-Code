@@ -19,11 +19,26 @@ interface Props {
 // 监听同项目下分支的字段变更事件，实时刷新小计
 export default function ItemSubtotalDisplay({ itemId, itemTotalPrice, parts }: Props) {
   const [partsState, setPartsState] = useState<PartLite[]>(parts);
+  const [itemTotal, setItemTotal] = useState(itemTotalPrice);
 
   // props 变更（router.refresh 后）同步本地状态
   useEffect(() => {
     setPartsState(parts);
   }, [JSON.stringify(parts)]);
+  useEffect(() => {
+    setItemTotal(itemTotalPrice);
+  }, [itemTotalPrice]);
+
+  // 监听项目本身的修改（编辑项目弹窗改单价/数量后广播）
+  useEffect(() => {
+    function handleItemUpdate(e: Event) {
+      const detail = (e as CustomEvent).detail as { itemId: string; total_price?: number };
+      if (detail.itemId !== itemId) return;
+      if (detail.total_price !== undefined) setItemTotal(detail.total_price);
+    }
+    window.addEventListener("wo-item-update", handleItemUpdate as EventListener);
+    return () => window.removeEventListener("wo-item-update", handleItemUpdate as EventListener);
+  }, [itemId]);
 
   useEffect(() => {
     function handleUpdate(e: Event) {
@@ -79,12 +94,12 @@ export default function ItemSubtotalDisplay({ itemId, itemTotalPrice, parts }: P
     (sum, p) => sum + (p.is_selected ? p.unit_price * p.quantity : 0),
     0
   );
-  const subtotal = itemTotalPrice + partSubtotal;
+  const subtotal = itemTotal + partSubtotal;
 
   return (
     <div className="flex items-center justify-end gap-6">
       <span className="text-sm text-gray-500">
-        项目金额: {formatCurrency(itemTotalPrice)}
+        项目金额: {formatCurrency(itemTotal)}
       </span>
       <span className="font-medium text-gray-900 text-base">
         小计: {formatCurrency(subtotal)}

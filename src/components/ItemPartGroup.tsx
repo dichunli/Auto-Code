@@ -10,6 +10,7 @@ import { ShowCommission } from "@/components/WorkOrderToggleContext";
 import { calculatePartCommission } from "@/lib/commission";
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import type { PartBranch } from "@/lib/workOrderView";
+import { useItemPosition, usePartPosition } from "@/lib/sortOrderContext";
 
 // 一个「配件名称目录」= 组头 + 其下所有分支行，由本客户端组件统一掌管。
 // 加分支/删分支/切换选中都在这里从当前实际分支列表计算，保证「每目录仅一个选中」
@@ -28,7 +29,7 @@ interface LogisticsLite {
 interface Props {
   group: { repId: string; name: string; parts: PartBranch[]; extraIds: string[]; images: string[] };
   itemId: string;
-  seqPrefix: string; // 形如 "1.1.1"，分支行在其后追加 ".序号"
+  需求序号: number; // 需求在工单内的序号（显示序号），序号前两段由此和排序 Context 动态计算
   isLocked: boolean;
   vehicleModelId?: number;
   suppliers: SupplierLite[];
@@ -43,7 +44,7 @@ interface Props {
 export default function ItemPartGroup({
   group,
   itemId,
-  seqPrefix,
+  需求序号,
   isLocked,
   vehicleModelId,
   suppliers,
@@ -54,6 +55,10 @@ export default function ItemPartGroup({
   pendingSupplierReturnByPart,
   imagesByPart,
 }: Props) {
+  // 序号前缀（形如 "1.1.1"）：项目位置 + 组位置从排序 Context 实时读取，拖拽后自动重排
+  const 项目位置 = useItemPosition(itemId);
+  const 组位置 = usePartPosition(group.repId);
+  const seqPrefix = `${需求序号}.${项目位置}.${组位置}`;
   // 分支列表本地状态：服务端初始数据 + 本地加/删的实时变化
   const [branches, setBranches] = useState<PartBranch[]>(group.parts);
 

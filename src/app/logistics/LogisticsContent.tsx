@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -284,6 +285,7 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
       alert("删除失败: " + error.message);
       return;
     }
+    await 刷新基础数据缓存();
     loadCompanies();
   }
 
@@ -1410,6 +1412,7 @@ function CompanyEditModal({ company, onClose, onSaved }: CompanyEditModalProps) 
         return;
       }
     }
+    await 刷新基础数据缓存();
     onSaved();
   }
 

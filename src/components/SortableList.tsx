@@ -2,7 +2,7 @@
 
 import { Children, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { ItemLevelSortContext, PartLevelSortContext } from "@/lib/sortOrderContext";
 
 interface Props {
   ids: string[];
@@ -14,7 +14,6 @@ interface Props {
 
 export default function SortableList({ ids, tableName, extraIdMap, children }: Props) {
   const supabase = createClient();
-  const router = useRouter();
   const [orderedIds, setOrderedIds] = useState<string[]>(ids);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -75,14 +74,25 @@ export default function SortableList({ ids, tableName, extraIdMap, children }: P
     }
     if (hasError) {
       alert("排序保存失败，请检查网络或刷新后重试");
+      return;
     }
 
-    router.refresh();
+    /* 局部更新：行位置已在上面本地更新，无需整页刷新。
+     * 轻提示告知已保存；行号文本暂不跟随（下次整页刷新自动重排）。 */
+    window.dispatchEvent(
+      new CustomEvent("wo-saved-pending", {
+        detail: { message: "排序已保存" },
+      })
+    );
   }
 
+  // 按 tableName 选择排序 Context：项目级 / 配件级，序号组件从 Context 读位置自动重排
+  const Provider = tableName === "work_order_items" ? ItemLevelSortContext.Provider : PartLevelSortContext.Provider;
+
   return (
-    <div className="space-y-2">
-      {orderedIds.map((id) => {
+    <Provider value={orderedIds}>
+      <div className="space-y-2">
+        {orderedIds.map((id) => {
         const childIndex = ids.indexOf(id);
         const child = childArray[childIndex];
         const isDragging = draggingId === id;
@@ -134,6 +144,7 @@ export default function SortableList({ ids, tableName, extraIdMap, children }: P
           </div>
         );
       })}
-    </div>
+      </div>
+    </Provider>
   );
 }

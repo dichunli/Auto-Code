@@ -94,8 +94,10 @@ beforeEach(() => {
 });
 
 describe("RequirementBatchModal - 保存逻辑", () => {
-  it("点保存 → 用 getSession 拿用户后写数据库 insert（不联网 getUser）", async () => {
+  it("点保存 → 写库 insert 后广播 wo-requirement-added 局部追加（不整页刷新）", async () => {
     const user = userEvent.setup();
+    const 事件监听 = vi.fn();
+    window.addEventListener("wo-requirement-added", 事件监听);
     render(
       <RequirementBatchModal open={true} onClose={vi.fn()} orderId="wo-1" />
     );
@@ -112,13 +114,14 @@ describe("RequirementBatchModal - 保存逻辑", () => {
       expect(mockInsert).toHaveBeenCalled();
     }, { timeout: 5000 });
 
-    /* 断言：保存成功后写入了数据库，并清缓存+重新验证页面（否则新需求要手动刷新才显示），
-     * 且刷新在 insert 之后。当前用户用组件挂载时已拿到的 currentUserId，保存时不再联网。 */
+    /* 断言：写库成功后广播 wo-requirement-added 事件（局部追加需求卡片），
+     * 不再调 刷新工单详情 整页刷新（局部更新模式） */
     expect(调用顺序).toContain("insert");
     await waitFor(() => {
-      expect(mock刷新工单详情).toHaveBeenCalledWith("wo-1");
-    }, { timeout: 5000 });
-    expect(调用顺序.indexOf("insert")).toBeLessThan(调用顺序.indexOf("刷新工单详情"));
+      expect(事件监听).toHaveBeenCalled();
+    });
+    expect(mock刷新工单详情).not.toHaveBeenCalled();
+    window.removeEventListener("wo-requirement-added", 事件监听);
   });
 
   it("内容为空 → 不写库，也不必走保存流程（提示后中止）", async () => {
@@ -160,9 +163,11 @@ describe("RequirementBatchModal - 删除防误删保护", () => {
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
-  it("需求下无项目（项目数=0）→ 可删除，并调可靠刷新", async () => {
+  it("需求下无项目（项目数=0）→ 可删除，广播 wo-requirement-deleted 局部移除", async () => {
     /* 删除会弹 confirm，mock 成确认 */
     vi.spyOn(window, "confirm").mockReturnValue(true);
+    const 事件监听 = vi.fn();
+    window.addEventListener("wo-requirement-deleted", 事件监听);
     const user = userEvent.setup();
     render(
       <RequirementBatchModal
@@ -179,10 +184,14 @@ describe("RequirementBatchModal - 删除防误删保护", () => {
 
     await user.click(删除按钮);
 
-    /* 删除后必须调 刷新工单详情，确保从列表可靠消失 */
+    /* 删除后广播 wo-requirement-deleted 事件（卡片局部消失），不再整页刷新 */
     await waitFor(() => {
       expect(mockDelete).toHaveBeenCalled();
-      expect(mock刷新工单详情).toHaveBeenCalledWith("wo-1");
-    }, { timeout: 5000 });
+    });
+    await waitFor(() => {
+      expect(事件监听).toHaveBeenCalled();
+    });
+    expect(mock刷新工单详情).not.toHaveBeenCalled();
+    window.removeEventListener("wo-requirement-deleted", 事件监听);
   });
 });

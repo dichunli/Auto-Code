@@ -360,15 +360,33 @@ export function AddWorkOrderItemPartModal({
     }
 
     // 标记本项目为"自己刚结构改动"，避免实时同步把自己的新增当成别人的改动弹提示条。
-    // onSuccess 会 router.refresh 拉到最新（含新增配件），无需再点提示条。
     标记本地结构编辑(itemId);
 
-    const { error } = await supabase.from("work_order_item_parts").insert(inserts);
+    const { data: 新配件们, error } = await supabase
+      .from("work_order_item_parts")
+      .insert(inserts)
+      .select("id, quantity, unit_price, is_selected");
 
     setSaving(false);
     if (error) {
       alert("添加失败: " + error.message);
       return;
+    }
+
+    // 广播配件新增事件：项目小计/页底合计监听后自动加上新配件金额（不整页刷新）
+    for (const 新配件 of 新配件们 || []) {
+      window.dispatchEvent(
+        new CustomEvent("wo-part-update", {
+          detail: {
+            itemId,
+            partId: 新配件.id,
+            added: true,
+            quantity: 新配件.quantity || 1,
+            unit_price: 新配件.unit_price || 0,
+            is_selected: 新配件.is_selected ?? true,
+          },
+        })
+      );
     }
 
     onSuccess();

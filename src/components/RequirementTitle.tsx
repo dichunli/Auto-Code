@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import RequirementBatchModal from "./RequirementBatchModal";
 
 interface Profile {
@@ -63,9 +63,36 @@ function MediaTypeIcon({ type }: { type: string }) {
 
 export default function RequirementTitle({ req, orderId, profiles, media, 项目数 = 0, displaySeq }: Props) {
   const [open, setOpen] = useState(false);
-  const hasImage = media.some((m) => m.media_type === "image");
-  const hasVideo = media.some((m) => m.media_type === "video");
-  const hasAudio = media.some((m) => m.media_type === "audio");
+  // 本地状态：编辑需求保存后监听"wo-requirement-updated"事件立即更新，不整页刷新
+  const [描述, 设置描述] = useState(req.description);
+  const [媒体列表, 设置媒体列表] = useState(media);
+
+  // 整页刷新后 props 更新，同步本地状态
+  useEffect(() => {
+    设置描述(req.description);
+  }, [req.description]);
+  useEffect(() => {
+    设置媒体列表(media);
+  }, [media]);
+
+  useEffect(() => {
+    function handle(e: Event) {
+      const detail = (e as CustomEvent).detail as {
+        requirementId: string;
+        description?: string;
+        media?: MediaItem[];
+      };
+      if (detail.requirementId !== req.id) return;
+      if (detail.description !== undefined) 设置描述(detail.description);
+      if (detail.media !== undefined) 设置媒体列表(detail.media);
+    }
+    window.addEventListener("wo-requirement-updated", handle as EventListener);
+    return () => window.removeEventListener("wo-requirement-updated", handle as EventListener);
+  }, [req.id]);
+
+  const hasImage = 媒体列表.some((m) => m.media_type === "image");
+  const hasVideo = 媒体列表.some((m) => m.media_type === "video");
+  const hasAudio = 媒体列表.some((m) => m.media_type === "audio");
 
   return (
     <>
@@ -76,7 +103,7 @@ export default function RequirementTitle({ req, orderId, profiles, media, 项目
           className="text-left text-sm text-gray-900 hover:text-blue-600 transition-colors"
         >
           <span className="text-blue-600 mr-1">需求{displaySeq ?? req.seq}</span>
-          <span className="font-medium">{req.description}</span>
+          <span className="font-medium">{描述}</span>
         </button>
         {(hasImage || hasVideo || hasAudio) && (
           <span className="hidden md:inline-flex items-center gap-0.5 text-gray-400 ml-1">
@@ -91,7 +118,7 @@ export default function RequirementTitle({ req, orderId, profiles, media, 项目
         onClose={() => setOpen(false)}
         orderId={orderId}
         requirement={req}
-        initialMedia={media || []}
+        initialMedia={媒体列表 || []}
         profiles={profiles}
         项目数={项目数}
       />

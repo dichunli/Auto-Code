@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 
@@ -227,6 +228,7 @@ export function EmployeeEditForm({
         if (removeContactError) throw removeContactError;
       }
 
+      await 刷新基础数据缓存();
       await router.push(`/employees/${employeeId}`);
       router.refresh();
     } catch (err: unknown) {

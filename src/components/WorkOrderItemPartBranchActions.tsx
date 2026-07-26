@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { 标记本地结构编辑 } from "@/lib/localEditSignal";
 
@@ -12,7 +11,6 @@ interface Props {
 }
 
 export default function WorkOrderItemPartBranchActions({ partId, itemId, canDelete }: Props) {
-  const router = useRouter();
   const supabase = createClient();
   const [deleting, setDeleting] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -31,7 +29,15 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       return;
     }
     标记本地结构编辑(itemId);
-    router.refresh();
+    /* 局部更新：广播删除事件（合计自动减）+ 重查该项目配件（分支立即消失），不整页刷新 */
+    window.dispatchEvent(
+      new CustomEvent("wo-part-update", {
+        detail: { itemId, partId, deleted: true },
+      })
+    );
+    window.dispatchEvent(
+      new CustomEvent("wo-parts-reload", { detail: { itemId } })
+    );
   }
 
   async function handleAdd() {
@@ -59,7 +65,11 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       return;
     }
     标记本地结构编辑(itemId);
-    router.refresh();
+    /* 局部更新：重查该项目配件（新分支立即出现），不整页刷新。
+     * 新分支默认未选中，不计入合计，无需广播合计事件 */
+    window.dispatchEvent(
+      new CustomEvent("wo-parts-reload", { detail: { itemId } })
+    );
   }
 
   return (
