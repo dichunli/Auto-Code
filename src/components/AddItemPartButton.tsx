@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { AddWorkOrderItemPartModal } from "./AddWorkOrderItemPartModal";
 
 interface Props {
@@ -14,7 +13,6 @@ interface Props {
 
 export default function AddItemPartButton({ itemId, serviceItemId, itemName, vehicleModelId, vin }: Props) {
   const [open, setOpen] = useState(false);
-  const router = useRouter();
 
   return (
     <>
@@ -36,7 +34,11 @@ export default function AddItemPartButton({ itemId, serviceItemId, itemName, veh
           onClose={() => setOpen(false)}
           onSuccess={() => {
             setOpen(false);
-            router.refresh();
+            /* 局部更新：广播"重查该项目配件"事件，ItemPartsLive 只重查 1 张表重新渲染配件区，
+             * 不整页刷新（整页要 20 次境外查询，3~6 秒） */
+            window.dispatchEvent(
+              new CustomEvent("wo-parts-reload", { detail: { itemId } })
+            );
           }}
         />
       )}

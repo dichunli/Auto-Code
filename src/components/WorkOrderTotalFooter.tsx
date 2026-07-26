@@ -48,8 +48,23 @@ export default function WorkOrderTotalFooter({ items, parts, advancePaymentTotal
         prev.map((it) => (it.id === detail.itemId ? { ...it, total_price: detail.total_price! } : it))
       );
     }
+    // 批量添加项目：把新项目追加到合计
+    function handleItemsAdded(e: Event) {
+      const detail = (e as CustomEvent).detail as { items: { id: string; total_price?: number }[] };
+      setItemsState((prev) => {
+        const 已有 = new Set(prev.map((it) => it.id));
+        const 新增 = detail.items
+          .filter((it) => !已有.has(it.id))
+          .map((it) => ({ id: it.id, total_price: it.total_price || 0 }));
+        return [...prev, ...新增];
+      });
+    }
     window.addEventListener("wo-item-update", handleItemUpdate as EventListener);
-    return () => window.removeEventListener("wo-item-update", handleItemUpdate as EventListener);
+    window.addEventListener("wo-items-added", handleItemsAdded as EventListener);
+    return () => {
+      window.removeEventListener("wo-item-update", handleItemUpdate as EventListener);
+      window.removeEventListener("wo-items-added", handleItemsAdded as EventListener);
+    };
   }, []);
 
   useEffect(() => {

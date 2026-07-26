@@ -16,6 +16,13 @@ import { CancelCreateMaintenanceButton } from "@/components/CancelCreateMaintena
 import { BusinessTypeToggle } from "@/components/BusinessTypeToggle";
 import ItemNameDisplay from "@/components/ItemNameDisplay";
 import ItemRowWrapper from "@/components/ItemRowWrapper";
+import SavingToast from "@/components/SavingToast";
+import LiveRequirementsList from "@/components/LiveRequirementsList";
+import RequirementRowWrapper from "@/components/RequirementRowWrapper";
+import LiveItemsList from "@/components/LiveItemsList";
+import ItemPartsLive from "@/components/ItemPartsLive";
+import AssignmentBadge from "@/components/AssignmentBadge";
+import SeqBadge from "@/components/SeqBadge";
 import { TemplateImportWrapper } from "@/components/TemplateImportWrapper";
 import { ConstructionControls } from "@/components/ConstructionControls";
 import { WorkOrderItemActions } from "@/components/WorkOrderItemActions";
@@ -501,24 +508,26 @@ export default async function WorkOrderDetailPage({
                 />
               )}
             </div>
-            <div className="divide-y divide-gray-300">
+            <LiveRequirementsList
+              orderId={id}
+              vehicleModelId={vehicleModelId}
+              实际锁定={实际锁定}
+              profiles={profiles || []}
+              已有需求IDs={(requirements || []).map((r: { id: string }) => r.id)}
+            >
               {requirements?.map((req: { id: string; seq: number; submitted_by?: string; assigned_to_profile?: { full_name?: string } | null; assignment_type?: string; notes?: string }, reqIdx: number) => {
                 /* 显示用序号：按当前列表位置，删中间需求后自动重排（需求1/2/3…） */
                 const 显示序号 = reqIdx + 1;
                 return (
-                <div key={req.id} className="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
+                <RequirementRowWrapper key={req.id} reqId={req.id}>
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
                   <div className="flex items-center gap-2 flex-wrap px-4 py-3 md:px-6 md:py-4 border-b border-gray-100 bg-gray-50/50">
                     <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} 项目数={(itemsByRequirement.get(req.id) || []).length} displaySeq={显示序号} />
-                    {req.assigned_to_profile && req.assignment_type === 'claimed' && (
-                      <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px]">
-                        领单: {req.assigned_to_profile.full_name}
-                      </span>
-                    )}
-                    {req.assigned_to_profile && req.assignment_type === 'assigned' && (
-                      <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px]">
-                        指派: {req.assigned_to_profile.full_name}
-                      </span>
-                    )}
+                    <AssignmentBadge
+                      reqId={req.id}
+                      初始姓名={req.assigned_to_profile?.full_name || null}
+                      初始类型={req.assignment_type || null}
+                    />
                     <span className="hidden md:inline text-xs text-gray-400">
                       提交: {(profiles || []).find((p: { id?: string; full_name?: string }) => p.id === req.submitted_by)?.full_name || "-"}
                     </span>
@@ -625,7 +634,7 @@ export default async function WorkOrderDetailPage({
                             <div className="hidden md:block overflow-x-auto relative">
                               <div className="flex items-center min-w-max">
                                 <div className="flex items-center gap-2 flex-shrink-0">
-                                  <span className="text-xs text-gray-400 font-mono">{显示序号}.{itemIdx + 1}</span>
+                                  <SeqBadge itemId={item.id} 前缀={显示序号} />
                                   <ItemNameDisplay itemId={item.id} name={item.name || ""} aliasName={item.alias_name} />
                                   <ItemPersonSelectors
                                     itemId={item.id}
@@ -775,7 +784,22 @@ export default async function WorkOrderDetailPage({
                                 </div>
                               </ShowTimer>
                             )}
-                            {/* 项目所用配件（仅桌面端显示，移动端通过弹窗管理） */}
+                            {/* 项目所用配件（仅桌面端显示，移动端通过弹窗管理）。
+                                 ItemPartsLive 包装：添加配件后只重查该项目配件，不整页刷新 */}
+                            <ItemPartsLive
+                              itemId={item.id}
+                              orderId={id}
+                              seqPrefix={`${显示序号}.${itemIdx + 1}`}
+                              isLocked={实际锁定}
+                              vehicleModelId={vehicleModelId}
+                              suppliers={suppliers || []}
+                              logisticsCompanies={logisticsCompanies || []}
+                              pickingByPart={pickingByPart}
+                              returnByPart={returnByPart}
+                              inventoryByPart={inventoryByPart}
+                              pendingSupplierReturnByPart={pendingSupplierReturnByPart}
+                              imagesByPart={imagesByPart}
+                            >
                             {(partGroupsByItem.get(item.id) || []).length > 0 && (
                               <div className="hidden md:block mt-3 ml-2 bg-white rounded-lg border border-gray-200 p-3 text-xs space-y-2 shadow-sm">
                                 <div className="flex items-center gap-2 mb-2">
@@ -798,7 +822,7 @@ export default async function WorkOrderDetailPage({
                                           key={group.repId}
                                           group={group}
                                           itemId={item.id}
-                                          seqPrefix={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}`}
+                                          需求序号={显示序号}
                                           isLocked={实际锁定}
                                           vehicleModelId={vehicleModelId}
                                           suppliers={suppliers || []}
@@ -815,20 +839,32 @@ export default async function WorkOrderDetailPage({
                                 })()}
                               </div>
                             )}
+                            </ItemPartsLive>
                                 </div>
                                 </ItemRowWrapper>
                               ))}
                             </SortableList>
                           );
                         })()}
+                        {/* 新添加项目的追加区（局部更新，不整页刷新） */}
+                        <LiveItemsList
+                          reqId={req.id}
+                          需求序号={显示序号}
+                          初始项目数={(itemsByRequirement.get(req.id) || []).length}
+                          已有项目IDs={(itemsByRequirement.get(req.id) || []).map((it: { id: string }) => it.id)}
+                          orderId={id}
+                          实际锁定={实际锁定}
+                          profiles={profiles || []}
+                          mechanicGroups={(mechanicGroups || []).map((g: { id: string; name: string; mechanic_group_members?: unknown[] }) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
+                          vehicleModelId={vehicleModelId}
+                          vehicleVin={vehicleVin}
+                        />
                       </div>
                 </div>
+                </RequirementRowWrapper>
                 );
               })}
-              {(!requirements || requirements.length === 0) && (
-                <div className="px-6 py-8 text-center text-gray-400">暂无需求记录</div>
-              )}
-            </div>
+            </LiveRequirementsList>
           </div>
 
           {/* 接车照片 */}
@@ -1518,6 +1554,7 @@ export default async function WorkOrderDetailPage({
         }))}
         advancePaymentTotal={advancePaymentTotal}
       />
+      <SavingToast />
       <WorkOrderRealtimeSync
         orderId={order.id}
         itemIds={items?.map((i: { id: string }) => i.id) || []}

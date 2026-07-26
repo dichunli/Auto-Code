@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { usePriceVisibility } from "./PriceVisibilityContext";
 import { PartPickerModal } from "./PartPickerModal";
@@ -76,16 +75,16 @@ export default function PartBranchEditor({
   children,
 }: Props) {
   const supabase = createClient();
-  const router = useRouter();
   const { showPrices } = usePriceVisibility();
   const [saving, setSaving] = useState(false);
   const clickTimer = useRef<NodeJS.Timeout | null>(null);
   const 根容器Ref = useRef<HTMLDivElement>(null);
 
   function refresh() {
-    // 结构性改动(删分支/关联编码)自己刷新拉新数据，标记后避免实时同步重复刷
+    // 结构性改动(删分支/关联编码)：只重查该项目的配件重新渲染，不整页刷新。
+    // 标记后避免实时同步把自己的改动当成别人的弹提示条。
     标记本地结构编辑(itemId || "");
-    router.refresh();
+    window.dispatchEvent(new CustomEvent("wo-parts-reload", { detail: { itemId } }));
   }
 
   // 本地状态（乐观更新）
@@ -508,8 +507,8 @@ export default function PartBranchEditor({
     if (hit.unit_price != null) {
       window.dispatchEvent(new CustomEvent("wo-part-update", { detail: { itemId, partId: part.id, unit_price: hit.unit_price } }));
     }
-    // 若改了目录归属(替换分组名/新建分组)，需刷新拉取最新分组结构
-    if (覆盖) { 标记本地结构编辑(itemId); router.refresh(); }
+    // 若改了目录归属(替换分组名/新建分组)，只重查该项目配件重新分组显示
+    if (覆盖) { refresh(); }
   }
 
   // 打开"创建配件"弹窗：把本分支已填的信息带入新建窗口
@@ -539,7 +538,7 @@ export default function PartBranchEditor({
       .select("part_number, name, part_name_id, unit_cost, unit_price, purchase_price, document_name, part_brands(name), part_specifications(name)")
       .eq("id", partId)
       .single();
-    if (!data) { router.refresh(); return; }
+    if (!data) { refresh(); return; }
     const pb = data.part_brands as { name: string } | { name: string }[] | null;
     const ps = data.part_specifications as { name: string } | { name: string }[] | null;
     const 品牌 = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || null;
@@ -573,8 +572,7 @@ export default function PartBranchEditor({
     if (销售价 != null) {
       window.dispatchEvent(new CustomEvent("wo-part-update", { detail: { itemId, partId: part.id, unit_price: 销售价 } }));
     }
-    标记本地结构编辑(itemId);
-    router.refresh();
+    refresh();
   }
 
   // 关闭弹窗但未保存：把用户在弹窗里填的文字带回本分支（不写 part_id，仅显示，暂不关联系统配件）

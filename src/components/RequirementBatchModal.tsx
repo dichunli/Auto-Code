@@ -1,12 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { 刷新工单详情 } from "@/app/work-orders/actions";
 import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
-import { 清除工单缓存 } from "@/app/work-orders/actions";
 
 interface MediaItem {
   id?: string;
@@ -43,7 +40,6 @@ interface Props {
 }
 
 export default function RequirementBatchModal({ open, onClose, orderId, requirement, initialMedia = [], profiles = [], 项目数 = 0 }: Props) {
-  const router = useRouter();
   const supabase = createClient();
   const isEdit = !!requirement;
 
@@ -56,6 +52,16 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
   const [deletedMediaPaths, setDeletedMediaPaths] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // 弹窗内指派状态：指派/领单/取消后本地更新显示 + 广播事件，不整页刷新
+  const [当前指派, 设置当前指派] = useState<{ id: string; type: string; name: string } | null>(
+    requirement?.assigned_to
+      ? {
+          id: requirement.assigned_to,
+          type: requirement.assignment_type || "assigned",
+          name: requirement.assigned_to_profile?.full_name || "未知",
+        }
+      : null
+  );
   const [isAdmin, setIsAdmin] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevOpenRef = useRef(false);
@@ -129,6 +135,8 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
      * 无需再联网 getUser（环境判定修复后 session 本就健康，避免拖慢保存）。
      * userId 为下方字段级权限校验沿用的名字，与 currentUserId 同值。 */
     const userId = currentUserId;
+    // 新建成功后用于局部追加的需求数据（避免整页刷新）
+    let 新建需求: { id: string; seq: number; description: string; submitted_by: string | null } | null = null;
     try {
       if (isEdit) {
         /* 权限校验：非提交人/管理员尝试修改受保护字段 */
@@ -217,6 +225,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
 
         if (reqError || !req) throw reqError || new Error("创建需求失败");
         requirement = { id: req.id };
+        新建需求 = { id: req.id, seq: nextSeq, description: description.trim(), submitted_by: userId || null };
       }
 
       // 插入新媒体（仅当有权限时）
@@ -260,8 +269,36 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
        * 工单数据量大时，将关闭弹窗放在刷新之前，避免用户感觉弹窗卡住。 */
       onClose();
       reset();
-      await 刷新工单详情(orderId);
-      router.refresh();
+      if (新建需求) {
+        /* 新建需求：局部追加需求卡片，立即显示，不整页刷新（与配件添加同一模式）。
+         * 整页刷新后服务端数据已含此需求，追加卡片按 id 去重自动移除。 */
+        window.dispatchEvent(
+          new CustomEvent("wo-requirement-added", {
+            detail: {
+              requirement: 新建需求,
+              media: [
+                ...images.map((path) => ({ media_type: "image" as const, storage_path: path })),
+                ...videos.map((path) => ({ media_type: "video" as const, storage_path: path })),
+              ],
+            },
+          })
+        );
+      } else {
+        /* 编辑需求：广播"wo-requirement-updated"事件，RequirementTitle 监听后立即更新
+         * 标题描述和媒体图标，不整页刷新。媒体列表为增删后的最终状态（本地 state）。 */
+        window.dispatchEvent(
+          new CustomEvent("wo-requirement-updated", {
+            detail: {
+              requirementId: requirement!.id,
+              description: description.trim(),
+              media: [
+                ...images.map((path) => ({ media_type: "image" as const, storage_path: path })),
+                ...videos.map((path) => ({ media_type: "video" as const, storage_path: path })),
+              ],
+            },
+          })
+        );
+      }
     } catch (err: unknown) {
       let msg = "未知错误";
       if (err instanceof Error) {
@@ -405,7 +442,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
           {isEdit && profiles.length > 0 && requirement && (
             <div className="flex items-center gap-2 mb-3 pb-3 border-b border-gray-100">
               <span className="text-xs text-gray-500 shrink-0">指派:</span>
-              {!requirement.assigned_to ? (
+              {!当前指派 ? (
                 <>
                   <select
                     className="flex-1 min-w-0 text-xs px-2 py-1.5 border border-gray-300 rounded-lg bg-white"
@@ -431,8 +468,12 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                         alert("指派失败: " + error.message);
                         e.target.value = "";
                       } else {
-                        await 清除工单缓存(orderId);
-                        router.refresh();
+                        设置当前指派({ id: val, type: "assigned", name });
+                        window.dispatchEvent(
+                          new CustomEvent("wo-requirement-assigned", {
+                            detail: { requirementId: requirement.id, assignedTo: val, assignmentType: "assigned", fullName: name },
+                          })
+                        );
                       }
                     }}
                   >
@@ -460,8 +501,13 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                       if (error) {
                         alert("领单失败: " + error.message);
                       } else {
-                        await 清除工单缓存(orderId);
-                        router.refresh();
+                        const 我的姓名 = profiles.find((p) => p.id === authData.user.id)?.full_name || "";
+                        设置当前指派({ id: authData.user.id, type: "claimed", name: 我的姓名 });
+                        window.dispatchEvent(
+                          new CustomEvent("wo-requirement-assigned", {
+                            detail: { requirementId: requirement.id, assignedTo: authData.user.id, assignmentType: "claimed", fullName: 我的姓名 },
+                          })
+                        );
                       }
                     }}
                     disabled={saving}
@@ -473,8 +519,8 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
               ) : (
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <span className="text-xs truncate">
-                    {requirement.assignment_type === "claimed" ? "领单" : "指派"}:
-                    <span className="font-medium ml-1">{requirement.assigned_to_profile?.full_name || "未知"}</span>
+                    {当前指派.type === "claimed" ? "领单" : "指派"}:
+                    <span className="font-medium ml-1">{当前指派.name}</span>
                   </span>
                   <button
                     type="button"
@@ -491,8 +537,12 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                       if (error) {
                         alert("取消失败: " + error.message);
                       } else {
-                        await 清除工单缓存(orderId);
-                        router.refresh();
+                        设置当前指派(null);
+                        window.dispatchEvent(
+                          new CustomEvent("wo-requirement-assigned", {
+                            detail: { requirementId: requirement.id, assignedTo: null, assignmentType: null, fullName: "" },
+                          })
+                        );
                       }
                     }}
                     disabled={saving}
@@ -527,9 +577,13 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                     alert("删除失败: " + error.message);
                     setSaving(false);
                   } else {
-                    /* 可靠刷新：清缓存+重新验证页面，确保删除后立即从列表消失 */
-                    await 刷新工单详情(orderId);
-                    router.refresh();
+                    /* 删除需求：局部更新，卡片立即消失，不整页刷新。
+                     * 已知取舍：后面需求的序号暂时跳号，下次整页刷新自动重排 */
+                    window.dispatchEvent(
+                      new CustomEvent("wo-requirement-deleted", {
+                        detail: { requirementId: requirement!.id },
+                      })
+                    );
                     onClose();
                     setSaving(false);
                   }

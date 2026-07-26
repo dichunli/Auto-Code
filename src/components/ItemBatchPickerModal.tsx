@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { 刷新工单详情 } from "@/app/work-orders/actions";
 
 interface Props {
   open: boolean;
@@ -50,7 +48,6 @@ const QUICK_TAGS = [
 ];
 
 export default function ItemBatchPickerModal({ open, onClose, orderId, requirementId, vehicleModelId }: Props) {
-  const router = useRouter();
   const supabase = createClient();
   const [allServiceItems, setAllServiceItems] = useState<ServiceItem[]>([]);
   const [serviceItemPrices, setServiceItemPrices] = useState<ServiceItemPrice[]>([]);
@@ -191,19 +188,27 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
         };
       });
 
-      const { error } = await supabase.from("work_order_items").insert(records);
+      const { data: 新项目们, error } = await supabase
+        .from("work_order_items")
+        .insert(records)
+        .select("id, name, alias_name, item_type, description, quantity, unit_price, total_price, service_item_id, customer_opinion, business_type");
       if (error) throw error;
 
       if (duplicates.length > 0) {
         alert(`已添加 ${toInsert.length} 项；跳过 ${duplicates.length} 个重复项目：${duplicates.map((d) => d.name).join("、")}`);
       }
 
-      /* 可靠刷新：清服务端缓存+重新验证页面，确保新增项目立即显示（裸 router.refresh
-       * 会命中 30 秒缓存导致「加了不显示」）。
-       * 先关弹窗再刷新，避免工单数据量大时用户感觉弹窗卡住。 */
+      /* 局部更新：广播"wo-items-added"事件，需求下的 LiveItemsList 立即追加项目行、
+       * WorkOrderTotalFooter 同步合计，不整页刷新（与配件添加同一模式）。
+       * 整页刷新后服务端数据已含这些项目，追加行按 id 去重自动移除。 */
       onClose();
-      await 刷新工单详情(orderId);
-      router.refresh();
+      if (新项目们 && 新项目们.length > 0) {
+        window.dispatchEvent(
+          new CustomEvent("wo-items-added", {
+            detail: { requirementId, items: 新项目们 },
+          })
+        );
+      }
     } catch (err: unknown) {
       alert("批量添加失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
