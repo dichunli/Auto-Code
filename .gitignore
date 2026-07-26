@@ -76,7 +76,9 @@ tmp_*.html
 !.claude/hook-post-edit.js
 
 # 测试脚本
-scripts/
+scripts/*
+# 冒烟测试脚本属于长期设施，需要提交
+!scripts/smoke-test.mjs
 
 certificates
 # 构建产物副本
@@ -113,3 +115,5 @@ certificates
 
 # Windows 系统文件
 desktop.ini
+smoke-test-failure.png
+!scripts/smoke-test.mjs
