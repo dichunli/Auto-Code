@@ -19,6 +19,8 @@ interface PartData {
   is_purchased?: boolean | null;
   is_arrived?: boolean | null;
   customer_opinion?: string | null;
+  name?: string | null;
+  alias_name?: string | null;
   part_number?: string | null;
   brand?: string | null;
   specification?: string | null;
@@ -29,8 +31,8 @@ interface PartData {
   quantity?: number | null;
   document_name?: string | null;
   part_name_id?: string | null;
-  part_names?: { category_id?: string | null } | null;
-  parts?: { document_name?: string | null } | null;
+  part_names?: { name?: string | null; category_id?: string | null } | null;
+  parts?: { name?: string | null; document_name?: string | null } | null;
 }
 
 interface Supplier {
@@ -48,7 +50,7 @@ interface Props {
   canDelete: boolean;
   isLocked: boolean;
   siblingIds?: string[];
-  vehicleModelId?: string;
+  vehicleModelId?: number;
   children?: React.ReactNode;
 }
 
@@ -159,7 +161,7 @@ export default function PartBranchEditor({
     }
     window.addEventListener("wo-part-update", handleSelectSync as EventListener);
     return () => window.removeEventListener("wo-part-update", handleSelectSync as EventListener);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [part.id]);
 
   // 只有一个分支时默认选中
@@ -198,7 +200,7 @@ export default function PartBranchEditor({
       quantity: part.quantity != null ? String(part.quantity) : "1",
       document_name: part.document_name || part.parts?.document_name || "",
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [part.part_number, part.brand, part.specification, part.unit_cost, part.cost_price, part.unit_price, part.supplier_name, part.quantity, part.document_name]);
 
   // 供应商推荐相关状态
@@ -222,7 +224,7 @@ export default function PartBranchEditor({
     if (!part.part_name_id) return;
     supabase.from("parts").select("part_number, brand_id, specification_id").eq("part_name_id", part.part_name_id).then(({ data }) => {
       if (!data) return;
-      const partNumbers = [...new Set(data.map((p: { part_number: string | null; brand_id: string | null; specification_id: string | null }) => p.part_number).filter(Boolean))];
+      const partNumbers = [...new Set(data.map((p: { part_number: string | null; brand_id: string | null; specification_id: string | null }) => p.part_number).filter((pn): pn is string => !!pn))];
       const brandIds = [...new Set(data.map((p) => p.brand_id).filter(Boolean))];
       const specIds = [...new Set(data.map((p) => p.specification_id).filter(Boolean))];
       setAvailablePartNumbers(partNumbers);
@@ -268,7 +270,7 @@ export default function PartBranchEditor({
 
         // 供应商车型关联映射
         const vmMap = new Map<string, Array<{ 厂商?: string; 品牌?: string; 车系?: string }>>();
-        (linksRes.data || []).forEach((r: { supplier_id: string; vehicle_models: { 厂商?: string; 品牌?: string; 车系?: string } }) => {
+        ((linksRes.data || []) as unknown as { supplier_id: string; vehicle_models: { 厂商?: string; 品牌?: string; 车系?: string } }[]).forEach((r) => {
           const list = vmMap.get(r.supplier_id) || [];
           list.push(r.vehicle_models);
           vmMap.set(r.supplier_id, list);
@@ -459,7 +461,7 @@ export default function PartBranchEditor({
     if (!partsData || partsData.length === 0) return;
 
     // 过滤车型匹配的（无车型限制也算匹配）
-    const matched = partsData.find((p: { part_vehicle_models?: Array<{ vehicle_model_id: string }> | null }) =>
+    const matched = partsData.find((p: { part_vehicle_models?: Array<{ vehicle_model_id: number }> | null }) =>
       !p.part_vehicle_models || p.part_vehicle_models.length === 0 ||
       p.part_vehicle_models.some((vm) => vm.vehicle_model_id === vehicleModelId)
     );
@@ -1046,7 +1048,8 @@ export default function PartBranchEditor({
                 </div>
                 {recommendedSuppliers.map((s) => {
                   const reasons = getSupplierMatchReasons(s);
-                  const stars = s.recommendation_level > 0 ? "⭐".repeat(s.recommendation_level) + " " : "";
+                  const 推荐级 = s.recommendation_level || 0;
+                  const stars = 推荐级 > 0 ? "⭐".repeat(推荐级) + " " : "";
                   return (
                     <div
                       key={s.id}

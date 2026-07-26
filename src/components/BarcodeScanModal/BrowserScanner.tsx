@@ -64,13 +64,14 @@ export default function BrowserScanner({ onScan, onError }: Props) {
           {
             fps: 8,
             qrbox: { width: 300, height: 100 },
+            /* 库的 start 配置类型未声明 formatsToSupport，但 2.x 运行时支持（条码格式白名单） */
             formatsToSupport: 浏览器条码格式,
             videoConstraints: {
               width: { min: 640, ideal: 1280 },
               height: { min: 480, ideal: 720 },
               facingMode: "environment",
             },
-          },
+          } as Parameters<typeof 扫描器.start>[1],
           (解码文本) => {
             if (已取消Ref.current) return;
             onScanRef.current(解码文本);
@@ -100,7 +101,8 @@ export default function BrowserScanner({ onScan, onError }: Props) {
       已取消Ref.current = true;
       if (扫描器Ref.current) {
         扫描器Ref.current.stop().catch(() => {});
-        扫描器Ref.current.clear().catch(() => {});
+        /* clear() 返回 void（同步），不能接 .catch */
+        扫描器Ref.current.clear();
         扫描器Ref.current = null;
       }
     };

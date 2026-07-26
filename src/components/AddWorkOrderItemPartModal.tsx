@@ -61,7 +61,8 @@ interface PickerPart {
 
 interface InsertPartRow {
   work_order_item_id: string;
-  part_name_id?: string;
+  /* 库列允许 NULL（库存配件可能未关联名称目录） */
+  part_name_id?: string | null;
   part_id?: string;
   part_number?: string;
   name?: string;
@@ -82,7 +83,7 @@ interface Props {
   itemId: string;
   serviceItemId?: string | null;
   itemName: string;
-  vehicleModelId?: string | null;
+  vehicleModelId?: number | null;
   vin?: string | null;
 }
 
@@ -177,7 +178,7 @@ export function AddWorkOrderItemPartModal({
           if (res.success && res.oeNumber) {
             setFilterHints((prev) => [
               ...prev.filter((h) => h.partNameId !== sp.part_name_id),
-              { partNameId: sp.part_name_id, name: sp.name, oeNumber: res.oeNumber, matchedModelCount: res.matchedModelIds?.length || 0, creating: false },
+              { partNameId: sp.part_name_id, name: sp.name, oeNumber: res.oeNumber || "", matchedModelCount: res.matchedModelIds?.length || 0, creating: false },
             ]);
           }
         } catch {
@@ -219,9 +220,9 @@ export function AddWorkOrderItemPartModal({
         setExistingPartNameIds(existingNameIds);
         setExistingPartIds(existingIds);
         setPresetParts(
-          (presetData || [])
-            .filter((row: { part_name_id: string }) => !existingNameIds.has(row.part_name_id))
-            .map((row: { part_name_id: string; quantity: number | null; part_names: PartName | null }) => ({
+          ((presetData || []) as unknown as { part_name_id: string; quantity: number | null; part_names: PartName | null }[])
+            .filter((row) => !existingNameIds.has(row.part_name_id))
+            .map((row) => ({
               part_name_id: row.part_name_id,
               quantity: row.quantity ?? row.part_names?.default_quantity ?? null,
               part_names: row.part_names,
@@ -484,8 +485,8 @@ export function AddWorkOrderItemPartModal({
                 方式一：选择配件名称
               </div>
 
-              {/* 预置配件 */}
-              {serviceNameId && (
+              {/* 预置配件（此前误写 serviceNameId 导致整窗崩溃，已改为 prop 名 serviceItemId） */}
+              {serviceItemId && (
                 <div>
                   <h3 className="text-sm font-medium text-gray-700 mb-2">关联配件（点击选择）</h3>
                   {loading ? (

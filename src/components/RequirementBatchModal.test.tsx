@@ -66,7 +66,7 @@ vi.mock("@/lib/supabase/client", () => ({
 }));
 
 /* 保存成功后会调 Server Action 清缓存+重新验证页面，mock 掉并记录顺序 */
-const mock刷新工单详情 = vi.fn(async () => {
+const mock刷新工单详情 = vi.fn(async (..._args: unknown[]) => {
   调用顺序.push("刷新工单详情");
 });
 vi.mock("@/app/work-orders/actions", () => ({

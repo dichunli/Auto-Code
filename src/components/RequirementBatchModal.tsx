@@ -71,8 +71,8 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
           .from("profile_roles")
           .select("roles(name)")
           .eq("profile_id", uid);
-        const admin = (roleData || []).some(
-          (d: { roles?: { name?: string } | null }) => d.roles?.name === "admin"
+        const admin = ((roleData || []) as unknown as { roles?: { name?: string } | null }[]).some(
+          (d) => d.roles?.name === "admin"
         );
         setIsAdmin(admin);
       }
@@ -129,8 +129,10 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
      * 无需再联网 getUser（环境判定修复后 session 本就健康，避免拖慢保存）。
      * userId 为下方字段级权限校验沿用的名字，与 currentUserId 同值。 */
     const userId = currentUserId;
+    /* 统一的需求ID：编辑模式取props，新增模式取插入后的返回值（不再改写props，避免类型收窄失效） */
+    let 当前需求ID: string | undefined = requirement?.id;
     try {
-      if (isEdit) {
+      if (isEdit && requirement) {
         /* 权限校验：非提交人/管理员尝试修改受保护字段 */
         const isOwnerOrAdmin = isAdmin || userId === requirement?.submitted_by;
         if (!isOwnerOrAdmin) {
@@ -216,23 +218,23 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
           .single();
 
         if (reqError || !req) throw reqError || new Error("创建需求失败");
-        requirement = { id: req.id };
+        当前需求ID = req.id;
       }
 
       // 插入新媒体（仅当有权限时）
-      if (canEditMedia) {
+      if (canEditMedia && 当前需求ID) {
         const mediaRecords = [
           ...images
             .filter((path) => !initialMedia.some((m) => m.media_type === "image" && m.storage_path === path))
             .map((path) => ({
-              requirement_id: requirement.id,
+              requirement_id: 当前需求ID,
               media_type: "image" as const,
               storage_path: path,
             })),
           ...videos
             .filter((path) => !initialMedia.some((m) => m.media_type === "video" && m.storage_path === path))
             .map((path) => ({
-              requirement_id: requirement.id,
+              requirement_id: 当前需求ID,
               media_type: "video" as const,
               storage_path: path,
             })),

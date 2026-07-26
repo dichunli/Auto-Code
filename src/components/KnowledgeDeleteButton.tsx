@@ -38,8 +38,8 @@ export function KnowledgeDeleteButton({ articleId, canDelete: serverCanDelete }:
         .select("roles(name)")
         .eq("profile_id", currentUserId);
 
-      const roleNames = (roleData || []).map(
-        (d: { roles?: { name?: string } | null }) => d.roles?.name
+      const roleNames = ((roleData || []) as unknown as { roles?: { name?: string } | null }[]).map(
+        (d) => d.roles?.name
       ).filter(Boolean) as string[];
       const isAdmin = roleNames.includes("admin");
 

@@ -44,7 +44,7 @@ export function PartReturnModal({ open, partName, workOrderItemPartId, onClose, 
       .order("picked_at", { ascending: true })
       .then(({ data, error }) => {
         if (error) console.error(error);
-        setRecords((data || []) as PickingRecord[]);
+        setRecords((data || []) as unknown as PickingRecord[]);
         setSelectedId("");
         setFetching(false);
       });

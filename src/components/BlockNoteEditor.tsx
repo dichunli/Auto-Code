@@ -89,6 +89,10 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
   const debouncedContent = useDebounce(editorContent, 500);
   const onChangeRef = useRef(onChange);
 
+  /* 大视频分片上传进度（编辑器内上传路径使用，此前漏声明会导致大视频一上传就报错） */
+  const [正在上传, set正在上传] = useState(false);
+  const [上传进度, set上传进度] = useState(0);
+
   useEffect(() => {
     onChangeRef.current = onChange;
   });
@@ -222,6 +226,18 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
           <div className="px-2 py-1.5 flex items-center gap-1 flex-wrap">
             <CustomToolbarButtons editor={editor} uploadFile={uploadFile} isMobile={是移动端()} />
           </div>
+          {/* 编辑器内上传路径的分片进度条（大视频上传时显示） */}
+          {正在上传 && (
+            <div className="mx-2 mb-1.5 flex items-center gap-2 px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg animate-pulse">
+              <div className="flex-1 h-1.5 bg-blue-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${上传进度}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-blue-600 font-medium whitespace-nowrap">{上传进度}%</span>
+            </div>
+          )}
         </div>
         <BlockNoteViewEditor />
       </BlockNoteView>
@@ -237,7 +253,8 @@ function CustomToolbarButtons({
 }: {
   editor: ReturnType<typeof useCreateBlockNote>;
   uploadFile: (file: File) => Promise<string>;
-  isMobile?: boolean;
+  /* 唯一调用方总是传入 是移动端() 的结果，故为必传 */
+  isMobile: boolean;
 }) {
   /* 所有 Hook 必须在组件顶部声明 */
   const imageInputRef = useRef<HTMLInputElement>(null);

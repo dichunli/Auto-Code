@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import RequirementBatchModal from "./RequirementBatchModal";
 import RequirementActions from "./RequirementActions";
 import AddRequirementItemsButton from "./AddRequirementItemsButton";
@@ -67,8 +67,8 @@ export default function RequirementCard({ req, orderId, profiles, media, isLocke
           {!isLocked && (
             <div className="flex items-center gap-2 ml-auto">
               <RequirementActions
-                requirement={req}
-                profiles={profiles || []}
+                requirement={req as unknown as ComponentProps<typeof RequirementActions>["requirement"]}
+                profiles={(profiles || []) as unknown as ComponentProps<typeof RequirementActions>["profiles"]}
               />
               <AddRequirementItemsButton orderId={orderId} requirementId={req.id} />
             </div>
