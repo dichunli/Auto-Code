@@ -133,9 +133,9 @@ export function PendingReturnList() {
     barcode: string | null;
     name: string | null;
     unit: string | null;
-    part_names: { name: string } | null;
-    part_brands: { name: string } | null;
-    part_specifications: { name: string } | null;
+    part_names: { name: string | null; unit?: string | null } | null;
+    part_brands: { name: string | null } | null;
+    part_specifications: { name: string | null } | null;
     purchase_price: number | null;
   }
   const [returnModalOpen, setReturnModalOpen] = useState(false);
@@ -207,7 +207,7 @@ export function PendingReturnList() {
           .eq("work_order_item_part_id", record.work_order_item_part_id);
 
         const poi = poiList?.[0];
-        recordDetails.push({ ...record, poi });
+        recordDetails.push({ ...record, poi: poi ?? null });
         if (poi) orderIdSet.add(poi.order_id);
       }
 

@@ -16,14 +16,7 @@ interface 维修项目关联 {
 }
 
 import { KnowledgeReadList } from "@/components/KnowledgeReadList";
-
-interface BlockItem {
-  id: string;
-  type: string;
-  props: Record<string, unknown>;
-  content?: unknown[];
-  children?: BlockItem[];
-}
+import type { ComponentProps } from "react";
 
 /* 权限标签配置 */
 const 权限标签: Record<string, { label: string; className: string }> = {
@@ -81,8 +74,8 @@ export default async function KnowledgeDetailPage({
     ]);
 
     const { data: roleData } = roleResult;
-    const roleNames = (roleData || []).map(
-      (d: { roles?: { name?: string } | null }) => d.roles?.name
+    const roleNames = ((roleData || []) as unknown as { roles?: { name?: string } | null }[]).map(
+      (d) => d.roles?.name
     ).filter(Boolean) as string[];
     isAdmin = roleNames.includes("admin");
 
@@ -93,7 +86,7 @@ export default async function KnowledgeDetailPage({
     void supabase.from("knowledge_article_reads").upsert(
       { article_id: id, user_id: currentUserId, read_date: new Date().toISOString().split("T")[0] },
       { onConflict: "article_id,user_id,read_date" }
-    ).then(() => {}).catch(() => {});
+    ).then(() => {}, () => {});
   }
 
   /* 权限检查 */
@@ -158,7 +151,7 @@ export default async function KnowledgeDetailPage({
             </Link>
             {article.content_blocks && Array.isArray(article.content_blocks) && (
               <PresentationView
-                blocks={article.content_blocks as BlockItem[]}
+                blocks={article.content_blocks as unknown as ComponentProps<typeof PresentationView>["blocks"]}
                 title={article.title}
                 autoOpen={autoPresent}
                 userGroupId={userGroupId}
@@ -211,7 +204,7 @@ export default async function KnowledgeDetailPage({
                 查看目录
               </summary>
               <div className="px-4 pb-4 border-t border-gray-100">
-                <BlockNoteTOC blocks={article.content_blocks as BlockItem[]} />
+                <BlockNoteTOC blocks={article.content_blocks as unknown as ComponentProps<typeof BlockNoteTOC>["blocks"]} />
               </div>
             </details>
           </div>
@@ -222,7 +215,7 @@ export default async function KnowledgeDetailPage({
           <div className="flex gap-6">
             <div className="flex-1 min-w-0">
               <BlockNoteRenderer
-                blocks={article.content_blocks as BlockItem[]}
+                blocks={article.content_blocks as unknown as ComponentProps<typeof BlockNoteRenderer>["blocks"]}
                 userGroupId={userGroupId}
                 isAdmin={isAdmin}
               />
@@ -230,7 +223,7 @@ export default async function KnowledgeDetailPage({
             {/* 桌面端目录 */}
             <div className="hidden lg:block w-52 flex-shrink-0">
               <div className="sticky top-20 bg-white rounded-xl border border-gray-200 p-4 max-h-[calc(100vh-8rem)] overflow-y-auto">
-                <BlockNoteTOC blocks={article.content_blocks as BlockItem[]} />
+                <BlockNoteTOC blocks={article.content_blocks as unknown as ComponentProps<typeof BlockNoteTOC>["blocks"]} />
               </div>
             </div>
           </div>
@@ -245,7 +238,7 @@ export default async function KnowledgeDetailPage({
           <div className="mt-8 pt-6 border-t border-gray-100">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">关联维修项目</h3>
             <div className="flex flex-wrap gap-2">
-              {links.map((link: 维修项目关联, i: number) => (
+              {(links as unknown as 维修项目关联[]).map((link, i) => (
                 <span
                   key={i}
                   className="px-2 py-1 rounded bg-gray-50 text-gray-600 text-xs border border-gray-200"

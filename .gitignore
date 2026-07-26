@@ -76,7 +76,9 @@ tmp_*.html
 !.claude/hook-post-edit.js
 
 # 测试脚本
-scripts/
+scripts/*
+# 冒烟测试脚本属于长期设施，需要提交
+!scripts/smoke-test.mjs
 
 certificates
 # 构建产物副本
@@ -107,3 +109,15 @@ certificates
 /supabase/migrations/20240101000000_full_schema.sql
 /supabase/migrations_backup/
 /supabase/snippets/
+
+# 本地语义搜索模型缓存（体积大，不入库）
+/.cache/
+
+# Windows 系统文件
+desktop.ini
+smoke-test-failure.png
+!scripts/smoke-test.mjs
+!scripts/patrol-pages.mjs
+!scripts/flow-tests.mjs
+!scripts/realtime-test.mjs
+!scripts/permission-test.mjs

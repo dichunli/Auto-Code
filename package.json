@@ -10,7 +10,12 @@
     "test": "vitest run",
     "test:unit": "vitest run src",
     "test:db": "vitest run supabase/tests",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "test:patrol": "node scripts/patrol-pages.mjs",
+    "test:flows": "node scripts/flow-tests.mjs",
+    "test:realtime": "node scripts/realtime-test.mjs",
+    "test:perm": "node scripts/permission-test.mjs"
   },
   "dependencies": {
     "@blocknote/core": "^0.51.2",
@@ -60,6 +65,7 @@
     "eslint-config-next": "16.2.4",
     "jsdom": "^29.1.1",
     "pg": "^8.20.0",
+    "playwright": "^1.62.0",
     "supabase": "^2.98.2",
     "tailwindcss": "^4",
     "typescript": "^5",

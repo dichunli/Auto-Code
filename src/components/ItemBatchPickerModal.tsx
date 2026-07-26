@@ -10,6 +10,7 @@ interface Props {
   onClose: () => void;
   orderId: string;
   requirementId: string;
+  /* 车型ID是 INTEGER（vehicle_models.id 是数字主键） */
   vehicleModelId?: number | null;
 }
 

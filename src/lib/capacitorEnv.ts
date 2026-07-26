@@ -43,7 +43,7 @@ export function 打开APP设置(): void {
   }
 
   try {
-    const w = window as Record<string, unknown>;
+    const w = window as unknown as Record<string, unknown>;
     if (w.AndroidApp) {
       (w.AndroidApp as { openAppSettings: () => void }).openAppSettings();
       return;

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import ServiceItemsContent from "./ServiceItemsContent";
+import type { ComponentProps } from "react";
 
 /* ═════════════════════════════════════════════════════════════════
  * 维修项目 — Server Component
@@ -22,7 +23,7 @@ export default async function ServiceItemsPage() {
   ]);
 
   return <ServiceItemsContent
-    items={(items as unknown[]) || []}
-    categories={(categories as unknown[]) || []}
+    items={(items || []) as unknown as ComponentProps<typeof ServiceItemsContent>["items"]}
+    categories={(categories || []) as unknown as ComponentProps<typeof ServiceItemsContent>["categories"]}
   />;
 }

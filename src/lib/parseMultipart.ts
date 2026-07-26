@@ -67,7 +67,7 @@ function 解析ContentDisposition(headersText: string): { name: string | null; f
   return { name, filename };
 }
 
-/* 解析 multipart 请求体 */
+/* 解析 multipart 请求体（从 Request 对象） */
 export async function 解析Multipart请求(request: Request, maxSize: number = 500 * 1024 * 1024): Promise<MultipartResult> {
   const contentType = request.headers.get("content-type") || "";
   const boundary = 提取Boundary(contentType);
@@ -76,11 +76,15 @@ export async function 解析Multipart请求(request: Request, maxSize: number = 
   }
 
   const body = await 读取请求体(request);
-
   if (body.length === 0) {
     throw new Error("请求体为空");
   }
 
+  return 解析Multipart从Buffer(body, maxSize, boundary);
+}
+
+/* 解析 multipart 请求体（从 Buffer，由调用方负责读 body） */
+export function 解析Multipart从Buffer(body: Buffer, maxSize: number = 500 * 1024 * 1024, boundary?: string): MultipartResult {
   if (body.length > maxSize) {
     throw new Error(`文件超过大小限制（最大 ${Math.round(maxSize / 1024 / 1024)}MB）`);
   }

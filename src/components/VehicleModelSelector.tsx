@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import type { 车型库行含轮胎 } from "@/lib/vehicleModelFields";
 
 export interface LinkedItem {
   id: string;
@@ -115,30 +116,10 @@ export default function VehicleModelSelector({ value, onChange, onSyncVin }: Veh
       const to = from + VM_MODAL_PAGE_SIZE - 1;
       const { data, count } = await query.range(from, to);
       if (cancelled) return;
-      interface VehicleModelRaw {
-        id: number | string;
-        厂商?: string | null;
-        品牌?: string | null;
-        车系?: string | null;
-        车型?: string | null;
-        销售版本?: string | null;
-        年款?: number | null;
-        排量?: string | null;
-        发动机型号?: string | null;
-        燃油类型?: string | null;
-        进气形式?: string | null;
-        变速箱类型?: string | null;
-        变速箱代号?: string | null;
-        底盘代号?: string | null;
-        驱动方式?: string | null;
-        车身类型?: string | null;
-        排放标准?: string | null;
-        前轮胎规格?: string | null;
-        后轮胎规格?: string | null;
-      }
 
-      const mapped: LinkedItem[] = (data || []).map((v: VehicleModelRaw) => ({
+      const mapped: LinkedItem[] = ((data || []) as unknown as 车型库行含轮胎[]).map((v) => ({
         id: String(v.id),
+        name: `${v.品牌 || ""} ${v.车系 || ""} ${v.车型 || ""}`.trim(),
         manufacturer: v.厂商 || "",
         brand: v.品牌 || "",
         series: v.车系 || "",
@@ -232,8 +213,9 @@ export default function VehicleModelSelector({ value, onChange, onSyncVin }: Veh
     const { data } = await query;
     setVmModalSelectAllLoading(false);
     if (!data) return;
-    const mapped: LinkedItem[] = data.map((v: VehicleModelRaw) => ({
+    const mapped: LinkedItem[] = (data as unknown as 车型库行含轮胎[]).map((v) => ({
       id: String(v.id),
+      name: `${v.品牌 || ""} ${v.车系 || ""} ${v.车型 || ""}`.trim(),
       manufacturer: v.厂商 || "",
       brand: v.品牌 || "",
       series: v.车系 || "",

@@ -166,7 +166,7 @@ export default function SpecialPricingSection({
         .select("id, plate_number, brand, model, vin, customers(name)")
         .or("plate_number.ilike.%" + value + "%,vin.ilike.%" + value + "%,brand.ilike.%" + value + "%,model.ilike.%" + value + "%")
         .limit(10);
-      setSpVehicleResults(data || []);
+      setSpVehicleResults((data || []) as unknown as IdNameItem[]);
       setSpVehicleSearching(false);
     }, 300);
     return () => {
@@ -198,11 +198,11 @@ export default function SpecialPricingSection({
         brand: ((v as Record<string, unknown>).品牌 as string) || "",
         series: ((v as Record<string, unknown>).车系 as string) || "",
         model_name: ((v as Record<string, unknown>).车型 as string) || "",
-        year_start: (v as Record<string, unknown>).年款,
-        year_end: (v as Record<string, unknown>).年款,
-        engine: (v as Record<string, unknown>).发动机型号,
+        year_start: (v as Record<string, unknown>).年款 as number | undefined,
+        year_end: (v as Record<string, unknown>).年款 as number | undefined,
+        engine: (v as Record<string, unknown>).发动机型号 as string | undefined,
       }));
-      setVmPriceResults(mapped);
+      setVmPriceResults(mapped as unknown as IdNameItem[]);
       setVmPriceSearching(false);
     }, 300);
     return () => {
@@ -510,13 +510,13 @@ export default function SpecialPricingSection({
                 className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0"
               >
                 <span className="font-medium">{String(v.brand)} {String(v.series)}</span>
-                {v.model_name && <span className="text-gray-500 ml-1">{String(v.model_name)}</span>}
-                {v.year_start && (
+                {Boolean(v.model_name) && <span className="text-gray-500 ml-1">{String(v.model_name)}</span>}
+                {Boolean(v.year_start) && (
                   <span className="text-gray-400 text-xs ml-1">
                     ({String(v.year_start)}-{v.year_end ? String(v.year_end) : "今"})
                   </span>
                 )}
-                {v.engine && <span className="text-gray-400 text-xs ml-1">· 发动机:{String(v.engine)}</span>}
+                {Boolean(v.engine) && <span className="text-gray-400 text-xs ml-1">· 发动机:{String(v.engine)}</span>}
               </button>
             ))}
           </div>

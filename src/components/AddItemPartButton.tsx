@@ -8,7 +8,7 @@ interface Props {
   itemId: string;
   serviceItemId?: string | null;
   itemName: string;
-  vehicleModelId?: string | null;
+  vehicleModelId?: number | null;
   vin?: string | null;
 }
 

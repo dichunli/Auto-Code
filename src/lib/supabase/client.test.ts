@@ -5,7 +5,7 @@ import { stringFromBase64URL } from "@supabase/ssr";
    Mock 外部依赖
    ============================================================ */
 const mockState = {
-  createClient: vi.fn(() => ({ mockSupabase: true })),
+  createClient: vi.fn<(...args: unknown[]) => { mockSupabase: boolean }>(() => ({ mockSupabase: true })),
   isCapacitor: false,
 };
 
@@ -119,7 +119,7 @@ async function 加载模块() {
 }
 
 function 提取存储(): Storage {
-  const [, , options] = mockState.createClient.mock.calls[0] as [
+  const [, , options] = mockState.createClient.mock.calls[0] as unknown as [
     string,
     string,
     { auth: { storage: Storage } },
@@ -137,7 +137,7 @@ describe("createClient - 环境分支", () => {
     mod.createClient();
 
     expect(mockState.createClient).toHaveBeenCalledTimes(1);
-    const [, , options] = mockState.createClient.mock.calls[0] as [
+    const [, , options] = mockState.createClient.mock.calls[0] as unknown as [
       string,
       string,
       { auth: { storage: Storage; storageKey: string } },
@@ -152,7 +152,7 @@ describe("createClient - 环境分支", () => {
     mod.createClient();
 
     expect(mockState.createClient).toHaveBeenCalledTimes(1);
-    const [, , options] = mockState.createClient.mock.calls[0] as [
+    const [, , options] = mockState.createClient.mock.calls[0] as unknown as [
       string,
       string,
       { auth: { storage: Storage; storageKey: string } },
@@ -171,7 +171,7 @@ describe("createClient - 环境分支", () => {
       mod.createClient();
 
       expect(mockState.createClient).toHaveBeenCalledTimes(1);
-      const [, , options] = mockState.createClient.mock.calls[0] as [
+      const [, , options] = mockState.createClient.mock.calls[0] as unknown as [
         string,
         string,
         { auth: Record<string, unknown> },

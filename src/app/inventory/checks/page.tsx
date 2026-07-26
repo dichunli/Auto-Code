@@ -1,6 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 
+/* 盘点单（含条目计数） */
+interface 盘点单 {
+  id: string;
+  check_no?: string | null;
+  status?: string | null;
+  location?: string | null;
+  notes?: string | null;
+  created_at?: string | null;
+  inventory_check_items?: { count?: number | null }[] | null;
+}
+
 export default async function InventoryChecksPage() {
   const supabase = await createClient();
   const { data: checks } = await supabase
@@ -30,7 +41,7 @@ export default async function InventoryChecksPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {checks?.map((c: Record<string, unknown>) => (
+              {checks?.map((c: 盘点单) => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{c.check_no || "-"}</td>
                   <td className="px-6 py-4">
@@ -42,7 +53,7 @@ export default async function InventoryChecksPage() {
                   <td className="px-6 py-4 text-gray-600">{c.inventory_check_items?.[0]?.count || 0}</td>
                   <td className="px-6 py-4 text-gray-500">{c.notes || "-"}</td>
                   <td className="px-6 py-4 text-gray-500">
-                    {new Date(c.created_at).toLocaleDateString()}
+                    {c.created_at ? new Date(c.created_at).toLocaleDateString() : "-"}
                   </td>
                 </tr>
               ))}

@@ -60,7 +60,8 @@ interface PickerPart {
 
 interface InsertPartRow {
   work_order_item_id: string;
-  part_name_id?: string;
+  /* 库列允许 NULL（库存配件可能未关联名称目录） */
+  part_name_id?: string | null;
   part_id?: string;
   part_number?: string;
   name?: string;
@@ -81,7 +82,7 @@ interface Props {
   itemId: string;
   serviceItemId?: string | null;
   itemName: string;
-  vehicleModelId?: string | null;
+  vehicleModelId?: number | null;
   vin?: string | null;
 }
 
@@ -158,9 +159,9 @@ export function AddWorkOrderItemPartModal({
         setExistingPartNameIds(existingNameIds);
         setExistingPartIds(existingIds);
         setPresetParts(
-          (presetData || [])
-            .filter((row: { part_name_id: string }) => !existingNameIds.has(row.part_name_id))
-            .map((row: { part_name_id: string; quantity: number | null; part_names: PartName | null }) => ({
+          ((presetData || []) as unknown as { part_name_id: string; quantity: number | null; part_names: PartName | null }[])
+            .filter((row) => !existingNameIds.has(row.part_name_id))
+            .map((row) => ({
               part_name_id: row.part_name_id,
               // 严格按项目预设的数量：预设没填就留空(null)，由工单里红框提醒按实车确定，
               // 不用配件名称的默认数量兜底。

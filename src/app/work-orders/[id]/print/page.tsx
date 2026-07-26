@@ -305,12 +305,12 @@ async function ReceptionDoc({ order }: { order: WorkOrder }) {
         <div><span className="text-gray-500">接待人员：</span>{order.profiles?.full_name || "-"}</div>
       </div>
 
-      {order.dashboard_photos?.length > 0 && (
+      {(order.dashboard_photos?.length ?? 0) > 0 && (
         <div className="border-t border-gray-300 pt-4 space-y-3">
           <div>
             <h3 className="font-bold text-sm mb-2">仪表照片</h3>
             <div className="flex flex-wrap gap-2">
-              {order.dashboard_photos.map((path, idx) => (
+              {(order.dashboard_photos || []).map((path, idx) => (
                 <img key={idx} src={path} alt="" className="w-32 h-24 object-cover rounded border border-gray-200" />
               ))}
             </div>

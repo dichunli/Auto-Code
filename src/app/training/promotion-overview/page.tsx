@@ -63,7 +63,6 @@ export default function PromotionOverviewPage() {
         level_name: level?.name || "无等级",
       };
     });
-    setEmployees(empList);
 
     /* 获取所有晋级规则 */
     const { data: ruleData } = await supabase
@@ -110,6 +109,11 @@ export default function PromotionOverviewPage() {
           daily_loss: 0,
           behavior_score: 0,
           exam_passed: true,
+          /* 无晋级规则时，必修课程视为无要求 */
+          required_courses_completed: true,
+          required_courses_count: 0,
+          required_courses_done: 0,
+          exam_total_score: 0,
           missing: ["暂无晋级规则"],
           rule: null,
         });

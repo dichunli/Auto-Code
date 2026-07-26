@@ -102,7 +102,7 @@ export function EmployeeEditForm({
 
   const [contacts, setContacts] = useState<Contact[]>(initialContacts);
   const [originalContactIds] = useState<Set<string>>(
-    new Set(initialContacts.map((c) => c.id).filter(Boolean))
+    new Set(initialContacts.map((c) => c.id).filter((id): id is string => !!id))
   );
 
   function toggleRole(roleId: string) {

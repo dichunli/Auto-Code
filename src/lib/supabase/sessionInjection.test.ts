@@ -24,8 +24,12 @@ const mockState = {
   isCapacitor: false,
   /* getSession 返回的 session（null = 内存中无 session） */
   内存Session: null as unknown,
-  setSession: vi.fn(async () => ({ data: {}, error: null })),
-  getSession: vi.fn(async () => ({ data: { session: mockState.内存Session } })),
+  setSession: vi.fn<(...args: unknown[]) => Promise<{ data: Record<string, never>; error: null }>>(
+    async (): Promise<{ data: Record<string, never>; error: null }> => ({ data: {}, error: null })
+  ),
+  getSession: vi.fn<(...args: unknown[]) => Promise<{ data: { session: unknown } }>>(
+    async (): Promise<{ data: { session: unknown } }> => ({ data: { session: mockState.内存Session } })
+  ),
 };
 
 const mock客户端 = {

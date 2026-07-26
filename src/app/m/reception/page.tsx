@@ -70,7 +70,7 @@ export default function MobileReceptionListPage() {
           const activeOrders = (data || []).filter((o: Record<string, unknown>) =>
             !SETTLED_STATUSES.includes(o.status as string)
           );
-          setOrders(activeOrders as Order[]);
+          setOrders(activeOrders as unknown as Order[]);
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type ComponentProps } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { useDebounce } from "@/lib/useDebounce";
@@ -225,7 +225,7 @@ export default function KnowledgeContent({
           setCategories([]);
           setSegments([]);
         } else {
-          setArticles(result.articles || []);
+          setArticles((result.articles || []) as unknown as 知识文章[]);
           setCategories(result.categories || []);
           setCurrentUserId(result.currentUserId || "");
           setIsAdmin(result.isAdmin || false);
@@ -316,7 +316,7 @@ export default function KnowledgeContent({
       {/* 导入导出按钮 — 桌面端显示 */}
       <div className="hidden lg:block mb-4">
         <KnowledgeImportExport
-          articles={articles}
+          articles={articles as unknown as ComponentProps<typeof KnowledgeImportExport>["articles"]}
           categories={categories}
           onSuccess={() => {
             setSearchKeyword("");

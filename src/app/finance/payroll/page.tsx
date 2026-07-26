@@ -2,6 +2,26 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 
+/* 工资记录（含关联的员工姓名与技师等级） */
+interface 工资记录 {
+  id: string;
+  status: string;
+  period_start: string;
+  period_end: string;
+  base_salary: number | null;
+  commission_diagnosis: number | null;
+  commission_repair: number | null;
+  commission_sales: number | null;
+  commission_total: number | null;
+  bonus: number | null;
+  deduction: number | null;
+  total_amount: number | null;
+  profiles: {
+    full_name: string | null;
+    mechanic_levels: { name: string | null } | null;
+  } | null;
+}
+
 export default async function PayrollPage() {
   const supabase = await createClient();
 
@@ -57,7 +77,7 @@ export default async function PayrollPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {records?.map((r: Record<string, unknown>) => {
+              {records?.map((r: 工资记录) => {
                 const s = statusMap[r.status] || { label: r.status, class: "bg-gray-50 text-gray-600" };
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">
@@ -74,8 +94,8 @@ export default async function PayrollPage() {
                     <td className="px-6 py-4 text-gray-600">{formatCurrency(r.commission_sales)}</td>
                     <td className="px-6 py-4 font-medium text-blue-600">{formatCurrency(r.commission_total)}</td>
                     <td className="px-6 py-4 text-gray-600">
-                      {r.bonus > 0 && <span className="text-green-600">+{formatCurrency(r.bonus)}</span>}
-                      {r.deduction > 0 && <span className="text-red-600">-{formatCurrency(r.deduction)}</span>}
+                      {(r.bonus ?? 0) > 0 && <span className="text-green-600">+{formatCurrency(r.bonus)}</span>}
+                      {(r.deduction ?? 0) > 0 && <span className="text-red-600">-{formatCurrency(r.deduction)}</span>}
                       {r.bonus === 0 && r.deduction === 0 && "-"}
                     </td>
                     <td className="px-6 py-4 font-bold text-gray-900">{formatCurrency(r.total_amount)}</td>

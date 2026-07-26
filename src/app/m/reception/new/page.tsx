@@ -461,7 +461,7 @@ export default function MobileReceptionNewPage() {
         .limit(5);
 
       if (data && data.length > 0) {
-        const m = data[0] as {
+        const m = data[0] as unknown as {
           id: number;
           品牌: string | null;
           车系: string | null;

@@ -52,7 +52,7 @@ export default function LoginPage() {
     function handlePageShow(e: PageTransitionEvent) {
       if (e.persisted) {
         /* 事件触发时双重检查：如果是 APP 环境直接忽略 */
-        const w = window as Record<string, unknown>;
+        const w = window as unknown as Record<string, unknown>;
         if (w.Capacitor || w.CapacitorIsNative) return;
 
         /* 浏览器环境：从缓存恢复时，如果已经有 session 则跳走 */

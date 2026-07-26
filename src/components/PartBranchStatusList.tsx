@@ -258,7 +258,7 @@ export function PartBranchStatusList({ status }: Props) {
         supabase.from("vehicle_models").select("id, 厂商, 品牌, 车系").in("id", vehicleModelIds),
         supabase.from("supplier_vehicle_models").select("supplier_id, vehicle_model_id").in("vehicle_model_id", vehicleModelIds),
       ]);
-      (vmList || []).forEach((v: { id: string; 厂商?: string; 品牌?: string; 车系?: string }) => {
+      ((vmList || []) as unknown as { id: string; 厂商?: string; 品牌?: string; 车系?: string }[]).forEach((v) => {
         vmMap.set(String(v.id), { 厂商: v.厂商, 品牌: v.品牌, 车系: v.车系 });
       });
       (svmList || []).forEach((r: { supplier_id: string; vehicle_model_id: string }) => {
@@ -410,7 +410,7 @@ export function PartBranchStatusList({ status }: Props) {
   }
 
   function extractName(
-    val: { name: string | null } | { name: string | null }[] | null
+    val: { name: string | null } | { name: string | null }[] | null | undefined
   ): string | null {
     if (!val) return null;
     if (Array.isArray(val)) return val[0]?.name ?? null;

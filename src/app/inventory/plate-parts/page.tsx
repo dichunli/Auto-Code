@@ -1,6 +1,24 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 
+/* 车牌配件行（含三层关联：配件、工单、车辆/车型） */
+interface 车牌配件行 {
+  id: string;
+  quantity?: number | null;
+  created_at?: string | null;
+  parts?: { part_number?: string | null; name?: string | null; unit?: string | null } | null;
+  work_order_items?: {
+    work_order_id?: string | null;
+    work_orders?: {
+      vehicle_id?: string | null;
+      vehicles?: {
+        plate_number?: string | null;
+        vehicle_models?: { brand?: string | null; series?: string | null } | null;
+      } | null;
+    } | null;
+  } | null;
+}
+
 export default async function PlatePartsPage() {
   const supabase = await createClient();
 
@@ -39,7 +57,7 @@ export default async function PlatePartsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items?.map((item: Record<string, unknown>) => {
+              {items?.map((item: 车牌配件行) => {
                 const vehicle = item.work_order_items?.work_orders?.vehicles;
                 const vehicleModel = vehicle?.vehicle_models;
                 return (
@@ -67,7 +85,7 @@ export default async function PlatePartsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-gray-500">
-                      {new Date(item.created_at).toLocaleDateString()}
+                      {item.created_at ? new Date(item.created_at).toLocaleDateString() : "-"}
                     </td>
                   </tr>
                 );

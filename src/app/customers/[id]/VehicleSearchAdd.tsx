@@ -66,7 +66,7 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
       .select("id, plate_number, brand, model, vin, color, year, mileage, customer_id, customers(id, name)")
       .ilike("plate_number", `%${plate.trim()}%`)
       .limit(5);
-    const results = data || [];
+    const results = (data || []) as unknown as SearchResult[];
     setSearchResults(results);
     // 无结果时自动展开新建表单，并带入当前输入
     if (results.length === 0) {

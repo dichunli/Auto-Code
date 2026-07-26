@@ -17,6 +17,8 @@ interface BlockItem {
   type: string;
   props: BlockProps;
   content?: InlineContent[];
+  /* 块可嵌套子块（多级标题靠它递归提取） */
+  children?: BlockItem[];
 }
 
 interface HeadingItem {

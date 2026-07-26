@@ -49,7 +49,8 @@ export function extractCommission(
   const type = obj[`${prefix}_commission_type`];
   const value = obj[`${prefix}_commission_value`];
   if (type && value != null) {
-    return { type, value };
+    /* 库里 type 必为字符串、value 必为数字，此处仅收窄类型，不改变运行时值 */
+    return { type: type as string, value: value as number };
   }
   return undefined;
 }

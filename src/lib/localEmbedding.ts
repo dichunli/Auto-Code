@@ -18,7 +18,7 @@ const 模型名称 = "Xenova/multilingual-e5-small";
 
 /* 单例缓存：模型只加载一次 */
 let 嵌入管道: FeatureExtractionPipeline | null = null;
-let 加载中: Promise<FeatureExtractionPipeline> | null = null;
+let 加载中: Promise<FeatureExtractionPipeline | null> | null = null;
 let 加载失败: boolean = false;
 
 /* 获取嵌入管道（懒加载 + 单例，避免重复加载） */

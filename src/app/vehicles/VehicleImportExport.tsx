@@ -109,7 +109,8 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: unknown[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      /* 单元格统一按字符串处理（数字也会被 String/parseInt 正常转换） */
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as string[][];
       if (rows.length < 2) {
         setImportMsg("文件中没有数据");
         setImporting(false);

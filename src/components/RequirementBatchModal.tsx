@@ -19,6 +19,18 @@ interface Profile {
   full_name?: string | null;
 }
 
+/* 包装 Promise 加超时：网络"假死"（连接挂着但不回包）时，
+ * 15 秒后果断报错并恢复保存按钮，不会永远卡在"保存中..." */
+function 带超时<T>(promise: PromiseLike<T>, 操作名: string): Promise<T> {
+  const 毫秒 = 15000;
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`${操作名}超时（15秒），请检查网络后重试`)), 毫秒);
+    }),
+  ]);
+}
+
 interface Requirement {
   id: string;
   description?: string | null;
@@ -71,8 +83,8 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
           .from("profile_roles")
           .select("roles(name)")
           .eq("profile_id", uid);
-        const admin = (roleData || []).some(
-          (d: { roles?: { name?: string } | null }) => d.roles?.name === "admin"
+        const admin = ((roleData || []) as unknown as { roles?: { name?: string } | null }[]).some(
+          (d) => d.roles?.name === "admin"
         );
         setIsAdmin(admin);
       }
@@ -129,8 +141,10 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
      * 无需再联网 getUser（环境判定修复后 session 本就健康，避免拖慢保存）。
      * userId 为下方字段级权限校验沿用的名字，与 currentUserId 同值。 */
     const userId = currentUserId;
+    /* 统一的需求ID：编辑模式取props，新增模式取插入后的返回值（不再改写props，避免类型收窄失效） */
+    let 当前需求ID: string | undefined = requirement?.id;
     try {
-      if (isEdit) {
+      if (isEdit && requirement) {
         /* 权限校验：非提交人/管理员尝试修改受保护字段 */
         const isOwnerOrAdmin = isAdmin || userId === requirement?.submitted_by;
         if (!isOwnerOrAdmin) {
@@ -173,94 +187,107 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
         }
 
         if (Object.keys(updateData).length > 0) {
-          const { error: updateError } = await supabase
-            .from("work_order_requirements")
-            .update(updateData)
-            .eq("id", requirement.id);
+          const { error: updateError } = await 带超时(
+            supabase.from("work_order_requirements").update(updateData).eq("id", requirement.id),
+            "保存需求"
+          );
           if (updateError) throw updateError;
         }
 
         // 删除被标记删除的媒体记录（仅当有权限时）
         if (canEditMedia && deletedMediaIds.length > 0) {
-          const { error: delError } = await supabase
-            .from("work_order_requirement_media")
-            .delete()
-            .in("id", deletedMediaIds);
+          const { error: delError } = await 带超时(
+            supabase.from("work_order_requirement_media").delete().in("id", deletedMediaIds),
+            "删除媒体记录"
+          );
           if (delError) throw delError;
         }
       } else {
         // 新增模式
-        const { data: existing } = await supabase
-          .from("work_order_requirements")
-          .select("seq")
-          .eq("work_order_id", orderId)
-          .order("seq", { ascending: false })
-          .limit(1);
+        const { data: existing } = await 带超时(
+          supabase
+            .from("work_order_requirements")
+            .select("seq")
+            .eq("work_order_id", orderId)
+            .order("seq", { ascending: false })
+            .limit(1),
+          "读取需求序号"
+        );
         const nextSeq = (existing && existing[0]?.seq ? existing[0].seq : 0) + 1;
 
         const newDiagnosis = diagnosis.trim();
         const newRemarks = remarks.trim();
-        const { data: req, error: reqError } = await supabase
-          .from("work_order_requirements")
-          .insert({
-            work_order_id: orderId,
-            seq: nextSeq,
-            description: description.trim(),
-            submitted_by: userId,
-            diagnosis: newDiagnosis || null,
-            remarks: newRemarks || null,
-            diagnosis_submitter_id: newDiagnosis ? userId : null,
-            remarks_submitter_id: newRemarks ? userId : null,
-          })
-          .select("id")
-          .single();
+        const { data: req, error: reqError } = await 带超时(
+          supabase
+            .from("work_order_requirements")
+            .insert({
+              work_order_id: orderId,
+              seq: nextSeq,
+              description: description.trim(),
+              submitted_by: userId,
+              diagnosis: newDiagnosis || null,
+              remarks: newRemarks || null,
+              diagnosis_submitter_id: newDiagnosis ? userId : null,
+              remarks_submitter_id: newRemarks ? userId : null,
+            })
+            .select("id")
+            .single(),
+          "创建需求"
+        );
 
         if (reqError || !req) throw reqError || new Error("创建需求失败");
-        requirement = { id: req.id };
+        当前需求ID = req.id;
       }
 
       // 插入新媒体（仅当有权限时）
-      if (canEditMedia) {
+      if (canEditMedia && 当前需求ID) {
         const mediaRecords = [
           ...images
             .filter((path) => !initialMedia.some((m) => m.media_type === "image" && m.storage_path === path))
             .map((path) => ({
-              requirement_id: requirement.id,
+              requirement_id: 当前需求ID,
               media_type: "image" as const,
               storage_path: path,
             })),
           ...videos
             .filter((path) => !initialMedia.some((m) => m.media_type === "video" && m.storage_path === path))
             .map((path) => ({
-              requirement_id: requirement.id,
+              requirement_id: 当前需求ID,
               media_type: "video" as const,
               storage_path: path,
             })),
         ];
         if (mediaRecords.length > 0) {
-          const { error: mediaError } = await supabase
-            .from("work_order_requirement_media")
-            .insert(mediaRecords);
+          const { error: mediaError } = await 带超时(
+            supabase.from("work_order_requirement_media").insert(mediaRecords),
+            "保存媒体记录"
+          );
           if (mediaError) throw mediaError;
         }
       }
 
-      // 删除被移除的媒体文件（包括已保存的和新上传后取消的）
+      // 删除被移除的媒体文件（包括已保存的和新上传后取消的）——并行发送，
+      // 弱网下不再逐个等；单个文件删除失败不阻塞整体保存（文件残留无害，记录已删）
       const pathsToDelete = [...deletedMediaPaths];
-      for (const path of pathsToDelete) {
-        await fetch("/api/delete-media", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path }),
-        });
-      }
+      await Promise.all(
+        pathsToDelete.map((path) =>
+          带超时(
+            fetch("/api/delete-media", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path }),
+            }),
+            "删除文件"
+          ).catch(() => { /* 单个删除失败忽略 */ })
+        )
+      );
 
       /* 先清服务端缓存并重新验证页面、刷新数据，全部完成后再关弹窗。
        * 这样保存期间「保存中...」状态一直保持，用户有明确反馈，不会以为卡住或没存上。
        * 工单数据量大时，将关闭弹窗放在刷新之前，避免用户感觉弹窗卡住。 */
       onClose();
       reset();
-      await 刷新工单详情(orderId);
+      await 带超时(刷新工单详情(orderId), "刷新工单数据");
       router.refresh();
     } catch (err: unknown) {
       let msg = "未知错误";

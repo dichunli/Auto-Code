@@ -150,7 +150,7 @@ export function VehicleModelSearch({ onSelect, placeholder = "搜索品牌、车
       .select("id,厂商,品牌,车系,车型,销售版本,年款,排量,发动机型号,燃油类型,进气形式,排放标准,功率,马力,驱动方式,变速箱类型,变速箱代号,档位数,底盘代号,车身类型,车身尺寸,轴距,整备质量,前轮胎规格,后轮胎规格,停产标志,厂商指导价,品牌图标")
       .eq("id", modelId)
       .single();
-    setDetailModel((data as VehicleModelDetail) || null);
+    setDetailModel((data as unknown as VehicleModelDetail) || null);
     setDetailLoading(false);
   }
 

@@ -37,7 +37,7 @@ export default async function MobileQuoteListPage() {
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {orders && orders.length > 0 ? (
-          orders.map((order: 工单) => (
+          (orders as unknown as 工单[]).map((order) => (
             <Link
               key={order.id}
               href={`/work-orders/${order.id}`}

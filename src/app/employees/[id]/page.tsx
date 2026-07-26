@@ -258,7 +258,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="font-semibold text-gray-900 mb-3">维修项目（最近10条）</h3>
           <div className="space-y-2">
-            {mechanicItems?.map((item: MechanicItem) => (
+            {(mechanicItems as unknown as MechanicItem[] | null)?.map((item) => (
               <Link
                 key={item.id}
                 href={`/work-orders/${item.work_order_id}`}

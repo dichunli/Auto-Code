@@ -192,7 +192,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       setNameQuery("");
       setNameResults([]);
       setPendingName(null);
-      setSelectedRealPart(parts[0]?.parts || null);
+      setSelectedRealPart((parts[0]?.parts || null) as unknown as RealPart | null);
     }
   }, [showModal, name, parts]);
 
@@ -393,7 +393,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         .select("id, name, unit, part_categories(name)")
         .ilike("name", `%${nameQuery.trim()}%`)
         .limit(10);
-      setNameResults(data || []);
+      setNameResults((data || []) as unknown as NameResult[]);
       setNameSearching(false);
     }, 300);
     return () => {

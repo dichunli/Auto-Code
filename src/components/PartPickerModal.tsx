@@ -30,7 +30,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onConfirm: (parts: Part[]) => void;
-  vehicleModelId?: string | null;
+  vehicleModelId?: number | null;
   defaultNameQuery?: string;
   replacedPartName?: string;
   compact?: boolean;
@@ -171,7 +171,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       console.error("查询配件失败:", error);
       setParts([]);
     } else {
-      setParts((data as Part[]) || []);
+      setParts((data as unknown as Part[]) || []);
     }
     setLoading(false);
   }, [supabase, partNumber, oeNumberQuery, nameQuery, brandQuery, specQuery, categoryId]);
@@ -200,7 +200,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       console.error("查询配件失败:", error);
       setParts([]);
     } else {
-      setParts((data as Part[]) || []);
+      setParts((data as unknown as Part[]) || []);
     }
     setLoading(false);
   }, [supabase]);
@@ -228,7 +228,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       console.error("扫码搜索失败:", error);
       setParts([]);
     } else {
-      setParts((data as Part[]) || []);
+      setParts((data as unknown as Part[]) || []);
     }
     setLoading(false);
   }, [supabase]);

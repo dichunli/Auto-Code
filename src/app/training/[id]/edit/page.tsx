@@ -21,6 +21,12 @@ interface Course {
 interface 课程分类 {
   id: string;
   name: string;
+  parent_id: string | null;
+}
+
+interface 专题 {
+  id: string;
+  name: string;
 }
 
 export default async function EditCoursePage({ params }: { params: Promise<{ id: string }> }) {
@@ -55,14 +61,41 @@ export default async function EditCoursePage({ params }: { params: Promise<{ id:
 
   const { data: categoriesData } = await supabase
     .from("training_categories")
-    .select("id, name")
+    .select("id, name, parent_id")
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
 
   const categories: 课程分类[] = (categoriesData || []).map((item) => ({
     id: String(item.id),
     name: String(item.name),
+    parent_id: item.parent_id ? String(item.parent_id) : null,
   }));
 
-  return <CourseEditForm course={course} categories={categories} />;
+  /* 取专题列表和课程已选专题 */
+  const { data: topicsData } = await supabase
+    .from("training_topics")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
+  const topics: 专题[] = (topicsData || []).map((item) => ({
+    id: String(item.id),
+    name: String(item.name),
+  }));
+
+  const { data: courseTopicsData } = await supabase
+    .from("training_course_topics")
+    .select("topic_id")
+    .eq("course_id", id);
+
+  const initialTopicIds: string[] = (courseTopicsData || []).map((item) => String(item.topic_id));
+
+  return (
+    <CourseEditForm
+      course={course}
+      categories={categories}
+      topics={topics}
+      initialTopicIds={initialTopicIds}
+    />
+  );
 }

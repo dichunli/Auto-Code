@@ -5,6 +5,12 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 
+interface 课程分类 {
+  id: string;
+  name: string;
+  parent_id: string | null;
+}
+
 export default function EditTrainingCategoryPage() {
   const router = useRouter();
   const params = useParams();
@@ -12,32 +18,41 @@ export default function EditTrainingCategoryPage() {
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [allCategories, setAllCategories] = useState<课程分类[]>([]);
 
   const [form, setForm] = useState({
     name: "",
     code: "",
+    parent_id: "" as string,
     is_active: true,
   });
 
   useEffect(() => {
-    supabase
-      .from("training_categories")
-      .select("id, name, code, is_active")
-      .eq("id", id)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) {
-          alert("加载失败: " + (error?.message || "分类不存在"));
-          router.push("/training/categories");
-          return;
-        }
-        setForm({
-          name: String(data.name || ""),
-          code: data.code ? String(data.code) : "",
-          is_active: Boolean(data.is_active),
-        });
-        setLoading(false);
+    /* 加载分类详情和所有分类（用于父分类选择） */
+    Promise.all([
+      supabase.from("training_categories").select("id, name, code, parent_id, is_active").eq("id", id).single(),
+      supabase.from("training_categories").select("id, name, parent_id").neq("id", id).order("sort_order"),
+    ]).then(([detail, all]) => {
+      if (detail.error || !detail.data) {
+        alert("加载失败: " + (detail.error?.message || "分类不存在"));
+        router.push("/training/categories");
+        return;
+      }
+      setForm({
+        name: String(detail.data.name || ""),
+        code: detail.data.code ? String(detail.data.code) : "",
+        parent_id: detail.data.parent_id ? String(detail.data.parent_id) : "",
+        is_active: Boolean(detail.data.is_active),
       });
+      setAllCategories(
+        (all.data || []).map((item) => ({
+          id: String(item.id),
+          name: String(item.name),
+          parent_id: item.parent_id ? String(item.parent_id) : null,
+        }))
+      );
+      setLoading(false);
+    });
   }, [id, supabase, router]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -46,10 +61,15 @@ export default function EditTrainingCategoryPage() {
       alert("请填写分类名称");
       return;
     }
+    /* 不能把自己设为自己的父分类 */
+    const parentId = form.parent_id || null;
+    if (parentId === id) {
+      alert("不能将自己设为父分类");
+      return;
+    }
     setSaving(true);
     await 确保有session();
 
-    /* 查重（排除自身） */
     const { data: dup } = await supabase
       .from("training_categories")
       .select("id")
@@ -67,6 +87,7 @@ export default function EditTrainingCategoryPage() {
       .update({
         name: form.name.trim(),
         code: form.code.trim() || null,
+        parent_id: parentId,
         is_active: form.is_active,
       })
       .eq("id", id);
@@ -105,10 +126,24 @@ export default function EditTrainingCategoryPage() {
             />
           </div>
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">父分类（选填）</label>
+            <select
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={form.parent_id}
+              onChange={(e) => setForm({ ...form, parent_id: e.target.value })}
+            >
+              <option value="">无（顶级分类）</option>
+              {allCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">分类标识（选填）</label>
             <input
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="如 safety、technical，用于系统识别"
               value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value })}
             />
@@ -124,7 +159,6 @@ export default function EditTrainingCategoryPage() {
             <label htmlFor="is_active" className="text-sm text-gray-700">启用</label>
           </div>
         </div>
-
         <div className="mt-6 flex gap-3 justify-end">
           <button
             type="button"

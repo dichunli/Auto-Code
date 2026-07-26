@@ -77,7 +77,7 @@ export function ImageViewer({
     if (e.touches.length === 2) {
       /* 双指缩放 */
       pinchRef.current = {
-        startDist: getDistance(e.touches),
+        startDist: getDistance(e.touches as unknown as TouchList),
         startScale: scale,
       };
     } else if (e.touches.length === 1) {
@@ -102,7 +102,7 @@ export function ImageViewer({
   function handleTouchMove(e: React.TouchEvent) {
     if (e.touches.length === 2) {
       e.preventDefault();
-      const dist = getDistance(e.touches);
+      const dist = getDistance(e.touches as unknown as TouchList);
       if (pinchRef.current.startDist > 0) {
         const ratio = dist / pinchRef.current.startDist;
         setScale(Math.max(1, Math.min(5, pinchRef.current.startScale * ratio)));

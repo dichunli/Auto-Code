@@ -101,7 +101,7 @@ export function ProcurementTabBar({ currentTab }: Props) {
       .order("created_at", { ascending: false })
       .limit(2000);
 
-    const rows = (parts || []) as PartRow[];
+    const rows = (parts || []) as unknown as PartRow[];
 
     let pendingInquiry = 0;
     let pendingQuote = 0;

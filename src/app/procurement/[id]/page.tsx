@@ -110,7 +110,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     }
 
     const item = items.find((i) => i.id === itemId);
-    if (!item) return;
+    /* 收货按钮只在订单加载完成后渲染，此处 order 必存在 */
+    if (!item || !order) return;
 
     const remainingToReceive = item.quantity - (item.received_qty || 0);
     if (qty > remainingToReceive) {

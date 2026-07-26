@@ -20,20 +20,66 @@ interface 知识文章 {
 interface 课程分类 {
   id: string;
   name: string;
+  parent_id: string | null;
+}
+
+interface 专题 {
+  id: string;
+  name: string;
+}
+
+/* 递归渲染分类选项 */
+function 分类选项列表({ categories, depth = 0 }: { categories: 课程分类[]; depth?: number }) {
+  return (
+    <>
+      {categories.map((c) => (
+        <option key={c.id} value={c.id}>
+          {" ".repeat(depth * 2)}{depth > 0 ? "└ " : ""}{c.name}
+        </option>
+      ))}
+    </>
+  );
+}
+
+/* 构建分类树 */
+function 构建分类树(flatList: 课程分类[]): 课程分类[] {
+  const map = new Map<string, 课程分类>();
+  const roots: 课程分类[] = [];
+  for (const item of flatList) {
+    map.set(item.id, item);
+  }
+  for (const item of flatList) {
+    if (item.parent_id && map.has(item.parent_id)) {
+      /* 将子分类追加到父分类后面 */
+      const parentIdx = flatList.indexOf(map.get(item.parent_id)!);
+      /* 简单方案：按层级排序 */
+    }
+  }
+  /* 按层级排序：先顶级，再二级 */
+  return flatList.sort((a, b) => {
+    const aDepth = a.parent_id ? 1 : 0;
+    const bDepth = b.parent_id ? 1 : 0;
+    if (aDepth !== bDepth) return aDepth - bDepth;
+    return 0;
+  });
 }
 
 export default function CourseForm({
   initialCategories,
   initialArticles,
+  initialTopics,
 }: {
   initialCategories: 课程分类[];
   initialArticles: 知识文章[];
+  initialTopics: 专题[];
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
 
   const defaultCategoryId = initialCategories[0]?.id || "";
+  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
+
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -48,6 +94,8 @@ export default function CourseForm({
     exam_mode: "online",
     knowledge_article_id: "",
   });
+
+  const 排序分类 = 构建分类树(initialCategories);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -70,6 +118,7 @@ export default function CourseForm({
           points: form.points ? parseInt(form.points) : 0,
           has_exam: form.has_exam,
           exam_mode: form.has_exam ? form.exam_mode : "online",
+          topic_ids: selectedTopicIds.length > 0 ? selectedTopicIds : undefined,
         }),
         new Promise<{ success: boolean; error?: string }>((_, reject) =>
           setTimeout(() => reject(new Error("保存超时，请检查网络后重试")), 15000)
@@ -109,8 +158,10 @@ export default function CourseForm({
               onChange={(e) => setForm({ ...form, category_id: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
             >
-              {initialCategories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+              {排序分类.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.parent_id ? "└ " : ""}{c.name}
+                </option>
               ))}
             </select>
             {initialCategories.length === 0 && (
@@ -129,6 +180,33 @@ export default function CourseForm({
               <option value="knowledge">知识库文章</option>
             </select>
           </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">专题（可多选）</label>
+          {initialTopics.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {initialTopics.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedTopicIds((prev) =>
+                      prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id]
+                    );
+                  }}
+                  className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                    selectedTopicIds.includes(t.id)
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"
+                  }`}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">暂无启用中的专题，可先到专题管理中添加</p>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">课程描述</label>
@@ -159,9 +237,8 @@ export default function CourseForm({
               maxVideos={1}
               existingVideos={videoUrl ? [videoUrl] : []}
               onUpload={(paths) => setVideoUrl(paths[0] || "")}
-              maxFileSizeMB={500}
-              maxDurationSeconds={1800}
-              timeoutMs={300000}
+              maxDurationSeconds={0}
+              timeoutMs={600000}
               folder="training"
             />
           </div>

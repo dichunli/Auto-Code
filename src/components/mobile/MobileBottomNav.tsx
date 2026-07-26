@@ -102,8 +102,8 @@ export function MobileBottomNav() {
       interface 角色关联 {
         roles?: { name?: string } | null;
       }
-      const names = (data || [])
-        .map((r: 角色关联) => r.roles?.name)
+      const names = ((data || []) as unknown as 角色关联[])
+        .map((r) => r.roles?.name)
         .filter(Boolean) as string[];
       setRoles(names);
     }

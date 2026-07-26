@@ -42,7 +42,7 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
   const [pnQuery, setPnQuery] = useState("");
   const [pnResults, setPnResults] = useState<PartName[]>([]);
   const [pnSearching, setPnSearching] = useState(false);
-  const [linkedNames, setLinkedNames] = useState<{ id: string; name: string; category_name?: string }[]>([]);
+  const [linkedNames, setLinkedNames] = useState<{ id: string; name: string; category_name?: string | null }[]>([]);
 
   async function loadBrands(search?: string) {
     const { data: { session } } = await supabase.auth.getSession();
@@ -78,7 +78,7 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
         .or(`name.ilike.%${pnQuery.trim()}%,search_keywords.ilike.%${pnQuery.trim()}%`)
         .order("name")
         .limit(10);
-      setPnResults(data || []);
+      setPnResults((data || []) as unknown as PartName[]);
       setPnSearching(false);
     }, 300);
     return () => clearTimeout(t);

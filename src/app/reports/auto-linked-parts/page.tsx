@@ -79,7 +79,7 @@ export default async function AutoLinkedPartsReportPage() {
     `)
     .order("created_at", { ascending: false });
 
-  const autoLinkedRows = ((rows as 关联记录[]) || []).filter((row: 关联记录) => {
+  const autoLinkedRows = ((rows as unknown as 关联记录[]) || []).filter((row: 关联记录) => {
     return (
       row.parts?.part_names?.auto_link_vehicle_model ||
       row.parts?.part_names?.part_categories?.auto_link_vehicle_model

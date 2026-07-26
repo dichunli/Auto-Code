@@ -127,7 +127,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
       .update({
         name: editForm.name,
         phone: editForm.phone || null,
-        discount_rate: parseFloat(editForm.discount_rate) || 1,
+        discount_rate: parseFloat(editForm.discount_rate || "") || 1,
         status: editForm.status,
         notes: editForm.notes || null,
         updated_at: new Date().toISOString(),

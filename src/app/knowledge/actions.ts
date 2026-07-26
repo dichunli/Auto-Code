@@ -82,8 +82,8 @@ export async function loadKnowledgeArticles(params: {
       .from("profile_roles")
       .select("roles(name)")
       .eq("profile_id", currentUserId);
-    isAdmin = (roleData || []).some(
-      (d: { roles?: { name?: string } | null }) => d.roles?.name === "admin"
+    isAdmin = ((roleData || []) as unknown as { roles?: { name?: string } | null }[]).some(
+      (d) => d.roles?.name === "admin"
     );
   }
 
@@ -91,10 +91,8 @@ export async function loadKnowledgeArticles(params: {
   let articles: 知识文章数据[] = [];
   let total = 0;
 
-  /* 构建筛选条件 */
-  function 应用筛选条件(
-    query: ReturnType<typeof supabase.from>,
-  ): ReturnType<typeof supabase.from> {
+  /* 构建筛选条件（泛型保持查询构建器原类型，无需关心 select 前后类型差异） */
+  function 应用筛选条件<T extends { eq: (column: string, value: string) => T }>(query: T): T {
     if (category) query = query.eq("category_id", category);
     if (createdBy) query = query.eq("created_by", createdBy);
     return query;
@@ -189,7 +187,7 @@ export async function loadKnowledgeArticles(params: {
       });
 
       /* 按最终分降序重排 */
-      articles.sort((a, b) => b.score - a.score);
+      articles.sort((a, b) => (b.score || 0) - (a.score || 0));
 
       /* 从 content_blocks 提取纯文本（用于关键词匹配） */
       function 提取内容块文本(块: unknown): string {
@@ -282,7 +280,7 @@ export async function loadKnowledgeArticles(params: {
     }
 
     /* 按分数降序重排合并结果 */
-    articles.sort((a, b) => b.score - a.score);
+    articles.sort((a, b) => (b.score || 0) - (a.score || 0));
   } else if (语义搜索完成 && !keyword.trim()) {
     /* 语义模式但无搜索词 → 显示全部（与普通列表一致） */
   } else if (!语义搜索完成 && searchKeywords.length > 0) {
@@ -896,6 +894,7 @@ function blockToDocxElement(
 
 import { vin17DecodeVin } from "@/lib/17vin/client";
 import { 标准化VIN } from "@/lib/vinValidator";
+import type { 车型库行 } from "@/lib/vehicleModelFields";
 
 /* ═════════════════════════════════════════════════════════════════
  * 批量生成全部文章向量
@@ -998,25 +997,7 @@ export async function 生成文章向量(文章ID: string, 标题: string, 内�
 
 export async function syncKnowledgeModelsFromVin(rawVin: string): Promise<{
   success: boolean;
-  matchedModels?: Array<{
-    id: number;
-    厂商: string | null;
-    品牌: string | null;
-    车系: string | null;
-    车型: string | null;
-    销售版本: string | null;
-    年款: number | null;
-    排量: string | null;
-    发动机型号: string | null;
-    燃油类型: string | null;
-    进气形式: string | null;
-    变速箱类型: string | null;
-    变速箱代号: string | null;
-    底盘代号: string | null;
-    驱动方式: string | null;
-    车身类型: string | null;
-    排放标准: string | null;
-  }>;
+  matchedModels?: 车型库行[];
   error?: string;
 }> {
   const supabase = await createClient();
@@ -1059,10 +1040,10 @@ export async function syncKnowledgeModelsFromVin(rawVin: string): Promise<{
 
   /* 匹配本地车型库：只查匹配品牌的记录，避免全表扫描（9.6 万条 → 几百条） */
   const vmBrand = (vinDecodeModel.Brand || "").toLowerCase().trim();
-  const { data: localModels } = await supabase
+  const { data: localModels } = (await supabase
     .from("vehicle_models")
     .select("id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准")
-    .ilike("品牌", `%${vmBrand}%`);
+    .ilike("品牌", `%${vmBrand}%`)) as unknown as { data: 车型库行[] | null };
 
   const vmSeries = (vinDecodeModel.Series || "").toLowerCase().trim();
   const vmModel = (vinDecodeModel.Model || "").toLowerCase().trim();
@@ -1070,25 +1051,7 @@ export async function syncKnowledgeModelsFromVin(rawVin: string): Promise<{
   const yearStr = vinDecodeModel.Model_year || vinDecodeModel.Date_begin || "";
   const vmYear = yearStr ? parseInt(String(yearStr).slice(0, 4)) : null;
 
-  const matchedModels: Array<{
-    id: number;
-    厂商: string | null;
-    品牌: string | null;
-    车系: string | null;
-    车型: string | null;
-    销售版本: string | null;
-    年款: number | null;
-    排量: string | null;
-    发动机型号: string | null;
-    燃油类型: string | null;
-    进气形式: string | null;
-    变速箱类型: string | null;
-    变速箱代号: string | null;
-    底盘代号: string | null;
-    驱动方式: string | null;
-    车身类型: string | null;
-    排放标准: string | null;
-  }> = [];
+  const matchedModels: 车型库行[] = [];
 
   for (const local of localModels || []) {
     const localBrand = (local.品牌 || "").toLowerCase().trim();
@@ -1133,7 +1096,7 @@ export async function syncKnowledgeModelsFromVin(rawVin: string): Promise<{
       .select("id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准")
       .single();
     if (newModel) {
-      matchedModels.push(newModel);
+      matchedModels.push(newModel as unknown as 车型库行);
     }
   }
 
@@ -1200,15 +1163,37 @@ export async function loadKnowledgeArticleReads(articleId: string): Promise<{
  * 分词词典管理 Server Action（绕过 RLS）
  * ═════════════════════════════════════════════════════════════════ */
 
+/** 加载自定义分词列表（Server Action，用 admin 客户端绕过 RLS） */
+export async function 加载分词列表(): Promise<{ success: boolean; data?: string[]; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    const { data, error } = await supabase
+      .from("search_dictionary")
+      .select("word")
+      .order("created_at", { ascending: false });
+    if (error) {
+      console.error("[加载分词列表] 数据库错误:", error.message);
+      return { success: false, error: error.message };
+    }
+    const words = (data || []).map((row: { word: unknown }) => String(row.word));
+    return { success: true, data: words };
+  } catch (err: unknown) {
+    console.error("[加载分词列表] 异常:", err instanceof Error ? err.message : String(err));
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function 添加分词(词: string): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = createAdminClient();
     const { error } = await supabase.from("search_dictionary").insert({ word: 词, created_by: null });
     if (error) {
+      console.error("[添加分词] 数据库错误:", error.message, "| code:", error.code, "| details:", error.details);
       return { success: false, error: error.message };
     }
     return { success: true };
   } catch (err: unknown) {
+    console.error("[添加分词] 异常:", err instanceof Error ? err.message : String(err));
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

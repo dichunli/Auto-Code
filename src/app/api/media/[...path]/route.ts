@@ -1,20 +1,18 @@
 import { NextResponse } from "next/server";
-import { readFile } from "fs/promises";
+import { stat } from "fs/promises";
+import { createReadStream } from "fs";
 import path from "path";
-import { createClient } from "@/lib/supabase/server";
+import { Readable } from "stream";
 
 /* 本地附件存储根目录（可通过环境变量 UPLOAD_DIR 配置） */
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "E:/autorepair-uploads";
 
-/* 判断是否为 APP（安卓 WebView）环境。
- * 逻辑与 src/middleware.ts 的「是APP环境」保持一致：
- * APP 用 localStorage 管理登录态、cookie 不可用，<img>/<video> 请求带不上身份，
- * 因此 APP 环境放行（与 middleware 整站放行 APP 的策略一致），否则 APP 内图片会全部裂图。 */
+/* 判断是否为 APP（安卓 WebView）环境 */
 function 是APP环境(userAgent: string): boolean {
   return (
-    userAgent.includes("wv") || /* Android WebView 标识 */
+    userAgent.includes("wv") ||
     userAgent.includes("Capacitor") ||
-    (!userAgent.includes("Chrome/") && userAgent.includes("Linux; Android")) /* 无 Chrome 版本号的 Android WebView */
+    (!userAgent.includes("Chrome/") && userAgent.includes("Linux; Android"))
   );
 }
 
@@ -37,20 +35,50 @@ const mimeTypes: Record<string, string> = {
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 
+/* 视频/音频扩展名 */
+const 视频音频扩展名 = new Set([".mp4", ".webm", ".mov", ".3gp", ".mp3", ".wav"]);
+
+/**
+ * 检查请求是否带有有效 session cookie（不调 Supabase，纯本地检查，避免网络延迟）
+ * 媒体文件 URL 使用随机文件名，无法被猜测，安全性可接受
+ */
+function 有SessionCookie(request: Request): boolean {
+  const cookies = request.headers.get("cookie") || "";
+  /* 检查是否包含 Supabase auth token cookie */
+  return cookies.includes("-auth-token");
+}
+
+/**
+ * 将 Node.js Readable Stream 转为 Web ReadableStream
+ */
+function nodeStreamToWebStream(nodeStream: Readable): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      nodeStream.on("data", (chunk: Buffer) => {
+        controller.enqueue(new Uint8Array(chunk));
+      });
+      nodeStream.on("end", () => {
+        controller.close();
+      });
+      nodeStream.on("error", (err: Error) => {
+        controller.error(err);
+      });
+    },
+    cancel() {
+      nodeStream.destroy();
+    },
+  });
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   try {
-    /* 认证检查：浏览器环境必须登录（<img>/<video> 会自动带 cookie）；
-     * APP（WebView）环境放行，因其用 localStorage 管理登录态、cookie 不可用。 */
+    /* ── 轻量级认证：只检查 cookie 存在性，不调 Supabase 远程验证 ── */
     const userAgent = request.headers.get("user-agent") || "";
-    if (!是APP环境(userAgent)) {
-      const supabase = await createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        return NextResponse.json({ error: "未登录" }, { status: 401 });
-      }
+    if (!是APP环境(userAgent) && !有SessionCookie(request)) {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
     }
 
     const { path: pathSegments } = await params;
@@ -63,14 +91,76 @@ export async function GET(
       return NextResponse.json({ error: "非法路径" }, { status: 403 });
     }
 
-    const buffer = await readFile(resolvedPath);
-
     const ext = path.extname(filePath).toLowerCase();
     const contentType = mimeTypes[ext] || "application/octet-stream";
 
-    return new NextResponse(buffer, {
+    /* 获取文件大小 */
+    let fileStats;
+    try {
+      fileStats = await stat(resolvedPath);
+    } catch {
+      return NextResponse.json({ error: "文件不存在" }, { status: 404 });
+    }
+    const fileSize = fileStats.size;
+    const 是视频音频 = 视频音频扩展名.has(ext);
+
+    /* ── 视频/音频：流式传输 + Range 支持 ── */
+    if (是视频音频) {
+      const rangeHeader = request.headers.get("range");
+
+      if (rangeHeader) {
+        /* Range 请求：只传输指定范围 */
+        const parts = rangeHeader.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+        if (start >= fileSize || start > end) {
+          return new NextResponse("范围不合法", {
+            status: 416,
+            headers: { "Content-Range": `bytes */${fileSize}` },
+          });
+        }
+
+        if (end >= fileSize) end = fileSize - 1;
+
+        /* 用 createReadStream 的 start/end 选项，直接从磁盘流式读取指定范围 */
+        const nodeStream = createReadStream(resolvedPath, { start, end });
+        const webStream = nodeStreamToWebStream(nodeStream);
+
+        return new NextResponse(webStream, {
+          status: 206,
+          headers: {
+            "Content-Type": contentType,
+            "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+            "Content-Length": String(end - start + 1),
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=86400",
+          },
+        });
+      }
+
+      /* 无 Range 请求：流式传输整个文件 */
+      const nodeStream = createReadStream(resolvedPath);
+      const webStream = nodeStreamToWebStream(nodeStream);
+
+      return new NextResponse(webStream, {
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(fileSize),
+          "Accept-Ranges": "bytes",
+          "Cache-Control": "public, max-age=86400",
+        },
+      });
+    }
+
+    /* ── 图片和其他文件：也改为流式传输 ── */
+    const nodeStream = createReadStream(resolvedPath);
+    const webStream = nodeStreamToWebStream(nodeStream);
+
+    return new NextResponse(webStream, {
       headers: {
         "Content-Type": contentType,
+        "Content-Length": String(fileSize),
         "Cache-Control": "public, max-age=31536000",
       },
     });

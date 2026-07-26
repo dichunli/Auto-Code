@@ -150,7 +150,7 @@ export function ConstructionControls({
       .select("id, action, created_at, mechanic_id, profiles(full_name)")
       .eq("work_order_item_id", itemId)
       .order("created_at", { ascending: true });
-    setLogs((data || []) as Log[]);
+    setLogs((data || []) as unknown as Log[]);
   }, [supabase, itemId]);
 
   const fetchStats = useCallback(async () => {

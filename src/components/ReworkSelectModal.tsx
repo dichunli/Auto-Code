@@ -24,6 +24,7 @@ interface WorkOrderItemRow {
   name: string;
   item_type: string | null;
   quantity: number | null;
+  unit_price: number | null;
   total_price: number | null;
   work_order_id: string;
   profiles: { full_name: string } | null;

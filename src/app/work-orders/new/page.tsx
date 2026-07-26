@@ -106,7 +106,7 @@ export default function NewWorkOrderPage() {
         .select("id, plate_number, brand, model, vin, mileage, customer_id, customers(id, name, phone, company, star_level, customer_tags(tags(id, name, color)))")
         .ilike("plate_number", `%${query}%`)
         .limit(10);
-      setVehicleResults(data || []);
+      setVehicleResults((data || []) as unknown as VehicleWithCustomer[]);
     },
     [supabase]
   );
@@ -127,6 +127,7 @@ export default function NewWorkOrderPage() {
       return;
     }
     async function load() {
+      if (!selectedVehicle) return;
       const { data } = await supabase
         .from("work_orders")
         .select("id, order_no, status, order_type")

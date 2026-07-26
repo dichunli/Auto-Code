@@ -38,3 +38,37 @@ export const 车型库匹配字段 = "id, 品牌, 车系, 车型, 年款, 发动
 
 /* 新建/编辑配件页面展示用字段 */
 export const 车型库展示字段 = "id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准";
+
+/* vehicle_models 行类型（字段全是中文）。
+ * supabase-js 的类型解析器不认中文列名，select 中文列时返回类型会变成
+ * ParserError，所以各查询处需要把结果断言成这个接口（纯类型操作）。 */
+export interface 车型库行 {
+  id: number;
+  厂商?: string | null;
+  品牌?: string | null;
+  品牌图标?: string | null;
+  品牌别名?: string | null;
+  车系?: string | null;
+  车型?: string | null;
+  销售版本?: string | null;
+  年款?: number | null;
+  排量?: string | null;
+  发动机型号?: string | null;
+  燃油类型?: string | null;
+  进气形式?: string | null;
+  变速箱类型?: string | null;
+  变速箱代号?: string | null;
+  底盘代号?: string | null;
+  /* 后期补充的同义列（与 底盘代号/变速箱代号 并存于 vehicle_models 表） */
+  底盘型号?: string | null;
+  变速箱型号?: string | null;
+  驱动方式?: string | null;
+  车身类型?: string | null;
+  排放标准?: string | null;
+}
+
+/* 补充：VehicleModelSelector 用到的轮胎规格字段（同属 vehicle_models 表） */
+export interface 车型库行含轮胎 extends 车型库行 {
+  前轮胎规格?: string | null;
+  后轮胎规格?: string | null;
+}

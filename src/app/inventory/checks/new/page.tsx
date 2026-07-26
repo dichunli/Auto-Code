@@ -173,7 +173,7 @@ export default function NewInventoryCheckPage() {
                             : "text-gray-600"
                         }`}
                       >
-                        {item.diff_qty > 0 ? "+" : ""}
+                        {(item.diff_qty || 0) > 0 ? "+" : ""}
                         {item.diff_qty || 0}
                       </span>
                     </td>

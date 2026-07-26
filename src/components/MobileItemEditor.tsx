@@ -77,6 +77,11 @@ interface ItemPart {
   brand: string;
   specification: string;
   unit_cost?: number | null;
+  /* 以下 4 个字段由实时同步广播推送，本组件仅透传合并 */
+  cost_price?: number | null;
+  supplier_name?: string | null;
+  is_purchased?: boolean | null;
+  is_arrived?: boolean | null;
   customer_opinion?: string | null;
   notes?: string | null;
   part_id?: string | null;
@@ -177,7 +182,7 @@ interface Props {
   knowledgeUrl?: string;
   isLocked: boolean;
   parts: ItemPart[];
-  vehicleModelId?: string | null;
+  vehicleModelId?: number | null;
   existingOrder?: ExistingOrder | null;
   existingItem?: ExistingItem | null;
   partInventory?: Record<string, number>;
@@ -494,9 +499,9 @@ export default function MobileItemEditor({
           .eq("service_item_id", serviceItemId)
           .order("sort_order", { ascending: true })
           .then(({ data }) => {
-            const loaded = (data || [])
-              .filter((row: { part_names: { id: string; name: string; unit: string | null; default_quantity: number | null } | null }) => row.part_names)
-              .map((row: { part_name_id: string; quantity: number | null; part_names: { id: string; name: string; unit: string | null; default_quantity: number | null } | null }) => ({
+            const loaded = ((data || []) as unknown as { part_name_id: string; quantity: number | null; part_names: { id: string; name: string; unit: string | null; default_quantity: number | null } | null }[])
+              .filter((row) => row.part_names)
+              .map((row) => ({
                 part_name_id: row.part_name_id,
                 name: row.part_names!.name,
                 unit: row.part_names!.unit || "件",

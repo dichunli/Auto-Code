@@ -21,6 +21,7 @@ import FormActions from "./components/FormActions";
 import submitPart from "./submitPart";
 import { syncOeFromVin, syncModelsFromVin, syncModelsByGroupId } from "../actions";
 import { 标准化VIN } from "@/lib/vinValidator";
+import type { 车型库行 } from "@/lib/vehicleModelFields";
 
 /* 供应商查询结果 */
 interface SupplierItem {
@@ -313,10 +314,10 @@ export default function PartForm({
   /* 把匹配到的车型ID加入已选车型列表 */
   async function addMatchedModels(matchedModelIds: number[]) {
     if (!matchedModelIds || matchedModelIds.length === 0) return;
-    const { data: vms } = await supabase
+    const { data: vms } = (await supabase
       .from("vehicle_models")
       .select("id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准")
-      .in("id", matchedModelIds);
+      .in("id", matchedModelIds)) as unknown as { data: 车型库行[] | null };
 
     if (vms && vms.length > 0) {
       const newItems = vms.map((vm) => {

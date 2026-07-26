@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ComponentProps } from "react";
 import Link from "next/link";
 import PartBranchEditor from "@/components/PartBranchEditor";
 import PartGroupHeader from "@/components/PartGroupHeader";
@@ -30,7 +30,7 @@ interface Props {
   itemId: string;
   seqPrefix: string; // 形如 "1.1.1"，分支行在其后追加 ".序号"
   isLocked: boolean;
-  vehicleModelId?: string;
+  vehicleModelId?: number;
   suppliers: SupplierLite[];
   logisticsCompanies: LogisticsLite[];
   pickingByPart: Record<string, number>;
@@ -86,11 +86,11 @@ export default function ItemPartGroup({
         <PartGroupHeader
           seqLabel={seqPrefix}
           name={group.name}
-          parts={branches}
+          parts={branches as unknown as ComponentProps<typeof PartGroupHeader>["parts"]}
           isLocked={isLocked}
           itemId={itemId}
           existingImages={group.images}
-          onBranchAdded={handleBranchAdded}
+          onBranchAdded={handleBranchAdded as unknown as ComponentProps<typeof PartGroupHeader>["onBranchAdded"]}
         />
       </div>
       {/* 配件分支区：白底 + 蓝色缩进导轨（子级） */}
@@ -106,10 +106,10 @@ export default function ItemPartGroup({
               unit_cost: p.unit_cost as number | null,
               unit_price: p.unit_price as number | null,
               customer_opinion: p.customer_opinion as string | null,
-              is_purchased: p.is_purchased as boolean | null,
-              is_arrived: p.is_arrived as boolean | null,
+              is_purchased: p.is_purchased as boolean,
+              is_arrived: p.is_arrived as boolean,
               part_id: p.part_id as string | null,
-              quantity: p.quantity as number | null,
+              quantity: p.quantity as number,
               inventoryQty: pInventory,
               pickedQty: pNetPicked,
               hasReturnRecords: pReturnQty > 0,
@@ -119,7 +119,7 @@ export default function ItemPartGroup({
             return (
               <PartBranchEditor
                 key={p.id}
-                part={p}
+                part={p as unknown as ComponentProps<typeof PartBranchEditor>["part"]}
                 itemId={itemId}
                 inventoryQty={pInventory}
                 suppliers={suppliers}

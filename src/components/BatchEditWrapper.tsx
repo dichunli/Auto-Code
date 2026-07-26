@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { useRouter } from "next/navigation";
 import { BatchEditModal } from "./BatchEditModal";
 
@@ -55,8 +55,8 @@ export function BatchEditWrapper({ orderId, items, itemParts, suppliers, logisti
       {show && (
         <BatchEditModal
           orderId={orderId}
-          items={items}
-          itemParts={itemParts}
+          items={items as unknown as ComponentProps<typeof BatchEditModal>["items"]}
+          itemParts={itemParts as unknown as ComponentProps<typeof BatchEditModal>["itemParts"]}
           suppliers={suppliers}
           logisticsCompanies={logisticsCompanies}
           onClose={() => setShow(false)}

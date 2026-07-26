@@ -2,6 +2,15 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 
+/* 库存报表行（含名称和分类） */
+interface 库存行 {
+  id: string;
+  stock_quantity?: number | null;
+  average_cost?: number | null;
+  part_names?: { name?: string | null } | null;
+  part_categories?: { name?: string | null } | null;
+}
+
 export default async function InventoryReportPage() {
   const supabase = await createClient();
 
@@ -60,12 +69,12 @@ export default async function InventoryReportPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {parts?.map((p: Record<string, unknown>) => (
+              {(parts as unknown as 库存行[] | null)?.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-medium text-gray-900">{p.part_names?.name || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{p.part_categories?.name || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{p.stock_quantity || 0}</td>
-                  <td className="px-6 py-4 text-gray-600">{formatCurrency(p.average_cost)}</td>
+                  <td className="px-6 py-4 text-gray-600">{formatCurrency(p.average_cost ?? null)}</td>
                   <td className="px-6 py-4 text-gray-900">{formatCurrency((p.stock_quantity || 0) * (p.average_cost || 0))}</td>
                 </tr>
               ))}

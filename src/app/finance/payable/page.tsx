@@ -2,6 +2,18 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
+/* 应付记录（含关联供应商与采购单） */
+interface 应付记录 {
+  id: string;
+  status: string;
+  amount: number | null;
+  paid_amount: number | null;
+  due_date: string | null;
+  notes: string | null;
+  suppliers: { name: string | null; contact: string | null } | null;
+  purchase_orders: { order_no: string | null; total_amount: number | null } | null;
+}
+
 export default async function PayablePage() {
   const supabase = await createClient();
 
@@ -56,7 +68,7 @@ export default async function PayablePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items?.map((r: Record<string, unknown>) => {
+              {items?.map((r: 应付记录) => {
                 const s = statusMap[r.status] || { label: r.status, class: "bg-gray-50 text-gray-600" };
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">
@@ -67,7 +79,7 @@ export default async function PayablePage() {
                     <td className="px-6 py-4 text-gray-600">{r.purchase_orders?.order_no || "-"}</td>
                     <td className="px-6 py-4 font-medium text-gray-900">{formatCurrency(r.amount)}</td>
                     <td className="px-6 py-4 text-green-600">{formatCurrency(r.paid_amount)}</td>
-                    <td className="px-6 py-4 text-red-600 font-medium">{formatCurrency(r.amount - r.paid_amount)}</td>
+                    <td className="px-6 py-4 text-red-600 font-medium">{formatCurrency((r.amount ?? 0) - (r.paid_amount ?? 0))}</td>
                     <td className="px-6 py-4">
                       <span className={`text-xs px-2 py-0.5 rounded ${s.class}`}>{s.label}</span>
                     </td>

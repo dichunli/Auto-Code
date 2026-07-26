@@ -223,9 +223,9 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
                   <td className="px-6 py-4 text-gray-600">{"★".repeat(customer.star_level || 1)}{"☆".repeat(5 - (customer.star_level || 1))}</td>
                   <td className="px-6 py-4 text-gray-600">{formatCurrency(customer.total_spent)}</td>
                   <td className="px-6 py-4 text-gray-600">
-                    {customer.vehicles?.length > 0 ? (
+                    {(customer.vehicles?.length ?? 0) > 0 ? (
                       <div className="text-sm">
-                        {customer.vehicles.map((v: VehicleInfo, i: number) => (
+                        {(customer.vehicles || []).map((v: VehicleInfo, i: number) => (
                           <span key={v.id}>
                             <Link
                               href={`/vehicles/${v.id}/edit`}
@@ -233,7 +233,7 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
                             >
                               {v.plate_number}
                             </Link>
-                            {i < customer.vehicles.length - 1 && <span className="text-gray-400">, </span>}
+                            {i < (customer.vehicles?.length ?? 0) - 1 && <span className="text-gray-400">, </span>}
                           </span>
                         ))}
                       </div>

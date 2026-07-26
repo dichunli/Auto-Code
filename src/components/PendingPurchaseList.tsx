@@ -523,7 +523,7 @@ export function PendingPurchaseList() {
         mediaMap[m.work_order_item_id].push(m.storage_path);
       }
       const categoryMap: Record<string, string> = {};
-      for (const p of pnData || []) {
+      for (const p of (pnData || []) as unknown as { id: string; part_categories?: { name?: string | null } | null }[]) {
         categoryMap[p.id] = p.part_categories?.name || "";
       }
 
@@ -588,9 +588,9 @@ export function PendingPurchaseList() {
       .select("id, part_number, name, part_brands(name), part_specifications(name), unit, quantity, min_stock, unit_cost, supplier_id, suppliers(name)")
       .order("name");
 
-    const list: LowStockPart[] = (data || [] as PartRow[])
-      .filter((p: PartRow) => (p.quantity || 0) < (p.min_stock || 0))
-      .map((p: PartRow) => ({
+    const list: LowStockPart[] = ((data || []) as unknown as PartRow[])
+      .filter((p) => (p.quantity || 0) < (p.min_stock || 0))
+      .map((p) => ({
         id: p.id,
         part_number: p.part_number,
         name: p.name,

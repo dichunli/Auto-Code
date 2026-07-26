@@ -30,6 +30,8 @@ interface PartData {
   is_purchased?: boolean | null;
   is_arrived?: boolean | null;
   customer_opinion?: string | null;
+  name?: string | null;
+  alias_name?: string | null;
   part_number?: string | null;
   brand?: string | null;
   specification?: string | null;
@@ -40,8 +42,9 @@ interface PartData {
   quantity?: number | null;
   document_name?: string | null;
   part_name_id?: string | null;
-  part_names?: { category_id?: string | null } | null;
-  parts?: { document_name?: string | null } | null;
+  branch_group_id?: string | null;
+  part_names?: { name?: string | null; category_id?: string | null } | null;
+  parts?: { name?: string | null; document_name?: string | null } | null;
 }
 
 interface Supplier {
@@ -59,7 +62,7 @@ interface Props {
   canDelete: boolean;
   isLocked: boolean;
   siblingIds?: string[];
-  vehicleModelId?: string;
+  vehicleModelId?: number;
   children?: React.ReactNode;
 }
 
@@ -361,7 +364,7 @@ export default function PartBranchEditor({
 
         // 供应商车型关联映射
         const vmMap = new Map<string, Array<{ 厂商?: string; 品牌?: string; 车系?: string }>>();
-        (linksRes.data || []).forEach((r: { supplier_id: string; vehicle_models: { 厂商?: string; 品牌?: string; 车系?: string } }) => {
+        ((linksRes.data || []) as unknown as { supplier_id: string; vehicle_models: { 厂商?: string; 品牌?: string; 车系?: string } }[]).forEach((r) => {
           const list = vmMap.get(r.supplier_id) || [];
           list.push(r.vehicle_models);
           vmMap.set(r.supplier_id, list);
@@ -759,7 +762,7 @@ export default function PartBranchEditor({
     if (!partsData || partsData.length === 0) return;
 
     // 过滤车型匹配的（无车型限制也算匹配）
-    const matched = partsData.find((p: { part_vehicle_models?: Array<{ vehicle_model_id: string }> | null }) =>
+    const matched = partsData.find((p: { part_vehicle_models?: Array<{ vehicle_model_id: number }> | null }) =>
       !p.part_vehicle_models || p.part_vehicle_models.length === 0 ||
       p.part_vehicle_models.some((vm) => vm.vehicle_model_id === vehicleModelId)
     );
@@ -1409,7 +1412,8 @@ export default function PartBranchEditor({
                 </div>
                 {recommendedSuppliers.map((s) => {
                   const reasons = getSupplierMatchReasons(s);
-                  const stars = s.recommendation_level > 0 ? "⭐".repeat(s.recommendation_level) + " " : "";
+                  const 推荐级 = s.recommendation_level || 0;
+                  const stars = 推荐级 > 0 ? "⭐".repeat(推荐级) + " " : "";
                   return (
                     <div
                       key={s.id}

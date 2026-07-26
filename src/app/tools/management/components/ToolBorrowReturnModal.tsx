@@ -112,7 +112,7 @@ export default function ToolBorrowReturnModal({
     set提交中(true);
     try {
       const { error: insertError } = await supabase.from("tool_borrow_records").insert({
-        tool_id: 工具.id,
+        tool_id: 工具!.id,
         borrower_id: operatorId,
         borrowed_at: new Date().toISOString(),
         notes: 备注.trim() || null,
@@ -122,7 +122,7 @@ export default function ToolBorrowReturnModal({
       const { error: updateError } = await supabase
         .from("tools")
         .update({ status: "borrowed", updated_at: new Date().toISOString() })
-        .eq("id", 工具.id);
+        .eq("id", 工具!.id);
       if (updateError) throw updateError;
 
       onSuccess();
@@ -159,7 +159,7 @@ export default function ToolBorrowReturnModal({
       const { error: updateToolError } = await supabase
         .from("tools")
         .update({ status: "available", updated_at: new Date().toISOString() })
-        .eq("id", 工具.id);
+        .eq("id", 工具!.id);
       if (updateToolError) throw updateToolError;
 
       onSuccess();

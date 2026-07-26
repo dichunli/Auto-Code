@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ComponentProps } from "react";
 import { BlockNoteRenderer } from "./BlockNoteRenderer";
 
 interface BlockProps {
@@ -242,7 +242,7 @@ export function PresentationView({
           <div className="flex-1 flex items-center justify-center overflow-auto px-4 py-4" ref={contentRef}>
             <div className="w-full max-w-4xl">
               <BlockNoteRenderer
-                blocks={pages[currentPage]}
+                blocks={pages[currentPage] as unknown as ComponentProps<typeof BlockNoteRenderer>["blocks"]}
                 userGroupId={userGroupId}
                 isAdmin={isAdmin}
               />

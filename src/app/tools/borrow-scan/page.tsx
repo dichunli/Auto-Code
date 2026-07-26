@@ -186,6 +186,8 @@ export default function ToolBorrowScanPage() {
   }
 
   function 处理仓位扫码(code: string) {
+    /* 仓位扫码发生在工具识别成功之后，此处 工具 必存在 */
+    if (!工具) return;
     const trimmed = code.trim();
     if (!trimmed.startsWith("location:")) {
       alert("未识别为仓位二维码，请扫描存放位置标签");

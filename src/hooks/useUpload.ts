@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { compressImage, compressImageByDimension, 压缩图片 } from "@/lib/imageCompress";
 import { 获取访问令牌 } from "@/lib/supabase/client";
+import { 分片上传文件, 需要分片上传 } from "@/lib/chunkedUpload";
 
 /* ======================== 类型定义 ======================== */
 
@@ -15,7 +16,7 @@ export interface 上传选项 {
   compressMaxDimension?: number;
   /* 视频最大时长（秒），默认 60 */
   maxDurationSeconds?: number;
-  /* 文件大小上限（MB），默认 100 */
+  /* 文件大小上限（MB），0 表示不限，默认 4096（4GB，分片上传支持超大文件） */
   maxFileSizeMB?: number;
   /* 上传超时（毫秒），默认 30000 */
   timeoutMs?: number;
@@ -55,8 +56,8 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
     mediaType = "auto",
     compressMaxKB,
     compressMaxDimension,
-    maxDurationSeconds = 60,
-    maxFileSizeMB = 100,
+    maxDurationSeconds = 0,
+    maxFileSizeMB = 4096,
     timeoutMs = 30000,
     folder,
     onProgress,
@@ -100,8 +101,8 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
       return { valid: false, error: `${file.name} 不是视频文件` };
     }
 
-    /* 文件大小校验 */
-    if (file.size / 1024 / 1024 > maxFileSizeMB) {
+    /* 文件大小校验（maxFileSizeMB 为 0 时不限制） */
+    if (maxFileSizeMB > 0 && file.size / 1024 / 1024 > maxFileSizeMB) {
       return {
         valid: false,
         error: `${file.name} 超过 ${maxFileSizeMB}MB 限制`,
@@ -109,9 +110,10 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
     }
 
     /* 视频时长校验 */
+    /* maxDurationSeconds 为 0 时不限制时长 */
     if (
-      (类型 === "video" || (类型 === "auto" && 是否为视频(file))) &&
-      maxDurationSeconds > 0
+      maxDurationSeconds > 0 &&
+      (类型 === "video" || (类型 === "auto" && 是否为视频(file)))
     ) {
       const duration = await 获取视频时长(file);
       if (duration !== null && duration > maxDurationSeconds) {
@@ -134,7 +136,7 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
       const timeout = setTimeout(() => {
         URL.revokeObjectURL(video.src);
         resolve(null); /* 超时不报错，继续上传 */
-      }, 5000);
+      }, 10000);
 
       video.onloadedmetadata = () => {
         clearTimeout(timeout);
@@ -197,7 +199,7 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
     return result.path as string;
   }
 
-  /* 上传单个文件（XHR 方式，用于视频，支持进度回调） */
+  /* 上传单个文件（XHR 裸 body 流式，用于视频，支持进度回调） */
   function 上传视频(file: File | Blob, fileName: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -213,10 +215,16 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
 
       const token = 获取访问令牌();
       if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      /* 裸 body 上传：文件名和子目录放在请求头，服务端流式写盘 */
+      xhr.setRequestHeader("X-File-Name", encodeURIComponent(fileName));
+      if (folder) xhr.setRequestHeader("X-Folder", folder);
+      if (file.type) xhr.setRequestHeader("Content-Type", file.type);
 
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && onProgress) {
-          onProgress(Math.round((e.loaded / e.total) * 100));
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          set进度(pct);
+          if (onProgress) onProgress(pct);
         }
       };
 
@@ -236,11 +244,8 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
       xhr.onerror = () => reject(new Error("网络错误"));
       xhr.ontimeout = () => reject(new Error("上传超时"));
 
-      const formData = new FormData();
-      formData.append("file", file, fileName);
-      if (folder) formData.append("folder", folder);
-
-      xhr.send(formData);
+      /* 直接发送文件二进制，不用 FormData */
+      xhr.send(file);
     });
   }
 
@@ -254,6 +259,7 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
       set上传中(true);
       set错误("");
       set进度(0);
+      set总进度("校验中...");
 
       /* 先校验所有文件 */
       const 有效文件: File[] = [];
@@ -287,9 +293,21 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
             uploadFile = await 处理图片(file);
           }
 
-          /* 视频用 XHR（有进度），图片用 fetch */
+          /* 视频用 XHR（有进度），图片用 fetch；超大视频走分片上传 */
           let path: string;
-          if (isVideo) {
+          if (isVideo && 需要分片上传(file)) {
+            /* 分片上传：支持断点续传、并发 3 分片、>100MB 自动触发 */
+            set总进度("正在分片上传...");
+            const result = await 分片上传文件(
+              file,
+              folder,
+              (pct) => {
+                set进度(pct);
+                if (onProgress) onProgress(pct);
+              },
+            );
+            path = result.path;
+          } else if (isVideo) {
             path = await 上传视频(uploadFile, file.name);
           } else {
             path = await 上传图片(uploadFile, file.name);

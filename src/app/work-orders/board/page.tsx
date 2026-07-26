@@ -122,7 +122,8 @@ export default async function WorkOrderBoardPage() {
   const columnGroups: Record<string, Group[]> = {};
   COLUMNS.forEach((c) => (columnGroups[c.key] = []));
 
-  (orders || []).forEach((order: BoardOrder) => {
+  /* supabase 类型把多对一关联推断成数组，运行时实为对象，此处断言为页面真实形状 */
+  ((orders || []) as unknown as BoardOrder[]).forEach((order) => {
     const labors = (order.work_order_items || []).filter((it: BoardItem) => it.item_type === "labor");
 
     // 已结单 — 整张工单作为一个分区进入"已结单"列，不展开项目

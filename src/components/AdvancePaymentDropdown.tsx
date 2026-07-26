@@ -250,7 +250,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
                         </div>
                         {(r.refunded_amount || 0) > 0 && (
                           <div className="flex justify-between text-[10px] text-gray-400 pl-2">
-                            <span>已退款 · {methodLabel(r.refund_method) || "未知方式"}</span>
+                            <span>已退款 · {methodLabel(r.refund_method || "") || "未知方式"}</span>
                             <span className="text-orange-500">-{formatCurrency(r.refunded_amount)}</span>
                           </div>
                         )}

@@ -627,7 +627,7 @@ export default function usePartFormInit(
       const { data } = await supabase
         .from("parts")
         .select(
-          "id, part_number, name, unit, purchase_price, notes, document_name, barcode, interchange_code, min_stock, unit_price, standard_price, vip_price, wholesale_price, supplier_id, brand_id, part_brands(id, name), specification_id, part_specifications(id, name), category_id, part_categories(id, name), part_images(image_path), part_stock_locations(warehouse_id, warehouses(name), location, quantity, min_stock, max_stock), auto_link_vehicle_model, is_consumable, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value"
+          "id, part_number, name, unit, purchase_price, notes, document_name, barcode, interchange_code, min_stock, unit_price, standard_price, vip_price, wholesale_price, supplier_id, brand_id, part_brands(id, name), specification_id, part_specifications(id, name), category_id, part_categories(id, name), part_images(image_path), part_stock_locations(warehouse_id, warehouses(name), location, quantity, min_stock, max_stock), auto_link_vehicle_model, auto_match_17vin_models, is_consumable, require_scan_check, require_location_check, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value"
         )
         .eq("part_number", partNumber.trim().toUpperCase())
         .single();

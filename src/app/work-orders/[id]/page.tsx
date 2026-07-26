@@ -34,7 +34,9 @@ import SortableList from "@/components/SortableList";
 import ItemImageUploader from "@/components/ItemImageUploader";
 import { WorkOrderRealtimeSync } from "@/components/WorkOrderRealtimeSync";
 import MobileItemEditor from "@/components/MobileItemEditor";
-import { buildWorkOrderView, type PartBranch, type WorkOrderViewInput } from "@/lib/workOrderView";
+import { buildWorkOrderView } from "@/lib/workOrderView";
+import type { ComponentProps } from "react";
+import type { CommissionSource } from "@/lib/commission";
 
 export default async function WorkOrderDetailPage({
   params,
@@ -72,7 +74,7 @@ export default async function WorkOrderDetailPage({
     knowledgeLinks, itemParts, partMedia, pickingRecords, returnRecords,
     supplierReturnRecords, partBatches, inspections, inspectionMedia,
     advancePaymentRecords, otherOrdersByType,
-  } as unknown as WorkOrderViewInput);
+  });
 
 
   return (
@@ -104,12 +106,12 @@ export default async function WorkOrderDetailPage({
               orderId={id}
               advancePayment={advancePaymentTotal}
               totalCost={order.total_cost || 0}
-              records={advancePaymentRecords || []}
+              records={(advancePaymentRecords || []) as unknown as ComponentProps<typeof AdvancePaymentDropdown>["records"]}
             />
             <WorkOrderToggleBar />
             <WorkOrderActionButtons
               workOrderId={id}
-              orderNo={order.order_no}
+              orderNo={order.order_no ?? ""}
             />
           </div>
         </details>
@@ -128,12 +130,12 @@ export default async function WorkOrderDetailPage({
             orderId={id}
             advancePayment={advancePaymentTotal}
             totalCost={order.total_cost || 0}
-            records={advancePaymentRecords || []}
+            records={(advancePaymentRecords || []) as unknown as ComponentProps<typeof AdvancePaymentDropdown>["records"]}
           />
           <WorkOrderToggleBar />
           <WorkOrderActionButtons
             workOrderId={id}
-            orderNo={order.order_no}
+            orderNo={order.order_no ?? ""}
             currentType={order.order_type || "normal"}
           />
           <div className="hidden md:block">
@@ -190,13 +192,13 @@ export default async function WorkOrderDetailPage({
                       <span className="text-gray-800">{modelInfo || "-"}</span>
                     </span>
                     <span><span className="text-gray-500">接车里程:</span> {order.mileage_in ? `${order.mileage_in} km` : "-"}</span>
-                    <span className="text-gray-400 text-xs">创建于 {formatDate(order.created_at)}</span>
+                    <span className="text-gray-400 text-xs">创建于 {formatDate(order.created_at ?? null)}</span>
                     <div className="md:hidden">
                       <ReceptionInfoEditor
                         orderId={id}
-                        mileageIn={order.mileage_in}
+                        mileageIn={order.mileage_in ?? null}
                         dashboardPhotos={order.dashboard_photos}
-                        estimatedCompletionAt={order.estimated_completion_at}
+                        estimatedCompletionAt={order.estimated_completion_at ?? null}
                         senderName={order.sender_name}
                         senderPhone={order.sender_phone}
                       />
@@ -253,9 +255,9 @@ export default async function WorkOrderDetailPage({
                 <div className="pt-2 border-t border-gray-100">
                   <ReceptionInfoEditor
                     orderId={id}
-                    mileageIn={order.mileage_in}
+                    mileageIn={order.mileage_in ?? null}
                     dashboardPhotos={order.dashboard_photos}
-                    estimatedCompletionAt={order.estimated_completion_at}
+                    estimatedCompletionAt={order.estimated_completion_at ?? null}
                     senderName={order.sender_name}
                     senderPhone={order.sender_phone}
                   />
@@ -316,9 +318,9 @@ export default async function WorkOrderDetailPage({
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <ReceptionInfoEditor
                   orderId={id}
-                  mileageIn={order.mileage_in}
+                  mileageIn={order.mileage_in ?? null}
                   dashboardPhotos={order.dashboard_photos}
-                  estimatedCompletionAt={order.estimated_completion_at}
+                  estimatedCompletionAt={order.estimated_completion_at ?? null}
                   senderName={order.sender_name}
                   senderPhone={order.sender_phone}
                 />
@@ -374,8 +376,8 @@ export default async function WorkOrderDetailPage({
                     )}
                     <BatchEditWrapper
                       orderId={id}
-                      items={items || []}
-                      itemParts={itemParts || []}
+                      items={(items || []) as unknown as ComponentProps<typeof BatchEditWrapper>["items"]}
+                      itemParts={(itemParts || []) as unknown as ComponentProps<typeof BatchEditWrapper>["itemParts"]}
                       suppliers={suppliers || []}
                       logisticsCompanies={logisticsCompanies || []}
                     />
@@ -392,21 +394,21 @@ export default async function WorkOrderDetailPage({
               {!isLocked && (
                 <BatchEditWrapper
                   orderId={id}
-                  items={items || []}
-                  itemParts={itemParts || []}
+                  items={(items || []) as unknown as ComponentProps<typeof BatchEditWrapper>["items"]}
+                  itemParts={(itemParts || []) as unknown as ComponentProps<typeof BatchEditWrapper>["itemParts"]}
                   suppliers={suppliers || []}
                   logisticsCompanies={logisticsCompanies || []}
                 />
               )}
             </div>
             <div className="divide-y divide-gray-300">
-              {requirements?.map((req: { id: string; seq: number; submitted_by?: string; assigned_to_profile?: { full_name?: string } | null; assignment_type?: string; notes?: string }, reqIdx: number) => {
+              {requirements?.map((req, reqIdx) => {
                 /* 显示用序号：按当前列表位置，删中间需求后自动重排（需求1/2/3…） */
                 const 显示序号 = reqIdx + 1;
                 return (
                 <div key={req.id} className="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
                   <div className="flex items-center gap-2 flex-wrap px-4 py-3 md:px-6 md:py-4 border-b border-gray-100 bg-gray-50/50">
-                    <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} 项目数={(itemsByRequirement.get(req.id) || []).length} displaySeq={显示序号} />
+                    <RequirementTitle req={req as unknown as ComponentProps<typeof RequirementTitle>["req"]} orderId={id} profiles={profiles || []} media={(mediaByRequirement[req.id] || []) as unknown as ComponentProps<typeof RequirementTitle>["media"]} 项目数={(itemsByRequirement.get(req.id) || []).length} displaySeq={显示序号} />
                     {req.assigned_to_profile && req.assignment_type === 'claimed' && (
                       <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700 text-[10px]">
                         领单: {req.assigned_to_profile.full_name}
@@ -418,15 +420,15 @@ export default async function WorkOrderDetailPage({
                       </span>
                     )}
                     <span className="hidden md:inline text-xs text-gray-400">
-                      提交: {(profiles || []).find((p: { id?: string; full_name?: string }) => p.id === req.submitted_by)?.full_name || "-"}
+                      提交: {(profiles || []).find((p) => p.id === req.submitted_by)?.full_name || "-"}
                     </span>
                     {!isLocked && (
                       <div className="flex items-center gap-2 ml-auto">
                         <RequirementActions
-                          requirement={req}
-                          profiles={profiles || []}
+                          requirement={req as unknown as ComponentProps<typeof RequirementActions>["requirement"]}
+                          profiles={(profiles || []) as unknown as ComponentProps<typeof RequirementActions>["profiles"]}
                         />
-                        <AddRequirementItemsButton orderId={id} requirementId={req.id} vehicleModelId={vehicleModelId} />
+                        <AddRequirementItemsButton orderId={id} requirementId={req.id} vehicleModelId={vehicleModelId ?? null} />
                       </div>
                     )}
                   </div>
@@ -438,48 +440,25 @@ export default async function WorkOrderDetailPage({
                   <div className="px-4 py-3 md:px-6 md:py-4">
                         {(() => {
                           const reqItems = itemsByRequirement.get(req.id) || [];
-                          interface ReqItem {
-                            id: string;
-                            alias_name?: string;
-                            name?: string;
-                            item_type?: string;
-                            submitter_id?: string;
-                            mechanic_id?: string;
-                            inspector_id?: string;
-                            customer_opinion?: string;
-                            business_type?: string;
-                            is_outsourced?: boolean;
-                            is_customer_part?: boolean;
-                            service_item_id?: string | null;
-                            service_items?: { id?: string | null } | null;
-                            total_price?: number;
-                            description?: string;
-                            rework_reason?: string;
-                            rework_loss_amount?: number;
-                            rework_source_item_id?: string | null;
-                            outsource_order_items?: unknown[];
-                            [key: string]: unknown;
-                          }
                           return (
                             <SortableList
-                              ids={reqItems.map((it: ReqItem) => it.id)}
+                              ids={reqItems.map((it) => it.id)}
                               groupKey={req.id}
                               tableName="work_order_items"
                             >
-                              {reqItems.map((item: ReqItem, itemIdx: number) => (
+                              {reqItems.map((item, itemIdx) => (
                                 <div key={item.id} className={`rounded-lg px-4 py-3 text-sm mb-2 ${item.item_type === 'labor' ? 'bg-blue-50/60 border-l-4 border-blue-300' : 'bg-gray-50/60 border-l-4 border-gray-300'}`}>
                             {/* 移动端项目卡片 */}
                             <MobileItemEditor
-                              item={item}
+                              item={item as unknown as ComponentProps<typeof MobileItemEditor>["item"]}
                               orderId={id}
-                              orderStatus={order.status}
-                              profiles={profiles || []}
-                              mechanicGroups={(mechanicGroups || []).map((g: { id: string; name: string; mechanic_group_members?: unknown[] }) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
-                              existingMechanics={mechanicsByItem[item.id] || []}
+                              profiles={(profiles || []) as unknown as ComponentProps<typeof MobileItemEditor>["profiles"]}
+                              mechanicGroups={(mechanicGroups || []).map((g) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] })) as unknown as ComponentProps<typeof MobileItemEditor>["mechanicGroups"]}
+                              existingMechanics={(mechanicsByItem[item.id] || []) as unknown as ComponentProps<typeof MobileItemEditor>["existingMechanics"]}
                               images={imagesByItem[item.id]?.map((m) => m.storage_path).filter(Boolean) as string[] || []}
                               knowledgeUrl={
                                 knowledgeByItem[item.id]?.[0]?.knowledge_articles?.id
-                                  ? `/knowledge/${knowledgeByItem[item.id][0].knowledge_articles.id}`
+                                  ? `/knowledge/${knowledgeByItem[item.id]?.[0]?.knowledge_articles?.id}`
                                   : undefined
                               }
                               isLocked={isLocked}
@@ -505,17 +484,17 @@ export default async function WorkOrderDetailPage({
                                 pickedQty: pickingByPart[p.id as string] || 0,
                               }))}
                               partInventory={inventoryByPart}
-                              partImages={imagesByPart}
-                              vehicleModelId={vehicleModelId}
+                              partImages={imagesByPart as unknown as ComponentProps<typeof MobileItemEditor>["partImages"]}
+                              vehicleModelId={vehicleModelId ?? null}
                               existingOrder={
                                 outsourceOrder?.outsource_order_items?.some(
-                                  (oi: { work_order_item_id?: string }) => oi.work_order_item_id === item.id
-                                ) ? outsourceOrder : null
+                                  (oi) => oi.work_order_item_id === item.id
+                                ) ? (outsourceOrder as unknown as NonNullable<ComponentProps<typeof MobileItemEditor>["existingOrder"]>) : null
                               }
                               existingItem={
-                                outsourceOrder?.outsource_order_items?.find(
-                                  (oi: { work_order_item_id?: string }) => oi.work_order_item_id === item.id
-                                ) || null
+                                (outsourceOrder?.outsource_order_items?.find(
+                                  (oi) => oi.work_order_item_id === item.id
+                                ) || null) as unknown as ComponentProps<typeof MobileItemEditor>["existingItem"]
                               }
                             />
                             {/* 桌面端横向布局 */}
@@ -532,12 +511,12 @@ export default async function WorkOrderDetailPage({
                                     submitterId={item.submitter_id}
                                     mechanicId={item.mechanic_id}
                                     inspectorId={item.inspector_id}
-                                    profiles={profiles || []}
-                                    mechanicGroups={(mechanicGroups || []).map((g: { id: string; name: string; mechanic_group_members?: unknown[] }) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
-                                    existingMechanics={mechanicsByItem[item.id] || []}
+                                    profiles={(profiles || []) as unknown as ComponentProps<typeof ItemPersonSelectors>["profiles"]}
+                                    mechanicGroups={(mechanicGroups || []).map((g) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] })) as unknown as ComponentProps<typeof ItemPersonSelectors>["mechanicGroups"]}
+                                    existingMechanics={(mechanicsByItem[item.id] || []) as unknown as ComponentProps<typeof ItemPersonSelectors>["existingMechanics"]}
                                   />
                                   <div className="ml-6">
-                                    <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion} />
+                                    <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion ?? "pending"} />
                                   </div>
                                   {item.business_type !== 'normal' && (
                                     <span className={`px-1.5 py-0.5 rounded text-[10px] ${
@@ -551,26 +530,26 @@ export default async function WorkOrderDetailPage({
                                   <div className="ml-4">
                                     <ItemFlagsToggle
                                       itemId={item.id}
-                                      isOutsourced={item.is_outsourced}
-                                      isCustomerPart={item.is_customer_part}
+                                      isOutsourced={item.is_outsourced ?? false}
+                                      isCustomerPart={item.is_customer_part ?? false}
                                       serviceItemId={item.service_item_id}
                                       workOrderId={order.id}
-                                      itemName={item.name}
+                                      itemName={item.name ?? undefined}
                                       existingOrder={
                                         outsourceOrder?.outsource_order_items?.some(
-                                          (oi: { work_order_item_id?: string }) => oi.work_order_item_id === item.id
-                                        ) ? outsourceOrder : null
+                                          (oi) => oi.work_order_item_id === item.id
+                                        ) ? (outsourceOrder as unknown as NonNullable<ComponentProps<typeof ItemFlagsToggle>["existingOrder"]>) : null
                                       }
                                       existingItem={
-                                        outsourceOrder?.outsource_order_items?.find(
-                                          (oi: { work_order_item_id?: string }) => oi.work_order_item_id === item.id
-                                        ) || null
+                                        (outsourceOrder?.outsource_order_items?.find(
+                                          (oi) => oi.work_order_item_id === item.id
+                                        ) || null) as unknown as ComponentProps<typeof ItemFlagsToggle>["existingItem"]
                                       }
                                     />
                                   </div>
                                   {knowledgeByItem[item.id]?.length > 0 ? (
                                     <Link
-                                      href={`/knowledge/${knowledgeByItem[item.id][0].knowledge_articles.id}`}
+                                      href={`/knowledge/${knowledgeByItem[item.id]?.[0]?.knowledge_articles?.id}`}
                                       target="_blank"
                                       className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 ml-2"
                                     >
@@ -580,7 +559,7 @@ export default async function WorkOrderDetailPage({
                                     <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-400 ml-2">维修指导</span>
                                   )}
                                   <div className="ml-4">
-                                    <ItemNotesEditor itemId={item.id} description={item.description} />
+                                    <ItemNotesEditor itemId={item.id} description={item.description ?? null} />
                                   </div>
                                   <div className="ml-[10ch]">
                                     <ItemImageUploader
@@ -595,17 +574,16 @@ export default async function WorkOrderDetailPage({
                                   <AddItemPartButton
                                     itemId={item.id}
                                     serviceItemId={item.service_item_id}
-                                    itemName={item.alias_name || item.name}
-                                    vehicleModelId={vehicleModelId}
-                                    vin={vehicleVin}
+                                    itemName={(item.alias_name || item.name) ?? ""}
+                                    vehicleModelId={vehicleModelId ?? null}
+                                    vin={vehicleVin ?? null}
                                   />
                                   <WorkOrderItemActions
                                     itemId={item.id}
-                                    itemName={item.name}
+                                    itemName={item.name ?? ""}
                                     aliasName={item.alias_name}
-                                    quantity={item.quantity}
-                                    unitPrice={item.unit_price}
-                                    serviceItemId={item.service_item_id}
+                                    quantity={item.quantity ?? undefined}
+                                    unitPrice={item.unit_price ?? undefined}
                                   />
                                 </div>
                               </div>
@@ -617,7 +595,7 @@ export default async function WorkOrderDetailPage({
                                   <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded text-[10px]">
                                     返工原因: {item.rework_reason === 'part_quality' ? '配件质量' : item.rework_reason === 'workmanship' ? '施工原因' : '未指定'}
                                   </span>
-                                  {item.rework_loss_amount > 0 && (
+                                  {item.rework_loss_amount != null && item.rework_loss_amount > 0 && (
                                     <span className="text-red-600 bg-red-50 px-1.5 py-0.5 rounded text-[10px]">
                                       损失金额: {formatCurrency(item.rework_loss_amount)}
                                     </span>
@@ -632,7 +610,7 @@ export default async function WorkOrderDetailPage({
                             <ItemSubtotalDisplay
                               itemId={item.id}
                               itemTotalPrice={item.total_price || 0}
-                              parts={(partsByItem[item.id] || []).map((p: { id: string; unit_price?: number; quantity?: number; is_selected?: boolean }) => ({
+                              parts={(partsByItem[item.id] || []).map((p) => ({
                                 id: p.id,
                                 unit_price: p.unit_price || 0,
                                 quantity: p.quantity || 1,
@@ -643,8 +621,8 @@ export default async function WorkOrderDetailPage({
                               {/* 项目提成 */}
                               {(() => {
                                 const comm = calculateItemCommission(
-                                  item,
-                                  item.service_items,
+                                  item as unknown as CommissionSource,
+                                  item.service_items as unknown as CommissionSource | null,
                                   null,
                                   null,
                                   item.total_price || 0,
@@ -670,15 +648,15 @@ export default async function WorkOrderDetailPage({
                                     itemId={item.id}
                                     workOrderId={id}
                                     customerOpinion={item.customer_opinion}
-                                    itemName={item.alias_name || item.name}
-                                    vehicleBrand={order.vehicles?.vehicle_models?.品牌 || order.vehicles?.brand}
-                                    vehicleSeries={order.vehicles?.vehicle_models?.车系}
-                                    vehicleModelName={order.vehicles?.vehicle_models?.车型 || order.vehicles?.model}
-                                    vehicleDisplacement={order.vehicles?.vehicle_models?.排量}
-                                    vehicleEngine={order.vehicles?.vehicle_models?.发动机型号 || order.vehicles?.engine_no}
-                                    vehicleChassis={order.vehicles?.vin}
-                                    vehicleTransmission={order.vehicles?.vehicle_models?.变速箱类型 || order.vehicles?.vehicle_models?.变速箱详情}
-                                    mechanics={(mechanicsByItem[item.id] || []).map((m: { mechanic_id?: string; profiles?: { full_name?: string } | null }) => ({ mechanic_id: m.mechanic_id || "", full_name: m.profiles?.full_name || "-" }))}
+                                    itemName={(item.alias_name || item.name) ?? undefined}
+                                    vehicleBrand={(order.vehicles?.vehicle_models?.品牌 || order.vehicles?.brand) ?? undefined}
+                                    vehicleSeries={order.vehicles?.vehicle_models?.车系 ?? undefined}
+                                    vehicleModelName={(order.vehicles?.vehicle_models?.车型 || order.vehicles?.model) ?? undefined}
+                                    vehicleDisplacement={order.vehicles?.vehicle_models?.排量 ?? undefined}
+                                    vehicleEngine={(order.vehicles?.vehicle_models?.发动机型号 || order.vehicles?.engine_no) ?? undefined}
+                                    vehicleChassis={order.vehicles?.vin ?? undefined}
+                                    vehicleTransmission={(order.vehicles?.vehicle_models?.变速箱类型 || order.vehicles?.vehicle_models?.变速箱详情) ?? undefined}
+                                    mechanics={(mechanicsByItem[item.id] || []).map((m) => ({ mechanic_id: m.mechanic_id || "", full_name: m.profiles?.full_name || "-" }))}
                                   />
                                 </div>
                               </ShowTimer>
@@ -708,7 +686,7 @@ export default async function WorkOrderDetailPage({
                                           itemId={item.id}
                                           seqPrefix={`${显示序号}.${itemIdx + 1}.${groupIdx + 1}`}
                                           isLocked={isLocked}
-                                          vehicleModelId={vehicleModelId}
+                                          vehicleModelId={vehicleModelId ?? undefined}
                                           suppliers={suppliers || []}
                                           logisticsCompanies={logisticsCompanies || []}
                                           pickingByPart={pickingByPart}
@@ -776,7 +754,7 @@ export default async function WorkOrderDetailPage({
                       {/* 外包单信息（来自 outsource_order_items） */}
                       {item.outsource_order_items && Array.isArray(item.outsource_order_items) && item.outsource_order_items.length > 0 && outsourceOrder && (
                         <div className="text-[10px] text-gray-500 mt-1">
-                          {item.outsource_order_items.map((oi: { id: string; service_name?: string; amount?: number }) => (
+                          {item.outsource_order_items.map((oi) => (
                             <span key={oi.id} className="inline-flex items-center gap-1">
                               <span className="text-gray-400">{outsourceOrder.order_no}</span>
                               <span className="text-gray-600">{oi.service_name}</span>
@@ -799,15 +777,15 @@ export default async function WorkOrderDetailPage({
                       {item.business_type === 'rework' && item.rework_reason && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600">
                           {item.rework_reason === 'part_quality' ? '配件质量' : '施工原因'}
-                          {item.rework_loss_amount > 0 ? ` · 损失${formatCurrency(item.rework_loss_amount)}` : ''}
+                          {(item.rework_loss_amount ?? 0) > 0 ? ` · 损失${formatCurrency(item.rework_loss_amount ?? null)}` : ''}
                         </span>
                       )}
                       <ShowCommission>
                         {/* 项目提成 */}
                         {(() => {
                           const comm = calculateItemCommission(
-                            item,
-                            item.service_items,
+                            item as unknown as CommissionSource,
+                            item.service_items as unknown as CommissionSource | null,
                             null,
                             null,
                             item.total_price || 0,
@@ -825,7 +803,7 @@ export default async function WorkOrderDetailPage({
                         })()}
                       </ShowCommission>
                     </div>
-                    <span className="font-medium">{formatCurrency(item.total_price)}</span>
+                    <span className="font-medium">{formatCurrency(item.total_price ?? null)}</span>
                   </div>
                 ))}
               </SortableList>
@@ -836,17 +814,17 @@ export default async function WorkOrderDetailPage({
           )}
 
           {/* 接车照片 */}
-          {order.dashboard_photos?.length > 0 && (
+          {(order.dashboard_photos?.length ?? 0) > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100">
                 <h2 className="text-base font-semibold text-gray-900">接车照片</h2>
               </div>
               <div className="px-6 py-4 text-sm space-y-4">
-                {order.dashboard_photos?.length > 0 && (
+                {(order.dashboard_photos?.length ?? 0) > 0 && (
                   <div>
                     <div className="text-xs text-gray-500 mb-1">仪表照片</div>
                     <div className="flex flex-wrap gap-2">
-                      {order.dashboard_photos.map((path: string, idx: number) => (
+                      {(order.dashboard_photos || []).map((path: string, idx: number) => (
                         <img loading="lazy" key={idx} src={path} alt="" className="w-24 h-24 object-cover rounded border border-gray-200" />
                       ))}
                     </div>
@@ -871,7 +849,7 @@ export default async function WorkOrderDetailPage({
                   return (
                     <div key={insp.id} className="px-6 py-4 text-sm space-y-4">
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-500">检查时间: {formatDate(insp.created_at)}</span>
+                        <span className="text-gray-500">检查时间: {formatDate(insp.created_at ?? null)}</span>
                         {insp.notes && <span className="text-gray-400">备注: {insp.notes}</span>}
                       </div>
 
@@ -924,12 +902,12 @@ export default async function WorkOrderDetailPage({
                   return (
                     <div key={insp.id} className="px-6 py-4 text-sm space-y-4">
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
-                        <span className="text-gray-500">检查时间: {formatDate(insp.created_at)}</span>
+                        <span className="text-gray-500">检查时间: {formatDate(insp.created_at ?? null)}</span>
                         {(insp.inspection_mileage != null || order.mileage_in != null) && (
                           <span className="text-gray-500">检查里程: <span className="font-medium text-gray-700">{insp.inspection_mileage ?? order.mileage_in} km</span></span>
                         )}
                         {(() => {
-                          const submitter = profiles?.find((p: { id?: string; full_name?: string }) => p.id === insp.submitter_id);
+                          const submitter = (profiles || []).find((p) => p.id === insp.submitter_id);
                           return submitter ? <span className="text-gray-500">提交人: <span className="font-medium text-gray-700">{submitter.full_name}</span></span> : null;
                         })()}
                         {insp.notes && <span className="text-gray-400">备注: {insp.notes}</span>}
@@ -1125,31 +1103,35 @@ export default async function WorkOrderDetailPage({
                               ))}
                             </div>
                           )}
-                          {insp.tire_checks && (
-                            <div className="flex flex-wrap gap-2">
-                              {[
-                                { key: 'fl', label: '左前轮' },
-                                { key: 'fr', label: '右前轮' },
-                                { key: 'rl', label: '左后轮' },
-                                { key: 'rr', label: '右后轮' },
-                              ].map((tire) => {
-                                const status = insp.tire_checks[tire.key];
-                                if (!status) return null;
-                                const map: Record<string, { text: string; class: string }> = {
-                                  good: { text: '良好', class: 'bg-green-50 text-green-700' },
-                                  fair: { text: '一般', class: 'bg-amber-50 text-amber-700' },
-                                  replace: { text: '需更换', class: 'bg-red-50 text-red-700' },
-                                };
-                                const s = map[status];
-                                return s ? (
-                                  <span key={tire.key} className="inline-flex items-center gap-1 text-sm">
-                                    <span className="text-gray-500">{tire.label}:</span>
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${s.class}`}>{s.text}</span>
-                                  </span>
-                                ) : null;
-                              })}
-                            </div>
-                          )}
+                          {(() => {
+                            /* 先取到局部变量，map 回调里才能保持非空收窄 */
+                            const tireChecks = insp.tire_checks;
+                            return tireChecks && (
+                              <div className="flex flex-wrap gap-2">
+                                {[
+                                  { key: 'fl', label: '左前轮' },
+                                  { key: 'fr', label: '右前轮' },
+                                  { key: 'rl', label: '左后轮' },
+                                  { key: 'rr', label: '右后轮' },
+                                ].map((tire) => {
+                                  const status = tireChecks[tire.key];
+                                  if (!status) return null;
+                                  const map: Record<string, { text: string; class: string }> = {
+                                    good: { text: '良好', class: 'bg-green-50 text-green-700' },
+                                    fair: { text: '一般', class: 'bg-amber-50 text-amber-700' },
+                                    replace: { text: '需更换', class: 'bg-red-50 text-red-700' },
+                                  };
+                                  const s = map[status];
+                                  return s ? (
+                                    <span key={tire.key} className="inline-flex items-center gap-1 text-sm">
+                                      <span className="text-gray-500">{tire.label}:</span>
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${s.class}`}>{s.text}</span>
+                                    </span>
+                                  ) : null;
+                                })}
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
 
@@ -1346,12 +1328,12 @@ export default async function WorkOrderDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">质检记录</h2>
             <div className="space-y-3">
-              {qualityChecks?.map((qc: { id: string; result?: string; profiles?: { full_name?: string } | null; created_at?: string; notes?: string }) => (
+              {qualityChecks?.map((qc) => (
                 <div key={qc.id} className="flex items-start gap-3 text-sm">
                   <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${qc.result === 'passed' ? 'bg-green-500' : 'bg-red-500'}`} />
                   <div>
                     <span className="font-medium">{qc.result === 'passed' ? '质检通过' : '质检不合格'}</span>
-                    <span className="text-gray-500 ml-2">{qc.profiles?.full_name} · {formatDate(qc.created_at)}</span>
+                    <span className="text-gray-500 ml-2">{qc.profiles?.full_name} · {formatDate(qc.created_at ?? null)}</span>
                     {qc.notes && <p className="text-gray-500 mt-0.5">{qc.notes}</p>}
                   </div>
                 </div>
@@ -1375,7 +1357,7 @@ export default async function WorkOrderDetailPage({
                 待入库配件
               </h2>
               <div className="space-y-2">
-                {pendingInboundParts.map((p: PartBranch) => (
+                {pendingInboundParts.map((p) => (
                   <div key={p.id} className="text-sm">
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-gray-800">{p.name || p.part_names?.name || "未命名"}</span>
@@ -1403,9 +1385,9 @@ export default async function WorkOrderDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">费用合计</h2>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-gray-600"><span>配件费用</span><span><PriceValue value={order.parts_cost} /></span></div>
-              <div className="flex justify-between text-gray-600"><span>工时费用</span><span><PriceValue value={order.labor_cost} /></span></div>
-              <div className="flex justify-between text-gray-600"><span>其他费用</span><span><PriceValue value={order.other_cost} /></span></div>
+              <div className="flex justify-between text-gray-600"><span>配件费用</span><span><PriceValue value={order.parts_cost ?? null} /></span></div>
+              <div className="flex justify-between text-gray-600"><span>工时费用</span><span><PriceValue value={order.labor_cost ?? null} /></span></div>
+              <div className="flex justify-between text-gray-600"><span>其他费用</span><span><PriceValue value={order.other_cost ?? null} /></span></div>
               <ShowCommission>
                 {totalCommission > 0 && (
                   <div className="flex justify-between text-purple-600">
@@ -1415,7 +1397,7 @@ export default async function WorkOrderDetailPage({
                 )}
               </ShowCommission>
               {(order.discount_amount || 0) > 0 && (
-                <div className="flex justify-between text-orange-600"><span>整单优惠</span><span>-{formatCurrency(order.discount_amount)}</span></div>
+                <div className="flex justify-between text-orange-600"><span>整单优惠</span><span>-{formatCurrency(order.discount_amount ?? null)}</span></div>
               )}
               {(advancePaymentRecords || []).length > 0 && (
                 <div className="space-y-1">
@@ -1425,7 +1407,7 @@ export default async function WorkOrderDetailPage({
                   </div>
                   <div className="pl-3">
                     <AdvancePaymentList
-                      records={advancePaymentRecords}
+                      records={(advancePaymentRecords || []) as unknown as ComponentProps<typeof AdvancePaymentList>["records"]}
                       orderId={id}
                       currentAdvancePayment={advancePaymentTotal}
                     />
@@ -1434,7 +1416,7 @@ export default async function WorkOrderDetailPage({
               )}
               <div className="border-t border-gray-100 pt-2 flex justify-between text-base font-bold text-gray-900">
                 <span>应收合计</span>
-                <span><PriceValue value={order.total_cost - (advancePaymentTotal || 0)} /></span>
+                <span><PriceValue value={(order.total_cost ?? 0) - advancePaymentTotal} /></span>
               </div>
             </div>
           </div>
@@ -1443,12 +1425,12 @@ export default async function WorkOrderDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">支付记录</h2>
             <div className="space-y-2">
-              {payments?.map((p: { id: string; method?: string; amount?: number }) => (
+              {payments?.map((p) => (
                 <div key={p.id} className="flex justify-between text-sm">
                   <span className="text-gray-600">
                     {p.method === 'cash' ? '现金' : p.method === 'wechat' ? '微信' : p.method === 'alipay' ? '支付宝' : p.method === 'credit' ? '挂账' : p.method === 'member' ? '会员' : '银行转账'}
                   </span>
-                  <span className="font-medium text-gray-900">{formatCurrency(p.amount)}</span>
+                  <span className="font-medium text-gray-900">{formatCurrency(p.amount ?? null)}</span>
                 </div>
               ))}
               {(!payments || payments.length === 0) && <p className="text-sm text-gray-400">暂无支付记录</p>}
@@ -1459,9 +1441,9 @@ export default async function WorkOrderDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">回访记录</h2>
             <div className="space-y-3">
-              {followUps?.map((fu: { id: string; completed_at?: string | null; scheduled_at?: string; method?: string; result?: string; notes?: string }) => {
+              {followUps?.map((fu) => {
                 const isCompleted = !!fu.completed_at;
-                const isOverdue = !isCompleted && fu.scheduled_at <= new Date().toISOString();
+                const isOverdue = !isCompleted && (fu.scheduled_at as string) <= new Date().toISOString();
                 return (
                   <div key={fu.id} className="flex items-start gap-3 text-sm">
                     <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${isCompleted ? 'bg-green-500' : isOverdue ? 'bg-red-500' : 'bg-blue-500'}`} />
@@ -1470,7 +1452,7 @@ export default async function WorkOrderDetailPage({
                         <span className="font-medium">
                           {isCompleted ? '已完成' : isOverdue ? '已逾期' : '待回访'}
                         </span>
-                        <span className="text-gray-500">· {formatDate(fu.scheduled_at)}</span>
+                        <span className="text-gray-500">· {formatDate(fu.scheduled_at ?? null)}</span>
                         {fu.method && (
                           <span className="text-gray-400">
                             · {fu.method === 'phone' ? '电话' : fu.method === 'sms' ? '短信' : fu.method === 'wechat' ? '微信' : fu.method}
@@ -1498,12 +1480,12 @@ export default async function WorkOrderDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">状态变更</h2>
             <div className="space-y-3">
-              {history?.map((h: { id: string; from_status?: string | null; to_status?: string; created_at?: string }) => (
+              {history?.map((h) => (
                 <div key={h.id} className="flex gap-3 text-sm">
                   <div className="w-2 h-2 mt-1.5 rounded-full bg-blue-500 shrink-0" />
                   <div>
                     <div className="text-gray-900">{h.from_status ? `${h.from_status} → ${h.to_status}` : `创建: ${h.to_status}`}</div>
-                    <div className="text-xs text-gray-500">{formatDate(h.created_at)}</div>
+                    <div className="text-xs text-gray-500">{formatDate(h.created_at ?? null)}</div>
                   </div>
                 </div>
               ))}
@@ -1512,10 +1494,10 @@ export default async function WorkOrderDetailPage({
         </div>
       </div>
       <WorkOrderTotalFooter
-        items={(items || []).map((it: { id: string; total_price?: number }) => ({ id: it.id, total_price: it.total_price || 0 }))}
-        parts={(itemParts || []).map((p: { id: string; work_order_item_id?: string; unit_price?: number; quantity?: number; is_selected?: boolean }) => ({
+        items={(items || []).map((it) => ({ id: it.id, total_price: it.total_price || 0 }))}
+        parts={(itemParts || []).map((p) => ({
           id: p.id,
-          itemId: p.work_order_item_id,
+          itemId: p.work_order_item_id as string,
           unit_price: p.unit_price || 0,
           quantity: p.quantity || 1,
           is_selected: p.is_selected || false,
@@ -1524,8 +1506,8 @@ export default async function WorkOrderDetailPage({
       />
       <WorkOrderRealtimeSync
         orderId={order.id}
-        itemIds={items?.map((i: { id: string }) => i.id) || []}
-        partIds={(itemParts || []).map((p: { id: string }) => p.id)}
+        itemIds={items?.map((i) => i.id) || []}
+        partIds={(itemParts || []).map((p) => p.id)}
       />
     </WorkOrderToggleProvider>
   );

@@ -76,6 +76,7 @@ const navItems: NavItem[] = [
     children: [
       { href: "/training", label: "课程列表" },
       { href: "/training/categories", label: "课程分类" },
+      { href: "/training/topics", label: "专题管理" },
       { href: "/training/exam-manage", label: "考题管理" },
       { href: "/training/exam-grade", label: "简答题判卷" },
       { href: "/training/behavior-items", label: "行为项目" },
@@ -276,10 +277,12 @@ export function Navbar() {
     /* 以事件驱动方式增减角标（增量更新） */
     function handleCountChange(e: Event) {
       const detail = (e as CustomEvent).detail as { delta?: Record<string, number> } | undefined;
-      if (!detail?.delta) return;
+      /* 先取到局部常量，setCounts 回调里才能保持非空收窄 */
+      const delta = detail?.delta;
+      if (!delta) return;
       setCounts((prev) => {
         const next = { ...prev };
-        for (const [key, val] of Object.entries(detail.delta)) {
+        for (const [key, val] of Object.entries(delta)) {
           next[key] = Math.max(0, (next[key] || 0) + (val as number));
         }
         return next;

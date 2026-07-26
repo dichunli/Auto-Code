@@ -111,7 +111,7 @@ export default function GradeEntryPage() {
         gradedIds = new Set((results || []).map((r) => r.assignment_id));
       }
 
-      const availableStudents = (assignData || []).filter((a) => !gradedIds.has(a.id)) as 学员[];
+      const availableStudents = (assignData || []).filter((a) => !gradedIds.has(a.id)) as unknown as 学员[];
       setStudents(availableStudents);
 
       setLoading(false);
