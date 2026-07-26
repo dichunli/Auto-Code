@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient, 确保有session, 获取访问令牌 } from "@/lib/supabase/client";
-import { 是否自己刚改的配件, 是否自己刚结构改动的项目 } from "@/lib/localEditSignal";
+import { 是否自己刚改的配件, 是否自己刚结构改动的项目, 是否本机最近操作 } from "@/lib/localEditSignal";
 
 interface Props {
   orderId: string;
@@ -69,11 +69,13 @@ export function WorkOrderRealtimeSync({ orderId, itemIds = [], partIds = [] }: P
           );
           return;
         }
-        // 加/删分支（INSERT/DELETE，结构变化）→ 提示条
+        // 加/删分支（INSERT/DELETE，结构变化）→ 提示条（本机刚操作的连锁变更不弹）
+        if (是否本机最近操作()) return;
         set有更新(true);
       };
-      // 其它表（状态/付款/派工/领料等）变化 → 提示条
-      const onOtherChange = () => set有更新(true);
+      // 其它表（状态/付款/派工/领料等）变化 → 提示条。
+      // 本机刚操作过则跳过：自己改配件会触发数据库重算工单合计等连锁更新，不该给自己弹提示。
+      const onOtherChange = () => { if (是否本机最近操作()) return; set有更新(true); };
 
       channel = supabase.channel(`wo_sync_${orderId}`);
       channel.on("postgres_changes", { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${orderId}` }, onOtherChange);

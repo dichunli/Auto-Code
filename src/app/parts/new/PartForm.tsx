@@ -30,23 +30,42 @@ interface SupplierItem {
   [key: string]: unknown;
 }
 
+export interface PartFormDraft {
+  part_number: string;
+  name: string;
+  brand: string;
+  specification: string;
+  purchase_price: string;
+  reference_purchase_price: string;
+  unit_price: string;
+  document_name: string;
+}
+
 export default function PartForm({
   editId,
   onSaved,
   onCancel,
+  onDraftChange,
   prefillData,
 }: {
   editId?: string;
   onSaved?: (partId: string) => void;
   onCancel?: () => void;
+  /* 实时回传当前表单关键字段：父组件用它实现"没保存也带回分支" */
+  onDraftChange?: (draft: PartFormDraft) => void;
   prefillData?: {
     part_number?: string;
     name?: string;
     unit?: string;
     purchase_price?: string;
+    reference_purchase_price?: string;
+    unit_price?: string;
+    brand?: string;
+    specification?: string;
     notes?: string;
     document_name?: string;
     oeNumber?: string;
+    part_name_id?: string;
   };
 }) {
   const router = useRouter();
@@ -71,6 +90,9 @@ export default function PartForm({
 
   // Brand
   const [selectedBrand, setSelectedBrand] = useState<LinkedItem | null>(null);
+  // 品牌/规格输入框里"正在打但还没选中"的字（供草稿带回分支用）
+  const [brandQuery, setBrandQuery] = useState("");
+  const [specQuery, setSpecQuery] = useState("");
 
   // Specification (multiple)
   const [selectedSpecs, setSelectedSpecs] = useState<LinkedItem[]>([]);
@@ -152,6 +174,23 @@ export default function PartForm({
     setForm,
     setVin17GroupId,
   });
+
+  // 实时回传当前填写的关键字段给父组件（供"没保存也带回分支"用）
+  useEffect(() => {
+    if (!onDraftChange) return;
+    // 品牌/规格：优先用已选中的；没选中就用输入框里正在打的字（否则关窗会丢）
+    const 已选规格 = selectedSpecs.map((s) => s.name || "").filter(Boolean).join(" ");
+    onDraftChange({
+      part_number: partNumber,
+      name: selectedPartName?.name || form.name,
+      brand: selectedBrand?.name || brandQuery.trim(),
+      specification: 已选规格 || specQuery.trim(),
+      purchase_price: form.purchase_price,
+      reference_purchase_price: form.reference_purchase_price,
+      unit_price: form.unit_price,
+      document_name: docNameQuery,
+    });
+  }, [onDraftChange, partNumber, selectedPartName, form.name, selectedBrand, brandQuery, selectedSpecs, specQuery, form.purchase_price, form.reference_purchase_price, form.unit_price, docNameQuery]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -510,11 +549,13 @@ export default function PartForm({
               selectedBrand={selectedBrand}
               onSelectBrand={setSelectedBrand}
               selectedPartName={selectedPartName}
+              onQueryChange={setBrandQuery}
             />
             <SpecSearch
               selectedSpecs={selectedSpecs}
               onSelectSpecsChange={setSelectedSpecs}
               selectedPartName={selectedPartName}
+              onQueryChange={setSpecQuery}
             />
           </div>
 

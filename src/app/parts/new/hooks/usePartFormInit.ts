@@ -19,9 +19,14 @@ interface PrefillData {
   name?: string;
   unit?: string;
   purchase_price?: string;
+  reference_purchase_price?: string;
+  unit_price?: string;
+  brand?: string;
+  specification?: string;
   notes?: string;
   document_name?: string;
   oeNumber?: string;
+  part_name_id?: string;
 }
 
 interface FormState {
@@ -261,6 +266,56 @@ export default function usePartFormInit(
     loadPart();
   }, [searchParams, supabase, setSelectedPartName, setSelectedBrand, setSelectedSupplier, setSelectedSpecs, setSelectedVehicleModels, setOeNumber, setDocNameQuery, setForm, setPartImages, setStockLocations]);
 
+  /* 2b. 从工单分支"创建配件"带入的预填（编码/名称/叶子目录/单位/采购价/销售价/品牌/规格） */
+  useEffect(() => {
+    if (isEditMode) return;
+    const fromBranch = searchParams.get("from_branch");
+    if (!fromBranch) return;
+
+    const pn = searchParams.get("part_number") || "";
+    const pnid = searchParams.get("part_name_id") || "";
+    const unit = searchParams.get("unit") || "";
+    const 采购价 = searchParams.get("unit_cost") || "";
+    const 销售价 = searchParams.get("unit_price") || "";
+    const brand = searchParams.get("brand") || "";
+    const spec = searchParams.get("spec") || "";
+    const docName = searchParams.get("document_name") || "";
+
+    if (pn) setPartNumber(pn.toUpperCase());
+    // 采购单名称：分支页事先填过就带入新建窗口
+    if (docName) setDocNameQuery(docName);
+
+    (async () => {
+      // 叶子目录（配件名称）：按 id 带出，作为该配件所属名称
+      if (pnid) {
+        const { data: partName } = await supabase.from("part_names").select("*, part_categories(*)").eq("id", pnid).single();
+        if (partName) {
+          setSelectedPartName(partName);
+          setForm((prev) => ({
+            ...prev,
+            name: partName.name || "",
+            unit: unit || partName.unit || "件",
+            categoryName: (Array.isArray(partName.part_categories) ? partName.part_categories[0]?.name : partName.part_categories?.name) || "",
+            purchase_price: 采购价,
+            unit_price: 销售价,
+          }));
+        }
+      } else {
+        setForm((prev) => ({ ...prev, unit: unit || prev.unit, purchase_price: 采购价, unit_price: 销售价 }));
+      }
+      // 品牌：库里能匹配到就带入
+      if (brand) {
+        const { data: b } = await supabase.from("part_brands").select("id, name").eq("name", brand).maybeSingle();
+        if (b) setSelectedBrand({ id: b.id, name: b.name });
+      }
+      // 规格：库里能匹配到就带入
+      if (spec) {
+        const { data: s } = await supabase.from("part_specifications").select("id, name").eq("name", spec).maybeSingle();
+        if (s) setSelectedSpecs([{ id: s.id, name: s.name }]);
+      }
+    })();
+  }, [searchParams, isEditMode, supabase, setPartNumber, setSelectedPartName, setSelectedBrand, setSelectedSpecs, setForm, setDocNameQuery]);
+
   /* 3. 编辑数据加载 */
   useEffect(() => {
     if (!editId) return;
@@ -488,7 +543,48 @@ export default function usePartFormInit(
   useEffect(() => {
     if (editId || !prefillData) return;
     if (prefillData.part_number) setPartNumber(prefillData.part_number);
-    if (prefillData.name) {
+    // 叶子目录（配件名称）：优先按 id 精确带出；无 id 时按名称模糊匹配
+    if (prefillData.part_name_id) {
+      supabase
+        .from("part_names")
+        .select(`*, part_categories(id, name,
+          auto_link_vehicle_model, is_consumable,
+          sales_commission_type, sales_commission_value,
+          diagnosis_commission_type, diagnosis_commission_value,
+          repair_commission_type, repair_commission_value,
+          qc_commission_type, qc_commission_value,
+          picking_commission_type, picking_commission_value)`)
+        .eq("id", prefillData.part_name_id)
+        .single()
+        .then(({ data: partName }) => {
+          if (partName) {
+            setSelectedPartName(partName);
+            // 分类属性与提成：与"选名称自动带入"一致——配件名称优先，缺失时回落到分类
+            const rawCat = partName.part_categories;
+            const cat = ((Array.isArray(rawCat) ? rawCat[0] : rawCat) || {}) as Record<string, unknown>;
+            const pick = (a: unknown, b: unknown) => (a !== null && a !== undefined ? a : b);
+            const s = (v: unknown) => (v !== null && v !== undefined ? String(v) : "");
+            setForm((prev) => ({
+              ...prev,
+              name: partName.name || prev.name,
+              unit: prefillData.unit || partName.unit || prev.unit,
+              categoryName: (cat.name as string) || prev.categoryName,
+              auto_link_vehicle_model: (partName.auto_link_vehicle_model || cat.auto_link_vehicle_model || false) as boolean,
+              is_consumable: (partName.is_consumable || cat.is_consumable || false) as boolean,
+              sales_type: s(pick(partName.sales_commission_type, cat.sales_commission_type)) as "" | "revenue_pct" | "profit_pct" | "fixed",
+              sales_value: s(pick(partName.sales_commission_value, cat.sales_commission_value)),
+              diagnosis_type: s(pick(partName.diagnosis_commission_type, cat.diagnosis_commission_type)) as "" | "revenue_pct" | "profit_pct" | "fixed",
+              diagnosis_value: s(pick(partName.diagnosis_commission_value, cat.diagnosis_commission_value)),
+              repair_type: s(pick(partName.repair_commission_type, cat.repair_commission_type)) as "" | "revenue_pct" | "profit_pct" | "fixed",
+              repair_value: s(pick(partName.repair_commission_value, cat.repair_commission_value)),
+              qc_type: s(pick(partName.qc_commission_type, cat.qc_commission_type)) as "" | "revenue_pct" | "profit_pct" | "fixed",
+              qc_value: s(pick(partName.qc_commission_value, cat.qc_commission_value)),
+              picking_type: s(pick(partName.picking_commission_type, cat.picking_commission_type)) as "" | "revenue_pct" | "profit_pct" | "fixed",
+              picking_value: s(pick(partName.picking_commission_value, cat.picking_commission_value)),
+            }));
+          }
+        });
+    } else if (prefillData.name) {
       setForm((prev) => ({ ...prev, name: prefillData.name! }));
       supabase
         .from("part_names")
@@ -504,10 +600,24 @@ export default function usePartFormInit(
     }
     if (prefillData.unit) setForm((prev) => ({ ...prev, unit: prefillData.unit! }));
     if (prefillData.purchase_price) setForm((prev) => ({ ...prev, purchase_price: prefillData.purchase_price! }));
+    if (prefillData.reference_purchase_price) setForm((prev) => ({ ...prev, reference_purchase_price: prefillData.reference_purchase_price! }));
+    if (prefillData.unit_price) setForm((prev) => ({ ...prev, unit_price: prefillData.unit_price! }));
     if (prefillData.notes) setForm((prev) => ({ ...prev, notes: prefillData.notes! }));
     if (prefillData.document_name) setDocNameQuery(prefillData.document_name);
     if (prefillData.oeNumber) setOeNumber(prefillData.oeNumber);
-     
+    // 品牌：库里能匹配到就带入
+    if (prefillData.brand) {
+      supabase.from("part_brands").select("id, name").eq("name", prefillData.brand).maybeSingle().then(({ data: b }) => {
+        if (b) setSelectedBrand({ id: b.id, name: b.name });
+      });
+    }
+    // 规格：库里能匹配到就带入
+    if (prefillData.specification) {
+      supabase.from("part_specifications").select("id, name").eq("name", prefillData.specification).maybeSingle().then(({ data: s }) => {
+        if (s) setSelectedSpecs([{ id: s.id, name: s.name }]);
+      });
+    }
+
   }, []);
 
   /* 5. 弹窗模式下：编码精确匹配配件库时自动填充 */
