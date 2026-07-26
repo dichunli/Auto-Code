@@ -837,6 +837,8 @@ export default async function WorkOrderDetailPage({
                           mechanicGroups={(mechanicGroups || []).map((g: { id: string; name: string; mechanic_group_members?: unknown[] }) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
                           vehicleModelId={vehicleModelId}
                           vehicleVin={vehicleVin}
+                          suppliers={suppliers || []}
+                          logisticsCompanies={logisticsCompanies || []}
                         />
                       </div>
                 </div>

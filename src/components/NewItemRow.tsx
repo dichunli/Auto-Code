@@ -10,6 +10,7 @@ import ItemImageUploader from "./ItemImageUploader";
 import AddItemPartButton from "./AddItemPartButton";
 import { WorkOrderItemActions } from "./WorkOrderItemActions";
 import ItemSubtotalDisplay from "./ItemSubtotalDisplay";
+import ItemPartsLive from "./ItemPartsLive";
 
 interface 新项目 {
   id: string;
@@ -40,6 +41,8 @@ interface Props {
   mechanicGroups: 组信息[];
   vehicleModelId?: number | null;
   vehicleVin?: string;
+  suppliers?: unknown[];
+  logisticsCompanies?: unknown[];
 }
 
 /* 新添加项目的行渲染（局部更新用）：
@@ -56,6 +59,8 @@ export default function NewItemRow({
   mechanicGroups,
   vehicleModelId,
   vehicleVin,
+  suppliers = [],
+  logisticsCompanies = [],
 }: Props) {
   return (
     <div className={`rounded-lg px-4 py-3 text-sm mb-2 ${item.item_type === "labor" ? "bg-blue-50/60 border-l-4 border-blue-300" : "bg-gray-50/60 border-l-4 border-gray-300"}`}>
@@ -127,6 +132,24 @@ export default function NewItemRow({
         itemTotalPrice={item.total_price || 0}
         parts={[]}
       />
+      {/* 配件区（局部更新）：添加/删除配件后 ItemPartsLive 只重查该项目配件，立即显示。
+         新项目无领料/退货/库存/图片记录，关联数据传空。 */}
+      <ItemPartsLive
+        itemId={item.id}
+        orderId={orderId}
+        seqPrefix={序号}
+        isLocked={实际锁定}
+        vehicleModelId={vehicleModelId}
+        suppliers={suppliers}
+        logisticsCompanies={logisticsCompanies}
+        pickingByPart={{}}
+        returnByPart={{}}
+        inventoryByPart={{}}
+        pendingSupplierReturnByPart={{}}
+        imagesByPart={{}}
+      >
+        {null}
+      </ItemPartsLive>
     </div>
   );
 }

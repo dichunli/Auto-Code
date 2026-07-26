@@ -35,6 +35,8 @@ interface Props {
   mechanicGroups: 组信息[];
   vehicleModelId?: number | null;
   vehicleVin?: string;
+  suppliers?: unknown[];
+  logisticsCompanies?: unknown[];
 }
 
 /* 需求下"新添加项目"的追加容器（局部更新）：
@@ -52,6 +54,8 @@ export default function LiveItemsList({
   mechanicGroups,
   vehicleModelId,
   vehicleVin,
+  suppliers = [],
+  logisticsCompanies = [],
 }: Props) {
   const [追加项目, 设置追加项目] = useState<新项目[]>([]);
 
@@ -104,6 +108,8 @@ export default function LiveItemsList({
           mechanicGroups={mechanicGroups}
           vehicleModelId={vehicleModelId}
           vehicleVin={vehicleVin}
+          suppliers={suppliers}
+          logisticsCompanies={logisticsCompanies}
         />
       ))}
     </>
