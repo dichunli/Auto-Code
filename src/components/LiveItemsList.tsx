@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import NewItemRow from "./NewItemRow";
 
 interface 新项目 {
@@ -37,6 +37,8 @@ interface Props {
   vehicleVin?: string;
   suppliers?: unknown[];
   logisticsCompanies?: unknown[];
+  /* 空态内容：追加需求卡片传入"暂无项目"文案；服务端需求卡片不传（无追加行时渲染 null，行为不变） */
+  emptyFallback?: ReactNode;
 }
 
 /* 需求下"新添加项目"的追加容器（局部更新）：
@@ -56,6 +58,7 @@ export default function LiveItemsList({
   vehicleVin,
   suppliers = [],
   logisticsCompanies = [],
+  emptyFallback = null,
 }: Props) {
   const [追加项目, 设置追加项目] = useState<新项目[]>([]);
 
@@ -93,7 +96,7 @@ export default function LiveItemsList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [已有IDs拼串]);
 
-  if (追加项目.length === 0) return null;
+  if (追加项目.length === 0) return <>{emptyFallback}</>;
 
   return (
     <>
