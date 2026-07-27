@@ -15,6 +15,7 @@ import { SaveMaintenanceButton } from "@/components/SaveMaintenanceButton";
 import { CancelCreateMaintenanceButton } from "@/components/CancelCreateMaintenanceButton";
 import { BusinessTypeToggle } from "@/components/BusinessTypeToggle";
 import ItemNameDisplay from "@/components/ItemNameDisplay";
+import ItemStageBadge from "@/components/ItemStageBadge";
 import ItemRowWrapper from "@/components/ItemRowWrapper";
 import SavingToast from "@/components/SavingToast";
 import LiveRequirementsList from "@/components/LiveRequirementsList";
@@ -620,6 +621,15 @@ export default async function WorkOrderDetailPage({
                                 <div className="flex items-center gap-2 flex-shrink-0">
                                   <SeqBadge itemId={item.id} 前缀={显示序号} />
                                   <ItemNameDisplay itemId={item.id} name={item.name || ""} aliasName={item.alias_name} />
+                                  {/* 项目状态徽章：待派工/待施工/施工中/已中断/待质检/已完工（仅 labor 显示） */}
+                                  <ItemStageBadge
+                                    itemId={item.id}
+                                    itemType={item.item_type}
+                                    status={item.status}
+                                    requireQc={item.require_qc}
+                                    qcStatus={item.qc_status}
+                                    初始已派工={(mechanicsByItem[item.id] || []).length > 0 || !!item.mechanic_id}
+                                  />
                                   <ItemPersonSelectors
                                     itemId={item.id}
                                     submitterId={item.submitter_id}
