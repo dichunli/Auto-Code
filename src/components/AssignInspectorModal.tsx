@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
 
@@ -24,6 +24,25 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
   const [selected, setSelected] = useState<string>(inspectorId || "");
   const [loading, setLoading] = useState(false);
   const { 请求确认, 确认弹窗 } = useConfirm();
+  /* 约束2：项目未派工时禁止指派/领单质检（null=查询中） */
+  const [已派工, set已派工] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    set已派工(null);
+    supabase
+      .from("work_order_items")
+      .select("mechanic_id, work_order_item_mechanics(mechanic_id)")
+      .eq("id", itemId)
+      .single()
+      .then(({ data }) => {
+        const row = data as {
+          mechanic_id: string | null;
+          work_order_item_mechanics: { mechanic_id: string }[] | null;
+        } | null;
+        set已派工(!!row && ((row.work_order_item_mechanics || []).length > 0 || !!row.mechanic_id));
+      });
+  }, [open, itemId, supabase]);
 
   if (!open) return null;
 
@@ -84,6 +103,12 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">选择质检人</h2>
+        {/* 约束2：项目未派工时禁止指派/领单质检 */}
+        {已派工 === false && (
+          <div className="mb-4 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
+            该项目还未派工，请先指派施工人，再指派质检人。
+          </div>
+        )}
         <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
           {profiles.map((p) => (
             <label key={p.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
@@ -99,13 +124,13 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
         </div>
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">关闭</button>
-          <button type="button" onClick={handleClear} disabled={loading} className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50">
+          <button type="button" onClick={handleClear} disabled={loading || 已派工 !== true} className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50">
             取消质检
           </button>
-          <button type="button" onClick={handleClaim} disabled={loading} className="px-4 py-2 text-sm text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50">
+          <button type="button" onClick={handleClaim} disabled={loading || 已派工 !== true} className="px-4 py-2 text-sm text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50">
             {loading ? "处理中..." : "领单"}
           </button>
-          <button type="button" onClick={handleSave} disabled={loading} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          <button type="button" onClick={handleSave} disabled={loading || 已派工 !== true} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
             {loading ? "保存中..." : "确定"}
           </button>
         </div>

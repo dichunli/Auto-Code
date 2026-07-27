@@ -126,6 +126,8 @@ export default function EditServiceItemPage() {
     repair_value: "",
     qc_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     qc_value: "",
+    /* 必须质检：开启后工单内该项目完工进入"待质检"，质检合格才算已完工 */
+    require_qc: false,
   });
 
   // 关联配件
@@ -346,6 +348,7 @@ export default function EditServiceItemPage() {
           repair_value: item.repair_commission_value?.toString() || "",
           qc_type: item.qc_commission_type || "",
           qc_value: item.qc_commission_value?.toString() || "",
+          require_qc: !!item.require_qc,
         });
         interface VehicleDataRow {
           id: string;
@@ -665,6 +668,7 @@ export default function EditServiceItemPage() {
         repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
         qc_commission_type: form.qc_type || null,
         qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
+        require_qc: form.require_qc,
       })
       .eq("id", id);
 
@@ -900,6 +904,23 @@ export default function EditServiceItemPage() {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* 质检设置 */}
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">质检设置</h3>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.require_qc}
+                  onChange={(e) => setForm({ ...form, require_qc: e.target.checked })}
+                  className="w-4 h-4 accent-purple-600"
+                />
+                <span className="text-sm text-gray-700">必须质检</span>
+                <span className="text-xs text-gray-400">
+                  （开启后，工单内该项目完工进入&quot;待质检&quot;，质检合格才算已完工；默认为新加项目的初始值，工单内可单独改）
+                </span>
+              </label>
             </div>
 
             {/* 价格 */}

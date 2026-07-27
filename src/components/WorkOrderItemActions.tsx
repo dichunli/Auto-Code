@@ -11,9 +11,10 @@ interface Props {
   aliasName?: string | null;
   quantity?: number;
   unitPrice?: number;
+  requireQc?: boolean | null;
 }
 
-export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, unitPrice }: Props) {
+export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, unitPrice, requireQc }: Props) {
   const supabase = createClient();
   const [deleting, setDeleting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -63,6 +64,7 @@ export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, un
         currentAlias={aliasName || null}
         currentQuantity={quantity || 1}
         currentUnitPrice={unitPrice || 0}
+        currentRequireQc={requireQc}
         onClose={() => setEditOpen(false)}
       />
       {确认弹窗}

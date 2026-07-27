@@ -20,6 +20,7 @@ type ServiceItem = {
   standard_hours: number | null;
   category_id: string | null;
   search_keywords: string | null;
+  require_qc?: boolean | null;
   service_categories?: { id: string; name: string } | null;
 };
 
@@ -69,7 +70,7 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
         const { data: items, error } = await supabase
           .from("service_items")
           .select(`
-            id, name, description, default_price, standard_hours, category_id, search_keywords,
+            id, name, description, default_price, standard_hours, category_id, search_keywords, require_qc,
             service_categories(id, name)
           `)
           .order("name");
@@ -186,6 +187,8 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
           description: si.description || null,
           quantity: 1,
           unit_price: vPrice ?? si.default_price ?? 0,
+          /* 从维修项目库带入"必须质检"默认设置（工单内可单独改） */
+          require_qc: si.require_qc ?? false,
         };
       });
 

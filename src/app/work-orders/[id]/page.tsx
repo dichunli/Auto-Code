@@ -16,6 +16,7 @@ import { CancelCreateMaintenanceButton } from "@/components/CancelCreateMaintena
 import { BusinessTypeToggle } from "@/components/BusinessTypeToggle";
 import ItemNameDisplay from "@/components/ItemNameDisplay";
 import ItemStageBadge from "@/components/ItemStageBadge";
+import ItemQcActions from "@/components/ItemQcActions";
 import ItemRowWrapper from "@/components/ItemRowWrapper";
 import SavingToast from "@/components/SavingToast";
 import LiveRequirementsList from "@/components/LiveRequirementsList";
@@ -630,6 +631,15 @@ export default async function WorkOrderDetailPage({
                                     qcStatus={item.qc_status}
                                     初始已派工={(mechanicsByItem[item.id] || []).length > 0 || !!item.mechanic_id}
                                   />
+                                  {/* 质检操作：仅待质检且质检人本人时显示按钮（组件内部自判断） */}
+                                  {item.item_type === "labor" && (
+                                    <ItemQcActions
+                                      itemId={item.id}
+                                      itemName={(item.alias_name || item.name) ?? ""}
+                                      requireQc={item.require_qc}
+                                      实际锁定={实际锁定}
+                                    />
+                                  )}
                                   <ItemPersonSelectors
                                     itemId={item.id}
                                     submitterId={item.submitter_id}
@@ -700,6 +710,7 @@ export default async function WorkOrderDetailPage({
                                     aliasName={item.alias_name}
                                     quantity={item.quantity ?? undefined}
                                     unitPrice={item.unit_price ?? undefined}
+                                    requireQc={item.require_qc}
                                   />
                                 </div>
                               </div>
