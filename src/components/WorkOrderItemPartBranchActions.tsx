@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 标记本地结构编辑 } from "@/lib/localEditSignal";
+import { useConfirm } from "./ConfirmDialog";
 
 interface Props {
   partId: string;
@@ -14,13 +15,14 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
   const supabase = createClient();
   const [deleting, setDeleting] = useState(false);
   const [adding, setAdding] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete() {
     if (!canDelete) {
       alert("至少需要保留一个配件分支");
       return;
     }
-    if (!confirm("确定删除此配件分支吗？")) return;
+    if (!(await 请求确认("确定删除此配件分支吗？"))) return;
     setDeleting(true);
     const { error } = await supabase.from("work_order_item_parts").delete().eq("id", partId);
     setDeleting(false);
@@ -94,6 +96,7 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       >
         {deleting ? "..." : "删除"}
       </button>
+      {确认弹窗}
     </div>
   );
 }

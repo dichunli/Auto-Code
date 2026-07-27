@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { useConfirm } from "./ConfirmDialog";
 
 interface AdvancePaymentRecord {
   id: string;
@@ -40,6 +41,7 @@ export default function AdvancePaymentList({
   const [refundAmount, setRefundAmount] = useState("");
   const [refundMethod, setRefundMethod] = useState("cash");
   const [loading, setLoading] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const REFUND_METHOD_OPTIONS = [
     { value: "cash", label: "现金" },
@@ -64,7 +66,7 @@ export default function AdvancePaymentList({
       alert(`最多可退 ${formatCurrency(maxRefund)}`);
       return;
     }
-    if (!confirm(`确认退款 ${formatCurrency(val)}？`)) return;
+    if (!(await 请求确认(`确认退款 ${formatCurrency(val)}？`))) return;
 
     setLoading(true);
 
@@ -211,6 +213,7 @@ export default function AdvancePaymentList({
           <span className="text-green-600">{formatCurrency(netTotal)}</span>
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }

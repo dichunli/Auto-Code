@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "./ConfirmDialog";
 
 interface Profile {
   id: string;
@@ -43,6 +44,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
   const [commissionRule, setCommissionRule] = useState<"equal" | "byLevel" | "manual">("equal");
   const [manualRatios, setManualRatios] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [showClaimChoice, setShowClaimChoice] = useState(false);
   const [levelPreview, setLevelPreview] = useState<{ id: string; name: string; coeff: number; ratio: number }[]>([]);
 
@@ -238,7 +240,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
   }
 
   async function handleClear() {
-    if (!confirm("确定取消施工指派？")) return;
+    if (!(await 请求确认("确定取消施工指派？"))) return;
     setLoading(true);
     const { error } = await supabase
       .from("work_order_item_mechanics")
@@ -554,6 +556,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
             </div>
           </>
         )}
+        {确认弹窗}
       </div>
     </div>
   );

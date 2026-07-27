@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { EditWorkOrderItemModal } from "./EditWorkOrderItemModal";
+import { useConfirm } from "./ConfirmDialog";
 
 interface Props {
   itemId: string;
@@ -16,9 +17,10 @@ export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, un
   const supabase = createClient();
   const [deleting, setDeleting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete() {
-    if (!confirm("确定删除此维修项目吗？")) return;
+    if (!(await 请求确认("确定删除此维修项目吗？"))) return;
     setDeleting(true);
     const { error } = await supabase.from("work_order_items").delete().eq("id", itemId);
     setDeleting(false);
@@ -63,6 +65,7 @@ export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, un
         currentUnitPrice={unitPrice || 0}
         onClose={() => setEditOpen(false)}
       />
+      {确认弹窗}
     </>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useConfirm } from "./ConfirmDialog";
 
 interface VehicleItem {
   vehicle_model_id: number;
@@ -26,6 +27,7 @@ export default function VehiclePriceViewModal({ open, onClose, onDeleteVehicles,
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const [filters, setFilters] = useState({
     id: "",
@@ -125,19 +127,19 @@ export default function VehiclePriceViewModal({ open, onClose, onDeleteVehicles,
     }
   }
 
-  function handleDelete(vehicleModelId: number) {
+  async function handleDelete(vehicleModelId: number) {
     if (!onDeleteVehicles) return;
-    if (!confirm("确定删除该车型关联？")) return;
+    if (!(await 请求确认("确定删除该车型关联？"))) return;
     onDeleteVehicles([vehicleModelId]);
   }
 
-  function handleBatchDelete() {
+  async function handleBatchDelete() {
     if (!onDeleteVehicles) return;
     if (selectedIds.size === 0) {
       alert("请至少选择一个车型");
       return;
     }
-    if (!confirm(`确定删除选中的 ${selectedIds.size} 个车型关联？`)) return;
+    if (!(await 请求确认(`确定删除选中的 ${selectedIds.size} 个车型关联？`))) return;
     onDeleteVehicles(Array.from(selectedIds));
     setSelectedIds(new Set());
   }
@@ -364,6 +366,7 @@ export default function VehiclePriceViewModal({ open, onClose, onDeleteVehicles,
             </button>
           </div>
         </div>
+        {确认弹窗}
       </div>
     </div>
   );

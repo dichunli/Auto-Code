@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useConfirm } from "./ConfirmDialog";
 
 export interface ImageViewerProps {
   src: string;
@@ -23,6 +24,7 @@ export function ImageViewer({
 }: ImageViewerProps) {
   const [scale, setScale] = useState(1);
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const pinchRef = useRef({ startDist: 0, startScale: 1 });
   const panRef = useRef({ startX: 0, startY: 0, startTx: 0, startTy: 0 });
   const swipeRef = useRef({ startX: 0, startY: 0 });
@@ -150,9 +152,9 @@ export function ImageViewer({
 
   /* ========== 删除操作 ========== */
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!onDelete) return;
-    if (confirm("确定要删除这张图片吗？")) {
+    if (await 请求确认("确定要删除这张图片吗？")) {
       onDelete(index);
       /* 如果删除后没有图片了，关闭查看器 */
       if (total <= 1 && onClose) onClose();
@@ -252,6 +254,7 @@ export function ImageViewer({
             删除
           </button>
         )}
+        {确认弹窗}
       </div>
     </div>
   );

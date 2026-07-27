@@ -11,6 +11,7 @@ import ItemImageUploader from "./ItemImageUploader";
 import { PartPickerModal } from "./PartPickerModal";
 import { OutsourceModal } from "./OutsourceModal";
 import BarcodeScanModal from "./BarcodeScanModal";
+import { useConfirm } from "./ConfirmDialog";
 
 /* ==================== 类型定义 ==================== */
 
@@ -262,6 +263,7 @@ export default function MobileItemEditor({
   const supabase = createClient();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   /* 计时状态 */
   const [logs, setLogs] = useState<ConstructionLog[]>([]);
@@ -731,7 +733,7 @@ export default function MobileItemEditor({
 
   /* 清除施工人 */
   async function clearMechanics() {
-    if (!confirm("确定取消施工指派？")) return;
+    if (!(await 请求确认("确定取消施工指派？"))) return;
     setLoading(true);
     const { error } = await supabase
       .from("work_order_item_mechanics")
@@ -787,7 +789,7 @@ export default function MobileItemEditor({
   /* 放弃领单 */
   async function abandonClaim() {
     if (!currentUserId) return;
-    if (!confirm("确定放弃领单？")) return;
+    if (!(await 请求确认("确定放弃领单？"))) return;
     setLoading(true);
 
     await supabase
@@ -1056,7 +1058,7 @@ export default function MobileItemEditor({
 
   /* 删除已有配件 */
   async function deletePart(partId: string, partName: string) {
-    if (!confirm(`确定删除配件「${partName}」？`)) return;
+    if (!(await 请求确认(`确定删除配件「${partName}」？`))) return;
     const target = parts.find((p) => p.id === partId);
     setLoading(true);
     const { error } = await supabase.from("work_order_item_parts").delete().eq("id", partId);
@@ -1087,7 +1089,7 @@ export default function MobileItemEditor({
       ? parts.filter((p) => p.branch_group_id === target.branch_group_id).map((p) => p.id)
       : [target.id];
     if (ids.length === 0) return;
-    if (!confirm(`确定删除配件「${target.name}」及其全部 ${ids.length} 个分支？`)) return;
+    if (!(await 请求确认(`确定删除配件「${target.name}」及其全部 ${ids.length} 个分支？`))) return;
     setLoading(true);
     const { error } = await supabase.from("work_order_item_parts").delete().in("id", ids);
     setLoading(false);
@@ -1172,7 +1174,7 @@ export default function MobileItemEditor({
 
   /* 替换配件 */
   async function handleReplacePart(oldPartId: string, newPart: PickerPart) {
-    if (!confirm(`确定将配件替换为「${newPart.name}」？`)) return;
+    if (!(await 请求确认(`确定将配件替换为「${newPart.name}」？`))) return;
     setLoading(true);
 
     const pb = newPart.part_brands;
@@ -1429,9 +1431,9 @@ export default function MobileItemEditor({
 
   /* 删除维修项目 */
   async function handleDeleteItem() {
-    if (!confirm(`确定删除维修项目「${item.alias_name || item.name}」？`)) return;
+    if (!(await 请求确认(`确定删除维修项目「${item.alias_name || item.name}」？`))) return;
     if (parts.length > 0) {
-      if (!confirm("该项目下还有配件，确定一并删除吗？")) return;
+      if (!(await 请求确认("该项目下还有配件，确定一并删除吗？"))) return;
     }
     setLoading(true);
     const { error } = await supabase.from("work_order_items").delete().eq("id", item.id);
@@ -1451,7 +1453,7 @@ export default function MobileItemEditor({
     const msg = willDeleteOrder
       ? "本项目是外包单中最后一项，移除后将同时删除外包单和相关财务记录。确定吗？"
       : "确定将本项目从外包单中移除吗？";
-    if (!confirm(msg)) return;
+    if (!(await 请求确认(msg))) return;
 
     setLoading(true);
     try {
@@ -3224,6 +3226,7 @@ export default function MobileItemEditor({
         onClose={() => setShowBarcodeScanner(false)}
         onScan={handleBarcodeScan}
       />
+      {确认弹窗}
     </>
   );
 }

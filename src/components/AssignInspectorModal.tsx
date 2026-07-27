@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "./ConfirmDialog";
 
 interface Profile {
   id: string;
@@ -22,6 +23,7 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
   const supabase = createClient();
   const [selected, setSelected] = useState<string>(inspectorId || "");
   const [loading, setLoading] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   if (!open) return null;
 
@@ -63,7 +65,7 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
   }
 
   async function handleClear() {
-    if (!confirm("确定取消质检指派？")) return;
+    if (!(await 请求确认("确定取消质检指派？"))) return;
     setLoading(true);
     const { error } = await supabase
       .from("work_order_items")
@@ -107,6 +109,7 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
             {loading ? "保存中..." : "确定"}
           </button>
         </div>
+        {确认弹窗}
       </div>
     </div>
   );

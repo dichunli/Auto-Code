@@ -9,6 +9,7 @@ import { usePriceVisibility } from "./PriceVisibilityContext";
 import { PartSearchDropdown } from "./PartSearchDropdown";
 import { resolvePartSellingPrice } from "@/lib/partPriceResolver";
 import PartForm from "@/app/parts/new/PartForm";
+import { useConfirm } from "./ConfirmDialog";
 
 const STATUS_TITLES: Record<string, string> = {
   pending_inquiry: "待询价",
@@ -93,6 +94,7 @@ export function PartBranchStatusList({ status }: Props) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>("plate");
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   /* 品牌/规格搜索建议 */
   const [availableBrands, setAvailableBrands] = useState<string[]>([]);
@@ -616,7 +618,7 @@ export function PartBranchStatusList({ status }: Props) {
     };
     const prevStatus = prevStatusMap[status];
     if (!prevStatus) return;
-    if (!confirm(`确定将选中的 ${selectedIds.size} 条配件撤销到「${prevStatus}」状态吗？`)) return;
+    if (!(await 请求确认(`确定将选中的 ${selectedIds.size} 条配件撤销到「${prevStatus}」状态吗？`))) return;
 
     setSubmitting(true);
     let updateData: Record<string, string | number | null> = {};
@@ -733,7 +735,7 @@ export function PartBranchStatusList({ status }: Props) {
 
   /* 在当前配件上添加同项目分支 */
   async function handleAddSiblingBranch(row: PartBranchRow) {
-    if (!confirm("确定添加该配件的新分支吗？")) return;
+    if (!(await 请求确认("确定添加该配件的新分支吗？"))) return;
     setSavingId(row.id);
     const { error } = await supabase.from("work_order_item_parts").insert({
       work_order_item_id: row.work_order_item_id,
@@ -760,7 +762,7 @@ export function PartBranchStatusList({ status }: Props) {
       alert("已采购或已到货的配件不能删除");
       return;
     }
-    if (!confirm("确定删除该配件分支吗？")) return;
+    if (!(await 请求确认("确定删除该配件分支吗？"))) return;
     setSavingId(row.id);
     const { error } = await supabase.from("work_order_item_parts").delete().eq("id", row.id);
     setSavingId(null);
@@ -1377,6 +1379,7 @@ export function PartBranchStatusList({ status }: Props) {
           </div>
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useUpload } from "@/hooks/useUpload";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
+import { useConfirm } from "./ConfirmDialog";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -31,6 +32,7 @@ export function VideoUploader({
 }: Props) {
   const [videos, setVideos] = useState<string[]>(existingVideos);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const viewerSrc = viewerIndex !== null ? videos[viewerIndex] : null;
   /* 视频旋转补偿：手机浏览器不读 MP4 旋转标记时，layout 宽>高就需要 CSS 旋转 */
   const [需要旋转视频, set需要旋转视频] = useState(false);
@@ -459,9 +461,9 @@ export function VideoUploader({
           {/* 删除按钮 */}
           <button
             type="button"
-            onClick={(e) => {
+            onClick={async (e) => {
               e.stopPropagation();
-              if (confirm("确定删除这个视频吗？")) {
+              if (await 请求确认("确定删除这个视频吗？")) {
                 removeVideo(viewerIndex);
                 setViewerIndex(null);
               }
@@ -480,6 +482,7 @@ export function VideoUploader({
         </div>,
         document.body
       )}
+      {确认弹窗}
     </div>
   );
 }

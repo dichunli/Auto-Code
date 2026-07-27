@@ -6,6 +6,7 @@ import { usePriceVisibility } from "./PriceVisibilityContext";
 import { PartPickerModal } from "./PartPickerModal";
 import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localEditSignal";
 import PartForm, { PartFormDraft } from "@/app/parts/new/PartForm";
+import { useConfirm } from "./ConfirmDialog";
 
 function toFixed2(val: string | number | null | undefined): string {
   if (val === "" || val === null || val === undefined) return "";
@@ -80,6 +81,7 @@ export default function PartBranchEditor({
   const supabase = createClient();
   const { showPrices } = usePriceVisibility();
   const [saving, setSaving] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const clickTimer = useRef<NodeJS.Timeout | null>(null);
   const 根容器Ref = useRef<HTMLDivElement>(null);
 
@@ -766,7 +768,7 @@ export default function PartBranchEditor({
     );
 
     if (matched) {
-      if (confirm("找到相同配件是否选择？")) {
+      if (await 请求确认("找到相同配件是否选择？")) {
         setSaving(true);
         const { error } = await supabase
           .from("work_order_item_parts")
@@ -839,7 +841,7 @@ export default function PartBranchEditor({
       alert("选中的分支不能删除。如需删除，请先选中其它分支作为默认，再删除本条。");
       return;
     }
-    if (!confirm("确定删除此配件分支吗？")) return;
+    if (!(await 请求确认("确定删除此配件分支吗？"))) return;
     setSaving(true);
     标记本地编辑配件(part.id);
 
@@ -1557,6 +1559,7 @@ export default function PartBranchEditor({
           </div>
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }
