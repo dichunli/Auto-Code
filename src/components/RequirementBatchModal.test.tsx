@@ -174,8 +174,7 @@ describe("RequirementBatchModal - 删除防误删保护", () => {
   });
 
   it("删除前实时查库：需求下无项目 → 可删除，广播 wo-requirement-deleted 局部移除", async () => {
-    /* 删除会弹 confirm，mock 成确认 */
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    /* 删除会弹居中确认弹窗（不再是浏览器 confirm），点"确定"继续 */
     模拟项目数 = 0;
     const 事件监听 = vi.fn();
     window.addEventListener("wo-requirement-deleted", 事件监听);
@@ -194,6 +193,10 @@ describe("RequirementBatchModal - 删除防误删保护", () => {
     expect(删除按钮).not.toBeDisabled();
 
     await user.click(删除按钮);
+
+    /* 居中确认弹窗出现（Portal 渲染到 body），点"确定"执行删除 */
+    const 确定按钮 = await screen.findByRole("button", { name: "确定" });
+    await user.click(确定按钮);
 
     /* 删除后广播 wo-requirement-deleted 事件（卡片局部消失），不再整页刷新 */
     await waitFor(() => {
