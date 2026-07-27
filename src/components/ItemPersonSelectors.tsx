@@ -62,7 +62,11 @@ export function ItemPersonSelectors({ itemId, submitterId, inspectorId, profiles
         profiles={profiles}
         inspectorId={currentInspectorId}
         onClose={() => setOpenInspector(false)}
-        onSaved={(newId) => setCurrentInspectorId(newId)}
+        onSaved={(newId) => {
+          setCurrentInspectorId(newId);
+          /* 广播：质检按钮（ItemQcActions）可见性立即刷新 */
+          window.dispatchEvent(new CustomEvent("wo-item-update", { detail: { itemId } }));
+        }}
       />
     </div>
   );

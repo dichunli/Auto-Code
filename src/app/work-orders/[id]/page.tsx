@@ -784,6 +784,7 @@ export default async function WorkOrderDetailPage({
                                     vehicleChassis={order.vehicles?.vin ?? undefined}
                                     vehicleTransmission={(order.vehicles?.vehicle_models?.变速箱类型 || order.vehicles?.vehicle_models?.变速箱详情) ?? undefined}
                                     mechanics={(mechanicsByItem[item.id] || []).map((m) => ({ mechanic_id: m.mechanic_id || "", full_name: m.profiles?.full_name || "-" }))}
+                                    初始已派工={(mechanicsByItem[item.id] || []).length > 0 || !!item.mechanic_id}
                                   />
                                 </div>
                               </ShowTimer>

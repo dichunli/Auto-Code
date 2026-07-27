@@ -29,6 +29,8 @@ interface Props {
   vehicleChassis?: string;
   vehicleTransmission?: string;
   mechanics?: Mechanic[];
+  /* 项目是否已派工（mechanics 表 或 旧 mechanic_id 字段，服务端算好传入） */
+  初始已派工: boolean;
   onStatusChange?: () => void;
 }
 
@@ -123,12 +125,18 @@ export function ConstructionControls({
   vehicleChassis,
   vehicleTransmission,
   mechanics,
+  初始已派工,
   onStatusChange,
 }: Props) {
   const supabase = createClient();
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("");
+  /* 当前用户角色（约束1：admin/boss/receptionist 可代操作计时） */
+  const [当前用户角色, set当前用户角色] = useState<string[]>([]);
+  /* 派工名单（可随派工操作实时刷新，不用整页刷新） */
+  const [liveMechanics, setLiveMechanics] = useState<Mechanic[]>(mechanics || []);
+  const [已派工, set已派工] = useState(初始已派工);
   const [elapsed, setElapsed] = useState(0);
   const [statsIds, setStatsIds] = useState<Record<string, string>>({});
   const startTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -139,10 +147,48 @@ export function ConstructionControls({
   const isCompleted = status === "completed";
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) setCurrentUserId(data.user.id);
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
+      setCurrentUserId(data.user.id);
+      const { data: prs } = await supabase
+        .from("profile_roles")
+        .select("roles(name)")
+        .eq("profile_id", data.user.id);
+      set当前用户角色(
+        (prs || [])
+          .map((r) => (r.roles as unknown as { name: string } | null)?.name || "")
+          .filter(Boolean)
+      );
     });
   }, [supabase]);
+
+  /* 重查派工名单（派工弹窗保存后广播 wo-item-update 触发） */
+  const 重查派工 = useCallback(async () => {
+    const { data } = await supabase
+      .from("work_order_items")
+      .select("mechanic_id, work_order_item_mechanics(mechanic_id, profiles(full_name))")
+      .eq("id", itemId)
+      .single();
+    const row = data as {
+      mechanic_id: string | null;
+      work_order_item_mechanics: { mechanic_id: string; profiles?: { full_name: string } | null }[] | null;
+    } | null;
+    if (!row) return;
+    const list = row.work_order_item_mechanics || [];
+    setLiveMechanics(
+      list.map((m) => ({ mechanic_id: m.mechanic_id, full_name: m.profiles?.full_name || "-" }))
+    );
+    set已派工(list.length > 0 || !!row.mechanic_id);
+  }, [supabase, itemId]);
+
+  useEffect(() => {
+    function handle(e: Event) {
+      const detail = (e as CustomEvent).detail as { itemId?: string };
+      if (detail?.itemId === itemId) 重查派工();
+    }
+    window.addEventListener("wo-item-update", handle as EventListener);
+    return () => window.removeEventListener("wo-item-update", handle as EventListener);
+  }, [itemId, 重查派工]);
 
   const fetchLogs = useCallback(async () => {
     const { data } = await supabase
@@ -247,7 +293,7 @@ export function ConstructionControls({
       await fetchLogs();
       onStatusChange?.();
 
-      const mechanicList = mechanics && mechanics.length > 0 ? mechanics : [{ mechanic_id: currentUserId, full_name: "未分配" }];
+      const mechanicList = liveMechanics.length > 0 ? liveMechanics : [{ mechanic_id: currentUserId, full_name: "未分配" }];
 
       if (action === "start") {
         startTimeoutRef.current = setTimeout(async () => {
@@ -305,6 +351,16 @@ export function ConstructionControls({
   }
 
   const canStart = customerOpinion === "agree";
+  /* 约束1：项目已派工，且操作人为施工人本人或管理角色（admin/boss/receptionist）。
+   * UI 层禁用+提示；服务端 add_construction_log RPC 有同样校验兜底 */
+  const 是管理角色 = 当前用户角色.some((r) => ["admin", "boss", "receptionist"].includes(r));
+  const 本人施工 = !!currentUserId && liveMechanics.some((m) => m.mechanic_id === currentUserId);
+  const 可操作计时 = 已派工 && (本人施工 || 是管理角色);
+  const 权限提示 = !已派工
+    ? "项目未派工，不能操作计时"
+    : !可操作计时
+      ? "仅施工人本人或管理人员可操作计时"
+      : "";
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -313,13 +369,15 @@ export function ConstructionControls({
           <button
             type="button"
             onClick={() => addLog("start")}
-            disabled={loading || !canStart}
+            disabled={loading || !canStart || !可操作计时}
             className="text-[10px] px-2 py-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 disabled:opacity-50"
           >
             开始施工
           </button>
-          {!canStart && (
-            <span className="text-[10px] text-red-500">需客户同意后才能施工</span>
+          {权限提示 ? (
+            <span className="text-[10px] text-red-500">{权限提示}</span>
+          ) : (
+            !canStart && <span className="text-[10px] text-red-500">需客户同意后才能施工</span>
           )}
         </>
       )}
@@ -333,7 +391,7 @@ export function ConstructionControls({
           <button
             type="button"
             onClick={() => addLog("pause")}
-            disabled={loading}
+            disabled={loading || !可操作计时}
             className="text-[10px] px-2 py-1 rounded bg-yellow-50 text-yellow-600 hover:bg-yellow-100 border border-yellow-200 disabled:opacity-50"
           >
             中断
@@ -341,7 +399,7 @@ export function ConstructionControls({
           <button
             type="button"
             onClick={() => addLog("complete")}
-            disabled={loading}
+            disabled={loading || !可操作计时}
             className="text-[10px] px-2 py-1 rounded bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 disabled:opacity-50"
           >
             完工
@@ -349,11 +407,12 @@ export function ConstructionControls({
           <button
             type="button"
             onClick={() => addLog("cancel")}
-            disabled={loading}
+            disabled={loading || !可操作计时}
             className="text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 disabled:opacity-50"
           >
             取消施工
           </button>
+          {权限提示 && <span className="text-[10px] text-red-500">{权限提示}</span>}
         </>
       )}
 
@@ -366,7 +425,7 @@ export function ConstructionControls({
           <button
             type="button"
             onClick={() => addLog("resume")}
-            disabled={loading}
+            disabled={loading || !可操作计时}
             className="text-[10px] px-2 py-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 disabled:opacity-50"
           >
             恢复施工
@@ -374,7 +433,7 @@ export function ConstructionControls({
           <button
             type="button"
             onClick={() => addLog("complete")}
-            disabled={loading}
+            disabled={loading || !可操作计时}
             className="text-[10px] px-2 py-1 rounded bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 disabled:opacity-50"
           >
             完工
@@ -382,11 +441,12 @@ export function ConstructionControls({
           <button
             type="button"
             onClick={() => addLog("cancel")}
-            disabled={loading}
+            disabled={loading || !可操作计时}
             className="text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 disabled:opacity-50"
           >
             取消施工
           </button>
+          {权限提示 && <span className="text-[10px] text-red-500">{权限提示}</span>}
         </>
       )}
 
@@ -397,11 +457,12 @@ export function ConstructionControls({
           <button
             type="button"
             onClick={() => addLog("cancel")}
-            disabled={loading}
+            disabled={loading || !可操作计时}
             className="text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 disabled:opacity-50"
           >
             取消完工
           </button>
+          {权限提示 && <span className="text-[10px] text-red-500">{权限提示}</span>}
         </>
       )}
 
