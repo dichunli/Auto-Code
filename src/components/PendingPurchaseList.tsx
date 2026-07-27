@@ -6,6 +6,7 @@ import Link from "next/link";
 import { filterLogisticsByRegion, REGION_LABELS } from "@/lib/logisticsFilter";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
+import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 
 interface PartBranchRow {
@@ -109,6 +110,7 @@ function getGroupKey(r: PartBranchRow, groupBy: GroupBy): string {
 
 export function PendingPurchaseList() {
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [rows, setRows] = useState<PartBranchRow[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [logisticsCompanies, setLogisticsCompanies] = useState<LogisticsCompany[]>([]);
@@ -474,7 +476,7 @@ export function PendingPurchaseList() {
       ? logisticsCompanies.find((l) => l.id === finalLogisticsId)?.name || ""
       : "";
 
-    if (!confirm(`将为 ${selectedRows.length} 条配件生成采购单,是否继续?`)) {
+    if (!(await 请求确认(`将为 ${selectedRows.length} 条配件生成采购单,是否继续?`))) {
       return;
     }
 
@@ -663,7 +665,7 @@ export function PendingPurchaseList() {
       return;
     }
 
-    if (!confirm(`将为 ${selectedParts.length} 条安全库存配件按供应商分组生成采购单,是否继续?`)) {
+    if (!(await 请求确认(`将为 ${selectedParts.length} 条安全库存配件按供应商分组生成采购单,是否继续?`))) {
       return;
     }
 
@@ -743,7 +745,7 @@ export function PendingPurchaseList() {
       alert("请填写撤销原因");
       return;
     }
-    if (!confirm(`确认撤销 ${selectedRows.length} 条配件?\n客户意见将变更为「${revokeOpinion === "reject" ? "否决" : "未确定"}」`)) {
+    if (!(await 请求确认(`确认撤销 ${selectedRows.length} 条配件?\n客户意见将变更为「${revokeOpinion === "reject" ? "否决" : "未确定"}」`))) {
       return;
     }
     setSubmitting(true);
@@ -1273,6 +1275,8 @@ export function PendingPurchaseList() {
           </div>
         </div>
       )}
+
+      {确认弹窗}
     </div>
   );
 }

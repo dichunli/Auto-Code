@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "./ConfirmDialog";
 
 interface Props {
   open: boolean;
@@ -12,6 +13,7 @@ interface Props {
 
 export default function PartMergeDialog({ open, selectedItems, onClose, onSuccess }: Props) {
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [targetId, setTargetId] = useState<string>("");
   const [finalName, setFinalName] = useState("");
   const [finalPartNumber, setFinalPartNumber] = useState("");
@@ -97,7 +99,7 @@ export default function PartMergeDialog({ open, selectedItems, onClose, onSucces
     const otherNames = otherItems.map((i) => `「${i.name}」`).join("、");
 
     const confirmMsg = `确定要将${otherNames}合并到「${target.name}」吗？\n\n合并后：\n名称：${finalName.trim()}\n编号：${finalPartNumber.trim()}\n${mergeQuantity ? "库存数量将累加" : "库存数量保留主配件"}\n\n所有关联数据将转移到保留配件，其他配件将被删除。`;
-    if (!confirm(confirmMsg)) return;
+    if (!(await 请求确认(confirmMsg))) return;
 
     setMerging(true);
 
@@ -364,6 +366,8 @@ export default function PartMergeDialog({ open, selectedItems, onClose, onSucces
           </button>
         </div>
       </div>
+
+      {确认弹窗}
     </div>
   );
 }

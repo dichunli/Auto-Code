@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 技师等级 {
   id: string;
@@ -42,6 +43,7 @@ export default function PromotionRulesPage() {
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<晋级规则 | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const [form, setForm] = useState({
     from_level_id: "",
@@ -179,7 +181,7 @@ export default function PromotionRulesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("确定删除这条晋级规则吗？")) return;
+    if (!(await 请求确认("确定删除这条晋级规则吗？"))) return;
     const { error } = await supabase.from("promotion_rules").delete().eq("id", id);
     if (error) {
       alert("删除失败: " + error.message);
@@ -457,6 +459,7 @@ export default function PromotionRulesPage() {
           </div>
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }

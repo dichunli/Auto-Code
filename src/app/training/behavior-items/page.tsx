@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 行为项目 {
   id: string;
@@ -22,6 +23,7 @@ export default function BehaviorItemsPage() {
   /* 弹窗 */
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<行为项目 | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [form, setForm] = useState({
     name: "",
     score_type: "bonus",
@@ -100,7 +102,7 @@ export default function BehaviorItemsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("确定删除这个项目吗？已有的打分记录将保留，但无法再使用此项目打新分。")) return;
+    if (!(await 请求确认("确定删除这个项目吗？已有的打分记录将保留，但无法再使用此项目打新分。"))) return;
     const { error } = await supabase.from("behavior_score_items").delete().eq("id", id);
     if (error) {
       alert("删除失败: " + error.message);
@@ -270,6 +272,7 @@ export default function BehaviorItemsPage() {
           </div>
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }

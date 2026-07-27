@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 记录 {
   id: string;
@@ -25,6 +26,7 @@ export default function MobileOtherPage() {
   const [records, setRecords] = useState<记录[]>([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(searchParams.get("month") || "");
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -74,7 +76,7 @@ export default function MobileOtherPage() {
   }, [currentMonth]);
 
   async function handleDelete(id: string) {
-    if (!confirm("确定删除这条记录？")) return;
+    if (!(await 请求确认("确定删除这条记录？"))) return;
     const supabase = createClient();
     const { error } = await supabase.from("other_transactions").delete().eq("id", id);
     if (error) {
@@ -217,6 +219,7 @@ export default function MobileOtherPage() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
       </Link>
+      {确认弹窗}
     </div>
   );
 }

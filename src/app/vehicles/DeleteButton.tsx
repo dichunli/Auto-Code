@@ -2,6 +2,7 @@
 
 import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface Props {
   id: string;
@@ -10,9 +11,10 @@ interface Props {
 export function DeleteButton({ id }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const [deleting, setDeleting] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete() {
-    if (!confirm("确定要删除该车辆吗？删除前会检查关联数据。")) return;
+    if (!(await 请求确认("确定要删除该车辆吗？删除前会检查关联数据。"))) return;
     setDeleting(true);
 
     // 检查关联工单
@@ -36,12 +38,15 @@ export function DeleteButton({ id }: Props) {
   }
 
   return (
-    <button
-      onClick={handleDelete}
-      disabled={deleting}
-      className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
-    >
-      {deleting ? "删除中..." : "删除"}
-    </button>
+    <>
+      <button
+        onClick={handleDelete}
+        disabled={deleting}
+        className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+      >
+        {deleting ? "删除中..." : "删除"}
+      </button>
+      {确认弹窗}
+    </>
   );
 }

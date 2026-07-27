@@ -4,6 +4,7 @@ import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 import Link from "next/link";
 
 const returnReasonMap: Record<string, string> = {
@@ -44,6 +45,7 @@ export default function SupplierReturnsContent({ initialRecords }: { initialReco
   const [statusFilter, setStatusFilter] = useState<string>("");
   const debouncedQuery = useDebounce(query, 300);
   const mounted = useRef(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function loadRecords() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -246,8 +248,8 @@ export default function SupplierReturnsContent({ initialRecords }: { initialReco
                     <td className="px-6 py-4">
                       {r.status === "pending" && !r.purchase_return_orders && (
                         <button
-                          onClick={() => {
-                            if (confirm("确认标记为已完成？")) {
+                          onClick={async () => {
+                            if (await 请求确认("确认标记为已完成？")) {
                               handleUpdateStatus(r.id, "completed");
                             }
                           }}
@@ -271,6 +273,8 @@ export default function SupplierReturnsContent({ initialRecords }: { initialReco
           </table>
         </div>
       </div>
+
+      {确认弹窗}
     </div>
   );
 }

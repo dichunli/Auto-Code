@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 function CommissionField({
   label,
@@ -55,6 +56,7 @@ export default function EditPartCategoryPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const [form, setForm] = useState({
     name: "",
@@ -146,7 +148,7 @@ export default function EditPartCategoryPage() {
   }
 
   async function handleSync() {
-    if (!confirm("确定要将当前分类的属性同步到所有使用该分类的配件名称和配件吗？此操作会覆盖这些配件名称及配件的现有属性设置。")) return;
+    if (!(await 请求确认("确定要将当前分类的属性同步到所有使用该分类的配件名称和配件吗？此操作会覆盖这些配件名称及配件的现有属性设置。"))) return;
     setSyncing(true);
 
     const updateData = {
@@ -316,6 +318,7 @@ export default function EditPartCategoryPage() {
           </button>
         </div>
       </form>
+      {确认弹窗}
     </div>
   );
 }

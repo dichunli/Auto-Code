@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 员工 {
   id: string;
@@ -44,6 +45,7 @@ export default function PromotionOverviewPage() {
   const [statusList, setStatusList] = useState<员工状态[]>([]);
   const [loading, setLoading] = useState(false);
   const [promotingId, setPromotingId] = useState<string | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function fetchData() {
     setLoading(true);
@@ -167,7 +169,7 @@ export default function PromotionOverviewPage() {
 
   async function handlePromote(emp: 员工状态) {
     if (!emp.next_level_id) return;
-    if (!confirm(`确定为 ${emp.employee.full_name} 发起晋级申请（${emp.employee.level_name} → ${emp.next_level_name}）吗？`)) return;
+    if (!(await 请求确认(`确定为 ${emp.employee.full_name} 发起晋级申请（${emp.employee.level_name} → ${emp.next_level_name}）吗？`))) return;
 
     setPromotingId(emp.employee.id);
     try {
@@ -302,6 +304,7 @@ export default function PromotionOverviewPage() {
           ))}
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface Props {
   open: boolean;
@@ -17,6 +18,7 @@ export function BatchMergeDialog({ open, selectedNames, onClose, onSuccess }: Pr
   const [targetId, setTargetId] = useState<string>("");
   const [finalName, setFinalName] = useState("");
   const [merging, setMerging] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   useEffect(() => {
     if (open && selectedNames.length > 0) {
@@ -49,9 +51,9 @@ export function BatchMergeDialog({ open, selectedNames, onClose, onSuccess }: Pr
       .join("」、「");
 
     if (
-      !confirm(
+      !(await 请求确认(
         `确定要将「${otherNames}」合并到「${targetName}」吗？\n\n合并后名称为：${finalName.trim()}\n\n所有关联数据将转移到保留项，其他项将被删除。`
-      )
+      ))
     ) {
       return;
     }
@@ -209,6 +211,7 @@ export function BatchMergeDialog({ open, selectedNames, onClose, onSuccess }: Pr
           </button>
         </div>
       </div>
+      {确认弹窗}
     </div>
   );
 }

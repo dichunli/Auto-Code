@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { useRouter } from "next/navigation";
 import {useState, useMemo} from "react";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface Group {
   id: string;
@@ -22,6 +23,7 @@ export function EmployeeGroupList({ groups }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState<string | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete(id: string, name: string, memberCount: number) {
     if (memberCount > 0) {
@@ -29,7 +31,7 @@ export function EmployeeGroupList({ groups }: Props) {
       return;
     }
 
-    if (!confirm(`确定要删除分组「${name}」吗？`)) {
+    if (!(await 请求确认(`确定要删除分组「${name}」吗？`))) {
       return;
     }
 
@@ -168,6 +170,7 @@ export function EmployeeGroupList({ groups }: Props) {
           </tbody>
         </table>
       </div>
+      {确认弹窗}
     </div>
   );
 }

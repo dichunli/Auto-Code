@@ -4,6 +4,7 @@ import {useState, useEffect, Suspense, useMemo} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 考题 {
   id: string;
@@ -31,6 +32,7 @@ function ExamManageContent() {
   const [questions, setQuestions] = useState<考题[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   /* 弹窗状态 */
   const [modalOpen, setModalOpen] = useState(false);
@@ -176,7 +178,7 @@ function ExamManageContent() {
   }
 
   async function handleDeleteQuestion(id: string) {
-    if (!confirm("确定删除这道题吗？")) return;
+    if (!(await 请求确认("确定删除这道题吗？"))) return;
     const { error } = await supabase.from("exam_questions").delete().eq("id", id);
     if (error) {
       alert("删除失败: " + error.message);
@@ -425,6 +427,7 @@ function ExamManageContent() {
           </div>
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }

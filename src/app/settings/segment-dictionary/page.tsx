@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { 中文分词 } from "@/lib/chineseSegmenter";
 import { 加载分词列表, 添加分词, 删除分词 } from "@/app/knowledge/actions";
 
@@ -12,6 +13,7 @@ export default function SegmentDictionaryPage() {
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [previewInput, setPreviewInput] = useState("捷达A5点烟器保险位置");
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   useEffect(() => {
     async function load() {
@@ -52,7 +54,7 @@ export default function SegmentDictionaryPage() {
   }
 
   async function handleDelete(word: string) {
-    if (!confirm(`确定要删除分词「${word}」吗？`)) return;
+    if (!(await 请求确认(`确定要删除分词「${word}」吗？`))) return;
 
     setSaving(true);
     const result = await 删除分词(word);
@@ -195,6 +197,8 @@ export default function SegmentDictionaryPage() {
           </div>
         </div>
       </div>
+
+      {确认弹窗}
     </div>
   );
 }

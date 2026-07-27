@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 同义词记录 {
   id: string;
@@ -20,6 +21,7 @@ export default function SynonymsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterText, setFilterText] = useState("");
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   useEffect(() => {
     async function load() {
@@ -149,7 +151,7 @@ export default function SynonymsPage() {
   }
 
   async function handleDelete(id: string, term: string) {
-    if (!confirm(`确定要删除「${term}」的同义词映射吗？`)) return;
+    if (!(await 请求确认(`确定要删除「${term}」的同义词映射吗？`))) return;
 
     setSaving(true);
     const { error } = await supabase.from("synonym_mapping").delete().eq("id", id);
@@ -425,6 +427,8 @@ export default function SynonymsPage() {
           </div>
         </div>
       </div>
+
+      {确认弹窗}
     </div>
   );
 }

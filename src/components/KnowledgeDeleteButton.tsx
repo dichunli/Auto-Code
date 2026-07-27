@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "./ConfirmDialog";
 
 interface Props {
   articleId: string;
@@ -13,6 +14,7 @@ interface Props {
 export function KnowledgeDeleteButton({ articleId, canDelete: serverCanDelete }: Props) {
   const router = useRouter();
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [deleting, setDeleting] = useState(false);
   const [canDelete, setCanDelete] = useState(serverCanDelete || false);
 
@@ -49,7 +51,7 @@ export function KnowledgeDeleteButton({ articleId, canDelete: serverCanDelete }:
   }, [articleId, supabase, serverCanDelete]);
 
   async function handleDelete() {
-    if (!confirm("确定要删除这篇文章吗？删除后不可恢复。")) return;
+    if (!(await 请求确认("确定要删除这篇文章吗？删除后不可恢复。"))) return;
     setDeleting(true);
 
     try {
@@ -73,13 +75,16 @@ export function KnowledgeDeleteButton({ articleId, canDelete: serverCanDelete }:
   if (!canDelete) return null;
 
   return (
-    <button
-      type="button"
-      onClick={handleDelete}
-      disabled={deleting}
-      className="text-sm px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors disabled:opacity-50"
-    >
-      {deleting ? "删除中..." : "删除"}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={handleDelete}
+        disabled={deleting}
+        className="text-sm px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors disabled:opacity-50"
+      >
+        {deleting ? "删除中..." : "删除"}
+      </button>
+      {确认弹窗}
+    </>
   );
 }

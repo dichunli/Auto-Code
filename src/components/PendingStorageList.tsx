@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
+import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 
 interface PurchaseOrderItem {
@@ -108,6 +109,7 @@ interface InboundItemForm {
 
 export function PendingStorageList() {
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -520,7 +522,7 @@ export function PendingStorageList() {
   }
 
   async function handleRevokeStorage(order: PurchaseOrder) {
-    if (!confirm("确认退回待收货?这会清除所有处理结果并删除已生成的待采购分支。")) return;
+    if (!(await 请求确认("确认退回待收货?这会清除所有处理结果并删除已生成的待采购分支。"))) return;
     setSubmitting(`revoke-${order.id}`);
     try {
       /* 1. 获取该订单下所有有 work_order_item_part_id 的明细 */
@@ -1358,6 +1360,8 @@ export function PendingStorageList() {
           </div>
         </div>
       )}
+
+      {确认弹窗}
     </div>
   );
 }

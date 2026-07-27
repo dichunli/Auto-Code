@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface Level {
   id: string;
@@ -20,9 +21,10 @@ interface Props {
 export function MechanicLevelList({ levels }: Props) {
   const router = useRouter();
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`确定要删除等级「${name}」吗？`)) {
+    if (!(await 请求确认(`确定要删除等级「${name}」吗？`))) {
       return;
     }
 
@@ -134,6 +136,7 @@ export function MechanicLevelList({ levels }: Props) {
           </tbody>
         </table>
       </div>
+      {确认弹窗}
     </div>
   );
 }

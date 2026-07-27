@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 操作员 {
   id: string;
@@ -36,6 +37,7 @@ export default function OtherPaymentMethodsPage() {
   /* 拖拽排序状态 */
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   useEffect(() => {
     loadData();
@@ -122,7 +124,7 @@ export default function OtherPaymentMethodsPage() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`确定删除「${name}」吗？`)) return;
+    if (!(await 请求确认(`确定删除「${name}」吗？`))) return;
 
     const supabase = createClient();
     const { count } = await supabase
@@ -383,6 +385,7 @@ export default function OtherPaymentMethodsPage() {
           </div>
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }

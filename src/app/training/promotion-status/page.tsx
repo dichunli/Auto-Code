@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 等级信息 {
   id: string;
@@ -50,6 +51,7 @@ export default function PromotionStatusPage() {
   const [checkResult, setCheckResult] = useState<晋级检查结果 | null>(null);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   useEffect(() => {
     async function init() {
@@ -107,7 +109,7 @@ export default function PromotionStatusPage() {
 
   async function handleApply() {
     if (!rule || !nextLevel) return;
-    if (!confirm(`申请晋级：${currentLevel?.name} → ${nextLevel.name}`)) return;
+    if (!(await 请求确认(`申请晋级：${currentLevel?.name} → ${nextLevel.name}`))) return;
 
     setApplying(true);
     try {
@@ -240,6 +242,7 @@ export default function PromotionStatusPage() {
           </div>
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }

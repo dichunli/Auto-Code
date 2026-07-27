@@ -3,6 +3,7 @@
 import {useState, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 export function MergeButton({ id, name, allNames }: { id: string; name: string; allNames: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -10,6 +11,7 @@ export function MergeButton({ id, name, allNames }: { id: string; name: string; 
   const [open, setOpen] = useState(false);
   const [targetId, setTargetId] = useState("");
   const [merging, setMerging] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const candidates = allNames.filter((n) => n.id !== id);
 
@@ -19,7 +21,7 @@ export function MergeButton({ id, name, allNames }: { id: string; name: string; 
       return;
     }
     const targetName = candidates.find((n) => n.id === targetId)?.name;
-    if (!confirm(`确定要将「${name}」合并到「${targetName}」吗？合并后「${name}」将被删除，所有关联数据将转移到「${targetName}」。`)) {
+    if (!(await 请求确认(`确定要将「${name}」合并到「${targetName}」吗？合并后「${name}」将被删除，所有关联数据将转移到「${targetName}」。`))) {
       return;
     }
     setMerging(true);
@@ -134,6 +136,7 @@ export function MergeButton({ id, name, allNames }: { id: string; name: string; 
           </div>
         </div>
       )}
+      {确认弹窗}
     </>
   );
 }

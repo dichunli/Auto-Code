@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 function CommissionField({
   label,
@@ -55,6 +56,7 @@ export default function EditServiceCategoryPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const [form, setForm] = useState({
     name: "",
@@ -137,7 +139,7 @@ export default function EditServiceCategoryPage() {
   }
 
   async function handleSync() {
-    if (!confirm("确定要将当前分类的提成规则同步到所有使用该分类的项目名称和项目实例吗？此操作会覆盖这些记录的现有提成设置。")) return;
+    if (!(await 请求确认("确定要将当前分类的提成规则同步到所有使用该分类的项目名称和项目实例吗？此操作会覆盖这些记录的现有提成设置。"))) return;
     setSyncing(true);
 
     /* service_names 和 service_items 表目前只有这4种提成字段 */
@@ -270,6 +272,8 @@ export default function EditServiceCategoryPage() {
           </button>
         </div>
       </form>
+
+      {确认弹窗}
     </div>
   );
 }

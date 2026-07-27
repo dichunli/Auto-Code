@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 import DeleteButton from "./DeleteButton";
 
 interface 课程分类 {
@@ -116,6 +117,7 @@ export default function TrainingCategoriesContent({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const [form, setForm] = useState({
     name: "",
@@ -229,7 +231,7 @@ export default function TrainingCategoriesContent({
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`确定要删除分类「${name}」吗？`)) return;
+    if (!(await 请求确认(`确定要删除分类「${name}」吗？`))) return;
     await 确保有session();
 
     /* 检查是否有子分类 */
@@ -385,6 +387,7 @@ export default function TrainingCategoriesContent({
           </table>
         </div>
       </div>
+      {确认弹窗}
     </div>
   );
 }

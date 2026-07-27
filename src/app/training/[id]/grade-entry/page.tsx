@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 考题 {
   id: string;
@@ -41,6 +42,7 @@ export default function GradeEntryPage() {
   const [answers, setAnswers] = useState<Record<string, 答题记录>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   useEffect(() => {
     async function init() {
@@ -201,7 +203,7 @@ export default function GradeEntryPage() {
     /* 检查是否全部录入 */
     const unanswered = questions.filter((q) => !answers[q.id]?.score.trim());
     if (unanswered.length > 0) {
-      if (!confirm(`还有 ${unanswered.length} 道题未录入得分，确定提交吗？`)) return;
+      if (!(await 请求确认(`还有 ${unanswered.length} 道题未录入得分，确定提交吗？`))) return;
     }
 
     setSubmitting(true);
@@ -446,6 +448,7 @@ export default function GradeEntryPage() {
           </div>
         )}
       </div>
+      {确认弹窗}
     </div>
   );
 }
