@@ -5,6 +5,13 @@ import RequirementTitle from "./RequirementTitle";
 import RequirementActions from "./RequirementActions";
 import AddRequirementItemsButton from "./AddRequirementItemsButton";
 import AssignmentBadge from "./AssignmentBadge";
+import LiveItemsList from "./LiveItemsList";
+
+interface 组信息 {
+  id: string;
+  name: string;
+  members: unknown[];
+}
 
 interface 新需求 {
   id: string;
@@ -25,6 +32,11 @@ interface Props {
   profiles: { id: string; full_name: string }[];
   /* 服务端渲染的现有需求 id 列表：整页刷新后用于清理已入库的追加卡片，防止重复显示 */
   已有需求IDs: string[];
+  /* 以下 4 项用于追加需求卡片里的 LiveItemsList（添加项目后立即显示，不整页刷新） */
+  mechanicGroups: 组信息[];
+  vehicleVin?: string;
+  suppliers?: unknown[];
+  logisticsCompanies?: unknown[];
   children: ReactNode;
 }
 
@@ -38,6 +50,10 @@ export default function LiveRequirementsList({
   实际锁定,
   profiles,
   已有需求IDs,
+  mechanicGroups,
+  vehicleVin,
+  suppliers = [],
+  logisticsCompanies = [],
   children,
 }: Props) {
   const [追加需求, 设置追加需求] = useState<{ req: 新需求; media: 新媒体[] }[]>([]);
@@ -107,7 +123,25 @@ export default function LiveRequirementsList({
             )}
           </div>
           <div className="px-4 py-3 md:px-6 md:py-4">
-            <p className="text-sm text-gray-400">暂无项目，点右上角&quot;+项目&quot;添加</p>
+            {/* 追加需求也要挂 LiveItemsList：否则"+项目"添加成功后没人接收事件，
+             * 界面一直显示"暂无项目"，用户误以为没添加成功，重复添加被"已存在"拦截 */}
+            <LiveItemsList
+              reqId={req.id}
+              需求序号={初始需求数 + idx + 1}
+              初始项目数={0}
+              已有项目IDs={[]}
+              orderId={orderId}
+              实际锁定={实际锁定}
+              profiles={profiles}
+              mechanicGroups={mechanicGroups}
+              vehicleModelId={vehicleModelId}
+              vehicleVin={vehicleVin}
+              suppliers={suppliers}
+              logisticsCompanies={logisticsCompanies}
+              emptyFallback={
+                <p className="text-sm text-gray-400">暂无项目，点右上角&quot;+项目&quot;添加</p>
+              }
+            />
           </div>
         </div>
       ))}

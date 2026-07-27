@@ -517,6 +517,10 @@ export default async function WorkOrderDetailPage({
               实际锁定={实际锁定}
               profiles={profiles || []}
               已有需求IDs={(requirements || []).map((r: { id: string }) => r.id)}
+              mechanicGroups={(mechanicGroups || []).map((g: { id: string; name: string; mechanic_group_members?: unknown[] }) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
+              vehicleVin={vehicleVin}
+              suppliers={suppliers || []}
+              logisticsCompanies={logisticsCompanies || []}
             >
               {requirements?.map((req: { id: string; seq: number; submitted_by?: string; assigned_to_profile?: { full_name?: string } | null; assignment_type?: string; notes?: string }, reqIdx: number) => {
                 /* 显示用序号：按当前列表位置，删中间需求后自动重排（需求1/2/3…） */
