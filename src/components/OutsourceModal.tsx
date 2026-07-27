@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "./ConfirmDialog";
 
 interface Supplier {
   id: string;
@@ -78,6 +79,7 @@ export function OutsourceModal({
 
   const [loading, setLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   // 初始化表单
   useEffect(() => {
@@ -195,7 +197,7 @@ export function OutsourceModal({
         (existingOrder.outsource_order_items?.length || 0) -
         (existingItem ? 1 : 0);
       if (otherItemsCount > 0) {
-        const confirmed = confirm(
+        const confirmed = await 请求确认(
           `当前外包单下还有 ${otherItemsCount} 个其他项目，更换供应商将影响所有项目。确定继续吗？`
         );
         if (!confirmed) return;
@@ -343,7 +345,7 @@ export function OutsourceModal({
     const msg = willDeleteOrder
       ? "本项目是外包单中最后一项，移除后将同时删除外包单和相关财务记录。确定吗？"
       : `确定将本项目从外包单中移除吗？`;
-    if (!confirm(msg)) return;
+    if (!(await 请求确认(msg))) return;
 
     setCancelLoading(true);
     try {
@@ -609,6 +611,7 @@ export function OutsourceModal({
             </button>
           </div>
         </div>
+        {确认弹窗}
       </div>
     </div>
   );

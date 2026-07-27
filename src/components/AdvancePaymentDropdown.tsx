@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
+import { useConfirm } from "./ConfirmDialog";
 
 interface PaymentMethod {
   code: string;
@@ -37,6 +38,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [collectorName, setCollectorName] = useState("");
   const [loading, setLoading] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [refundingId, setRefundingId] = useState<string | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundMethod, setRefundMethod] = useState("");
@@ -96,7 +98,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
       alert(`最多可退 ${formatCurrency(maxRefund)}`);
       return;
     }
-    if (!confirm(`确认退款 ${formatCurrency(val)}？`)) return;
+    if (!(await 请求确认(`确认退款 ${formatCurrency(val)}？`))) return;
 
     setLoading(true);
 
@@ -370,6 +372,7 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
           )}
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }

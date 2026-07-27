@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
+import { useConfirm } from "./ConfirmDialog";
 
 interface MediaItem {
   id?: string;
@@ -53,6 +54,7 @@ interface Props {
 
 export default function RequirementBatchModal({ open, onClose, orderId, requirement, initialMedia = [], profiles = [], 项目数 = 0 }: Props) {
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const isEdit = !!requirement;
 
   const [description, setDescription] = useState("");
@@ -478,7 +480,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                       const val = e.target.value;
                       if (!val) return;
                       const name = profiles.find((p) => p.id === val)?.full_name || "";
-                      if (!confirm(`确定指派给 ${name} 吗？`)) {
+                      if (!(await 请求确认(`确定指派给 ${name} 吗？`))) {
                         e.target.value = "";
                         return;
                       }
@@ -552,7 +554,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                   <button
                     type="button"
                     onClick={async () => {
-                      if (!confirm("确定取消指派吗？")) return;
+                      if (!(await 请求确认("确定取消指派吗？"))) return;
                       const { error } = await supabase
                         .from("work_order_requirements")
                         .update({
@@ -606,7 +608,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                     setSaving(false);
                     return;
                   }
-                  if (!confirm("确定要删除这条需求吗？关联的媒体文件也会被删除。")) {
+                  if (!(await 请求确认("确定要删除这条需求吗？关联的媒体文件也会被删除。"))) {
                     setSaving(false);
                     return;
                   }
@@ -652,6 +654,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
             </button>
           </div>
         </div>
+        {确认弹窗}
       </div>
     </div>
   );

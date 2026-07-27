@@ -8,6 +8,7 @@ import { PartPickerModal } from "./PartPickerModal";
 import { ImageViewer } from "./ImageViewer";
 import { useUpload } from "@/hooks/useUpload";
 import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localEditSignal";
+import { useConfirm } from "./ConfirmDialog";
 
 interface PartBranch {
   id: string;
@@ -55,6 +56,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   const supabase = createClient();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileId = `part-group-img-${useId()}`;
 
@@ -246,7 +248,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   }
 
   async function handleDeleteGroup() {
-    if (!confirm(`确定删除配件「${name}」及其所有分支吗？`)) return;
+    if (!(await 请求确认(`确定删除配件「${name}」及其所有分支吗？`))) return;
     setSaving(true);
     const ids = parts.map((p) => p.id).filter(Boolean);
     const { error } = await supabase.from("work_order_item_parts").delete().in("id", ids);
@@ -854,6 +856,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
           onDelete={!isLocked ? removeImage : undefined}
         />
       )}
+      {确认弹窗}
     </>
   );
 }
