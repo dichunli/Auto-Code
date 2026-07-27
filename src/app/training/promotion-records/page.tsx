@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 晋级记录 {
   id: string;
@@ -27,6 +28,7 @@ export default function PromotionRecordsPage() {
   const [records, setRecords] = useState<晋级记录[]>([]);
   const [loading, setLoading] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function fetchData() {
     setLoading(true);
@@ -89,7 +91,7 @@ export default function PromotionRecordsPage() {
       alert("目标等级不存在");
       return;
     }
-    if (!confirm("确定批准该晋级申请吗？批准后员工等级将更新。")) return;
+    if (!(await 请求确认("确定批准该晋级申请吗？批准后员工等级将更新。"))) return;
 
     setProcessingId(record.id);
     try {
@@ -240,6 +242,7 @@ export default function PromotionRecordsPage() {
           ))}
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }

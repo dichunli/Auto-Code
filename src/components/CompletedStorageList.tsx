@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PriceValue } from "@/components/PriceVisibilityContext";
+import { useConfirm } from "./ConfirmDialog";
 
 interface PurchaseOrderItem {
   id: string;
@@ -47,6 +48,7 @@ interface PurchaseOrder {
 
 export function CompletedStorageList() {
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -138,7 +140,7 @@ export function CompletedStorageList() {
         parts.length > 0
           ? `该采购单已生成 ${parts.join(" 和 ")}，撤销将同时删除这些数据并回退库存，是否继续？`
           : "确认退回待收货？这将清空所有处理结果。";
-      if (!confirm(msg)) {
+      if (!(await 请求确认(msg))) {
         setSubmitting(null);
         return;
       }
@@ -378,6 +380,8 @@ export function CompletedStorageList() {
           </div>
         </div>
       ))}
+
+      {确认弹窗}
     </div>
   );
 }

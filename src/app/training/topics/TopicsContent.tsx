@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 专题 {
   id: string;
@@ -22,6 +23,7 @@ export default function TopicsContent({
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const [form, setForm] = useState({ name: "", is_active: true });
 
@@ -107,7 +109,7 @@ export default function TopicsContent({
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`确定要删除专题「${name}」吗？`)) return;
+    if (!(await 请求确认(`确定要删除专题「${name}」吗？`))) return;
 
     await 确保有session();
     /* 先删除关联 */
@@ -237,6 +239,7 @@ export default function TopicsContent({
           </table>
         </div>
       </div>
+      {确认弹窗}
     </div>
   );
 }

@@ -2,15 +2,17 @@
 
 import { useState, useMemo } from "react";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { 批量生成全部文章向量 } from "@/app/knowledge/actions";
 
 export default function EmbeddingsPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ 已处理: number; 已跳过: number; error?: string } | null>(null);
   const [log, setLog] = useState<string[]>([]);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleGenerate() {
-    if (!confirm("将为所有没有向量的文章生成语义向量，可能需要几秒到几分钟。确定继续？")) return;
+    if (!(await 请求确认("将为所有没有向量的文章生成语义向量，可能需要几秒到几分钟。确定继续？"))) return;
 
     setLoading(true);
     setResult(null);
@@ -67,6 +69,8 @@ export default function EmbeddingsPage() {
           </div>
         )}
       </div>
+
+      {确认弹窗}
     </div>
   );
 }

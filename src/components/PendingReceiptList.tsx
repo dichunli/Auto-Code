@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { ImageUploader } from "@/components/ImageUploader";
+import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 
 interface PurchaseOrderItem {
@@ -96,6 +97,7 @@ function resolveImageUrl(path: string): string {
 
 export function PendingReceiptList() {
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -351,11 +353,11 @@ export function PendingReceiptList() {
       } else {
         /* 不需要了 */
         if (shortEvidence.length === 0) {
-          if (!confirm("少发弃货建议上传聊天截图作为凭证,确定不上传吗?")) return;
+          if (!(await 请求确认("少发弃货建议上传聊天截图作为凭证,确定不上传吗?"))) return;
         }
         if (qty === 0) {
           /* 完全没到 → 删除采购明细和工单配件 */
-          if (!confirm("确认删除该配件?这会同时清除采购流程和工单中的记录。")) return;
+          if (!(await 请求确认("确认删除该配件?这会同时清除采购流程和工单中的记录。"))) return;
           setSubmitting(`item-${receiveItem.id}`);
           try {
             /* 删除采购单明细 */
@@ -486,7 +488,7 @@ export function PendingReceiptList() {
   /* ------------------ 撤销收货 ------------------ */
 
   async function handleRevokeItem(order: PurchaseOrder, item: PurchaseOrderItem) {
-    if (!confirm("确认撤销该配件的收货处理?")) return;
+    if (!(await 请求确认("确认撤销该配件的收货处理?"))) return;
     setSubmitting(`revoke-${item.id}`);
     try {
       /* 1. 清空明细处理结果 */
@@ -2182,6 +2184,8 @@ export function PendingReceiptList() {
           </div>
         </div>
       )}
+
+      {确认弹窗}
     </div>
   );
 }

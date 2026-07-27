@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 考题 {
   id: string;
@@ -31,6 +32,7 @@ export default function ExamPage() {
   const [assignment, setAssignment] = useState<分配记录 | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   /* 答题状态 */
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -139,7 +141,7 @@ export default function ExamPage() {
     /* 检查是否全部作答 */
     const unanswered = questions.filter((q) => !answers[q.id]?.trim());
     if (unanswered.length > 0) {
-      if (!confirm(`还有 ${unanswered.length} 道题未作答，确定提交吗？`)) return;
+      if (!(await 请求确认(`还有 ${unanswered.length} 道题未作答，确定提交吗？`))) return;
     }
 
     if (!assignment) return;
@@ -384,6 +386,7 @@ export default function ExamPage() {
           </button>
         </div>
       </div>
+      {确认弹窗}
     </div>
   );
 }

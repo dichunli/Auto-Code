@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { ImageUploader } from "@/components/ImageUploader";
 
@@ -121,6 +122,7 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
   const [editingWaybill, setEditingWaybill] = useState<Waybill | null>(null);
   const phoneLookupLock = useRef(false);
   const 首次挂载 = useRef(true);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   /* Tab切换和筛选变化时重新加载（跳过首次挂载，数据已从服务端预加载） */
   useEffect(() => {
@@ -278,7 +280,7 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
       alert(`该物流公司已被 ${count} 个运单引用，无法删除。`);
       return;
     }
-    if (!confirm(`确定删除物流公司「${company.name}」吗？`)) return;
+    if (!(await 请求确认(`确定删除物流公司「${company.name}」吗？`))) return;
 
     const { error } = await supabase.from("logistics_companies").delete().eq("id", company.id);
     if (error) {
@@ -290,7 +292,7 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
   }
 
   async function handleDeleteWaybill(w: Waybill) {
-    if (!confirm(`确定删除运单「${w.tracking_no}」吗？`)) return;
+    if (!(await 请求确认(`确定删除运单「${w.tracking_no}」吗？`))) return;
     const { error } = await supabase.from("logistics_waybills").delete().eq("id", w.id);
     if (error) {
       alert("删除失败: " + error.message);
@@ -1348,6 +1350,8 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
           }}
         />
       )}
+
+      {确认弹窗}
     </div>
   );
 }

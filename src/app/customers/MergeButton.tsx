@@ -3,6 +3,7 @@
 import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CustomerSearchDropdown, Customer } from "@/components/CustomerSearchDropdown";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 export function MergeButton() {
   const supabase = useMemo(() => createClient(), []);
@@ -11,6 +12,7 @@ export function MergeButton() {
   const [targetCustomer, setTargetCustomer] = useState<Customer | null>(null);
   const [mergedName, setMergedName] = useState("");
   const [merging, setMerging] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   function handleOpen() {
     setOpen(true);
@@ -31,7 +33,7 @@ export function MergeButton() {
 
     const keepName = mergedName.trim() || targetCustomer.name;
     const confirmMsg = `确定要合并吗？\n\n被合并：${sourceCustomer.name}（${sourceCustomer.phone}）\n保留为：${keepName}（${targetCustomer.phone}）\n\n合并后「${sourceCustomer.name}」将被删除，所有数据归属到保留客户。`;
-    if (!confirm(confirmMsg)) return;
+    if (!(await 请求确认(confirmMsg))) return;
 
     setMerging(true);
 
@@ -190,6 +192,7 @@ export function MergeButton() {
           </div>
         </div>
       )}
+      {确认弹窗}
     </>
   );
 }

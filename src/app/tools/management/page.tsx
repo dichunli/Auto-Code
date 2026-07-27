@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 import ToolQrCode from "./components/ToolQrCode";
 import ToolScanButton from "./components/ToolScanButton";
 import ToolBorrowReturnModal from "./components/ToolBorrowReturnModal";
@@ -67,6 +68,7 @@ export default function ToolManagementPage() {
   const [选中工具, set选中工具] = useState<工具 | null>(null);
   const [显示移动端搜索, set显示移动端搜索] = useState(false);
   const 搜索定时器 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const 加载数据 = useCallback(async () => {
     set加载中(true);
@@ -176,7 +178,7 @@ export default function ToolManagementPage() {
   const 当前页数据 = 工具列表.slice((安全页码 - 1) * 每页条数, 安全页码 * 每页条数);
 
   async function 删除工具(id: string, name: string) {
-    if (!confirm(`确定删除工具「${name}」吗？删除后不可恢复。`)) return;
+    if (!(await 请求确认(`确定删除工具「${name}」吗？删除后不可恢复。`))) return;
     set删除中(id);
     try {
       const { error } = await supabase.from("tools").delete().eq("id", id);
@@ -663,6 +665,8 @@ export default function ToolManagementPage() {
         }}
         onSuccess={加载数据}
       />
+
+      {确认弹窗}
     </div>
   );
 }

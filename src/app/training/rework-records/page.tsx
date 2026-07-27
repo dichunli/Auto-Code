@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 员工 {
   id: string;
@@ -25,6 +26,7 @@ export default function ReworkRecordsPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   /* 表单 */
   const [form, setForm] = useState({
@@ -121,7 +123,7 @@ export default function ReworkRecordsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("确定删除这条返工记录吗？")) return;
+    if (!(await 请求确认("确定删除这条返工记录吗？"))) return;
     const { error } = await supabase.from("rework_records").delete().eq("id", id);
     if (error) {
       alert("删除失败: " + error.message);
@@ -251,6 +253,7 @@ export default function ReworkRecordsPage() {
           </div>
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }

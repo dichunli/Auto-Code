@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 分类 {
   id: string;
@@ -20,6 +21,7 @@ export default function KnowledgeCategoriesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formName, setFormName] = useState("");
   const [formSort, setFormSort] = useState("0");
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function loadCategories() {
     const { data } = await supabase
@@ -98,7 +100,7 @@ export default function KnowledgeCategoriesPage() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`确定要删除分类「${name}」吗？`)) return;
+    if (!(await 请求确认(`确定要删除分类「${name}」吗？`))) return;
 
     try {
       const { error } = await supabase
@@ -239,6 +241,8 @@ export default function KnowledgeCategoriesPage() {
           </button>
         )}
       </div>
+
+      {确认弹窗}
     </div>
   );
 }

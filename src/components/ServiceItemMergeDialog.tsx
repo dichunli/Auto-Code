@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "./ConfirmDialog";
 
 interface Props {
   open: boolean;
@@ -12,6 +13,7 @@ interface Props {
 
 export default function ServiceItemMergeDialog({ open, selectedItems, onClose, onSuccess }: Props) {
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [targetId, setTargetId] = useState<string>("");
   const [finalName, setFinalName] = useState("");
   const [mergeStrategy, setMergeStrategy] = useState<"keep_target" | "override">("keep_target");
@@ -103,7 +105,7 @@ export default function ServiceItemMergeDialog({ open, selectedItems, onClose, o
 
     const strategyText = mergeStrategy === "keep_target" ? "保留主项目价格" : "用被合并项目价格覆盖";
     const confirmMsg = `确定要将${otherNames}合并到「${target.name}」吗？\n\n合并后名称为：${finalName.trim()}\n价格冲突策略：${strategyText}\n\n所有关联数据将转移到保留项目，其他项目将被删除。`;
-    if (!confirm(confirmMsg)) return;
+    if (!(await 请求确认(confirmMsg))) return;
 
     setMerging(true);
 
@@ -377,6 +379,8 @@ export default function ServiceItemMergeDialog({ open, selectedItems, onClose, o
           </button>
         </div>
       </div>
+
+      {确认弹窗}
     </div>
   );
 }

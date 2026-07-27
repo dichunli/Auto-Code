@@ -3,6 +3,7 @@
 import {useState, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 提醒 {
   id: string;
@@ -21,6 +22,7 @@ export function ReminderActions({ reminder }: { reminder: 提醒 }) {
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
   const [notes, setNotes] = useState(reminder.notes || "");
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function markNotified() {
     setLoading(true);
@@ -63,7 +65,7 @@ export function ReminderActions({ reminder }: { reminder: 提醒 }) {
   }
 
   async function cancelReminder() {
-    if (!confirm("确定取消此提醒吗？")) return;
+    if (!(await 请求确认("确定取消此提醒吗？"))) return;
     setLoading(true);
     const { error } = await supabase
       .from("maintenance_reminders")
@@ -132,6 +134,7 @@ export function ReminderActions({ reminder }: { reminder: 提醒 }) {
           取消提醒
         </button>
       </div>
+      {确认弹窗}
     </div>
   );
 }

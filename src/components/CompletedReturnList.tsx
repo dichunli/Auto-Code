@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "./ConfirmDialog";
 
 const returnReasonMap: Record<string, string> = {
   wrong_ship: "错发",
@@ -34,6 +35,7 @@ interface ReturnRecord {
 
 export function CompletedReturnList() {
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [records, setRecords] = useState<ReturnRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -64,7 +66,7 @@ export function CompletedReturnList() {
   }, []);
 
   async function handleRevoke(id: string) {
-    if (!confirm("确认将该退货记录退回待退货状态?")) return;
+    if (!(await 请求确认("确认将该退货记录退回待退货状态?"))) return;
     setSubmitting(`revoke-${id}`);
     try {
       /* 1. 查询关联的采退单 */
@@ -77,7 +79,7 @@ export function CompletedReturnList() {
       const returnOrderId = record?.return_order_id;
 
       if (returnOrderId) {
-        if (!confirm("该退货记录已关联采退单，撤销将同时删除采退单及关联财务记录，是否继续？")) {
+        if (!(await 请求确认("该退货记录已关联采退单，撤销将同时删除采退单及关联财务记录，是否继续？"))) {
           setSubmitting(null);
           return;
         }
@@ -223,6 +225,8 @@ export function CompletedReturnList() {
           </tbody>
         </table>
       </div>
+
+      {确认弹窗}
     </div>
   );
 }

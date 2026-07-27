@@ -3,6 +3,7 @@
 import {useState, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ConfirmDialog";
 import Link from "next/link";
 
 interface Appointment {
@@ -22,6 +23,7 @@ export function AppointmentActions({ appointment }: { appointment: Appointment }
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function updateStatus(status: string) {
     setLoading(true);
@@ -139,8 +141,8 @@ export function AppointmentActions({ appointment }: { appointment: Appointment }
             标记已到店
           </button>
           <button
-            onClick={() => {
-              if (confirm("确定标记为爽约吗？")) updateStatus("no_show");
+            onClick={async () => {
+              if (await 请求确认("确定标记为爽约吗？")) updateStatus("no_show");
             }}
             disabled={loading}
             className="w-full py-2.5 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50"
@@ -148,8 +150,8 @@ export function AppointmentActions({ appointment }: { appointment: Appointment }
             标记爽约
           </button>
           <button
-            onClick={() => {
-              if (confirm("确定取消此预约吗？")) updateStatus("cancelled");
+            onClick={async () => {
+              if (await 请求确认("确定取消此预约吗？")) updateStatus("cancelled");
             }}
             disabled={loading}
             className="w-full py-2.5 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
@@ -180,6 +182,8 @@ export function AppointmentActions({ appointment }: { appointment: Appointment }
           ← 返回预约列表
         </Link>
       </div>
+
+      {确认弹窗}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { 获取收支分类列表, 删除收支分类, 更新收支分类排序 } from "./actions";
 
 interface 分类 {
@@ -123,6 +124,7 @@ export default function OtherCategoriesContent({ 初始数据 }: OtherCategories
   const [categories, setCategories] = useState<分类[]>(初始数据);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function 刷新列表() {
     const res = await 获取收支分类列表();
@@ -132,7 +134,7 @@ export default function OtherCategoriesContent({ 初始数据 }: OtherCategories
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("确定删除这个分类？")) return;
+    if (!(await 请求确认("确定删除这个分类？"))) return;
 
     setDeletingId(id);
     const res = await 删除收支分类(id);
@@ -204,6 +206,7 @@ export default function OtherCategoriesContent({ 初始数据 }: OtherCategories
           deletingId={deletingId}
         />
       </div>
+      {确认弹窗}
     </div>
   );
 }

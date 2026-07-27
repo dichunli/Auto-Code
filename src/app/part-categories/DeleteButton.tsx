@@ -2,13 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 export function DeleteButton({ id, name }: { id: string; name: string }) {
   const router = useRouter();
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete() {
-    if (!confirm(`确定要删除分类「${name}」吗？`)) return;
+    if (!(await 请求确认(`确定要删除分类「${name}」吗？`))) return;
     const { error } = await supabase.from("part_categories").delete().eq("id", id);
     if (error) {
       alert("删除失败: " + error.message);
@@ -18,11 +20,14 @@ export function DeleteButton({ id, name }: { id: string; name: string }) {
   }
 
   return (
-    <button
-      onClick={handleDelete}
-      className="text-sm text-red-600 hover:text-red-700 font-medium"
-    >
-      删除
-    </button>
+    <>
+      <button
+        onClick={handleDelete}
+        className="text-sm text-red-600 hover:text-red-700 font-medium"
+      >
+        删除
+      </button>
+      {确认弹窗}
+    </>
   );
 }

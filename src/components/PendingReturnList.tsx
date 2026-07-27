@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
+import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 
 const returnReasonMap: Record<string, string> = {
@@ -42,6 +43,7 @@ interface ReturnRecord {
 
 export function PendingReturnList() {
   const supabase = createClient();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [records, setRecords] = useState<ReturnRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -167,7 +169,7 @@ export function PendingReturnList() {
   }, []);
 
   async function handleComplete(id: string) {
-    if (!confirm("确认标记为已完成？")) return;
+    if (!(await 请求确认("确认标记为已完成？"))) return;
     const { error } = await supabase
       .from("supplier_return_records")
       .update({ status: "completed" })
@@ -227,7 +229,7 @@ export function PendingReturnList() {
       const msg = inboundNos
         ? `这些退货记录关联的入库单 ${inboundNos} 也将被撤销，是否继续？`
         : `确认撤销选中的 ${selectedIds.size} 条退货记录？`;
-      if (!confirm(msg)) {
+      if (!(await 请求确认(msg))) {
         setSubmitting(null);
         return;
       }
@@ -1170,6 +1172,8 @@ export function PendingReturnList() {
           </div>
         </div>
       )}
+
+      {确认弹窗}
     </div>
   );
 }

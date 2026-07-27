@@ -3,14 +3,16 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient, 确保有session } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 export default function DeleteButton({ id, name }: { id: string; name: string }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [deleting, setDeleting] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete() {
-    if (!confirm(`确定要删除分类「${name}」吗？`)) return;
+    if (!(await 请求确认(`确定要删除分类「${name}」吗？`))) return;
     setDeleting(true);
     await 确保有session();
 
@@ -43,13 +45,16 @@ export default function DeleteButton({ id, name }: { id: string; name: string })
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleDelete}
-      disabled={deleting}
-      className="text-xs text-red-600 hover:text-red-800 hover:underline disabled:opacity-50"
-    >
-      {deleting ? "删除中..." : "删除"}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={handleDelete}
+        disabled={deleting}
+        className="text-xs text-red-600 hover:text-red-800 hover:underline disabled:opacity-50"
+      >
+        {deleting ? "删除中..." : "删除"}
+      </button>
+      {确认弹窗}
+    </>
   );
 }

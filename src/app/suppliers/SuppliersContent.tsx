@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 import Link from "next/link";
 
 interface Supplier {
@@ -39,6 +40,7 @@ export default function SuppliersContent({ initialSuppliers }: { initialSupplier
   const [loading, setLoading] = useState(false);
   const debouncedQuery = useDebounce(query, 300);
   const mounted = useRef(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function loadSuppliers(search?: string, region?: string) {
     const { data: { session } } = await supabase.auth.getSession();
@@ -87,7 +89,7 @@ export default function SuppliersContent({ initialSuppliers }: { initialSupplier
       alert("该供应商有关联的配件信息，无法删除");
       return;
     }
-    if (!confirm(`确定删除供应商「${name}」吗？`)) return;
+    if (!(await 请求确认(`确定删除供应商「${name}」吗？`))) return;
 
     const { error } = await supabase.from("suppliers").delete().eq("id", id);
     if (error) {
@@ -210,6 +212,8 @@ export default function SuppliersContent({ initialSuppliers }: { initialSupplier
           </table>
         </div>
       </div>
+
+      {确认弹窗}
     </div>
   );
 }

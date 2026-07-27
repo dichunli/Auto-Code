@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface LinkedItem {
   id: string;
@@ -100,6 +101,7 @@ export default function EditServiceNamePage() {
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   useEffect(() => {
     async function load() {
@@ -245,7 +247,7 @@ export default function EditServiceNamePage() {
   }
 
   async function handleSyncCommission() {
-    if (!confirm("确定要把当前名称库的提成设置同步到所有关联的维修项目中吗？此操作会覆盖这些维修项目现有的提成设置。")) return;
+    if (!(await 请求确认("确定要把当前名称库的提成设置同步到所有关联的维修项目中吗？此操作会覆盖这些维修项目现有的提成设置。"))) return;
 
     setSyncing(true);
     try {
@@ -541,6 +543,8 @@ export default function EditServiceNamePage() {
           </button>
         </div>
       </form>
+
+      {确认弹窗}
     </div>
   );
 }

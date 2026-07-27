@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
+import { useConfirm } from "@/components/ConfirmDialog";
 import {
   获取仓库列表,
   删除仓库,
@@ -59,6 +60,7 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
 
   const [editingLoc, setEditingLoc] = useState<string | null>(null);
   const [editLocName, setEditLocName] = useState("");
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function 刷新仓库列表() {
     const res = await 获取仓库列表();
@@ -68,7 +70,7 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("确定删除该仓库？关联的库存分布将一并清除。")) return;
+    if (!(await 请求确认("确定删除该仓库？关联的库存分布将一并清除。"))) return;
     const res = await 删除仓库(id);
     if (!res.success) {
       alert(res.error || "删除失败");
@@ -166,7 +168,7 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
   }
 
   async function deleteLocation(id: string) {
-    if (!confirm("确定删除该仓位？")) return;
+    if (!(await 请求确认("确定删除该仓位？"))) return;
     const res = await 删除仓位(id);
     if (!res.success) {
       alert(res.error || "删除失败");
@@ -628,6 +630,8 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
           }
         }
       `}</style>
+
+      {确认弹窗}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useConfirm } from "@/components/ConfirmDialog";
 import {
   创建收款方式,
   更新收款方式,
@@ -33,6 +34,7 @@ export default function PaymentMethodsContent({ 初始数据 }: PaymentMethodsCo
   const [editName, setEditName] = useState("");
   const [editSort, setEditSort] = useState(0);
   const [editActive, setEditActive] = useState(true);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function 刷新列表() {
     const res = await 获取收款方式列表();
@@ -91,7 +93,7 @@ export default function PaymentMethodsContent({ 初始数据 }: PaymentMethodsCo
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`确定删除「${name}」吗？`)) return;
+    if (!(await 请求确认(`确定删除「${name}」吗？`))) return;
     const res = await 删除收款方式(id);
     if (!res.success) {
       alert(res.error || "删除失败");
@@ -293,6 +295,7 @@ export default function PaymentMethodsContent({ 初始数据 }: PaymentMethodsCo
           </table>
         </div>
       </div>
+      {确认弹窗}
     </div>
   );
 }

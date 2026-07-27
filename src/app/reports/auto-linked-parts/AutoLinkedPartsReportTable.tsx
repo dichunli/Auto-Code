@@ -3,6 +3,7 @@
 import {useState, useMemo} from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface AutoLinkedRow {
   id: string;
@@ -50,6 +51,7 @@ export default function AutoLinkedPartsReportTable({ rows: initialRows }: { rows
   const [savingId, setSavingId] = useState<string | null>(null);
   const [vehicleSearch, setVehicleSearch] = useState("");
   const [partSearch, setPartSearch] = useState("");
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   // 过滤数据
   const filteredRows = rows.filter((row) => {
@@ -78,7 +80,7 @@ export default function AutoLinkedPartsReportTable({ rows: initialRows }: { rows
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("确认删除该自动关联记录？删除后需要手动重新关联。")) {
+    if (!(await 请求确认("确认删除该自动关联记录？删除后需要手动重新关联。"))) {
       return;
     }
     setDeletingId(id);
@@ -216,6 +218,7 @@ export default function AutoLinkedPartsReportTable({ rows: initialRows }: { rows
         </tbody>
       </table>
     </div>
+    {确认弹窗}
     </div>
   );
 }

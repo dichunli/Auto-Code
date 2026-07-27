@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 interface 行为项目 {
   id: string;
@@ -42,6 +43,7 @@ export default function BehaviorTasksPage() {
   const [editingTask, setEditingTask] = useState<考核任务 | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const [form, setForm] = useState({
     name: "",
@@ -167,7 +169,7 @@ export default function BehaviorTasksPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("确定删除这条考核任务吗？")) return;
+    if (!(await 请求确认("确定删除这条考核任务吗？"))) return;
     const { error } = await supabase.from("behavior_check_tasks").delete().eq("id", id);
     if (error) {
       alert("删除失败: " + error.message);
@@ -437,6 +439,7 @@ export default function BehaviorTasksPage() {
           </div>
         </div>
       )}
+      {确认弹窗}
     </div>
   );
 }
