@@ -27,12 +27,20 @@ const mockInsert = vi.fn(() => {
   };
 });
 
-/* select 链：新增模式会先查最大 seq */
+/* 删除前会实时查库数项目，用这个变量控制模拟结果 */
+ 
+let 模拟项目数 = 0;
+
+/* select 链：新增模式会先查最大 seq（.eq().order().limit()），
+ * 删除前会实时数项目（.eq() 直接 await），两种用法都支持 */
 const mockSelect = vi.fn(() => ({
   eq: () => ({
     order: () => ({
       limit: () => Promise.resolve({ data: [{ seq: 0 }], error: null }),
     }),
+    /* 让 eq 的结果可直接 await（删除前数项目），返回模拟的项目数 */
+    then: (resolve: (v: { count: number; error: null }) => void) =>
+      resolve({ count: 模拟项目数, error: null }),
   }),
 }));
 
@@ -89,6 +97,7 @@ vi.mock("@/components/VideoUploader", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   调用顺序.length = 0;
+  模拟项目数 = 0;
   /* jsdom 未实现 alert，mock 掉避免噪音 */
   vi.spyOn(window, "alert").mockImplementation(() => {});
 });
@@ -140,8 +149,9 @@ describe("RequirementBatchModal - 保存逻辑", () => {
 describe("RequirementBatchModal - 删除防误删保护", () => {
   const 编辑用需求 = { id: "req-1", seq: 1, description: "刹车异响" };
 
-  it("需求下有项目（项目数>0）→ 点删除弹出提示，且不删库", async () => {
+  it("删除前实时查库：需求下有项目 → 点删除弹出提示，且不删库", async () => {
     const alert提示 = vi.spyOn(window, "alert").mockImplementation(() => {});
+    模拟项目数 = 2;
     const user = userEvent.setup();
     render(
       <RequirementBatchModal
@@ -163,9 +173,10 @@ describe("RequirementBatchModal - 删除防误删保护", () => {
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
-  it("需求下无项目（项目数=0）→ 可删除，广播 wo-requirement-deleted 局部移除", async () => {
+  it("删除前实时查库：需求下无项目 → 可删除，广播 wo-requirement-deleted 局部移除", async () => {
     /* 删除会弹 confirm，mock 成确认 */
     vi.spyOn(window, "confirm").mockReturnValue(true);
+    模拟项目数 = 0;
     const 事件监听 = vi.fn();
     window.addEventListener("wo-requirement-deleted", 事件监听);
     const user = userEvent.setup();

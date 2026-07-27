@@ -23,6 +23,22 @@ async function 清理测试项目() {
   await fetch(url, { method: "DELETE", headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } });
 }
 
+/* 测试前清理：删除上次运行残留的"自动化测试需求-xxx"（含关联媒体），
+ * 即使上次脚本中途崩溃也不会越积越多 */
+async function 清理测试需求() {
+  if (!SUPABASE_URL || !SERVICE_KEY) return;
+  const headers = { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` };
+  const 需求 = await (await fetch(
+    `${SUPABASE_URL}/rest/v1/work_order_requirements?work_order_id=eq.${工单ID}&description=like.${encodeURIComponent("自动化测试需求")}*&select=id`,
+    { headers }
+  )).json();
+  if (!Array.isArray(需求) || 需求.length === 0) return;
+  const ids = 需求.map((r) => r.id).join(",");
+  await fetch(`${SUPABASE_URL}/rest/v1/work_order_requirement_media?requirement_id=in.(${ids})`, { method: "DELETE", headers });
+  await fetch(`${SUPABASE_URL}/rest/v1/work_order_requirements?id=in.(${ids})`, { method: "DELETE", headers });
+  console.log(`  🧹 清理了 ${需求.length} 条上次残留的测试需求`);
+}
+
 fs.mkdirSync(截图目录, { recursive: true });
 
 let 步骤计数 = 0;
@@ -34,6 +50,7 @@ async function 截图(page, 名称) {
 }
 
 async function main() {
+  await 清理测试需求();
   const browser = await chromium.launch({ channel: "msedge", headless: process.env.HEADED === "1" ? false : true, slowMo: process.env.HEADED === "1" ? 300 : 0 });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.setDefaultTimeout(20000);

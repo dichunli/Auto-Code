@@ -589,13 +589,27 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                 title={项目数 > 0 ? "该需求下有维修项目，请先删除项目再删需求" : undefined}
                 onClick={async () => {
                   /* 防误删：需求下挂有维修项目时不允许删除（删除会使项目变成无主项目）。
-                   * 这里不禁用按钮，而是点击后给出明确提示，告诉用户为什么不能删、该怎么做。 */
-                  if (项目数 > 0) {
-                    alert(`该需求下有 ${项目数} 个维修项目，无法删除。\n请先删除这些维修项目，再删除需求。`);
+                   * 注意：props 传入的 项目数 是页面加载时的快照，局部增删项目后不会更新，
+                   * 所以删除前必须实时查库确认，避免"项目已删却仍被拦"或"项目还在却被放过"。 */
+                  setSaving(true);
+                  const { count, error: 查询错误 } = await supabase
+                    .from("work_order_items")
+                    .select("id", { count: "exact", head: true })
+                    .eq("requirement_id", requirement!.id);
+                  if (查询错误) {
+                    alert("检查项目失败: " + 查询错误.message);
+                    setSaving(false);
                     return;
                   }
-                  if (!confirm("确定要删除这条需求吗？关联的媒体文件也会被删除。")) return;
-                  setSaving(true);
+                  if ((count ?? 0) > 0) {
+                    alert(`该需求下有 ${count} 个维修项目，无法删除。\n请先删除这些维修项目，再删除需求。`);
+                    setSaving(false);
+                    return;
+                  }
+                  if (!confirm("确定要删除这条需求吗？关联的媒体文件也会被删除。")) {
+                    setSaving(false);
+                    return;
+                  }
                   const { error } = await supabase
                     .from("work_order_requirements")
                     .delete()
