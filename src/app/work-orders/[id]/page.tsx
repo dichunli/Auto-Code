@@ -1,5 +1,6 @@
 import { getWorkOrderData } from "@/lib/workOrderData";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { readyToClose } from "@/lib/orderStage";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import FaultLightIcon from "@/components/FaultLightIcon";
 import { calculateItemCommission } from "@/lib/commission";
@@ -95,9 +96,29 @@ export default async function WorkOrderDetailPage({
   });
 
 
+  /* 待结单判定（双通道）：全部完工+须质检全合格，或 全部派工+选中配件全出库（约束3）。
+   * 命中时"确认结单"按钮出现（repairing/pending_quality_check 也可直接结单） */
+  const 待结单就绪 = readyToClose({
+    status: order.status,
+    有未指派需求: (requirements || []).some(
+      (r) => !(r as { assigned_to?: string | null }).assigned_to
+    ),
+    项目列表: (items || []).map((it) => ({
+      item_type: it.item_type,
+      status: it.status,
+      require_qc: it.require_qc,
+      qc_status: it.qc_status,
+      已派工: (mechanicsByItem[it.id] || []).length > 0 || !!it.mechanic_id,
+    })),
+    配件列表: Object.values(partsByItem).flat().map((p) => ({
+      is_selected: p.is_selected,
+      quantity: p.quantity,
+      净出库: (pickingByPart[p.id] || 0) - (returnByPart[p.id] || 0),
+    })),
+  });
+
   // 保养单标识
-  const 是保养单 = order.order_type === "maintenance";
-  // 保养单默认只读，除非带 edit=1 参数
+  const 是保养单 = order.order_type === "maintenance";  // 保养单默认只读，除非带 edit=1 参数
   const 保养编辑模式 = typeof sp.edit === "string" && sp.edit === "1";
   // 创建模式：刚创建的保养单，保存后生效，取消则删除
   const 创建模式 = typeof sp.creating === "string" && sp.creating === "1";
@@ -1408,7 +1429,7 @@ export default async function WorkOrderDetailPage({
 
         {/* 右侧操作区 */}
         <div className="space-y-6">
-          <WorkOrderActions orderId={id} status={order.status} />
+          <WorkOrderActions orderId={id} status={order.status} 待结单就绪={待结单就绪} />
 
           {/* 待入库配件 */}
           {pendingInboundParts.length > 0 && (

@@ -5,15 +5,14 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
+/* 状态操作图标：质检已下沉到项目级（项目行质检单），工单级不再有"质检/通过/返工"。
+ * repairing/pending_quality_check 无图标——满足待结单条件时出现"结单"（快速通道）。 */
 const statusIcons: Record<string, { label: string; next: string; color: string; href?: string }[]> = {
   received: [{ label: "诊断", next: "pending_diagnosis", color: "bg-blue-600" }],
   pending_diagnosis: [{ label: "报价", next: "pending_repair", color: "bg-blue-600" }],
   pending_repair: [{ label: "维修", next: "repairing", color: "bg-blue-600" }],
-  repairing: [{ label: "质检", next: "pending_quality_check", color: "bg-blue-600" }],
-  pending_quality_check: [
-    { label: "通过", next: "pending_close", color: "bg-emerald-600" },
-    { label: "返工", next: "repairing", color: "bg-red-600" },
-  ],
+  repairing: [],
+  pending_quality_check: [],
   pending_close: [{ label: "结单", next: "pending_settlement", color: "bg-indigo-600" }],
   pending_settlement: [{ label: "结算", next: "settled", color: "bg-green-600", href: "payment" }],
   settled: [{ label: "交车", next: "delivered", color: "bg-slate-600" }],
@@ -40,17 +39,23 @@ export default function WorkOrderFloatingSidebar({
   order,
   payments,
   advancePaymentTotal,
+  待结单就绪,
 }: {
   orderId: string;
   status: string;
   order: Order;
   payments: Payment[];
   advancePaymentTotal?: number;
+  /* 待结单判定结果（page.tsx 用 orderStage.readyToClose 算好传入） */
+  待结单就绪?: boolean;
 }) {
   const router = useRouter();
   const supabase = createClient();
   const [expanded, setExpanded] = useState(false);
   const actions = statusIcons[status] || [];
+
+  /* 快速通道：repairing/pending_quality_check 且已满足结单条件 → 显示"结单" */
+  const 显示结单 = 待结单就绪 && (status === "repairing" || status === "pending_quality_check");
 
   async function handleAction(nextStatus: string, href?: string) {
     if (href) {
@@ -65,6 +70,25 @@ export default function WorkOrderFloatingSidebar({
     if (rpcErr) { alert("操作失败: " + rpcErr.message); return; }
     const rpcResult = result as { success: boolean; error?: string };
     if (!rpcResult?.success) { alert("操作失败: " + (rpcResult?.error || "状态流转被拒绝")); return; }
+    router.refresh();
+  }
+
+  /* 结单（快速通道）：串行两段流转 →待结单 →待结算 */
+  async function handleConfirmClose() {
+    const r1 = await supabase.rpc("transition_work_order", {
+      p_order_id: orderId, p_next_status: "pending_close", p_notes: null,
+    });
+    if (r1.error || !(r1.data as { success: boolean } | null)?.success) {
+      alert("操作失败: " + (r1.error?.message || (r1.data as { error?: string } | null)?.error || "状态流转被拒绝"));
+      return;
+    }
+    const r2 = await supabase.rpc("transition_work_order", {
+      p_order_id: orderId, p_next_status: "pending_settlement", p_notes: null,
+    });
+    if (r2.error || !(r2.data as { success: boolean } | null)?.success) {
+      alert("操作失败: " + (r2.error?.message || (r2.data as { error?: string } | null)?.error || "状态流转被拒绝"));
+      return;
+    }
     router.refresh();
   }
 
@@ -86,6 +110,17 @@ export default function WorkOrderFloatingSidebar({
             <span className="block leading-tight">{a.label}</span>
           </button>
         ))}
+
+        {/* 快速通道结单 */}
+        {显示结单 && (
+          <button
+            onClick={handleConfirmClose}
+            className="bg-indigo-600 text-white text-xs font-medium px-2 py-2 rounded-lg shadow-lg hover:opacity-90 transition-opacity"
+            title="结单"
+          >
+            <span className="block leading-tight">结单</span>
+          </button>
+        )}
 
         {/* 展开/收起 更多 */}
         <button
