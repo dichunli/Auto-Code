@@ -101,6 +101,13 @@ export default function ItemPartsLive({
     return <>{children}</>;
   }
 
+  // 重查后配件已删光：整个配件区不渲染，与"从未有配件"的项目格式统一
+  // （服务端渲染规则：有配件才显示"所用配件"盒子）。
+  // 组件仍然挂载、事件监听有效，之后再添加配件时盒子会重新出现。
+  if (重查组列表.length === 0) {
+    return null;
+  }
+
   // 重查后：用最新数据重新渲染配件区
   const extraIdMap: Record<string, string[]> = {};
   for (const g of 重查组列表) extraIdMap[g.repId] = g.extraIds;
@@ -111,34 +118,30 @@ export default function ItemPartsLive({
         <div className="w-1 h-4 bg-amber-400 rounded-full" />
         <span className="text-[11px] font-semibold text-gray-700">所用配件</span>
       </div>
-      {重查组列表.length === 0 ? (
-        <p className="text-xs text-gray-400">暂无配件</p>
-      ) : (
-        <SortableList
-          ids={重查组列表.map((g) => g.repId)}
-          groupKey={itemId}
-          tableName="work_order_item_parts"
-          extraIdMap={extraIdMap}
-        >
-          {重查组列表.map((group) => (
-            <ItemPartGroup
-              key={group.repId}
-              group={group}
-              itemId={itemId}
-              需求序号={Number(seqPrefix.split(".")[0]) || 1}
-              isLocked={isLocked}
-              vehicleModelId={vehicleModelId}
-              suppliers={suppliers}
-              logisticsCompanies={logisticsCompanies}
-              pickingByPart={pickingByPart}
-              returnByPart={returnByPart}
-              inventoryByPart={inventoryByPart}
-              pendingSupplierReturnByPart={pendingSupplierReturnByPart}
-              imagesByPart={imagesByPart}
-            />
-          ))}
-        </SortableList>
-      )}
+      <SortableList
+        ids={重查组列表.map((g) => g.repId)}
+        groupKey={itemId}
+        tableName="work_order_item_parts"
+        extraIdMap={extraIdMap}
+      >
+        {重查组列表.map((group) => (
+          <ItemPartGroup
+            key={group.repId}
+            group={group}
+            itemId={itemId}
+            需求序号={Number(seqPrefix.split(".")[0]) || 1}
+            isLocked={isLocked}
+            vehicleModelId={vehicleModelId}
+            suppliers={suppliers}
+            logisticsCompanies={logisticsCompanies}
+            pickingByPart={pickingByPart}
+            returnByPart={returnByPart}
+            inventoryByPart={inventoryByPart}
+            pendingSupplierReturnByPart={pendingSupplierReturnByPart}
+            imagesByPart={imagesByPart}
+          />
+        ))}
+      </SortableList>
     </div>
   );
 }
