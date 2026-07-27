@@ -74,6 +74,9 @@ export interface 维修项目 {
   name?: string | null;
   description?: string | null;
   item_type?: string | null;
+  status?: string | null;          // pending / in_progress / paused / completed
+  require_qc?: boolean | null;     // 是否必须质检
+  qc_status?: string | null;       // none / passed / failed
   business_type?: string | null;
   alias_name?: string | null;
   standard?: string | null;

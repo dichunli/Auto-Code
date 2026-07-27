@@ -10,6 +10,7 @@ interface ServiceItem {
   code?: string | null;
   default_price?: number | null;
   standard_hours?: number | null;
+  require_qc?: boolean | null;
 }
 
 interface Props {
@@ -19,6 +20,8 @@ interface Props {
   currentAlias: string | null;
   currentQuantity: number;
   currentUnitPrice: number;
+  /* 当前"必须质检"设置（工单内可覆盖维修项目库的默认值） */
+  currentRequireQc?: boolean | null;
   onClose: () => void;
 }
 
@@ -29,12 +32,14 @@ export function EditWorkOrderItemModal({
   currentAlias,
   currentQuantity,
   currentUnitPrice,
+  currentRequireQc,
   onClose,
 }: Props) {
   const supabase = createClient();
   const [aliasName, setAliasName] = useState(currentAlias || "");
   const [quantity, setQuantity] = useState(String(currentQuantity || 1));
   const [unitPrice, setUnitPrice] = useState(currentUnitPrice != null ? currentUnitPrice.toFixed(2) : "0.00");
+  const [requireQc, setRequireQc] = useState(!!currentRequireQc);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [searchResults, setSearchResults] = useState<ServiceItem[]>([]);
   const [selectedServiceItem, setSelectedServiceItem] = useState<ServiceItem | null>(null);
@@ -47,11 +52,12 @@ export function EditWorkOrderItemModal({
       setAliasName(currentAlias || "");
       setQuantity(String(currentQuantity || 1));
       setUnitPrice(String(currentUnitPrice || 0));
+      setRequireQc(!!currentRequireQc);
       setSearchKeyword("");
       setSearchResults([]);
       setSelectedServiceItem(null);
     }
-  }, [open, currentAlias, currentQuantity, currentUnitPrice]);
+  }, [open, currentAlias, currentQuantity, currentUnitPrice, currentRequireQc]);
 
   async function doSearch(keyword: string) {
     if (!keyword.trim()) {
@@ -61,7 +67,7 @@ export function EditWorkOrderItemModal({
     setSearching(true);
     const { data } = await supabase
       .from("service_items")
-      .select("id, name, code, default_price, standard_hours")
+      .select("id, name, code, default_price, standard_hours, require_qc")
       .ilike("name", `%${keyword.trim()}%`)
       .limit(20);
     setSearchResults((data || []) as ServiceItem[]);
@@ -82,6 +88,8 @@ export function EditWorkOrderItemModal({
     if (si.default_price != null) {
       setUnitPrice(si.default_price.toFixed(2));
     }
+    // 带入新项目库的"必须质检"默认设置
+    setRequireQc(!!si.require_qc);
   }
 
   async function handleSave() {
@@ -94,6 +102,7 @@ export function EditWorkOrderItemModal({
       alias_name: aliasName.trim() || null,
       quantity: 新数量,
       unit_price: 新单价,
+      require_qc: requireQc,
     };
 
     if (selectedServiceItem) {
@@ -228,6 +237,18 @@ export function EditWorkOrderItemModal({
           <div className="text-xs text-gray-500">
             总价 = {((parseFloat(quantity) || 0) * (parseFloat(unitPrice) || 0)).toFixed(2)} 元
           </div>
+
+          {/* 必须质检开关：开启后项目完工进入"待质检"，质检合格才算已完工 */}
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={requireQc}
+              onChange={(e) => setRequireQc(e.target.checked)}
+              className="w-4 h-4 accent-purple-600"
+            />
+            <span className="text-sm text-gray-700">必须质检</span>
+            <span className="text-xs text-gray-400">（完工后需质检合格才算已完工）</span>
+          </label>
         </div>
 
         <div className="flex justify-end gap-2 mt-6">

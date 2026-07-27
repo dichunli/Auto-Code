@@ -5,6 +5,7 @@ import WorkOrdersContent from "./WorkOrdersContent";
 import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
 import WorkOrderSearch from "@/components/WorkOrderSearch";
 import { 保养单草稿前缀 } from "@/lib/maintenance";
+import { computeBoardStages, 阶段顺序, 阶段文案, type 阶段key, type 工单状态输入 } from "@/lib/orderStage";
 
 /* ═════════════════════════════════════════════════════════════════
  * 工单列表页 — Server Component
@@ -13,11 +14,26 @@ import { 保养单草稿前缀 } from "@/lib/maintenance";
  * 筛选通过 URL query params + 服务端重新查询实现。
  * ═════════════════════════════════════════════════════════════════ */
 
+interface 数量记录 {
+  quantity?: number | null;
+}
+
+interface WorkOrderItemPart {
+  quantity?: number | null;
+  is_selected?: boolean | null;
+  part_picking_records?: 数量记录[] | null;
+  part_return_records?: 数量记录[] | null;
+}
+
 interface WorkOrderItem {
   id: string;
   status?: string | null;
   mechanic_id?: string | null;
   item_type?: string | null;
+  require_qc?: boolean | null;
+  qc_status?: string | null;
+  work_order_item_mechanics?: { mechanic_id: string }[] | null;
+  work_order_item_parts?: WorkOrderItemPart[] | null;
 }
 
 interface RawWorkOrder {
@@ -30,13 +46,15 @@ interface RawWorkOrder {
   vehicles?: { plate_number: string; brand: string; model: string; vin: string } | { plate_number: string; brand: string; model: string; vin: string }[] | null;
   customers?: { name: string; phone: string; company: string } | { name: string; phone: string; company: string }[] | null;
   work_order_items?: WorkOrderItem[] | null;
+  work_order_requirements?: { id: string; assigned_to?: string | null }[] | null;
 }
 
 export interface Order {
   id: string;
   order_no: string;
   status: string;
-  boardStage: string;
+  /* 显示状态徽章数组（多阶段同时显示），取值见 orderStage 阶段key */
+  boardStages: 阶段key[];
   total_cost: number | null;
   created_at: string;
   order_type: string;
@@ -44,19 +62,12 @@ export interface Order {
   customers: { name: string; phone: string; company: string } | null;
 }
 
-const SETTLED_STATUSES = ["settled", "delivered", "pending_close", "pending_settlement"];
 const HISTORY_STATUSES = ["settled", "delivered"];
 
+/* 阶段筛选 chips：10 态全部来自公共常量（唯一口径） */
 const statusFilters = [
   { value: "", label: "全部" },
-  { value: "pending_diagnosis", label: "待诊断" },
-  { value: "pending_dispatch", label: "待派工" },
-  { value: "pending_construction", label: "待施工" },
-  { value: "in_progress", label: "施工中" },
-  { value: "paused", label: "已中断" },
-  { value: "completed", label: "已完工" },
-  { value: "pending_qc", label: "已质检" },
-  { value: "settled", label: "已结单" },
+  ...阶段顺序.map((k) => ({ value: k as string, label: 阶段文案[k] })),
 ];
 
 const typeLabelMap: Record<string, string> = {
@@ -74,24 +85,30 @@ const SETTLEMENT_OPTIONS = [
   { value: "settled", label: "已结算" },
 ];
 
-function computeBoardStage(raw: RawWorkOrder): string {
-  const orderStatus = raw.status;
-  if (SETTLED_STATUSES.includes(orderStatus)) return "settled";
-  if (orderStatus === "pending_quality_check") return "pending_qc";
-
-  const labors = (raw.work_order_items || []).filter((it: WorkOrderItem) => it.item_type === "labor");
-  if (labors.length === 0) return "pending_diagnosis";
-
-  if (labors.some((it: WorkOrderItem) => it.status === "paused")) return "paused";
-  if (labors.some((it: WorkOrderItem) => it.status === "in_progress")) return "in_progress";
-  if (labors.every((it: WorkOrderItem) => it.status === "completed")) return "completed";
-
-  const hasUnassigned = labors.some(
-    (it: WorkOrderItem) => (it.status === "pending" || !it.status) && !it.mechanic_id
-  );
-  if (hasUnassigned) return "pending_dispatch";
-
-  return "pending_construction";
+/* 把原始工单数据组装成状态判定输入（公共函数 computeBoardStages 的入参） */
+function 组装状态输入(raw: RawWorkOrder): 工单状态输入 {
+  const items = raw.work_order_items || [];
+  return {
+    status: raw.status,
+    有未指派需求: (raw.work_order_requirements || []).some((r) => !r.assigned_to),
+    项目列表: items.map((it) => ({
+      item_type: it.item_type,
+      status: it.status,
+      require_qc: it.require_qc,
+      qc_status: it.qc_status,
+      /* 派工判定以 work_order_item_mechanics 为准；mechanic_id 旧字段兜底兼容老数据 */
+      已派工: (it.work_order_item_mechanics || []).length > 0 || !!it.mechanic_id,
+    })),
+    配件列表: items.flatMap((it) =>
+      (it.work_order_item_parts || []).map((p) => ({
+        is_selected: p.is_selected,
+        quantity: p.quantity,
+        净出库:
+          (p.part_picking_records || []).reduce((s, r) => s + (r.quantity || 0), 0) -
+          (p.part_return_records || []).reduce((s, r) => s + (r.quantity || 0), 0),
+      }))
+    ),
+  };
 }
 
 function normalizeOrder(raw: RawWorkOrder): Order {
@@ -101,7 +118,7 @@ function normalizeOrder(raw: RawWorkOrder): Order {
     id: raw.id,
     order_no: raw.order_no,
     status: raw.status,
-    boardStage: computeBoardStage(raw),
+    boardStages: computeBoardStages(组装状态输入(raw)),
     total_cost: raw.total_cost ?? null,
     created_at: raw.created_at,
     order_type: raw.order_type || "normal",
@@ -163,7 +180,12 @@ export default async function WorkOrdersPage(props: {
       `id, order_no, status, order_type, total_cost, created_at,
        vehicles(plate_number, brand, model, vin),
        customers(name, phone, company),
-       work_order_items(id, status, mechanic_id, item_type)`,
+       work_order_items(id, status, mechanic_id, item_type, require_qc, qc_status,
+         work_order_item_mechanics(mechanic_id),
+         work_order_item_parts(quantity, is_selected,
+           part_picking_records(quantity),
+           part_return_records(quantity))),
+       work_order_requirements(id, assigned_to)`,
       { count: "exact" }
     )
     .order("created_at", { ascending: false });
@@ -216,9 +238,9 @@ export default async function WorkOrdersPage(props: {
   } else {
     let result = (data || []).map(normalizeOrder);
 
-    /* boardStage 筛选（服务端内存） */
+    /* 阶段筛选（服务端内存）：多徽章数组"包含该阶段"即命中 */
     if (status && !["", "active", "history", "all"].includes(status) && !type) {
-      result = result.filter((o) => o.boardStage === status);
+      result = result.filter((o) => o.boardStages.includes(status as 阶段key));
     }
 
     /* 关键词搜索（服务端内存过滤，关联表字段用 SQL or 会解析失败） */

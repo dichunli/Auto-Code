@@ -137,7 +137,7 @@ export function CreateMaintenanceWrapper({
       // 复制项目
       const { data: 源项目列表 } = await supabase
         .from("work_order_items")
-        .select("id, requirement_id, service_item_id, name, alias_name, item_type, description, quantity, unit_price, mechanic_id, status, customer_opinion, is_outsourced, outsourced_supplier_id, business_type, rework_source_item_id, rework_reason, rework_loss_amount, sort_order")
+        .select("id, requirement_id, service_item_id, name, alias_name, item_type, description, quantity, unit_price, mechanic_id, status, customer_opinion, is_outsourced, outsourced_supplier_id, business_type, rework_source_item_id, rework_reason, rework_loss_amount, sort_order, require_qc")
         .eq("work_order_id", orderId)
         .order("created_at", { ascending: true });
 
@@ -163,6 +163,8 @@ export function CreateMaintenanceWrapper({
             rework_reason: 源项目.rework_reason,
             rework_loss_amount: 源项目.rework_loss_amount,
             sort_order: 源项目.sort_order,
+            /* 复制时保留原项目的"必须质检"设置 */
+            require_qc: 源项目.require_qc,
           };
           if (源项目.requirement_id && 需求ID映射[源项目.requirement_id]) {
             新项目数据.requirement_id = 需求ID映射[源项目.requirement_id];

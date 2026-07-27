@@ -818,7 +818,8 @@ export default function MobileItemEditor({
     refresh();
   }
 
-  /* 计时操作 */
+  /* 计时操作：统一走 add_construction_log RPC（与桌面端同一入口），
+   * 由 RPC 做派工/权限校验（约束1）并联动工单状态，不再直写表绕过 */
   async function timerAction(action: "start" | "pause" | "resume" | "complete") {
     if (loading) return;
     setLoading(true);
@@ -826,34 +827,27 @@ export default function MobileItemEditor({
     const { data: userData } = await supabase.auth.getUser();
     const mechanicId = userData.user?.id || null;
 
-    const { error } = await supabase.from("work_order_item_construction_logs").insert({
-      work_order_item_id: item.id,
-      action,
-      mechanic_id: mechanicId,
+    const { data: rpcData, error } = await supabase.rpc("add_construction_log", {
+      p_work_order_item_id: item.id,
+      p_mechanic_id: mechanicId,
+      p_action: action,
     });
 
-    if (!error && action === "complete") {
-      await supabase.from("work_order_items").update({ status: "completed" }).eq("id", item.id);
-    }
-
     setLoading(false);
+    const res = rpcData as { success: boolean; error?: string } | null;
     if (error) {
       alert("操作失败: " + error.message);
       return;
     }
+    if (!res?.success) {
+      alert(res?.error || "操作失败");
+      return;
+    }
 
-    const { data } = await supabase
-      .from("work_order_item_construction_logs")
-      .select("id, action, created_at, mechanic_id")
-      .eq("work_order_item_id", item.id)
-      .order("created_at", { ascending: true });
-    const loaded = (data || []) as ConstructionLog[];
-    setLogs(loaded);
-    setElapsed(calculateTotalSeconds(loaded, new Date()));
-    refresh();
+    await 重查计时日志();
   }
 
-  /* 取消计时（删除最后一条 start/resume） */
+  /* 取消计时：走 RPC cancel（取消施工/取消完工，与桌面端同语义） */
   async function cancelTimer() {
     if (loading) return;
     if (logs.length === 0) return;
@@ -861,17 +855,31 @@ export default function MobileItemEditor({
     if (lastLog.action !== "start" && lastLog.action !== "resume") return;
 
     setLoading(true);
-    const { error } = await supabase
-      .from("work_order_item_construction_logs")
-      .delete()
-      .eq("id", lastLog.id);
-    setLoading(false);
+    const { data: userData } = await supabase.auth.getUser();
+    const mechanicId = userData.user?.id || null;
 
+    const { data: rpcData, error } = await supabase.rpc("add_construction_log", {
+      p_work_order_item_id: item.id,
+      p_mechanic_id: mechanicId,
+      p_action: "cancel",
+    });
+
+    setLoading(false);
+    const res = rpcData as { success: boolean; error?: string } | null;
     if (error) {
       alert("取消失败: " + error.message);
       return;
     }
+    if (!res?.success) {
+      alert(res?.error || "取消失败");
+      return;
+    }
 
+    await 重查计时日志();
+  }
+
+  /* 重查计时日志并刷新界面（计时/取消后共用） */
+  async function 重查计时日志() {
     const { data } = await supabase
       .from("work_order_item_construction_logs")
       .select("id, action, created_at, mechanic_id")
@@ -881,6 +889,8 @@ export default function MobileItemEditor({
     setLogs(loaded);
     setElapsed(calculateTotalSeconds(loaded, new Date()));
     refresh();
+    /* 广播：项目状态徽章立即刷新（待施工/施工中/已中断/待质检/已完工） */
+    window.dispatchEvent(new CustomEvent("wo-item-update", { detail: { itemId: item.id } }));
   }
 
   function handlePartSearchChange(val: string) {

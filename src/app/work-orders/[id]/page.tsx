@@ -1,5 +1,6 @@
 import { getWorkOrderData } from "@/lib/workOrderData";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { readyToClose } from "@/lib/orderStage";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import FaultLightIcon from "@/components/FaultLightIcon";
 import { calculateItemCommission } from "@/lib/commission";
@@ -15,6 +16,8 @@ import { SaveMaintenanceButton } from "@/components/SaveMaintenanceButton";
 import { CancelCreateMaintenanceButton } from "@/components/CancelCreateMaintenanceButton";
 import { BusinessTypeToggle } from "@/components/BusinessTypeToggle";
 import ItemNameDisplay from "@/components/ItemNameDisplay";
+import ItemStageBadge from "@/components/ItemStageBadge";
+import ItemQcActions from "@/components/ItemQcActions";
 import ItemRowWrapper from "@/components/ItemRowWrapper";
 import SavingToast from "@/components/SavingToast";
 import LiveRequirementsList from "@/components/LiveRequirementsList";
@@ -93,9 +96,29 @@ export default async function WorkOrderDetailPage({
   });
 
 
+  /* 待结单判定（双通道）：全部完工+须质检全合格，或 全部派工+选中配件全出库（约束3）。
+   * 命中时"确认结单"按钮出现（repairing/pending_quality_check 也可直接结单） */
+  const 待结单就绪 = readyToClose({
+    status: order.status,
+    有未指派需求: (requirements || []).some(
+      (r) => !(r as { assigned_to?: string | null }).assigned_to
+    ),
+    项目列表: (items || []).map((it) => ({
+      item_type: it.item_type,
+      status: it.status,
+      require_qc: it.require_qc,
+      qc_status: it.qc_status,
+      已派工: (mechanicsByItem[it.id] || []).length > 0 || !!it.mechanic_id,
+    })),
+    配件列表: Object.values(partsByItem).flat().map((p) => ({
+      is_selected: p.is_selected,
+      quantity: p.quantity,
+      净出库: (pickingByPart[p.id] || 0) - (returnByPart[p.id] || 0),
+    })),
+  });
+
   // 保养单标识
-  const 是保养单 = order.order_type === "maintenance";
-  // 保养单默认只读，除非带 edit=1 参数
+  const 是保养单 = order.order_type === "maintenance";  // 保养单默认只读，除非带 edit=1 参数
   const 保养编辑模式 = typeof sp.edit === "string" && sp.edit === "1";
   // 创建模式：刚创建的保养单，保存后生效，取消则删除
   const 创建模式 = typeof sp.creating === "string" && sp.creating === "1";
@@ -620,6 +643,24 @@ export default async function WorkOrderDetailPage({
                                 <div className="flex items-center gap-2 flex-shrink-0">
                                   <SeqBadge itemId={item.id} 前缀={显示序号} />
                                   <ItemNameDisplay itemId={item.id} name={item.name || ""} aliasName={item.alias_name} />
+                                  {/* 项目状态徽章：待派工/待施工/施工中/已中断/待质检/已完工（仅 labor 显示） */}
+                                  <ItemStageBadge
+                                    itemId={item.id}
+                                    itemType={item.item_type}
+                                    status={item.status}
+                                    requireQc={item.require_qc}
+                                    qcStatus={item.qc_status}
+                                    初始已派工={(mechanicsByItem[item.id] || []).length > 0 || !!item.mechanic_id}
+                                  />
+                                  {/* 质检操作：仅待质检且质检人本人时显示按钮（组件内部自判断） */}
+                                  {item.item_type === "labor" && (
+                                    <ItemQcActions
+                                      itemId={item.id}
+                                      itemName={(item.alias_name || item.name) ?? ""}
+                                      requireQc={item.require_qc}
+                                      实际锁定={实际锁定}
+                                    />
+                                  )}
                                   <ItemPersonSelectors
                                     itemId={item.id}
                                     submitterId={item.submitter_id}
@@ -690,6 +731,7 @@ export default async function WorkOrderDetailPage({
                                     aliasName={item.alias_name}
                                     quantity={item.quantity ?? undefined}
                                     unitPrice={item.unit_price ?? undefined}
+                                    requireQc={item.require_qc}
                                   />
                                 </div>
                               </div>
@@ -763,6 +805,7 @@ export default async function WorkOrderDetailPage({
                                     vehicleChassis={order.vehicles?.vin ?? undefined}
                                     vehicleTransmission={(order.vehicles?.vehicle_models?.变速箱类型 || order.vehicles?.vehicle_models?.变速箱详情) ?? undefined}
                                     mechanics={(mechanicsByItem[item.id] || []).map((m) => ({ mechanic_id: m.mechanic_id || "", full_name: m.profiles?.full_name || "-" }))}
+                                    初始已派工={(mechanicsByItem[item.id] || []).length > 0 || !!item.mechanic_id}
                                   />
                                 </div>
                               </ShowTimer>
@@ -1386,7 +1429,7 @@ export default async function WorkOrderDetailPage({
 
         {/* 右侧操作区 */}
         <div className="space-y-6">
-          <WorkOrderActions orderId={id} status={order.status} />
+          <WorkOrderActions orderId={id} status={order.status} 待结单就绪={待结单就绪} />
 
           {/* 待入库配件 */}
           {pendingInboundParts.length > 0 && (

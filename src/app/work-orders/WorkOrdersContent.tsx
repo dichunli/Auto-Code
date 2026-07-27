@@ -7,6 +7,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
 import { logAction } from "@/lib/operationLog";
+import { 阶段文案, 阶段颜色 } from "@/lib/orderStage";
 import type { Order } from "./page";
 
 /* ═════════════════════════════════════════════════════════════════
@@ -14,29 +15,8 @@ import type { Order } from "./page";
  *
  * 数据由父组件（page.tsx Server Component）通过 props 传入。
  * 本组件只负责渲染表格和处理交互（删除、打开详情等）。
+ * 状态徽章文案/颜色统一来自 src/lib/orderStage.ts（全站唯一口径）。
  * ═════════════════════════════════════════════════════════════════ */
-
-const STAGE_LABELS: Record<string, string> = {
-  pending_diagnosis: "待诊断",
-  pending_dispatch: "待派工",
-  pending_construction: "待施工",
-  in_progress: "施工中",
-  paused: "已中断",
-  completed: "已完工",
-  pending_qc: "已质检",
-  settled: "已结单",
-};
-
-const STAGE_COLORS: Record<string, string> = {
-  pending_diagnosis: "bg-gray-100 text-gray-700",
-  pending_dispatch: "bg-slate-100 text-slate-700",
-  pending_construction: "bg-orange-100 text-orange-700",
-  in_progress: "bg-blue-100 text-blue-700",
-  paused: "bg-yellow-100 text-yellow-700",
-  completed: "bg-green-100 text-green-700",
-  pending_qc: "bg-purple-100 text-purple-700",
-  settled: "bg-emerald-100 text-emerald-700",
-};
 
 interface WorkOrdersContentProps {
   orders: Order[];
@@ -169,13 +149,19 @@ export default function WorkOrdersContent({
                   <td className="px-6 py-3.5 text-gray-500">{order.customers?.company || "-"}</td>
                   {!type && (
                     <td className="px-6 py-3.5">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          STAGE_COLORS[order.boardStage] || "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {STAGE_LABELS[order.boardStage] || order.boardStage}
-                      </span>
+                      {/* 多徽章：一个工单多个项目处于不同阶段时同时显示（如 施工中+待派工） */}
+                      <div className="flex flex-wrap gap-1">
+                        {order.boardStages.map((stage) => (
+                          <span
+                            key={stage}
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              阶段颜色[stage] || "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {阶段文案[stage] || stage}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                   )}
                   <td className="px-6 py-3.5 text-right font-medium text-gray-900 tabular-nums">{formatCurrency(order.total_cost)}</td>

@@ -1,20 +1,24 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
+import { getItemStageKey } from "@/lib/orderStage";
 
+/* 看板列：与工单状态体系 10 态对齐（待结算/已结算/已交车合并进"已结算"列——
+ * 看板是车间视角，结算环节归一类即可） */
 const COLUMNS = [
   { key: "pending_diagnosis", label: "待诊断", color: "bg-gray-50 border-gray-200" },
   { key: "pending_dispatch", label: "待派工", color: "bg-slate-50 border-slate-200" },
   { key: "pending_construction", label: "待施工", color: "bg-orange-50 border-orange-200" },
   { key: "in_progress", label: "施工中", color: "bg-blue-50 border-blue-200" },
   { key: "paused", label: "已中断", color: "bg-yellow-50 border-yellow-200" },
+  { key: "pending_qc", label: "待质检", color: "bg-purple-50 border-purple-200" },
   { key: "completed", label: "已完工", color: "bg-green-50 border-green-200" },
-  { key: "pending_qc", label: "已质检", color: "bg-purple-50 border-purple-200" },
-  { key: "settled", label: "已结单", color: "bg-emerald-50 border-emerald-200" },
+  { key: "pending_close", label: "待结单", color: "bg-teal-50 border-teal-200" },
+  { key: "settled", label: "已结算", color: "bg-emerald-50 border-emerald-200" },
 ];
 
-// 工单"已结单"对应的几种 work_orders.status
-const SETTLED_STATUSES = ["settled", "delivered", "pending_close", "pending_settlement"];
+// 工单"已结算"对应的几种 work_orders.status（结算流程中及之后）
+const SETTLED_STATUSES = ["pending_settlement", "settled", "delivered"];
 
 // 工单状态（work_orders.status）的中文标签和颜色
 const ORDER_STATUS_LABELS: Record<string, string> = {
@@ -22,8 +26,8 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   pending_diagnosis: "待诊断",
   pending_repair: "待维修",
   repairing: "维修中",
-  pending_quality_check: "已质检",
-  pending_close: "待结算",
+  pending_quality_check: "待质检",
+  pending_close: "待结单",
   pending_settlement: "待结算",
   settled: "已结算",
   delivered: "已交车",
@@ -35,8 +39,8 @@ const ORDER_STATUS_COLORS: Record<string, string> = {
   pending_repair: "bg-orange-100 text-orange-700",
   repairing: "bg-blue-100 text-blue-700",
   pending_quality_check: "bg-purple-100 text-purple-700",
-  pending_close: "bg-indigo-100 text-indigo-700",
-  pending_settlement: "bg-emerald-100 text-emerald-700",
+  pending_close: "bg-teal-100 text-teal-700",
+  pending_settlement: "bg-cyan-100 text-cyan-700",
   settled: "bg-green-100 text-green-700",
   delivered: "bg-slate-100 text-slate-700",
 };
@@ -48,6 +52,9 @@ interface BoardItem {
   status?: string | null;
   mechanic_id?: string | null;
   item_type?: string | null;
+  require_qc?: boolean | null;
+  qc_status?: string | null;
+  work_order_item_mechanics?: { mechanic_id: string }[] | null;
   profiles?: { full_name?: string | null } | null;
 }
 
@@ -61,26 +68,31 @@ interface BoardOrder {
   work_order_items?: BoardItem[] | null;
 }
 
+/* 项目是否已派工：以 work_order_item_mechanics 为准（多技师/领单场景），
+ * mechanic_id 旧字段兜底兼容老数据 */
+function 项目已派工(item: BoardItem): boolean {
+  return (item.work_order_item_mechanics || []).length > 0 || !!item.mechanic_id;
+}
+
 // 单个维修项目（labor）按"项目状态 + 工单状态"判断归属看板列
 function getItemColumnKey(item: BoardItem, orderStatus: string): string {
   if (SETTLED_STATUSES.includes(orderStatus)) return "settled";
-  if (orderStatus === "pending_quality_check") return "pending_qc";
+  if (orderStatus === "pending_close") return "pending_close";
 
-  if (item.status === "completed") return "completed";
-  if (item.status === "paused") return "paused";
-  if (item.status === "in_progress") return "in_progress";
-
-  if (item.status === "pending_dispatch") return "pending_dispatch";
-  if (item.status === "pending_construction") return "pending_construction";
-
-  if (!item.mechanic_id) return "pending_dispatch";
-  return "pending_construction";
+  /* 项目级 6 态统一走公共判定（待派工/待施工/施工中/已中断/待质检/已完工） */
+  return getItemStageKey({
+    item_type: item.item_type,
+    status: item.status,
+    require_qc: item.require_qc,
+    qc_status: item.qc_status,
+    已派工: 项目已派工(item),
+  }) || "pending_construction";
 }
 
 // 没有维修项目的工单整体归到哪一列
 function getEmptyOrderColumnKey(orderStatus: string): string {
   if (SETTLED_STATUSES.includes(orderStatus)) return "settled";
-  if (orderStatus === "pending_quality_check") return "pending_qc";
+  if (orderStatus === "pending_close") return "pending_close";
   return "pending_diagnosis";
 }
 
@@ -110,7 +122,8 @@ export default async function WorkOrderBoardPage() {
       id, order_no, status, estimated_completion_at, created_at,
       vehicles(plate_number, brand, model),
       work_order_items(
-        id, name, alias_name, status, mechanic_id, item_type,
+        id, name, alias_name, status, mechanic_id, item_type, require_qc, qc_status,
+        work_order_item_mechanics(mechanic_id),
         profiles!work_order_items_mechanic_id_fkey(full_name)
       )
     `)
@@ -126,9 +139,15 @@ export default async function WorkOrderBoardPage() {
   ((orders || []) as unknown as BoardOrder[]).forEach((order) => {
     const labors = (order.work_order_items || []).filter((it: BoardItem) => it.item_type === "labor");
 
-    // 已结单 — 整张工单作为一个分区进入"已结单"列，不展开项目
+    // 已结算 — 整张工单作为一个分区进入"已结算"列，不展开项目
     if (SETTLED_STATUSES.includes(order.status)) {
       columnGroups.settled.push({ order, items: [], isPlaceholder: false });
+      return;
+    }
+
+    // 待结单 — 整张工单作为一个分区进入"待结单"列，不展开项目
+    if (order.status === "pending_close") {
+      columnGroups.pending_close.push({ order, items: [], isPlaceholder: false });
       return;
     }
 
@@ -188,7 +207,7 @@ export default async function WorkOrderBoardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-9 gap-3">
         {COLUMNS.map((col) => {
           const groups = columnGroups[col.key];
           return (
@@ -237,7 +256,11 @@ export default async function WorkOrderBoardPage() {
                     {/* 分区内容 */}
                     {col.key === "settled" ? (
                       <div className="text-xs text-emerald-700 font-medium text-center mt-1.5 pt-1.5 border-t border-emerald-100">
-                        ✓ 已结单
+                        ✓ 已结算
+                      </div>
+                    ) : col.key === "pending_close" ? (
+                      <div className="text-xs text-teal-700 font-medium text-center mt-1.5 pt-1.5 border-t border-teal-100">
+                        ✓ 待结单
                       </div>
                     ) : g.isPlaceholder ? (
                       <div className="text-xs text-gray-500 italic text-center mt-1.5 pt-1.5 border-t border-dashed border-gray-200">

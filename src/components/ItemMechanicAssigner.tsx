@@ -52,7 +52,11 @@ export function ItemMechanicAssigner({ itemId, profiles, mechanicGroups, existin
         mechanicGroups={mechanicGroups}
         existingMechanics={mechanics}
         onClose={() => setOpen(false)}
-        onSaved={(newMechanics) => setMechanics(newMechanics)}
+        onSaved={(newMechanics) => {
+          setMechanics(newMechanics);
+          /* 广播：状态徽章（待派工→待施工）和计时按钮权限立即刷新，不整页刷新 */
+          window.dispatchEvent(new CustomEvent("wo-item-update", { detail: { itemId } }));
+        }}
       />
     </>
   );
