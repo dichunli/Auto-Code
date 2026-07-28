@@ -104,6 +104,83 @@ export default function WorkOrdersContent({
     return qs ? `/work-orders?${qs}` : "/work-orders";
   }
 
+  /* 分栏卡片视图：点击具体阶段标签（待派工/施工中等）时，
+   * 按车辆分栏显示工单卡片，卡内只列"处于该阶段"的项目 */
+  const 是分栏视图 = !!status && !["", "active", "history", "all"].includes(status) && !type;
+  const 当前阶段 = status as keyof typeof 阶段文案;
+
+  function 卡片占位文案(order: Order): string {
+    if (当前阶段 === "pending_diagnosis") {
+      return order.有未指派需求 ? "需求待指派诊断" : "待添加维修项目";
+    }
+    if (当前阶段 === "pending_close") return "已满足结单条件，可结单";
+    if (当前阶段 === "pending_settlement" || 当前阶段 === "settled") {
+      return `共 ${order.stageItems.length} 个项目`;
+    }
+    return "该阶段暂无项目";
+  }
+
+  if (是分栏视图) {
+    return (
+      <div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {orders.map((order) => {
+            const 阶段项目 = order.stageItems.filter((i) => i.stage === 当前阶段);
+            return (
+              <div
+                key={order.id}
+                onClick={() => openOrderTab(order.id)}
+                className="bg-white rounded-xl border border-gray-200 shadow-sm cursor-pointer hover:shadow-md hover:border-blue-300 transition-all"
+              >
+                {/* 卡片头：车牌 + 车型 + 状态徽章 */}
+                <div className="flex items-start justify-between px-4 pt-3">
+                  <div className="min-w-0">
+                    <div className="text-base font-semibold text-gray-900">
+                      {order.vehicles?.plate_number || "-"}
+                    </div>
+                    <div className="text-xs text-gray-400 truncate">
+                      {order.vehicles?.brand} {order.vehicles?.model}
+                    </div>
+                  </div>
+                  <span
+                    className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                      阶段颜色[当前阶段] || "bg-gray-100 text-gray-800"
+                    }`}
+                  >
+                    {阶段文案[当前阶段] || status}
+                  </span>
+                </div>
+                <div className="px-4 mt-0.5 text-xs text-gray-400 truncate">
+                  {order.order_no} · {order.customers?.name || "-"}
+                </div>
+                {/* 卡片体：该车处于该阶段的项目 */}
+                <div className="px-4 py-3 mt-2 border-t border-gray-100 space-y-1 min-h-[2.5rem]">
+                  {阶段项目.length > 0 ? (
+                    阶段项目.map((i) => (
+                      <div key={i.id} className="text-sm text-gray-700 truncate">
+                        · {i.alias_name || i.name}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-gray-400 italic">{卡片占位文案(order)}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {orders.length === 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 px-6 py-12 text-center text-gray-400">
+            暂无「{阶段文案[当前阶段] || status}」状态的工单
+          </div>
+        )}
+        {orders.length > 0 && (
+          <div className="mt-4 text-sm text-gray-500">共 {orders.length} 辆</div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
