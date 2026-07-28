@@ -5,7 +5,7 @@ import WorkOrdersContent from "./WorkOrdersContent";
 import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
 import WorkOrderSearch from "@/components/WorkOrderSearch";
 import { 保养单草稿前缀 } from "@/lib/maintenance";
-import { computeBoardStages, 阶段顺序, 阶段文案, type 阶段key, type 工单状态输入 } from "@/lib/orderStage";
+import { computeBoardStages, getItemStageKey, 阶段顺序, 阶段文案, type 阶段key, type 工单状态输入 } from "@/lib/orderStage";
 
 /* ═════════════════════════════════════════════════════════════════
  * 工单列表页 — Server Component
@@ -27,6 +27,8 @@ interface WorkOrderItemPart {
 
 interface WorkOrderItem {
   id: string;
+  name?: string | null;
+  alias_name?: string | null;
   status?: string | null;
   mechanic_id?: string | null;
   item_type?: string | null;
@@ -55,6 +57,10 @@ export interface Order {
   status: string;
   /* 显示状态徽章数组（多阶段同时显示），取值见 orderStage 阶段key */
   boardStages: 阶段key[];
+  /* labor 项目阶段明细（分栏卡片视图用）：每车卡片列出"处于某阶段"的项目 */
+  stageItems: { id: string; name: string; alias_name?: string | null; stage: 阶段key }[];
+  /* 有需求未指派（待诊断卡片占位文案用） */
+  有未指派需求: boolean;
   total_cost: number | null;
   created_at: string;
   order_type: string;
@@ -114,11 +120,24 @@ function 组装状态输入(raw: RawWorkOrder): 工单状态输入 {
 function normalizeOrder(raw: RawWorkOrder): Order {
   const v = raw.vehicles;
   const c = raw.customers;
+  const 输入 = 组装状态输入(raw);
+  /* labor 项目的阶段明细（分栏卡片视图用） */
+  const stageItems = 输入.项目列表
+    .map((it, idx) => {
+      const stage = getItemStageKey(it);
+      const 原 = (raw.work_order_items || [])[idx];
+      return stage && 原
+        ? { id: 原.id, name: 原.name || "", alias_name: 原.alias_name, stage }
+        : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
   return {
     id: raw.id,
     order_no: raw.order_no,
     status: raw.status,
-    boardStages: computeBoardStages(组装状态输入(raw)),
+    boardStages: computeBoardStages(输入),
+    stageItems,
+    有未指派需求: 输入.有未指派需求,
     total_cost: raw.total_cost ?? null,
     created_at: raw.created_at,
     order_type: raw.order_type || "normal",
@@ -180,7 +199,7 @@ export default async function WorkOrdersPage(props: {
       `id, order_no, status, order_type, total_cost, created_at,
        vehicles(plate_number, brand, model, vin),
        customers(name, phone, company),
-       work_order_items(id, status, mechanic_id, item_type, require_qc, qc_status,
+       work_order_items(id, name, alias_name, status, mechanic_id, item_type, require_qc, qc_status,
          work_order_item_mechanics(mechanic_id),
          work_order_item_parts(quantity, is_selected,
            part_picking_records(quantity),
@@ -224,6 +243,35 @@ export default async function WorkOrdersPage(props: {
   }
 
   const { data, error, count } = await query;
+
+  /* 角标统计：在修工单全量逐单算徽章、按阶段计数（在修数量小，一次轻量查询）。
+   * 仅工单列表（!type）需要；角标语义=工单数（几辆车处于该阶段） */
+  let 阶段角标: Record<string, number> | null = null;
+  if (!type) {
+    const { data: 全部在修 } = await supabase
+      .from("work_orders")
+      .select(
+        `id, order_no, status, order_type, total_cost, created_at,
+         vehicles(plate_number, brand, model, vin),
+         customers(name, phone, company),
+         work_order_items(id, name, alias_name, status, mechanic_id, item_type, require_qc, qc_status,
+           work_order_item_mechanics(mechanic_id),
+           work_order_item_parts(quantity, is_selected,
+             part_picking_records(quantity),
+             part_return_records(quantity))),
+         work_order_requirements(id, assigned_to)`
+      )
+      .not("status", "eq", "settled")
+      .not("status", "eq", "delivered")
+      .eq("order_type", "normal");
+    const 计数: Record<string, number> = { "": (全部在修 || []).length };
+    for (const raw of (全部在修 || []) as unknown as RawWorkOrder[]) {
+      for (const s of computeBoardStages(组装状态输入(raw))) {
+        计数[s] = (计数[s] || 0) + 1;
+      }
+    }
+    阶段角标 = 计数;
+  }
 
   /* ═══════════════════════════════════════
    *  第二步：服务端内存筛选 + 分页
@@ -274,10 +322,13 @@ export default async function WorkOrdersPage(props: {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  /* 数据库分页时 data 已是当前页，无需再切；内存过滤时在过滤结果上切当前页 */
+  /* 数据库分页时 data 已是当前页，无需再切；内存过滤时在过滤结果上切当前页。
+   * 分栏卡片视图（具体阶段筛选）显示该阶段全部工单，不分页 */
   const paginatedOrders = canDbPaginate
     ? orders
-    : orders.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+    : isDetailStage && !type
+      ? orders
+      : orders.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
 
   const baseParams: Record<string, string> = {
     type,
@@ -318,6 +369,12 @@ export default async function WorkOrdersPage(props: {
                 }`}
               >
                 {filter.label}
+                {/* 角标=该阶段工单数（在修范围）；0 不显示，"全部"显示在修总数 */}
+                {阶段角标 && (阶段角标[filter.value] || 0) > 0 && (
+                  <span className={`ml-1 text-xs ${status === filter.value ? "text-blue-100" : "text-gray-400"}`}>
+                    {阶段角标[filter.value]}
+                  </span>
+                )}
               </Link>
             ))}
           </div>
