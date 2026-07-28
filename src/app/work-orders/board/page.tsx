@@ -128,6 +128,8 @@ export default async function WorkOrderBoardPage() {
       )
     `)
     .neq("status", "cancelled")
+    /* 维修看板只放正常工单：保养单（含 DRAFT- 草稿）/预约单/报价单不属于车间看板 */
+    .eq("order_type", "normal")
     .order("created_at", { ascending: false })
     .limit(300);
 

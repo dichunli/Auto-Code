@@ -217,6 +217,10 @@ export default async function WorkOrdersPage(props: {
     if (type === "maintenance") {
       query = query.not("order_no", "like", 保养单草稿前缀 + "%");
     }
+  } else {
+    /* 工单列表的所有视图（在修/历史/全部/阶段/结算）都不显示 DRAFT- 残留草稿：
+     * 草稿是"建保养单"没保存的临时单，设计本意等于不存在 */
+    query = query.not("order_no", "like", 保养单草稿前缀 + "%");
   }
 
   /* 状态筛选（SQL 层能处理的） */
