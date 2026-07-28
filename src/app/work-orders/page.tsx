@@ -6,7 +6,7 @@ import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
 import WorkOrderSearch from "@/components/WorkOrderSearch";
 import WorkOrdersRefreshBar from "@/components/WorkOrdersRefreshBar";
 import { 保养单草稿前缀 } from "@/lib/maintenance";
-import { computeBoardStages, getItemStageKey, 阶段顺序, 阶段文案, type 阶段key, type 工单状态输入 } from "@/lib/orderStage";
+import { computeBoardStages, getItemStageKey, 阶段顺序, 阶段文案, 阶段深色, type 阶段key, type 工单状态输入 } from "@/lib/orderStage";
 
 /* ═════════════════════════════════════════════════════════════════
  * 工单列表页 — Server Component
@@ -374,9 +374,18 @@ export default async function WorkOrdersPage(props: {
                 }`}
               >
                 {filter.label}
-                {/* 角标=该阶段工单数（在修范围）；0 不显示，"全部"显示在修总数 */}
+                {/* 角标=该阶段工单数（在修范围）：彩色小徽章更醒目；
+                    0 不显示，"全部"显示在修总数（蓝色徽章） */}
                 {阶段角标 && (阶段角标[filter.value] || 0) > 0 && (
-                  <span className={`ml-1 text-xs ${status === filter.value ? "text-blue-100" : "text-gray-400"}`}>
+                  <span
+                    className={`ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-[11px] font-bold text-white ${
+                      status === filter.value
+                        ? "bg-white/25"
+                        : filter.value === ""
+                          ? "bg-blue-600"
+                          : 阶段深色[filter.value as 阶段key] || "bg-gray-500"
+                    }`}
+                  >
                     {阶段角标[filter.value]}
                   </span>
                 )}

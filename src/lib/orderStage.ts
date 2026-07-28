@@ -57,6 +57,20 @@ export const 阶段颜色: Record<阶段key, string> = {
   settled: "bg-emerald-100 text-emerald-700",
 };
 
+/* 阶段深色系（与浅色徽章同族）：用于列表筛选标签的数量角标，醒目易读 */
+export const 阶段深色: Record<阶段key, string> = {
+  pending_diagnosis: "bg-gray-500",
+  pending_dispatch: "bg-slate-500",
+  pending_construction: "bg-orange-500",
+  in_progress: "bg-blue-500",
+  paused: "bg-yellow-500",
+  pending_qc: "bg-purple-500",
+  completed: "bg-green-500",
+  pending_close: "bg-teal-600",
+  pending_settlement: "bg-cyan-600",
+  settled: "bg-emerald-600",
+};
+
 /* 徽章显示顺序（流程顺序） */
 export const 阶段顺序: 阶段key[] = [
   "pending_diagnosis",
