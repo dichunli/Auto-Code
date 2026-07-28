@@ -49,7 +49,7 @@ interface RawWorkOrder {
   vehicles?: { plate_number: string; brand: string; model: string; vin: string } | { plate_number: string; brand: string; model: string; vin: string }[] | null;
   customers?: { name: string; phone: string; company: string } | { name: string; phone: string; company: string }[] | null;
   work_order_items?: WorkOrderItem[] | null;
-  work_order_requirements?: { id: string; assigned_to?: string | null }[] | null;
+  work_order_requirements?: { id: string; assigned_to?: string | null; description?: string | null }[] | null;
 }
 
 export interface Order {
@@ -60,6 +60,8 @@ export interface Order {
   boardStages: 阶段key[];
   /* labor 项目阶段明细（分栏卡片视图用）：每车卡片列出"处于某阶段"的项目 */
   stageItems: { id: string; name: string; alias_name?: string | null; stage: 阶段key }[];
+  /* 未指派的需求明细（待诊断卡片列出具体需求） */
+  未指派需求: { id: string; description: string | null }[];
   /* 有需求未指派（待诊断卡片占位文案用） */
   有未指派需求: boolean;
   total_cost: number | null;
@@ -138,6 +140,9 @@ function normalizeOrder(raw: RawWorkOrder): Order {
     status: raw.status,
     boardStages: computeBoardStages(输入),
     stageItems,
+    未指派需求: (raw.work_order_requirements || [])
+      .filter((r) => !r.assigned_to)
+      .map((r) => ({ id: r.id, description: r.description || null })),
     有未指派需求: 输入.有未指派需求,
     total_cost: raw.total_cost ?? null,
     created_at: raw.created_at,
@@ -205,7 +210,7 @@ export default async function WorkOrdersPage(props: {
          work_order_item_parts(quantity, is_selected,
            part_picking_records(quantity),
            part_return_records(quantity))),
-       work_order_requirements(id, assigned_to)`,
+       work_order_requirements(id, assigned_to, description)`,
       { count: "exact" }
     )
     .order("created_at", { ascending: false });

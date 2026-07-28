@@ -153,9 +153,18 @@ export default function WorkOrdersContent({
                 <div className="px-4 mt-0.5 text-xs text-gray-400 truncate">
                   {order.order_no} · {order.customers?.name || "-"}
                 </div>
-                {/* 卡片体：该车处于该阶段的项目 */}
+                {/* 卡片体：该车处于该阶段的项目；待诊断时列出未指派的需求 */}
                 <div className="px-4 py-3 mt-2 border-t border-gray-100 space-y-1 min-h-[2.5rem]">
-                  {阶段项目.length > 0 ? (
+                  {当前阶段 === "pending_diagnosis" && order.未指派需求.length > 0 ? (
+                    <>
+                      <div className="text-xs text-orange-500 font-medium">待指派的需求：</div>
+                      {order.未指派需求.map((r) => (
+                        <div key={r.id} className="text-sm text-gray-700 truncate">
+                          · {r.description || "（无描述）"}
+                        </div>
+                      ))}
+                    </>
+                  ) : 阶段项目.length > 0 ? (
                     阶段项目.map((i) => (
                       <div key={i.id} className="text-sm text-gray-700 truncate">
                         · {i.alias_name || i.name}
