@@ -8,6 +8,7 @@ import Link from "next/link";
 import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
 import { logAction } from "@/lib/operationLog";
 import { 阶段文案, 阶段颜色 } from "@/lib/orderStage";
+import { 读本地工单标签 } from "@/lib/orderTabs";
 import type { Order } from "./page";
 
 /* ═════════════════════════════════════════════════════════════════
@@ -48,8 +49,10 @@ export default function WorkOrdersContent({
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   function openOrderTab(orderId: string) {
-    const tabsParam = baseParams.tabs || "";
-    const tabs = tabsParam.split(",").filter(Boolean);
+    /* 追加到"当前生效的标签集合"：URL 有 tabs 用 URL 的；
+     * URL 没有（从菜单进的列表页）用本地存储的——否则打开新工单会把旧标签挤没 */
+    const urlTabs = (baseParams.tabs || "").split(",").filter(Boolean);
+    const tabs = urlTabs.length > 0 ? urlTabs : 读本地工单标签();
     const newTabs = tabs.includes(orderId) ? tabs : [...tabs, orderId];
     router.push(`/work-orders/${orderId}?tabs=${newTabs.join(",")}`);
   }

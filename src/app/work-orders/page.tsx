@@ -174,9 +174,12 @@ export default async function WorkOrdersPage(props: {
   const page = Math.max(1, parseInt(searchParams.page || "1", 10));
   const pageSize = 20;
 
-  /* 无筛选参数时默认显示"在修工单" */
+  /* 无筛选参数时默认显示"在修工单"。
+   * 必须保留 tabs：从详情页点"服务记录"回来时 URL 是 /work-orders?tabs=xxx，
+   * 不带 status 会走到这里重定向——丢了 tabs 已打开的工单标签就全没了 */
   if (!status && !type && !keyword && !settlement) {
-    redirect("/work-orders?status=active");
+    const qs = tabsParam ? `&tabs=${encodeURIComponent(tabsParam)}` : "";
+    redirect(`/work-orders?status=active${qs}`);
   }
 
   const supabase = await createClient();
