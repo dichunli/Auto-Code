@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 工单标签存储键, 读本地工单标签 } from "@/lib/orderTabs";
 
 interface TabInfo {
   order_no: string;
@@ -17,15 +18,32 @@ export function WorkOrderTabBar({ tabs: tabsProp }: WorkOrderTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
 
-  const tabs = tabsProp?.split(",").filter(Boolean) || [];
+  const urlTabs = tabsProp?.split(",").filter(Boolean) || [];
 
   const activeId =
     pathname.startsWith("/work-orders/") && pathname !== "/work-orders"
       ? pathname.split("/")[2]
       : null;
 
+  /* URL 没有 tabs 时的后备（从菜单/返回键进列表页）：读本地存储 */
+  const [本地tabs, set本地tabs] = useState<string[]>([]);
+  const tabs = urlTabs.length > 0 ? urlTabs : 本地tabs;
+
   const [tabInfo, setTabInfo] = useState<Record<string, TabInfo>>({});
   const loadedRef = useRef<Set<string>>(new Set());
+
+  /* 首次挂载：读本地存储的标签 */
+  useEffect(() => {
+    set本地tabs(读本地工单标签());
+  }, []);
+
+  /* URL 是操作后的最新事实：详情页 或 URL 带 tabs 时，同步写本地存储。
+   * 注意"列表页且 URL 无 tabs"时不写——那是菜单/返回进入的场景，不该清掉存储 */
+  useEffect(() => {
+    if (activeId || urlTabs.length > 0) {
+      localStorage.setItem(工单标签存储键, JSON.stringify(urlTabs));
+    }
+  }, [urlTabs, activeId]);
 
   useEffect(() => {
     const missing = tabs.filter((id) => !loadedRef.current.has(id));
@@ -82,6 +100,10 @@ export function WorkOrderTabBar({ tabs: tabsProp }: WorkOrderTabBarProps) {
     (e: React.MouseEvent, tabId: string) => {
       e.stopPropagation();
       const newTabs = tabs.filter((t) => t !== tabId);
+      /* 关闭是用户的明确动作：立即写存储（含关完写成 []），
+       * 否则关完标签后存储里还是旧值，标签会"复活" */
+      localStorage.setItem(工单标签存储键, JSON.stringify(newTabs));
+      set本地tabs(newTabs);
       if (activeId === tabId) {
         if (newTabs.length > 0) {
           router.push(`/work-orders/${newTabs[newTabs.length - 1]}?tabs=${newTabs.join(",")}`);
@@ -94,7 +116,7 @@ export function WorkOrderTabBar({ tabs: tabsProp }: WorkOrderTabBarProps) {
         router.push(`${base}${qs}`);
       }
     },
-    [tabs, activeId, router]
+    [tabs, activeId, router, set本地tabs]
   );
 
   if (tabs.length === 0) return null;
