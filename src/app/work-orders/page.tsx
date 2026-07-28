@@ -224,6 +224,10 @@ export default async function WorkOrdersPage(props: {
     query = query.not("status", "eq", "settled").not("status", "eq", "delivered").eq("order_type", "normal");
   } else if (status === "history" && !type) {
     query = query.in("status", HISTORY_STATUSES);
+  } else if (isDetailStage && !type) {
+    /* 阶段筛选（待诊断/待派工/…/已结算）：只看正常工单——
+     * 保养单/预约单/报价单不是"在修工单"，不能混进分栏卡片（角标统计同样只算 normal） */
+    query = query.eq("order_type", "normal");
   }
 
   /* 结算状态筛选（SQL 层） */
