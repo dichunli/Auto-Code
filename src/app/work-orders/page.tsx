@@ -4,6 +4,7 @@ import Link from "next/link";
 import WorkOrdersContent from "./WorkOrdersContent";
 import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
 import WorkOrderSearch from "@/components/WorkOrderSearch";
+import WorkOrdersRefreshBar from "@/components/WorkOrdersRefreshBar";
 import { 保养单草稿前缀 } from "@/lib/maintenance";
 import { computeBoardStages, getItemStageKey, 阶段顺序, 阶段文案, type 阶段key, type 工单状态输入 } from "@/lib/orderStage";
 
@@ -399,6 +400,8 @@ export default async function WorkOrdersPage(props: {
           </div>
           <div className="flex-1" />
           <WorkOrderSearch keyword={keyword} />
+          {/* 手动刷新按钮 + 数据更新提示条（Realtime 监听，有更新弹提示不自动刷） */}
+          <WorkOrdersRefreshBar />
         </div>
       )}
 
@@ -414,6 +417,8 @@ export default async function WorkOrdersPage(props: {
           </div>
           <div className="flex-1" />
           <WorkOrderSearch keyword={keyword} />
+          {/* 手动刷新按钮 + 数据更新提示条（Realtime 监听，有更新弹提示不自动刷） */}
+          <WorkOrdersRefreshBar />
         </div>
       )}
 
