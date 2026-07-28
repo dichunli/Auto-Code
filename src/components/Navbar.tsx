@@ -230,10 +230,12 @@ export function Navbar() {
 
   useEffect(() => {
     async function fetchCounts() {
-      /* 一次查询所有工单的 status 和 order_type，客户端统计，减少并发请求 */
+      /* 一次查询所有工单的 status 和 order_type，客户端统计，减少并发请求。
+       * 排除 DRAFT- 保养单草稿（没保存的临时单，任何计数都不该算它） */
       const { data: rows, error } = await supabase
         .from("work_orders")
-        .select("status,order_type");
+        .select("status,order_type")
+        .not("order_no", "like", "DRAFT-%");
 
       if (error || !rows) {
         setCounts({ all: 0, repairing: 0, appointment: 0, quote: 0, maintenance: 0, cancelled: 0 });

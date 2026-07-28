@@ -547,9 +547,9 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     vehicleId
       ? supabase.from("work_orders").select("*", { count: "exact", head: true }).eq("vehicle_id", vehicleId).neq("id", id)
       : Promise.resolve({ count: 0 }),
-    // 同车辆其他类型工单列表
+    // 同车辆其他类型工单列表（排除 DRAFT- 保养单草稿：没保存的临时单不该有入口）
     vehicleId
-      ? supabase.from("work_orders").select("id, order_no, order_type").eq("vehicle_id", vehicleId).neq("id", id)
+      ? supabase.from("work_orders").select("id, order_no, order_type").eq("vehicle_id", vehicleId).neq("id", id).not("order_no", "like", "DRAFT-%")
       : Promise.resolve({ data: [] }),
     // 同客户消费次数
     customerId
