@@ -49,6 +49,21 @@ async function 截图(page, 名称) {
   console.log(`  📸 ${路径}`);
 }
 
+/* 统一确认弹窗（ConfirmDialog）：React 渲染的页面弹窗，不是原生 confirm，
+ * page.on("dialog") 接不到。删除类操作点击后调用本函数点"确定"。
+ * 返回 true=弹窗出现并已确认；false=没出现（可能该操作没走确认弹窗） */
+async function 接受确认弹窗(page, 确认后等待ms = 1200) {
+  const 确定按钮 = page.locator('.fixed.z-\\[120\\] button:has-text("确定")').first();
+  try {
+    await 确定按钮.waitFor({ timeout: 3000 });
+    await 确定按钮.click();
+    await page.waitForTimeout(确认后等待ms);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function main() {
   await 清理测试需求();
   let 测试需求描述 = "";
@@ -167,7 +182,7 @@ async function main() {
             const 目录删除按钮 = 测试需求卡片.locator('[title="删除该配件及其所有分支"]');
             if (await 目录删除按钮.count()) {
               await 目录删除按钮.click();
-              await page.waitForTimeout(2000);
+              await 接受确认弹窗(page, 2000);
               const 删除后次数 = await 测试需求卡片.locator('text=火花塞').count();
               if (配件出现次数 > 0 && 删除后次数 === 0) {
                 console.log("  ✅ 配件添加立即出现 + 目录删除立即消失（局部更新，未碰真实数据）");
@@ -227,7 +242,7 @@ async function main() {
       const 新行删除按钮 = page.locator('div:has-text("保养前轮轴承-右")').last().locator('..').locator('button:has-text("删除")').first();
       if (await 新行删除按钮.count()) {
         await 新行删除按钮.click();
-        await page.waitForTimeout(1500);
+        await 接受确认弹窗(page, 1500);
         const 删除后行数 = await page.locator('text=保养前轮轴承-右').count();
         console.log(`  删除前出现 ${删除前行数} 次 → 删除后出现 ${删除后行数} 次`);
         if (删除后行数 < 删除前行数) {
@@ -287,7 +302,7 @@ async function main() {
         const 项目删除按钮 = 测试需求卡片.locator('button:has-text("删除")').first();
         if (await 项目删除按钮.count()) {
           await 项目删除按钮.click();
-          await page.waitForTimeout(1500);
+          await 接受确认弹窗(page, 1500);
           console.log("  已删除测试需求下的项目");
         }
 
@@ -297,7 +312,7 @@ async function main() {
         const 删除需求按钮2 = page.locator('.fixed.z-\\[60\\] button:has-text("删除")').first();
         if (await 删除需求按钮2.count()) {
           await 删除需求按钮2.click();
-          await page.waitForTimeout(2000);
+          await 接受确认弹窗(page, 2000);
           const 需求还在 = await page.locator(`button:has-text("${测试需求描述}")`).count();
           if (需求还在 === 0) {
             console.log("  ✅ 删项目后空需求删除瞬间消失（实时查库=0）");
