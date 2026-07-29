@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface Log {
@@ -18,16 +18,7 @@ interface Mechanic {
 
 interface Props {
   itemId: string;
-  workOrderId: string;
   customerOpinion?: string | null;
-  itemName?: string;
-  vehicleBrand?: string;
-  vehicleSeries?: string;
-  vehicleModelName?: string;
-  vehicleDisplacement?: string;
-  vehicleEngine?: string;
-  vehicleChassis?: string;
-  vehicleTransmission?: string;
   mechanics?: Mechanic[];
   /* 项目是否已派工（mechanics 表 或 旧 mechanic_id 字段，服务端算好传入） */
   初始已派工: boolean;
@@ -73,18 +64,6 @@ function calculateTotalSeconds(logs: Log[], now: Date): number {
   return Math.max(0, total);
 }
 
-function calculatePauseSeconds(logs: Log[]): number {
-  if (logs.length === 0) return 0;
-  const startLog = logs.find((l) => l.action === "start" || l.action === "resume");
-  const completeLog = logs.find((l) => l.action === "complete");
-  if (!startLog || !completeLog) return 0;
-  const firstStart = new Date(startLog.created_at);
-  const lastEnd = new Date(completeLog.created_at);
-  const totalSpan = (lastEnd.getTime() - firstStart.getTime()) / 1000;
-  const constructionSeconds = calculateTotalSeconds(logs, lastEnd);
-  return Math.max(0, Math.round(totalSpan - constructionSeconds));
-}
-
 interface PauseDetail {
   start: Date;
   end: Date;
@@ -114,16 +93,7 @@ function getPauseDetails(logs: Log[]): PauseDetail[] {
 
 export function ConstructionControls({
   itemId,
-  workOrderId,
   customerOpinion,
-  itemName,
-  vehicleBrand,
-  vehicleSeries,
-  vehicleModelName,
-  vehicleDisplacement,
-  vehicleEngine,
-  vehicleChassis,
-  vehicleTransmission,
   mechanics,
   初始已派工,
   onStatusChange,
@@ -138,9 +108,6 @@ export function ConstructionControls({
   const [liveMechanics, setLiveMechanics] = useState<Mechanic[]>(mechanics || []);
   const [已派工, set已派工] = useState(初始已派工);
   const [elapsed, setElapsed] = useState(0);
-  const [statsIds, setStatsIds] = useState<Record<string, string>>({});
-  const startTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const completeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const status = getConstructionStatus(logs);
   const isRunning = status === "running";
@@ -199,23 +166,9 @@ export function ConstructionControls({
     setLogs((data || []) as unknown as Log[]);
   }, [supabase, itemId]);
 
-  const fetchStats = useCallback(async () => {
-    const { data } = await supabase
-      .from("work_order_item_construction_stats")
-      .select("id, mechanic_name")
-      .eq("work_order_item_id", itemId)
-      .eq("status", "in_progress");
-    const map: Record<string, string> = {};
-    (data || []).forEach((row: { mechanic_name: string; id: string }) => {
-      map[row.mechanic_name] = row.id;
-    });
-    setStatsIds(map);
-  }, [supabase, itemId]);
-
   useEffect(() => {
     fetchLogs();
-    fetchStats();
-  }, [fetchLogs, fetchStats]);
+  }, [fetchLogs]);
 
   // 实时计时
   useEffect(() => {
@@ -229,52 +182,10 @@ export function ConstructionControls({
     return () => clearInterval(interval);
   }, [isRunning, logs]);
 
-  async function createStatsForMechanic(mechanicName: string): Promise<string | null> {
-    const { data, error } = await supabase
-      .from("work_order_item_construction_stats")
-      .insert({
-        work_order_item_id: itemId,
-        work_order_id: workOrderId,
-        item_name: itemName || "",
-        vehicle_brand: vehicleBrand || "",
-        vehicle_series: vehicleSeries || "",
-        vehicle_model_name: vehicleModelName || "",
-        vehicle_displacement: vehicleDisplacement || "",
-        vehicle_engine: vehicleEngine || "",
-        vehicle_chassis: vehicleChassis || "",
-        vehicle_transmission: vehicleTransmission || "",
-        mechanic_name: mechanicName,
-        status: "in_progress",
-      })
-      .select("id")
-      .single();
-    if (error) {
-      console.error("创建统计记录失败", error);
-      return null;
-    }
-    return data?.id || null;
-  }
-
-  async function updateStatsForMechanic(id: string) {
-    const constructionSecs = Math.round(calculateTotalSeconds(logs, new Date()));
-    const pauseSecs = calculatePauseSeconds(logs);
-    const { error } = await supabase
-      .from("work_order_item_construction_stats")
-      .update({
-        construction_seconds: constructionSecs,
-        pause_seconds: pauseSecs,
-        total_seconds: constructionSecs + pauseSecs,
-        status: "completed",
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", id);
-    if (error) {
-      console.error("更新统计记录失败", error);
-    }
-  }
-
+  /* 计时操作：统一走 add_construction_log RPC。
+   * 工时统计（construction_stats）已搬进 RPC 自动维护（建行/结算/取消），
+   * 前端不再用定时器补写——根治"页面关了统计就丢"。 */
   async function addLog(action: "start" | "pause" | "resume" | "complete" | "cancel") {
-    const wasCompleted = status === "completed";
     setLoading(true);
     try {
       const { data: result, error: rpcErr } = await supabase.rpc("add_construction_log", {
@@ -292,57 +203,6 @@ export function ConstructionControls({
 
       await fetchLogs();
       onStatusChange?.();
-
-      const mechanicList = liveMechanics.length > 0 ? liveMechanics : [{ mechanic_id: currentUserId, full_name: "未分配" }];
-
-      if (action === "start") {
-        startTimeoutRef.current = setTimeout(async () => {
-          const newMap: Record<string, string> = {};
-          for (const m of mechanicList) {
-            const newId = await createStatsForMechanic(m.full_name);
-            if (newId) newMap[m.full_name] = newId;
-          }
-          setStatsIds((prev) => ({ ...prev, ...newMap }));
-        }, 60000);
-      } else if (action === "cancel") {
-        if (wasCompleted) {
-          // 取消完工：清除完工定时器，恢复统计记录为进行中
-          if (completeTimeoutRef.current) {
-            clearTimeout(completeTimeoutRef.current);
-            completeTimeoutRef.current = null;
-          }
-          for (const id of Object.values(statsIds)) {
-            await supabase.from("work_order_item_construction_stats").update({ status: "in_progress", completed_at: null }).eq("id", id);
-          }
-        } else {
-          // 取消施工：清除开始定时器，删除统计记录
-          if (startTimeoutRef.current) {
-            clearTimeout(startTimeoutRef.current);
-            startTimeoutRef.current = null;
-          }
-          for (const id of Object.values(statsIds)) {
-            await supabase.from("work_order_item_construction_stats").delete().eq("id", id);
-          }
-          setStatsIds({});
-        }
-      } else if (action === "complete") {
-        if (startTimeoutRef.current) {
-          clearTimeout(startTimeoutRef.current);
-          startTimeoutRef.current = null;
-        }
-        // 完工后2分钟生成/更新统计记录
-        completeTimeoutRef.current = setTimeout(async () => {
-          for (const m of mechanicList) {
-            const id = statsIds[m.full_name];
-            if (id) {
-              await updateStatsForMechanic(id);
-            } else {
-              const newId = await createStatsForMechanic(m.full_name);
-              if (newId) await updateStatsForMechanic(newId);
-            }
-          }
-        }, 120000);
-      }
     } catch (err: unknown) {
       alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {

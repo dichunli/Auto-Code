@@ -794,16 +794,7 @@ export default async function WorkOrderDetailPage({
                                 <div className="hidden md:block">
                                   <ConstructionControls
                                     itemId={item.id}
-                                    workOrderId={id}
                                     customerOpinion={item.customer_opinion}
-                                    itemName={(item.alias_name || item.name) ?? undefined}
-                                    vehicleBrand={(order.vehicles?.vehicle_models?.品牌 || order.vehicles?.brand) ?? undefined}
-                                    vehicleSeries={order.vehicles?.vehicle_models?.车系 ?? undefined}
-                                    vehicleModelName={(order.vehicles?.vehicle_models?.车型 || order.vehicles?.model) ?? undefined}
-                                    vehicleDisplacement={order.vehicles?.vehicle_models?.排量 ?? undefined}
-                                    vehicleEngine={(order.vehicles?.vehicle_models?.发动机型号 || order.vehicles?.engine_no) ?? undefined}
-                                    vehicleChassis={order.vehicles?.vin ?? undefined}
-                                    vehicleTransmission={(order.vehicles?.vehicle_models?.变速箱类型 || order.vehicles?.vehicle_models?.变速箱详情) ?? undefined}
                                     mechanics={(mechanicsByItem[item.id] || []).map((m) => ({ mechanic_id: m.mechanic_id || "", full_name: m.profiles?.full_name || "-" }))}
                                     初始已派工={(mechanicsByItem[item.id] || []).length > 0 || !!item.mechanic_id}
                                   />

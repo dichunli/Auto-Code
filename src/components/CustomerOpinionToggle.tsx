@@ -28,6 +28,9 @@ export function CustomerOpinionToggle({ itemId, opinion }: Props) {
     }
     // 写库成功后才更新本地显示，保证数据正确性
     setCurrent(newOpinion);
+    /* 广播：列表页分栏卡片监听后刷新列表（阶段自动挪列）；
+     * 详情页各徽章组件监听后重查自身状态（与派工/质检同一事件约定） */
+    window.dispatchEvent(new CustomEvent("wo-item-update", { detail: { itemId } }));
   }, [itemId, supabase, updating]);
 
   function handleClick() {
