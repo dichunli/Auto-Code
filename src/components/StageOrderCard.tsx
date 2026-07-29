@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import RequirementActions from "./RequirementActions";
 import { CustomerOpinionToggle } from "./CustomerOpinionToggle";
@@ -43,28 +42,14 @@ interface Props {
 }
 
 export default function StageOrderCard({ order, 当前阶段, profiles, mechanicGroups, on打开工单 }: Props) {
-  const router = useRouter();
   const supabase = createClient();
   const [操作中, set操作中] = useState<string | null>(null); // "itemId:action" 防连点
   const [派工项目, set派工项目] = useState<StageItem | null>(null);
   const [质检项目, set质检项目] = useState<StageItem | null>(null);
-
-  /* 客户意见/需求指派后：组件已广播事件，监听后刷新列表（阶段自动挪列）。
-   * 防抖 300ms：一次操作可能触发多个事件，只刷一次 */
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    function handle() {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => router.refresh(), 300);
-    }
-    window.addEventListener("wo-item-update", handle);
-    window.addEventListener("wo-requirement-assigned", handle);
-    return () => {
-      if (timer) clearTimeout(timer);
-      window.removeEventListener("wo-item-update", handle);
-      window.removeEventListener("wo-requirement-assigned", handle);
-    };
-  }, [router]);
+  /* 操作后【不自动刷新】（用户拍板）：连续对同一车多个项目操作时卡片不能跑掉。
+   * 该项目的按钮置灰表示"已操作"；数据库变化由 WorkOrdersRefreshBar 的
+   * Realtime 监听捕获，右下角弹"工单数据有更新"，用户点"立即刷新"才统一挪列 */
+  const [已操作, set已操作] = useState<Set<string>>(new Set());
 
   const 阶段项目 = order.stageItems.filter((i) => i.stage === 当前阶段);
 
@@ -97,7 +82,8 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
       alert(res?.error || "操作失败");
       return;
     }
-    router.refresh();
+    /* 不自动刷新：按钮置灰标记已操作，等用户点右下角"立即刷新"统一挪列 */
+    set已操作((prev) => new Set(prev).add(itemId));
   }
 
   /* 确认结单（快速通道）：串行两段流转 →待结单 →待结算 */
@@ -122,16 +108,18 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
       alert("操作失败: " + (r2.error?.message || res2?.error || "状态流转被拒绝"));
       return;
     }
-    router.refresh();
+    set已操作((prev) => new Set(prev).add("close"));
   }
 
-  /* 操作按钮通用样式 + 防连点 + 阻止冒泡（整卡可点击进详情） */
+  /* 操作按钮通用样式 + 防连点 + 已操作置灰 + 阻止冒泡（整卡可点击进详情） */
   function 按钮(
     label: string,
     onClick: () => void,
     color: string,
-    key: string
+    key: string,
+    itemId?: string
   ) {
+    const 已置灰 = itemId ? 已操作.has(itemId) : 已操作.has(key);
     return (
       <button
         key={key}
@@ -140,10 +128,10 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
           e.stopPropagation();
           onClick();
         }}
-        disabled={操作中 !== null}
+        disabled={操作中 !== null || 已置灰}
         className={`text-[11px] px-1.5 py-0.5 rounded border disabled:opacity-50 ${color}`}
       >
-        {操作中 === key ? "…" : label}
+        {操作中 === key ? "…" : 已置灰 ? "✓ 已操作" : label}
       </button>
     );
   }
@@ -157,35 +145,35 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
           <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5 shrink-0">
             <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion || "pending"} />
             {当前阶段 === "pending_dispatch" &&
-              按钮("派工", () => set派工项目(item), "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100", `${item.id}:assign`)}
+              按钮("派工", () => set派工项目(item), "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100", `${item.id}:assign`, item.id)}
           </span>
         );
       case "pending_construction":
         return (
           <span className="flex items-center gap-1 shrink-0">
-            {按钮("开始施工", () => 计时(item.id, "start"), "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100", `${item.id}:start`)}
+            {按钮("开始施工", () => 计时(item.id, "start"), "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100", `${item.id}:start`, item.id)}
           </span>
         );
       case "in_progress":
         return (
           <span className="flex items-center gap-1 shrink-0">
-            {按钮("中断", () => 计时(item.id, "pause"), "bg-yellow-50 text-yellow-600 border-yellow-200 hover:bg-yellow-100", `${item.id}:pause`)}
-            {按钮("完工", () => 计时(item.id, "complete"), "bg-green-50 text-green-600 border-green-200 hover:bg-green-100", `${item.id}:complete`)}
-            {按钮("取消", () => 计时(item.id, "cancel"), "bg-red-50 text-red-600 border-red-200 hover:bg-red-100", `${item.id}:cancel`)}
+            {按钮("中断", () => 计时(item.id, "pause"), "bg-yellow-50 text-yellow-600 border-yellow-200 hover:bg-yellow-100", `${item.id}:pause`, item.id)}
+            {按钮("完工", () => 计时(item.id, "complete"), "bg-green-50 text-green-600 border-green-200 hover:bg-green-100", `${item.id}:complete`, item.id)}
+            {按钮("取消", () => 计时(item.id, "cancel"), "bg-red-50 text-red-600 border-red-200 hover:bg-red-100", `${item.id}:cancel`, item.id)}
           </span>
         );
       case "paused":
         return (
           <span className="flex items-center gap-1 shrink-0">
-            {按钮("恢复施工", () => 计时(item.id, "resume"), "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100", `${item.id}:resume`)}
-            {按钮("完工", () => 计时(item.id, "complete"), "bg-green-50 text-green-600 border-green-200 hover:bg-green-100", `${item.id}:complete`)}
-            {按钮("取消", () => 计时(item.id, "cancel"), "bg-red-50 text-red-600 border-red-200 hover:bg-red-100", `${item.id}:cancel`)}
+            {按钮("恢复施工", () => 计时(item.id, "resume"), "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100", `${item.id}:resume`, item.id)}
+            {按钮("完工", () => 计时(item.id, "complete"), "bg-green-50 text-green-600 border-green-200 hover:bg-green-100", `${item.id}:complete`, item.id)}
+            {按钮("取消", () => 计时(item.id, "cancel"), "bg-red-50 text-red-600 border-red-200 hover:bg-red-100", `${item.id}:cancel`, item.id)}
           </span>
         );
       case "pending_qc":
         return (
           <span className="flex items-center gap-1 shrink-0">
-            {按钮("指派质检", () => set质检项目(item), "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100", `${item.id}:qc`)}
+            {按钮("指派质检", () => set质检项目(item), "bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100", `${item.id}:qc`, item.id)}
           </span>
         );
       default:
@@ -302,8 +290,10 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
           }))}
           onClose={() => set派工项目(null)}
           onSaved={() => {
+            const id = 派工项目.id;
             set派工项目(null);
-            router.refresh();
+            /* 不自动刷新：按钮置灰，等右下角"立即刷新"统一挪列 */
+            set已操作((prev) => new Set(prev).add(id));
           }}
         />
       )}
@@ -317,8 +307,9 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
           inspectorId={质检项目.inspector_id}
           onClose={() => set质检项目(null)}
           onSaved={() => {
+            const id = 质检项目.id;
             set质检项目(null);
-            router.refresh();
+            set已操作((prev) => new Set(prev).add(id));
           }}
         />
       )}
