@@ -26,28 +26,54 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
   const { 请求确认, 确认弹窗 } = useConfirm();
   /* 约束2：项目未派工时禁止指派/领单质检（null=查询中） */
   const [已派工, set已派工] = useState<boolean | null>(null);
+  /* 并发保护：记录打开时的质检人，保存前再比对——防两人同时指派互相覆盖 */
+  const [打开时inspectorId, set打开时inspectorId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     set已派工(null);
     supabase
       .from("work_order_items")
-      .select("mechanic_id, work_order_item_mechanics(mechanic_id)")
+      .select("mechanic_id, inspector_id, work_order_item_mechanics(mechanic_id)")
       .eq("id", itemId)
       .single()
       .then(({ data }) => {
         const row = data as {
           mechanic_id: string | null;
+          inspector_id: string | null;
           work_order_item_mechanics: { mechanic_id: string }[] | null;
         } | null;
         set已派工(!!row && ((row.work_order_item_mechanics || []).length > 0 || !!row.mechanic_id));
+        /* 打开时以数据库最新质检人为准（不用 prop 快照） */
+        set打开时inspectorId(row?.inspector_id || null);
+        setSelected(row?.inspector_id || "");
       });
   }, [open, itemId, supabase]);
 
   if (!open) return null;
 
+  /* 保存前冲突校验：质检人在弹窗打开期间被别人改过 → 拒绝并刷新为最新 */
+  async function 校验质检人未变(): Promise<boolean> {
+    const { data } = await supabase
+      .from("work_order_items")
+      .select("inspector_id")
+      .eq("id", itemId)
+      .single();
+    const 最新 = (data as { inspector_id: string | null } | null)?.inspector_id || null;
+    if (最新 === 打开时inspectorId) return true;
+    alert("质检人刚被其他人修改，已为你刷新为最新，请确认后再操作");
+    setSelected(最新 || "");
+    set打开时inspectorId(最新);
+    return false;
+  }
+
   async function handleSave() {
     setLoading(true);
+    /* 并发保护：保存前校验质检人没被别人改过 */
+    if (!(await 校验质检人未变())) {
+      setLoading(false);
+      return;
+    }
     const { error } = await supabase
       .from("work_order_items")
       .update({ inspector_id: selected || null })
@@ -70,6 +96,11 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
       setLoading(false);
       return;
     }
+    /* 并发保护：领单前校验质检人没被别人改过 */
+    if (!(await 校验质检人未变())) {
+      setLoading(false);
+      return;
+    }
     const { error } = await supabase
       .from("work_order_items")
       .update({ inspector_id: user.id })
@@ -86,6 +117,11 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
   async function handleClear() {
     if (!(await 请求确认("确定取消质检指派？"))) return;
     setLoading(true);
+    /* 并发保护：取消前校验质检人没被别人改过 */
+    if (!(await 校验质检人未变())) {
+      setLoading(false);
+      return;
+    }
     const { error } = await supabase
       .from("work_order_items")
       .update({ inspector_id: null })
