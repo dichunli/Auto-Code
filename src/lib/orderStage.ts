@@ -21,6 +21,7 @@
 
 export type 阶段key =
   | "pending_diagnosis"    // 待诊断（工单级）
+  | "pending_confirm"      // 待确认（客户意见未填）
   | "pending_dispatch"     // 待派工
   | "pending_construction" // 待施工
   | "in_progress"          // 施工中
@@ -33,6 +34,7 @@ export type 阶段key =
 
 export const 阶段文案: Record<阶段key, string> = {
   pending_diagnosis: "待诊断",
+  pending_confirm: "待确认",
   pending_dispatch: "待派工",
   pending_construction: "待施工",
   in_progress: "施工中",
@@ -46,6 +48,7 @@ export const 阶段文案: Record<阶段key, string> = {
 
 export const 阶段颜色: Record<阶段key, string> = {
   pending_diagnosis: "bg-gray-100 text-gray-700",
+  pending_confirm: "bg-rose-100 text-rose-700",
   pending_dispatch: "bg-slate-100 text-slate-700",
   pending_construction: "bg-orange-100 text-orange-700",
   in_progress: "bg-blue-100 text-blue-700",
@@ -60,6 +63,7 @@ export const 阶段颜色: Record<阶段key, string> = {
 /* 阶段深色系（与浅色徽章同族）：用于列表筛选标签的数量角标，醒目易读 */
 export const 阶段深色: Record<阶段key, string> = {
   pending_diagnosis: "bg-gray-500",
+  pending_confirm: "bg-rose-500",
   pending_dispatch: "bg-slate-500",
   pending_construction: "bg-orange-500",
   in_progress: "bg-blue-500",
@@ -74,6 +78,7 @@ export const 阶段深色: Record<阶段key, string> = {
 /* 徽章显示顺序（流程顺序） */
 export const 阶段顺序: 阶段key[] = [
   "pending_diagnosis",
+  "pending_confirm",
   "pending_dispatch",
   "pending_construction",
   "in_progress",
@@ -92,12 +97,17 @@ export interface 项目状态输入 {
   status?: string | null;       // pending / in_progress / paused / completed
   require_qc?: boolean | null;  // 是否必须质检
   qc_status?: string | null;    // none / passed / failed
+  customer_opinion?: string | null; // pending / agree / reject（客户意见）
   已派工: boolean;               // work_order_item_mechanics 是否有记录
 }
 
-/* 项目显示状态（6态）；非 labor 项目返回 null（配件走配件流程十态） */
+/* 项目显示状态（7态）；返回 null 表示"不进入任何阶段"：
+ * 非 labor 项目（配件走配件流程十态）、客户否决（reject）的项目（用户拍板：否决不显示）。
+ * 判定顺序：reject → 待确认（意见 pending）→ 待派工（未派工）→ 待施工 → 施工中/已中断 → 待质检/已完工 */
 export function getItemStageKey(item: 项目状态输入): 阶段key | null {
   if (item.item_type !== "labor") return null;
+  /* 客户否决的项目不进任何阶段（详情页仍可见，不阻塞结单） */
+  if (item.customer_opinion === "reject") return null;
 
   if (item.status === "completed") {
     /* 须质检且未质检 → 待质检；不须质检 或 已合格 → 已完工 */
@@ -106,7 +116,8 @@ export function getItemStageKey(item: 项目状态输入): 阶段key | null {
   }
   if (item.status === "in_progress") return "in_progress";
   if (item.status === "paused") return "paused";
-  /* status = pending（含质检不合格被打回的项目，同样显示待施工） */
+  /* status = pending：客户意见未确认最优先（先确认再派工施工） */
+  if ((item.customer_opinion || "pending") !== "agree") return "pending_confirm";
   if (!item.已派工) return "pending_dispatch";
   return "pending_construction";
 }
@@ -126,12 +137,14 @@ export interface 工单状态输入 {
   配件列表: 配件出库输入[];
 }
 
-/* 待结单判定（双通道）：
+/* 待结单判定（双通道；**客户否决 reject 的项目排除在外**——不做的项目不阻塞结单）：
  * 通道A（正常流程）：labor 项目非空、全部完工、须质检项目全部合格
- * 通道B（快速通道，约束3）：labor 项目全部已派工、选中配件全部出库完成，
+ * 通道B（快速通道，约束3）：labor 全部已派工、选中配件全部出库完成，
  *   且工单至少有一个项目或选中配件（防空工单直接可结单） */
 export function readyToClose(input: 工单状态输入): boolean {
-  const labors = input.项目列表.filter((it) => it.item_type === "labor");
+  const labors = input.项目列表.filter(
+    (it) => it.item_type === "labor" && it.customer_opinion !== "reject"
+  );
 
   const 通道A =
     labors.length > 0 &&
@@ -163,14 +176,13 @@ export function computeBoardStages(input: 工单状态输入): 阶段key[] {
   /* 待诊断：还没开项目（现状口径）或 有需求未指派（用户规则1） */
   if (labors.length === 0 || input.有未指派需求) 徽章.add("pending_diagnosis");
 
-  /* 项目阶段聚合（多阶段共存）。
-   * "已完工"不单独聚合：部分完工没有行动意义；全部完工必命中 readyToClose → 待结单 */
+  /* 项目阶段聚合（多阶段共存，含"已完工"——已完工页面要显示各车辆已完工项目） */
   for (const it of labors) {
     const s = getItemStageKey(it);
-    if (s && s !== "completed") 徽章.add(s);
+    if (s) 徽章.add(s);
   }
 
-  /* 待结单：双通道判定（可与"待质检/待施工"等共存——可结单但流程还没走完） */
+  /* 待结单：双通道判定（可与"已完工/待质检"等共存——可结单但流程还没走完） */
   if (readyToClose(input)) 徽章.add("pending_close");
 
   return 阶段顺序.filter((s) => 徽章.has(s));

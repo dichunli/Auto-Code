@@ -7,13 +7,14 @@ import {
   type 工单状态输入,
 } from "./orderStage";
 
-/* 快捷构造：labor 项目 */
+/* 快捷构造：labor 项目（默认客户已同意，便于聚焦其它维度） */
 function 项目(覆盖: Partial<项目状态输入> = {}): 项目状态输入 {
   return {
     item_type: "labor",
     status: "pending",
     require_qc: false,
     qc_status: "none",
+    customer_opinion: "agree",
     已派工: false,
     ...覆盖,
   };
@@ -40,6 +41,21 @@ describe("getItemStageKey 项目状态", () => {
 
   it("质检不合格被打回（pending+已派工+failed）→ 待施工", () => {
     expect(getItemStageKey(项目({ 已派工: true, qc_status: "failed" }))).toBe("pending_construction");
+  });
+
+  it("客户意见未填（pending）→ 待确认（最优先，未派工也先显示待确认）", () => {
+    expect(getItemStageKey(项目({ customer_opinion: "pending", 已派工: false }))).toBe("pending_confirm");
+    expect(getItemStageKey(项目({ customer_opinion: "pending", 已派工: true }))).toBe("pending_confirm");
+    expect(getItemStageKey(项目({ customer_opinion: null, 已派工: true }))).toBe("pending_confirm");
+  });
+
+  it("客户否决（reject）→ null（不进入任何阶段）", () => {
+    expect(getItemStageKey(项目({ customer_opinion: "reject", 已派工: true }))).toBeNull();
+    expect(getItemStageKey(项目({ customer_opinion: "reject", status: "completed" }))).toBeNull();
+  });
+
+  it("已完工项目不受客户意见 pending 影响（完工即完工）", () => {
+    expect(getItemStageKey(项目({ status: "completed", customer_opinion: "pending", 已派工: true }))).toBe("completed");
   });
 
   it("施工中 / 已中断", () => {
@@ -115,6 +131,22 @@ describe("readyToClose 待结单判定", () => {
   it("空工单（无项目无配件）→ false（防空单直接可结单）", () => {
     expect(readyToClose(工单({}))).toBe(false);
   });
+
+  it("reject 项目不阻塞结单：唯一项目被否决但已完工项目合格 → true", () => {
+    expect(readyToClose(工单({
+      项目列表: [
+        项目({ status: "completed", 已派工: true }),
+        项目({ customer_opinion: "reject", status: "pending", 已派工: false }),
+      ],
+    }))).toBe(true);
+  });
+
+  it("全部项目被否决+无配件 → false（等于没有可结单内容）", () => {
+    expect(readyToClose(工单({
+      项目列表: [项目({ customer_opinion: "reject" })],
+      配件列表: [],
+    }))).toBe(false);
+  });
 });
 
 describe("computeBoardStages 工单多徽章", () => {
@@ -160,11 +192,33 @@ describe("computeBoardStages 工单多徽章", () => {
     expect(stages).toContain("pending_close");
   });
 
-  it("全部完工（不须质检）→ 只显示待结单，不显示已完工", () => {
+  it("全部完工（不须质检）→ 已完工与待结单同时显示（已完工徽章回归）", () => {
     const stages = computeBoardStages(工单({
       项目列表: [项目({ status: "completed", 已派工: true })],
     }));
-    expect(stages).toEqual(["pending_close"]);
+    expect(stages).toEqual(["completed", "pending_close"]);
+  });
+
+  it("部分完工：已完工与施工中同时显示（用户需求6：已完工页面可见）", () => {
+    const stages = computeBoardStages(工单({
+      项目列表: [
+        项目({ status: "completed", 已派工: true }),
+        项目({ status: "in_progress", 已派工: true }),
+      ],
+    }));
+    expect(stages).toContain("completed");
+    expect(stages).toContain("in_progress");
+  });
+
+  it("意见 pending 的项目 → 工单显示待确认；reject 项目不产生任何徽章", () => {
+    const stages = computeBoardStages(工单({
+      项目列表: [
+        项目({ customer_opinion: "pending", 已派工: false }),
+        项目({ customer_opinion: "reject" }),
+      ],
+    }));
+    expect(stages).toContain("pending_confirm");
+    expect(stages).not.toContain("pending_dispatch");
   });
 
   it("存储态 pending_close 直达，忽略项目细节", () => {
