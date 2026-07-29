@@ -108,6 +108,7 @@ export default async function WorkOrderDetailPage({
       status: it.status,
       require_qc: it.require_qc,
       qc_status: it.qc_status,
+      customer_opinion: it.customer_opinion,
       已派工: (mechanicsByItem[it.id] || []).length > 0 || !!it.mechanic_id,
     })),
     配件列表: Object.values(partsByItem).flat().map((p) => ({
@@ -650,6 +651,7 @@ export default async function WorkOrderDetailPage({
                                     status={item.status}
                                     requireQc={item.require_qc}
                                     qcStatus={item.qc_status}
+                                    customerOpinion={item.customer_opinion}
                                     初始已派工={(mechanicsByItem[item.id] || []).length > 0 || !!item.mechanic_id}
                                   />
                                   {/* 质检操作：仅待质检且质检人本人时显示按钮（组件内部自判断） */}
