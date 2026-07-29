@@ -111,7 +111,8 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
     set已操作((prev) => new Set(prev).add("close"));
   }
 
-  /* 操作按钮通用样式 + 防连点 + 已操作置灰 + 阻止冒泡（整卡可点击进详情） */
+  /* 操作按钮通用样式：保留原按钮文案，已操作的仅置灰禁用（防重复点），
+   * 按钮组后另跟"✓ 已操作"小标记——不再把整个按钮替换成"已操作"（看不懂） */
   function 按钮(
     label: string,
     onClick: () => void,
@@ -131,7 +132,7 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
         disabled={操作中 !== null || 已置灰}
         className={`text-[11px] px-1.5 py-0.5 rounded border disabled:opacity-50 ${color}`}
       >
-        {操作中 === key ? "…" : 已置灰 ? "✓ 已操作" : label}
+        {操作中 === key ? "…" : label}
       </button>
     );
   }
@@ -239,11 +240,11 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
           <div className="text-xs text-gray-600 space-y-0.5">
             <div className="flex justify-between">
               <span>工时</span>
-              <span className="font-medium">{formatCurrency(order.labor_cost)}</span>
+              <span className="font-medium">{formatCurrency(order.labor_cost ?? null)}</span>
             </div>
             <div className="flex justify-between">
               <span>配件</span>
-              <span className="font-medium">{formatCurrency(order.parts_cost)}</span>
+              <span className="font-medium">{formatCurrency(order.parts_cost ?? null)}</span>
             </div>
             <div className="flex justify-between border-t border-gray-100 pt-0.5">
               <span>合计</span>
@@ -260,7 +261,13 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
                   <span className="text-[10px] text-gray-400 ml-1">[{技师名(i)}]</span>
                 )}
               </span>
-              {项目操作(i)}
+              <span className="flex items-center gap-1 shrink-0">
+                {项目操作(i)}
+                {/* 操作成功标记：按钮保留原文案置灰，这里统一提示"已操作（点右下角刷新挪列）" */}
+                {已操作.has(i.id) && (
+                  <span className="text-[10px] text-green-600 whitespace-nowrap">✓ 已操作</span>
+                )}
+              </span>
             </div>
           ))
         ) : (
