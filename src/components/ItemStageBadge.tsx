@@ -10,6 +10,7 @@ interface Props {
   status?: string | null;
   requireQc?: boolean | null;
   qcStatus?: string | null;
+  customerOpinion?: string | null;
   初始已派工: boolean;
 }
 
@@ -17,6 +18,7 @@ interface 重查行 {
   status: string | null;
   require_qc: boolean | null;
   qc_status: string | null;
+  customer_opinion: string | null;
   mechanic_id: string | null;
   item_type: string | null;
   work_order_item_mechanics: { mechanic_id: string }[] | null;
@@ -31,6 +33,7 @@ export default function ItemStageBadge({
   status,
   requireQc,
   qcStatus,
+  customerOpinion,
   初始已派工,
 }: Props) {
   const supabase = createClient();
@@ -40,6 +43,7 @@ export default function ItemStageBadge({
       status,
       require_qc: requireQc,
       qc_status: qcStatus,
+      customer_opinion: customerOpinion,
       已派工: 初始已派工,
     })
   );
@@ -48,7 +52,7 @@ export default function ItemStageBadge({
     async function 重查() {
       const { data } = await supabase
         .from("work_order_items")
-        .select("status, require_qc, qc_status, mechanic_id, item_type, work_order_item_mechanics(mechanic_id)")
+        .select("status, require_qc, qc_status, customer_opinion, mechanic_id, item_type, work_order_item_mechanics(mechanic_id)")
         .eq("id", itemId)
         .single();
       const row = data as 重查行 | null;
@@ -59,6 +63,7 @@ export default function ItemStageBadge({
           status: row.status,
           require_qc: row.require_qc,
           qc_status: row.qc_status,
+          customer_opinion: row.customer_opinion,
           已派工: (row.work_order_item_mechanics || []).length > 0 || !!row.mechanic_id,
         })
       );
