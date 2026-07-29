@@ -35,7 +35,9 @@ interface WorkOrderItem {
   item_type?: string | null;
   require_qc?: boolean | null;
   qc_status?: string | null;
-  work_order_item_mechanics?: { mechanic_id: string }[] | null;
+  customer_opinion?: string | null;
+  inspector_id?: string | null;
+  work_order_item_mechanics?: { mechanic_id: string; share_pct?: number | null }[] | null;
   work_order_item_parts?: WorkOrderItemPart[] | null;
 }
 
@@ -45,6 +47,8 @@ interface RawWorkOrder {
   status: string;
   order_type?: string | null;
   total_cost?: number | null;
+  labor_cost?: number | null;
+  parts_cost?: number | null;
   created_at: string;
   vehicles?: { plate_number: string; brand: string; model: string; vin: string } | { plate_number: string; brand: string; model: string; vin: string }[] | null;
   customers?: { name: string; phone: string; company: string } | { name: string; phone: string; company: string }[] | null;
@@ -59,11 +63,22 @@ export interface Order {
   /* 显示状态徽章数组（多阶段同时显示），取值见 orderStage 阶段key */
   boardStages: 阶段key[];
   /* labor 项目阶段明细（分栏卡片视图用）：每车卡片列出"处于某阶段"的项目 */
-  stageItems: { id: string; name: string; alias_name?: string | null; stage: 阶段key }[];
+  stageItems: {
+    id: string;
+    name: string;
+    alias_name?: string | null;
+    stage: 阶段key;
+    customer_opinion?: string | null;
+    inspector_id?: string | null;
+    mechanics: { mechanic_id: string; share_pct?: number | null }[];
+  }[];
   /* 未指派的需求明细（待诊断卡片列出具体需求） */
   未指派需求: { id: string; description: string | null }[];
   /* 有需求未指派（待诊断卡片占位文案用） */
   有未指派需求: boolean;
+  /* 工时/配件金额（待结算卡片显示） */
+  labor_cost?: number | null;
+  parts_cost?: number | null;
   total_cost: number | null;
   created_at: string;
   order_type: string;
@@ -105,6 +120,7 @@ function 组装状态输入(raw: RawWorkOrder): 工单状态输入 {
       status: it.status,
       require_qc: it.require_qc,
       qc_status: it.qc_status,
+      customer_opinion: it.customer_opinion,
       /* 派工判定以 work_order_item_mechanics 为准；mechanic_id 旧字段兜底兼容老数据 */
       已派工: (it.work_order_item_mechanics || []).length > 0 || !!it.mechanic_id,
     })),
@@ -124,13 +140,24 @@ function normalizeOrder(raw: RawWorkOrder): Order {
   const v = raw.vehicles;
   const c = raw.customers;
   const 输入 = 组装状态输入(raw);
-  /* labor 项目的阶段明细（分栏卡片视图用） */
+  /* labor 项目的阶段明细（分栏卡片视图用；含操作所需的客户意见/质检人/派工名单） */
   const stageItems = 输入.项目列表
     .map((it, idx) => {
       const stage = getItemStageKey(it);
       const 原 = (raw.work_order_items || [])[idx];
       return stage && 原
-        ? { id: 原.id, name: 原.name || "", alias_name: 原.alias_name, stage }
+        ? {
+            id: 原.id,
+            name: 原.name || "",
+            alias_name: 原.alias_name,
+            stage,
+            customer_opinion: 原.customer_opinion,
+            inspector_id: 原.inspector_id,
+            mechanics: (原.work_order_item_mechanics || []).map((m) => ({
+              mechanic_id: m.mechanic_id,
+              share_pct: m.share_pct,
+            })),
+          }
         : null;
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
@@ -144,6 +171,8 @@ function normalizeOrder(raw: RawWorkOrder): Order {
       .filter((r) => !r.assigned_to)
       .map((r) => ({ id: r.id, description: r.description || null })),
     有未指派需求: 输入.有未指派需求,
+    labor_cost: raw.labor_cost ?? null,
+    parts_cost: raw.parts_cost ?? null,
     total_cost: raw.total_cost ?? null,
     created_at: raw.created_at,
     order_type: raw.order_type || "normal",
@@ -205,11 +234,11 @@ export default async function WorkOrdersPage(props: {
   let query = supabase
     .from("work_orders")
     .select(
-      `id, order_no, status, order_type, total_cost, created_at,
+      `id, order_no, status, order_type, total_cost, labor_cost, parts_cost, created_at,
        vehicles(plate_number, brand, model, vin),
        customers(name, phone, company),
-       work_order_items(id, name, alias_name, status, mechanic_id, item_type, require_qc, qc_status,
-         work_order_item_mechanics(mechanic_id),
+       work_order_items(id, name, alias_name, status, mechanic_id, item_type, require_qc, qc_status, customer_opinion, inspector_id,
+         work_order_item_mechanics(mechanic_id, share_pct),
          work_order_item_parts(quantity, is_selected,
            part_picking_records(quantity),
            part_return_records(quantity))),
@@ -261,6 +290,40 @@ export default async function WorkOrdersPage(props: {
 
   const { data, error, count } = await query;
 
+  /* 分栏卡片操作需要的人员数据：员工名单（派工/质检指派）+ 员工分组（按组派工）。
+   * 数据量小（几十人），每次加载直查，与工单查询并行 */
+  const 需要人员数据 = !type && isDetailStage;
+  const [
+    { data: profilesRaw },
+    { data: employeeGroupsRaw },
+  ] = await Promise.all([
+    需要人员数据
+      ? supabase.from("profiles").select("id, full_name, group_id, profile_roles(roles(name)), mechanic_levels(sort_order)").eq("is_active", true).order("full_name")
+      : Promise.resolve({ data: null }),
+    需要人员数据
+      ? supabase.from("employee_groups").select("id, name").order("sort_order", { ascending: true })
+      : Promise.resolve({ data: null }),
+  ]);
+
+  interface 员工档案 {
+    id: string;
+    full_name: string;
+    group_id?: string | null;
+    profile_roles?: { roles?: { name?: string } | null }[] | null;
+    mechanic_levels?: { sort_order?: number }[] | null;
+  }
+  const profiles = (profilesRaw || []) as 员工档案[];
+  /* 组装派工弹窗需要的分组形状（同 workOrderData 的组装逻辑） */
+  const mechanicGroups = ((employeeGroupsRaw || []) as { id: string; name: string }[])
+    .map((g) => ({
+      id: g.id,
+      name: g.name,
+      members: profiles
+        .filter((p) => p.group_id === g.id)
+        .map((p) => ({ mechanic_id: p.id, profiles: { full_name: p.full_name } })),
+    }))
+    .filter((g) => g.members.length > 0);
+
   /* 角标统计：在修工单全量逐单算徽章、按阶段计数（在修数量小，一次轻量查询）。
    * 仅工单列表（!type）需要；角标语义=工单数（几辆车处于该阶段） */
   let 阶段角标: Record<string, number> | null = null;
@@ -271,7 +334,7 @@ export default async function WorkOrdersPage(props: {
         `id, order_no, status, order_type, total_cost, created_at,
          vehicles(plate_number, brand, model, vin),
          customers(name, phone, company),
-         work_order_items(id, name, alias_name, status, mechanic_id, item_type, require_qc, qc_status,
+         work_order_items(id, name, alias_name, status, mechanic_id, item_type, require_qc, qc_status, customer_opinion,
            work_order_item_mechanics(mechanic_id),
            work_order_item_parts(quantity, is_selected,
              part_picking_records(quantity),
@@ -380,7 +443,12 @@ export default async function WorkOrdersPage(props: {
             {statusFilters.map((filter) => (
               <Link
                 key={filter.value}
-                href={buildLink(baseParams, { status: filter.value, page: "1" })}
+                /* "已结算"不再做阶段筛选，直接跳历史工单列表（用户需求10） */
+                href={
+                  filter.value === "settled"
+                    ? "/work-orders?status=history"
+                    : buildLink(baseParams, { status: filter.value, page: "1" })
+                }
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                   status === filter.value
                     ? "bg-blue-600 text-white"
@@ -484,6 +552,8 @@ export default async function WorkOrdersPage(props: {
         type={type}
         queryError={queryError}
         baseParams={baseParams}
+        profiles={profiles}
+        mechanicGroups={mechanicGroups}
       />
     </div>
   );

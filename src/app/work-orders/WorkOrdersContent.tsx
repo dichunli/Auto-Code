@@ -7,8 +7,9 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
 import { logAction } from "@/lib/operationLog";
-import { 阶段文案, 阶段颜色 } from "@/lib/orderStage";
+import { 阶段文案, 阶段颜色, type 阶段key } from "@/lib/orderStage";
 import { 读本地工单标签 } from "@/lib/orderTabs";
+import StageOrderCard from "@/components/StageOrderCard";
 import type { Order } from "./page";
 
 /* ═════════════════════════════════════════════════════════════════
@@ -17,7 +18,22 @@ import type { Order } from "./page";
  * 数据由父组件（page.tsx Server Component）通过 props 传入。
  * 本组件只负责渲染表格和处理交互（删除、打开详情等）。
  * 状态徽章文案/颜色统一来自 src/lib/orderStage.ts（全站唯一口径）。
+ * 阶段分栏视图用 StageOrderCard（卡片可直接操作：领单/派工/计时/质检指派）。
  * ═════════════════════════════════════════════════════════════════ */
+
+interface Profile {
+  id: string;
+  full_name: string;
+  group_id?: string | null;
+  profile_roles?: { roles?: { name?: string } | null }[] | null;
+  mechanic_levels?: { sort_order?: number }[] | null;
+}
+
+interface MechanicGroup {
+  id: string;
+  name: string;
+  members: { mechanic_id: string; profiles?: { full_name: string } | null }[];
+}
 
 interface WorkOrdersContentProps {
   orders: Order[];
@@ -28,6 +44,9 @@ interface WorkOrdersContentProps {
   type: string;
   queryError: string | null;
   baseParams: Record<string, string>;
+  /* 分栏卡片操作需要的人员数据（派工/质检指派） */
+  profiles?: Profile[];
+  mechanicGroups?: MechanicGroup[];
 }
 
 export default function WorkOrdersContent({
@@ -39,6 +58,8 @@ export default function WorkOrdersContent({
   type,
   queryError,
   baseParams,
+  profiles = [],
+  mechanicGroups = [],
 }: WorkOrdersContentProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -108,78 +129,24 @@ export default function WorkOrdersContent({
   }
 
   /* 分栏卡片视图：点击具体阶段标签（待派工/施工中等）时，
-   * 按车辆分栏显示工单卡片，卡内只列"处于该阶段"的项目 */
+   * 按车辆分栏显示可操作工单卡片（StageOrderCard） */
   const 是分栏视图 = !!status && !["", "active", "history", "all"].includes(status) && !type;
-  const 当前阶段 = status as keyof typeof 阶段文案;
-
-  function 卡片占位文案(order: Order): string {
-    if (当前阶段 === "pending_diagnosis") {
-      return order.有未指派需求 ? "需求待指派诊断" : "待添加维修项目";
-    }
-    if (当前阶段 === "pending_close") return "已满足结单条件，可结单";
-    if (当前阶段 === "pending_settlement" || 当前阶段 === "settled") {
-      return `共 ${order.stageItems.length} 个项目`;
-    }
-    return "该阶段暂无项目";
-  }
+  const 当前阶段 = status as 阶段key;
 
   if (是分栏视图) {
     return (
       <div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {orders.map((order) => {
-            const 阶段项目 = order.stageItems.filter((i) => i.stage === 当前阶段);
-            return (
-              <div
-                key={order.id}
-                onClick={() => openOrderTab(order.id)}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm cursor-pointer hover:shadow-md hover:border-blue-300 transition-all"
-              >
-                {/* 卡片头：车牌 + 车型 + 状态徽章 */}
-                <div className="flex items-start justify-between px-4 pt-3">
-                  <div className="min-w-0">
-                    <div className="text-base font-semibold text-gray-900">
-                      {order.vehicles?.plate_number || "-"}
-                    </div>
-                    <div className="text-xs text-gray-400 truncate">
-                      {order.vehicles?.brand} {order.vehicles?.model}
-                    </div>
-                  </div>
-                  <span
-                    className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                      阶段颜色[当前阶段] || "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {阶段文案[当前阶段] || status}
-                  </span>
-                </div>
-                <div className="px-4 mt-0.5 text-xs text-gray-400 truncate">
-                  {order.order_no} · {order.customers?.name || "-"}
-                </div>
-                {/* 卡片体：该车处于该阶段的项目；待诊断时列出未指派的需求 */}
-                <div className="px-4 py-3 mt-2 border-t border-gray-100 space-y-1 min-h-[2.5rem]">
-                  {当前阶段 === "pending_diagnosis" && order.未指派需求.length > 0 ? (
-                    <>
-                      <div className="text-xs text-orange-500 font-medium">待指派的需求：</div>
-                      {order.未指派需求.map((r) => (
-                        <div key={r.id} className="text-sm text-gray-700 truncate">
-                          · {r.description || "（无描述）"}
-                        </div>
-                      ))}
-                    </>
-                  ) : 阶段项目.length > 0 ? (
-                    阶段项目.map((i) => (
-                      <div key={i.id} className="text-sm text-gray-700 truncate">
-                        · {i.alias_name || i.name}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-xs text-gray-400 italic">{卡片占位文案(order)}</div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {orders.map((order) => (
+            <StageOrderCard
+              key={order.id}
+              order={order}
+              当前阶段={当前阶段}
+              profiles={profiles}
+              mechanicGroups={mechanicGroups}
+              on打开工单={openOrderTab}
+            />
+          ))}
         </div>
         {orders.length === 0 && (
           <div className="bg-white rounded-xl border border-gray-200 px-6 py-12 text-center text-gray-400">
