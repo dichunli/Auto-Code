@@ -358,7 +358,9 @@ export default async function WorkOrdersPage(props: {
 
   return (
     <div>
-      <WorkOrderTabBar tabs={tabsParam} />
+      {/* 工单标签栏只在"在修工单"（含其阶段筛选）显示：
+       * 保养单/预约单/报价单/作废单（type 视图）和 历史/全部工单 不属于在修场景，不显示 */}
+      {!type && status !== "history" && status !== "all" && <WorkOrderTabBar tabs={tabsParam} />}
 
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-gray-900">{pageTitle}</h1>
