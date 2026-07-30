@@ -402,7 +402,12 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
   }
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 ${open ? "" : "hidden"}`}>
+    /* 根元素必须阻断点击冒泡：本弹窗在工单卡片（整卡可点击跳转详情页）内复用时，
+     * 弹窗内的任何点击都会冒泡到卡片 onClick 导致误跳转详情页 */
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 ${open ? "" : "hidden"}`}
+    >
       <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">派工</h2>
 
