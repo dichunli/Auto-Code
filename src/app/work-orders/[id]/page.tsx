@@ -96,7 +96,7 @@ export default async function WorkOrderDetailPage({
   });
 
 
-  /* 待结单判定（双通道）：全部完工+须质检全合格，或 全部派工+选中配件全出库（约束3）。
+  /* 待结单判定（唯一通道 2026-07-31）：全部派工 + 选中配件全出库（无配件只看全部派工）。
    * 命中时"确认结单"按钮出现（repairing/pending_quality_check 也可直接结单） */
   const 待结单就绪 = readyToClose({
     status: order.status,

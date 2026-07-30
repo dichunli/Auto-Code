@@ -80,41 +80,55 @@ describe("getItemStageKey 项目状态", () => {
   });
 });
 
-describe("readyToClose 待结单判定", () => {
-  it("通道A：全部完工+不须质检 → true", () => {
+describe("readyToClose 待结单判定（唯一通道：全部派工+配件全出库）", () => {
+  it("全部完工已派工+无配件 → true（无配件只看全部派工）", () => {
     expect(readyToClose(工单({
       项目列表: [项目({ status: "completed", 已派工: true })],
     }))).toBe(true);
   });
 
-  it("通道A：全部完工+须质检已合格 → true", () => {
+  it("全部完工+须质检已合格+无配件 → true", () => {
     expect(readyToClose(工单({
       项目列表: [项目({ status: "completed", require_qc: true, qc_status: "passed", 已派工: true })],
     }))).toBe(true);
   });
 
-  it("通道A不命中：须质检未检 → 看通道B（未出库）→ false", () => {
+  it("新规则核心：全部完工+质检合格但配件未出库 → false（完工不再单独放行）", () => {
+    expect(readyToClose(工单({
+      项目列表: [项目({ status: "completed", require_qc: true, qc_status: "passed", 已派工: true })],
+      配件列表: [{ is_selected: true, quantity: 1, 净出库: 0 }],
+    }))).toBe(false);
+  });
+
+  it("全部完工不须质检但配件出库不足 → false", () => {
+    expect(readyToClose(工单({
+      项目列表: [项目({ status: "completed", 已派工: true })],
+      配件列表: [{ is_selected: true, quantity: 2, 净出库: 1 }],
+    }))).toBe(false);
+  });
+
+  it("须质检未检+配件未出库 → false", () => {
     expect(readyToClose(工单({
       项目列表: [项目({ status: "completed", require_qc: true, qc_status: "none", 已派工: true })],
       配件列表: [{ is_selected: true, quantity: 1, 净出库: 0 }],
     }))).toBe(false);
   });
 
-  it("通道B（快速通道）：全部已派工+配件全出库，未完工未质检也 → true", () => {
+  it("全部已派工+配件全出库，未完工未质检也 → true", () => {
     expect(readyToClose(工单({
       项目列表: [项目({ status: "pending", 已派工: true })],
       配件列表: [{ is_selected: true, quantity: 2, 净出库: 2 }],
     }))).toBe(true);
   });
 
-  it("通道B不命中：配件出库不足 → false", () => {
+  it("配件出库不足 → false", () => {
     expect(readyToClose(工单({
       项目列表: [项目({ status: "pending", 已派工: true })],
       配件列表: [{ is_selected: true, quantity: 2, 净出库: 1 }],
     }))).toBe(false);
   });
 
-  it("通道B不命中：有项目未派工 → false", () => {
+  it("有项目未派工 → false", () => {
     expect(readyToClose(工单({
       项目列表: [项目({ 已派工: false })],
       配件列表: [],
@@ -132,7 +146,7 @@ describe("readyToClose 待结单判定", () => {
     expect(readyToClose(工单({}))).toBe(false);
   });
 
-  it("reject 项目不阻塞结单：唯一项目被否决但已完工项目合格 → true", () => {
+  it("reject 项目不阻塞结单：否决项目不算未派工 → true", () => {
     expect(readyToClose(工单({
       项目列表: [
         项目({ status: "completed", 已派工: true }),
