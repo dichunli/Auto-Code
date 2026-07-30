@@ -48,7 +48,9 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
   const [质检项目, set质检项目] = useState<StageItem | null>(null);
   /* 操作后【不自动刷新】（用户拍板）：连续对同一车多个项目操作时卡片不能跑掉。
    * 该项目的按钮置灰表示"已操作"；数据库变化由 WorkOrdersRefreshBar 的
-   * Realtime 监听捕获，右下角弹"工单数据有更新"，用户点"立即刷新"才统一挪列 */
+   * Realtime 监听捕获，右下角弹"工单数据有更新"，用户点"立即刷新"才统一挪列。
+   * 标记按 `${itemId}:${阶段}` 记录：切阶段标签时组件复用（key=order.id），
+   * 旧阶段的标记自然失效，避免派工的"已操作"误置灰"开始施工"等新阶段按钮 */
   const [已操作, set已操作] = useState<Set<string>>(new Set());
 
   const 阶段项目 = order.stageItems.filter((i) => i.stage === 当前阶段);
@@ -82,8 +84,8 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
       alert(res?.error || "操作失败");
       return;
     }
-    /* 不自动刷新：按钮置灰标记已操作，等用户点右下角"立即刷新"统一挪列 */
-    set已操作((prev) => new Set(prev).add(itemId));
+    /* 不自动刷新：按钮置灰标记已操作（按项目+阶段），等用户点右下角"立即刷新"统一挪列 */
+    set已操作((prev) => new Set(prev).add(`${itemId}:${当前阶段}`));
   }
 
   /* 确认结单（快速通道）：串行两段流转 →待结单 →待结算 */
@@ -120,7 +122,7 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
     key: string,
     itemId?: string
   ) {
-    const 已置灰 = itemId ? 已操作.has(itemId) : 已操作.has(key);
+    const 已置灰 = itemId ? 已操作.has(`${itemId}:${当前阶段}`) : 已操作.has(key);
     return (
       <button
         key={key}
@@ -263,8 +265,8 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
               </span>
               <span className="flex items-center gap-1 shrink-0">
                 {项目操作(i)}
-                {/* 操作成功标记：按钮保留原文案置灰，这里统一提示"已操作（点右下角刷新挪列）" */}
-                {已操作.has(i.id) && (
+                {/* 操作成功标记：按钮保留原文案置灰，这里统一提示"已操作（点右下角刷新挪列）"（按项目+阶段判定，跨阶段不残留） */}
+                {已操作.has(`${i.id}:${当前阶段}`) && (
                   <span className="text-[10px] text-green-600 whitespace-nowrap">✓ 已操作</span>
                 )}
               </span>
@@ -299,8 +301,8 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
           onSaved={() => {
             const id = 派工项目.id;
             set派工项目(null);
-            /* 不自动刷新：按钮置灰，等右下角"立即刷新"统一挪列 */
-            set已操作((prev) => new Set(prev).add(id));
+            /* 不自动刷新：按钮置灰（按项目+阶段），等右下角"立即刷新"统一挪列 */
+            set已操作((prev) => new Set(prev).add(`${id}:${当前阶段}`));
           }}
         />
       )}
@@ -316,7 +318,7 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
           onSaved={() => {
             const id = 质检项目.id;
             set质检项目(null);
-            set已操作((prev) => new Set(prev).add(id));
+            set已操作((prev) => new Set(prev).add(`${id}:${当前阶段}`));
           }}
         />
       )}
