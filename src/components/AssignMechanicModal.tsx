@@ -47,40 +47,71 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
   const { 请求确认, 确认弹窗 } = useConfirm();
   const [showClaimChoice, setShowClaimChoice] = useState(false);
   const [levelPreview, setLevelPreview] = useState<{ id: string; name: string; coeff: number; ratio: number }[]>([]);
+  /* 并发保护：记录弹窗打开时的名单指纹，保存前再比对——
+   * 防止两人同时派工，后保存的 delete+insert 无声覆盖先保存的 */
+  const [打开时指纹, set打开时指纹] = useState("");
 
-  useEffect(() => {
-    if (open) {
-      setSelectedPersons(existingMechanics.map((m) => m.mechanic_id));
-      setSelectedGroup("");
-      setShowClaimChoice(false);
-      setLevelPreview([]);
-      setPersonSearch("");
+  /* 名单指纹：mechanic_id+分成 排序拼串，变任何一人或比例都会变 */
+  function 名单指纹(list: { mechanic_id: string; share_pct?: number | null }[]): string {
+    return list.map((m) => `${m.mechanic_id}:${m.share_pct ?? ""}`).sort().join("|");
+  }
 
-      // 回显已设定的分成：多人且比例并非"平均分配"时，回显为手动模式并填入已存比例，
-      // 而不是每次打开都重置成默认平均分配。（等级分配已落成具体比例，难以精确反推，
-      // 统一以手动模式展示已存的具体数字，直观且可继续微调。）
-      if (existingMechanics.length > 1) {
-        const 均值 = 100 / existingMechanics.length;
-        const 是平均 = existingMechanics.every(
-          (m) => Math.abs((m.share_pct ?? 0) - 均值) <= 0.5
-        );
-        if (是平均) {
-          setCommissionRule("equal");
-          setManualRatios({});
-        } else {
-          setCommissionRule("manual");
-          const ratios: Record<string, string> = {};
-          existingMechanics.forEach((m) => {
-            ratios[m.mechanic_id] = String(m.share_pct ?? 0);
-          });
-          setManualRatios(ratios);
-        }
-      } else {
+  /* 用一份名单初始化选中人和分成回显（打开时/冲突刷新时共用） */
+  function 初始化选中与分成(名单: { mechanic_id: string; share_pct?: number | null }[]) {
+    setSelectedPersons(名单.map((m) => m.mechanic_id));
+    if (名单.length > 1) {
+      const 均值 = 100 / 名单.length;
+      const 是平均 = 名单.every((m) => Math.abs((m.share_pct ?? 0) - 均值) <= 0.5);
+      if (是平均) {
         setCommissionRule("equal");
         setManualRatios({});
+      } else {
+        // 非平均分配：以手动模式回显已存具体比例（等级分配已落成数字，难以精确反推规则）
+        setCommissionRule("manual");
+        const ratios: Record<string, string> = {};
+        名单.forEach((m) => {
+          ratios[m.mechanic_id] = String(m.share_pct ?? 0);
+        });
+        setManualRatios(ratios);
       }
+    } else {
+      setCommissionRule("equal");
+      setManualRatios({});
     }
-  }, [open, existingMechanics]);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedGroup("");
+    setShowClaimChoice(false);
+    setLevelPreview([]);
+    setPersonSearch("");
+    /* 打开时实时读最新名单（不用 prop 快照——弹窗可能在别处已打开过一段时间） */
+    supabase
+      .from("work_order_item_mechanics")
+      .select("mechanic_id, share_pct")
+      .eq("work_order_item_id", itemId)
+      .then(({ data }) => {
+        const 最新 = (data || []) as { mechanic_id: string; share_pct: number | null }[];
+        set打开时指纹(名单指纹(最新));
+        /* 查询失败/为空时退回 prop 快照初始化 */
+        初始化选中与分成(最新.length > 0 || data !== null ? 最新 : existingMechanics);
+      });
+  }, [open, itemId, supabase]);
+
+  /* 保存前冲突校验：名单在弹窗打开期间被别人改过 → 拒绝保存并刷新为最新名单 */
+  async function 校验名单未变(): Promise<boolean> {
+    const { data } = await supabase
+      .from("work_order_item_mechanics")
+      .select("mechanic_id, share_pct")
+      .eq("work_order_item_id", itemId);
+    const 最新 = (data || []) as { mechanic_id: string; share_pct: number | null }[];
+    if (名单指纹(最新) === 打开时指纹) return true;
+    alert("施工名单刚被其他人修改，已为你刷新为最新名单，请确认后再保存");
+    初始化选中与分成(最新);
+    set打开时指纹(名单指纹(最新));
+    return false;
+  }
 
   const personCount = mode === "group" && selectedGroup
     ? (mechanicGroups.find((g) => g.id === selectedGroup)?.members.length || 0)
@@ -206,6 +237,11 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
       setLoading(false);
       return;
     }
+    /* 并发保护：领单前校验名单没被别人改过 */
+    if (!(await 校验名单未变())) {
+      setLoading(false);
+      return;
+    }
     await supabase.from("work_order_item_mechanics").delete().eq("work_order_item_id", itemId);
     const { error } = await supabase.from("work_order_item_mechanics").insert({
       work_order_item_id: itemId,
@@ -242,6 +278,11 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
   async function handleClear() {
     if (!(await 请求确认("确定取消施工指派？"))) return;
     setLoading(true);
+    /* 并发保护：取消前校验名单没被别人改过（别把别人刚派的也删了） */
+    if (!(await 校验名单未变())) {
+      setLoading(false);
+      return;
+    }
     const { error } = await supabase
       .from("work_order_item_mechanics")
       .delete()
@@ -257,6 +298,12 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
 
   async function handleSave() {
     setLoading(true);
+
+    /* 并发保护：保存前校验名单没被别人改过（防后保存覆盖先保存） */
+    if (!(await 校验名单未变())) {
+      setLoading(false);
+      return;
+    }
 
     let mechanicIds: string[] = [];
 
