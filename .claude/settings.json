@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hook-protect-critical.js || true",
+            "statusMessage": "正在检查是否触及高危文件...",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hook-post-edit.js || true",
+            "statusMessage": "正在自动修复格式、运行类型检查和完整测试...",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}

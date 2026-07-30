@@ -70,10 +70,19 @@ model_for_api.sql
 # 临时文件
 tmp_*.html
 
-# Claude 临时文件
-.claude/
+# Claude 临时文件（注意：必须用 .claude/* 而不是 .claude/，否则下面的例外不生效）
+.claude/*
 !.claude/settings.json
 !.claude/hook-post-edit.js
+!.claude/hook-protect-critical.js
+!.claude/skills/
+!.claude/agents/
+!.claude/rules/
+
+# MCP 配置（含密钥，禁止提交）
+.mcp.json
+# 高危文件自动备份
+*.bak
 
 # 测试脚本
 scripts/*
