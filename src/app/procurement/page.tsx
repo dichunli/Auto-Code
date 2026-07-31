@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/PageHeader";
+import { StickyPageHeader } from "@/components/StickyPageHeader";
 import Link from "next/link";
 import { PartBranchStatusList } from "@/components/PartBranchStatusList";
 import { PendingPurchaseList } from "@/components/PendingPurchaseList";
@@ -47,6 +48,8 @@ export default async function ProcurementPage({
 
   return (
     <div>
+      {/* 冻结页头：标题 + 按钮区 + Tab 行，滚动时固定不动 */}
+      <StickyPageHeader>
       <PageHeader title="采购管理" description="按阶段集中处理工单配件的采购流转" />
 
       {/* 顶部按钮区 */}
@@ -94,6 +97,7 @@ export default async function ProcurementPage({
 
       {/* Tab 行 */}
       <ProcurementTabBar currentTab={currentTab} />
+      </StickyPageHeader>
 
       {/* 内容区 */}
       {(currentTab === "pending_inquiry" ||

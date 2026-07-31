@@ -1249,11 +1249,14 @@ export function PartBranchStatusList({ status }: Props) {
           <option key={s} value={s} />
         ))}
       </datalist>
-      <div className="overflow-x-auto">
+      {/* 表格区：限高内滚（双向），表头 sticky top-0 冻结——配合页头 StickyPageHeader，
+       * 滚动时 页头+标题栏+表头 全固定，只有数据行滚动。
+       * max-h = 视口高 - 页头实测高（CSS 变量）- 标题栏/边距预留（11rem），保证主区域不再滚动、标题栏不被遮 */}
+      <div className="overflow-auto max-h-[calc(100vh_-_var(--sticky-header-h,13rem)_-_11rem)]">
         <table className="w-full text-xs min-w-[1200px]">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 w-10">
+              <th className="px-3 py-3 text-left font-medium text-gray-500 w-10 sticky top-0 bg-gray-50 z-10">
                 <input
                   type="checkbox"
                   checked={rows.length > 0 && selectedIds.size === rows.length}
@@ -1261,20 +1264,20 @@ export function PartBranchStatusList({ status }: Props) {
                   className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
               </th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">工单号</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">编码</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">配件</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">品牌</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">规格</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-500">数量</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-500">库存</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-500">采购价</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-500">销售价</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">客户意见</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">供应商</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">备注</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">图片</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky right-0 bg-gray-50 z-10">操作</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">工单号</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">编码</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">配件</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">品牌</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">规格</th>
+              <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">数量</th>
+              <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">库存</th>
+              <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">采购价</th>
+              <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">销售价</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">客户意见</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">供应商</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">备注</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">图片</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 right-0 bg-gray-50 z-20">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
