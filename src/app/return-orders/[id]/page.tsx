@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
+import { PrintButton } from "@/components/PrintButton";
 
 interface ReturnOrderItem {
   id: string;
@@ -70,13 +71,7 @@ export default async function ReturnOrderDetailPage({
         <Link href="/return-orders" className="text-sm text-blue-600 hover:text-blue-700">
           ← 返回采退单列表
         </Link>
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="px-3 py-1.5 text-xs rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
-        >
-          打印
-        </button>
+        <PrintButton />
       </div>
 
       {/* 打印专用页头 */}

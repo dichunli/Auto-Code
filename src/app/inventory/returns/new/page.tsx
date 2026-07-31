@@ -110,8 +110,8 @@ export default function NewPurchaseReturnPage() {
       // 记录库存日志
       await supabase.from("inventory_logs").insert({
         part_id: form.part_id,
-        change_type: "return",
-        quantity: qty,
+        type: "return_out",
+        change_qty: -qty,
         before_qty: beforeQty,
         after_qty: beforeQty - qty,
         notes: `供应商退货: ${form.reason || "无原因"}`,

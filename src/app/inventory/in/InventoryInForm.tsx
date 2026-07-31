@@ -233,8 +233,8 @@ export default function InventoryInForm() {
 
         await supabase.from("inventory_logs").insert({
           part_id: part.id,
-          change_type: "in",
-          quantity: qty,
+          type: "inbound",
+          change_qty: qty,
           before_qty: 0,
           after_qty: qty,
           waybill_id: waybillId,
@@ -271,8 +271,8 @@ export default function InventoryInForm() {
 
         await supabase.from("inventory_logs").insert({
           part_id: selectedPartId,
-          change_type: "in",
-          quantity: qty,
+          type: "inbound",
+          change_qty: qty,
           before_qty: beforeQty,
           after_qty: afterQty,
           waybill_id: waybillId,
