@@ -407,6 +407,7 @@ export function PendingStorageList() {
           part_id: f.item.part_id,
           batch_no: f.batchNo || null,
           quantity: qty,
+          remaining: qty,
           unit_cost: f.item.unit_cost,
           inbound_type: "purchase",
           reference_id: orderId,
@@ -419,8 +420,10 @@ export function PendingStorageList() {
         /* 创建库存日志 */
         const { error: logErr } = await supabase.from("inventory_logs").insert({
           part_id: f.item.part_id,
-          change_qty: qty,
           type: "inbound",
+          change_qty: qty,
+          before_qty: (part?.quantity || 0),
+          after_qty: (part?.quantity || 0) + qty,
           reference_type: "inbound_order",
           reference_id: inboundOrderId,
           notes: `采购入库: ${f.item.name}${f.batchNo ? " 批次:" + f.batchNo : ""}`,

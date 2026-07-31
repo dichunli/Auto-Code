@@ -152,8 +152,8 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
         await supabase.from("inventory_logs").insert({
           part_id: partId,
-          change_type: "in",
-          quantity: qty,
+          type: "inbound",
+          change_qty: qty,
           before_qty: beforeQty,
           after_qty: afterQty,
           notes: `采购入库: 订单 ${order.order_no || orderId.slice(0, 8)}`,
