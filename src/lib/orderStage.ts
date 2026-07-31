@@ -137,30 +137,27 @@ export interface 工单状态输入 {
   配件列表: 配件出库输入[];
 }
 
-/* 待结单判定（双通道；**客户否决 reject 的项目排除在外**——不做的项目不阻塞结单）：
- * 通道A（正常流程）：labor 项目非空、全部完工、须质检项目全部合格
- * 通道B（快速通道，约束3）：labor 全部已派工、选中配件全部出库完成，
- *   且工单至少有一个项目或选中配件（防空工单直接可结单） */
+/* 待结单判定（唯一通道，2026-07-31 用户拍板；**客户否决 reject 的项目排除在外**——不做的项目不阻塞结单）：
+ *   labor 全部已派工 + 选中配件全部出库 + 工单至少有一个项目或选中配件（无配件时只看全部派工）。
+ * 2026-07-31 前另有"通道A（全部完工+质检全合格直接可结单）"——它不看配件出库，
+ * 导致配件还欠着就显示待结单，已删除：完工的项目必然已派工（完工有派工门禁），
+ * 统一走唯一通道，配件未出齐一律不允许结单。
+ * 与数据库 fn_order_ready_to_close 同口径，改动必须两边同步。 */
 export function readyToClose(input: 工单状态输入): boolean {
   const labors = input.项目列表.filter(
     (it) => it.item_type === "labor" && it.customer_opinion !== "reject"
   );
 
-  const 通道A =
-    labors.length > 0 &&
-    labors.every((it) => it.status === "completed") &&
-    labors.every((it) => !it.require_qc || it.qc_status === "passed");
-
   const 选中配件 = input.配件列表.filter((p) => p.is_selected !== false);
   const 配件全出库 = 选中配件.every(
     (p) => (p.quantity ?? 0) <= 0 || p.净出库 >= (p.quantity ?? 0)
   );
-  const 通道B =
+
+  return (
     labors.every((it) => it.已派工) &&
     配件全出库 &&
-    (labors.length > 0 || 选中配件.length > 0);
-
-  return 通道A || 通道B;
+    (labors.length > 0 || 选中配件.length > 0)
+  );
 }
 
 /* 工单显示状态（多徽章）：返回按流程顺序排序的阶段数组 */
@@ -182,7 +179,7 @@ export function computeBoardStages(input: 工单状态输入): 阶段key[] {
     if (s) 徽章.add(s);
   }
 
-  /* 待结单：双通道判定（可与"已完工/待质检"等共存——可结单但流程还没走完） */
+  /* 待结单：唯一通道判定（可与"已完工/待质检"等共存——可结单但流程还没走完） */
   if (readyToClose(input)) 徽章.add("pending_close");
 
   return 阶段顺序.filter((s) => 徽章.has(s));
