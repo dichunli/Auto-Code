@@ -176,6 +176,12 @@ export default async function WorkOrderDetailPage({
                 维修记录{historyOrderCount ? `(${historyOrderCount})` : ""}
               </Link>
             )}
+            <Link
+              href={`/picking-orders/new?work_order_id=${id}`}
+              className="text-sm text-purple-600 hover:text-purple-700 py-1"
+            >
+              开领料单
+            </Link>
             <AdvancePaymentDropdown
               orderId={id}
               advancePayment={advancePaymentTotal}
@@ -200,6 +206,12 @@ export default async function WorkOrderDetailPage({
               维修记录{historyOrderCount ? `(${historyOrderCount})` : ""}
             </Link>
           )}
+          <Link
+            href={`/picking-orders/new?work_order_id=${id}`}
+            className="text-sm text-purple-600 hover:text-purple-700"
+          >
+            开领料单
+          </Link>
           <AdvancePaymentDropdown
             orderId={id}
             advancePayment={advancePaymentTotal}
