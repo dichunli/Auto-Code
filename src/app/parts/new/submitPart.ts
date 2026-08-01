@@ -4,7 +4,7 @@ import { StockLocationRow } from "./components/StockLocationSection";
 import { SpecialPriceItem, VehicleModelPriceItem } from "./components/SpecialPricingSection";
 import { PartNameItem } from "./components/PartNameSearch";
 
-interface SubmitPartFormData {
+export interface SubmitPartFormData {
   name: string;
   unit: string;
   min_stock: string;
@@ -32,7 +32,7 @@ interface SubmitPartFormData {
   picking_value: string;
 }
 
-interface SubmitPartParams {
+export interface SubmitPartParams {
   supabase: SupabaseClient;
   isEditMode: boolean;
   editId?: string;
@@ -57,7 +57,7 @@ interface SubmitPartParams {
   supplierId: string | null;
 }
 
-interface SubmitPartResult {
+export interface SubmitPartResult {
   success: boolean;
   partId?: string;
   finalSystemCode?: string;

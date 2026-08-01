@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { vin17DecodeVin, vin17GetModelListFromPartNumber, vin17GetModelListFromPartNumberForAftermarket, vin17SearchFiltersByVin, vin17SearchAftermarketParts } from "@/lib/17vin/client";
 import { 判断三滤类型, 精准三滤类型 } from "@/lib/filterType";
@@ -8,6 +8,30 @@ import { 车型库匹配字段, type 车型库行 } from "@/lib/vehicleModelFiel
 import { 标准化字符串, 标准化大写 } from "@/lib/stringNormalize";
 import { 标准化VIN } from "@/lib/vinValidator";
 import { 生成完整系统码, 配件系统码前缀, 提取系统码序号 } from "@/lib/systemCode";
+import submitPart, { type SubmitPartParams, type SubmitPartResult } from "./new/submitPart";
+
+/* ═══ 保存配件（新建/编辑）═══
+ * 客户端提交改走服务端：避免客户端 session 异常导致保存 401 / 被 RLS 拦截。
+ * 实际写库逻辑复用 parts/new/submitPart.ts（纯函数，接收服务端 client）。 */
+export async function 保存配件(
+  参数: Omit<SubmitPartParams, "supabase">
+): Promise<SubmitPartResult> {
+  const { user, error } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: error || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const result = await submitPart({ ...参数, supabase });
+
+  if (result.success) {
+    revalidatePath("/inventory");
+    if (result.partId) {
+      revalidatePath(`/parts/${result.partId}`);
+    }
+  }
+  return result;
+}
 
 interface 同步结果 {
   success: boolean;

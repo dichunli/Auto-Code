@@ -18,8 +18,7 @@ import BrandSearch from "./components/BrandSearch";
 import SpecSearch from "./components/SpecSearch";
 import CommissionSection from "./components/CommissionSection";
 import FormActions from "./components/FormActions";
-import submitPart from "./submitPart";
-import { syncOeFromVin, syncModelsFromVin, syncModelsByGroupId } from "../actions";
+import { syncOeFromVin, syncModelsFromVin, syncModelsByGroupId, 保存配件 } from "../actions";
 import { 标准化VIN } from "@/lib/vinValidator";
 import type { 车型库行 } from "@/lib/vehicleModelFields";
 
@@ -245,8 +244,8 @@ export default function PartForm({
     }
 
     setLoading(true);
-    const result = await submitPart({
-      supabase,
+    /* 保存走 Server Action（服务端写库），避免客户端 session 异常导致保存失败 */
+    const result = await 保存配件({
       isEditMode,
       editId,
       systemCode,
