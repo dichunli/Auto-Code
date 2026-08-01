@@ -274,3 +274,289 @@ export async function 结算工单(参数: {
   revalidatePath("/work-orders");
   return { success: true, totalCost: rpcResult.total_cost };
 }
+
+/* ═══ 工单需求页：保存需求 + 维修项目 + 配件 ═══
+ * NewRequirementContent 的 7 处写库（需求、需求媒体、项目、项目配件）
+ * 全部挪到服务端。提交人取服务端验证的登录用户。 */
+
+export interface 提交配件行 {
+  part_name_id: string;
+  part_id: string;
+  quantity: string;
+  notes: string;
+  part_number: string;
+  name: string;
+  alias_name: string;
+  unit: string;
+  brand: string;
+  specification: string;
+  unit_cost: string;
+  unit_price: string;
+  customer_opinion: string;
+  is_purchased: boolean;
+  is_arrived: boolean;
+  supplier_name: string;
+  logistics_agreement: string;
+}
+
+export interface 提交项目行 {
+  service_item_id: string;
+  name: string;
+  alias_name: string;
+  item_type: string;
+  description: string;
+  quantity: string;
+  unit_price: string;
+  mechanic_id: string;
+  submitter_id: string;
+  inspector_id: string;
+  customer_opinion: string;
+  is_outsourced: boolean;
+  is_customer_part: boolean;
+  outsourced_supplier_id: string;
+  business_type: string;
+  rework_source_item_id: string;
+  rework_reason: string;
+  rework_loss_amount: string;
+  parts: 提交配件行[];
+}
+
+export async function 保存工单需求(参数: {
+  orderId: string;
+  existingRequirementId: string | null;
+  requirement: { description: string; diagnosis: string; remarks: string };
+  requirementImages: string[];
+  requirementVideos: string[];
+  items: 提交项目行[];
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const { orderId, existingRequirementId, requirement, requirementImages, requirementVideos, items } = 参数;
+  const supabase = await createClient();
+
+  let reqId: string;
+
+  if (existingRequirementId) {
+    /* 为已有需求添加项目，不创建新需求 */
+    reqId = existingRequirementId;
+  } else {
+    const description = requirement.description.trim();
+    const diagnosis = requirement.diagnosis.trim();
+    const remarks = requirement.remarks.trim();
+    if (!description) {
+      return { success: false, error: "客户需求不能为空" };
+    }
+    const { data: req, error: reqError } = await supabase
+      .from("work_order_requirements")
+      .insert({
+        work_order_id: orderId,
+        description,
+        diagnosis: diagnosis || null,
+        remarks: remarks || null,
+        submitted_by: user.id,
+        diagnosis_submitter_id: diagnosis ? user.id : null,
+        remarks_submitter_id: remarks ? user.id : null,
+      })
+      .select("id")
+      .single();
+
+    if (reqError || !req) {
+      return { success: false, error: reqError?.message || "创建需求失败" };
+    }
+    reqId = (req as { id: string }).id;
+
+    /* 保存需求图片 */
+    if (requirementImages.length > 0) {
+      await supabase.from("work_order_requirement_media").insert(
+        requirementImages.map((path) => ({
+          requirement_id: reqId,
+          media_type: "image" as const,
+          storage_path: path,
+        }))
+      );
+    }
+
+    /* 保存需求视频 */
+    if (requirementVideos.length > 0) {
+      await supabase.from("work_order_requirement_media").insert(
+        requirementVideos.map((path) => ({
+          requirement_id: reqId,
+          media_type: "video" as const,
+          storage_path: path,
+        }))
+      );
+    }
+  }
+
+  /* 查询当前工单已有项目名称，防止重复 */
+  const { data: existingItems } = await supabase
+    .from("work_order_items")
+    .select("name")
+    .eq("work_order_id", orderId);
+  const existingNames = new Set((existingItems as { name: string }[] | null)?.map((i) => i.name) || []);
+
+  /* 检查本次添加的项目之间是否有重复 */
+  const newNames = new Set<string>();
+  for (const item of items) {
+    if (!item.name) continue;
+    if (newNames.has(item.name)) {
+      return { success: false, error: `项目名称 "${item.name}" 在当前表单中重复，请检查` };
+    }
+    newNames.add(item.name);
+  }
+
+  for (const item of items) {
+    if (!item.name) continue;
+    if (existingNames.has(item.name)) {
+      return { success: false, error: `项目名称 "${item.name}" 已在工单中存在，不能重复添加` };
+    }
+    const { data: createdItem, error: itemError } = await supabase
+      .from("work_order_items")
+      .insert({
+        work_order_id: orderId,
+        requirement_id: reqId,
+        service_item_id: item.service_item_id || null,
+        name: item.name,
+        alias_name: item.alias_name || null,
+        item_type: item.item_type,
+        description: item.description || null,
+        quantity: parseFloat(item.quantity) || 1,
+        unit_price: parseFloat(item.unit_price) || 0,
+        mechanic_id: item.mechanic_id || null,
+        submitter_id: item.submitter_id || user.id,
+        inspector_id: item.inspector_id || null,
+        customer_opinion: item.customer_opinion || "pending",
+        is_outsourced: item.is_outsourced || false,
+        is_customer_part: item.is_customer_part || false,
+        outsourced_supplier_id: item.outsourced_supplier_id || null,
+        business_type: item.business_type || "normal",
+        rework_source_item_id: item.rework_source_item_id || null,
+        rework_reason: item.rework_reason || null,
+        rework_loss_amount: item.rework_loss_amount ? parseFloat(item.rework_loss_amount) : null,
+      })
+      .select("id")
+      .single();
+
+    if (itemError || !createdItem) {
+      return { success: false, error: itemError?.message || "创建项目失败" };
+    }
+
+    /* 创建项目配件 */
+    for (const part of item.parts) {
+      if (!part.part_name_id) continue;
+      const { error: partError } = await supabase.from("work_order_item_parts").insert({
+        work_order_item_id: (createdItem as { id: string }).id,
+        part_name_id: part.part_name_id,
+        part_id: part.part_id || null,
+        quantity: parseInt(part.quantity) || 1,
+        notes: part.notes || null,
+        part_number: part.part_number || null,
+        name: part.name || null,
+        alias_name: part.alias_name || null,
+        unit: part.unit || null,
+        brand: part.brand || null,
+        specification: part.specification || null,
+        unit_cost: parseFloat(part.unit_cost) || null,
+        unit_price: parseFloat(part.unit_price) || null,
+        customer_opinion: part.customer_opinion || "pending",
+        is_purchased: part.is_purchased || false,
+        is_arrived: part.is_arrived || false,
+        supplier_name: part.supplier_name || null,
+        logistics_agreement: part.logistics_agreement || null,
+        /* 新增配件各自成为独立目录(branch_group_id 由数据库默认生成)，
+         * 是该目录唯一分支即选中分支，否则整组0选中会导致小计¥0 */
+        is_selected: true,
+      });
+      if (partError) {
+        return { success: false, error: partError.message };
+      }
+    }
+  }
+
+  clearWorkOrderDataCache(orderId);
+  revalidatePath(`/work-orders/${orderId}`);
+  return { success: true };
+}
+
+/* ═══ 工单需求页：现场新建标准维修项目 ═══ */
+export async function 新建维修项目(参数: {
+  name: string;
+  category_id: string;
+  description: string;
+  default_price: string;
+  vip_price: string;
+  customer_parts_price: string;
+  standard_hours: string;
+  sales_type: string;
+  sales_value: string;
+  diagnosis_type: string;
+  diagnosis_value: string;
+  repair_type: string;
+  repair_value: string;
+  qc_type: string;
+  qc_value: string;
+}): Promise<{ success: boolean; item?: Record<string, unknown>; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const m = 参数;
+  if (!m.name.trim()) {
+    return { success: false, error: "请输入项目名称" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("service_items")
+    .insert({
+      name: m.name.trim(),
+      category_id: m.category_id || null,
+      description: m.description || null,
+      default_price: parseFloat(m.default_price) || 0,
+      vip_price: m.vip_price ? parseFloat(m.vip_price) : null,
+      customer_parts_price: m.customer_parts_price ? parseFloat(m.customer_parts_price) : null,
+      standard_hours: m.standard_hours ? parseFloat(m.standard_hours) : null,
+      sales_commission_type: m.sales_type || null,
+      sales_commission_value: m.sales_value ? parseFloat(m.sales_value) : null,
+      diagnosis_commission_type: m.diagnosis_type || null,
+      diagnosis_commission_value: m.diagnosis_value ? parseFloat(m.diagnosis_value) : null,
+      repair_commission_type: m.repair_type || null,
+      repair_commission_value: m.repair_value ? parseFloat(m.repair_value) : null,
+      qc_commission_type: m.qc_type || null,
+      qc_commission_value: m.qc_value ? parseFloat(m.qc_value) : null,
+    })
+    .select("*, service_categories(name)")
+    .single();
+
+  if (error || !data) {
+    return { success: false, error: "新建项目失败: " + (error?.message || "未知错误") };
+  }
+
+  return { success: true, item: data as Record<string, unknown> };
+}
+
+/* ═══ 工单需求页：返工解锁原工单（settled → pending_settlement）═══ */
+export async function 解锁工单(工单id: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_orders")
+    .update({ status: "pending_settlement" })
+    .eq("id", 工单id);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  clearWorkOrderDataCache(工单id);
+  revalidatePath(`/work-orders/${工单id}`);
+  return { success: true };
+}
