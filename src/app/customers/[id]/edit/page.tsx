@@ -7,6 +7,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 import Link from "next/link";
+import { 更新客户 } from "../../actions";
 
 export default function EditCustomerPage() {
   const router = useRouter();
@@ -128,86 +129,26 @@ export default function EditCustomerPage() {
       return;
     }
 
-    // 手机号唯一性校验（变更时才检查）
-    if (hasPhone && form.phone.trim() && form.phone.trim() !== originalPhone.trim()) {
-      const supabaseCheck = createClient();
-      const { data: existingPhone } = await supabaseCheck
-        .from("customers")
-        .select("id")
-        .eq("phone", form.phone.trim())
-        .neq("id", id)
-        .maybeSingle();
-      if (existingPhone) {
-        alert("该手机号已被其他客户使用，请更换");
-        setSaving(false);
-        return;
-      }
-    }
-
     setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("customers").update({
-      name: form.name.trim(),
-      phone: hasPhone ? form.phone.trim() : null,
-      gender: form.gender || null,
-      address: form.address.trim() || null,
-      company: form.company.trim() || null,
-      id_card: form.id_card.trim() || null,
-      notes: form.notes.trim() || null,
-      star_level: starLevel || null,
-    }).eq("id", id);
 
-    if (error) { alert("保存失败: " + error.message); setSaving(false); return; }
+    /* 保存走 Server Action（服务端写库，含手机号唯一性校验），
+     * 避免客户端 session 异常导致保存失败 */
+    const result = await 更新客户({
+      id,
+      customer: form,
+      hasPhone,
+      originalPhone,
+      starLevel,
+      customerPhotos,
+      customerPhones,
+      contacts,
+      selectedTagIds,
+    });
 
-    // 保存备用手机号：删除旧记录，插入新记录
-    const { error: delPhoneError } = await supabase.from("customer_phones").delete().eq("customer_id", id);
-    if (delPhoneError) { alert("删除旧手机号失败: " + delPhoneError.message); setSaving(false); return; }
-    const validPhones = customerPhones.filter((p) => p.phone.trim());
-    if (validPhones.length > 0) {
-      const { error: insPhoneError } = await supabase.from("customer_phones").insert(
-        validPhones.map((p) => ({
-          customer_id: id,
-          phone: p.phone.trim(),
-          label: p.label.trim() || null,
-        }))
-      );
-      if (insPhoneError) { alert("备用手机号保存失败: " + insPhoneError.message); setSaving(false); return; }
-    }
-
-    // 保存联系人：删除旧记录，插入新记录
-    const { error: delContactError } = await supabase.from("customer_contacts").delete().eq("customer_id", id);
-    if (delContactError) { alert("删除旧联系人失败: " + delContactError.message); setSaving(false); return; }
-    const validContacts = contacts.filter((c) => c.name.trim() && c.phone.trim());
-    if (validContacts.length > 0) {
-      const { error: insContactError } = await supabase.from("customer_contacts").insert(
-        validContacts.map((c) => ({
-          customer_id: id,
-          name: c.name.trim(),
-          phone: c.phone.trim(),
-          relationship: c.relationship.trim() || null,
-          notes: c.notes.trim() || null,
-        }))
-      );
-      if (insContactError) { alert("联系人保存失败: " + insContactError.message); setSaving(false); return; }
-    }
-
-    await supabase.from("customer_photos").delete().eq("customer_id", id);
-    const photoInserts: { customer_id: string; category: string; url: string }[] = [];
-    customerPhotos.forEach((url) =>
-      photoInserts.push({ customer_id: id, category: "photo", url })
-    );
-    if (photoInserts.length > 0) {
-      await supabase.from("customer_photos").insert(photoInserts);
-    }
-
-    // 保存客户标签：删除旧记录，插入新记录
-    const { error: delTagError } = await supabase.from("customer_tags").delete().eq("customer_id", id);
-    if (delTagError) { alert("删除旧标签失败: " + delTagError.message); setSaving(false); return; }
-    if (selectedTagIds.length > 0) {
-      const { error: insTagError } = await supabase.from("customer_tags").insert(
-        selectedTagIds.map((tagId) => ({ customer_id: id, tag_id: tagId }))
-      );
-      if (insTagError) { alert("标签保存失败: " + insTagError.message); setSaving(false); return; }
+    if (!result.success) {
+      alert(result.error);
+      setSaving(false);
+      return;
     }
 
     const returnTo = searchParams.get("returnTo");
