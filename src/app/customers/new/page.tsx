@@ -202,14 +202,21 @@ export default function NewCustomerPage() {
 
     /* 保存走 Server Action（服务端写库，含手机号唯一性校验），
      * 避免客户端 session 异常导致保存失败 */
-    const result = await 新建客户({
-      customer,
-      hasPhone,
-      customerPhotos,
-      customerPhones,
-      contacts,
-      vehicles,
-    });
+    let result;
+    try {
+      result = await 新建客户({
+        customer,
+        hasPhone,
+        customerPhotos,
+        customerPhones,
+        contacts,
+        vehicles,
+      });
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      setLoading(false);
+      return;
+    }
 
     if (!result.success) {
       alert(result.error);

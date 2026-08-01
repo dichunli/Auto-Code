@@ -133,17 +133,24 @@ export default function EditCustomerPage() {
 
     /* 保存走 Server Action（服务端写库，含手机号唯一性校验），
      * 避免客户端 session 异常导致保存失败 */
-    const result = await 更新客户({
-      id,
-      customer: form,
-      hasPhone,
-      originalPhone,
-      starLevel,
-      customerPhotos,
-      customerPhones,
-      contacts,
-      selectedTagIds,
-    });
+    let result;
+    try {
+      result = await 更新客户({
+        id,
+        customer: form,
+        hasPhone,
+        originalPhone,
+        starLevel,
+        customerPhotos,
+        customerPhones,
+        contacts,
+        selectedTagIds,
+      });
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      setSaving(false);
+      return;
+    }
 
     if (!result.success) {
       alert(result.error);

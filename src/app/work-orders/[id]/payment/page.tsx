@@ -11,6 +11,7 @@ import {
   getErrorMessage,
   validateSettlement,
 } from "./payment-logic";
+import { 结算工单 } from "../../actions";
 
 interface PaymentMethod {
   method: string;
@@ -189,62 +190,6 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
     });
   }
 
-  /** 非关键后续操作：提醒、通知、回访（失败不阻断） */
-  async function postSettlementSteps(workOrderId: string) {
-    if (!order?.vehicle_id || !order?.customer_id) return;
-
-    const now = new Date();
-    const nextDate = new Date(now);
-    nextDate.setMonth(nextDate.getMonth() + 6);
-
-    const reminderPromises = [
-      supabase.from("maintenance_reminders").insert({
-        vehicle_id: order.vehicle_id,
-        customer_id: order.customer_id,
-        reminder_type: "time",
-        title: "常规保养提醒",
-        due_date: nextDate.toISOString().split("T")[0],
-        current_mileage: order.mileage_in || 0,
-        work_order_id: workOrderId,
-      }),
-      supabase.from("maintenance_reminders").insert({
-        vehicle_id: order.vehicle_id,
-        customer_id: order.customer_id,
-        reminder_type: "mileage",
-        title: "里程保养提醒",
-        due_mileage: (order.mileage_in || 0) + 5000,
-        current_mileage: order.mileage_in || 0,
-        work_order_id: workOrderId,
-      }),
-      supabase.from("notifications").insert({
-        customer_id: order.customer_id,
-        type: "work_order_status",
-        title: "维修结算完成",
-        content: `您的车辆 (${order.vehicles?.[0]?.plate_number || ""}) 已完成维修结算，欢迎再次光临。`,
-        related_type: "work_order",
-        related_id: workOrderId,
-      }),
-    ];
-
-    const results = await Promise.allSettled(reminderPromises);
-    results.forEach((r, idx) => {
-      if (r.status === "rejected" || (r.value && r.value.error)) {
-        const names = ["时间保养提醒", "里程保养提醒", "客户通知"];
-        const errMsg = r.status === "rejected" ? getErrorMessage(r.reason) : r.value?.error?.message;
-        console.error(`创建${names[idx]}失败:`, errMsg);
-      }
-    });
-
-    // 售后回访
-    const scheduledDate = new Date(now);
-    scheduledDate.setDate(scheduledDate.getDate() + 3);
-    const { error: fuErr } = await supabase.from("follow_ups").insert({
-      work_order_id: workOrderId,
-      scheduled_at: scheduledDate.toISOString(),
-    });
-    if (fuErr) console.error("创建回访任务失败:", fuErr.message);
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -257,42 +202,39 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
 
     setLoading(true);
 
-    try {
-      const paymentRows = payments
-        .filter((p) => parseAmount(p.amount) > 0)
-        .map((p) => ({
-          method: p.method,
-          amount: parseAmount(p.amount),
-          member_id: p.method === "member" ? p.member_id : null,
-        }));
+    const paymentRows = payments
+      .filter((p) => parseAmount(p.amount) > 0)
+      .map((p) => ({
+        method: p.method,
+        amount: parseAmount(p.amount),
+        member_id: p.method === "member" ? p.member_id ?? null : null,
+      }));
 
-      // 调用原子结算 RPC
-      const { data: result, error: rpcError } = await supabase.rpc("settle_work_order", {
-        p_order_id: orderId,
-        p_discount_amount: parsedDiscount,
-        p_payments: paymentRows,
-        p_account_id: selectedAccountId,
-        p_notes: notes || null,
+    /* 结算走 Server Action（原子结算 RPC + 结算后提醒/通知/回访都在服务端完成），
+     * 涉及金额，必须等服务端确认后再跳转 */
+    try {
+      const result = await 结算工单({
+        orderId,
+        discountAmount: parsedDiscount,
+        payments: paymentRows,
+        accountId: selectedAccountId,
+        notes: notes || null,
       });
 
-      if (rpcError) {
-        throw new Error(rpcError.message);
+      if (!result.success) {
+        setError(result.error || "结算失败");
+        setLoading(false);
+        return;
       }
-
-      const rpcResult = result as { success: boolean; error?: string; total_cost?: number };
-      if (!rpcResult?.success) {
-        throw new Error(rpcResult?.error || "结算失败");
-      }
-
-      // 非关键后续步骤（失败不阻断，仅记录日志）
-      await postSettlementSteps(orderId);
-
-      router.push(`/work-orders/${orderId}`);
-      router.refresh();
     } catch (err) {
+      /* Server Action 网络异常/服务端未捕获错误 */
       setError(getErrorMessage(err));
       setLoading(false);
+      return;
     }
+
+    router.push(`/work-orders/${orderId}`);
+    router.refresh();
   }
 
   if (dataLoading) {

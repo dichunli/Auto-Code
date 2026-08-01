@@ -31,6 +31,13 @@ vi.mock("@/lib/supabase/client", () => ({
   }),
 }));
 
+/* 结算已迁移到 Server Action（work-orders/actions.ts 的 结算工单），
+ * 测试 mock 这个 action，而不是客户端 supabase.rpc */
+const mock结算工单 = vi.fn();
+vi.mock("../../../actions", () => ({
+  结算工单: (...args: unknown[]) => mock结算工单(...args),
+}));
+
 vi.mock("@/components/PageHeader", () => ({
   PageHeader: ({ title, description }: { title: string; description?: string }) => (
     <div data-testid="page-header">
@@ -183,10 +190,7 @@ describe("PaymentPage", () => {
 
   it("结算成功后跳转工单详情", async () => {
     const user = userEvent.setup();
-    mockRpc.mockResolvedValue({
-      data: { success: true, total_cost: 300 },
-      error: null,
-    });
+    mock结算工单.mockResolvedValue({ success: true, totalCost: 300 });
 
     const supabase = createMockSupabase();
     vi.mocked(mockFrom).mockImplementation(supabase.from as never);
@@ -204,23 +208,20 @@ describe("PaymentPage", () => {
     await user.click(submitBtn);
 
     await waitFor(() => {
-      expect(mockRpc).toHaveBeenCalledWith("settle_work_order", {
-        p_order_id: "wo-1",
-        p_discount_amount: 0,
-        p_payments: [{ method: "cash", amount: 300, member_id: null }],
-        p_account_id: "acc-1",
-        p_notes: null,
+      expect(mock结算工单).toHaveBeenCalledWith({
+        orderId: "wo-1",
+        discountAmount: 0,
+        payments: [{ method: "cash", amount: 300, member_id: null }],
+        accountId: "acc-1",
+        notes: null,
       });
       expect(mockPush).toHaveBeenCalledWith("/work-orders/wo-1");
     });
   });
 
-  it("RPC 返回业务错误时显示错误信息", async () => {
+  it("结算返回业务错误时显示错误信息", async () => {
     const user = userEvent.setup();
-    mockRpc.mockResolvedValue({
-      data: { success: false, error: "工单已结算，不能重复结算" },
-      error: null,
-    });
+    mock结算工单.mockResolvedValue({ success: false, error: "工单已结算，不能重复结算" });
 
     const supabase = createMockSupabase();
     vi.mocked(mockFrom).mockImplementation(supabase.from as never);
@@ -242,12 +243,9 @@ describe("PaymentPage", () => {
     });
   });
 
-  it("RPC 抛异常时显示错误信息", async () => {
+  it("结算请求异常时显示错误信息", async () => {
     const user = userEvent.setup();
-    mockRpc.mockResolvedValue({
-      data: null,
-      error: { message: "connection timeout" },
-    });
+    mock结算工单.mockRejectedValue(new Error("connection timeout"));
 
     const supabase = createMockSupabase();
     vi.mocked(mockFrom).mockImplementation(supabase.from as never);

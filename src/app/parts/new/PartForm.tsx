@@ -245,29 +245,36 @@ export default function PartForm({
 
     setLoading(true);
     /* 保存走 Server Action（服务端写库），避免客户端 session 异常导致保存失败 */
-    const result = await 保存配件({
-      isEditMode,
-      editId,
-      systemCode,
-      partNumber,
-      barcode,
-      interchangeCode,
-      oeNumber,
-      vin17GroupId,
-      documentName: docNameQuery.trim() || null,
-      partNameId: selectedPartName.id,
-      partName: form.name,
-      partCategories: selectedPartName.part_categories,
-      brandId: selectedBrand?.id || null,
-      form,
-      stockLocations,
-      selectedSpecs,
-      selectedVehicleModels,
-      partImages,
-      specialPrices,
-      vehicleModelPrices,
-      supplierId: selectedSupplier?.id || null,
-    });
+    let result;
+    try {
+      result = await 保存配件({
+        isEditMode,
+        editId,
+        systemCode,
+        partNumber,
+        barcode,
+        interchangeCode,
+        oeNumber,
+        vin17GroupId,
+        documentName: docNameQuery.trim() || null,
+        partNameId: selectedPartName.id,
+        partName: form.name,
+        partCategories: selectedPartName.part_categories,
+        brandId: selectedBrand?.id || null,
+        form,
+        stockLocations,
+        selectedSpecs,
+        selectedVehicleModels,
+        partImages,
+        specialPrices,
+        vehicleModelPrices,
+        supplierId: selectedSupplier?.id || null,
+      });
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      setLoading(false);
+      return;
+    }
     setLoading(false);
 
     if (!result.success) {
