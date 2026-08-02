@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
+import { PermissionGate } from "@/components/PermissionGate";
 import { logAction } from "@/lib/operationLog";
 import { 阶段文案, 阶段颜色, type 阶段key } from "@/lib/orderStage";
 import { 读本地工单标签 } from "@/lib/orderTabs";
@@ -238,13 +239,16 @@ export default function WorkOrdersContent({
                         onSuccess={() => window.location.reload()}
                       />
                       {type === "cancelled" && (
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(order.id, order.order_no)}
-                          className="text-sm text-red-600 hover:text-red-700 font-medium"
-                        >
-                          删除
-                        </button>
+                        /* 删除已作废工单是管理员专属操作（数据库 RLS 同样拦截非管理员） */
+                        <PermissionGate permission="*">
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(order.id, order.order_no)}
+                            className="text-sm text-red-600 hover:text-red-700 font-medium"
+                          >
+                            删除
+                          </button>
+                        </PermissionGate>
                       )}
                     </div>
                   </td>
