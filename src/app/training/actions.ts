@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 
 interface 新建课程数据 {
   title: string;
@@ -44,6 +44,8 @@ export async function 创建课程(data: 新建课程数据): Promise<{ success:
     }
 
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
 
     const { data: created, error } = await 带超时(
       supabase.from("training_courses").insert({
@@ -99,6 +101,8 @@ export async function 更新课程(
     }
 
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
 
     const { error } = await 带超时(
       supabase
@@ -153,6 +157,8 @@ export async function 删除学员分配(assignmentId: string): Promise<{ succes
     }
 
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
 
     /* 删除分配记录，关联的 training_progress、exam_answers、exam_results 会通过 CASCADE 自动删除 */
     const { error } = await 带超时(
@@ -180,6 +186,8 @@ export async function 删除课程(id: string): Promise<{ success: boolean; erro
     }
 
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
 
     /* 检查是否已分配学员 */
     const { data: assignments, error: assignError } = await 带超时(

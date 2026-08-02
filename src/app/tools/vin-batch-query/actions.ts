@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { syncOeFromVin } from "@/app/parts/actions";
 import { 标准化VIN } from "@/lib/vinValidator";
 
@@ -26,6 +26,9 @@ export async function batchQueryVinFilters(vinList: string[]): Promise<{
   error?: string;
 }> {
   const supabase = await createClient();
+  /* 该接口会调用付费的 17VIN 接口，必须登录才能用，防止匿名刷接口 */
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) return { success: false, error: 登录错误 || "未登录" };
   const results: VinQueryResult[] = [];
   const normalizedVins = vinList.map((v) => 标准化VIN(v));
 

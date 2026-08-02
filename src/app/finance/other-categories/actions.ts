@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { 包装ServerAction错误 } from "@/lib/supabase/server";
 
 interface 收支分类 {
@@ -19,6 +19,8 @@ export async function 获取收支分类列表(): Promise<{
 }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { data, error } = await supabase
       .from("other_transaction_categories")
       .select("id, name, type, sort_order, is_active")
@@ -37,6 +39,8 @@ export async function 获取收支分类列表(): Promise<{
 export async function 删除收支分类(id: string): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
 
     /* 检查是否已被使用 */
     const { count } = await supabase
@@ -64,6 +68,8 @@ export async function 更新收支分类排序(参数: {
 }): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
 
     for (const item of 参数.items) {
       const { error } = await supabase

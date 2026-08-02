@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { 包装ServerAction错误 } from "@/lib/supabase/server";
 
 interface 仓库 {
@@ -24,6 +24,8 @@ export async function 获取仓库列表(): Promise<{
 }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { data, error } = await supabase
       .from("warehouses")
       .select("*")
@@ -50,6 +52,8 @@ export async function 获取仓库列表(): Promise<{
 export async function 删除仓库(id: string): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { error } = await supabase.from("warehouses").delete().eq("id", id);
 
     if (error) {
@@ -68,6 +72,8 @@ export async function 更新仓库(参数: {
 }): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { error } = await supabase
       .from("warehouses")
       .update({
@@ -92,6 +98,8 @@ export async function 获取仓位列表(warehouseId: string): Promise<{
 }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { data, error } = await supabase
       .from("warehouse_locations")
       .select("*")
@@ -113,6 +121,8 @@ export async function 新增仓位(参数: {
 }): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { error } = await supabase.from("warehouse_locations").insert({
       warehouse_id: 参数.warehouse_id,
       name: 参数.name.trim(),
@@ -133,6 +143,8 @@ export async function 批量新增仓位(参数: {
 }): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const rows = 参数.names.map((name) => ({
       warehouse_id: 参数.warehouse_id,
       name: name.trim(),
@@ -152,6 +164,8 @@ export async function 批量新增仓位(参数: {
 export async function 删除仓位(id: string): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { error } = await supabase.from("warehouse_locations").delete().eq("id", id);
 
     if (error) {
@@ -169,6 +183,8 @@ export async function 更新仓位(参数: {
 }): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { error } = await supabase
       .from("warehouse_locations")
       .update({ name: 参数.name.trim() })
