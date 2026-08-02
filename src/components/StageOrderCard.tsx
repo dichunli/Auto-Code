@@ -7,6 +7,7 @@ import { CustomerOpinionToggle } from "./CustomerOpinionToggle";
 import { AssignMechanicModal } from "./AssignMechanicModal";
 import { AssignInspectorModal } from "./AssignInspectorModal";
 import { 阶段文案, 阶段颜色, type 阶段key } from "@/lib/orderStage";
+import { 格式化时长 } from "@/lib/constructionTime";
 import { formatCurrency } from "@/lib/utils";
 import type { Order } from "@/app/work-orders/page";
 
@@ -261,6 +262,13 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
                 · {i.alias_name || i.name}
                 {(当前阶段 === "pending_construction" || 当前阶段 === "in_progress" || 当前阶段 === "paused") && (
                   <span className="text-[10px] text-gray-400 ml-1">[{技师名(i)}]</span>
+                )}
+                {/* 施工中显示已施工时长；已中断显示中断总时长（实时配对施工日志计算） */}
+                {当前阶段 === "in_progress" && i.施工秒 !== undefined && (
+                  <span className="text-[10px] text-blue-600 ml-1 whitespace-nowrap">已施工 {格式化时长(i.施工秒)}</span>
+                )}
+                {当前阶段 === "paused" && i.中断秒 !== undefined && (
+                  <span className="text-[10px] text-yellow-600 ml-1 whitespace-nowrap">中断 {格式化时长(i.中断秒)}</span>
                 )}
               </span>
               <span className="flex items-center gap-1 shrink-0">
