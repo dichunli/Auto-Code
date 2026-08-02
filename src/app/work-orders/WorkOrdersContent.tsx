@@ -239,8 +239,8 @@ export default function WorkOrdersContent({
                         onSuccess={() => window.location.reload()}
                       />
                       {type === "cancelled" && (
-                        /* 删除已作废工单是管理员专属操作（数据库 RLS 同样拦截非管理员） */
-                        <PermissionGate permission="*">
+                        /* 删除已作废工单仅管理员/老板（数据库 RLS 同样拦截其他角色） */
+                        <PermissionGate permission="work_order:delete">
                           <button
                             type="button"
                             onClick={() => handleDelete(order.id, order.order_no)}
