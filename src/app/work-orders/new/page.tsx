@@ -9,12 +9,12 @@ import { PageHeader } from "@/components/PageHeader";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
 import { CustomerSearchDropdown, Customer, StarDisplay, TagDisplay } from "@/components/CustomerSearchDropdown";
+import { 创建工单 } from "../actions";
 
 export default function NewWorkOrderPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState("");
 
   // 车辆搜索
   const [vehicleQuery, setVehicleQuery] = useState("");
@@ -87,12 +87,6 @@ export default function NewWorkOrderPage() {
   const [authCode, setAuthCode] = useState("");
   const [authVerifying, setAuthVerifying] = useState(false);
   const [pendingOrderNo, setPendingOrderNo] = useState("");
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) setCurrentUserId(data.user.id);
-    });
-  }, [supabase]);
 
   // 搜索车辆（含关联客户）
   const searchVehicles = useCallback(
@@ -249,107 +243,38 @@ export default function NewWorkOrderPage() {
       }
     }
 
-    let customerId = "";
-    let vehicleId = "";
+    setLoading(true);
 
+    /* 开单走 Server Action（服务端创建客户/车辆 + create_work_order RPC），
+     * 避免客户端 session 异常导致开单失败 */
+    let result;
     try {
-      // 场景1：已有车辆
-      if (selectedVehicle) {
-        vehicleId = selectedVehicle.id;
-        customerId = selectedVehicle.customer_id || "";
-      }
-
-      // 场景2：新建车辆 — 先保存客户和车辆
-      if (isNewVehicle) {
-        if (!newVehicle.plate_number.trim()) {
-          alert("请输入车牌号");
-          return;
-        }
-
-        // 2a. 确保客户存在
-        if (selectedCustomer) {
-          customerId = selectedCustomer.id;
-        } else if (isNewCustomer) {
-          if (!newCustomer.name.trim()) {
-            alert("请输入客户姓名");
-            return;
-          }
-          const { data: cData, error: cError } = await supabase
-            .from("customers")
-            .insert({
-              name: newCustomer.name.trim(),
-              phone: newCustomer.phone.trim() || null,
-              company: newCustomer.company.trim() || null,
-            })
-            .select("id")
-            .single();
-          if (cError) throw new Error(cError.message);
-          if (!cData?.id) throw new Error("创建客户失败");
-          customerId = cData.id;
-        } else {
-          alert("请搜索并选择客户，或填写新客户信息");
-          return;
-        }
-
-        // 2b. 创建车辆
-        const { data: vData, error: vError } = await supabase
-          .from("vehicles")
-          .insert({
-            customer_id: customerId,
-            plate_number: newVehicle.plate_number.trim(),
-            brand: newVehicle.brand.trim() || null,
-            model: newVehicle.model.trim() || null,
-            vin: newVehicle.vin.trim() || null,
-            mileage: mileageIn ? parseInt(mileageIn) : null,
-          })
-          .select("id")
-          .single();
-        if (vError) throw new Error(vError.message);
-        if (!vData?.id) throw new Error("创建车辆失败");
-        vehicleId = vData.id;
-      }
-
-      setLoading(true);
-
-      let mileageInNum = 0;
-      if (mileageIn.trim()) {
-        const parsed = parseInt(mileageIn, 10);
-        mileageInNum = isNaN(parsed) ? 0 : parsed;
-      }
-
-      const { data: result, error: rpcErr } = await supabase.rpc(
-        "create_work_order",
-        {
-          p_customer_id: customerId,
-          p_vehicle_id: vehicleId,
-          p_mileage_in: mileageInNum,
-          p_fuel_level: null,
-          p_customer_complaint: "",
-          p_inspection_notes: "",
-          p_receptionist_id: currentUserId || null,
-          p_requirements: [],
-          p_sender_name: senderName.trim() || null,
-          p_sender_phone: senderPhone.trim() || null,
-        }
-      );
-
-      if (rpcErr) throw new Error(rpcErr.message);
-
-      const rpcResult = result as {
-        success: boolean;
-        error?: string;
-        order_id?: string;
-      };
-      if (!rpcResult?.success || !rpcResult.order_id) {
-        throw new Error(rpcResult?.error || "创建工单失败");
-      }
-
-      router.push(`/work-orders/${rpcResult.order_id}`);
-      router.refresh();
+      result = await 创建工单({
+        selectedVehicleId: selectedVehicle?.id || null,
+        selectedVehicleCustomerId: selectedVehicle?.customer_id || null,
+        isNewVehicle,
+        newVehicle,
+        selectedCustomerId: selectedCustomer?.id || null,
+        isNewCustomer,
+        newCustomer,
+        mileageIn,
+        senderName,
+        senderPhone,
+      });
     } catch (err: unknown) {
       alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
+      return;
     }
+
+    if (!result.success) {
+      alert("保存失败: " + result.error);
+      setLoading(false);
+      return;
+    }
+
+    router.push(`/work-orders/${result.orderId}`);
+    router.refresh();
   }
 
   const customerInfo = selectedVehicle?.customers

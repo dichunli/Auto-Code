@@ -10,6 +10,7 @@ import { ReworkSelectModal } from "@/components/ReworkSelectModal";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { calculateItemCommission, calculatePartCommission, type CommissionSource } from "@/lib/commission";
 import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
+import { 保存工单需求, 新建维修项目, 解锁工单 } from "@/app/work-orders/actions";
 
 /* ==================== 类型定义 ==================== */
 
@@ -842,36 +843,41 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
       alert("请输入项目名称");
       return;
     }
-    const { data, error } = await supabase
-      .from("service_items")
-      .insert({
-        name: m.name.trim(),
-        category_id: m.category_id || null,
-        description: m.description || null,
-        default_price: parseFloat(m.default_price) || 0,
-        vip_price: m.vip_price ? parseFloat(m.vip_price) : null,
-        customer_parts_price: m.customer_parts_price ? parseFloat(m.customer_parts_price) : null,
-        standard_hours: m.standard_hours ? parseFloat(m.standard_hours) : null,
-        sales_commission_type: m.sales_type || null,
-        sales_commission_value: m.sales_value ? parseFloat(m.sales_value) : null,
-        diagnosis_commission_type: m.diagnosis_type || null,
-        diagnosis_commission_value: m.diagnosis_value ? parseFloat(m.diagnosis_value) : null,
-        repair_commission_type: m.repair_type || null,
-        repair_commission_value: m.repair_value ? parseFloat(m.repair_value) : null,
-        qc_commission_type: m.qc_type || null,
-        qc_commission_value: m.qc_value ? parseFloat(m.qc_value) : null,
-      })
-      .select("*, service_categories(name)")
-      .single();
 
-    if (error || !data) {
-      alert("新建项目失败: " + (error?.message || "未知错误"));
+    /* 保存走 Server Action（服务端写库） */
+    let result;
+    try {
+      result = await 新建维修项目({
+        name: m.name,
+        category_id: m.category_id,
+        description: m.description,
+        default_price: m.default_price,
+        vip_price: m.vip_price,
+        customer_parts_price: m.customer_parts_price,
+        standard_hours: m.standard_hours,
+        sales_type: m.sales_type,
+        sales_value: m.sales_value,
+        diagnosis_type: m.diagnosis_type,
+        diagnosis_value: m.diagnosis_value,
+        repair_type: m.repair_type,
+        repair_value: m.repair_value,
+        qc_type: m.qc_type,
+        qc_value: m.qc_value,
+      });
+    } catch (err: unknown) {
+      alert("新建项目失败: " + (err instanceof Error ? err.message : String(err)));
+      return;
+    }
+
+    if (!result.success || !result.item) {
+      alert(result.error || "新建项目失败");
       return;
     }
 
     // 刷新列表并自动选中
-    setAllServiceItems((prev) => [...prev, data as 维修项目]);
-    selectServiceItem(m.itemIndex, data as 维修项目);
+    const 新项目 = result.item as unknown as 维修项目;
+    setAllServiceItems((prev) => [...prev, 新项目]);
+    selectServiceItem(m.itemIndex, 新项目);
     setNewItemModal(null);
   }
 
@@ -900,160 +906,41 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!orderId) return;
+
+    /* 前端先校验：新建需求时客户需求不能为空（与服务端一致，避免白跑一趟） */
+    if (!existingRequirementId && !requirement.description.trim()) {
+      alert("客户需求不能为空");
+      return;
+    }
+
     setLoading(true);
 
+    /* 保存走 Server Action（需求+媒体+项目+配件全部服务端写库，
+     * 提交人取服务端验证的登录用户），避免客户端 session 异常导致保存失败 */
+    let result;
     try {
-      let reqId: string;
-
-      if (existingRequirementId) {
-        // 为已有需求添加项目，不创建新需求
-        reqId = existingRequirementId;
-      } else {
-        // 创建新需求
-        const description = requirement.description.trim();
-        const diagnosis = requirement.diagnosis.trim();
-        const remarks = requirement.remarks.trim();
-        if (!description) {
-          alert("客户需求不能为空");
-          setLoading(false);
-          return;
-        }
-        const { data: req, error: reqError } = await supabase
-          .from("work_order_requirements")
-          .insert({
-            work_order_id: orderId,
-            description,
-            diagnosis: diagnosis || null,
-            remarks: remarks || null,
-            submitted_by: currentUser?.id || null,
-            diagnosis_submitter_id: diagnosis ? currentUser?.id || null : null,
-            remarks_submitter_id: remarks ? currentUser?.id || null : null,
-          })
-          .select("id")
-          .single();
-
-        if (reqError || !req) throw reqError || new Error("创建需求失败");
-        reqId = (req as { id: string }).id;
-
-        // 保存需求图片
-        if (requirementImages.length > 0) {
-          const mediaRecords = requirementImages.map((path) => ({
-            requirement_id: reqId,
-            media_type: "image" as const,
-            storage_path: path,
-          }));
-          await supabase.from("work_order_requirement_media").insert(mediaRecords);
-        }
-
-        // 保存需求视频
-        if (requirementVideos.length > 0) {
-          const videoRecords = requirementVideos.map((path) => ({
-            requirement_id: reqId,
-            media_type: "video" as const,
-            storage_path: path,
-          }));
-          await supabase.from("work_order_requirement_media").insert(videoRecords);
-        }
-      }
-
-      // 查询当前工单已有项目名称，防止重复
-      const { data: existingItems } = await supabase
-        .from("work_order_items")
-        .select("name")
-        .eq("work_order_id", orderId);
-      const existingNames = new Set((existingItems as { name: string }[] | null)?.map((i) => i.name) || []);
-
-      // 检查本次添加的项目之间是否有重复
-      const newNames = new Set<string>();
-      for (const item of items) {
-        if (!item.name) continue;
-        if (newNames.has(item.name)) {
-          alert(`项目名称 "${item.name}" 在当前表单中重复，请检查`);
-          setLoading(false);
-          return;
-        }
-        newNames.add(item.name);
-      }
-
-      for (const item of items) {
-        if (!item.name) continue;
-        if (existingNames.has(item.name)) {
-          alert(`项目名称 "${item.name}" 已在工单中存在，不能重复添加`);
-          setLoading(false);
-          return;
-        }
-        const { data: createdItem, error: itemError } = await supabase.from("work_order_items").insert({
-          work_order_id: orderId,
-          requirement_id: reqId,
-          service_item_id: item.service_item_id || null,
-          name: item.name,
-          alias_name: item.alias_name || null,
-          item_type: item.item_type,
-          description: item.description || null,
-          quantity: parseFloat(item.quantity) || 1,
-          unit_price: parseFloat(item.unit_price) || 0,
-          mechanic_id: item.mechanic_id || null,
-          submitter_id: item.submitter_id || currentUser?.id || null,
-          inspector_id: item.inspector_id || null,
-          customer_opinion: item.customer_opinion || "pending",
-          is_outsourced: item.is_outsourced || false,
-          is_customer_part: item.is_customer_part || false,
-          outsourced_supplier_id: item.outsourced_supplier_id || null,
-          business_type: item.business_type || "normal",
-          rework_source_item_id: item.rework_source_item_id || null,
-          rework_reason: item.rework_reason || null,
-          rework_loss_amount: item.rework_loss_amount ? parseFloat(item.rework_loss_amount) : null,
-        }).select("id").single();
-
-        if (itemError || !createdItem) throw itemError || new Error("创建项目失败");
-
-        // 创建项目配件
-        for (const part of item.parts) {
-          if (!part.part_name_id) continue;
-          const { error: partError } = await supabase.from("work_order_item_parts").insert({
-            work_order_item_id: (createdItem as { id: string }).id,
-            part_name_id: part.part_name_id,
-            part_id: part.part_id || null,
-            quantity: parseInt(part.quantity) || 1,
-            notes: part.notes || null,
-            part_number: part.part_number || null,
-            name: part.name || null,
-            alias_name: part.alias_name || null,
-            unit: part.unit || null,
-            brand: part.brand || null,
-            specification: part.specification || null,
-            unit_cost: parseFloat(part.unit_cost) || null,
-            unit_price: parseFloat(part.unit_price) || null,
-            customer_opinion: part.customer_opinion || "pending",
-            is_purchased: part.is_purchased || false,
-            is_arrived: part.is_arrived || false,
-            supplier_name: part.supplier_name || null,
-            logistics_agreement: part.logistics_agreement || null,
-            // 新增配件各自成为独立目录(branch_group_id 由数据库默认生成)，
-            // 是该目录唯一分支即选中分支，否则整组0选中会导致小计¥0
-            is_selected: true,
-          });
-          if (partError) throw partError;
-        }
-      }
-
-      router.push(`/work-orders/${orderId}`);
-      router.refresh();
+      result = await 保存工单需求({
+        orderId,
+        existingRequirementId,
+        requirement,
+        requirementImages,
+        requirementVideos,
+        items,
+      });
     } catch (err: unknown) {
-      let msg = "未知错误";
-      if (err instanceof Error) {
-        msg = err.message;
-      } else if (err && typeof err === "object" && "message" in err) {
-        msg = String((err as Record<string, unknown>).message);
-      } else if (err && typeof err === "object" && "error" in err) {
-        msg = String((err as Record<string, unknown>).error);
-      } else {
-        msg = String(err);
-      }
-      console.error("保存需求异常:", err);
-      alert("保存失败: " + msg);
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
+      return;
     }
+
+    if (!result.success) {
+      alert(result.error);
+      setLoading(false);
+      return;
+    }
+
+    router.push(`/work-orders/${orderId}`);
+    router.refresh();
   }
 
   return (
@@ -1582,14 +1469,10 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
             const next = [...items];
             next[reworkModalIndex].rework_source_item_id = (sourceItem as 返工来源项目).id;
             if (unlockOrder) {
-              // 解锁原工单：将其状态从 settled 改回 pending_settlement
-              supabase
-                .from("work_orders")
-                .update({ status: "pending_settlement" })
-                .eq("id", (sourceItem as 返工来源项目).work_order_id)
-                .then(() => {
-                  // 静默更新即可
-                });
+              // 解锁原工单：将其状态从 settled 改回 pending_settlement（走 Server Action）
+              解锁工单((sourceItem as 返工来源项目).work_order_id).then(() => {
+                // 静默更新即可
+              });
             }
             setItems(next);
             setReworkModalIndex(null);

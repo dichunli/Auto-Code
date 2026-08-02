@@ -18,8 +18,7 @@ import BrandSearch from "./components/BrandSearch";
 import SpecSearch from "./components/SpecSearch";
 import CommissionSection from "./components/CommissionSection";
 import FormActions from "./components/FormActions";
-import submitPart from "./submitPart";
-import { syncOeFromVin, syncModelsFromVin, syncModelsByGroupId } from "../actions";
+import { syncOeFromVin, syncModelsFromVin, syncModelsByGroupId, 保存配件 } from "../actions";
 import { 标准化VIN } from "@/lib/vinValidator";
 import type { 车型库行 } from "@/lib/vehicleModelFields";
 
@@ -245,30 +244,37 @@ export default function PartForm({
     }
 
     setLoading(true);
-    const result = await submitPart({
-      supabase,
-      isEditMode,
-      editId,
-      systemCode,
-      partNumber,
-      barcode,
-      interchangeCode,
-      oeNumber,
-      vin17GroupId,
-      documentName: docNameQuery.trim() || null,
-      partNameId: selectedPartName.id,
-      partName: form.name,
-      partCategories: selectedPartName.part_categories,
-      brandId: selectedBrand?.id || null,
-      form,
-      stockLocations,
-      selectedSpecs,
-      selectedVehicleModels,
-      partImages,
-      specialPrices,
-      vehicleModelPrices,
-      supplierId: selectedSupplier?.id || null,
-    });
+    /* 保存走 Server Action（服务端写库），避免客户端 session 异常导致保存失败 */
+    let result;
+    try {
+      result = await 保存配件({
+        isEditMode,
+        editId,
+        systemCode,
+        partNumber,
+        barcode,
+        interchangeCode,
+        oeNumber,
+        vin17GroupId,
+        documentName: docNameQuery.trim() || null,
+        partNameId: selectedPartName.id,
+        partName: form.name,
+        partCategories: selectedPartName.part_categories,
+        brandId: selectedBrand?.id || null,
+        form,
+        stockLocations,
+        selectedSpecs,
+        selectedVehicleModels,
+        partImages,
+        specialPrices,
+        vehicleModelPrices,
+        supplierId: selectedSupplier?.id || null,
+      });
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      setLoading(false);
+      return;
+    }
     setLoading(false);
 
     if (!result.success) {

@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { VehicleModelSearch } from "@/components/VehicleModelSearch";
 import { ImageUploader } from "@/components/ImageUploader";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
+import { 新建客户 } from "../actions";
 
 interface VehicleForm {
   id: string;
@@ -199,104 +200,32 @@ export default function NewCustomerPage() {
     }
     setLoading(true);
 
-    // 手机号唯一性校验
-    if (hasPhone && customer.phone.trim()) {
-      const { data: existingPhone } = await supabase
-        .from("customers")
-        .select("id")
-        .eq("phone", customer.phone.trim())
-        .maybeSingle();
-      if (existingPhone) {
-        alert("该手机号已存在，请更换");
-        setLoading(false);
-        return;
-      }
-    }
-
+    /* 保存走 Server Action（服务端写库，含手机号唯一性校验），
+     * 避免客户端 session 异常导致保存失败 */
+    let result;
     try {
-      const { data: customerData, error: customerError } = await supabase
-        .from("customers")
-        .insert({
-          name: customer.name.trim(),
-          phone: hasPhone ? customer.phone.trim() : null,
-          gender: customer.gender || null,
-          address: customer.address.trim() || null,
-          company: customer.company.trim() || null,
-          id_card: customer.id_card.trim() || null,
-          notes: customer.notes.trim() || null,
-        })
-        .select("id")
-        .single();
-
-      if (customerError) throw new Error("客户保存失败: " + customerError.message);
-      if (!customerData?.id) throw new Error("创建客户后未返回 ID");
-
-      const customerId = customerData.id;
-
-      // 保存客户照片
-      const photoInserts: { customer_id: string; category: string; url: string }[] = [];
-      customerPhotos.forEach((url) =>
-        photoInserts.push({ customer_id: customerId, category: "photo", url })
-      );
-      if (photoInserts.length > 0) {
-        await supabase.from("customer_photos").insert(photoInserts);
-      }
-
-      // 保存备用手机号
-      const validPhones = customerPhones.filter((p) => p.phone.trim());
-      if (validPhones.length > 0) {
-        const phoneInserts = validPhones.map((p) => ({
-          customer_id: customerId,
-          phone: p.phone.trim(),
-          label: p.label.trim() || null,
-        }));
-        const { error: phoneError } = await supabase.from("customer_phones").insert(phoneInserts);
-        if (phoneError) throw new Error("备用手机号保存失败: " + phoneError.message);
-      }
-
-      // 保存联系人
-      const validContacts = contacts.filter((c) => c.name.trim() && c.phone.trim());
-      if (validContacts.length > 0) {
-        const contactInserts = validContacts.map((c) => ({
-          customer_id: customerId,
-          name: c.name.trim(),
-          phone: c.phone.trim(),
-          relationship: c.relationship.trim() || null,
-          notes: c.notes.trim() || null,
-        }));
-        const { error: contactError } = await supabase.from("customer_contacts").insert(contactInserts);
-        if (contactError) throw new Error("联系人保存失败: " + contactError.message);
-      }
-
-      // 批量创建车辆
-      const validVehicles = vehicles.filter((v) => v.plate_number.trim());
-      if (validVehicles.length > 0) {
-        const inserts = validVehicles.map((v) => ({
-          customer_id: customerId,
-          plate_number: v.plate_number.trim(),
-          vin: v.vin.trim() || null,
-          brand: v.brand.trim() || null,
-          model: v.model.trim() || null,
-          engine_no: v.engine_no.trim() || null,
-          chassis_code: v.chassis_code.trim() || null,
-          transmission_type: v.transmission_type.trim() || null,
-          transmission_code: v.transmission_code.trim() || null,
-          color: v.color.trim() || null,
-          year: v.year ? parseInt(v.year) : null,
-          mileage: v.mileage ? parseInt(v.mileage) : null,
-          notes: v.notes.trim() || null,
-        }));
-
-        const { error: vehicleError } = await supabase.from("vehicles").insert(inserts);
-        if (vehicleError) throw new Error("车辆保存失败: " + vehicleError.message);
-      }
-
-      router.push("/customers");
-      router.refresh();
+      result = await 新建客户({
+        customer,
+        hasPhone,
+        customerPhotos,
+        customerPhones,
+        contacts,
+        vehicles,
+      });
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : String(err));
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
+      return;
     }
+
+    if (!result.success) {
+      alert(result.error);
+      setLoading(false);
+      return;
+    }
+
+    router.push("/customers");
+    router.refresh();
   }
 
   return (
