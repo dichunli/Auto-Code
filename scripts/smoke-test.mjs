@@ -101,7 +101,8 @@ try {
   await page.fill("#login-account", 账号);
   await page.fill("#login-password", 密码);
   await page.getByRole("button", { name: "登录", exact: true }).first().click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15000 });
+  /* 卡顿环境下首页资源多、load 事件慢：只等 URL 变化 + DOM 就绪，不等全部资源（最长 45 秒） */
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 45000, waitUntil: "domcontentloaded" });
   断言(true, "登录成功", page.url());
 
   /* ── 2. 工单列表 ── */
@@ -142,17 +143,25 @@ try {
     await page.locator('input[type="tel"]').first().fill(测试手机号);
   }
   await page.locator('button[type="submit"]').first().click();
-  await page.waitForTimeout(4000); /* 等保存+跳转 */
+  /* 等保存跳转到客户列表：卡顿环境下固定等待不可靠，以 URL 变化为准（最长 30 秒） */
+  await page.waitForURL("**/customers", { timeout: 30000 });
 
-  /* 回客户列表按手机号搜索验证 */
+  /* 回客户列表按手机号搜索验证（搜索是按钮触发，非防抖自动搜） */
   await page.goto(`${BASE}/customers`, { waitUntil: "domcontentloaded" });
   const 电话搜索框 = page.getByPlaceholder("联系电话");
   if (await 电话搜索框.count()) {
     await 电话搜索框.fill(测试手机号);
-    await page.waitForTimeout(2000); /* 防抖 300ms + 查询 */
+    await page.getByRole("button", { name: "搜索", exact: true }).first().click();
+    await page.waitForTimeout(3000); /* 等搜索结果渲染 */
   }
-  const 客户列表文本 = await page.textContent("body");
-  断言(客户列表文本 && 客户列表文本.includes(测试客户名), "数据保存：新建客户能存能查", 测试手机号);
+  /* 卡顿环境下服务端查询慢：不用固定等待+抓静态文本，改为等"含客户名的行"出现（自动等待最长 30 秒） */
+  let 找到客户 = true;
+  try {
+    await page.waitForSelector(`main table tbody >> text=${测试客户名}`, { timeout: 30000 });
+  } catch {
+    找到客户 = false;
+  }
+  断言(找到客户, "数据保存：新建客户能存能查", 测试手机号);
 
   /* 清理测试数据 */
   await 清理测试客户();
