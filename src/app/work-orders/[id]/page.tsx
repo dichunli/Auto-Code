@@ -160,7 +160,8 @@ export default async function WorkOrderDetailPage({
           )}
         </div>
 
-        {/* 移动端：折叠操作菜单 */}
+        {/* 移动端：折叠操作菜单（保养单隐藏——精简界面） */}
+        {!是保养单 && (
         <details className="md:hidden">
           <summary className="cursor-pointer list-none">
             <span className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg bg-white text-gray-600 hover:bg-gray-50 select-none">
@@ -195,8 +196,10 @@ export default async function WorkOrderDetailPage({
             />
           </div>
         </details>
+        )}
 
-        {/* PC端：横向展开 */}
+        {/* PC端：横向展开（保养单隐藏——精简界面） */}
+        {!是保养单 && (
         <div className="hidden md:flex items-center gap-3">
           {order.vehicle_id && (
             <Link
@@ -228,6 +231,7 @@ export default async function WorkOrderDetailPage({
             <PrintDropdown orderId={id} />
           </div>
         </div>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -313,21 +317,26 @@ export default async function WorkOrderDetailPage({
                       <span className="text-gray-500">车型:</span>{' '}
                       <span className="text-gray-800">{modelInfo || "-"}</span>
                     </span>
-                    <span><span className="text-gray-500">接车里程:</span> {order.mileage_in ? `${order.mileage_in} km` : "-"}</span>
-                    <span className="text-gray-400 text-xs">创建于 {formatDate(order.created_at ?? null)}</span>
-                    <div className="md:hidden">
-                      <ReceptionInfoEditor
-                        orderId={id}
-                        mileageIn={order.mileage_in ?? null}
-                        dashboardPhotos={order.dashboard_photos}
-                        estimatedCompletionAt={order.estimated_completion_at ?? null}
-                        senderName={order.sender_name}
-                        senderPhone={order.sender_phone}
-                      />
-                    </div>
+                    {/* 接车里程/创建时间/编辑接车信息：保养单隐藏（精简界面） */}
+                    {!是保养单 && (
+                      <>
+                        <span><span className="text-gray-500">接车里程:</span> {order.mileage_in ? `${order.mileage_in} km` : "-"}</span>
+                        <span className="text-gray-400 text-xs">创建于 {formatDate(order.created_at ?? null)}</span>
+                        <div className="md:hidden">
+                          <ReceptionInfoEditor
+                            orderId={id}
+                            mileageIn={order.mileage_in ?? null}
+                            dashboardPhotos={order.dashboard_photos}
+                            estimatedCompletionAt={order.estimated_completion_at ?? null}
+                            senderName={order.sender_name}
+                            senderPhone={order.sender_phone}
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
-                  {/* 车辆其他状态工单提示 */}
-                  {Object.keys(typeCountMap).length > 0 && (
+                  {/* 车辆其他状态工单提示（保养单隐藏） */}
+                  {!是保养单 && Object.keys(typeCountMap).length > 0 && (
                     <div className="flex items-center gap-3 flex-wrap text-xs mt-1">
                       <span className="text-gray-400">该车辆还有:</span>
                       {Object.entries(typeCountMap).map(([t, info]) => (
@@ -369,11 +378,18 @@ export default async function WorkOrderDetailPage({
                 </div>
                 <div><span className="text-gray-500">电话:</span> {order.customers?.phone || "-"}</div>
                 <div><span className="text-gray-500">消费总额:</span> <span className="font-medium text-gray-900">{formatCurrency(order.customers?.total_spent || 0)}</span></div>
-                <div><span className="text-gray-500">消费次数:</span> <span className="font-medium text-gray-900">{customerOrderCount ?? 0}</span></div>
-                <div><span className="text-gray-500">约定交车:</span> {order.estimated_completion_at ? formatDate(order.estimated_completion_at) : "-"}</div>
+                {/* 消费次数/约定交车：保养单隐藏（精简界面） */}
+                {!是保养单 && (
+                  <>
+                    <div><span className="text-gray-500">消费次数:</span> <span className="font-medium text-gray-900">{customerOrderCount ?? 0}</span></div>
+                    <div><span className="text-gray-500">约定交车:</span> {order.estimated_completion_at ? formatDate(order.estimated_completion_at) : "-"}</div>
+                  </>
+                )}
                 {order.sender_name && (
                   <div><span className="text-gray-500">送修人:</span> <span className="font-medium">{order.sender_name}</span> {order.sender_phone && <span className="text-gray-400">({order.sender_phone})</span>}</div>
                 )}
+                {/* 编辑接车信息：保养单隐藏 */}
+                {!是保养单 && (
                 <div className="pt-2 border-t border-gray-100">
                   <ReceptionInfoEditor
                     orderId={id}
@@ -384,6 +400,7 @@ export default async function WorkOrderDetailPage({
                     senderPhone={order.sender_phone}
                   />
                 </div>
+                )}
                 {order.customers?.company && (
                   <div><span className="text-gray-400">单位:</span> {order.customers.company}</div>
                 )}
@@ -431,12 +448,19 @@ export default async function WorkOrderDetailPage({
                 </span>
                 <span><span className="text-gray-500">电话:</span> {order.customers?.phone || "-"}</span>
                 <span><span className="text-gray-500">消费总额:</span> <span className="font-medium text-gray-900">{formatCurrency(order.customers?.total_spent || 0)}</span></span>
-                <span><span className="text-gray-500">消费次数:</span> <span className="font-medium text-gray-900">{customerOrderCount ?? 0}</span></span>
-                <span><span className="text-gray-500">约定交车:</span> {order.estimated_completion_at ? formatDate(order.estimated_completion_at) : "-"}</span>
+                {/* 消费次数/约定交车：保养单隐藏（精简界面） */}
+                {!是保养单 && (
+                  <>
+                    <span><span className="text-gray-500">消费次数:</span> <span className="font-medium text-gray-900">{customerOrderCount ?? 0}</span></span>
+                    <span><span className="text-gray-500">约定交车:</span> {order.estimated_completion_at ? formatDate(order.estimated_completion_at) : "-"}</span>
+                  </>
+                )}
                 {order.sender_name && (
                   <span><span className="text-gray-500">送修人:</span> <span className="font-medium">{order.sender_name}</span> {order.sender_phone && <span className="text-gray-400">({order.sender_phone})</span>}</span>
                 )}
               </div>
+              {/* 编辑接车信息/展开更多信息：保养单隐藏（精简界面） */}
+              {!是保养单 && (
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <ReceptionInfoEditor
                   orderId={id}
@@ -475,6 +499,7 @@ export default async function WorkOrderDetailPage({
                 </div>
               </details>
             </div>
+              )}
           </div>
         </div>
 
@@ -483,6 +508,8 @@ export default async function WorkOrderDetailPage({
             {/* PC端标题栏 */}
             <div className="hidden md:flex px-6 py-4 border-b border-gray-100 items-center justify-between">
               <h2 className="text-base font-semibold text-gray-900">客户需求与诊断</h2>
+              {/* 按钮组：保养单隐藏（精简界面；同时根治只读保养单可点"+接车检查/车况检查"的问题） */}
+              {!是保养单 && (
               <div className="flex items-center gap-3">
                 {!实际锁定 && (
                   <>
@@ -517,8 +544,10 @@ export default async function WorkOrderDetailPage({
                   </>
                 )}
               </div>
+              )}
             </div>
-            {/* 移动端按钮栏（无标题，+需求、接车检查、车况检查、保养模板、批量修改） */}
+            {/* 移动端按钮栏（无标题，+需求、接车检查、车况检查、保养模板、批量修改）——保养单整栏隐藏 */}
+            {!是保养单 && (
             <div className="md:hidden px-4 py-3 border-b border-gray-100 flex items-center flex-wrap gap-2">
               {!实际锁定 && <AddRequirementButton orderId={id} autoOpen={sp.newReq === "1"} />}
               <Link href={`/work-orders/${id}/reception/new`} className="text-xs text-orange-600 hover:text-orange-700">+ 接车检查</Link>
@@ -547,6 +576,7 @@ export default async function WorkOrderDetailPage({
                 />
               )}
             </div>
+            )}
             <LiveRequirementsList
               orderId={id}
               vehicleModelId={vehicleModelId}
