@@ -64,6 +64,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
   }
 
+  /* 仅管理员可创建员工账号（防止普通员工自建管理员账号） */
+  const { data: 角色行 } = await supabase
+    .from("profile_roles")
+    .select("roles(name)")
+    .eq("profile_id", userData.user.id);
+  const 是管理员 = ((角色行 || []) as unknown as { roles?: { name?: string } | null }[]).some(
+    (d) => d.roles?.name === "admin"
+  );
+  if (!是管理员) {
+    return NextResponse.json({ error: "仅管理员可创建员工账号" }, { status: 403 });
+  }
+
   const admin = createAdminClient();
   const email = `phone-${accountPhone}@auto.local`;
 
