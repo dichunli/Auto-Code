@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新增配件, 新建配件品牌, 新建配件规格 } from "../actions";
 
 interface PartName {
   id: string;
@@ -70,25 +71,25 @@ export default function NewPartPage() {
   async function handleCreateBrand() {
     const brandName = prompt("请输入新品牌名称:");
     if (!brandName) return;
-    const { data, error } = await supabase.from("part_brands").insert({ name: brandName }).select("id").single();
-    if (error) {
-      alert("创建失败: " + error.message);
+    const result = await 新建配件品牌(brandName);
+    if (!result.success || !result.id) {
+      alert("创建失败: " + (result.error || "未知错误"));
       return;
     }
-    setBrands((prev) => [...prev, { id: data.id, name: brandName, usage_count: 0 }]);
-    setForm((f) => ({ ...f, brand_id: data.id }));
+    setBrands((prev) => [...prev, { id: result.id!, name: brandName, usage_count: 0 }]);
+    setForm((f) => ({ ...f, brand_id: result.id! }));
   }
 
   async function handleCreateSpec() {
     const specName = prompt("请输入新规格名称:");
     if (!specName) return;
-    const { data, error } = await supabase.from("part_specifications").insert({ name: specName }).select("id").single();
-    if (error) {
-      alert("创建失败: " + error.message);
+    const result = await 新建配件规格(specName);
+    if (!result.success || !result.id) {
+      alert("创建失败: " + (result.error || "未知错误"));
       return;
     }
-    setSpecifications((prev) => [...prev, { id: data.id, name: specName, usage_count: 0 }]);
-    setForm((f) => ({ ...f, specification_id: data.id, specification_text: "" }));
+    setSpecifications((prev) => [...prev, { id: result.id!, name: specName, usage_count: 0 }]);
+    setForm((f) => ({ ...f, specification_id: result.id!, specification_text: "" }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -99,23 +100,18 @@ export default function NewPartPage() {
     }
     setLoading(true);
 
-    const { error } = await supabase.from("parts").insert({
-      part_number: form.part_number,
-      barcode: form.barcode || null,
-      part_name_id: form.part_name_id,
-      brand_id: form.brand_id || null,
-      specification_id: form.specification_id || null,
-      specification_text: form.specification_text || null,
-      quantity: parseInt(form.quantity) || 0,
-      min_stock: parseInt(form.min_stock) || 10,
-      unit_cost: parseFloat(form.unit_cost) || 0,
-      unit_price: parseFloat(form.unit_price) || 0,
-      location: form.location || null,
-      notes: form.notes || null,
-    });
+    /* 保存走 Server Action（服务端写库） */
+    let result;
+    try {
+      result = await 新增配件(form);
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      setLoading(false);
+      return;
+    }
 
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!result.success) {
+      alert("保存失败: " + result.error);
       setLoading(false);
       return;
     }

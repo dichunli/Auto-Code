@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 配件入库, 新建配件品牌, 新建配件规格 } from "../actions";
 
 interface Part {
   id: string;
@@ -141,155 +142,74 @@ export default function InventoryInForm() {
   async function handleCreateBrand() {
     const brandName = prompt("请输入新品牌名称:");
     if (!brandName) return;
-    const { data, error } = await supabase.from("part_brands").insert({ name: brandName }).select("id").single();
-    if (error) {
-      alert("创建失败: " + error.message);
+    const result = await 新建配件品牌(brandName);
+    if (!result.success || !result.id) {
+      alert("创建失败: " + (result.error || "未知错误"));
       return;
     }
-    setBrands((prev) => [...prev, { id: data.id, name: brandName }]);
-    setForm((f) => ({ ...f, brand_id: data.id }));
+    setBrands((prev) => [...prev, { id: result.id!, name: brandName }]);
+    setForm((f) => ({ ...f, brand_id: result.id! }));
   }
 
   async function handleCreateSpec() {
     const specName = prompt("请输入新规格名称:");
     if (!specName) return;
-    const { data, error } = await supabase.from("part_specifications").insert({ name: specName }).select("id").single();
-    if (error) {
-      alert("创建失败: " + error.message);
+    const result = await 新建配件规格(specName);
+    if (!result.success || !result.id) {
+      alert("创建失败: " + (result.error || "未知错误"));
       return;
     }
-    setSpecifications((prev) => [...prev, { id: data.id, name: specName }]);
-    setForm((f) => ({ ...f, specification_id: data.id, specification_text: "" }));
+    setSpecifications((prev) => [...prev, { id: result.id!, name: specName }]);
+    setForm((f) => ({ ...f, specification_id: result.id!, specification_text: "" }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    /* 前端先做基本校验（与服务端一致，避免白跑一趟） */
+    const qty = parseInt(form.quantity) || 0;
+    if (qty <= 0) {
+      alert("入库数量必须大于0");
+      return;
+    }
+    if (newPartMode && !form.part_name_id) {
+      alert("请选择配件名称");
+      return;
+    }
+    if (!newPartMode && !selectedPartId) {
+      alert("请选择配件");
+      return;
+    }
+
     setLoading(true);
 
+    /* 入库走 Server Action：服务端读最新库存再更新，
+     * 不能用客户端列表里的旧数量（可能已被别人改过） */
+    let result;
     try {
-      const qty = parseInt(form.quantity) || 0;
-      if (qty <= 0) throw new Error("入库数量必须大于0");
-
-      let waybillId: string | null = null;
-
-      // 处理运单
-      if (waybillMode === "new" && newWaybill.tracking_no) {
-        const company = logisticsCompanies.find((c) => c.id === newWaybill.logistics_company_id);
-        const { data: wb, error: wbErr } = await supabase
-          .from("logistics_waybills")
-          .insert({
-            tracking_no: newWaybill.tracking_no,
-            logistics_company_id: newWaybill.logistics_company_id || null,
-            logistics_company_name: company?.name || null,
-            freight_amount: parseFloat(newWaybill.freight_amount) || 0,
-            cod_amount: parseFloat(newWaybill.cod_amount) || 0,
-            status: "received",
-            received_at: new Date().toISOString(),
-            notes: newWaybill.notes || null,
-          })
-          .select("id")
-          .single();
-        if (wbErr) throw wbErr;
-        waybillId = wb.id;
-      } else if (waybillMode === "existing" && selectedWaybillId) {
-        waybillId = selectedWaybillId;
-        await supabase
-          .from("logistics_waybills")
-          .update({ status: "received", received_at: new Date().toISOString() })
-          .eq("id", waybillId);
-      }
-
-      const logNotes = `采购入库: ${form.supplier || "未知供应商"}${form.batch_no ? ` (批次: ${form.batch_no})` : ""}${waybillId ? " (关联运单)" : ""}`;
-
-      if (newPartMode) {
-        if (!form.part_name_id) throw new Error("请选择配件名称");
-
-        const { data: part, error: partError } = await supabase
-          .from("parts")
-          .insert({
-            part_number: form.part_number,
-            barcode: form.barcode || null,
-            part_name_id: form.part_name_id,
-            brand_id: form.brand_id || null,
-            specification_id: form.specification_id || null,
-            specification_text: form.specification_text || null,
-            quantity: qty,
-            unit_cost: parseFloat(form.unit_cost) || 0,
-          })
-          .select("id")
-          .single();
-
-        if (partError || !part) throw partError || new Error("新增配件失败");
-
-        if (form.batch_no) {
-          await supabase.from("part_batches").insert({
-            part_id: part.id,
-            batch_no: form.batch_no,
-            quantity: qty,
-            remaining: qty,
-            unit_cost: parseFloat(form.unit_cost) || 0,
-          });
-        }
-
-        await supabase.from("inventory_logs").insert({
-          part_id: part.id,
-          type: "inbound",
-          change_qty: qty,
-          before_qty: 0,
-          after_qty: qty,
-          waybill_id: waybillId,
-          notes: logNotes,
-        });
-
-        if (branchId) {
-          await supabase.from("work_order_item_parts").update({ part_id: part.id }).eq("id", branchId);
-        }
-      } else {
-        if (!selectedPartId) throw new Error("请选择配件");
-        const selected = parts.find((p) => p.id === selectedPartId);
-        if (!selected) throw new Error("配件不存在");
-
-        const beforeQty = selected.quantity || 0;
-        const afterQty = beforeQty + qty;
-
-        const { error: updateError } = await supabase
-          .from("parts")
-          .update({ quantity: afterQty })
-          .eq("id", selectedPartId);
-
-        if (updateError) throw updateError;
-
-        if (form.batch_no) {
-          await supabase.from("part_batches").insert({
-            part_id: selectedPartId,
-            batch_no: form.batch_no,
-            quantity: qty,
-            remaining: qty,
-            unit_cost: parseFloat(form.unit_cost) || 0,
-          });
-        }
-
-        await supabase.from("inventory_logs").insert({
-          part_id: selectedPartId,
-          type: "inbound",
-          change_qty: qty,
-          before_qty: beforeQty,
-          after_qty: afterQty,
-          waybill_id: waybillId,
-          notes: logNotes,
-        });
-
-        if (branchId) {
-          await supabase.from("work_order_item_parts").update({ part_id: selectedPartId }).eq("id", branchId);
-        }
-      }
-
-      router.push("/inventory");
-      router.refresh();
+      result = await 配件入库({
+        newPartMode,
+        selectedPartId,
+        branchId,
+        waybillMode,
+        selectedWaybillId,
+        newWaybill,
+        form,
+      });
     } catch (err: unknown) {
       alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
+      return;
     }
+
+    if (!result.success) {
+      alert("保存失败: " + result.error);
+      setLoading(false);
+      return;
+    }
+
+    router.push("/inventory");
+    router.refresh();
   }
 
   return (
