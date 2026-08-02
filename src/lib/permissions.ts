@@ -16,12 +16,13 @@ export type Permission =
   | "report:performance"
   | "dashboard:all"
   | "payment:manage"
+  | "work_order:delete"
   | "tool:manage"
   | "*";
 
 export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   admin: ["*"],
-  boss: ["report:view", "report:profit", "report:performance", "dashboard:all", "customer:manage", "vehicle:manage", "tool:manage"],
+  boss: ["report:view", "report:profit", "report:performance", "dashboard:all", "customer:manage", "vehicle:manage", "tool:manage", "work_order:delete"],
   receptionist: [
     "work_order:create",
     "work_order:quote",
