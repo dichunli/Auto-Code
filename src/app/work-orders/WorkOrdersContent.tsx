@@ -8,7 +8,7 @@ import Link from "next/link";
 import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
 import { PermissionGate } from "@/components/PermissionGate";
 import { logAction } from "@/lib/operationLog";
-import { 阶段文案, 阶段颜色, type 阶段key } from "@/lib/orderStage";
+import { 阶段文案, type 阶段key } from "@/lib/orderStage";
 import { 读本地工单标签 } from "@/lib/orderTabs";
 import StageOrderCard from "@/components/StageOrderCard";
 import type { Order } from "./page";
@@ -136,7 +136,8 @@ export default function WorkOrdersContent({
 
   if (是分栏视图) {
     return (
-      <div>
+      /* 卡片视图同样内部滚动，保持顶部筛选区冻结 */
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {orders.map((order) => (
             <StageOrderCard
@@ -162,76 +163,98 @@ export default function WorkOrdersContent({
   }
 
   return (
-    <div>
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+    /* flex 纵向 + min-h-0：表格卡片吃掉剩余高度并内部滚动，分页栏固定在底部始终可见 */
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex min-h-0 flex-1 flex-col">
+        {/* overflow-auto：横向滚动（列冻结）+ 纵向滚动（表头冻结）都发生在这个容器里 */}
+        <div className="min-h-0 flex-1 overflow-auto">
+          {/* min-w-max：表格按内容撑开，超出容器时底部出现横向滚动条（参照1号车间） */}
+          <table className="w-full min-w-max text-sm">
             <thead>
-              <tr className="bg-slate-100/70 border-b border-gray-200">
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">工单号</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">车牌号</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">VIN</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">车型</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">客户名称</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">电话</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">单位</th>
-                {!type && <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">状态</th>}
-                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600">金额</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">创建时间</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">操作</th>
+              <tr className="border-b border-gray-200">
+                {/* 表头纵向冻结（sticky top-0）+ 左右列横向冻结：
+                 * 四角单元格 z-30 最高，普通表头 z-20（盖住横滚的 z-10 冻结数据格），
+                 * 所有表头实色背景，否则滚动时内容透出来 */}
+                <th className="sticky left-0 top-0 z-30 w-[150px] bg-slate-100 px-4 py-3 text-left text-xs font-semibold text-gray-600">工单号</th>
+                <th className="sticky left-[150px] top-0 z-30 w-[110px] bg-slate-100 px-4 py-3 text-left text-xs font-semibold text-gray-600 border-r border-gray-200">车牌号</th>
+                <th className="sticky top-0 z-20 bg-slate-100 px-6 py-3 text-left text-xs font-semibold text-gray-600">VIN</th>
+                <th className="sticky top-0 z-20 bg-slate-100 px-6 py-3 text-left text-xs font-semibold text-gray-600">车型</th>
+                <th className="sticky top-0 z-20 bg-slate-100 px-6 py-3 text-left text-xs font-semibold text-gray-600">客户名称</th>
+                <th className="sticky top-0 z-20 bg-slate-100 px-6 py-3 text-left text-xs font-semibold text-gray-600">电话</th>
+                <th className="sticky top-0 z-20 bg-slate-100 px-6 py-3 text-left text-xs font-semibold text-gray-600">单位</th>
+                {!type && <th className="sticky top-0 z-20 bg-slate-100 px-6 py-3 text-left text-xs font-semibold text-gray-600">项目名称</th>}
+                <th className="sticky top-0 z-20 bg-slate-100 px-6 py-3 text-right text-xs font-semibold text-gray-600">金额</th>
+                <th className="sticky top-0 z-20 bg-slate-100 px-6 py-3 text-left text-xs font-semibold text-gray-600">创建时间</th>
+                <th className="sticky right-[150px] top-0 z-30 w-[90px] bg-slate-100 px-4 py-3 text-left text-xs font-semibold text-gray-600 border-l border-gray-200">查看详情</th>
+                <th className="sticky right-0 top-0 z-30 w-[150px] bg-slate-100 px-4 py-3 text-left text-xs font-semibold text-gray-600">工单操作</th>
               </tr>
             </thead>
             <tbody>
               {orders.map((order: Order, 行号: number) => (
                 <tr
                   key={order.id}
-                  className={`border-b border-gray-100 last:border-0 transition-colors ${
+                  className={`group border-b border-gray-100 last:border-0 transition-colors ${
                     行号 % 2 === 0 ? "bg-white" : "bg-slate-50/70"
                   } hover:bg-blue-50/70`}
                 >
-                  <td className="px-6 py-3.5 font-medium text-gray-900">
+                  {/* 冻结单元格背景用实色（斑马纹同款），group-hover 跟随整行变色 */}
+                  <td className={`sticky left-0 z-10 px-4 py-3.5 font-medium text-gray-900 whitespace-nowrap ${
+                    行号 % 2 === 0 ? "bg-white" : "bg-slate-50"
+                  } group-hover:bg-blue-50`}>
+                    {/* 工单号缩短：小字单行显示，过长省略号 */}
                     <button
                       type="button"
                       onClick={() => openOrderTab(order.id)}
-                      className="text-blue-600 hover:text-blue-700 hover:underline text-left"
+                      title={order.order_no}
+                      className="inline-block max-w-full truncate align-bottom text-xs text-blue-600 hover:text-blue-700 hover:underline text-left"
                     >
                       {order.order_no}
                     </button>
                   </td>
-                  <td className="px-6 py-3.5 text-gray-900 font-medium">{order.vehicles?.plate_number || "-"}</td>
+                  <td className={`sticky left-[150px] z-10 px-4 py-3.5 text-gray-900 font-medium whitespace-nowrap border-r border-gray-200 ${
+                    行号 % 2 === 0 ? "bg-white" : "bg-slate-50"
+                  } group-hover:bg-blue-50`}>
+                    {order.vehicles?.plate_number || "-"}
+                  </td>
                   <td className="px-6 py-3.5 text-gray-500 font-mono text-xs whitespace-nowrap">{order.vehicles?.vin || "-"}</td>
-                  <td className="px-6 py-3.5 text-gray-600">{order.vehicles?.brand} {order.vehicles?.model}</td>
-                  <td className="px-6 py-3.5 text-gray-900">{order.customers?.name || "-"}</td>
-                  <td className="px-6 py-3.5 text-gray-500">{order.customers?.phone || "-"}</td>
-                  <td className="px-6 py-3.5 text-gray-500">{order.customers?.company || "-"}</td>
+                  <td className="px-6 py-3.5 text-gray-600 max-w-64 truncate" title={`${order.vehicles?.brand || ""} ${order.vehicles?.model || ""}`.trim()}>
+                    {order.vehicles?.brand} {order.vehicles?.model}
+                  </td>
+                  <td className="px-6 py-3.5 text-gray-900 max-w-40 truncate" title={order.customers?.name || ""}>{order.customers?.name || "-"}</td>
+                  <td className="px-6 py-3.5 text-gray-500 whitespace-nowrap">{order.customers?.phone || "-"}</td>
+                  <td className="px-6 py-3.5 text-gray-500 max-w-40 truncate" title={order.customers?.company || ""}>{order.customers?.company || "-"}</td>
                   {!type && (
-                    <td className="px-6 py-3.5">
-                      {/* 多徽章：一个工单多个项目处于不同阶段时同时显示（如 施工中+待派工） */}
-                      <div className="flex flex-wrap gap-1">
-                        {order.boardStages.map((stage) => (
-                          <span
-                            key={stage}
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              阶段颜色[stage] || "bg-gray-100 text-gray-800"
-                            }`}
-                          >
-                            {阶段文案[stage] || stage}
-                          </span>
-                        ))}
-                      </div>
+                    <td className="px-6 py-3.5 max-w-64">
+                      {/* 项目名称：多个项目用 / 连接，单行省略号截断，悬停可见完整内容 */}
+                      {order.项目名称.length > 0 ? (
+                        <span
+                          className="block truncate text-gray-700"
+                          title={order.项目名称.join(" / ")}
+                        >
+                          {order.项目名称.join(" / ")}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
                     </td>
                   )}
-                  <td className="px-6 py-3.5 text-right font-medium text-gray-900 tabular-nums">{formatCurrency(order.total_cost)}</td>
+                  <td className="px-6 py-3.5 text-right font-medium text-gray-900 tabular-nums whitespace-nowrap">{formatCurrency(order.total_cost)}</td>
                   <td className="px-6 py-3.5 text-gray-400 text-xs whitespace-nowrap">{formatDate(order.created_at)}</td>
-                  <td className="px-6 py-3.5">
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => openOrderTab(order.id)}
-                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                      >
-                        查看详情
-                      </button>
+                  <td className={`sticky right-[150px] z-10 px-4 py-3.5 whitespace-nowrap border-l border-gray-200 ${
+                    行号 % 2 === 0 ? "bg-white" : "bg-slate-50"
+                  } group-hover:bg-blue-50`}>
+                    <button
+                      type="button"
+                      onClick={() => openOrderTab(order.id)}
+                      className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      查看详情
+                    </button>
+                  </td>
+                  <td className={`sticky right-0 z-10 px-4 py-3.5 ${
+                    行号 % 2 === 0 ? "bg-white" : "bg-slate-50"
+                  } group-hover:bg-blue-50`}>
+                    <div className="flex flex-wrap items-center gap-2">
                       <WorkOrderActionButtons
                         workOrderId={order.id}
                         orderNo={order.order_no}
@@ -256,14 +279,14 @@ export default function WorkOrdersContent({
               ))}
               {queryError && (
                 <tr>
-                  <td colSpan={type ? 10 : 11} className="px-6 py-12 text-center text-red-500">
+                  <td colSpan={type ? 11 : 12} className="px-6 py-12 text-center text-red-500">
                     查询失败: {queryError}
                   </td>
                 </tr>
               )}
               {!queryError && orders.length === 0 && (
                 <tr>
-                  <td colSpan={type ? 10 : 11} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={type ? 11 : 12} className="px-6 py-12 text-center text-gray-400">
                     {type ? `暂无数据` : "暂无工单数据"}
                   </td>
                 </tr>

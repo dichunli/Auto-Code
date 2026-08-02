@@ -1,10 +1,42 @@
 import { NextResponse } from "next/server";
 import sharp from "sharp";
+import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { vin17OcrImage, vin17OcrAndDecode } from "@/lib/17vin/client";
 
 /* VIN OCR API：接收图片base64，压缩后调用17VIN识别 */
 export async function POST(request: Request) {
   try {
+    /* ── 认证：优先 Bearer token（APP 环境），其次 cookie（浏览器）──
+       必须登录才能调用，防止未登录者盗刷付费的 17VIN OCR 配额 */
+    let userId: string | null = null;
+    const authHeader = request.headers.get("authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.slice(7);
+      if (token && token !== "undefined" && token !== "null") {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (url && key) {
+          const tempClient = createSupabaseClient(url, key, {
+            auth: { autoRefreshToken: false, persistSession: false },
+          });
+          const { data, error } = await tempClient.auth.getUser(token);
+          if (!error && data.user) {
+            userId = data.user.id;
+          }
+        }
+      }
+    }
+
+    if (!userId) {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return NextResponse.json({ success: false, error: "未登录" }, { status: 401 });
+      }
+      userId = user.id;
+    }
+
     const { base64Image, withDecode = false } = (await request.json()) as {
       base64Image: string;
       withDecode?: boolean;

@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { PageHeader } from "@/components/PageHeader";
+import { 获取访问令牌 } from "@/lib/supabase/client";
 
 export default function VinTestPage() {
   const [loading, setLoading] = useState(false);
@@ -40,9 +41,13 @@ export default function VinTestPage() {
     setResult(null);
 
     try {
+      /* APP环境带Bearer令牌（cookie在WebView不可用） */
+      const token = 获取访问令牌();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
       const res = await fetch("/api/vin-ocr", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ base64Image: base64 }),
       });
       const data = await res.json();

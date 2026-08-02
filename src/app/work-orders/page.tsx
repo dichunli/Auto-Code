@@ -76,6 +76,8 @@ export interface Order {
   未指派需求: { id: string; description: string | null }[];
   /* 有需求未指派（待诊断卡片占位文案用） */
   有未指派需求: boolean;
+  /* 项目名称列表（列表页"项目名称"列显示，别名优先，同详情页规则） */
+  项目名称: string[];
   /* 工时/配件金额（待结算卡片显示） */
   labor_cost?: number | null;
   parts_cost?: number | null;
@@ -171,6 +173,10 @@ function normalizeOrder(raw: RawWorkOrder): Order {
       .filter((r) => !r.assigned_to)
       .map((r) => ({ id: r.id, description: r.description || null })),
     有未指派需求: 输入.有未指派需求,
+    /* 项目名称列表：别名优先（同详情页 ItemNameDisplay 规则），空名过滤 */
+    项目名称: (raw.work_order_items || [])
+      .map((it) => (it.alias_name || it.name || "").trim())
+      .filter((n) => n.length > 0),
     labor_cost: raw.labor_cost ?? null,
     parts_cost: raw.parts_cost ?? null,
     total_cost: raw.total_cost ?? null,
@@ -430,7 +436,10 @@ export default async function WorkOrdersPage(props: {
   const pageTitle = type ? typeLabelMap[type] || "工单管理" : "工单管理";
 
   return (
-    <div>
+    /* 整页 flex 纵向布局 + 固定视口高度：页面本身不滚动（顶部标题/筛选/视图切换始终冻结），
+     * 滚动只发生在表格/卡片容器内部（WorkOrdersContent 里 overflow-auto）。
+     * 高度要扣掉 AppShell main 的上下 padding：手机 pt-3.5rem+pb-1.5rem，桌面 md:pt-6+pb-6 */
+    <div className="flex h-[calc(100dvh-5rem-env(safe-area-inset-top))] flex-col md:h-[calc(100dvh-3rem)]">
       {/* 工单标签栏只在"在修工单"（含其阶段筛选）显示：
        * 保养单/预约单/报价单/作废单（type 视图）和 历史/全部工单 不属于在修场景，不显示 */}
       {!type && status !== "history" && status !== "all" && <WorkOrderTabBar tabs={tabsParam} />}
