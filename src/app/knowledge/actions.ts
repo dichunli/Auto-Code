@@ -1,7 +1,7 @@
 "use server";
 
 import mammoth from "mammoth";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { 中文分词 } from "@/lib/chineseSegmenter";
 import { 文字转向量, 文档转向量, 生成嵌入文本 } from "@/lib/localEmbedding";
@@ -1163,9 +1163,27 @@ export async function loadKnowledgeArticleReads(articleId: string): Promise<{
  * 分词词典管理 Server Action（绕过 RLS）
  * ═════════════════════════════════════════════════════════════════ */
 
+/* 分词增删仅管理员可操作；返回 null 表示通过，否则返回错误对象 */
+async function 验证分词管理员(): Promise<{ success: boolean; error?: string } | null> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) return { success: false, error: 登录错误 || "未登录" };
+  const supabase = await createClient();
+  const { data: 角色行 } = await supabase
+    .from("profile_roles")
+    .select("roles(name)")
+    .eq("profile_id", user.id);
+  const 是管理员 = ((角色行 || []) as unknown as { roles?: { name?: string } | null }[]).some(
+    (d) => d.roles?.name === "admin"
+  );
+  if (!是管理员) return { success: false, error: "仅管理员可管理分词" };
+  return null;
+}
+
 /** 加载自定义分词列表（Server Action，用 admin 客户端绕过 RLS） */
 export async function 加载分词列表(): Promise<{ success: boolean; data?: string[]; error?: string }> {
   try {
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("search_dictionary")
@@ -1185,6 +1203,8 @@ export async function 加载分词列表(): Promise<{ success: boolean; data?: s
 
 export async function 添加分词(词: string): Promise<{ success: boolean; error?: string }> {
   try {
+    const 校验 = await 验证分词管理员();
+    if (校验) return 校验;
     const supabase = createAdminClient();
     const { error } = await supabase.from("search_dictionary").insert({ word: 词, created_by: null });
     if (error) {
@@ -1200,6 +1220,8 @@ export async function 添加分词(词: string): Promise<{ success: boolean; err
 
 export async function 删除分词(词: string): Promise<{ success: boolean; error?: string }> {
   try {
+    const 校验 = await 验证分词管理员();
+    if (校验) return 校验;
     const supabase = createAdminClient();
     const { error } = await supabase.from("search_dictionary").delete().eq("word", 词);
     if (error) {

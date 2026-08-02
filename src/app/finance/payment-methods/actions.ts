@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { 包装ServerAction错误 } from "@/lib/supabase/server";
 
 interface 收款方式 {
@@ -19,6 +19,8 @@ export async function 获取收款方式列表(): Promise<{
 }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { data, error } = await supabase
       .from("payment_methods")
       .select("id, code, name, sort_order, is_active")
@@ -41,6 +43,8 @@ export async function 创建收款方式(参数: {
 }): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { error } = await supabase.from("payment_methods").insert({
       code: 参数.code.trim(),
       name: 参数.name.trim(),
@@ -64,6 +68,8 @@ export async function 更新收款方式(参数: {
 }): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { error } = await supabase
       .from("payment_methods")
       .update({
@@ -85,6 +91,8 @@ export async function 更新收款方式(参数: {
 export async function 删除收款方式(id: string): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { error } = await supabase.from("payment_methods").delete().eq("id", id);
 
     if (error) {
@@ -102,6 +110,8 @@ export async function 更新收款方式排序(参数: {
 }): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
     const { error } = await supabase
       .from("payment_methods")
       .update({ sort_order: 参数.sort_order })

@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 
 export interface 调用记录 {
   id: string;
@@ -25,6 +26,19 @@ export async function 查询调用记录(
   每页条数: number = 20
 ): Promise<调用记录查询结果> {
   try {
+    /* 调用记录含接口请求参数，仅管理员可查 */
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
+    const supabase = await createClient();
+    const { data: 角色行 } = await supabase
+      .from("profile_roles")
+      .select("roles(name)")
+      .eq("profile_id", user.id);
+    const 是管理员 = ((角色行 || []) as unknown as { roles?: { name?: string } | null }[]).some(
+      (d) => d.roles?.name === "admin"
+    );
+    if (!是管理员) return { success: false, error: "仅管理员可查看调用记录" };
+
     const admin = createAdminClient();
     const offset = (页码 - 1) * 每页条数;
 

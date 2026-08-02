@@ -18,6 +18,18 @@ export async function DELETE(
     return NextResponse.json({ error: "不能删除当前登录账号" }, { status: 400 });
   }
 
+  /* 仅管理员可删除员工账号 */
+  const { data: 角色行 } = await supabase
+    .from("profile_roles")
+    .select("roles(name)")
+    .eq("profile_id", userData.user.id);
+  const 是管理员 = ((角色行 || []) as unknown as { roles?: { name?: string } | null }[]).some(
+    (d) => d.roles?.name === "admin"
+  );
+  if (!是管理员) {
+    return NextResponse.json({ error: "仅管理员可删除员工账号" }, { status: 403 });
+  }
+
   const admin = createAdminClient();
 
   // 关联检查：有工单接待 / 维修记录 / 项目派单 时禁止物理删除
