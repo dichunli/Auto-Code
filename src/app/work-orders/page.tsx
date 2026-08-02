@@ -7,6 +7,7 @@ import WorkOrderSearch from "@/components/WorkOrderSearch";
 import WorkOrdersRefreshBar from "@/components/WorkOrdersRefreshBar";
 import { 保养单草稿前缀 } from "@/lib/maintenance";
 import { computeBoardStages, getItemStageKey, 阶段顺序, 阶段文案, 阶段深色, type 阶段key, type 工单状态输入 } from "@/lib/orderStage";
+import { 计算施工中断秒数, type 施工日志行, type 施工中断秒数 } from "@/lib/constructionTime";
 
 /* ═════════════════════════════════════════════════════════════════
  * 工单列表页 — Server Component
@@ -71,6 +72,9 @@ export interface Order {
     customer_opinion?: string | null;
     inspector_id?: string | null;
     mechanics: { mechanic_id: string; share_pct?: number | null }[];
+    /* 施工/中断秒数（施工中/已中断卡片显示时长用；仅这两个阶段的项目有值） */
+    施工秒?: number;
+    中断秒?: number;
   }[];
   /* 未指派的需求明细（待诊断卡片列出具体需求） */
   未指派需求: { id: string; description: string | null }[];
@@ -381,6 +385,41 @@ export default async function WorkOrdersPage(props: {
     queryError = error.message;
   } else {
     let result = (data || []).map(normalizeOrder);
+
+    /* 施工中/已中断项目的实时时长：收集这两态的项目 id，二次查施工日志配对计算
+     * （日志量小——只有当前在施工/中断的项目，且仅该阶段筛选或存在这类项目时才查） */
+    const 计时中项目IDs: string[] = [];
+    for (const raw of (data || []) as RawWorkOrder[]) {
+      for (const it of raw.work_order_items || []) {
+        if (it.item_type === "labor" && (it.status === "in_progress" || it.status === "paused")) {
+          计时中项目IDs.push(it.id);
+        }
+      }
+    }
+    if (计时中项目IDs.length > 0) {
+      const { data: 日志数据 } = await supabase
+        .from("work_order_item_construction_logs")
+        .select("work_order_item_id, action, created_at")
+        .in("work_order_item_id", 计时中项目IDs)
+        .order("created_at", { ascending: true });
+      const 日志按项目 = new Map<string, 施工日志行[]>();
+      for (const 行 of (日志数据 || []) as (施工日志行 & { work_order_item_id: string })[]) {
+        const 列表 = 日志按项目.get(行.work_order_item_id) || [];
+        列表.push(行);
+        日志按项目.set(行.work_order_item_id, 列表);
+      }
+      const 秒数按项目 = new Map<string, 施工中断秒数>();
+      for (const [itemId, 项目日志] of 日志按项目) {
+        秒数按项目.set(itemId, 计算施工中断秒数(项目日志));
+      }
+      result = result.map((o) => ({
+        ...o,
+        stageItems: o.stageItems.map((it) => {
+          const 秒数 = 秒数按项目.get(it.id);
+          return 秒数 ? { ...it, 施工秒: 秒数.施工秒, 中断秒: 秒数.中断秒 } : it;
+        }),
+      }));
+    }
 
     /* 阶段筛选（服务端内存）：多徽章数组"包含该阶段"即命中 */
     if (status && !["", "active", "history", "all"].includes(status) && !type) {
