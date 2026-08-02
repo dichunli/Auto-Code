@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { vin17DecodeVin } from "@/lib/17vin/client";
+import { 获取访问令牌 } from "@/lib/supabase/client";
 import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 启动原生VIN拍照 } from "@/lib/androidVinCapture";
@@ -76,10 +77,13 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setDecoding(false);
 
     try {
-      /* 传原始base64，API内部用sharp压缩 */
+      /* 传原始base64，API内部用sharp压缩；APP环境带Bearer令牌（cookie在WebView不可用） */
+      const token = 获取访问令牌();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
       const ocrResponse = await fetch("/api/vin-ocr", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ base64Image: base64 }),
       });
       const ocrData = (await ocrResponse.json()) as {

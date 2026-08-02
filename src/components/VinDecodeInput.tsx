@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { vin17DecodeVin } from "@/lib/17vin/client";
+import { 获取访问令牌 } from "@/lib/supabase/client";
 import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import VinKeyboard from "./VinKeyboard";
@@ -134,9 +135,13 @@ export default function VinDecodeInput({
     detectedVin: string;
     decodeResult: VinDecodeResult | null;
   }> {
+    /* APP环境带Bearer令牌（cookie在WebView不可用） */
+    const token = 获取访问令牌();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch("/api/vin-ocr", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ base64Image: base64 }),
     });
     const data = await res.json();

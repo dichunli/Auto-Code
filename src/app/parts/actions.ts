@@ -43,6 +43,11 @@ interface 同步结果 {
 
 /* 通过VIN获取group_id，然后同步17VIN适配车型 */
 export async function syncPartVin17Models(partId: string, vin: string): Promise<同步结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
   const supabase = await createClient();
 
   /* 1. 查询配件信息 */
@@ -153,6 +158,11 @@ export async function syncModelsFromVin(
   matchedModelIds?: number[];
   error?: string;
 }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
   const supabase = await createClient();
   const oeNumber = rawOeNumber.replace(/\s/g, "");
 
@@ -243,6 +253,11 @@ export async function syncModelsByGroupId(
   matchedModelIds?: number[];
   error?: string;
 }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
   const supabase = await createClient();
   const oeNumber = rawOeNumber.replace(/\s/g, "");
 
@@ -329,6 +344,11 @@ export async function syncModelsByGroupId(
 }
 
 export async function deletePart(partId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
   const supabase = await createClient();
 
   const checks = await Promise.all([
@@ -528,6 +548,11 @@ export async function syncOeFromVin(
   vin17GroupId?: string;
   error?: string;
 }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
   const supabase = await createClient();
   const filterType = 精准三滤类型(filterName);
   if (!filterType) {
@@ -763,6 +788,11 @@ export async function searchVinFilters(
   }>;
   error?: string;
 }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
   try {
     /* 方式一：用新接口7001查（需要传品牌） */
     if (manufacturerBrand) {
