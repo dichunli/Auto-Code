@@ -239,7 +239,8 @@ pm2 start ecosystem.config.js
 1. 本地浏览器测试通过
 2. `npm run build` 无红色报错
 3. `npm run lint` 无 error（exit code 为 0）
-4. `git add -A && git commit -m "描述"`
-5. 用 `deploy.bat` 部署（或手动停服→构建→启动）
-6. 浏览器 `Ctrl+F5` 强制刷新验证
-7. 需要 APK 时：卸载旧版 → 装新版 → 验证
+4. 涉及登录/session 的改动：`npm run test:auth` 通过
+5. `git add -A && git commit -m "描述"`
+6. 用 `deploy.bat` 部署（或手动停服→构建→启动）
+7. 浏览器 `Ctrl+F5` 强制刷新验证
+8. 需要 APK 时：卸载旧版 → 装新版 → 验证
