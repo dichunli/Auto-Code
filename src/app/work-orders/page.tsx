@@ -288,21 +288,46 @@ export default async function WorkOrdersPage(props: {
     query = query.range(from, from + pageSize - 1);
   }
 
-  const { data, error, count } = await query;
-
   /* 分栏卡片操作需要的人员数据：员工名单（派工/质检指派）+ 员工分组（按组派工）。
-   * 数据量小（几十人），每次加载直查，与工单查询并行 */
+   * 数据量小（几十人），每次加载直查 */
   const 需要人员数据 = !type && isDetailStage;
+
+  /* 角标统计查询：只取算阶段所需的最少字段。
+   * computeBoardStages 只看 状态/需求指派/项目/派工/配件出库数量，
+   * 车牌、客户、单号、金额、项目名等算阶段用不到的字段一律不取，显著减小结果集 */
+  const 角标查询 = !type
+    ? supabase
+        .from("work_orders")
+        .select(
+          `status,
+           work_order_items(item_type, status, require_qc, qc_status, customer_opinion, mechanic_id,
+             work_order_item_mechanics(mechanic_id),
+             work_order_item_parts(quantity, is_selected,
+               part_picking_records(quantity),
+               part_return_records(quantity))),
+           work_order_requirements(assigned_to)`
+        )
+        .not("status", "eq", "settled")
+        .not("status", "eq", "delivered")
+        .eq("order_type", "normal")
+    : null;
+
+  /* 主查询 / 人员 / 分组 / 角标 四路互不依赖，一次性并行发出，
+   * 云端数据库每次往返约 100~300ms，并行可省下 2~3 趟往返时间 */
   const [
+    { data, error, count },
     { data: profilesRaw },
     { data: employeeGroupsRaw },
+    角标结果,
   ] = await Promise.all([
+    query,
     需要人员数据
       ? supabase.from("profiles").select("id, full_name, group_id, profile_roles(roles(name)), mechanic_levels(sort_order)").eq("is_active", true).order("full_name")
       : Promise.resolve({ data: null }),
     需要人员数据
       ? supabase.from("employee_groups").select("id, name").order("sort_order", { ascending: true })
       : Promise.resolve({ data: null }),
+    角标查询 ?? Promise.resolve({ data: null }),
   ]);
 
   interface 员工档案 {
@@ -324,28 +349,13 @@ export default async function WorkOrdersPage(props: {
     }))
     .filter((g) => g.members.length > 0);
 
-  /* 角标统计：在修工单全量逐单算徽章、按阶段计数（在修数量小，一次轻量查询）。
-   * 仅工单列表（!type）需要；角标语义=工单数（几辆车处于该阶段） */
+  /* 角标统计：在修工单全量逐单算徽章、按阶段计数（角标语义=工单数，几辆车处于该阶段）。
+   * 数据来自上方并行发出的轻量查询 */
   let 阶段角标: Record<string, number> | null = null;
   if (!type) {
-    const { data: 全部在修 } = await supabase
-      .from("work_orders")
-      .select(
-        `id, order_no, status, order_type, total_cost, created_at,
-         vehicles(plate_number, brand, model, vin),
-         customers(name, phone, company),
-         work_order_items(id, name, alias_name, status, mechanic_id, item_type, require_qc, qc_status, customer_opinion,
-           work_order_item_mechanics(mechanic_id),
-           work_order_item_parts(quantity, is_selected,
-             part_picking_records(quantity),
-             part_return_records(quantity))),
-         work_order_requirements(id, assigned_to)`
-      )
-      .not("status", "eq", "settled")
-      .not("status", "eq", "delivered")
-      .eq("order_type", "normal");
-    const 计数: Record<string, number> = { "": (全部在修 || []).length };
-    for (const raw of (全部在修 || []) as unknown as RawWorkOrder[]) {
+    const 全部在修 = (角标结果.data || []) as unknown as RawWorkOrder[];
+    const 计数: Record<string, number> = { "": 全部在修.length };
+    for (const raw of 全部在修) {
       for (const s of computeBoardStages(组装状态输入(raw))) {
         计数[s] = (计数[s] || 0) + 1;
       }
