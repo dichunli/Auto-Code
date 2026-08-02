@@ -95,17 +95,26 @@ function MaintenanceImportModal({ vehicleId, orderId, onClose }: Props & { onClo
     if (!vehicleId) return;
 
     async function 加载数据() {
-      // 获取保养单（排除 DRAFT- 前缀的未保存草稿）
-      const { data: 保养单数据 } = await supabase
-        .from("work_orders")
-        .select("id, order_no, created_at, mileage_in, customers(name, phone), vehicles(plate_number, vin)")
-        .eq("vehicle_id", vehicleId)
-        .eq("order_type", "maintenance")
-        .not("order_no", "like", 保养单草稿前缀 + "%")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+      /* 保养单查询与当前工单校验无依赖，并行发起（原来串行 4 轮等待，
+       * 网络慢时打开弹窗要等很久；并行后省一整轮） */
+      const [保养单结果, 当前工单结果] = await Promise.all([
+        supabase
+          .from("work_orders")
+          .select("id, order_no, created_at, mileage_in, customers(name, phone), vehicles(plate_number, vin)")
+          .eq("vehicle_id", vehicleId)
+          .eq("order_type", "maintenance")
+          .not("order_no", "like", 保养单草稿前缀 + "%")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single(),
+        supabase
+          .from("work_orders")
+          .select("vehicles(plate_number, vin), customers(phone)")
+          .eq("id", orderId)
+          .single(),
+      ]);
 
+      const 保养单数据 = 保养单结果.data;
       if (!保养单数据) {
         设置加载中(false);
         return;
@@ -114,13 +123,7 @@ function MaintenanceImportModal({ vehicleId, orderId, onClose }: Props & { onClo
       const 保养单 = 保养单数据 as 保养单;
       设置保养单(保养单);
 
-      // 获取当前工单信息进行校验
-      const { data: 当前工单 } = await supabase
-        .from("work_orders")
-        .select("vehicles(plate_number, vin), customers(phone)")
-        .eq("id", orderId)
-        .single();
-
+      const 当前工单 = 当前工单结果.data;
       const 当前车辆 = (当前工单 as Record<string, unknown> | null)?.vehicles as { plate_number: string; vin: string } | null;
       const 当前客户 = (当前工单 as Record<string, unknown> | null)?.customers as { phone: string } | null;
 
@@ -304,14 +307,17 @@ function MaintenanceImportModal({ vehicleId, orderId, onClose }: Props & { onClo
         .order("seq", { ascending: true });
 
       // 如果已有需求，先更新它们的 seq（全部+1），为新需求腾出位置1
+      /* 各行 update 互不依赖，并行发起（原来逐条串行，需求多时每个都要等一轮） */
       if (已有需求列表 && 已有需求列表.length > 0) {
         const 顺延后seq = 计算需求顺延(已有需求列表.map((r: { seq: number | null }) => r.seq || 1));
-        for (let i = 0; i < 已有需求列表.length; i++) {
-          await supabase
-            .from("work_order_requirements")
-            .update({ seq: 顺延后seq[i] })
-            .eq("id", 已有需求列表[i].id);
-        }
+        await Promise.all(
+          已有需求列表.map((r, i) =>
+            supabase
+              .from("work_order_requirements")
+              .update({ seq: 顺延后seq[i] })
+              .eq("id", r.id)
+          )
+        );
       }
 
       // 创建需求，seq=1（需求1）
@@ -327,60 +333,72 @@ function MaintenanceImportModal({ vehicleId, orderId, onClose }: Props & { onClo
         .single();
 
       let 跳过数量 = 0;
-
-      for (const 项目 of 项目列表) {
-        if (!选中项目ID.has(项目.id)) continue;
-        // 跳过模式：重复的不导入；覆盖模式：已删除旧项目，直接导入
+      /* 待导入项目清单（跳过模式剔除重复名） */
+      const 待导入项目 = 项目列表.filter((项目) => {
+        if (!选中项目ID.has(项目.id)) return false;
         if (处理模式 === "跳过" && 已有名称集.has(项目.name)) {
           跳过数量++;
-          continue;
+          return false;
         }
+        return true;
+      });
 
-        const { data: 新项目 } = await supabase
-          .from("work_order_items")
-          .insert({
-            work_order_id: orderId,
-            requirement_id: 需求?.id || null,
-            service_item_id: 项目.service_item_id,
-            name: 项目.name,
-            item_type: 项目.item_type,
-            quantity: 项目.quantity || 1,
-            unit_price: 项目.unit_price || 0,
-            description: 项目.description,
-            mechanic_id: 项目.mechanic_id,
-            customer_opinion: "agree",
-            business_type: "normal",
-          })
-          .select("id")
-          .single();
+      /* 项目并行插入（每条返回自己的 id，对应关系可靠）——
+       * 原来逐条串行 await，N 个项目就要等 N 轮网络，慢网络下"长时间没反应" */
+      const 新项目结果 = await Promise.all(
+        待导入项目.map((项目) =>
+          supabase
+            .from("work_order_items")
+            .insert({
+              work_order_id: orderId,
+              requirement_id: 需求?.id || null,
+              service_item_id: 项目.service_item_id,
+              name: 项目.name,
+              item_type: 项目.item_type,
+              quantity: 项目.quantity || 1,
+              unit_price: 项目.unit_price || 0,
+              description: 项目.description,
+              mechanic_id: 项目.mechanic_id,
+              customer_opinion: "agree",
+              business_type: "normal",
+            })
+            .select("id")
+            .single()
+        )
+      );
 
-        if (!新项目) continue;
+      /* 汇总全部项目的勾选配件，合并为一次批量插入（原来每个项目一次请求） */
+      const 全部新配件: Record<string, unknown>[] = [];
+      待导入项目.forEach((项目, idx) => {
+        const 新项目 = 新项目结果[idx]?.data;
+        if (!新项目) return;
 
-        // 复制配件（含编码、单位、品牌、规格、备注，客户意见为同意）
         const 配件列表 = 配件映射[项目.id] || [];
         const 勾选配件 = 选中配件ID[项目.id] || new Set();
-        const 新配件列表 = 配件列表
+        配件列表
           .filter((配件) => 勾选配件.has(配件.id))
-          .map((配件) => ({
-            work_order_item_id: 新项目.id,
-            part_name_id: 配件.part_name_id,
-            part_id: 配件.part_id,
-            name: 配件.name,
-            part_number: 配件.part_number,
-            unit: 配件.unit,
-            brand: 配件.brand,
-            specification: 配件.specification,
-            quantity: 配件.quantity || 1,
-            unit_price: 配件.unit_price,
-            unit_cost: 配件.unit_cost,
-            notes: 配件.notes,
-            customer_opinion: "agree",
-            is_selected: true,
-          }));
+          .forEach((配件) => {
+            全部新配件.push({
+              work_order_item_id: 新项目.id,
+              part_name_id: 配件.part_name_id,
+              part_id: 配件.part_id,
+              name: 配件.name,
+              part_number: 配件.part_number,
+              unit: 配件.unit,
+              brand: 配件.brand,
+              specification: 配件.specification,
+              quantity: 配件.quantity || 1,
+              unit_price: 配件.unit_price,
+              unit_cost: 配件.unit_cost,
+              notes: 配件.notes,
+              customer_opinion: "agree",
+              is_selected: true,
+            });
+          });
+      });
 
-        if (新配件列表.length > 0) {
-          await supabase.from("work_order_item_parts").insert(新配件列表);
-        }
+      if (全部新配件.length > 0) {
+        await supabase.from("work_order_item_parts").insert(全部新配件);
       }
 
       if (处理模式 === "跳过" && 跳过数量 > 0) {
