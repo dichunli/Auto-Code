@@ -138,57 +138,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
       const upperVin = detectedVin.toUpperCase();
 
-      /* APP端：直接返回结果，不显示识别过程 */
-      if (是App) {
-        let result: VinDecodeResult | null = null;
-        try {
-          const decodeRes = (await vin17DecodeVin(upperVin)) as {
-            code: number;
-            data?: {
-              model_list?: Array<{
-                Brand?: string; brand?: string;
-                Series?: string; series?: string;
-                Model?: string; model?: string;
-                Model_year?: string; model_year?: string;
-                Engine_no?: string; engine_no?: string;
-                Cc?: string; cc?: string;
-                Transmission_type?: string; transmission_type?: string;
-                Trans_code?: string; trans_code?: string;
-                Chassis_code?: string; chassis_code?: string;
-                Driving_mode?: string; driving_mode?: string;
-                Factory?: string; factory?: string;
-                Id?: number; id?: number;
-              }>;
-              model_year_from_vin?: string;
-            };
-          };
-
-          if (decodeRes.code === 1 && decodeRes.data?.model_list?.[0]) {
-            const m = decodeRes.data.model_list[0];
-            result = {
-              brand: m.Brand || m.brand || "",
-              series: m.Series || m.series || "",
-              model: m.Model || m.model || "",
-              year: decodeRes.data.model_year_from_vin || m.Model_year || m.model_year || "",
-              engineNo: m.Engine_no || m.engine_no || "",
-              cc: m.Cc || m.cc || "",
-              transmissionType: m.Transmission_type || m.transmission_type || "",
-              transmissionCode: m.Trans_code || m.trans_code || "",
-              chassisCode: m.Chassis_code || m.chassis_code || "",
-              drivingMode: m.Driving_mode || m.driving_mode || "",
-              factory: m.Factory || m.factory || "",
-              modelId: m.Id || m.id || undefined,
-            };
-          }
-        } catch {
-          /* 解码失败不影响，用户已有 VIN */
-        }
-        onRecognize(upperVin, result);
-        onClose();
-        return;
-      }
-
-      /* 浏览器端：显示识别结果在弹窗中 */
+      /* 显示识别结果在弹窗中（APP端同样展示照片+结果供对比，点"使用此 VIN"才回填） */
       setRecognizedVin(upperVin);
 
       /* 异步解码车型 */
@@ -238,20 +188,14 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
         setDecoding(false);
       }
     } catch (err: unknown) {
-      /* APP端出错：直接关闭弹窗，通过alert提示 */
-      if (是App) {
-        const msg = err instanceof Error ? err.message : "识别失败";
-        alert(msg);
-        onClose();
-        return;
-      }
+      /* 识别失败：错误信息显示在预览页底部，可手动输入或重拍 */
       setErrorMsg(err instanceof Error ? err.message : "识别失败");
     } finally {
       setRecognizing(false);
     }
-  }, [是App, onRecognize, onClose]);
+  }, []);
 
-  /* ========== APP端：文件选择后识别（不显示过程） ========== */
+  /* ========== APP端：文件选择后识别（同样进预览对比） ========== */
   const 处理App文件选择 = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -264,12 +208,12 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
           file.size > 512 * 1024
             ? await 压缩图片为Base64(file, { 最大宽度: 1024, 质量: 0.75 })
             : await 文件转Base64(file);
-        /* 直接识别，不显示预览和loading */
+        /* 进预览模式：显示照片，识别结果出来后可对比确认 */
+        setPreviewImage(base64);
+        set模式("预览");
         await doOcr(base64);
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "识别失败";
-        alert(msg);
-        onClose();
+        setErrorMsg(err instanceof Error ? err.message : "识别失败");
       }
       /* 清空input，允许重复选择同一文件 */
       if (文件输入Ref.current) {
@@ -383,7 +327,9 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     setDecoding(false);
 
     if (是App) {
-      /* APP：启动原生 VIN 拍照 Activity（支持手电筒） */
+      /* APP：启动原生 VIN 拍照 Activity（支持手电筒）。
+       * 先重置为"实时"模式——原生Activity覆盖全屏，WebView弹窗不渲染（避免上次预览残留） */
+      set模式("实时");
       void (async () => {
         try {
           const 结果 = await 启动原生VIN拍照();
@@ -391,15 +337,21 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
           if (结果.image) {
             const base64 = `data:image/jpeg;base64,${结果.image}`;
+            /* 进预览模式：显示照片，识别结果出来后可对比确认 */
+            setPreviewImage(base64);
+            set模式("预览");
             await doOcr(base64);
           } else if (结果.cancelled) {
             onClose();
           } else {
-            setErrorMsg(结果.error || "拍照失败");
+            /* 拍照本身失败（相机硬件问题等）：APP端弹窗不渲染，用alert提示后关闭 */
+            alert(结果.error || "拍照失败");
+            onClose();
           }
         } catch (err: unknown) {
           if (已取消Ref.current) return;
-          setErrorMsg(err instanceof Error ? err.message : "拍照失败");
+          alert(err instanceof Error ? err.message : "拍照失败");
+          onClose();
         }
       })();
     } else {
@@ -434,7 +386,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     set手动输入Vin("");
 
     if (是App) {
-      /* APP：重新启动原生 VIN 拍照 */
+      /* APP：重新启动原生 VIN 拍照。取景期间弹窗不渲染，先退回"实时"模式 */
+      set模式("实时");
       void (async () => {
         try {
           const 结果 = await 启动原生VIN拍照();
@@ -442,15 +395,20 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
           if (结果.image) {
             const base64 = `data:image/jpeg;base64,${结果.image}`;
+            /* 进预览模式：显示照片，识别结果出来后可对比确认 */
+            setPreviewImage(base64);
+            set模式("预览");
             await doOcr(base64);
           } else if (结果.cancelled) {
             onClose();
           } else {
-            setErrorMsg(结果.error || "拍照失败");
+            alert(结果.error || "拍照失败");
+            onClose();
           }
         } catch (err: unknown) {
           if (已取消Ref.current) return;
-          setErrorMsg(err instanceof Error ? err.message : "拍照失败");
+          alert(err instanceof Error ? err.message : "拍照失败");
+          onClose();
         }
       })();
     } else {
@@ -459,52 +417,9 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     }
   }, [是App, doOcr, onClose, 启动实时摄像头]);
 
-  /* APP端：只渲染错误弹窗，相机调用在主useEffect中处理 */
-  if (是App) {
-    if (!open || !errorMsg) return null;
-    return (
-      <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center px-6">
-        <div className="bg-white rounded-xl p-6 max-w-sm w-full text-center space-y-4">
-          <div className="text-sm text-red-500">{errorMsg}</div>
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setErrorMsg(null);
-                void (async () => {
-                  try {
-                    const 结果 = await 启动原生VIN拍照();
-                    if (已取消Ref.current) return;
-                    if (结果.image) {
-                      const base64 = `data:image/jpeg;base64,${结果.image}`;
-                      await doOcr(base64);
-                    } else if (结果.cancelled) {
-                      onClose();
-                    } else {
-                      setErrorMsg(结果.error || "拍照失败");
-                    }
-                  } catch (err: unknown) {
-                    if (已取消Ref.current) return;
-                    setErrorMsg(err instanceof Error ? err.message : "拍照失败");
-                  }
-                })();
-              }}
-              className="flex-1 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium active:bg-gray-200"
-            >
-              重试
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium active:bg-blue-700"
-            >
-              取消
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  /* APP端：原生相机取景期间弹窗不渲染（null）；
+   * 拍完进入"预览"模式后渲染共享UI——显示照片+识别结果供对比，点"使用此 VIN"才回填 */
+  if (是App && 模式 !== "预览") return null;
 
   if (!open) return null;
 

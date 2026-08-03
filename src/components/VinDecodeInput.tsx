@@ -227,8 +227,7 @@ export default function VinDecodeInput({
     return { detectedVin, decodeResult };
   }
 
-  /* 浏览器环境：显示识别过程 */
-  /* 浏览器环境：识别前先打开弹窗显示loading */
+  /* 识别前先打开弹窗：顶部显示照片（可对比），下面显示识别过程和结果（APP/浏览器共用） */
   async function processBase64Image(base64: string) {
     setPreviewImage(base64);
     setPreviewOpen(true);
@@ -254,38 +253,6 @@ export default function VinDecodeInput({
       setRecognizedVin(upperVin);
       setEditingVin(upperVin);
       if (decodeResult) setDecodeResult(decodeResult);
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "识别失败");
-      setPreviewOpen(false);
-    } finally {
-      setOcrLoading(false);
-    }
-  }
-
-  /* APP环境：识别前先打开弹窗显示loading */
-  async function processBase64ImageSilent(base64: string) {
-    setPreviewOpen(true);
-    setOcrLoading(true);
-    setRecognizedVin(null);
-    setDecodeResult(null);
-    setEditingVin("");
-
-    try {
-      const { detectedVin, decodeResult } = await callOcrApi(base64);
-      const upperVin = detectedVin.toUpperCase();
-
-      /* 先让父组件判断是否需要处理（如系统中已有该车辆） */
-      if (onRecognize) {
-        const handled = await onRecognize(upperVin, decodeResult);
-        if (handled) {
-          setPreviewOpen(false);
-          return;
-        }
-      }
-
-      setRecognizedVin(upperVin);
-      setDecodeResult(decodeResult);
-      setEditingVin(upperVin);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "识别失败");
       setPreviewOpen(false);
@@ -324,7 +291,7 @@ export default function VinDecodeInput({
     }
   }
 
-  /* APP 环境：调用原生相机拍照，静默识别（不显示过程） */
+  /* APP 环境：调用原生相机拍照，识别弹窗带照片对比 */
   async function APP拍照识别() {
     if (ocrLoading) return;
     try {
@@ -337,8 +304,7 @@ export default function VinDecodeInput({
       });
       if (image.base64String) {
         const base64 = `data:image/jpeg;base64,${image.base64String}`;
-        /* APP端静默识别，不显示预览弹窗 */
-        await processBase64ImageSilent(base64);
+        await processBase64Image(base64);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
