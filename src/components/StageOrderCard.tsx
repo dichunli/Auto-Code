@@ -7,7 +7,7 @@ import { CustomerOpinionToggle } from "./CustomerOpinionToggle";
 import { AssignMechanicModal } from "./AssignMechanicModal";
 import { AssignInspectorModal } from "./AssignInspectorModal";
 import { 阶段文案, 阶段颜色, type 阶段key } from "@/lib/orderStage";
-import { 格式化时长 } from "@/lib/constructionTime";
+import LiveTimer from "./LiveTimer";
 import { formatCurrency } from "@/lib/utils";
 import type { Order } from "@/app/work-orders/page";
 
@@ -263,15 +263,20 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
                 {(当前阶段 === "pending_construction" || 当前阶段 === "in_progress" || 当前阶段 === "paused") && (
                   <span className="text-[10px] text-gray-400 ml-1">[{技师名(i)}]</span>
                 )}
-                {/* 施工中显示已施工时长；已中断显示中断总时长（实时配对施工日志计算） */}
-                {当前阶段 === "in_progress" && i.施工秒 !== undefined && (
-                  <span className="text-[10px] text-blue-600 ml-1 whitespace-nowrap">已施工 {格式化时长(i.施工秒)}</span>
-                )}
-                {当前阶段 === "paused" && i.中断秒 !== undefined && (
-                  <span className="text-[10px] text-yellow-600 ml-1 whitespace-nowrap">中断 {格式化时长(i.中断秒)}</span>
-                )}
               </span>
               <span className="flex items-center gap-1 shrink-0">
+                {/* 施工中显示已施工计时；已中断显示中断计时（服务端算起点，前端每秒实时跳动）。
+                 * 放在操作按钮前、不参与左侧文字截断，保证计时器一直完整可见 */}
+                {当前阶段 === "in_progress" && i.施工秒 !== undefined && (
+                  <span className="text-[10px] text-blue-600 whitespace-nowrap">
+                    已施工 <LiveTimer 起始秒={i.施工秒} className="tabular-nums" />
+                  </span>
+                )}
+                {当前阶段 === "paused" && i.中断秒 !== undefined && (
+                  <span className="text-[10px] text-yellow-600 whitespace-nowrap">
+                    中断 <LiveTimer 起始秒={i.中断秒} className="tabular-nums" />
+                  </span>
+                )}
                 {项目操作(i)}
                 {/* 操作成功标记：按钮保留原文案置灰，这里统一提示"已操作（点右下角刷新挪列）"（按项目+阶段判定，跨阶段不残留） */}
                 {已操作.has(`${i.id}:${当前阶段}`) && (

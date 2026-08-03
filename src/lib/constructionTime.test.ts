@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { 计算施工中断秒数, 格式化时长, type 施工日志行 } from "./constructionTime";
+import { 计算施工中断秒数, 格式化时长, 格式化计时器, type 施工日志行 } from "./constructionTime";
 
 const 此刻 = new Date("2026-08-03T12:00:00Z");
 function 日志(action: string, 时间: string): 施工日志行 {
@@ -74,5 +74,25 @@ describe("格式化时长", () => {
     expect(格式化时长(5400)).toBe("1小时30分");
     expect(格式化时长(90000)).toBe("1天1小时");
     expect(格式化时长(172800)).toBe("2天");
+  });
+});
+
+describe("格式化计时器", () => {
+  it("HH:MM:SS 计时器样式", () => {
+    expect(格式化计时器(0)).toBe("00:00:00");
+    expect(格式化计时器(30)).toBe("00:00:30");
+    expect(格式化计时器(600)).toBe("00:10:00");
+    expect(格式化计时器(5025)).toBe("01:23:45");
+    expect(格式化计时器(36000)).toBe("10:00:00");
+  });
+
+  it("超过 1 天加天数前缀", () => {
+    expect(格式化计时器(90000)).toBe("1天 01:00:00");
+    expect(格式化计时器(183845)).toBe("2天 03:04:05");
+  });
+
+  it("负数和小数容错", () => {
+    expect(格式化计时器(-5)).toBe("00:00:00");
+    expect(格式化计时器(61.9)).toBe("00:01:01");
   });
 });
