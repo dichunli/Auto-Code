@@ -18,6 +18,10 @@ interface Props {
 /* 取景框：画面中央，宽80%，高22%（VIN码是横向长条） */
 const 取景框 = { x: 0.1, y: 0.39, w: 0.8, h: 0.22 };
 
+/* VIN裁切框：预览页把照片按中央横带裁切放大，方便肉眼对比识别结果。
+ * 比取景框略大一圈——原生拍照没有取景框，用户只是大致对准中央，裁大点防漏 */
+const VIN裁剪框 = { x: 0.05, y: 0.3, w: 0.9, h: 0.4 };
+
 export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -26,6 +30,10 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
   const [模式, set模式] = useState<"实时" | "拍照" | "预览">("实时");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  /* VIN部位裁切放大图（预览页默认显示这张；为null时回退显示原图） */
+  const [裁剪预览图, set裁剪预览图] = useState<string | null>(null);
+  /* 预览页"查看原图"开关 */
+  const [显示原图, set显示原图] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
   const [recognizedVin, setRecognizedVin] = useState<string | null>(null);
   const [decodeResult, setDecodeResult] = useState<VinDecodeResult | null>(null);
@@ -67,6 +75,20 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       img.src = base64;
     });
   }, []);
+
+  /* ========== 设置预览图：原图进 previewImage，同时按 VIN裁剪框 生成放大裁切图 ========== */
+  const 设置预览图 = useCallback(
+    (base64: string) => {
+      setPreviewImage(base64);
+      set裁剪预览图(null);
+      set显示原图(false);
+      set模式("预览");
+      裁剪图片(base64, VIN裁剪框)
+        .then(set裁剪预览图)
+        .catch(() => set裁剪预览图(null));
+    },
+    [裁剪图片]
+  );
 
   /* ========== 执行 OCR 识别 ========== */
   const doOcr = useCallback(async (base64: string) => {
@@ -208,9 +230,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
           file.size > 512 * 1024
             ? await 压缩图片为Base64(file, { 最大宽度: 1024, 质量: 0.75 })
             : await 文件转Base64(file);
-        /* 进预览模式：显示照片，识别结果出来后可对比确认 */
-        setPreviewImage(base64);
-        set模式("预览");
+        /* 进预览模式：显示照片（自动裁切放大VIN部位），识别结果出来后可对比确认 */
+        设置预览图(base64);
         await doOcr(base64);
       } catch (err: unknown) {
         setErrorMsg(err instanceof Error ? err.message : "识别失败");
@@ -220,7 +241,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
         文件输入Ref.current.value = "";
       }
     },
-    [doOcr, onClose]
+    [doOcr, onClose, 设置预览图]
   );
 
   /* ========== 浏览器环境：启动实时摄像头 ========== */
@@ -255,23 +276,32 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
           file.size > 512 * 1024
             ? await 压缩图片为Base64(file, { 最大宽度: 1024, 质量: 0.75 })
             : await 文件转Base64(file);
-        setPreviewImage(base64);
-        set模式("预览");
+        设置预览图(base64);
         await doOcr(base64);
       } catch (err: unknown) {
         setErrorMsg("图片处理失败: " + (err instanceof Error ? err.message : String(err)));
       }
     },
-    [doOcr]
+    [doOcr, 设置预览图]
   );
 
-  /* ========== 浏览器实时截图识别 ========== */
+  /* ========== 浏览器实时截图识别：同时截全图（原图）和取景框区域（裁切放大图） ========== */
   const 实时截图识别 = useCallback(() => {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0) return;
 
     const vw = video.videoWidth;
     const vh = video.videoHeight;
+
+    /* 全图（预览页"查看原图"用） */
+    const fullCanvas = document.createElement("canvas");
+    fullCanvas.width = vw;
+    fullCanvas.height = vh;
+    const fullCtx = fullCanvas.getContext("2d");
+    if (!fullCtx) return;
+    fullCtx.drawImage(video, 0, 0, vw, vh);
+
+    /* 取景框区域（VIN裁切放大图 + OCR识别用） */
     const cx = Math.round(取景框.x * vw);
     const cy = Math.round(取景框.y * vh);
     const cw = Math.round(取景框.w * vw);
@@ -284,12 +314,17 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     if (!cropCtx) return;
     cropCtx.drawImage(video, cx, cy, cw, ch, 0, 0, cw, ch);
 
+    const fullBase64 = fullCanvas.toDataURL("image/jpeg", 0.75);
+
     cropCanvas.toBlob(
       async (blob) => {
         if (!blob) return;
         try {
           const base64 = await 压缩图片为Base64(blob, { 最大宽度: 1024, 质量: 0.75 });
-          setPreviewImage(base64);
+          /* 实时取景截的本身就是取景框区域，裁切图直接用它，原图用全帧 */
+          setPreviewImage(fullBase64);
+          set裁剪预览图(base64);
+          set显示原图(false);
           set模式("预览");
           await doOcr(base64);
         } catch {
@@ -310,6 +345,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       stopCamera();
       set模式("实时");
       setPreviewImage(null);
+      set裁剪预览图(null);
+      set显示原图(false);
       setRecognizedVin(null);
       setDecodeResult(null);
       setErrorMsg(null);
@@ -320,6 +357,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
     /* 打开：重置状态 */
     setPreviewImage(null);
+    set裁剪预览图(null);
+    set显示原图(false);
     setRecognizedVin(null);
     setDecodeResult(null);
       setErrorMsg(null);
@@ -337,9 +376,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
           if (结果.image) {
             const base64 = `data:image/jpeg;base64,${结果.image}`;
-            /* 进预览模式：显示照片，识别结果出来后可对比确认 */
-            setPreviewImage(base64);
-            set模式("预览");
+            /* 进预览模式：显示照片（自动裁切放大VIN部位），识别结果出来后可对比确认 */
+            设置预览图(base64);
             await doOcr(base64);
           } else if (结果.cancelled) {
             onClose();
@@ -378,6 +416,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   /* ========== 重拍 ========== */
   const handleRetake = useCallback(() => {
     setPreviewImage(null);
+    set裁剪预览图(null);
+    set显示原图(false);
     setRecognizedVin(null);
     setDecodeResult(null);
     setErrorMsg(null);
@@ -395,9 +435,8 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
 
           if (结果.image) {
             const base64 = `data:image/jpeg;base64,${结果.image}`;
-            /* 进预览模式：显示照片，识别结果出来后可对比确认 */
-            setPreviewImage(base64);
-            set模式("预览");
+            /* 进预览模式：显示照片（自动裁切放大VIN部位），识别结果出来后可对比确认 */
+            设置预览图(base64);
             await doOcr(base64);
           } else if (结果.cancelled) {
             onClose();
@@ -498,10 +537,59 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
           </div>
         )}
 
-        {/* ========== 模式3：预览识别结果 ========== */}
+        {/* ========== 模式3：预览识别结果（VIN部位裁切放大图 + 大字号结果紧跟照片下方） ========== */}
         {模式 === "预览" && previewImage && (
-          <div className="absolute inset-0 w-full h-full">
-            <img src={previewImage} alt="预览" className="w-full h-full object-contain bg-black" />
+          <div className="absolute inset-0 w-full h-full flex flex-col bg-black">
+            {/* 照片区：默认显示VIN部位裁切放大图，可切换原图 */}
+            <div className="flex-1 relative min-h-0">
+              <img
+                src={显示原图 ? previewImage : 裁剪预览图 || previewImage}
+                alt="预览"
+                className="w-full h-full object-contain bg-black"
+              />
+              {裁剪预览图 && (
+                <button
+                  type="button"
+                  onClick={() => set显示原图((v) => !v)}
+                  className="absolute top-2 right-2 px-3 py-1.5 rounded-full bg-black/60 text-white text-xs active:bg-black/80"
+                >
+                  {显示原图 ? "看裁切图" : "查看原图"}
+                </button>
+              )}
+            </div>
+            {/* 识别结果：放大字号、紧跟照片下方，方便抬头照片低头结果来回对比 */}
+            <div className="shrink-0 px-4 py-3 text-center space-y-1.5">
+              {recognizing && (
+                <div className="flex items-center justify-center gap-2 text-white/80 py-1">
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span className="text-base">正在识别 VIN...</span>
+                </div>
+              )}
+              {!recognizing && recognizedVin && (
+                <>
+                  <div className="text-xs text-white/50">识别结果 · 请与照片对比</div>
+                  <div className="text-2xl font-bold text-blue-400 tracking-widest font-mono">{recognizedVin}</div>
+                  {decoding && (
+                    <div className="text-sm text-white/50 flex items-center justify-center gap-1">
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      正在查询车型...
+                    </div>
+                  )}
+                  {decodeResult && !decoding && (
+                    <div className="text-sm text-white/70">
+                      {decodeResult.brand} {decodeResult.series} {decodeResult.model}
+                      {decodeResult.year && ` · ${decodeResult.year}年`}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -510,40 +598,6 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       <div className="shrink-0 bg-black/90 pb-safe">
         {模式 === "预览" && (
           <div className="px-4 pt-3">
-            {recognizing && (
-              <div className="flex items-center justify-center gap-2 text-white/80 py-2">
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                <span className="text-sm">正在识别 VIN...</span>
-              </div>
-            )}
-
-            {!recognizing && recognizedVin && (
-              <div className="text-center py-2 space-y-1">
-                <div className="text-xs text-white/50">识别结果</div>
-                <div className="inline-flex items-center gap-2 bg-blue-600/20 border border-blue-500/40 rounded-lg px-4 py-2">
-                  <span className="text-lg font-bold text-blue-400 tracking-wider font-mono">{recognizedVin}</span>
-                </div>
-                {decoding && (
-                  <div className="text-xs text-white/50 flex items-center justify-center gap-1">
-                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    正在查询车型...
-                  </div>
-                )}
-                {decodeResult && !decoding && (
-                  <div className="text-xs text-white/70">
-                    {decodeResult.brand} {decodeResult.series} {decodeResult.model}
-                    {decodeResult.year && ` · ${decodeResult.year}年`}
-                  </div>
-                )}
-              </div>
-            )}
-
             {!recognizing && errorMsg && (
               <div className="text-center py-2 space-y-2">
                 <div className="text-xs text-white/50">识别失败</div>
