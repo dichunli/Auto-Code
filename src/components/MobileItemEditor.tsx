@@ -467,6 +467,16 @@ export default function MobileItemEditor({
   const [detailActiveBranchId, setDetailActiveBranchId] = useState<string | null>(null);
   const [detailEditing, setDetailEditing] = useState(false);
 
+  /* 配件图片本地覆盖：上传/删除后立即更新抽屉显示（props 要等整页刷新才变），
+   * props 刷新（partImages 变化）后清空覆盖、以服务端数据为准 */
+  const [本地图片覆盖, set本地图片覆盖] = useState<Record<string, PartImageRecord[]>>({});
+  useEffect(() => { set本地图片覆盖({}); }, [partImages]);
+  function 分支图片(branchId: string): PartImageRecord[] {
+    return 本地图片覆盖[branchId] ?? (partImages?.[branchId] ?? []);
+  }
+  /* 图片大图预览 */
+  const [预览图片, set预览图片] = useState<string | null>(null);
+
   /* 配件编辑态：编码智能候选 / 扫码 / 按名称搜配件（同桌面端分支编辑） */
   const [编码查询, 设编码查询] = useState("");
   const [编码候选, 设编码候选] = useState<编码命中配件[]>([]);
@@ -1228,9 +1238,8 @@ export default function MobileItemEditor({
       alert("保存失败: " + error.message);
       return;
     }
-    if (selectedPartForDetail) {
-      setSelectedPartForDetail({ ...selectedPartForDetail, quantity: qty });
-    }
+    /* 函数式更新：等待保存期间用户可能已关闭抽屉，prev 为 null 时不得"复活"抽屉 */
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, quantity: qty } : prev));
     refresh();
   }
 
@@ -1243,9 +1252,7 @@ export default function MobileItemEditor({
       alert("保存失败: " + error.message);
       return;
     }
-    if (selectedPartForDetail) {
-      setSelectedPartForDetail({ ...selectedPartForDetail, customer_opinion: opinion });
-    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, customer_opinion: opinion } : prev));
     /* 客户意见参与工作流状态判定（待确认→待采购/待领料），刷新让状态标签立即更新 */
     refresh();
   }
@@ -1259,9 +1266,7 @@ export default function MobileItemEditor({
       alert("保存失败: " + error.message);
       return;
     }
-    if (selectedPartForDetail) {
-      setSelectedPartForDetail({ ...selectedPartForDetail, notes: notes.trim() || null });
-    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, notes: notes.trim() || null } : prev));
   }
 
   /* 通用保存配件字段 */
@@ -1273,9 +1278,7 @@ export default function MobileItemEditor({
       alert("保存失败: " + error.message);
       return;
     }
-    if (selectedPartForDetail) {
-      setSelectedPartForDetail({ ...selectedPartForDetail, [field]: value });
-    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, [field]: value } : prev));
     // 价格/数量变更时刷新工单金额
     if (field === "unit_price" || field === "unit_cost") {
       refresh();
@@ -1639,11 +1642,12 @@ export default function MobileItemEditor({
       });
       if (dbError) throw dbError;
 
-      // 更新本地图片缓存
-      if (partImages && result.path) {
-        const updated = { ...partImages };
-        if (!updated[branchId]) updated[branchId] = [];
-        updated[branchId] = [...updated[branchId], { storage_path: result.path, media_type: "image" }];
+      /* 立即更新抽屉里的图片显示（本地覆盖，不用等整页刷新） */
+      if (result.path) {
+        set本地图片覆盖((prev) => ({
+          ...prev,
+          [branchId]: [...(prev[branchId] ?? partImages?.[branchId] ?? []), { storage_path: result.path, media_type: "image" }],
+        }));
       }
     } catch (err: unknown) {
       alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
@@ -1665,13 +1669,11 @@ export default function MobileItemEditor({
       alert("删除失败: " + error.message);
       return;
     }
-    // 更新本地图片缓存
-    if (partImages) {
-      const updated = { ...partImages };
-      if (updated[branchId]) {
-        updated[branchId] = updated[branchId].filter((_, i) => i !== index);
-      }
-    }
+    /* 立即从抽屉显示中移除（本地覆盖） */
+    set本地图片覆盖((prev) => ({
+      ...prev,
+      [branchId]: (prev[branchId] ?? partImages?.[branchId] ?? []).filter((_, i) => i !== index),
+    }));
   }
 
   async function saveParts() {
@@ -3583,23 +3585,24 @@ export default function MobileItemEditor({
                 {/* 图片上传 */}
                 <div>
                   <p className="text-xs text-gray-500 mb-2">图片</p>
-                  {/* 已上传图片 */}
-                  {activeBranch.id && partImages && partImages[activeBranch.id] && partImages[activeBranch.id].length > 0 && (
+                  {/* 已上传图片（本地覆盖合并：上传/删除后立即显示；点开看大图；删除按钮手机上常显） */}
+                  {分支图片(activeBranch.id).length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">
-                      {partImages[activeBranch.id].map((img, idx) => (
-                        <div key={idx} className="relative w-16 h-16 rounded border border-gray-200 overflow-hidden group">
+                      {分支图片(activeBranch.id).map((img, idx) => (
+                        <div key={idx} className="relative w-16 h-16 rounded border border-gray-200 overflow-hidden">
                           <img
                             src={img.storage_path}
                             alt=""
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover cursor-pointer"
                             loading="lazy"
+                            onClick={() => set预览图片(img.storage_path || null)}
                           />
                           {!isLocked && (
                             <button
                               type="button"
                               onClick={() => removePartImage(activeBranch.id, img.storage_path || "", idx)}
                               disabled={loading}
-                              className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                              className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center disabled:opacity-50"
                             >
                               ×
                             </button>
@@ -3829,6 +3832,15 @@ export default function MobileItemEditor({
           defaultNameQuery={selectedPartForDetail.name}
           compact
         />
+      )}
+      {/* 图片大图预览（点任意处关闭；层级高于配件详情抽屉 z-[110]） */}
+      {预览图片 && (
+        <div
+          className="fixed inset-0 z-[130] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => set预览图片(null)}
+        >
+          <img src={预览图片} alt="" className="max-w-full max-h-full object-contain rounded" />
+        </div>
       )}
       {确认弹窗}
     </>
