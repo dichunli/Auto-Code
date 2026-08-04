@@ -57,7 +57,7 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       branch_group_id: current?.branch_group_id || null,
       name: current?.name || null,
       unit: current?.unit || "件",
-      quantity: current?.quantity ?? null,
+      quantity: current?.quantity ?? 1,
       customer_opinion: "pending",
     });
 

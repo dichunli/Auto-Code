@@ -127,7 +127,10 @@ export function PartBranchStatusList({ status }: Props) {
 
   /* 批量选择 */
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [batchSupplier, setBatchSupplier] = useState<string>("");
+  /* 批量设置供应商：可搜索弹层（替代原来的原生 select 长列表） */
+  const [批量供应商弹层开, set批量供应商弹层开] = useState(false);
+  const [批量供应商搜索, set批量供应商搜索] = useState("");
+  const 批量供应商弹层ref = useRef<HTMLDivElement>(null);
 
   /* 编辑配件弹窗 */
   const [editRow, setEditRow] = useState<PartBranchRow | null>(null);
@@ -143,6 +146,18 @@ export function PartBranchStatusList({ status }: Props) {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [openSupplierRowId]);
+
+  /* 批量供应商弹层：点击外部关闭 */
+  useEffect(() => {
+    if (!批量供应商弹层开) return;
+    function handleClick(e: MouseEvent) {
+      if (批量供应商弹层ref.current && !批量供应商弹层ref.current.contains(e.target as Node)) {
+        set批量供应商弹层开(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [批量供应商弹层开]);
 
   useEffect(() => {
     loadData();
@@ -647,7 +662,10 @@ export function PartBranchStatusList({ status }: Props) {
     const rowIds = Object.keys(edits);
     if (rowIds.length === 0) return;
 
-    /* 提交时，如果编辑会导致记录推进到下阶段，必须填写采购价和供应商 */
+    /* 提交校验：
+     * 待询价页（用户定的规则）——供应商和采购价必须同时填写：
+     * 只填其中一个（含草稿和已保存值的合并结果）就拦截，并指出是哪行缺哪项。
+     * 其他阶段页——保持原规则：会导致记录推进到下阶段的编辑，必须填写采购价和供应商 */
     for (const id of rowIds) {
       const row = rows.find((r) => r.id === id);
       if (!row) continue;
@@ -656,18 +674,29 @@ export function PartBranchStatusList({ status }: Props) {
       const newOpinion = edits[id]?.customer_opinion !== undefined ? edits[id].customer_opinion : row.customer_opinion;
       const newSupplier = edits[id]?.supplier !== undefined ? edits[id].supplier : row.supplier_name;
 
+      if (status === "pending_inquiry") {
+        const 有采购价 = newCost > 0;
+        const 有供应商 = !!(newSupplier && newSupplier.trim() !== "");
+        if (有采购价 !== 有供应商) {
+          alert(
+            `「${row.name || "未命名配件"}」${有采购价 ? "已填采购价，但还没选供应商" : "已选供应商，但还没填采购价"}。\n供应商和采购价必须同时填写。`
+          );
+          return;
+        }
+        continue;
+      }
+
       const willAdvance =
-        (status === "pending_inquiry" && newCost > 0) ||
         (status === "pending_quote" && newPrice > 0) ||
         (status === "pending_confirm" && newOpinion === "agree");
 
       if (willAdvance) {
         if (newCost <= 0) {
-          alert("推进到下阶段必须填写采购价");
+          alert(`「${row.name || "未命名配件"}」推进到下阶段必须填写采购价`);
           return;
         }
         if (!newSupplier || newSupplier.trim() === "") {
-          alert("推进到下阶段必须填写供应商");
+          alert(`「${row.name || "未命名配件"}」推进到下阶段必须填写供应商`);
           return;
         }
       }
@@ -744,7 +773,7 @@ export function PartBranchStatusList({ status }: Props) {
       // 会被数据库默认值生成新目录ID(自成一组的病根)
       branch_group_id: row.branch_group_id,
       name: row.name,
-      quantity: row.quantity,
+      quantity: row.quantity ?? 1,
       unit: row.unit,
       customer_opinion: "pending",
       // 原行为该目录默认(选中)分支，新增分支默认不选中，维持"每目录仅一个选中"
@@ -850,17 +879,50 @@ export function PartBranchStatusList({ status }: Props) {
     }
   }
 
-  function applyBatchSupplier() {
-    if (!batchSupplier) return;
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      for (const id of next) {
-        setEditValue(id, "supplier", batchSupplier);
-      }
-      return next;
-    });
-    setBatchSupplier("");
+  /* 批量设置供应商：在弹层里点一个供应商，直接写入所有选中行的草稿 */
+  function applyBatchSupplier(供应商名: string) {
+    if (!供应商名) return;
+    for (const id of selectedIds) {
+      setEditValue(id, "supplier", 供应商名);
+    }
+    set批量供应商弹层开(false);
+    set批量供应商搜索("");
   }
+
+  /* 批量供应商列表：按"匹配选中行数 + 推荐星级"排序，支持按名称搜索 */
+  const 批量供应商列表 = useMemo(() => {
+    const 选中行 = rows.filter((r) => selectedIds.has(r.id));
+    const q = 批量供应商搜索.trim().toLowerCase();
+    return suppliers
+      .map((s) => {
+        let 匹配行数 = 0;
+        for (const row of 选中行) {
+          if (getSupplierMatchReasons(row, s).length > 0) 匹配行数++;
+        }
+        return { s, 匹配行数 };
+      })
+      .filter(({ s }) => !q || (s.name || "").toLowerCase().includes(q))
+      .sort((a, b) =>
+        (b.匹配行数 - a.匹配行数) ||
+        ((b.s.recommendation_level || 0) - (a.s.recommendation_level || 0)) ||
+        (a.s.name || "").localeCompare(b.s.name || "", "zh-CN")
+      );
+
+  }, [suppliers, rows, selectedIds, 批量供应商搜索]);
+
+  /* 待询价页：有行已选供应商但还没采购价时提示（规则：两者必须同时填写） */
+  const 缺采购价行数 = useMemo(() => {
+    if (status !== "pending_inquiry") return 0;
+    let n = 0;
+    for (const [id, e] of Object.entries(edits)) {
+      const row = rows.find((r) => r.id === id);
+      if (!row) continue;
+      const supplier = e.supplier !== undefined ? e.supplier : row.supplier_name;
+      const cost = e.cost !== undefined ? e.cost : (row.unit_cost != null ? String(row.unit_cost) : "");
+      if (supplier && supplier.trim() !== "" && !(Number(cost || 0) > 0)) n++;
+    }
+    return n;
+  }, [edits, rows, status]);
 
   /* 按 groupBy 把 rows 分组,保持原排序;返回 [key, rows][] */
   const groups = useMemo<Array<{ key: string; rows: PartBranchRow[] }>>(() => {
@@ -941,7 +1003,9 @@ export function PartBranchStatusList({ status }: Props) {
         <td className="px-3 py-3">
           <PartSearchDropdown
             value={partNumberValue}
-            onChange={(val) => setEditValue(row.id, "part_number", val.toUpperCase())}
+            /* 输入时不转大写（保存时 getDbUpdate 会统一转）：中文输入法打字过程中
+             * 强行改值会打断拼音上屏，导致输入 xy 变成 XXY 这类重复字符 */
+            onChange={(val) => setEditValue(row.id, "part_number", val)}
             onSelect={(part) => handleInlinePartSelect(row, part)}
             onCreateNew={(query) => handleInlineCreateNew(row, query)}
             onClear={() => handleInlineClear(row)}
@@ -975,8 +1039,9 @@ export function PartBranchStatusList({ status }: Props) {
             className={`w-24 px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && specDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
           />
         </td>
-        <td className={`px-3 py-3 text-right ${row.quantity <= 0 ? "bg-red-50 text-red-600 font-semibold" : "text-gray-700"}`}>
-          {row.quantity} {unitValue || "件"}
+        <td className={`px-3 py-3 text-right ${(row.quantity ?? 1) <= 0 ? "bg-red-50 text-red-600 font-semibold" : "text-gray-700"}`}>
+          {/* 历史脏数据 quantity 可能为 NULL，按 1 显示，避免空白误判成 0 标红 */}
+          {row.quantity ?? 1} {unitValue || "件"}
         </td>
         {/* 库存 */}
         <td className="px-3 py-3 text-right text-gray-700">
@@ -1186,24 +1251,53 @@ export function PartBranchStatusList({ status }: Props) {
           {selectedIds.size > 0 && (
             <>
               <span className="text-xs text-gray-500">已选 {selectedIds.size} 条</span>
-              <select
-                value={batchSupplier}
-                onChange={(e) => setBatchSupplier(e.target.value)}
-                className="text-xs px-2 py-1 border border-gray-200 rounded focus:border-blue-500 focus:outline-none"
-              >
-                <option value="">选择供应商批量设置...</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.name}>{s.name}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={applyBatchSupplier}
-                disabled={!batchSupplier}
-                className="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
-              >
-                批量应用
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => set批量供应商弹层开((v) => !v)}
+                  className="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700 transition-colors"
+                >
+                  批量设置供应商...
+                </button>
+                {批量供应商弹层开 && (
+                  <div
+                    ref={批量供应商弹层ref}
+                    className="absolute left-0 top-full mt-1 z-50 w-64 bg-white border border-gray-200 rounded-lg shadow-lg"
+                  >
+                    <div className="p-2 border-b border-gray-100">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={批量供应商搜索}
+                        onChange={(e) => set批量供应商搜索(e.target.value)}
+                        placeholder="搜索供应商..."
+                        className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                      {批量供应商列表.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-gray-400">无匹配供应商</div>
+                      )}
+                      {批量供应商列表.map(({ s, 匹配行数 }) => (
+                        <div
+                          key={s.id}
+                          onClick={() => applyBatchSupplier(s.name || "")}
+                          className="px-3 py-1.5 text-xs hover:bg-blue-50 cursor-pointer border-t border-gray-50 flex items-center justify-between gap-2"
+                        >
+                          <span className="font-medium text-gray-900 truncate">{s.name}</span>
+                          <span className="shrink-0 text-[10px] text-gray-400">
+                            {匹配行数 > 0 && <span className="text-blue-600 mr-1">匹配{匹配行数}行</span>}
+                            {s.recommendation_level ? "⭐".repeat(s.recommendation_level) : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-3 py-1.5 text-[10px] text-gray-400 border-t border-gray-100">
+                      点击供应商即应用到已选 {selectedIds.size} 行（草稿），再点「提交保存」生效
+                    </div>
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedIds(new Set())}
@@ -1211,6 +1305,11 @@ export function PartBranchStatusList({ status }: Props) {
               >
                 取消选择
               </button>
+              {缺采购价行数 > 0 && (
+                <span className="text-xs text-amber-600">
+                  有 {缺采购价行数} 行已选供应商但未填采购价，两者必须同时填写才能提交
+                </span>
+              )}
             </>
           )}
           {selectedIds.size === 0 && (
