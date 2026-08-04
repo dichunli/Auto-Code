@@ -306,6 +306,8 @@ export interface 领料记录 { work_order_item_part_id?: string; quantity?: num
 export interface 退料记录 { work_order_item_part_id?: string; quantity?: number | null }
 export interface 供应商退货记录 { work_order_item_part_id?: string; status?: string | null }
 export interface 配件批次 { part_id?: string; quantity?: number | null }
+/* 配件申领（待出库，part_pick_requests） */
+export interface 申领记录 { work_order_item_part_id?: string; quantity?: number | null }
 
 interface WorkOrderDataResult {
   order: 工单信息 | null;
@@ -324,6 +326,7 @@ interface WorkOrderDataResult {
   returnRecords: 退料记录[] | null;
   supplierReturnRecords: 供应商退货记录[] | null;
   partBatches: 配件批次[] | null;
+  pickRequests: 申领记录[] | null;
   qualityChecks: 质检记录[] | null;
   payments: 支付记录[] | null;
   advancePaymentRecords: 预收款记录[] | null;
@@ -531,6 +534,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     { data: returnRecords },
     { data: supplierReturnRecords },
     { data: partBatches },
+    { data: pickRequests },
   ] = await Promise.all([
     knowledgeConditions.length > 0
       ? supabase.from("knowledge_service_links").select(`
@@ -562,6 +566,8 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     itemPartIds.length > 0 ? supabase.from("part_return_records").select("work_order_item_part_id, quantity").in("work_order_item_part_id", itemPartIds) : Promise.resolve({ data: [] }),
     itemPartIds.length > 0 ? supabase.from("supplier_return_records").select("work_order_item_part_id, status").in("work_order_item_part_id", itemPartIds) : Promise.resolve({ data: [] }),
     partIds.length > 0 ? supabase.from("part_batches").select("part_id, quantity").in("part_id", partIds) : Promise.resolve({ data: [] }),
+    /* 待出库的配件申领（手机端发起，桌面/手机显示"已申领"角标） */
+    itemPartIds.length > 0 ? supabase.from("part_pick_requests").select("work_order_item_part_id, quantity").eq("status", "pending").in("work_order_item_part_id", itemPartIds) : Promise.resolve({ data: [] }),
   ]);
 
   // 从嵌套查询结果中提取关联数据，保持与原有数据结构一致
@@ -615,7 +621,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
   const result = {
     order, requirements, profiles, requirementMedia, items, itemsError,
     itemMedia, itemMechanics, mechanicGroups, knowledgeLinks, itemParts,
-    partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches,
+    partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches, pickRequests,
     qualityChecks, payments, advancePaymentRecords, followUps, history, suppliers, logisticsCompanies,
     inspections, inspectionMedia, outsourceOrder,
     historyOrderCount: historyOrderCount ?? null,
