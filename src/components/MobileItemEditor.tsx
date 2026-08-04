@@ -173,6 +173,50 @@ interface PickerPart {
   selectedQuantity?: number | null;
 }
 
+/* 编码/扫码/搜索命中的库存配件（带回分支用） */
+interface 编码命中配件 {
+  id: string;
+  part_number: string | null;
+  part_name_id: string | null;
+  name: string;
+  brand: string;
+  specification: string;
+  unit_cost: number | null;
+  unit_price: number | null;
+  document_name: string | null;
+}
+
+/* parts 表带关联名称的查询行 */
+interface 配件库行 {
+  id: string;
+  part_number: string | null;
+  part_name_id: string | null;
+  unit_cost: number | null;
+  unit_price: number | null;
+  document_name: string | null;
+  part_names: { name: string } | { name: string }[] | null;
+  part_brands: { name: string } | { name: string }[] | null;
+  part_specifications: { name: string } | { name: string }[] | null;
+}
+
+/* 把配件库查询行整理成命中结构（关联名称可能是对象或数组） */
+function 转命中配件(d: 配件库行): 编码命中配件 {
+  const pn = d.part_names;
+  const pb = d.part_brands;
+  const ps = d.part_specifications;
+  return {
+    id: d.id,
+    part_number: d.part_number,
+    part_name_id: d.part_name_id,
+    name: (Array.isArray(pn) ? pn[0]?.name : pn?.name) || "",
+    brand: (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "",
+    specification: (Array.isArray(ps) ? ps[0]?.name : ps?.name) || "",
+    unit_cost: d.unit_cost,
+    unit_price: d.unit_price,
+    document_name: d.document_name,
+  };
+}
+
 interface Props {
   item: ItemData;
   orderId: string;
@@ -273,6 +317,17 @@ export default function MobileItemEditor({
   /* 批量草稿 */
   const [draftOpinion, setDraftOpinion] = useState(item.customer_opinion || "pending");
   const [draftCustomerPart, setDraftCustomerPart] = useState(!!item.is_customer_part);
+
+  /* 价格草稿：弹窗内可编辑数量/单价，点"确认"时随其他修改一起保存 */
+  const [draftQuantity, setDraftQuantity] = useState(String(item.quantity ?? 1));
+  const [draftUnitPrice, setDraftUnitPrice] = useState(item.unit_price != null ? String(item.unit_price) : "");
+  /* 每次打开弹窗时重置为项目当前值（防止上次编辑残留） */
+  useEffect(() => {
+    if (open) {
+      setDraftQuantity(String(item.quantity ?? 1));
+      setDraftUnitPrice(item.unit_price != null ? String(item.unit_price) : "");
+    }
+  }, [open, item.quantity, item.unit_price]);
 
   /* 备注 */
   const [notes, setNotes] = useState(item.description || "");
@@ -390,6 +445,13 @@ export default function MobileItemEditor({
   const [selectedPartForDetail, setSelectedPartForDetail] = useState<ItemPart | null>(null);
   const [detailActiveBranchId, setDetailActiveBranchId] = useState<string | null>(null);
   const [detailEditing, setDetailEditing] = useState(false);
+
+  /* 配件编辑态：编码智能候选 / 扫码 / 按名称搜配件（同桌面端分支编辑） */
+  const [编码查询, 设编码查询] = useState("");
+  const [编码候选, 设编码候选] = useState<编码命中配件[]>([]);
+  const [detailScanOpen, setDetailScanOpen] = useState(false);
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  const debounced编码查询 = useDebounce(编码查询, 300);
 
   /* 替换配件弹窗 */
   const [replacePartTarget, setReplacePartTarget] = useState<ItemPart | null>(null);
@@ -641,6 +703,10 @@ export default function MobileItemEditor({
         }
       }
     }
+
+    /* 数量/单价：以弹窗里手动的值为准（放在"自带件"自动取价之后，手动修改优先） */
+    updateData.quantity = parseFloat(draftQuantity) || 1;
+    updateData.unit_price = parseFloat(draftUnitPrice) || 0;
 
     const { error } = await supabase.from("work_order_items").update(updateData).eq("id", item.id);
     setLoading(false);
@@ -1180,6 +1246,92 @@ export default function MobileItemEditor({
     if (field === "unit_price" || field === "unit_cost") {
       refresh();
     }
+  }
+
+  /* 编码输入的智能候选：按编码模糊查配件库（同桌面端分支编辑的编码功能） */
+  useEffect(() => {
+    const kw = debounced编码查询.trim();
+    if (!kw || !detailEditing) {
+      设编码候选([]);
+      return;
+    }
+    let 取消 = false;
+    (async () => {
+      const { data } = await supabase
+        .from("parts")
+        .select("id, part_number, part_name_id, unit_cost, unit_price, document_name, part_names(name), part_brands(name), part_specifications(name)")
+        .ilike("part_number", `%${kw}%`)
+        .limit(10);
+      if (取消) return;
+      设编码候选(((data || []) as 配件库行[]).map(转命中配件));
+    })();
+    return () => {
+      取消 = true;
+    };
+     
+  }, [debounced编码查询, detailEditing]);
+
+  /* 当前详情面板正在看的分支（与渲染处同一套口径） */
+  function 当前详情分支(): ItemPart | null {
+    if (!selectedPartForDetail) return null;
+    const branchParts = selectedPartForDetail.branch_group_id
+      ? parts合并.filter((p) => p.branch_group_id === selectedPartForDetail.branch_group_id)
+      : selectedPartForDetail.part_name_id
+      ? parts合并.filter((p) => p.part_name_id === selectedPartForDetail.part_name_id)
+      : [selectedPartForDetail];
+    return branchParts.find((p) => p.id === detailActiveBranchId) || branchParts[0];
+  }
+
+  /* 把命中的库存配件带回当前分支：关联 part_id 并补齐编码/品牌/规格/价格/单据名
+   * （同桌面端"应用命中配件"，但不改配件名称和分组归属） */
+  async function 应用命中配件到分支(branchId: string, hit: 编码命中配件) {
+    setLoading(true);
+    const 更新 = {
+      part_id: hit.id,
+      part_number: hit.part_number || null,
+      brand: hit.brand || null,
+      specification: hit.specification || null,
+      unit_cost: hit.unit_cost,
+      unit_price: hit.unit_price,
+      document_name: hit.document_name || null,
+    };
+    const { error } = await supabase.from("work_order_item_parts").update(更新).eq("id", branchId);
+    setLoading(false);
+    if (error) {
+      alert("带回配件信息失败: " + error.message);
+      return;
+    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, ...更新 } : prev));
+    if (hit.unit_price != null) {
+      window.dispatchEvent(
+        new CustomEvent("wo-part-update", { detail: { itemId: item.id, partId: branchId, unit_price: hit.unit_price } })
+      );
+    }
+    设编码候选([]);
+    refresh();
+  }
+
+  /* 编辑态扫码：按编码精确查，唯一命中直接带回（同桌面端分支扫码） */
+  async function handleDetailScan(code: string) {
+    setDetailScanOpen(false);
+    const kw = code.trim();
+    const branch = 当前详情分支();
+    if (!kw || !branch) return;
+    const { data } = await supabase
+      .from("parts")
+      .select("id, part_number, part_name_id, unit_cost, unit_price, document_name, part_names(name), part_brands(name), part_specifications(name)")
+      .eq("part_number", kw)
+      .limit(2);
+    const rows = (data || []) as 配件库行[];
+    if (rows.length === 0) {
+      alert(`未找到编码「${kw}」对应的配件`);
+      return;
+    }
+    if (rows.length > 1) {
+      alert(`编码「${kw}」对应多个配件，请手动输入编码从候选中选择`);
+      return;
+    }
+    await 应用命中配件到分支(branch.id, 转命中配件(rows[0]));
   }
 
   /* 替换配件 */
@@ -1762,6 +1914,36 @@ export default function MobileItemEditor({
 
             {/* 可滚动内容 */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
+              {/* 价格：数量 × 单价（锁定时只读） */}
+              <section>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">价格</h4>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={draftQuantity}
+                    onChange={(e) => setDraftQuantity(e.target.value)}
+                    disabled={isLocked}
+                    aria-label="数量"
+                    className="w-16 px-2 py-1.5 border border-gray-300 rounded text-sm text-center disabled:bg-gray-50 disabled:text-gray-500"
+                  />
+                  <span className="text-gray-400 text-sm">×</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={draftUnitPrice}
+                    onChange={(e) => setDraftUnitPrice(e.target.value)}
+                    disabled={isLocked}
+                    aria-label="单价"
+                    className="w-24 px-2 py-1.5 border border-gray-300 rounded text-sm text-right disabled:bg-gray-50 disabled:text-gray-500"
+                  />
+                  <span className="text-sm text-gray-500">
+                    = ¥{((parseFloat(draftQuantity) || 0) * (parseFloat(draftUnitPrice) || 0)).toFixed(2)}
+                  </span>
+                </div>
+              </section>
               {/* 施工人 */}
               <section>
                 <div className="flex items-center justify-between mb-2">
@@ -2794,22 +2976,72 @@ export default function MobileItemEditor({
 
                 {/* 基本信息（按当前分支 key，切换分支时重新播放淡入动画） */}
                 <div key={activeBranch.id} className="space-y-2 branch-switch-anim">
-                  {/* 编码 */}
+                  {/* 编码（编辑态：可手输+智能候选、扫码、按名称搜配件，同桌面端分支编辑） */}
                   {detailEditing ? (
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-500 text-xs">编码</span>
-                      <input
-                        type="text"
-                        key={activeBranch.id + "-pn"}
-                        defaultValue={activeBranch.part_number || ""}
-                        onBlur={(e) => {
-                          const val = e.target.value.trim() || null;
-                          if (val !== (activeBranch.part_number || null)) {
-                            savePartField(activeBranch.id, "part_number", val);
-                          }
-                        }}
-                        className="w-32 px-2 py-1 border border-gray-300 rounded text-xs text-right"
-                      />
+                    <div>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-gray-500 text-xs shrink-0">编码</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            key={activeBranch.id + "-pn-" + (activeBranch.part_number || "")}
+                            defaultValue={activeBranch.part_number || ""}
+                            onChange={(e) => 设编码查询(e.target.value)}
+                            onBlur={(e) => {
+                              const val = e.target.value.trim() || null;
+                              if (val !== (activeBranch.part_number || null)) {
+                                savePartField(activeBranch.id, "part_number", val);
+                              }
+                              设编码查询("");
+                              设编码候选([]);
+                            }}
+                            className="w-28 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setDetailScanOpen(true)}
+                            title="扫码录入编码"
+                            className="w-7 h-7 flex items-center justify-center rounded border border-gray-300 text-gray-500 hover:bg-gray-50"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M4 12h16" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBranchPickerOpen(true)}
+                            title="搜索该名称的配件"
+                            className="w-7 h-7 flex items-center justify-center rounded border border-gray-300 text-gray-500 hover:bg-gray-50"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      {/* 编码智能候选：选中即把该配件信息带回本分支。
+                         用 onMouseDown + preventDefault（不用 onClick）：点击候选若先触发输入框
+                         失焦保存，候选列表会被卸载导致点击丢失，且失焦保存的原始输入会覆盖带回结果 */}
+                      {编码候选.length > 0 && (
+                        <div className="mt-1 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
+                          {编码候选.map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                void 应用命中配件到分支(activeBranch.id, c);
+                              }}
+                              className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                            >
+                              <span className="font-mono text-gray-900">{c.part_number}</span>
+                              <span className="ml-2 text-gray-600">{c.name}</span>
+                              {c.brand && <span className="ml-1 text-gray-400">{c.brand}</span>}
+                              {c.specification && <span className="ml-1 text-gray-400">{c.specification}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="flex justify-between">
@@ -2841,9 +3073,9 @@ export default function MobileItemEditor({
                       <span className="text-gray-900 text-xs">{activeBranch.document_name}</span>
                     </div>
                   ) : null}
-                  {/* 数量 + 库存 */}
+                  {/* 数量 + 库存（数量无需进入编辑模式，未锁定即可直接改） */}
                   <div className="grid grid-cols-2 gap-3">
-                    {detailEditing ? (
+                    {!isLocked ? (
                       <div className="flex items-center justify-between">
                         <span className="text-gray-500 text-xs">数量</span>
                         <input
@@ -3024,7 +3256,7 @@ export default function MobileItemEditor({
                             className="w-full h-full object-cover"
                             loading="lazy"
                           />
-                          {detailEditing && (
+                          {!isLocked && (
                             <button
                               type="button"
                               onClick={() => removePartImage(activeBranch.id, img.storage_path || "", idx)}
@@ -3038,8 +3270,8 @@ export default function MobileItemEditor({
                       ))}
                     </div>
                   )}
-                  {/* 上传按钮 */}
-                  {detailEditing && (
+                  {/* 上传按钮（无需进入编辑模式，未锁定即可直接上传） */}
+                  {!isLocked && (
                     <>
                       <button
                         type="button"
@@ -3139,24 +3371,6 @@ export default function MobileItemEditor({
                   )}
                 </div>
 
-                {/* 图片 */}
-                {activeBranch.id && partImages && partImages[activeBranch.id] && partImages[activeBranch.id].length > 0 && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-2">图片</p>
-                    <div className="flex flex-wrap gap-2">
-                      {partImages[activeBranch.id].map((img, idx) => (
-                        <img
-                          key={idx}
-                          src={img.storage_path}
-                          alt=""
-                          className="w-20 h-20 object-cover rounded border border-gray-200"
-                          loading="lazy"
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {/* 操作按钮 */}
                 {detailEditing && (
                   <div className="flex flex-wrap gap-2 pt-2">
@@ -3242,6 +3456,42 @@ export default function MobileItemEditor({
         onClose={() => setShowBarcodeScanner(false)}
         onScan={handleBarcodeScan}
       />
+
+      {/* 配件编辑态扫码弹窗：扫编码带回当前分支 */}
+      <BarcodeScanModal
+        open={detailScanOpen}
+        onClose={() => setDetailScanOpen(false)}
+        onScan={handleDetailScan}
+      />
+
+      {/* 配件编辑态"按名称搜配件"选择器（放大镜，同桌面端分支编辑） */}
+      {branchPickerOpen && selectedPartForDetail && (
+        <PartPickerModal
+          open={true}
+          onClose={() => setBranchPickerOpen(false)}
+          onConfirm={(picked) => {
+            setBranchPickerOpen(false);
+            const p = picked[0];
+            const branch = 当前详情分支();
+            if (!p || !branch) return;
+            const pb = p.part_brands;
+            void 应用命中配件到分支(branch.id, {
+              id: p.id,
+              part_number: p.part_number,
+              part_name_id: p.part_name_id,
+              name: p.name,
+              brand: (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "",
+              specification: p.specification_text || p.part_specifications?.name || "",
+              unit_cost: p.unit_cost,
+              unit_price: p.unit_price,
+              document_name: null,
+            });
+          }}
+          vehicleModelId={vehicleModelId}
+          defaultNameQuery={selectedPartForDetail.name}
+          compact
+        />
+      )}
       {确认弹窗}
     </>
   );
