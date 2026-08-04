@@ -22,6 +22,7 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
   const [reason, setReason] = useState("");
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const buttonRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) {
@@ -29,13 +30,15 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
       return;
     }
     function updatePos() {
-      if (buttonRef.current) {
-        const rect = buttonRef.current.getBoundingClientRect();
-        setDropdownPos({
-          top: rect.bottom + 4,
-          left: rect.right - 224,
-        });
-      }
+      if (!buttonRef.current) return;
+      const rect = buttonRef.current.getBoundingClientRect();
+      /* 下方空间不够且上方放得下时向上展开，避免菜单被视口底部裁掉 */
+      const menuHeight = menuRef.current?.offsetHeight ?? 320;
+      const 向上 = rect.bottom + 4 + menuHeight > window.innerHeight && rect.top - menuHeight - 4 > 0;
+      setDropdownPos({
+        top: 向上 ? rect.top - menuHeight - 4 : rect.bottom + 4,
+        left: rect.right - 224,
+      });
     }
     updatePos();
     window.addEventListener("scroll", updatePos, true);
@@ -175,6 +178,7 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div
+            ref={menuRef}
             className="fixed w-56 bg-white rounded-lg border border-gray-200 shadow-lg z-30 py-1"
             style={{
               top: dropdownPos?.top ?? 0,
