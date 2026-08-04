@@ -941,7 +941,9 @@ export function PartBranchStatusList({ status }: Props) {
         <td className="px-3 py-3">
           <PartSearchDropdown
             value={partNumberValue}
-            onChange={(val) => setEditValue(row.id, "part_number", val.toUpperCase())}
+            /* 输入时不转大写（保存时 getDbUpdate 会统一转）：中文输入法打字过程中
+             * 强行改值会打断拼音上屏，导致输入 xy 变成 XXY 这类重复字符 */
+            onChange={(val) => setEditValue(row.id, "part_number", val)}
             onSelect={(part) => handleInlinePartSelect(row, part)}
             onCreateNew={(query) => handleInlineCreateNew(row, query)}
             onClear={() => handleInlineClear(row)}
