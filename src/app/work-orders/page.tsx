@@ -496,9 +496,10 @@ export default async function WorkOrdersPage(props: {
       </div>
 
       {!type && (
-        /* 状态标签行吸顶：长列表下滚时始终显示在顶部（bg-gray-50 与页面背景同色遮挡） */
-        <div className="sticky top-0 z-20 bg-gray-50 flex items-center gap-3 mb-4 overflow-x-auto pt-2 pb-2 -mt-2">
-          <div className="flex gap-2">
+        /* 状态标签行吸顶：长列表下滚时始终显示在顶部（bg-gray-50 与页面背景同色遮挡）。
+           flex-wrap：手机上行数自动换行，所有阶段标签一屏全看到（不再横向滚动） */
+        <div className="sticky top-0 z-20 bg-gray-50 flex flex-wrap items-center gap-3 mb-4 pt-2 pb-2 -mt-2">
+          <div className="flex flex-wrap gap-2">
             {statusFilters.map((filter) => (
               <Link
                 key={filter.value}
