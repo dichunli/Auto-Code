@@ -1666,16 +1666,22 @@ export default function MobileItemEditor({
             )}
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowPartModal(true);
-            }}
-            className="mt-1 text-xs text-gray-400 hover:text-blue-600"
-          >
-            配件：无
-          </button>
+          /* 无配件：灰色"配件：无"提示 + 蓝色"+ 配件"明确入口（锁定时只展示不可点） */
+          <span className="mt-1 flex items-center gap-1.5 text-xs">
+            <span className="text-gray-400">配件：无</span>
+            {!isLocked && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowPartModal(true);
+                }}
+                className="text-blue-600 hover:text-blue-700 font-medium"
+              >
+                + 配件
+              </button>
+            )}
+          </span>
         )}
         {item.description && (
           <div className="text-xs text-gray-400 mt-1 line-clamp-1">备注: {item.description}</div>
