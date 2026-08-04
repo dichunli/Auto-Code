@@ -595,7 +595,7 @@ export default async function WorkOrderDetailPage({
                 <RequirementRowWrapper key={req.id} reqId={req.id}>
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 overflow-hidden">
                   <div className="flex items-center gap-2 flex-wrap px-4 py-3 md:px-6 md:py-4 border-b border-gray-100 bg-gray-50/50">
-                    <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} 项目数={(itemsByRequirement.get(req.id) || []).length} displaySeq={显示序号} />
+                    <RequirementTitle req={req} orderId={id} profiles={profiles || []} media={mediaByRequirement[req.id] || []} 项目数={(itemsByRequirement.get(req.id) || []).length} displaySeq={显示序号} 实际锁定={实际锁定} />
                     <AssignmentBadge
                       reqId={req.id}
                       初始姓名={req.assigned_to_profile?.full_name || null}
@@ -713,9 +713,10 @@ export default async function WorkOrderDetailPage({
                                     profiles={(profiles || []) as unknown as ComponentProps<typeof ItemPersonSelectors>["profiles"]}
                                     mechanicGroups={(mechanicGroups || []).map((g) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] })) as unknown as ComponentProps<typeof ItemPersonSelectors>["mechanicGroups"]}
                                     existingMechanics={(mechanicsByItem[item.id] || []) as unknown as ComponentProps<typeof ItemPersonSelectors>["existingMechanics"]}
+                                    disabled={实际锁定}
                                   />
                                   <div className="ml-6">
-                                    <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion ?? "pending"} />
+                                    <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion ?? "pending"} disabled={实际锁定} />
                                   </div>
                                   <BusinessTypeToggle itemId={item.id} businessType={item.business_type || "normal"} disabled={实际锁定} />
                                   <div className="ml-4">
@@ -726,6 +727,7 @@ export default async function WorkOrderDetailPage({
                                       serviceItemId={item.service_item_id}
                                       workOrderId={order.id}
                                       itemName={item.name ?? undefined}
+                                      disabled={实际锁定}
                                       existingOrder={
                                         outsourceOrder?.outsource_order_items?.some(
                                           (oi) => oi.work_order_item_id === item.id
@@ -750,7 +752,7 @@ export default async function WorkOrderDetailPage({
                                     <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-400 ml-2">维修指导</span>
                                   )}
                                   <div className="ml-4">
-                                    <ItemNotesEditor itemId={item.id} description={item.description ?? null} />
+                                    <ItemNotesEditor itemId={item.id} description={item.description ?? null} disabled={实际锁定} />
                                   </div>
                                   <div className="ml-[10ch]">
                                     <ItemImageUploader
@@ -762,21 +764,26 @@ export default async function WorkOrderDetailPage({
                                 </div>
                                 <div className="w-[10ch] flex-shrink-0" />
                                 <div className={`flex items-center gap-2 flex-shrink-0 sticky right-0 pl-2 ${item.item_type === 'labor' ? 'bg-blue-50' : 'bg-gray-50'}`}>
-                                  <AddItemPartButton
-                                    itemId={item.id}
-                                    serviceItemId={item.service_item_id}
-                                    itemName={(item.alias_name || item.name) ?? ""}
-                                    vehicleModelId={vehicleModelId ?? null}
-                                    vin={vehicleVin ?? null}
-                                  />
-                                  <WorkOrderItemActions
-                                    itemId={item.id}
-                                    itemName={item.name ?? ""}
-                                    aliasName={item.alias_name}
-                                    quantity={item.quantity ?? undefined}
-                                    unitPrice={item.unit_price ?? undefined}
-                                    requireQc={item.require_qc}
-                                  />
+                                  {/* 添加配件 / 编辑删除项目：只读（保养单未编辑、工单锁定）时隐藏 */}
+                                  {!实际锁定 && (
+                                    <>
+                                      <AddItemPartButton
+                                        itemId={item.id}
+                                        serviceItemId={item.service_item_id}
+                                        itemName={(item.alias_name || item.name) ?? ""}
+                                        vehicleModelId={vehicleModelId ?? null}
+                                        vin={vehicleVin ?? null}
+                                      />
+                                      <WorkOrderItemActions
+                                        itemId={item.id}
+                                        itemName={item.name ?? ""}
+                                        aliasName={item.alias_name}
+                                        quantity={item.quantity ?? undefined}
+                                        unitPrice={item.unit_price ?? undefined}
+                                        requireQc={item.require_qc}
+                                      />
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>

@@ -6,9 +6,11 @@ import { useState } from "react";
 interface Props {
   itemId: string;
   description: string | null;
+  /* 只读（保养单未进编辑模式 / 工单已锁定）：备注仅展示，不可编辑 */
+  disabled?: boolean;
 }
 
-export function ItemNotesEditor({ itemId, description }: Props) {
+export function ItemNotesEditor({ itemId, description, disabled = false }: Props) {
   const supabase = createClient();
   const [open, setOpen] = useState(false);
   // 用本地状态保存已生效的备注，保存成功后只更新这一小块，不刷新整页（性能优化）
@@ -17,6 +19,17 @@ export function ItemNotesEditor({ itemId, description }: Props) {
   const [saving, setSaving] = useState(false);
 
   const hasNote = !!(savedDesc && savedDesc.trim());
+
+  /* 只读：有备注显示纯文本，无备注不渲染（不出现"+ 添加备注"入口） */
+  if (disabled) {
+    if (!hasNote) return null;
+    return (
+      <span className="text-xs inline-flex items-center px-1 py-0.5">
+        <span className="text-gray-400">备注:</span>
+        <span className="ml-1 max-w-[120px] truncate text-gray-500">{savedDesc}</span>
+      </span>
+    );
+  }
 
   async function handleSave() {
     setSaving(true);

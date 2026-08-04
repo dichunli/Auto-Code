@@ -34,6 +34,8 @@ interface Props {
   项目数?: number;
   /* 显示用序号（按当前列表位置，删中间项后自动重排）；缺省时回退到存储的 seq */
   displaySeq?: number;
+  /* 只读（保养单未进编辑模式 / 工单已锁定）：标题不可点击，不打开编辑弹窗 */
+  实际锁定?: boolean;
 }
 
 function MediaTypeIcon({ type }: { type: string }) {
@@ -61,7 +63,7 @@ function MediaTypeIcon({ type }: { type: string }) {
   return null;
 }
 
-export default function RequirementTitle({ req, orderId, profiles, media, 项目数 = 0, displaySeq }: Props) {
+export default function RequirementTitle({ req, orderId, profiles, media, 项目数 = 0, displaySeq, 实际锁定 = false }: Props) {
   const [open, setOpen] = useState(false);
   // 本地状态：编辑需求保存后监听"wo-requirement-updated"事件立即更新，不整页刷新
   const [描述, 设置描述] = useState(req.description);
@@ -97,14 +99,22 @@ export default function RequirementTitle({ req, orderId, profiles, media, 项目
   return (
     <>
       <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="text-left text-sm text-gray-900 hover:text-blue-600 transition-colors"
-        >
-          <span className="text-blue-600 mr-1">需求{displaySeq ?? req.seq}</span>
-          <span className="font-medium">{描述}</span>
-        </button>
+        {/* 只读时渲染纯文本：不允许打开编辑弹窗（改描述/诊断/备注/媒体/删除需求） */}
+        {实际锁定 ? (
+          <span className="text-left text-sm text-gray-900">
+            <span className="text-blue-600 mr-1">需求{displaySeq ?? req.seq}</span>
+            <span className="font-medium">{描述}</span>
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="text-left text-sm text-gray-900 hover:text-blue-600 transition-colors"
+          >
+            <span className="text-blue-600 mr-1">需求{displaySeq ?? req.seq}</span>
+            <span className="font-medium">{描述}</span>
+          </button>
+        )}
         {(hasImage || hasVideo || hasAudio) && (
           <span className="hidden md:inline-flex items-center gap-0.5 text-gray-400 ml-1">
             {hasImage && <MediaTypeIcon type="image" />}
