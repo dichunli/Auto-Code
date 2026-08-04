@@ -647,7 +647,10 @@ export function PartBranchStatusList({ status }: Props) {
     const rowIds = Object.keys(edits);
     if (rowIds.length === 0) return;
 
-    /* 提交时，如果编辑会导致记录推进到下阶段，必须填写采购价和供应商 */
+    /* 提交校验：
+     * 待询价页（用户定的规则）——供应商和采购价必须同时填写：
+     * 只填其中一个（含草稿和已保存值的合并结果）就拦截，并指出是哪行缺哪项。
+     * 其他阶段页——保持原规则：会导致记录推进到下阶段的编辑，必须填写采购价和供应商 */
     for (const id of rowIds) {
       const row = rows.find((r) => r.id === id);
       if (!row) continue;
@@ -656,18 +659,29 @@ export function PartBranchStatusList({ status }: Props) {
       const newOpinion = edits[id]?.customer_opinion !== undefined ? edits[id].customer_opinion : row.customer_opinion;
       const newSupplier = edits[id]?.supplier !== undefined ? edits[id].supplier : row.supplier_name;
 
+      if (status === "pending_inquiry") {
+        const 有采购价 = newCost > 0;
+        const 有供应商 = !!(newSupplier && newSupplier.trim() !== "");
+        if (有采购价 !== 有供应商) {
+          alert(
+            `「${row.name || "未命名配件"}」${有采购价 ? "已填采购价，但还没选供应商" : "已选供应商，但还没填采购价"}。\n供应商和采购价必须同时填写。`
+          );
+          return;
+        }
+        continue;
+      }
+
       const willAdvance =
-        (status === "pending_inquiry" && newCost > 0) ||
         (status === "pending_quote" && newPrice > 0) ||
         (status === "pending_confirm" && newOpinion === "agree");
 
       if (willAdvance) {
         if (newCost <= 0) {
-          alert("推进到下阶段必须填写采购价");
+          alert(`「${row.name || "未命名配件"}」推进到下阶段必须填写采购价`);
           return;
         }
         if (!newSupplier || newSupplier.trim() === "") {
-          alert("推进到下阶段必须填写供应商");
+          alert(`「${row.name || "未命名配件"}」推进到下阶段必须填写供应商`);
           return;
         }
       }
