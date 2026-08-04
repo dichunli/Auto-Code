@@ -15,6 +15,7 @@ import ItemStageBadge from "./ItemStageBadge";
 import ItemQcActions from "./ItemQcActions";
 import { PartWorkflowActions } from "./PartWorkflowActions";
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
+import { 申领配件, 取消申领 } from "@/app/picking-orders/actions";
 import { ShowCommission } from "./WorkOrderToggleContext";
 import { calculateItemCommission, type CommissionSource } from "@/lib/commission";
 import { useConfirm } from "./ConfirmDialog";
@@ -245,6 +246,8 @@ interface Props {
   logisticsCompanies?: { id: string; name: string; scopes?: string[] | null }[];
   returnByPart?: Record<string, number>;
   pendingSupplierReturnByPart?: Record<string, boolean>;
+  /* 待出库申领数（按分支）：详情抽屉显示"已申领"角标 + 申领入口 */
+  申领ByPart?: Record<string, number>;
 }
 
 /* ==================== 工具函数 ==================== */
@@ -319,6 +322,7 @@ export default function MobileItemEditor({
   logisticsCompanies = [],
   returnByPart = {},
   pendingSupplierReturnByPart = {},
+  申领ByPart = {},
 }: Props) {
   const router = useRouter();
   const supabase = createClient();
@@ -469,6 +473,17 @@ export default function MobileItemEditor({
   const [detailScanOpen, setDetailScanOpen] = useState(false);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
   const debounced编码查询 = useDebounce(编码查询, 300);
+
+  /* 配件申领：展开申领面板 / 申领数量 / 该分支待出库申领列表（面板展开时拉取） */
+  interface 申领行 {
+    id: string;
+    quantity: number;
+    notes: string | null;
+    created_at: string;
+  }
+  const [申领展开, set申领展开] = useState(false);
+  const [申领数量, set申领数量] = useState("1");
+  const [申领列表, set申领列表] = useState<申领行[]>([]);
 
   /* 替换配件弹窗 */
   const [replacePartTarget, setReplacePartTarget] = useState<ItemPart | null>(null);
@@ -1391,6 +1406,67 @@ export default function MobileItemEditor({
     }
     setSelectedPartForDetail((prev) => (prev ? { ...prev, is_arrived: next } : prev));
     refresh();
+  }
+
+  /* 申领面板展开时拉取该分支的待出库申领列表 */
+  useEffect(() => {
+    if (!申领展开) return;
+    const branch = 当前详情分支();
+    if (!branch) return;
+    (async () => {
+      const { data } = await supabase
+        .from("part_pick_requests")
+        .select("id, quantity, notes, created_at")
+        .eq("work_order_item_part_id", branch.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      set申领列表((data || []) as 申领行[]);
+    })();
+     
+  }, [申领展开, detailActiveBranchId, selectedPartForDetail?.id]);
+
+  /* 提交申领（走 Server Action，只记需求不动库存；库管实领后自动核销） */
+  async function 提交申领() {
+    const branch = 当前详情分支();
+    if (!branch) return;
+    const 数量 = parseInt(申领数量);
+    if (!Number.isInteger(数量) || 数量 <= 0) {
+      alert("申领数量必须是大于 0 的整数");
+      return;
+    }
+    setLoading(true);
+    try {
+      const r = await 申领配件(branch.id, 数量, "");
+      if (!r.success) {
+        alert("申领失败: " + (r.error || "未知错误"));
+        return;
+      }
+      set申领展开(false);
+      set申领数量("1");
+      refresh();
+    } catch (err: unknown) {
+      alert("申领失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* 取消一条待出库申领 */
+  async function 取消一条申领(申领id: string) {
+    setLoading(true);
+    try {
+      const r = await 取消申领(申领id);
+      if (!r.success) {
+        alert("取消失败: " + (r.error || "未知错误"));
+        return;
+      }
+      set申领列表((prev) => prev.filter((x) => x.id !== 申领id));
+      refresh();
+    } catch (err: unknown) {
+      alert("取消失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
+    }
   }
 
   /* 替换配件 */
@@ -3432,6 +3508,21 @@ export default function MobileItemEditor({
                         >
                           {activeBranch.is_arrived ? "已到货" : "未到货"}
                         </button>
+                        {/* 申领角标（待出库数量） + 申领入口：师傅手机申领→库管确认实领→自动核销 */}
+                        {(申领ByPart[activeBranch.id] || 0) > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200">
+                            已申领×{申领ByPart[activeBranch.id]}
+                          </span>
+                        )}
+                        {!isLocked && (
+                          <button
+                            type="button"
+                            onClick={() => set申领展开((v) => !v)}
+                            className="text-[10px] px-1.5 py-0.5 rounded border bg-white text-amber-700 border-amber-300 hover:bg-amber-50"
+                          >
+                            申领
+                          </button>
+                        )}
                         {/* 空分支已到货 → 入库登记（跳转入库页自动带参，同桌面端） */}
                         {activeBranch.is_arrived && !activeBranch.part_id && (
                           <a
@@ -3442,6 +3533,49 @@ export default function MobileItemEditor({
                           </a>
                         )}
                       </div>
+                      {/* 申领面板：数量 + 提交；待出库列表可取消 */}
+                      {申领展开 && !isLocked && (
+                        <div className="mt-2 border border-amber-200 rounded-lg p-2 bg-amber-50/50">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={1}
+                              value={申领数量}
+                              onChange={(e) => set申领数量(e.target.value)}
+                              aria-label="申领数量"
+                              className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-center"
+                            />
+                            <button
+                              type="button"
+                              onClick={提交申领}
+                              disabled={loading}
+                              className="px-2 py-1 text-xs text-white bg-amber-600 rounded disabled:opacity-50"
+                            >
+                              {loading ? "提交中..." : "提交申领"}
+                            </button>
+                            <span className="text-[10px] text-gray-400">申领后由库管确认出库</span>
+                          </div>
+                          {申领列表.length > 0 && (
+                            <div className="mt-2 space-y-1 border-t border-amber-100 pt-1.5">
+                              {申领列表.map((r) => (
+                                <div key={r.id} className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-600">
+                                    ×{r.quantity} · {new Date(r.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => 取消一条申领(r.id)}
+                                    disabled={loading}
+                                    className="text-red-500 disabled:opacity-50"
+                                  >
+                                    取消
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })()}

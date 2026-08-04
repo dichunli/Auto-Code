@@ -3,7 +3,7 @@ import type { CommissionSource } from "@/lib/commission";
 import type {
   工单信息, 维修项目, 配件分支, 维修需求, 媒体记录, 项目技师,
   知识库链接, 检查记录, 预收款记录, 其他工单,
-  领料记录, 退料记录, 供应商退货记录, 配件批次,
+  领料记录, 退料记录, 供应商退货记录, 配件批次, 申领记录,
 } from "@/lib/workOrderData";
 
 /**
@@ -92,6 +92,7 @@ export interface WorkOrderViewInput {
   returnRecords: 退料记录[] | null;
   supplierReturnRecords: 供应商退货记录[] | null;
   partBatches: 配件批次[] | null;
+  pickRequests: 申领记录[] | null;
   inspections: 检查记录[] | null;
   inspectionMedia: 媒体记录[];
   advancePaymentRecords: 预收款记录[] | null;
@@ -102,7 +103,7 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
   const {
     order, items, itemMedia, itemMechanics, requirementMedia, knowledgeLinks,
     itemParts, partMedia, pickingRecords, returnRecords, supplierReturnRecords,
-    partBatches, inspections, advancePaymentRecords, otherOrdersByType,
+    partBatches, pickRequests, inspections, advancePaymentRecords, otherOrdersByType,
   } = input;
 
   // 预收款净额（从记录表实时计算，扣除已退款）
@@ -219,6 +220,12 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
     if (r.status === "pending") pendingSupplierReturnByPart[r.work_order_item_part_id!] = true;
   });
 
+  /* 待出库申领聚合（按分支） */
+  const 申领ByPart: Record<string, number> = {};
+  (pickRequests || []).forEach((r) => {
+    申领ByPart[r.work_order_item_part_id!] = (申领ByPart[r.work_order_item_part_id!] || 0) + (r.quantity || 0);
+  });
+
   // 按项目分组知识库文章（先建索引 + Set 去重，O(n+k)）
   const knowledgeByItem: Record<string, KnowledgeLink[]> = {};
   const itemIdsByServiceItemId: Record<string, string[]> = {};
@@ -333,7 +340,7 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
     typeCountMap, typeLabelMapForDisplay, pendingInboundParts,
     mechanicsByItem, partsByItem, sortedItems,
     mediaByRequirement, imagesByItem, imagesByPart, mediaByInspection,
-    inventoryByPart, pickingByPart, returnByPart, pendingSupplierReturnByPart,
+    inventoryByPart, pickingByPart, returnByPart, pendingSupplierReturnByPart, 申领ByPart,
     knowledgeByItem, isLocked,
     itemsByRequirement, receptionInspections, conditionInspections, orphanItems,
     partGroupsByItem, totalCommission,

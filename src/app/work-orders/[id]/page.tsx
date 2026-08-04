@@ -70,7 +70,7 @@ export default async function WorkOrderDetailPage({
   const {
     order, requirements, profiles, requirementMedia, items, itemsError,
     itemMedia, itemMechanics, mechanicGroups, knowledgeLinks, itemParts,
-    partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches,
+    partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches, pickRequests,
     qualityChecks, payments, advancePaymentRecords, followUps, history, suppliers, logisticsCompanies,
     inspections, inspectionMedia, outsourceOrder,
     historyOrderCount, otherOrdersByType, customerOrderCount,
@@ -84,14 +84,14 @@ export default async function WorkOrderDetailPage({
     typeCountMap, typeLabelMapForDisplay, pendingInboundParts,
     mechanicsByItem, partsByItem,
     mediaByRequirement, imagesByItem, imagesByPart, mediaByInspection,
-    inventoryByPart, pickingByPart, returnByPart, pendingSupplierReturnByPart,
+    inventoryByPart, pickingByPart, returnByPart, pendingSupplierReturnByPart, 申领ByPart,
     knowledgeByItem, isLocked,
     itemsByRequirement, receptionInspections, conditionInspections,
     partGroupsByItem, totalCommission,
   } = buildWorkOrderView({
     order, requirements, items, itemMedia, itemMechanics, requirementMedia,
     knowledgeLinks, itemParts, partMedia, pickingRecords, returnRecords,
-    supplierReturnRecords, partBatches, inspections, inspectionMedia,
+    supplierReturnRecords, partBatches, pickRequests, inspections, inspectionMedia,
     advancePaymentRecords, otherOrdersByType,
   });
 
@@ -677,6 +677,7 @@ export default async function WorkOrderDetailPage({
                               logisticsCompanies={(logisticsCompanies || []) as unknown as ComponentProps<typeof MobileItemEditor>["logisticsCompanies"]}
                               returnByPart={returnByPart}
                               pendingSupplierReturnByPart={pendingSupplierReturnByPart}
+                              申领ByPart={申领ByPart}
                               vehicleModelId={vehicleModelId ?? null}
                               existingOrder={
                                 outsourceOrder?.outsource_order_items?.some(
@@ -908,6 +909,7 @@ export default async function WorkOrderDetailPage({
                                           returnByPart={returnByPart}
                                           inventoryByPart={inventoryByPart}
                                           pendingSupplierReturnByPart={pendingSupplierReturnByPart}
+                                          申领ByPart={申领ByPart}
                                           imagesByPart={imagesByPart}
                                         />
                                       ))}
