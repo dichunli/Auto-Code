@@ -85,7 +85,7 @@ export default function LiveRequirementsList({
   const 已有IDs拼串 = 已有需求IDs.join(",");
   useEffect(() => {
     设置追加需求((prev) => prev.filter((r) => !已有需求IDs.includes(r.req.id)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [已有IDs拼串]);
 
   const 初始需求数 = 已有需求IDs.length;
@@ -106,6 +106,7 @@ export default function LiveRequirementsList({
               media={media}
               项目数={0}
               displaySeq={初始需求数 + idx + 1}
+              实际锁定={实际锁定}
             />
             <AssignmentBadge reqId={req.id} 初始姓名={null} 初始类型={null} />
             <span className="hidden md:inline text-xs text-gray-400">

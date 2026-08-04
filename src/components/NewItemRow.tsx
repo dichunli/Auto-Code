@@ -77,9 +77,10 @@ export default function NewItemRow({
               profiles={profiles}
               mechanicGroups={mechanicGroups}
               existingMechanics={[]}
+              disabled={实际锁定}
             />
             <div className="ml-6">
-              <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion || "pending"} />
+              <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion || "pending"} disabled={实际锁定} />
             </div>
             <BusinessTypeToggle itemId={item.id} businessType={item.business_type || "normal"} disabled={实际锁定} />
             <div className="ml-4">
@@ -92,11 +93,12 @@ export default function NewItemRow({
                 itemName={item.name}
                 existingOrder={null}
                 existingItem={null}
+                disabled={实际锁定}
               />
             </div>
             <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-400 ml-2">维修指导</span>
             <div className="ml-4">
-              <ItemNotesEditor itemId={item.id} description={item.description} />
+              <ItemNotesEditor itemId={item.id} description={item.description} disabled={实际锁定} />
             </div>
             <div className="ml-[10ch]">
               <ItemImageUploader itemId={item.id} existingImages={[]} isLocked={实际锁定} />
@@ -104,21 +106,26 @@ export default function NewItemRow({
           </div>
           <div className="w-[10ch] flex-shrink-0" />
           <div className={`flex items-center gap-2 flex-shrink-0 sticky right-0 pl-2 ${item.item_type === "labor" ? "bg-blue-50" : "bg-gray-50"}`}>
-            <AddItemPartButton
-              itemId={item.id}
-              serviceItemId={item.service_item_id}
-              itemName={item.alias_name || item.name}
-              vehicleModelId={vehicleModelId}
-              vin={vehicleVin}
-            />
-            <WorkOrderItemActions
-              itemId={item.id}
-              itemName={item.name}
-              aliasName={item.alias_name}
-              quantity={item.quantity}
-              unitPrice={item.unit_price}
-              serviceItemId={item.service_item_id}
-            />
+            {/* 添加配件 / 编辑删除项目：只读（保养单未编辑、工单锁定）时隐藏 */}
+            {!实际锁定 && (
+              <>
+                <AddItemPartButton
+                  itemId={item.id}
+                  serviceItemId={item.service_item_id}
+                  itemName={item.alias_name || item.name}
+                  vehicleModelId={vehicleModelId}
+                  vin={vehicleVin}
+                />
+                <WorkOrderItemActions
+                  itemId={item.id}
+                  itemName={item.name}
+                  aliasName={item.alias_name}
+                  quantity={item.quantity}
+                  unitPrice={item.unit_price}
+                  serviceItemId={item.service_item_id}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>

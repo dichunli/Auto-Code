@@ -39,6 +39,8 @@ interface Props {
   itemName?: string;
   existingOrder?: ExistingOrder | null;
   existingItem?: ExistingItem | null;
+  /* 只读（保养单未进编辑模式 / 工单已锁定）：仅展示标记状态，不可修改 */
+  disabled?: boolean;
 }
 
 export function ItemFlagsToggle({
@@ -50,6 +52,7 @@ export function ItemFlagsToggle({
   itemName,
   existingOrder,
   existingItem,
+  disabled = false,
 }: Props) {
   const router = useRouter();
   const supabase = createClient();
@@ -99,8 +102,8 @@ export function ItemFlagsToggle({
       <button
         type="button"
         onClick={handleOutsourceClick}
-        disabled={updating}
-        className={`text-[10px] px-1.5 py-0.5 rounded border cursor-pointer disabled:opacity-50 ${
+        disabled={updating || disabled}
+        className={`text-[10px] px-1.5 py-0.5 rounded border ${disabled ? "cursor-default" : "cursor-pointer"} disabled:opacity-50 ${
           isOutsourced
             ? "bg-gray-100 text-gray-600 border-gray-200 font-medium"
             : "bg-white text-gray-400 border-gray-200"
@@ -111,8 +114,8 @@ export function ItemFlagsToggle({
       <button
         type="button"
         onClick={() => toggleField("is_customer_part", !isCustomerPart)}
-        disabled={updating}
-        className={`text-[10px] px-1.5 py-0.5 rounded border cursor-pointer disabled:opacity-50 ${
+        disabled={updating || disabled}
+        className={`text-[10px] px-1.5 py-0.5 rounded border ${disabled ? "cursor-default" : "cursor-pointer"} disabled:opacity-50 ${
           isCustomerPart
             ? "bg-yellow-50 text-yellow-700 border-yellow-200 font-medium"
             : "bg-white text-gray-400 border-gray-200"
