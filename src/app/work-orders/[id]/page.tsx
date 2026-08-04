@@ -665,9 +665,18 @@ export default async function WorkOrderDetailPage({
                                 is_selected: (p.is_selected as boolean) || false,
                                 document_name: (p.document_name as string) || null,
                                 pickedQty: pickingByPart[p.id as string] || 0,
+                                /* 配件工作流（采购/到货/供应商/成本价）：移动端状态标签与操作用 */
+                                is_purchased: (p.is_purchased as boolean) || false,
+                                is_arrived: (p.is_arrived as boolean) || false,
+                                supplier_name: (p.supplier_name as string) || null,
+                                cost_price: (p.cost_price as number) || null,
                               }))}
                               partInventory={inventoryByPart}
                               partImages={imagesByPart as unknown as ComponentProps<typeof MobileItemEditor>["partImages"]}
+                              suppliers={(suppliers || []) as unknown as ComponentProps<typeof MobileItemEditor>["suppliers"]}
+                              logisticsCompanies={(logisticsCompanies || []) as unknown as ComponentProps<typeof MobileItemEditor>["logisticsCompanies"]}
+                              returnByPart={returnByPart}
+                              pendingSupplierReturnByPart={pendingSupplierReturnByPart}
                               vehicleModelId={vehicleModelId ?? null}
                               existingOrder={
                                 outsourceOrder?.outsource_order_items?.some(

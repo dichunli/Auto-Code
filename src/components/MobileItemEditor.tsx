@@ -13,6 +13,8 @@ import { OutsourceModal } from "./OutsourceModal";
 import BarcodeScanModal from "./BarcodeScanModal";
 import ItemStageBadge from "./ItemStageBadge";
 import ItemQcActions from "./ItemQcActions";
+import { PartWorkflowActions } from "./PartWorkflowActions";
+import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import { ShowCommission } from "./WorkOrderToggleContext";
 import { calculateItemCommission, type CommissionSource } from "@/lib/commission";
 import { useConfirm } from "./ConfirmDialog";
@@ -238,6 +240,11 @@ interface Props {
   existingItem?: ExistingItem | null;
   partInventory?: Record<string, number>;
   partImages?: Record<string, PartImageRecord[]>;
+  /* 配件工作流（领料/退库/退货/采购/到货）需要的数据 */
+  suppliers?: { id: string; name: string; region?: string | null }[];
+  logisticsCompanies?: { id: string; name: string; scopes?: string[] | null }[];
+  returnByPart?: Record<string, number>;
+  pendingSupplierReturnByPart?: Record<string, boolean>;
 }
 
 /* ==================== 工具函数 ==================== */
@@ -308,6 +315,10 @@ export default function MobileItemEditor({
   existingItem,
   partInventory,
   partImages,
+  suppliers = [],
+  logisticsCompanies = [],
+  returnByPart = {},
+  pendingSupplierReturnByPart = {},
 }: Props) {
   const router = useRouter();
   const supabase = createClient();
@@ -1220,6 +1231,8 @@ export default function MobileItemEditor({
     if (selectedPartForDetail) {
       setSelectedPartForDetail({ ...selectedPartForDetail, customer_opinion: opinion });
     }
+    /* 客户意见参与工作流状态判定（待确认→待采购/待领料），刷新让状态标签立即更新 */
+    refresh();
   }
 
   /* 保存配件备注 */
@@ -1338,6 +1351,46 @@ export default function MobileItemEditor({
       return;
     }
     await 应用命中配件到分支(branch.id, 转命中配件(rows[0]));
+  }
+
+  /* 采购/到货标记（守卫逻辑同桌面端 PartBranchEditor） */
+  async function 切换采购(part: ItemPart) {
+    if ((part.customer_opinion || "pending") !== "agree") {
+      alert("需客户同意后才能采购");
+      return;
+    }
+    const 库存数 = (part.part_id && partInventory) ? (partInventory[part.part_id] || 0) : 0;
+    if (!part.is_purchased && 库存数 > 0) {
+      alert("库存不为0，无需采购");
+      return;
+    }
+    const next = !part.is_purchased;
+    setLoading(true);
+    const { error } = await supabase.from("work_order_item_parts").update({ is_purchased: next }).eq("id", part.id);
+    setLoading(false);
+    if (error) {
+      alert("操作失败: " + error.message);
+      return;
+    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, is_purchased: next } : prev));
+    refresh();
+  }
+
+  async function 切换到货(part: ItemPart) {
+    if (!part.is_purchased) {
+      alert("需先采购后才能标记到货");
+      return;
+    }
+    const next = !part.is_arrived;
+    setLoading(true);
+    const { error } = await supabase.from("work_order_item_parts").update({ is_arrived: next }).eq("id", part.id);
+    setLoading(false);
+    if (error) {
+      alert("操作失败: " + error.message);
+      return;
+    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, is_arrived: next } : prev));
+    refresh();
   }
 
   /* 替换配件 */
@@ -3285,6 +3338,30 @@ export default function MobileItemEditor({
                       </div>
                     )}
                   </div>
+                  {/* 供应商（无需进入编辑模式，未锁定即可直接选） */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">供应商</span>
+                    {!isLocked ? (
+                      <select
+                        key={activeBranch.id + "-supplier"}
+                        value={activeBranch.supplier_name || ""}
+                        onChange={(e) => {
+                          const val = e.target.value || null;
+                          if (val !== (activeBranch.supplier_name || null)) {
+                            savePartField(activeBranch.id, "supplier_name", val);
+                          }
+                        }}
+                        className="w-32 px-1 py-1 border border-gray-300 rounded text-xs text-right bg-white"
+                      >
+                        <option value="">未选择</option>
+                        {suppliers.map((s) => (
+                          <option key={s.id} value={s.name}>{s.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-gray-900 text-xs">{activeBranch.supplier_name || "-"}</span>
+                    )}
+                  </div>
                   {/* 小计 */}
                   <div className="border-t border-gray-100 pt-1.5 flex justify-between"
                   >
@@ -3294,6 +3371,80 @@ export default function MobileItemEditor({
                     >¥{activeBranch.total_price || (activeBranch.unit_price * activeBranch.quantity)}</span>
                   </div>
                 </div>
+
+                {/* 配件状态 + 领料/退库/退货/采购/到货（状态判定与桌面端同一套 getPartWorkflowStatus，
+                   领料/退库/退货直接复用桌面端的 PartWorkflowActions 组件和弹窗） */}
+                {(() => {
+                  const 退库数 = returnByPart[activeBranch.id] || 0;
+                  const 净领 = Math.max(0, (activeBranch.pickedQty || 0) - 退库数);
+                  const 库存数 = (activeBranch.part_id && partInventory) ? (partInventory[activeBranch.part_id] || 0) : 0;
+                  const 工作流状态 = getPartWorkflowStatus({
+                    unit_cost: activeBranch.unit_cost ?? null,
+                    unit_price: activeBranch.unit_price ?? null,
+                    customer_opinion: activeBranch.customer_opinion || null,
+                    is_purchased: !!activeBranch.is_purchased,
+                    is_arrived: !!activeBranch.is_arrived,
+                    part_id: activeBranch.part_id || null,
+                    quantity: activeBranch.quantity,
+                    inventoryQty: 库存数,
+                    pickedQty: 净领,
+                    hasReturnRecords: 退库数 > 0,
+                    hasPendingSupplierReturn: !!pendingSupplierReturnByPart[activeBranch.id],
+                  });
+                  return (
+                    <div>
+                      <p className="text-xs text-gray-500 mb-2">配件状态</p>
+                      <div className="flex items-center flex-wrap gap-2">
+                        <PartWorkflowActions
+                          status={工作流状态}
+                          partName={activeBranch.name}
+                          workOrderItemPartId={activeBranch.id}
+                          partId={activeBranch.part_id || null}
+                          quantity={activeBranch.quantity}
+                          pickedQty={净领}
+                          returnQty={退库数}
+                          suppliers={suppliers}
+                          logisticsCompanies={logisticsCompanies}
+                          locked={isLocked}
+                        />
+                        {/* 采购/到货标记（点按切换，守卫同桌面端） */}
+                        <button
+                          type="button"
+                          onClick={() => !isLocked && 切换采购(activeBranch)}
+                          disabled={isLocked || loading}
+                          className={`text-[10px] px-1.5 py-0.5 rounded border disabled:opacity-50 ${
+                            activeBranch.is_purchased
+                              ? "bg-green-50 text-green-700 border-green-200 font-medium"
+                              : "bg-white text-gray-400 border-gray-200"
+                          }`}
+                        >
+                          {activeBranch.is_purchased ? "已采购" : "未采购"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => !isLocked && 切换到货(activeBranch)}
+                          disabled={isLocked || loading}
+                          className={`text-[10px] px-1.5 py-0.5 rounded border disabled:opacity-50 ${
+                            activeBranch.is_arrived
+                              ? "bg-green-50 text-green-700 border-green-200 font-medium"
+                              : "bg-white text-gray-400 border-gray-200"
+                          }`}
+                        >
+                          {activeBranch.is_arrived ? "已到货" : "未到货"}
+                        </button>
+                        {/* 空分支已到货 → 入库登记（跳转入库页自动带参，同桌面端） */}
+                        {activeBranch.is_arrived && !activeBranch.part_id && (
+                          <a
+                            href={`/inventory/in?auto_fill=1&branch_id=${encodeURIComponent(activeBranch.id)}&part_number=${encodeURIComponent(activeBranch.part_number || "")}&name=${encodeURIComponent(activeBranch.name || "")}&unit=${encodeURIComponent(activeBranch.unit || "")}&brand=${encodeURIComponent(activeBranch.brand || "")}&specification=${encodeURIComponent(activeBranch.specification || "")}&unit_cost=${activeBranch.unit_cost || ""}&supplier=${encodeURIComponent(activeBranch.supplier_name || "")}`}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 inline-block"
+                          >
+                            入库登记
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* 图片上传 */}
                 <div>
