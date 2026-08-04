@@ -11,6 +11,10 @@ import ItemImageUploader from "./ItemImageUploader";
 import { PartPickerModal } from "./PartPickerModal";
 import { OutsourceModal } from "./OutsourceModal";
 import BarcodeScanModal from "./BarcodeScanModal";
+import ItemStageBadge from "./ItemStageBadge";
+import ItemQcActions from "./ItemQcActions";
+import { ShowCommission } from "./WorkOrderToggleContext";
+import { calculateItemCommission, type CommissionSource } from "@/lib/commission";
 import { useConfirm } from "./ConfirmDialog";
 
 /* ==================== 类型定义 ==================== */
@@ -58,6 +62,8 @@ interface ItemData {
   is_outsourced?: boolean | null;
   is_customer_part?: boolean | null;
   status?: string | null;
+  require_qc?: boolean | null;
+  qc_status?: string | null;
   mechanic_id?: string | null;
   submitter_id?: string | null;
   inspector_id?: string | null;
@@ -1702,12 +1708,22 @@ export default function MobileItemEditor({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-gray-900 text-sm">{item.alias_name || item.name}</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${opinionColor}`}>{opinionLabel}</span>
+            {/* 阶段徽章：待派工/待施工/施工中/已中断/待质检/已完工（仅 labor 显示，组件内自判断） */}
+            <ItemStageBadge
+              itemId={item.id}
+              itemType={item.item_type}
+              status={item.status ?? null}
+              requireQc={item.require_qc ?? null}
+              qcStatus={item.qc_status ?? null}
+              customerOpinion={item.customer_opinion ?? null}
+              初始已派工={existingMechanics.length > 0 || !!item.mechanic_id}
+            />
+            {/* 客户意见徽章：labor 项目的阶段徽章已含"待确认"，只给非 labor 项目显示，避免重复 */}
+            {item.item_type !== "labor" && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${opinionColor}`}>{opinionLabel}</span>
+            )}
             {item.is_outsourced && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">外包</span>}
             {item.is_customer_part && <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700">自带</span>}
-            {item.item_type === "labor" && status === "running" && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">施工中</span>
-            )}
           </div>
           <div className="flex items-center gap-2 shrink-0 ml-2">
             <span className="text-sm font-medium text-gray-900">
@@ -1944,6 +1960,43 @@ export default function MobileItemEditor({
                   </span>
                 </div>
               </section>
+
+              {/* 提成（沿用页面顶部"提成信息"开关控制显隐，与桌面端同一权限） */}
+              <ShowCommission>
+                {(() => {
+                  const comm = calculateItemCommission(
+                    item as unknown as CommissionSource,
+                    item.service_items as unknown as CommissionSource | null,
+                    null,
+                    null,
+                    item.total_price || 0,
+                    0
+                  );
+                  if (comm.diagnosis === 0 && comm.repair === 0 && comm.sales === 0 && comm.qc === 0) return null;
+                  return (
+                    <section>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">提成</h4>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {comm.diagnosis > 0 && <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">诊断 {comm.diagnosis.toFixed(2)}元</span>}
+                        {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
+                        {comm.sales > 0 && <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded">销售 {comm.sales.toFixed(2)}元</span>}
+                        {comm.qc > 0 && <span className="text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">质检 {comm.qc.toFixed(2)}元</span>}
+                      </div>
+                    </section>
+                  );
+                })()}
+              </ShowCommission>
+
+              {/* 质检：仅"待质检"且当前用户是质检人本人时显示质检按钮（组件内自判断，其余情况不渲染）。
+                 质检单支持合格一键提交；不合格强制填原因；可附图片/视频凭证；含历史质检单 */}
+              {item.item_type === "labor" && !!item.require_qc && (
+                <ItemQcActions
+                  itemId={item.id}
+                  itemName={(item.alias_name || item.name) ?? ""}
+                  requireQc={item.require_qc}
+                  实际锁定={isLocked}
+                />
+              )}
               {/* 施工人 */}
               <section>
                 <div className="flex items-center justify-between mb-2">
