@@ -1,9 +1,0 @@
-- generic [active] [ref=e1]:
-  - main [ref=e2]:
-    - generic [ref=e4]:
-      - generic [ref=e5]:
-        - generic [ref=e6]: 配件报价单
-        - generic [ref=e7]: 佳汇汽配 您好，请为以下 0 个配件报价
-      - generic [ref=e8]: 请于 8/6 02:14 前提交，过期链接将失效
-      - button "提交报价" [ref=e11]
-  - button "Open Next.js Dev Tools" [ref=e17] [cursor=pointer]
