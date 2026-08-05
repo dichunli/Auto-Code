@@ -116,6 +116,8 @@ export function ProcurementTabBar({ currentTab }: Props) {
       if (!wo) continue;
       if (wo.settled_at) continue;
       if (wo.order_type === "cancelled") continue;
+      /* 保养单不走采购流程，不计入各阶段角标 */
+      if (wo.order_type === "maintenance") continue;
       if (r.is_purchased || r.is_arrived) continue;
 
       const cost = Number(r.unit_cost || 0);
