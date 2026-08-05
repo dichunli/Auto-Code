@@ -204,7 +204,8 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     // 业务铁律：本操作是"给已有目录加分支"，该目录必然已有一个选中分支存在，
     // 所以新分支【永远不选中】(固定 false)，不动已有老分支。
     // （只有"新建目录"——走"添加配件"那条路——的首个/唯一分支才默认选中。）
-    const 新配件数量 = parts[0].quantity ?? 1;
+    /* 数量跟随目录：目录数量为 NULL 就留空（红底留白提醒补填），不兜底成 1 */
+    const 新配件数量 = parts[0].quantity ?? null;
     const { data: inserted, error } = await supabase.from("work_order_item_parts").insert({
       work_order_item_id: itemId,
       branch_group_id: parts[0].branch_group_id || null,
