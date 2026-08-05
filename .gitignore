@@ -134,3 +134,4 @@ smoke-test-failure.png
 !scripts/flow-tests.mjs
 !scripts/realtime-test.mjs
 !scripts/permission-test.mjs
+.playwright-mcp/

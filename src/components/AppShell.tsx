@@ -26,7 +26,8 @@ function KeyboardHandler() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isLogin = pathname === "/login";
+  /* 公开页（无需登录、无侧边导航）：登录页 + 供应商报价页 */
+  const isLogin = pathname === "/login" || pathname.startsWith("/quote");
 
   /*
    * 进入应用先确保登录态注入到 Supabase 客户端，再渲染页面，

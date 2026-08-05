@@ -23,6 +23,7 @@ interface WorkOrderItemPart {
     work_orders: {
       id: string;
       order_no: string;
+      order_type: string | null;
       vehicles: { plate_number: string } | null;
     } | null;
   } | null;
@@ -66,7 +67,7 @@ export default async function PartBoardPage({
     .select(`
       id, unit_cost, unit_price, customer_opinion, is_purchased, is_arrived, part_id, quantity,
       name, alias_name, part_number, brand,
-      work_order_items(id, name, work_order_id, work_orders(id, order_no, vehicles(plate_number))),
+      work_order_items(id, name, work_order_id, work_orders(id, order_no, order_type, vehicles(plate_number))),
       part_names(name, unit),
       parts(name, part_brands(name))
     `)
@@ -74,7 +75,10 @@ export default async function PartBoardPage({
     .limit(300);
 
   /* supabase 类型把多对一关联推断成数组，运行时实为对象，此处断言为页面真实形状 */
-  const 配件列表 = (parts || []) as unknown as WorkOrderItemPart[];
+  /* 保养单不走询价/报价等采购流程，看板同样排除 */
+  const 配件列表 = ((parts || []) as unknown as WorkOrderItemPart[]).filter(
+    (p) => p.work_order_items?.work_orders?.order_type !== "maintenance"
+  );
   const partIds = 配件列表.map((p) => p.id);
   const relatedPartIds = 配件列表.map((p) => p.part_id).filter(Boolean);
 

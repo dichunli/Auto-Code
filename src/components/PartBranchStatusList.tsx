@@ -7,6 +7,7 @@ import { requestNotificationPermission, sendBrowserNotification } from "@/lib/no
 import { PartBranchImages } from "./PartBranchImages";
 import { usePriceVisibility } from "./PriceVisibilityContext";
 import { PartSearchDropdown } from "./PartSearchDropdown";
+import QuoteSheetModal from "./QuoteSheetModal";
 import { resolvePartSellingPrice } from "@/lib/partPriceResolver";
 import PartForm from "@/app/parts/new/PartForm";
 import { useConfirm } from "./ConfirmDialog";
@@ -17,7 +18,7 @@ const STATUS_TITLES: Record<string, string> = {
   pending_confirm: "待确认",
 };
 
-type EditableField = "part_number" | "brand" | "specification" | "cost" | "price" | "supplier" | "notes" | "customer_opinion" | "name" | "unit";
+type EditableField = "part_number" | "brand" | "specification" | "cost" | "price" | "supplier" | "notes" | "customer_opinion" | "name" | "unit" | "quantity";
 type GroupBy = "plate" | "category" | "name" | "supplier" | "none";
 
 const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
@@ -33,7 +34,7 @@ interface PartBranchRow {
   brand: string | null;
   specification: string | null;
   unit: string | null;
-  quantity: number;
+  quantity: number | null;
   unit_cost: number | null;
   unit_price: number | null;
   customer_opinion: string | null;
@@ -131,6 +132,8 @@ export function PartBranchStatusList({ status }: Props) {
   const [批量供应商弹层开, set批量供应商弹层开] = useState(false);
   const [批量供应商搜索, set批量供应商搜索] = useState("");
   const 批量供应商弹层ref = useRef<HTMLDivElement>(null);
+  /* 生成询价链接弹窗 */
+  const [询价弹窗开, set询价弹窗开] = useState(false);
 
   /* 编辑配件弹窗 */
   const [editRow, setEditRow] = useState<PartBranchRow | null>(null);
@@ -241,6 +244,8 @@ export function PartBranchStatusList({ status }: Props) {
       if (!wo) return false;
       if (wo.settled_at) return false;
       if (wo.order_type === "cancelled") return false;
+      /* 保养单不走询价/报价等采购流程（用户定的规则） */
+      if (wo.order_type === "maintenance") return false;
       if (r.is_purchased || r.is_arrived) return false;
 
       const cost = Number(r.unit_cost || 0);
@@ -382,6 +387,15 @@ export function PartBranchStatusList({ status }: Props) {
       } else if (_field === "unit") {
         const val = trimmed === "" ? null : trimmed;
         if (val !== (row.unit || null)) update.unit = val;
+      } else if (_field === "quantity") {
+        /* 数量：留空=未填存 NULL 保持标红提醒（用户要求不兜底）；填了必须是正整数 */
+        if (trimmed === "") {
+          if (row.quantity !== null) update.quantity = null;
+          continue;
+        }
+        const num = Number(trimmed);
+        if (!Number.isInteger(num) || num <= 0) continue;
+        if (num !== row.quantity) update.quantity = num;
       } else if (_field === "cost" || _field === "price") {
         const dbField = _field === "cost" ? "unit_cost" : "unit_price";
         if (trimmed === "") {
@@ -965,6 +979,7 @@ export function PartBranchStatusList({ status }: Props) {
     const priceDraft = edits[row.id]?.price;
     const supplierDraft = edits[row.id]?.supplier;
     const notesDraft = edits[row.id]?.notes;
+    const quantityDraft = edits[row.id]?.quantity;
 
     const partNumberValue = partNumberDraft !== undefined ? partNumberDraft : (row.part_number || "");
     const nameValue = nameDraft !== undefined ? nameDraft : (row.name || "");
@@ -975,6 +990,7 @@ export function PartBranchStatusList({ status }: Props) {
     const priceValue = priceDraft !== undefined ? priceDraft : (row.unit_price != null && row.unit_price > 0 ? String(row.unit_price) : "");
     const supplierValue = supplierDraft !== undefined ? supplierDraft : (row.supplier_name || "");
     const notesValue = notesDraft !== undefined ? notesDraft : (row.notes || "");
+    const quantityValue = quantityDraft !== undefined ? quantityDraft : (row.quantity != null ? String(row.quantity) : "");
 
     const firstImage = row.parts?.part_images?.[0]?.storage_path;
 
@@ -1040,9 +1056,28 @@ export function PartBranchStatusList({ status }: Props) {
             className={`w-24 px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && specDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
           />
         </td>
-        {/* 数量留空（NULL）是有意设计：未填数量的配件红底留白显示，提醒补填数量（用户拍板 2026-08-05，撤销"兜底成1"） */}
-        <td className={`px-3 py-3 text-right ${(row.quantity ?? 0) <= 0 ? "bg-red-50 text-red-600 font-semibold" : "text-gray-700"}`}>
-          {row.quantity ?? ""} {unitValue || "件"}
+        {/* 数量：可直接编辑，保存写回工单；留空保持红框提醒（用户要求：红框提醒保留 + 可输入联动工单） */}
+        <td className="px-3 py-3 text-right">
+          <div className="flex items-center justify-end gap-1">
+            <input
+              type="number"
+              min="1"
+              step="1"
+              disabled={isSaving}
+              value={quantityValue}
+              onChange={(e) => setEditValue(row.id, "quantity", e.target.value)}
+              onKeyDown={(e) => handleKeyDown(e, row, "quantity")}
+              placeholder="未填"
+              className={`w-14 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
+                quantityValue.trim() === ""
+                  ? "border-red-300 bg-red-50 text-red-600 placeholder-red-400"
+                  : hasDraft && quantityDraft !== undefined
+                    ? "border-yellow-400 bg-yellow-50"
+                    : "border-gray-200"
+              }`}
+            />
+            <span className="text-xs text-gray-500">{unitValue || "件"}</span>
+          </div>
         </td>
         {/* 库存 */}
         <td className="px-3 py-3 text-right text-gray-700">
@@ -1306,6 +1341,15 @@ export function PartBranchStatusList({ status }: Props) {
               >
                 取消选择
               </button>
+              {status === "pending_inquiry" && (
+                <button
+                  type="button"
+                  onClick={() => set询价弹窗开(true)}
+                  className="px-3 py-1 text-xs rounded border border-blue-600 text-blue-600 hover:bg-blue-50 transition-colors"
+                >
+                  生成询价链接
+                </button>
+              )}
               {缺采购价行数 > 0 && (
                 <span className="text-xs text-amber-600">
                   有 {缺采购价行数} 行已选供应商但未填采购价，两者必须同时填写才能提交
@@ -1483,6 +1527,15 @@ export function PartBranchStatusList({ status }: Props) {
         </div>
       )}
       {确认弹窗}
+      {/* 生成询价链接弹窗：勾选项发给供应商自助报价 */}
+      <QuoteSheetModal
+        open={询价弹窗开}
+        rows={rows
+          .filter((r) => selectedIds.has(r.id))
+          .map((r) => ({ id: r.id, name: r.name, quantity: r.quantity, unit: r.unit, supplier_name: r.supplier_name }))}
+        suppliers={suppliers}
+        onClose={() => set询价弹窗开(false)}
+      />
     </div>
   );
 }

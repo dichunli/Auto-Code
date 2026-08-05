@@ -15,7 +15,8 @@ export type ProcurementTab =
   | "pending_return"
   | "completed_return"
   | "inbound_orders"
-  | "return_orders";
+  | "return_orders"
+  | "quote_sheets";
 
 const TABS: { key: ProcurementTab; label: string }[] = [
   { key: "pending_inquiry", label: "待询价" },
@@ -29,6 +30,7 @@ const TABS: { key: ProcurementTab; label: string }[] = [
   { key: "completed_return", label: "已退货" },
   { key: "inbound_orders", label: "入库单" },
   { key: "return_orders", label: "采退单" },
+  { key: "quote_sheets", label: "询价单" },
 ];
 
 interface Props {
@@ -84,6 +86,7 @@ export function ProcurementTabBar({ currentTab }: Props) {
     completed_return: 0,
     inbound_orders: 0,
     return_orders: 0,
+    quote_sheets: 0,
   });
 
   const loadCounts = useCallback(async () => {
@@ -113,6 +116,8 @@ export function ProcurementTabBar({ currentTab }: Props) {
       if (!wo) continue;
       if (wo.settled_at) continue;
       if (wo.order_type === "cancelled") continue;
+      /* 保养单不走采购流程，不计入各阶段角标 */
+      if (wo.order_type === "maintenance") continue;
       if (r.is_purchased || r.is_arrived) continue;
 
       const cost = Number(r.unit_cost || 0);
@@ -172,6 +177,13 @@ export function ProcurementTabBar({ currentTab }: Props) {
     const { data: returnOrderData } = await supabase.from("purchase_return_orders").select("id");
     const returnOrdersCount = returnOrderData?.length || 0;
 
+    /* 询价单角标：供应商已报价、等采购员采用的单数 */
+    const { data: quoteSheetData } = await supabase
+      .from("supplier_quote_sheets")
+      .select("id")
+      .eq("status", "submitted");
+    const quoteSheetsCount = quoteSheetData?.length || 0;
+
     setCounts({
       pending_inquiry: pendingInquiry,
       pending_quote: pendingQuote,
@@ -184,6 +196,7 @@ export function ProcurementTabBar({ currentTab }: Props) {
       completed_return: completedReturn,
       inbound_orders: inboundOrdersCount,
       return_orders: returnOrdersCount,
+      quote_sheets: quoteSheetsCount,
     });
   }, [supabase]);
 
@@ -226,10 +239,23 @@ export function ProcurementTabBar({ currentTab }: Props) {
       )
       .subscribe();
 
+    /* Realtime 订阅: supplier_quote_sheets 变化时刷新询价单角标（供应商一提交就亮） */
+    const quoteChannel = supabase
+      .channel("procurement_tab_quote_counts")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "supplier_quote_sheets" },
+        () => {
+          loadCounts();
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(partsChannel);
       supabase.removeChannel(poChannel);
       supabase.removeChannel(retChannel);
+      supabase.removeChannel(quoteChannel);
     };
   }, [supabase, loadCounts]);
 
@@ -246,6 +272,8 @@ export function ProcurementTabBar({ currentTab }: Props) {
                 ? "/inbound-orders"
                 : tab.key === "return_orders"
                 ? "/return-orders"
+                : tab.key === "quote_sheets"
+                ? "/quote-sheets"
                 : `/procurement?tab=${tab.key}`
             }
             className={`px-4 py-2.5 text-sm border-b-2 -mb-px transition-colors rounded-t-md flex items-center gap-1.5 ${
