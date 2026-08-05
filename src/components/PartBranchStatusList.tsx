@@ -7,6 +7,7 @@ import { requestNotificationPermission, sendBrowserNotification } from "@/lib/no
 import { PartBranchImages } from "./PartBranchImages";
 import { usePriceVisibility } from "./PriceVisibilityContext";
 import { PartSearchDropdown } from "./PartSearchDropdown";
+import QuoteSheetModal from "./QuoteSheetModal";
 import { resolvePartSellingPrice } from "@/lib/partPriceResolver";
 import PartForm from "@/app/parts/new/PartForm";
 import { useConfirm } from "./ConfirmDialog";
@@ -131,6 +132,8 @@ export function PartBranchStatusList({ status }: Props) {
   const [批量供应商弹层开, set批量供应商弹层开] = useState(false);
   const [批量供应商搜索, set批量供应商搜索] = useState("");
   const 批量供应商弹层ref = useRef<HTMLDivElement>(null);
+  /* 生成询价链接弹窗 */
+  const [询价弹窗开, set询价弹窗开] = useState(false);
 
   /* 编辑配件弹窗 */
   const [editRow, setEditRow] = useState<PartBranchRow | null>(null);
@@ -1305,6 +1308,15 @@ export function PartBranchStatusList({ status }: Props) {
               >
                 取消选择
               </button>
+              {status === "pending_inquiry" && (
+                <button
+                  type="button"
+                  onClick={() => set询价弹窗开(true)}
+                  className="px-3 py-1 text-xs rounded border border-blue-600 text-blue-600 hover:bg-blue-50 transition-colors"
+                >
+                  生成询价链接
+                </button>
+              )}
               {缺采购价行数 > 0 && (
                 <span className="text-xs text-amber-600">
                   有 {缺采购价行数} 行已选供应商但未填采购价，两者必须同时填写才能提交
@@ -1482,6 +1494,15 @@ export function PartBranchStatusList({ status }: Props) {
         </div>
       )}
       {确认弹窗}
+      {/* 生成询价链接弹窗：勾选项发给供应商自助报价 */}
+      <QuoteSheetModal
+        open={询价弹窗开}
+        rows={rows
+          .filter((r) => selectedIds.has(r.id))
+          .map((r) => ({ id: r.id, name: r.name, quantity: r.quantity, unit: r.unit, supplier_name: r.supplier_name }))}
+        suppliers={suppliers}
+        onClose={() => set询价弹窗开(false)}
+      />
     </div>
   );
 }
