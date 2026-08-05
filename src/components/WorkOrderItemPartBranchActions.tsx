@@ -57,7 +57,8 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
       branch_group_id: current?.branch_group_id || null,
       name: current?.name || null,
       unit: current?.unit || "件",
-      quantity: current?.quantity ?? 1,
+      /* 数量留空（NULL）：未填数量的配件红底留白提醒补填，不兜底成 1 */
+      quantity: current?.quantity ?? null,
       customer_opinion: "pending",
     });
 

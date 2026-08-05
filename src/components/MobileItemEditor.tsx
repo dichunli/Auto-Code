@@ -1693,7 +1693,8 @@ export default function MobileItemEditor({
         part_name_id: sp.part_name_id,
         name: sp.name,
         unit: sp.unit,
-        quantity: sp.quantity ?? 1,
+        /* 数量留空（NULL）：未填数量的配件红底留白提醒补填，不兜底成 1 */
+        quantity: sp.quantity ?? null,
         customer_opinion: "pending",
         is_selected: true,
       });
@@ -1710,7 +1711,8 @@ export default function MobileItemEditor({
         specification: sp.specification,
         unit_cost: sp.unit_cost,
         unit_price: sp.unit_price,
-        quantity: sp.quantity ?? 1,
+        /* 从配件库选的配件带明确数量（默认1），留空同样允许 */
+        quantity: sp.quantity ?? null,
         customer_opinion: "pending",
         is_selected: true,
       });
