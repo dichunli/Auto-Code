@@ -126,7 +126,8 @@ export async function 生成询价单(参数: {
       sheet_id: 单id,
       work_order_item_part_id: r.id,
       part_name: r.name,
-      quantity: r.quantity ?? 1,
+      /* 数量原样快照：NULL 表示工单里就没填，不兜底（用户要求保留"未填"信号） */
+      quantity: r.quantity,
       unit: r.unit,
       vehicle_model: 车型Map.get(r.work_order_items?.work_orders?.vehicles?.vehicle_model_id || "") || null,
     }))
@@ -245,7 +246,7 @@ export interface 询价单公开信息 {
   items: {
     itemId: string;
     partName: string;
-    quantity: number;
+    quantity: number | null;
     unit: string;
     vehicleModel: string;
     quotedPartNumber: string;
@@ -289,7 +290,7 @@ export async function 获取询价单公开信息(token: string): Promise<结果
   interface 明细行 {
     id: string;
     part_name: string | null;
-    quantity: number;
+    quantity: number | null;
     unit: string | null;
     vehicle_model: string | null;
     quoted_part_number: string | null;

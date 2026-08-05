@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS supplier_quote_items (
   work_order_item_part_id UUID NOT NULL REFERENCES work_order_item_parts(id) ON DELETE CASCADE,
   /* ── 快照：供应商看到的信息（只给配件和车型，不给车主信息） ── */
   part_name TEXT,
-  quantity INTEGER NOT NULL DEFAULT 1,
+  /* 数量允许 NULL：工单里没填就原样保留"未填"信号，不兜底 */
+  quantity INTEGER,
   unit TEXT,
   vehicle_model TEXT,
   /* ── 供应商填写 ── */
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS supplier_quote_items (
   quoted_notes TEXT,
   /* 编码匹配到的库存配件（提交回写时关联到配件行） */
   matched_part_id UUID REFERENCES parts(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ
 );
 

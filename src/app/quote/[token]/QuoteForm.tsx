@@ -11,7 +11,7 @@ import { 按编码查配件, 提交报价, type 询价单公开信息 } from "..
 interface 行状态 {
   itemId: string;
   partName: string;
-  quantity: number;
+  quantity: number | null;
   unit: string;
   vehicleModel: string;
   partNumber: string;
@@ -159,7 +159,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
                   {序号 + 1}. {r.partName}
                 </div>
                 <div className="shrink-0 text-sm text-gray-500">
-                  {r.quantity} {r.unit}
+                  {r.quantity ?? "—"} {r.unit}
                 </div>
               </div>
               {r.vehicleModel && (

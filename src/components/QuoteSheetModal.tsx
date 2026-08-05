@@ -119,7 +119,9 @@ export default function QuoteSheetModal({ open, rows, suppliers, onClose }: Prop
               {rows.map((r) => (
                 <div key={r.id} className="text-xs text-gray-700 flex justify-between">
                   <span className="truncate">{r.name || "未命名"}</span>
-                  <span className="shrink-0 text-gray-400 ml-2">{r.quantity ?? 1} {r.unit || "件"}</span>
+                  <span className={`shrink-0 ml-2 ${r.quantity == null ? "text-red-500" : "text-gray-400"}`}>
+                    {r.quantity != null ? `${r.quantity} ${r.unit || "件"}` : "数量未填"}
+                  </span>
                 </div>
               ))}
             </div>
