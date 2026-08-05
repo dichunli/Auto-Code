@@ -1693,7 +1693,7 @@ export default function MobileItemEditor({
         part_name_id: sp.part_name_id,
         name: sp.name,
         unit: sp.unit,
-        quantity: sp.quantity ?? 1,
+        quantity: sp.quantity,
         customer_opinion: "pending",
         is_selected: true,
       });
@@ -1710,7 +1710,7 @@ export default function MobileItemEditor({
         specification: sp.specification,
         unit_cost: sp.unit_cost,
         unit_price: sp.unit_price,
-        quantity: sp.quantity ?? 1,
+        quantity: sp.quantity,
         customer_opinion: "pending",
         is_selected: true,
       });
