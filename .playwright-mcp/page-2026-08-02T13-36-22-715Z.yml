@@ -1,0 +1,641 @@
+- generic [ref=f3e1]:
+  - complementary [ref=f3e2]:
+    - link "修 汽修管家" [ref=f3e4] [cursor=pointer]:
+      - /url: /
+      - generic [ref=f3e5]: 修
+      - generic [ref=f3e7]: 汽修管家
+    - navigation [ref=f3e8]:
+      - link "仪表盘" [ref=f3e9] [cursor=pointer]:
+        - /url: /
+      - button "工单管理" [ref=f3e11]
+      - generic [ref=f3e15]:
+        - button "客户车辆" [ref=f3e16]
+        - generic [ref=f3e20]:
+          - link "客户车辆" [ref=f3e21] [cursor=pointer]:
+            - /url: /customers
+          - link "会员管理" [ref=f3e23] [cursor=pointer]:
+            - /url: /members
+          - link "客户标签" [ref=f3e25] [cursor=pointer]:
+            - /url: /tags
+          - link "客户通知" [ref=f3e27] [cursor=pointer]:
+            - /url: /notifications
+          - link "保养提醒" [ref=f3e29] [cursor=pointer]:
+            - /url: /reminders
+      - link "车型库" [ref=f3e31] [cursor=pointer]:
+        - /url: /vehicle-models
+      - link "客户预约" [ref=f3e32] [cursor=pointer]:
+        - /url: /appointments
+      - button "配件库存" [ref=f3e34]
+      - button "采购管理" [ref=f3e39]
+      - link "物流运单" [ref=f3e43] [cursor=pointer]:
+        - /url: /logistics
+      - button "维修项目" [ref=f3e45]
+      - link "知识库" [ref=f3e49] [cursor=pointer]:
+        - /url: /knowledge
+      - button "培训晋级" [ref=f3e51]
+      - link "工具管理" [ref=f3e55] [cursor=pointer]:
+        - /url: /tools/management
+      - link "员工管理" [ref=f3e56] [cursor=pointer]:
+        - /url: /employees
+      - button "财务管理" [ref=f3e58]
+      - button "报表统计" [ref=f3e63]
+      - link "售后回访" [ref=f3e67] [cursor=pointer]:
+        - /url: /follow-ups
+      - link "操作日志" [ref=f3e68] [cursor=pointer]:
+        - /url: /operation-logs
+      - button "系统设置" [ref=f3e70]
+    - generic [ref=f3e74]:
+      - link "个人信息" [ref=f3e75] [cursor=pointer]:
+        - /url: /profile
+      - button "退出登录" [ref=f3e76]
+  - main [ref=f3e77]:
+    - generic [ref=f3e146]:
+      - generic [ref=f3e147]:
+        - generic [ref=f3e148]:
+          - heading "客户管理" [level=1] [ref=f3e149]
+          - paragraph [ref=f3e150]: 共 12369 位客户
+        - link "新增客户" [ref=f3e151] [cursor=pointer]:
+          - /url: /customers/new
+      - generic [ref=f3e152]:
+        - link "客户管理" [ref=f3e153] [cursor=pointer]:
+          - /url: /customers
+        - link "车辆管理" [ref=f3e154] [cursor=pointer]:
+          - /url: /vehicles
+        - link "单位管理" [ref=f3e155] [cursor=pointer]:
+          - /url: /companies
+      - generic [ref=f3e156]:
+        - generic [ref=f3e157]:
+          - textbox "客户姓名" [ref=f3e158]
+          - textbox "联系电话" [active] [ref=f3e159]: "19911112222"
+          - textbox "所属单位" [ref=f3e160]
+          - textbox "地址" [ref=f3e161]
+        - generic [ref=f3e162]:
+          - link "重置" [ref=f3e163] [cursor=pointer]:
+            - /url: /customers
+          - button "搜索" [ref=f3e164]
+      - generic [ref=f3e165]:
+        - button "合并客户" [ref=f3e166]
+        - generic [ref=f3e167]:
+          - button "导出Excel" [ref=f3e168]
+          - button "下载模板" [ref=f3e169]
+          - button "导入Excel" [ref=f3e170]
+      - table [ref=f3e173]:
+        - rowgroup [ref=f3e174]:
+          - row [ref=f3e175]:
+            - columnheader "序号" [ref=f3e176]
+            - columnheader "客户姓名" [ref=f3e177]
+            - columnheader "电话" [ref=f3e178]
+            - columnheader "联系人" [ref=f3e179]
+            - columnheader "所属单位" [ref=f3e180]
+            - columnheader "地址" [ref=f3e181]
+            - columnheader "星级" [ref=f3e182]
+            - columnheader "累计消费" [ref=f3e183]
+            - columnheader "关联车辆" [ref=f3e184]
+            - columnheader "会员" [ref=f3e185]
+            - columnheader "注册时间" [ref=f3e186]
+            - columnheader "操作" [ref=f3e187]
+        - rowgroup [ref=f3e188]:
+          - row [ref=f3e189]:
+            - cell "1" [ref=f3e190]
+            - cell "冒烟测试客户" [ref=f3e191]
+            - cell "19911112222" [ref=f3e192]
+            - cell "-" [ref=f3e193]
+            - cell "-" [ref=f3e194]
+            - cell "-" [ref=f3e195]
+            - cell "★☆☆☆☆" [ref=f3e196]
+            - cell "¥0.00" [ref=f3e197]
+            - cell "-" [ref=f3e198]
+            - cell [ref=f3e199]:
+              - link "+ 办理会员" [ref=f3e200] [cursor=pointer]:
+                - /url: /members/new?customer_id=4026f7ab-ba93-43a9-8905-063136fca4be
+            - cell "2026/08/02 21:25" [ref=f3e201]
+            - cell [ref=f3e202]:
+              - generic [ref=f3e203]:
+                - link "查看" [ref=f3e204] [cursor=pointer]:
+                  - /url: /customers/4026f7ab-ba93-43a9-8905-063136fca4be
+                - link "编辑" [ref=f3e205] [cursor=pointer]:
+                  - /url: /customers/4026f7ab-ba93-43a9-8905-063136fca4be/edit
+                - button "删除" [ref=f3e206]
+          - row [ref=f3e207]:
+            - cell "2" [ref=f3e208]
+            - cell "田先生" [ref=f3e209]
+            - cell "19274516594" [ref=f3e210]
+            - cell "-" [ref=f3e211]
+            - cell "-" [ref=f3e212]
+            - cell "-" [ref=f3e213]
+            - cell "★☆☆☆☆" [ref=f3e214]
+            - cell "¥0.00" [ref=f3e215]
+            - cell "-" [ref=f3e216]
+            - cell [ref=f3e217]:
+              - link "+ 办理会员" [ref=f3e218] [cursor=pointer]:
+                - /url: /members/new?customer_id=eaa85755-71b4-4010-ad93-c475f9cd9a43
+            - cell "2026/05/22 16:01" [ref=f3e219]
+            - cell [ref=f3e220]:
+              - generic [ref=f3e221]:
+                - link "查看" [ref=f3e222] [cursor=pointer]:
+                  - /url: /customers/eaa85755-71b4-4010-ad93-c475f9cd9a43
+                - link "编辑" [ref=f3e223] [cursor=pointer]:
+                  - /url: /customers/eaa85755-71b4-4010-ad93-c475f9cd9a43/edit
+                - button "删除" [ref=f3e224]
+          - row [ref=f3e225]:
+            - cell "3" [ref=f3e226]
+            - cell "张然男" [ref=f3e227]
+            - cell "13945190181" [ref=f3e228]
+            - cell "-" [ref=f3e229]
+            - cell "-" [ref=f3e230]
+            - cell "-" [ref=f3e231]
+            - cell "★☆☆☆☆" [ref=f3e232]
+            - cell "¥0.00" [ref=f3e233]
+            - cell [ref=f3e234]:
+              - link "黑A9HN25" [ref=f3e237] [cursor=pointer]:
+                - /url: /vehicles/6fc1132f-da35-4a64-833a-59b6edd834c0/edit
+            - cell [ref=f3e238]:
+              - link "+ 办理会员" [ref=f3e239] [cursor=pointer]:
+                - /url: /members/new?customer_id=f9adecef-475b-48fe-bf11-8187faf2efc6
+            - cell "2026/05/21 07:49" [ref=f3e240]
+            - cell [ref=f3e241]:
+              - generic [ref=f3e242]:
+                - link "查看" [ref=f3e243] [cursor=pointer]:
+                  - /url: /customers/f9adecef-475b-48fe-bf11-8187faf2efc6
+                - link "编辑" [ref=f3e244] [cursor=pointer]:
+                  - /url: /customers/f9adecef-475b-48fe-bf11-8187faf2efc6/edit
+                - button "删除" [ref=f3e245]
+          - row [ref=f3e246]:
+            - cell "4" [ref=f3e247]
+            - cell "1" [ref=f3e248]
+            - cell "18210814578" [ref=f3e249]
+            - cell "-" [ref=f3e250]
+            - cell "-" [ref=f3e251]
+            - cell "-" [ref=f3e252]
+            - cell "★☆☆☆☆" [ref=f3e253]
+            - cell "¥0.00" [ref=f3e254]
+            - cell [ref=f3e255]:
+              - link "黑A3W0S1" [ref=f3e258] [cursor=pointer]:
+                - /url: /vehicles/dd51ba3f-4bcc-469b-89de-33900f15c566/edit
+            - cell [ref=f3e259]:
+              - link "+ 办理会员" [ref=f3e260] [cursor=pointer]:
+                - /url: /members/new?customer_id=307cc1e3-2d3f-4663-bed8-ad127707d967
+            - cell "2026/05/20 21:32" [ref=f3e261]
+            - cell [ref=f3e262]:
+              - generic [ref=f3e263]:
+                - link "查看" [ref=f3e264] [cursor=pointer]:
+                  - /url: /customers/307cc1e3-2d3f-4663-bed8-ad127707d967
+                - link "编辑" [ref=f3e265] [cursor=pointer]:
+                  - /url: /customers/307cc1e3-2d3f-4663-bed8-ad127707d967/edit
+                - button "删除" [ref=f3e266]
+          - row [ref=f3e267]:
+            - cell "5" [ref=f3e268]
+            - cell "未填" [ref=f3e269]
+            - cell "15084666119" [ref=f3e270]
+            - cell "-" [ref=f3e271]
+            - cell "-" [ref=f3e272]
+            - cell "-" [ref=f3e273]
+            - cell "★☆☆☆☆" [ref=f3e274]
+            - cell "¥0.00" [ref=f3e275]
+            - cell [ref=f3e276]:
+              - generic [ref=f3e277]:
+                - generic [ref=f3e278]:
+                  - link "黑AM0366" [ref=f3e279] [cursor=pointer]:
+                    - /url: /vehicles/5ffd3770-7e87-4105-be85-e925fa64c153/edit
+                  - text: ","
+                - generic [ref=f3e280]:
+                  - link "黑A8P3R7" [ref=f3e281] [cursor=pointer]:
+                    - /url: /vehicles/1608cc06-d65f-4da1-86f0-165661d872c5/edit
+                  - text: ","
+                - generic [ref=f3e282]:
+                  - link "黑A0W0K9" [ref=f3e283] [cursor=pointer]:
+                    - /url: /vehicles/07a1cc1a-33bf-4576-ba55-62018bb8797e/edit
+                  - text: ","
+                - generic [ref=f3e284]:
+                  - link "黑A1Q5U0" [ref=f3e285] [cursor=pointer]:
+                    - /url: /vehicles/43d76e1a-c6e3-49ef-a7c6-56fa81e87172/edit
+                  - text: ","
+                - link "黑AB557H" [ref=f3e287] [cursor=pointer]:
+                  - /url: /vehicles/cea08e89-1143-4f80-bb26-851124d4e01b/edit
+            - cell [ref=f3e288]:
+              - link "+ 办理会员" [ref=f3e289] [cursor=pointer]:
+                - /url: /members/new?customer_id=ce9ca59b-ab64-44c7-9706-cc3e66973545
+            - cell "2026/05/20 21:32" [ref=f3e290]
+            - cell [ref=f3e291]:
+              - generic [ref=f3e292]:
+                - link "查看" [ref=f3e293] [cursor=pointer]:
+                  - /url: /customers/ce9ca59b-ab64-44c7-9706-cc3e66973545
+                - link "编辑" [ref=f3e294] [cursor=pointer]:
+                  - /url: /customers/ce9ca59b-ab64-44c7-9706-cc3e66973545/edit
+                - button "删除" [ref=f3e295]
+          - row [ref=f3e296]:
+            - cell "6" [ref=f3e297]
+            - cell "王晓东（37°爱）" [ref=f3e298]
+            - cell "18745873737" [ref=f3e299]
+            - cell "-" [ref=f3e300]
+            - cell "-" [ref=f3e301]
+            - cell "-" [ref=f3e302]
+            - cell "★☆☆☆☆" [ref=f3e303]
+            - cell "¥0.00" [ref=f3e304]
+            - cell [ref=f3e305]:
+              - generic [ref=f3e306]:
+                - generic [ref=f3e307]:
+                  - link "黑A3RT66" [ref=f3e308] [cursor=pointer]:
+                    - /url: /vehicles/7bcb8a03-113c-403a-a4e4-1cc5caf9f247/edit
+                  - text: ","
+                - generic [ref=f3e309]:
+                  - link "黑A069U0" [ref=f3e310] [cursor=pointer]:
+                    - /url: /vehicles/bdb4c50c-2776-4f87-be96-f94441b61fdd/edit
+                  - text: ","
+                - link "黑L9306D" [ref=f3e312] [cursor=pointer]:
+                  - /url: /vehicles/6256569d-d77f-4828-a7ab-aa2a9929620d/edit
+            - cell [ref=f3e313]:
+              - link "+ 办理会员" [ref=f3e314] [cursor=pointer]:
+                - /url: /members/new?customer_id=36bfafde-e8cd-439a-a80b-9e017729dba5
+            - cell "2026/05/20 21:32" [ref=f3e315]
+            - cell [ref=f3e316]:
+              - generic [ref=f3e317]:
+                - link "查看" [ref=f3e318] [cursor=pointer]:
+                  - /url: /customers/36bfafde-e8cd-439a-a80b-9e017729dba5
+                - link "编辑" [ref=f3e319] [cursor=pointer]:
+                  - /url: /customers/36bfafde-e8cd-439a-a80b-9e017729dba5/edit
+                - button "删除" [ref=f3e320]
+          - row [ref=f3e321]:
+            - cell "7" [ref=f3e322]
+            - cell "黑A762M1" [ref=f3e323]
+            - cell "13846074211" [ref=f3e324]
+            - cell "-" [ref=f3e325]
+            - cell "-" [ref=f3e326]
+            - cell "-" [ref=f3e327]
+            - cell "★☆☆☆☆" [ref=f3e328]
+            - cell "¥0.00" [ref=f3e329]
+            - cell [ref=f3e330]:
+              - link "黑A762M1" [ref=f3e333] [cursor=pointer]:
+                - /url: /vehicles/323895b1-09bd-4b8b-bcf1-486caed04f56/edit
+            - cell [ref=f3e334]:
+              - link "+ 办理会员" [ref=f3e335] [cursor=pointer]:
+                - /url: /members/new?customer_id=9a55da79-d049-4d8d-8bf6-6b1bd9bdea73
+            - cell "2026/05/20 21:32" [ref=f3e336]
+            - cell [ref=f3e337]:
+              - generic [ref=f3e338]:
+                - link "查看" [ref=f3e339] [cursor=pointer]:
+                  - /url: /customers/9a55da79-d049-4d8d-8bf6-6b1bd9bdea73
+                - link "编辑" [ref=f3e340] [cursor=pointer]:
+                  - /url: /customers/9a55da79-d049-4d8d-8bf6-6b1bd9bdea73/edit
+                - button "删除" [ref=f3e341]
+          - row [ref=f3e342]:
+            - cell "8" [ref=f3e343]
+            - cell "zw" [ref=f3e344]
+            - cell "18645116886" [ref=f3e345]
+            - cell "-" [ref=f3e346]
+            - cell "-" [ref=f3e347]
+            - cell "-" [ref=f3e348]
+            - cell "★☆☆☆☆" [ref=f3e349]
+            - cell "¥0.00" [ref=f3e350]
+            - cell [ref=f3e351]:
+              - link "黑A6AJ66" [ref=f3e354] [cursor=pointer]:
+                - /url: /vehicles/e1cbb086-c52d-4be7-a375-93784f1fa550/edit
+            - cell [ref=f3e355]:
+              - link "+ 办理会员" [ref=f3e356] [cursor=pointer]:
+                - /url: /members/new?customer_id=069057a5-2fa1-4aff-847f-43fd8b91afcb
+            - cell "2026/05/20 21:32" [ref=f3e357]
+            - cell [ref=f3e358]:
+              - generic [ref=f3e359]:
+                - link "查看" [ref=f3e360] [cursor=pointer]:
+                  - /url: /customers/069057a5-2fa1-4aff-847f-43fd8b91afcb
+                - link "编辑" [ref=f3e361] [cursor=pointer]:
+                  - /url: /customers/069057a5-2fa1-4aff-847f-43fd8b91afcb/edit
+                - button "删除" [ref=f3e362]
+          - row [ref=f3e363]:
+            - cell "9" [ref=f3e364]
+            - cell "唐先生" [ref=f3e365]
+            - cell "13766935765" [ref=f3e366]
+            - cell "-" [ref=f3e367]
+            - cell "-" [ref=f3e368]
+            - cell "-" [ref=f3e369]
+            - cell "★☆☆☆☆" [ref=f3e370]
+            - cell "¥0.00" [ref=f3e371]
+            - cell [ref=f3e372]:
+              - link "黑A2KJ65" [ref=f3e375] [cursor=pointer]:
+                - /url: /vehicles/2f0b7bd6-8db9-4274-bfd7-4fdc48e2ad10/edit
+            - cell [ref=f3e376]:
+              - link "+ 办理会员" [ref=f3e377] [cursor=pointer]:
+                - /url: /members/new?customer_id=4ed74859-032a-4800-85a8-07ff3b7ea1f2
+            - cell "2026/05/20 21:32" [ref=f3e378]
+            - cell [ref=f3e379]:
+              - generic [ref=f3e380]:
+                - link "查看" [ref=f3e381] [cursor=pointer]:
+                  - /url: /customers/4ed74859-032a-4800-85a8-07ff3b7ea1f2
+                - link "编辑" [ref=f3e382] [cursor=pointer]:
+                  - /url: /customers/4ed74859-032a-4800-85a8-07ff3b7ea1f2/edit
+                - button "删除" [ref=f3e383]
+          - row [ref=f3e384]:
+            - cell "10" [ref=f3e385]
+            - cell "1" [ref=f3e386]
+            - cell "18545879456" [ref=f3e387]
+            - cell "-" [ref=f3e388]
+            - cell "-" [ref=f3e389]
+            - cell "-" [ref=f3e390]
+            - cell "★☆☆☆☆" [ref=f3e391]
+            - cell "¥0.00" [ref=f3e392]
+            - cell [ref=f3e393]:
+              - link "浙DN879S" [ref=f3e396] [cursor=pointer]:
+                - /url: /vehicles/405d9e0d-4419-44cd-ab2d-36203b8847de/edit
+            - cell [ref=f3e397]:
+              - link "+ 办理会员" [ref=f3e398] [cursor=pointer]:
+                - /url: /members/new?customer_id=b6f2a9f6-9884-4a86-a082-26766315082f
+            - cell "2026/05/20 21:32" [ref=f3e399]
+            - cell [ref=f3e400]:
+              - generic [ref=f3e401]:
+                - link "查看" [ref=f3e402] [cursor=pointer]:
+                  - /url: /customers/b6f2a9f6-9884-4a86-a082-26766315082f
+                - link "编辑" [ref=f3e403] [cursor=pointer]:
+                  - /url: /customers/b6f2a9f6-9884-4a86-a082-26766315082f/edit
+                - button "删除" [ref=f3e404]
+          - row [ref=f3e405]:
+            - cell "11" [ref=f3e406]
+            - cell "1" [ref=f3e407]
+            - cell "17053769111" [ref=f3e408]
+            - cell "-" [ref=f3e409]
+            - cell "-" [ref=f3e410]
+            - cell "-" [ref=f3e411]
+            - cell "★☆☆☆☆" [ref=f3e412]
+            - cell "¥0.00" [ref=f3e413]
+            - cell [ref=f3e414]:
+              - link "黑A1B9G3" [ref=f3e417] [cursor=pointer]:
+                - /url: /vehicles/8afc8038-bbc6-41e0-b4a5-05a3e89b6fe1/edit
+            - cell [ref=f3e418]:
+              - link "+ 办理会员" [ref=f3e419] [cursor=pointer]:
+                - /url: /members/new?customer_id=317b28cb-7c38-4333-9c6b-0b0c4437ef1d
+            - cell "2026/05/20 21:32" [ref=f3e420]
+            - cell [ref=f3e421]:
+              - generic [ref=f3e422]:
+                - link "查看" [ref=f3e423] [cursor=pointer]:
+                  - /url: /customers/317b28cb-7c38-4333-9c6b-0b0c4437ef1d
+                - link "编辑" [ref=f3e424] [cursor=pointer]:
+                  - /url: /customers/317b28cb-7c38-4333-9c6b-0b0c4437ef1d/edit
+                - button "删除" [ref=f3e425]
+          - row [ref=f3e426]:
+            - cell "12" [ref=f3e427]
+            - cell "许先生" [ref=f3e428]
+            - cell "18746164365" [ref=f3e429]
+            - cell "-" [ref=f3e430]
+            - cell "-" [ref=f3e431]
+            - cell "-" [ref=f3e432]
+            - cell "★☆☆☆☆" [ref=f3e433]
+            - cell "¥0.00" [ref=f3e434]
+            - cell [ref=f3e435]:
+              - generic [ref=f3e436]:
+                - generic [ref=f3e437]:
+                  - link "黑AU1H32" [ref=f3e438] [cursor=pointer]:
+                    - /url: /vehicles/71c1d844-793b-4149-a5ca-2371fe7bc1d6/edit
+                  - text: ","
+                - generic [ref=f3e439]:
+                  - link "黑A516N8" [ref=f3e440] [cursor=pointer]:
+                    - /url: /vehicles/ee5d3091-a28e-4e83-8009-2fee2e55d446/edit
+                  - text: ","
+                - generic [ref=f3e441]:
+                  - link "黑A196P7" [ref=f3e442] [cursor=pointer]:
+                    - /url: /vehicles/5907c396-2c89-44f9-8863-75990cb36c72/edit
+                  - text: ","
+                - link "黑AQ6F62" [ref=f3e444] [cursor=pointer]:
+                  - /url: /vehicles/8068912a-745c-42fa-8c8a-58ab7a13dbf2/edit
+            - cell [ref=f3e445]:
+              - link "+ 办理会员" [ref=f3e446] [cursor=pointer]:
+                - /url: /members/new?customer_id=c81a0eea-f297-407d-a572-a25b7ec07238
+            - cell "2026/05/20 21:32" [ref=f3e447]
+            - cell [ref=f3e448]:
+              - generic [ref=f3e449]:
+                - link "查看" [ref=f3e450] [cursor=pointer]:
+                  - /url: /customers/c81a0eea-f297-407d-a572-a25b7ec07238
+                - link "编辑" [ref=f3e451] [cursor=pointer]:
+                  - /url: /customers/c81a0eea-f297-407d-a572-a25b7ec07238/edit
+                - button "删除" [ref=f3e452]
+          - row [ref=f3e453]:
+            - cell "13" [ref=f3e454]
+            - cell "未填" [ref=f3e455]
+            - cell "15945125459" [ref=f3e456]
+            - cell "-" [ref=f3e457]
+            - cell "-" [ref=f3e458]
+            - cell "-" [ref=f3e459]
+            - cell "★☆☆☆☆" [ref=f3e460]
+            - cell "¥0.00" [ref=f3e461]
+            - cell [ref=f3e462]:
+              - generic [ref=f3e463]:
+                - generic [ref=f3e464]:
+                  - link "黑A12H34" [ref=f3e465] [cursor=pointer]:
+                    - /url: /vehicles/c8d7f318-729c-494c-96e5-8df0e0018ae8/edit
+                  - text: ","
+                - link "黑A072ZG" [ref=f3e467] [cursor=pointer]:
+                  - /url: /vehicles/c9114515-f8a6-425e-9c35-3077152db1ca/edit
+            - cell [ref=f3e468]:
+              - link "+ 办理会员" [ref=f3e469] [cursor=pointer]:
+                - /url: /members/new?customer_id=4e8ac956-5130-48ca-9d2d-ee340afa4761
+            - cell "2026/05/20 21:32" [ref=f3e470]
+            - cell [ref=f3e471]:
+              - generic [ref=f3e472]:
+                - link "查看" [ref=f3e473] [cursor=pointer]:
+                  - /url: /customers/4e8ac956-5130-48ca-9d2d-ee340afa4761
+                - link "编辑" [ref=f3e474] [cursor=pointer]:
+                  - /url: /customers/4e8ac956-5130-48ca-9d2d-ee340afa4761/edit
+                - button "删除" [ref=f3e475]
+          - row [ref=f3e476]:
+            - cell "14" [ref=f3e477]
+            - cell "马英奇" [ref=f3e478]
+            - cell "18845028518" [ref=f3e479]
+            - cell "-" [ref=f3e480]
+            - cell "-" [ref=f3e481]
+            - cell "-" [ref=f3e482]
+            - cell "★☆☆☆☆" [ref=f3e483]
+            - cell "¥0.00" [ref=f3e484]
+            - cell [ref=f3e485]:
+              - generic [ref=f3e486]:
+                - generic [ref=f3e487]:
+                  - link "黑A9C8D7" [ref=f3e488] [cursor=pointer]:
+                    - /url: /vehicles/1ff88ebc-e9e0-43f9-b21b-d1d356d755b8/edit
+                  - text: ","
+                - generic [ref=f3e489]:
+                  - link "黑A96B7R" [ref=f3e490] [cursor=pointer]:
+                    - /url: /vehicles/d9a6c848-36ba-4be7-a5cd-ff91fa866ad8/edit
+                  - text: ","
+                - generic [ref=f3e491]:
+                  - link "黑A8T51H" [ref=f3e492] [cursor=pointer]:
+                    - /url: /vehicles/c5e30897-ff82-49e1-84fb-dde67c73e986/edit
+                  - text: ","
+                - generic [ref=f3e493]:
+                  - link "黑AK5B55" [ref=f3e494] [cursor=pointer]:
+                    - /url: /vehicles/e92feb40-a0e6-4ff2-81b3-364ad40e281e/edit
+                  - text: ","
+                - generic [ref=f3e495]:
+                  - link "黑D6653C" [ref=f3e496] [cursor=pointer]:
+                    - /url: /vehicles/cfd4012d-c590-496c-9bba-289f2120975d/edit
+                  - text: ","
+                - generic [ref=f3e497]:
+                  - link "黑AM878M" [ref=f3e498] [cursor=pointer]:
+                    - /url: /vehicles/a49f18bb-e6fd-49a7-91c2-e1a405a2c587/edit
+                  - text: ","
+                - generic [ref=f3e499]:
+                  - link "辽AF2T86" [ref=f3e500] [cursor=pointer]:
+                    - /url: /vehicles/44e69a3e-2982-4040-8475-95f0cb902b5c/edit
+                  - text: ","
+                - generic [ref=f3e501]:
+                  - link "黑A676T2" [ref=f3e502] [cursor=pointer]:
+                    - /url: /vehicles/0827909f-f9ed-4e26-ae35-4891344662eb/edit
+                  - text: ","
+                - link "黑A922K2" [ref=f3e504] [cursor=pointer]:
+                  - /url: /vehicles/3ee3fcb1-59db-4fbb-b0a2-c28371e4d5c9/edit
+            - cell [ref=f3e505]:
+              - link "+ 办理会员" [ref=f3e506] [cursor=pointer]:
+                - /url: /members/new?customer_id=8f68f0b8-7be1-4d5a-8dc9-91043cfc0abb
+            - cell "2026/05/20 21:32" [ref=f3e507]
+            - cell [ref=f3e508]:
+              - generic [ref=f3e509]:
+                - link "查看" [ref=f3e510] [cursor=pointer]:
+                  - /url: /customers/8f68f0b8-7be1-4d5a-8dc9-91043cfc0abb
+                - link "编辑" [ref=f3e511] [cursor=pointer]:
+                  - /url: /customers/8f68f0b8-7be1-4d5a-8dc9-91043cfc0abb/edit
+                - button "删除" [ref=f3e512]
+          - row [ref=f3e513]:
+            - cell "15" [ref=f3e514]
+            - cell "ZW" [ref=f3e515]
+            - cell "18249000051" [ref=f3e516]
+            - cell "-" [ref=f3e517]
+            - cell "-" [ref=f3e518]
+            - cell "-" [ref=f3e519]
+            - cell "★☆☆☆☆" [ref=f3e520]
+            - cell "¥0.00" [ref=f3e521]
+            - cell [ref=f3e522]:
+              - link "黑AR036Y" [ref=f3e525] [cursor=pointer]:
+                - /url: /vehicles/99506c14-a04c-43b0-9cb1-7902e7216c85/edit
+            - cell [ref=f3e526]:
+              - link "+ 办理会员" [ref=f3e527] [cursor=pointer]:
+                - /url: /members/new?customer_id=6b9590aa-fef0-4b27-9f30-fb990a59db48
+            - cell "2026/05/20 21:32" [ref=f3e528]
+            - cell [ref=f3e529]:
+              - generic [ref=f3e530]:
+                - link "查看" [ref=f3e531] [cursor=pointer]:
+                  - /url: /customers/6b9590aa-fef0-4b27-9f30-fb990a59db48
+                - link "编辑" [ref=f3e532] [cursor=pointer]:
+                  - /url: /customers/6b9590aa-fef0-4b27-9f30-fb990a59db48/edit
+                - button "删除" [ref=f3e533]
+          - row [ref=f3e534]:
+            - cell "16" [ref=f3e535]
+            - cell "zw" [ref=f3e536]
+            - cell "15246625309" [ref=f3e537]
+            - cell "-" [ref=f3e538]
+            - cell "-" [ref=f3e539]
+            - cell "-" [ref=f3e540]
+            - cell "★☆☆☆☆" [ref=f3e541]
+            - cell "¥0.00" [ref=f3e542]
+            - cell [ref=f3e543]:
+              - link "京Q6QE97" [ref=f3e546] [cursor=pointer]:
+                - /url: /vehicles/ad299466-d27a-4df2-8728-77505723d939/edit
+            - cell [ref=f3e547]:
+              - link "+ 办理会员" [ref=f3e548] [cursor=pointer]:
+                - /url: /members/new?customer_id=7d793fb1-16a4-45b9-becc-3d057c769471
+            - cell "2026/05/20 21:32" [ref=f3e549]
+            - cell [ref=f3e550]:
+              - generic [ref=f3e551]:
+                - link "查看" [ref=f3e552] [cursor=pointer]:
+                  - /url: /customers/7d793fb1-16a4-45b9-becc-3d057c769471
+                - link "编辑" [ref=f3e553] [cursor=pointer]:
+                  - /url: /customers/7d793fb1-16a4-45b9-becc-3d057c769471/edit
+                - button "删除" [ref=f3e554]
+          - row [ref=f3e555]:
+            - cell "17" [ref=f3e556]
+            - cell "zw" [ref=f3e557]
+            - cell "15646566668" [ref=f3e558]
+            - cell "-" [ref=f3e559]
+            - cell "-" [ref=f3e560]
+            - cell "-" [ref=f3e561]
+            - cell "★☆☆☆☆" [ref=f3e562]
+            - cell "¥0.00" [ref=f3e563]
+            - cell [ref=f3e564]:
+              - link "黑A7Z968" [ref=f3e567] [cursor=pointer]:
+                - /url: /vehicles/d014e861-1544-41ed-bd4a-26cd8cbc677e/edit
+            - cell [ref=f3e568]:
+              - link "+ 办理会员" [ref=f3e569] [cursor=pointer]:
+                - /url: /members/new?customer_id=c68be8e0-e5a5-461b-88a7-ab387af06aea
+            - cell "2026/05/20 21:32" [ref=f3e570]
+            - cell [ref=f3e571]:
+              - generic [ref=f3e572]:
+                - link "查看" [ref=f3e573] [cursor=pointer]:
+                  - /url: /customers/c68be8e0-e5a5-461b-88a7-ab387af06aea
+                - link "编辑" [ref=f3e574] [cursor=pointer]:
+                  - /url: /customers/c68be8e0-e5a5-461b-88a7-ab387af06aea/edit
+                - button "删除" [ref=f3e575]
+          - row [ref=f3e576]:
+            - cell "18" [ref=f3e577]
+            - cell "zw" [ref=f3e578]
+            - cell "17858666613" [ref=f3e579]
+            - cell "-" [ref=f3e580]
+            - cell "-" [ref=f3e581]
+            - cell "-" [ref=f3e582]
+            - cell "★☆☆☆☆" [ref=f3e583]
+            - cell "¥0.00" [ref=f3e584]
+            - cell [ref=f3e585]:
+              - link "浙BB2V32" [ref=f3e588] [cursor=pointer]:
+                - /url: /vehicles/fabe4518-c243-457d-b2fe-589d30cacd35/edit
+            - cell [ref=f3e589]:
+              - link "+ 办理会员" [ref=f3e590] [cursor=pointer]:
+                - /url: /members/new?customer_id=41d75a81-693b-4e5b-bba0-ef01dc831fee
+            - cell "2026/05/20 21:32" [ref=f3e591]
+            - cell [ref=f3e592]:
+              - generic [ref=f3e593]:
+                - link "查看" [ref=f3e594] [cursor=pointer]:
+                  - /url: /customers/41d75a81-693b-4e5b-bba0-ef01dc831fee
+                - link "编辑" [ref=f3e595] [cursor=pointer]:
+                  - /url: /customers/41d75a81-693b-4e5b-bba0-ef01dc831fee/edit
+                - button "删除" [ref=f3e596]
+          - row [ref=f3e597]:
+            - cell "19" [ref=f3e598]
+            - cell "赵" [ref=f3e599]
+            - cell "13633614433" [ref=f3e600]
+            - cell "-" [ref=f3e601]
+            - cell "-" [ref=f3e602]
+            - cell "-" [ref=f3e603]
+            - cell "★☆☆☆☆" [ref=f3e604]
+            - cell "¥0.00" [ref=f3e605]
+            - cell "-" [ref=f3e606]
+            - cell [ref=f3e607]:
+              - link "+ 办理会员" [ref=f3e608] [cursor=pointer]:
+                - /url: /members/new?customer_id=9c7aa30d-c32a-464c-a8aa-6cf95f459f56
+            - cell "2026/05/20 21:32" [ref=f3e609]
+            - cell [ref=f3e610]:
+              - generic [ref=f3e611]:
+                - link "查看" [ref=f3e612] [cursor=pointer]:
+                  - /url: /customers/9c7aa30d-c32a-464c-a8aa-6cf95f459f56
+                - link "编辑" [ref=f3e613] [cursor=pointer]:
+                  - /url: /customers/9c7aa30d-c32a-464c-a8aa-6cf95f459f56/edit
+                - button "删除" [ref=f3e614]
+          - row [ref=f3e615]:
+            - cell "20" [ref=f3e616]
+            - cell "WJB40400" [ref=f3e617]
+            - cell "13613678369" [ref=f3e618]
+            - cell "-" [ref=f3e619]
+            - cell "-" [ref=f3e620]
+            - cell "-" [ref=f3e621]
+            - cell "★☆☆☆☆" [ref=f3e622]
+            - cell "¥0.00" [ref=f3e623]
+            - cell [ref=f3e624]:
+              - link "WJB40400" [ref=f3e627] [cursor=pointer]:
+                - /url: /vehicles/572124c3-f7e4-4168-864f-de0b84f5bcd6/edit
+            - cell [ref=f3e628]:
+              - link "+ 办理会员" [ref=f3e629] [cursor=pointer]:
+                - /url: /members/new?customer_id=5b37cfef-7a4e-47c1-82c6-68e6dd6dff4f
+            - cell "2026/05/20 21:32" [ref=f3e630]
+            - cell [ref=f3e631]:
+              - generic [ref=f3e632]:
+                - link "查看" [ref=f3e633] [cursor=pointer]:
+                  - /url: /customers/5b37cfef-7a4e-47c1-82c6-68e6dd6dff4f
+                - link "编辑" [ref=f3e634] [cursor=pointer]:
+                  - /url: /customers/5b37cfef-7a4e-47c1-82c6-68e6dd6dff4f/edit
+                - button "删除" [ref=f3e635]
+      - generic [ref=f3e636]:
+        - generic [ref=f3e637]: 共 12369 条，第 1/619 页
+        - generic [ref=f3e638]:
+          - link "上一页":
+            - /url: /customers?page=1
+          - generic [ref=f3e639]: 1 / 619
+          - link "下一页" [ref=f3e640] [cursor=pointer]:
+            - /url: /customers?page=2
+          - generic [ref=f3e641]:
+            - generic [ref=f3e642]: 跳转到
+            - spinbutton [ref=f3e643]: "1"
+            - button "确定" [ref=f3e644]
+  - alert [ref=f3e144]

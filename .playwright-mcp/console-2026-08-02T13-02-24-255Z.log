@@ -1,0 +1,8 @@
+[    1915ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://www.chromium.org/developers/design-documents/create-amazing-password-forms) %o @ http://localhost:3000/login:0
+[    2873ms] [ERROR] Failed to load resource: the server responded with a status of 400 () @ https://eyyhcdoftwhhpexteuvz.supabase.co/auth/v1/token?grant_type=refresh_token:0
+[    2875ms] [ERROR] AuthApiError: Invalid Refresh Token: Refresh Token Not Found
+    at t8 (http://localhost:3000/_next/static/chunks/0eq_bby.s6bxr.js:24:42715)
+    at async t4 (http://localhost:3000/_next/static/chunks/0eq_bby.s6bxr.js:24:43659)
+    at async t3 (http://localhost:3000/_next/static/chunks/0eq_bby.s6bxr.js:24:43099)
+    at async r (http://localhost:3000/_next/static/chunks/0eq_bby.s6bxr.js:37:25084)
+    at async http://localhost:3000/_next/static/chunks/0eq_bby.s6bxr.js:37:25347 @ http://localhost:3000/_next/static/chunks/0eq_bby.s6bxr.js:36

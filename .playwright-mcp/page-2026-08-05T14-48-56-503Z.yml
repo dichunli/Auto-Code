@@ -1,0 +1,18 @@
+- generic [active] [ref=f2e1]:
+  - main [ref=f2e2]:
+    - generic [ref=f2e4]:
+      - generic [ref=f2e5]:
+        - generic [ref=f2e6]: 修
+        - heading "汽修管家" [level=1] [ref=f2e8]
+      - generic [ref=f2e9]: "当前环境: 浏览器"
+      - generic [ref=f2e10]:
+        - generic [ref=f2e11]:
+          - generic [ref=f2e12]: 手机号 / 邮箱
+          - textbox "请输入手机号或邮箱" [ref=f2e13]: "19900001111"
+        - generic [ref=f2e14]:
+          - generic [ref=f2e15]: 密码
+          - textbox "请输入密码" [ref=f2e16]: test123456
+        - button "登录" [ref=f2e17] [cursor=pointer]
+      - generic [ref=f2e18]: 首次使用请在 Supabase 控制台创建用户
+  - button "Open Next.js Dev Tools" [ref=f2e24] [cursor=pointer]
+  - alert [ref=f2e28]

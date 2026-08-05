@@ -1,0 +1,6 @@
+[    1566ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[    2364ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[    2663ms] [LOG] [Fast Refresh] done in 299ms @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[    2736ms] [LOG] [Fast Refresh] done in 372ms @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[    4448ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[    4531ms] [LOG] [HMR] connected @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27

@@ -1,0 +1,190 @@
+- generic [ref=f4e1]:
+  - complementary [ref=f4e2]:
+    - link "修 汽修管家" [ref=f4e4] [cursor=pointer]:
+      - /url: /
+      - generic [ref=f4e5]: 修
+      - generic [ref=f4e7]: 汽修管家
+    - navigation [ref=f4e8]:
+      - link "仪表盘" [ref=f4e9] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f4e10]:
+        - button "工单管理" [ref=f4e11]
+        - generic [ref=f4e15]:
+          - link "在修工单 18" [ref=f4e16] [cursor=pointer]:
+            - /url: /work-orders?status=active
+            - generic [ref=f4e17]: 在修工单
+            - generic [ref=f4e18]: "18"
+          - link "历史工单" [ref=f4e19] [cursor=pointer]:
+            - /url: /work-orders?status=history
+          - link "预约单" [ref=f4e21] [cursor=pointer]:
+            - /url: /work-orders?type=appointment
+          - link "历史报价单 1" [ref=f4e23] [cursor=pointer]:
+            - /url: /work-orders?type=quote
+            - generic [ref=f4e24]: 历史报价单
+            - generic [ref=f4e25]: "1"
+          - link "保养工单 6" [ref=f4e26] [cursor=pointer]:
+            - /url: /work-orders?type=maintenance
+            - generic [ref=f4e27]: 保养工单
+            - generic [ref=f4e28]: "6"
+          - link "作废工单 3" [ref=f4e29] [cursor=pointer]:
+            - /url: /work-orders?type=cancelled
+            - generic [ref=f4e30]: 作废工单
+            - generic [ref=f4e31]: "3"
+          - link "外包服务单" [ref=f4e32] [cursor=pointer]:
+            - /url: /outsource-orders
+          - link "全部工单 28" [ref=f4e34] [cursor=pointer]:
+            - /url: /work-orders?status=all
+            - generic [ref=f4e35]: 全部工单
+            - generic [ref=f4e36]: "28"
+      - button "客户车辆" [ref=f4e38]
+      - link "车型库" [ref=f4e42] [cursor=pointer]:
+        - /url: /vehicle-models
+      - link "客户预约" [ref=f4e43] [cursor=pointer]:
+        - /url: /appointments
+      - button "配件库存" [ref=f4e45]
+      - button "采购管理" [ref=f4e50]
+      - link "物流运单" [ref=f4e54] [cursor=pointer]:
+        - /url: /logistics
+      - button "维修项目" [ref=f4e56]
+      - link "知识库" [ref=f4e60] [cursor=pointer]:
+        - /url: /knowledge
+      - button "培训晋级" [ref=f4e62]
+      - link "工具管理" [ref=f4e66] [cursor=pointer]:
+        - /url: /tools/management
+      - link "员工管理" [ref=f4e67] [cursor=pointer]:
+        - /url: /employees
+      - button "财务管理" [ref=f4e69]
+      - button "报表统计" [ref=f4e74]
+      - link "售后回访" [ref=f4e78] [cursor=pointer]:
+        - /url: /follow-ups
+      - link "操作日志" [ref=f4e79] [cursor=pointer]:
+        - /url: /operation-logs
+      - button "系统设置" [ref=f4e81]
+    - generic [ref=f4e85]:
+      - link "个人信息" [ref=f4e86] [cursor=pointer]:
+        - /url: /profile
+      - button "退出登录" [ref=f4e87]
+  - main [ref=f4e88]:
+    - generic [ref=f4e89]:
+      - generic [ref=f4e90]:
+        - heading "工单管理" [level=1] [ref=f4e91]
+        - link "新建工单" [ref=f4e92] [cursor=pointer]:
+          - /url: /work-orders/new
+      - generic [ref=f4e93]:
+        - generic [ref=f4e94]:
+          - link "全部 18" [ref=f4e95] [cursor=pointer]:
+            - /url: /work-orders?page=1
+            - text: 全部
+            - generic [ref=f4e96]: "18"
+          - link "待诊断 12" [ref=f4e97] [cursor=pointer]:
+            - /url: /work-orders?status=pending_diagnosis&page=1
+            - text: 待诊断
+            - generic [ref=f4e98]: "12"
+          - link "待确认 9" [ref=f4e99] [cursor=pointer]:
+            - /url: /work-orders?status=pending_confirm&page=1
+            - text: 待确认
+            - generic [ref=f4e100]: "9"
+          - link "待派工 1" [ref=f4e247] [cursor=pointer]:
+            - /url: /work-orders?status=pending_dispatch&page=1
+            - text: 待派工
+            - generic [ref=f4e102]: "1"
+          - link "待施工 3" [active] [ref=f4e248] [cursor=pointer]:
+            - /url: /work-orders?status=pending_construction&page=1
+            - text: 待施工
+            - generic [ref=f4e104]: "3"
+          - link "施工中 2" [ref=f4e105] [cursor=pointer]:
+            - /url: /work-orders?status=in_progress&page=1
+            - text: 施工中
+            - generic [ref=f4e106]: "2"
+          - link "已中断 1" [ref=f4e107] [cursor=pointer]:
+            - /url: /work-orders?status=paused&page=1
+            - text: 已中断
+            - generic [ref=f4e108]: "1"
+          - link "待质检" [ref=f4e109] [cursor=pointer]:
+            - /url: /work-orders?status=pending_qc&page=1
+          - link "已完工 4" [ref=f4e110] [cursor=pointer]:
+            - /url: /work-orders?status=completed&page=1
+            - text: 已完工
+            - generic [ref=f4e111]: "4"
+          - link "待结单 2" [ref=f4e112] [cursor=pointer]:
+            - /url: /work-orders?status=pending_close&page=1
+            - text: 待结单
+            - generic [ref=f4e113]: "2"
+          - link "待结算" [ref=f4e114] [cursor=pointer]:
+            - /url: /work-orders?status=pending_settlement&page=1
+          - link "已结算" [ref=f4e115] [cursor=pointer]:
+            - /url: /work-orders?status=history
+        - generic [ref=f4e116]:
+          - generic [ref=f4e117]: 结算状态
+          - generic [ref=f4e118]:
+            - link "全部" [ref=f4e119] [cursor=pointer]:
+              - /url: /work-orders?page=1
+            - link "未结算" [ref=f4e120] [cursor=pointer]:
+              - /url: /work-orders?settlement=unsettled&page=1
+            - link "待结算" [ref=f4e121] [cursor=pointer]:
+              - /url: /work-orders?settlement=pending&page=1
+            - link "已结算" [ref=f4e122] [cursor=pointer]:
+              - /url: /work-orders?settlement=settled&page=1
+        - textbox "搜索工单号、车牌号、VIN、客户名称、电话、单位..." [ref=f4e124]
+        - button "↻ 刷新" [ref=f4e127]
+        - generic [ref=f4e249]:
+          - generic [ref=f4e250]: 工单数据有更新
+          - button "立即刷新" [ref=f4e251]
+          - button "忽略" [ref=f4e252]: ×
+      - generic [ref=f4e128]:
+        - link "列表视图" [ref=f4e129] [cursor=pointer]:
+          - /url: /work-orders
+        - link "维修看板" [ref=f4e130] [cursor=pointer]:
+          - /url: /work-orders/board
+      - generic [ref=f4e131]:
+        - generic [ref=f4e132]:
+          - generic [ref=f4e133] [cursor=pointer]:
+            - generic [ref=f4e134]:
+              - generic [ref=f4e135]:
+                - generic [ref=f4e136]: 黑AR6F10
+                - generic [ref=f4e137]: 哈弗 H6 H6换代 红标
+              - generic [ref=f4e138]: 待施工
+            - generic [ref=f4e139]: WO-20260523-001 · 李元
+            - generic [ref=f4e140]:
+              - generic [ref=f4e253]:
+                - generic [ref=f4e254]:
+                  - text: · 更换变速箱油（自动）
+                  - generic [ref=f4e255]: "[侯俊杰]"
+                - button "开始施工" [ref=f4e258]
+              - generic [ref=f4e259]:
+                - generic [ref=f4e260]:
+                  - text: · 更换分动箱油
+                  - generic [ref=f4e261]: "[曹文浩]"
+                - button "开始施工" [ref=f4e264]
+              - generic [ref=f4e265]:
+                - generic [ref=f4e266]:
+                  - text: · 更换火花塞
+                  - generic [ref=f4e267]: "[迟惠友]"
+                - button "开始施工" [ref=f4e270]
+          - generic [ref=f4e157] [cursor=pointer]:
+            - generic [ref=f4e158]:
+              - generic [ref=f4e159]:
+                - generic [ref=f4e160]: 黑A8Q21U
+                - generic [ref=f4e161]: 大众 帕萨特 帕萨特 330TSI
+              - generic [ref=f4e162]: 待施工
+            - generic [ref=f4e163]: WO-20260512-001 · 暂无
+            - generic [ref=f4e165]:
+              - generic [ref=f4e166]:
+                - text: · 更换机油
+                - generic [ref=f4e271]: "[自动化测试]"
+              - button "开始施工" [ref=f4e272]
+          - generic [ref=f4e273] [cursor=pointer]:
+            - generic [ref=f4e274]:
+              - generic [ref=f4e275]:
+                - generic [ref=f4e276]: 黑A8RB62
+                - generic [ref=f4e277]: 荣威 RX8 RX8
+              - generic [ref=f4e278]: 待施工
+            - generic [ref=f4e279]: WO-20260511-001 · 国先生
+            - generic [ref=f4e281]:
+              - generic [ref=f4e282]:
+                - text: · 更换机油
+                - generic [ref=f4e283]: "[自动化测试]"
+              - button "开始施工" [ref=f4e286]
+        - generic [ref=f4e173]: 共 3 辆
+  - button "Open Next.js Dev Tools" [ref=f4e179] [cursor=pointer]
+  - alert [ref=f4e183]

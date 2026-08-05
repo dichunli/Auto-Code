@@ -1,0 +1,186 @@
+- generic [active] [ref=f7e1]:
+  - complementary [ref=f7e2]:
+    - link "修 汽修管家" [ref=f7e4] [cursor=pointer]:
+      - /url: /
+      - generic [ref=f7e5]: 修
+      - generic [ref=f7e7]: 汽修管家
+    - navigation [ref=f7e8]:
+      - link "仪表盘" [ref=f7e9] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f7e10]:
+        - button "工单管理" [ref=f7e11]
+        - generic [ref=f7e15]:
+          - link "在修工单 18" [ref=f7e16] [cursor=pointer]:
+            - /url: /work-orders?status=active
+            - generic [ref=f7e17]: 在修工单
+            - generic [ref=f7e18]: "18"
+          - link "历史工单" [ref=f7e19] [cursor=pointer]:
+            - /url: /work-orders?status=history
+          - link "预约单" [ref=f7e21] [cursor=pointer]:
+            - /url: /work-orders?type=appointment
+          - link "历史报价单 1" [ref=f7e23] [cursor=pointer]:
+            - /url: /work-orders?type=quote
+            - generic [ref=f7e24]: 历史报价单
+            - generic [ref=f7e25]: "1"
+          - link "保养工单 6" [ref=f7e26] [cursor=pointer]:
+            - /url: /work-orders?type=maintenance
+            - generic [ref=f7e27]: 保养工单
+            - generic [ref=f7e28]: "6"
+          - link "作废工单 3" [ref=f7e29] [cursor=pointer]:
+            - /url: /work-orders?type=cancelled
+            - generic [ref=f7e30]: 作废工单
+            - generic [ref=f7e31]: "3"
+          - link "外包服务单" [ref=f7e32] [cursor=pointer]:
+            - /url: /outsource-orders
+          - link "全部工单 28" [ref=f7e34] [cursor=pointer]:
+            - /url: /work-orders?status=all
+            - generic [ref=f7e35]: 全部工单
+            - generic [ref=f7e36]: "28"
+      - button "客户车辆" [ref=f7e38]
+      - link "车型库" [ref=f7e42] [cursor=pointer]:
+        - /url: /vehicle-models
+      - link "客户预约" [ref=f7e43] [cursor=pointer]:
+        - /url: /appointments
+      - button "配件库存" [ref=f7e45]
+      - button "采购管理" [ref=f7e50]
+      - link "物流运单" [ref=f7e54] [cursor=pointer]:
+        - /url: /logistics
+      - button "维修项目" [ref=f7e56]
+      - link "知识库" [ref=f7e60] [cursor=pointer]:
+        - /url: /knowledge
+      - button "培训晋级" [ref=f7e62]
+      - link "工具管理" [ref=f7e66] [cursor=pointer]:
+        - /url: /tools/management
+      - link "员工管理" [ref=f7e67] [cursor=pointer]:
+        - /url: /employees
+      - button "财务管理" [ref=f7e69]
+      - button "报表统计" [ref=f7e74]
+      - link "售后回访" [ref=f7e78] [cursor=pointer]:
+        - /url: /follow-ups
+      - link "操作日志" [ref=f7e79] [cursor=pointer]:
+        - /url: /operation-logs
+      - button "系统设置" [ref=f7e81]
+    - generic [ref=f7e85]:
+      - link "个人信息" [ref=f7e86] [cursor=pointer]:
+        - /url: /profile
+      - button "退出登录" [ref=f7e87]
+  - main [ref=f7e88]:
+    - generic [ref=f7e89]:
+      - generic [ref=f7e90]:
+        - heading "工单管理" [level=1] [ref=f7e91]
+        - link "新建工单" [ref=f7e92] [cursor=pointer]:
+          - /url: /work-orders/new
+      - generic [ref=f7e93]:
+        - generic [ref=f7e94]:
+          - link "全部 18" [ref=f7e95] [cursor=pointer]:
+            - /url: /work-orders?page=1
+            - text: 全部
+            - generic [ref=f7e96]: "18"
+          - link "待诊断 12" [ref=f7e97] [cursor=pointer]:
+            - /url: /work-orders?status=pending_diagnosis&page=1
+            - text: 待诊断
+            - generic [ref=f7e98]: "12"
+          - link "待确认 8" [ref=f7e99] [cursor=pointer]:
+            - /url: /work-orders?status=pending_confirm&page=1
+            - text: 待确认
+            - generic [ref=f7e100]: "8"
+          - link "待派工 4" [ref=f7e101] [cursor=pointer]:
+            - /url: /work-orders?status=pending_dispatch&page=1
+            - text: 待派工
+            - generic [ref=f7e102]: "4"
+          - link "待施工 2" [ref=f7e103] [cursor=pointer]:
+            - /url: /work-orders?status=pending_construction&page=1
+            - text: 待施工
+            - generic [ref=f7e104]: "2"
+          - link "施工中 2" [ref=f7e105] [cursor=pointer]:
+            - /url: /work-orders?status=in_progress&page=1
+            - text: 施工中
+            - generic [ref=f7e106]: "2"
+          - link "已中断" [ref=f7e107] [cursor=pointer]:
+            - /url: /work-orders?status=paused&page=1
+          - link "待质检" [ref=f7e108] [cursor=pointer]:
+            - /url: /work-orders?status=pending_qc&page=1
+          - link "已完工 4" [ref=f7e109] [cursor=pointer]:
+            - /url: /work-orders?status=completed&page=1
+            - text: 已完工
+            - generic [ref=f7e110]: "4"
+          - link "待结单" [ref=f7e111] [cursor=pointer]:
+            - /url: /work-orders?status=pending_close&page=1
+          - link "待结算" [ref=f7e112] [cursor=pointer]:
+            - /url: /work-orders?status=pending_settlement&page=1
+          - link "已结算" [ref=f7e113] [cursor=pointer]:
+            - /url: /work-orders?status=history
+        - generic [ref=f7e114]:
+          - generic [ref=f7e115]: 结算状态
+          - generic [ref=f7e116]:
+            - link "全部" [ref=f7e117] [cursor=pointer]:
+              - /url: /work-orders?page=1
+            - link "未结算" [ref=f7e118] [cursor=pointer]:
+              - /url: /work-orders?settlement=unsettled&page=1
+            - link "待结算" [ref=f7e119] [cursor=pointer]:
+              - /url: /work-orders?settlement=pending&page=1
+            - link "已结算" [ref=f7e120] [cursor=pointer]:
+              - /url: /work-orders?settlement=settled&page=1
+        - textbox "搜索工单号、车牌号、VIN、客户名称、电话、单位..." [ref=f7e122]
+        - button "↻ 刷新" [ref=f7e125]
+      - generic [ref=f7e126]:
+        - link "列表视图" [ref=f7e127] [cursor=pointer]:
+          - /url: /work-orders
+        - link "维修看板" [ref=f7e128] [cursor=pointer]:
+          - /url: /work-orders/board
+      - generic [ref=f7e129]:
+        - generic [ref=f7e130]:
+          - generic [ref=f7e131] [cursor=pointer]:
+            - generic [ref=f7e132]:
+              - generic [ref=f7e133]:
+                - generic [ref=f7e134]: 黑A8M06V
+                - generic [ref=f7e135]: 大众 大众 宝来 2021 1.4TSI 双离合 280TSI 精英智联版
+              - generic [ref=f7e136]: 施工中
+            - generic [ref=f7e137]: WO20260523005 · 常
+            - generic [ref=f7e139]:
+              - generic [ref=f7e140]:
+                - text: · 清洗喷油嘴（免拆）
+                - generic [ref=f7e141]: "[曹文浩、吴岩、侯俊杰]"
+                - generic [ref=f7e142]: 已施工 4天7小时
+              - generic [ref=f7e144]:
+                - button "中断" [ref=f7e145]
+                - button "完工" [ref=f7e146]
+                - button "取消" [ref=f7e147]
+          - generic [ref=f7e148] [cursor=pointer]:
+            - generic [ref=f7e149]:
+              - generic [ref=f7e150]:
+                - generic [ref=f7e151]: 黑AR6F10
+                - generic [ref=f7e152]: 哈弗 H6 H6换代 红标
+              - generic [ref=f7e153]: 施工中
+            - generic [ref=f7e154]: WO-20260523-001 · 李元
+            - generic [ref=f7e155]:
+              - generic [ref=f7e156]:
+                - generic [ref=f7e157]:
+                  - text: · 更换前差速器油
+                  - generic [ref=f7e158]: "[梁珈瑞]"
+                  - generic [ref=f7e159]: 已施工 17小时30分
+                - generic [ref=f7e161]:
+                  - button "中断" [ref=f7e162]
+                  - button "完工" [ref=f7e163]
+                  - button "取消" [ref=f7e164]
+              - generic [ref=f7e165]:
+                - generic [ref=f7e166]:
+                  - text: · 更换变速箱油（自动）
+                  - generic [ref=f7e167]: "[侯俊杰]"
+                  - generic [ref=f7e168]: 已施工 7小时52分
+                - generic [ref=f7e170]:
+                  - button "中断" [ref=f7e171]
+                  - button "完工" [ref=f7e172]
+                  - button "取消" [ref=f7e173]
+              - generic [ref=f7e174]:
+                - generic [ref=f7e175]:
+                  - text: · 更换助力油
+                  - generic [ref=f7e176]: "[高磊]"
+                  - generic [ref=f7e177]: 已施工 3天
+                - generic [ref=f7e179]:
+                  - button "中断" [ref=f7e180]
+                  - button "完工" [ref=f7e181]
+                  - button "取消" [ref=f7e182]
+        - generic [ref=f7e183]: 共 2 辆
+  - button "Open Next.js Dev Tools" [ref=f7e189] [cursor=pointer]
+  - alert [ref=f7e193]

@@ -1,0 +1,591 @@
+- generic [ref=f4e1]:
+  - complementary [ref=f4e2]:
+    - link "修 汽修管家" [ref=f4e4] [cursor=pointer]:
+      - /url: /
+      - generic [ref=f4e5]: 修
+      - generic [ref=f4e7]: 汽修管家
+    - navigation [ref=f4e8]:
+      - link "仪表盘" [ref=f4e9] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f4e10]:
+        - button "工单管理" [ref=f4e11]
+        - generic [ref=f4e15]:
+          - link "在修工单 18" [ref=f4e16] [cursor=pointer]:
+            - /url: /work-orders?status=active
+            - generic [ref=f4e17]: 在修工单
+            - generic [ref=f4e18]: "18"
+          - link "历史工单" [ref=f4e19] [cursor=pointer]:
+            - /url: /work-orders?status=history
+          - link "预约单" [ref=f4e21] [cursor=pointer]:
+            - /url: /work-orders?type=appointment
+          - link "历史报价单 1" [ref=f4e23] [cursor=pointer]:
+            - /url: /work-orders?type=quote
+            - generic [ref=f4e24]: 历史报价单
+            - generic [ref=f4e25]: "1"
+          - link "保养工单 6" [ref=f4e26] [cursor=pointer]:
+            - /url: /work-orders?type=maintenance
+            - generic [ref=f4e27]: 保养工单
+            - generic [ref=f4e28]: "6"
+          - link "作废工单 3" [ref=f4e29] [cursor=pointer]:
+            - /url: /work-orders?type=cancelled
+            - generic [ref=f4e30]: 作废工单
+            - generic [ref=f4e31]: "3"
+          - link "外包服务单" [ref=f4e32] [cursor=pointer]:
+            - /url: /outsource-orders
+          - link "全部工单 28" [ref=f4e34] [cursor=pointer]:
+            - /url: /work-orders?status=all
+            - generic [ref=f4e35]: 全部工单
+            - generic [ref=f4e36]: "28"
+      - button "客户车辆" [ref=f4e38]
+      - link "车型库" [ref=f4e42] [cursor=pointer]:
+        - /url: /vehicle-models
+      - link "客户预约" [ref=f4e43] [cursor=pointer]:
+        - /url: /appointments
+      - button "配件库存" [ref=f4e45]
+      - button "采购管理" [ref=f4e50]
+      - link "物流运单" [ref=f4e54] [cursor=pointer]:
+        - /url: /logistics
+      - button "维修项目" [ref=f4e56]
+      - link "知识库" [ref=f4e60] [cursor=pointer]:
+        - /url: /knowledge
+      - button "培训晋级" [ref=f4e62]
+      - link "工具管理" [ref=f4e66] [cursor=pointer]:
+        - /url: /tools/management
+      - link "员工管理" [ref=f4e67] [cursor=pointer]:
+        - /url: /employees
+      - button "财务管理" [ref=f4e69]
+      - button "报表统计" [ref=f4e74]
+      - link "售后回访" [ref=f4e78] [cursor=pointer]:
+        - /url: /follow-ups
+      - link "操作日志" [ref=f4e79] [cursor=pointer]:
+        - /url: /operation-logs
+      - button "系统设置" [ref=f4e81]
+    - generic [ref=f4e85]:
+      - link "个人信息" [ref=f4e86] [cursor=pointer]:
+        - /url: /profile
+      - button "退出登录" [ref=f4e87]
+  - main [ref=f4e88]:
+    - generic [ref=f4e120]:
+      - generic [ref=f4e121]:
+        - heading "工单 WO20260520003" [level=1] [ref=f4e123]
+        - generic [ref=f4e124]:
+          - link "维修记录(1)" [ref=f4e125] [cursor=pointer]:
+            - /url: /work-orders?vehicle_id=6f093c57-a18d-49a7-bc57-86dbf2c840ab
+          - link "开领料单" [ref=f4e126] [cursor=pointer]:
+            - /url: /picking-orders/new?work_order_id=fe90432f-385c-4b71-81a3-9a7b48b2af3e
+          - button "预收款" [ref=f4e128]
+          - generic [ref=f4e131]:
+            - generic [ref=f4e132] [cursor=pointer]:
+              - checkbox "提成信息" [ref=f4e133]
+              - generic [ref=f4e134]: 提成信息
+            - generic [ref=f4e135] [cursor=pointer]:
+              - checkbox "计时功能" [ref=f4e136]
+              - generic [ref=f4e137]: 计时功能
+          - button "工单操作" [ref=f4e139]
+          - button "打印" [ref=f4e144]
+      - generic [ref=f4e147]:
+        - generic [ref=f4e148]:
+          - generic [ref=f4e149]:
+            - generic [ref=f4e150]:
+              - generic [ref=f4e151]:
+                - text: "车牌:"
+                - link "黑A35VE7" [ref=f4e152] [cursor=pointer]:
+                  - /url: /vehicles/6f093c57-a18d-49a7-bc57-86dbf2c840ab?from_work_order=fe90432f-385c-4b71-81a3-9a7b48b2af3e
+              - generic [ref=f4e153]:
+                - text: "VIN:"
+                - generic "VIN 校验通过" [ref=f4e154]: LFV5A24G1D3090004
+              - generic [ref=f4e155]: "车型: 奥迪 A6L A6L 30 FSI"
+              - generic [ref=f4e156]: "接车里程: 89700 km"
+              - generic [ref=f4e157]: 创建于 2026/05/21 00:06
+            - generic [ref=f4e158]:
+              - generic [ref=f4e159]: "该车辆还有:"
+              - link "保养工单(1)" [ref=f4e160] [cursor=pointer]:
+                - /url: /work-orders?type=maintenance&vehicle_id=6f093c57-a18d-49a7-bc57-86dbf2c840ab
+          - generic [ref=f4e161]:
+            - generic [ref=f4e162]:
+              - generic [ref=f4e163]:
+                - text: "客户:"
+                - link "邸世铭" [ref=f4e164] [cursor=pointer]:
+                  - /url: /customers/033bc6e1-9eb2-4078-bc8a-c339b4a92ad8?from_work_order=fe90432f-385c-4b71-81a3-9a7b48b2af3e
+                - text: ★
+              - generic [ref=f4e165]: "电话: 15846302125"
+              - generic [ref=f4e166]: "消费总额: ¥0.00"
+              - generic [ref=f4e167]: "消费次数: 4"
+              - generic [ref=f4e168]: "约定交车: -"
+            - generic [ref=f4e169]:
+              - button "编辑接车信息" [ref=f4e170]
+              - group [ref=f4e171]:
+                - generic "展开更多信息" [ref=f4e172] [cursor=pointer]
+        - generic [ref=f4e173]:
+          - generic [ref=f4e174]:
+            - heading "客户需求与诊断" [level=2] [ref=f4e175]
+            - generic [ref=f4e176]:
+              - button "+需求" [ref=f4e177]
+              - link "+ 接车检查" [ref=f4e178] [cursor=pointer]:
+                - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e/reception/new
+              - link "+ 车况检查" [ref=f4e179] [cursor=pointer]:
+                - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e/inspection/new
+              - button "保养模板" [ref=f4e180]
+              - button "从保养单导入" [active] [ref=f4e181]
+              - generic [ref=f4e700]:
+                - heading "从保养单导入" [level=3] [ref=f4e702]
+                - generic [ref=f4e703]:
+                  - generic [ref=f4e704]:
+                    - generic [ref=f4e705]: ✓
+                    - generic [ref=f4e706]: 车牌号码一致
+                  - generic [ref=f4e707]:
+                    - generic [ref=f4e708]: ✓
+                    - generic [ref=f4e709]: VIN码一致
+                  - generic [ref=f4e710]:
+                    - generic [ref=f4e711]: ✓
+                    - generic [ref=f4e712]: 客户信息一致
+                - generic [ref=f4e713]:
+                  - generic [ref=f4e714]: BY-20260721-001
+                  - generic [ref=f4e715]: "创建时间: 2026/7/21 · 里程: 89700km"
+                - generic [ref=f4e716]:
+                  - generic [ref=f4e717]:
+                    - generic [ref=f4e718]: 选择要导入的项目和配件
+                    - button "取消全选" [ref=f4e719]
+                  - generic [ref=f4e721]:
+                    - generic [ref=f4e722] [cursor=pointer]:
+                      - checkbox "更换机油 工时 × 1 · ¥50.00" [checked] [ref=f4e723]
+                      - generic [ref=f4e724]:
+                        - generic [ref=f4e725]: 更换机油
+                        - generic [ref=f4e726]: 工时 × 1 · ¥50.00
+                    - generic [ref=f4e727]:
+                      - generic [ref=f4e728] [cursor=pointer]:
+                        - checkbox "机油-4升 × · -" [checked] [ref=f4e729]
+                        - generic [ref=f4e730]: 机油-4升
+                        - generic [ref=f4e731]: × · -
+                      - generic [ref=f4e732] [cursor=pointer]:
+                        - checkbox "机油-1升 × · -" [checked] [ref=f4e733]
+                        - generic [ref=f4e734]: 机油-1升
+                        - generic [ref=f4e735]: × · -
+                      - generic [ref=f4e736] [cursor=pointer]:
+                        - checkbox "机油滤 ×1 · -" [checked] [ref=f4e737]
+                        - generic [ref=f4e738]: 机油滤
+                        - generic [ref=f4e739]: ×1 · -
+                      - generic [ref=f4e740] [cursor=pointer]:
+                        - checkbox "空气滤 ×1 · -" [checked] [ref=f4e741]
+                        - generic [ref=f4e742]: 空气滤
+                        - generic [ref=f4e743]: ×1 · -
+                      - generic [ref=f4e744] [cursor=pointer]:
+                        - checkbox "空调滤 ×1 · -" [checked] [ref=f4e745]
+                        - generic [ref=f4e746]: 空调滤
+                        - generic [ref=f4e747]: ×1 · -
+                - generic [ref=f4e748]:
+                  - generic [ref=f4e749]: 已选 1 个项目
+                  - generic [ref=f4e750]:
+                    - button "取消" [ref=f4e751]
+                    - button "确认导入 (1)" [ref=f4e752]
+              - button "批量修改" [ref=f4e182]
+          - generic [ref=f4e183]:
+            - generic [ref=f4e184]:
+              - generic [ref=f4e185]:
+                - 'button "需求1保养单导入: BY-20260721-001" [ref=f4e187]':
+                  - generic [ref=f4e188]: 需求1
+                  - text: "保养单导入: BY-20260721-001"
+                - generic [ref=f4e189]: "提交: -"
+                - generic [ref=f4e190]:
+                  - generic [ref=f4e191]:
+                    - combobox [ref=f4e192]:
+                      - option "派单..." [selected]
+                      - option "侯俊杰"
+                      - option "吴岩"
+                      - option "张大力"
+                      - option "张继英"
+                      - option "曹文浩"
+                      - option "梁珈瑞"
+                      - option "王烁迪"
+                      - option "管理员"
+                      - option "自动化测试"
+                      - option "詹洪源"
+                      - option "迟惠友"
+                      - option "邸世铭"
+                      - option "邸春利"
+                      - option "项洪磊"
+                      - option "高磊"
+                    - button "领单" [ref=f4e193]
+                  - button "+项目" [ref=f4e194]
+              - generic [ref=f4e198]:
+                - generic "拖动排序" [ref=f4e199]
+                - generic [ref=f4e208]:
+                  - generic [ref=f4e210]:
+                    - generic [ref=f4e211]:
+                      - generic [ref=f4e212]: "1.1"
+                      - generic [ref=f4e213]: 更换机油
+                      - generic [ref=f4e214]: 待派工
+                      - generic [ref=f4e215]:
+                        - generic [ref=f4e216]: "提交人: -"
+                        - 'button "施工人: 未分配" [ref=f4e217] [cursor=pointer]'
+                        - 'button "质检人: 未分配" [ref=f4e218] [cursor=pointer]'
+                      - generic [ref=f4e220]:
+                        - generic [ref=f4e221]: 客户意见：
+                        - button "✓ 同意" [ref=f4e222] [cursor=pointer]
+                      - generic [ref=f4e223]:
+                        - generic [ref=f4e224]: 业务类型：
+                        - button "正常" [ref=f4e225] [cursor=pointer]
+                      - generic [ref=f4e227]:
+                        - button "外包" [ref=f4e228] [cursor=pointer]
+                        - button "自带配件" [ref=f4e229] [cursor=pointer]
+                      - generic [ref=f4e230]: 维修指导
+                      - 'button "备注: 机油滤赠送 ✎" [ref=f4e232]':
+                        - generic [ref=f4e233]: "备注:"
+                        - generic [ref=f4e234]: 机油滤赠送
+                        - generic [ref=f4e235]: ✎
+                      - generic [ref=f4e237]:
+                        - generic [ref=f4e238]: 添加图片
+                        - generic "上传/粘贴/拍照" [ref=f4e239] [cursor=pointer]
+                    - generic [ref=f4e242]:
+                      - button "+ 添加配件" [ref=f4e243]
+                      - generic [ref=f4e244]:
+                        - button "编辑" [ref=f4e245]
+                        - button "删除" [ref=f4e246]
+                  - generic [ref=f4e247]:
+                    - generic [ref=f4e248]: "项目金额: ¥50.00"
+                    - generic [ref=f4e249]: "小计: ¥50.00"
+                  - generic [ref=f4e250]:
+                    - generic [ref=f4e251]: 所用配件
+                    - generic [ref=f4e254]:
+                      - generic [ref=f4e256]:
+                        - generic "拖动排序" [ref=f4e257]
+                        - generic [ref=f4e266]:
+                          - generic [ref=f4e268]:
+                            - generic [ref=f4e269]:
+                              - generic [ref=f4e270]: 1.1.1
+                              - generic [ref=f4e271]: 空调滤
+                              - textbox [ref=f4e272]: "1"
+                              - generic [ref=f4e273]: 个
+                              - generic [ref=f4e274]: 滤清器
+                              - generic [ref=f4e275]: 单价:¥0.00
+                              - generic [ref=f4e276]: 小计:¥0.00
+                              - generic [ref=f4e277]:
+                                - textbox "备注" [ref=f4e278]
+                                - generic [ref=f4e279]:
+                                  - generic [ref=f4e280]: 添加图片
+                                  - generic "上传/粘贴/拍照" [ref=f4e281] [cursor=pointer]
+                            - generic [ref=f4e284]:
+                              - button "+" [ref=f4e285]
+                              - button "编辑" [ref=f4e286]
+                              - button "删除" [ref=f4e287]
+                          - generic [ref=f4e291]:
+                            - checkbox [checked] [ref=f4e293]
+                            - generic [ref=f4e296]: 1.1.1.1
+                            - generic [ref=f4e297]: 空调滤
+                            - generic [ref=f4e298]:
+                              - generic [ref=f4e299]: 单据
+                              - textbox "采购单名称" [ref=f4e300]
+                            - generic [ref=f4e301]: "库存: 0"
+                            - generic [ref=f4e302]:
+                              - generic [ref=f4e303]: 编码
+                              - textbox "配件编码" [ref=f4e305]
+                              - button "按配件名称查找系统配件" [ref=f4e306]
+                            - generic [ref=f4e309]:
+                              - generic [ref=f4e310]: 品牌
+                              - combobox [ref=f4e311]:
+                                - option "选择品牌" [selected]
+                                - option "原厂"
+                            - generic [ref=f4e312]:
+                              - generic [ref=f4e313]: 规格
+                              - textbox "规格" [ref=f4e314]
+                            - generic [ref=f4e315]:
+                              - generic [ref=f4e316]: 采购价
+                              - spinbutton "采购价" [ref=f4e317]
+                            - generic [ref=f4e318]:
+                              - generic [ref=f4e319]: 成本价
+                              - spinbutton "成本价" [ref=f4e320]
+                            - generic [ref=f4e321]:
+                              - generic [ref=f4e322]: 销售价
+                              - spinbutton "销售价" [ref=f4e323]
+                            - generic [ref=f4e324]: "客户意见:"
+                            - button "客户同意" [ref=f4e325] [cursor=pointer]
+                            - button "未采购" [ref=f4e326]
+                            - button "未到货" [disabled] [ref=f4e327]
+                            - button "选择供应商" [ref=f4e329]
+                            - button "删除" [disabled] [ref=f4e330]
+                            - generic [ref=f4e331]: 待询价
+                      - generic [ref=f4e334]:
+                        - generic "拖动排序" [ref=f4e335]
+                        - generic [ref=f4e344]:
+                          - generic [ref=f4e346]:
+                            - generic [ref=f4e347]:
+                              - generic [ref=f4e348]: 1.1.2
+                              - generic [ref=f4e349]: 机油-4升
+                              - textbox [ref=f4e350]: "1"
+                              - generic [ref=f4e351]: 桶
+                              - generic [ref=f4e352]: 油液类
+                              - generic [ref=f4e353]: 单价:¥0.00
+                              - generic [ref=f4e354]: 小计:¥0.00
+                              - generic [ref=f4e355]:
+                                - textbox "备注" [ref=f4e356]
+                                - generic [ref=f4e357]:
+                                  - generic [ref=f4e358]: 添加图片
+                                  - generic "上传/粘贴/拍照" [ref=f4e359] [cursor=pointer]
+                            - generic [ref=f4e362]:
+                              - button "+" [ref=f4e363]
+                              - button "编辑" [ref=f4e364]
+                              - button "删除" [ref=f4e365]
+                          - generic [ref=f4e369]:
+                            - checkbox [checked] [ref=f4e371]
+                            - generic [ref=f4e374]: 1.1.2.1
+                            - generic [ref=f4e375]: 机油-4升
+                            - generic [ref=f4e376]:
+                              - generic [ref=f4e377]: 单据
+                              - textbox "采购单名称" [ref=f4e378]
+                            - generic [ref=f4e379]: "库存: 0"
+                            - generic [ref=f4e380]:
+                              - generic [ref=f4e381]: 编码
+                              - textbox "配件编码" [ref=f4e383]
+                              - button "按配件名称查找系统配件" [ref=f4e384]
+                            - generic [ref=f4e387]:
+                              - generic [ref=f4e388]: 品牌
+                              - textbox "品牌" [ref=f4e389]
+                            - generic [ref=f4e390]:
+                              - generic [ref=f4e391]: 规格
+                              - textbox "规格" [ref=f4e392]
+                            - generic [ref=f4e393]:
+                              - generic [ref=f4e394]: 采购价
+                              - spinbutton "采购价" [ref=f4e395]
+                            - generic [ref=f4e396]:
+                              - generic [ref=f4e397]: 成本价
+                              - spinbutton "成本价" [ref=f4e398]
+                            - generic [ref=f4e399]:
+                              - generic [ref=f4e400]: 销售价
+                              - spinbutton "销售价" [ref=f4e401]
+                            - generic [ref=f4e402]: "客户意见:"
+                            - button "客户同意" [ref=f4e403] [cursor=pointer]
+                            - button "未采购" [ref=f4e404]
+                            - button "未到货" [disabled] [ref=f4e405]
+                            - button "选择供应商" [ref=f4e407]
+                            - button "删除" [disabled] [ref=f4e408]
+                            - generic [ref=f4e409]: 待询价
+                      - generic [ref=f4e412]:
+                        - generic "拖动排序" [ref=f4e413]
+                        - generic [ref=f4e422]:
+                          - generic [ref=f4e424]:
+                            - generic [ref=f4e425]:
+                              - generic [ref=f4e426]: 1.1.3
+                              - generic [ref=f4e427]: 机油滤
+                              - textbox [ref=f4e428]: "1"
+                              - generic [ref=f4e429]: 个
+                              - generic [ref=f4e430]: 滤清器
+                              - generic [ref=f4e431]: 单价:¥0.00
+                              - generic [ref=f4e432]: 小计:¥0.00
+                              - generic [ref=f4e433]:
+                                - textbox "备注" [ref=f4e434]
+                                - generic [ref=f4e435]:
+                                  - generic [ref=f4e436]: 添加图片
+                                  - generic "上传/粘贴/拍照" [ref=f4e437] [cursor=pointer]
+                            - generic [ref=f4e440]:
+                              - button "+" [ref=f4e441]
+                              - button "编辑" [ref=f4e442]
+                              - button "删除" [ref=f4e443]
+                          - generic [ref=f4e447]:
+                            - checkbox [checked] [ref=f4e449]
+                            - generic [ref=f4e452]: 1.1.3.1
+                            - generic [ref=f4e453]: 机油滤
+                            - generic [ref=f4e454]:
+                              - generic [ref=f4e455]: 单据
+                              - textbox "采购单名称" [ref=f4e456]
+                            - generic [ref=f4e457]: "库存: 0"
+                            - generic [ref=f4e458]:
+                              - generic [ref=f4e459]: 编码
+                              - textbox "配件编码" [ref=f4e461]
+                              - button "按配件名称查找系统配件" [ref=f4e462]
+                            - generic [ref=f4e465]:
+                              - generic [ref=f4e466]: 品牌
+                              - combobox [ref=f4e467]:
+                                - option "选择品牌" [selected]
+                                - option "翔宇"
+                                - option "原厂"
+                            - generic [ref=f4e468]:
+                              - generic [ref=f4e469]: 规格
+                              - textbox "规格" [ref=f4e470]
+                            - generic [ref=f4e471]:
+                              - generic [ref=f4e472]: 采购价
+                              - spinbutton "采购价" [ref=f4e473]
+                            - generic [ref=f4e474]:
+                              - generic [ref=f4e475]: 成本价
+                              - spinbutton "成本价" [ref=f4e476]
+                            - generic [ref=f4e477]:
+                              - generic [ref=f4e478]: 销售价
+                              - spinbutton "销售价" [ref=f4e479]
+                            - generic [ref=f4e480]: "客户意见:"
+                            - button "客户同意" [ref=f4e481] [cursor=pointer]
+                            - button "未采购" [ref=f4e482]
+                            - button "未到货" [disabled] [ref=f4e483]
+                            - button "选择供应商" [ref=f4e485]
+                            - button "删除" [disabled] [ref=f4e486]
+                            - generic [ref=f4e487]: 待询价
+                      - generic [ref=f4e490]:
+                        - generic "拖动排序" [ref=f4e491]
+                        - generic [ref=f4e500]:
+                          - generic [ref=f4e502]:
+                            - generic [ref=f4e503]:
+                              - generic [ref=f4e504]: 1.1.4
+                              - generic [ref=f4e505]: 机油-1升
+                              - textbox [ref=f4e506]: "1"
+                              - generic [ref=f4e507]: 桶
+                              - generic [ref=f4e508]: 油液类
+                              - generic [ref=f4e509]: 单价:¥0.00
+                              - generic [ref=f4e510]: 小计:¥0.00
+                              - generic [ref=f4e511]:
+                                - textbox "备注" [ref=f4e512]
+                                - generic [ref=f4e513]:
+                                  - generic [ref=f4e514]: 添加图片
+                                  - generic "上传/粘贴/拍照" [ref=f4e515] [cursor=pointer]
+                            - generic [ref=f4e518]:
+                              - button "+" [ref=f4e519]
+                              - button "编辑" [ref=f4e520]
+                              - button "删除" [ref=f4e521]
+                          - generic [ref=f4e525]:
+                            - checkbox [checked] [ref=f4e527]
+                            - generic [ref=f4e530]: 1.1.4.1
+                            - generic [ref=f4e531]: 机油-1升
+                            - generic [ref=f4e532]:
+                              - generic [ref=f4e533]: 单据
+                              - textbox "采购单名称" [ref=f4e534]
+                            - generic [ref=f4e535]: "库存: 0"
+                            - generic [ref=f4e536]:
+                              - generic [ref=f4e537]: 编码
+                              - textbox "配件编码" [ref=f4e539]
+                              - button "按配件名称查找系统配件" [ref=f4e540]
+                            - generic [ref=f4e543]:
+                              - generic [ref=f4e544]: 品牌
+                              - textbox "品牌" [ref=f4e545]
+                            - generic [ref=f4e546]:
+                              - generic [ref=f4e547]: 规格
+                              - textbox "规格" [ref=f4e548]
+                            - generic [ref=f4e549]:
+                              - generic [ref=f4e550]: 采购价
+                              - spinbutton "采购价" [ref=f4e551]
+                            - generic [ref=f4e552]:
+                              - generic [ref=f4e553]: 成本价
+                              - spinbutton "成本价" [ref=f4e554]
+                            - generic [ref=f4e555]:
+                              - generic [ref=f4e556]: 销售价
+                              - spinbutton "销售价" [ref=f4e557]
+                            - generic [ref=f4e558]: "客户意见:"
+                            - button "客户同意" [ref=f4e559] [cursor=pointer]
+                            - button "未采购" [ref=f4e560]
+                            - button "未到货" [disabled] [ref=f4e561]
+                            - button "选择供应商" [ref=f4e563]
+                            - button "删除" [disabled] [ref=f4e564]
+                            - generic [ref=f4e565]: 待询价
+                      - generic [ref=f4e568]:
+                        - generic "拖动排序" [ref=f4e569]
+                        - generic [ref=f4e578]:
+                          - generic [ref=f4e580]:
+                            - generic [ref=f4e581]:
+                              - generic [ref=f4e582]: 1.1.5
+                              - generic [ref=f4e583]: 空气滤
+                              - textbox [ref=f4e584]: "1"
+                              - generic [ref=f4e585]: 件
+                              - generic [ref=f4e586]: 滤清器
+                              - generic [ref=f4e587]: 单价:¥0.00
+                              - generic [ref=f4e588]: 小计:¥0.00
+                              - generic [ref=f4e589]:
+                                - textbox "备注" [ref=f4e590]
+                                - generic [ref=f4e591]:
+                                  - generic [ref=f4e592]: 添加图片
+                                  - generic "上传/粘贴/拍照" [ref=f4e593] [cursor=pointer]
+                            - generic [ref=f4e596]:
+                              - button "+" [ref=f4e597]
+                              - button "编辑" [ref=f4e598]
+                              - button "删除" [ref=f4e599]
+                          - generic [ref=f4e603]:
+                            - checkbox [checked] [ref=f4e605]
+                            - generic [ref=f4e608]: 1.1.5.1
+                            - generic [ref=f4e609]: 空气滤
+                            - generic [ref=f4e610]:
+                              - generic [ref=f4e611]: 单据
+                              - textbox "采购单名称" [ref=f4e612]
+                            - generic [ref=f4e613]: "库存: 0"
+                            - generic [ref=f4e614]:
+                              - generic [ref=f4e615]: 编码
+                              - textbox "配件编码" [ref=f4e617]
+                              - button "按配件名称查找系统配件" [ref=f4e618]
+                            - generic [ref=f4e621]:
+                              - generic [ref=f4e622]: 品牌
+                              - combobox [ref=f4e623]:
+                                - option "选择品牌" [selected]
+                                - option "原厂"
+                            - generic [ref=f4e624]:
+                              - generic [ref=f4e625]: 规格
+                              - textbox "规格" [ref=f4e626]
+                            - generic [ref=f4e627]:
+                              - generic [ref=f4e628]: 采购价
+                              - spinbutton "采购价" [ref=f4e629]
+                            - generic [ref=f4e630]:
+                              - generic [ref=f4e631]: 成本价
+                              - spinbutton "成本价" [ref=f4e632]
+                            - generic [ref=f4e633]:
+                              - generic [ref=f4e634]: 销售价
+                              - spinbutton "销售价" [ref=f4e635]
+                            - generic [ref=f4e636]: "客户意见:"
+                            - button "客户同意" [ref=f4e637] [cursor=pointer]
+                            - button "未采购" [ref=f4e638]
+                            - button "未到货" [disabled] [ref=f4e639]
+                            - button "选择供应商" [ref=f4e641]
+                            - button "删除" [disabled] [ref=f4e642]
+                            - generic [ref=f4e643]: 待询价
+            - generic [ref=f4e646]:
+              - button "需求2好好检查一下机油状态" [ref=f4e648]:
+                - generic [ref=f4e649]: 需求2
+                - text: 好好检查一下机油状态
+              - generic [ref=f4e650]: "提交: 邸春利"
+              - generic [ref=f4e651]:
+                - generic [ref=f4e652]:
+                  - combobox [ref=f4e653]:
+                    - option "派单..." [selected]
+                    - option "侯俊杰"
+                    - option "吴岩"
+                    - option "张大力"
+                    - option "张继英"
+                    - option "曹文浩"
+                    - option "梁珈瑞"
+                    - option "王烁迪"
+                    - option "管理员"
+                    - option "自动化测试"
+                    - option "詹洪源"
+                    - option "迟惠友"
+                    - option "邸世铭"
+                    - option "邸春利"
+                    - option "项洪磊"
+                    - option "高磊"
+                  - button "领单" [ref=f4e654]
+                - button "+项目" [ref=f4e655]
+        - generic [ref=f4e657]:
+          - heading "质检记录" [level=2] [ref=f4e658]
+          - paragraph [ref=f4e660]: 暂无质检记录
+      - generic [ref=f4e661]:
+        - generic [ref=f4e662]:
+          - heading "工单操作" [level=2] [ref=f4e663]
+          - button "提交报价" [ref=f4e664]
+        - generic [ref=f4e665]:
+          - heading "费用合计" [level=2] [ref=f4e666]
+          - generic [ref=f4e667]:
+            - generic [ref=f4e668]:
+              - generic [ref=f4e669]: 配件费用
+              - generic [ref=f4e670]: ¥0.00
+            - generic [ref=f4e672]:
+              - generic [ref=f4e673]: 工时费用
+              - generic [ref=f4e674]: ¥0.00
+            - generic [ref=f4e676]:
+              - generic [ref=f4e677]: 其他费用
+              - generic [ref=f4e678]: ¥0.00
+            - generic [ref=f4e680]:
+              - generic [ref=f4e681]: 应收合计
+              - generic [ref=f4e682]: ¥0.00
+        - generic [ref=f4e684]:
+          - heading "支付记录" [level=2] [ref=f4e685]
+          - paragraph [ref=f4e687]: 暂无支付记录
+        - generic [ref=f4e688]:
+          - heading "回访记录" [level=2] [ref=f4e689]
+          - paragraph [ref=f4e691]: 暂无回访记录
+        - heading "状态变更" [level=2] [ref=f4e693]
+    - generic [ref=f4e695]:
+      - generic [ref=f4e696]: "工时合计: ¥50.00"
+      - generic [ref=f4e697]: "配件合计: ¥0.00"
+      - generic [ref=f4e698]: "应收合计: ¥50.00"
+  - alert [ref=f4e119]

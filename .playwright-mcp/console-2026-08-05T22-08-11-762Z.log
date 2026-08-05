@@ -1,0 +1,8 @@
+[    3448ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[    3548ms] [LOG] [HMR] connected @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[  263164ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[  263962ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[  264157ms] [LOG] [Fast Refresh] done in 195ms @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[  264330ms] [LOG] [Fast Refresh] done in 368ms @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[  268198ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[  268275ms] [LOG] [HMR] connected @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27

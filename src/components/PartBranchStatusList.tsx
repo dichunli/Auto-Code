@@ -787,7 +787,8 @@ export function PartBranchStatusList({ status }: Props) {
       // 会被数据库默认值生成新目录ID(自成一组的病根)
       branch_group_id: row.branch_group_id,
       name: row.name,
-      quantity: row.quantity,
+      /* 数量留空（NULL）：未填数量的配件红底留白提醒补填，不兜底成 1 */
+      quantity: row.quantity ?? null,
       unit: row.unit,
       customer_opinion: "pending",
       // 原行为该目录默认(选中)分支，新增分支默认不选中，维持"每目录仅一个选中"
@@ -1055,7 +1056,7 @@ export function PartBranchStatusList({ status }: Props) {
             className={`w-24 px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && specDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
           />
         </td>
-        {/* 数量：可直接编辑，保存写回工单；留空保持红框提醒（用户要求不兜底） */}
+        {/* 数量：可直接编辑，保存写回工单；留空保持红框提醒（用户要求：红框提醒保留 + 可输入联动工单） */}
         <td className="px-3 py-3 text-right">
           <div className="flex items-center justify-end gap-1">
             <input

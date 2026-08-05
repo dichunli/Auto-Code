@@ -1,0 +1,2383 @@
+- generic [ref=f3e1]:
+  - complementary [ref=f3e2]:
+    - link "修 汽修管家" [ref=f3e4] [cursor=pointer]:
+      - /url: /
+      - generic [ref=f3e5]: 修
+      - generic [ref=f3e7]: 汽修管家
+    - navigation [ref=f3e8]:
+      - link "仪表盘" [ref=f3e9] [cursor=pointer]:
+        - /url: /
+      - button "工单管理" [ref=f3e11]
+      - button "客户车辆" [ref=f3e16]
+      - link "车型库" [ref=f3e20] [cursor=pointer]:
+        - /url: /vehicle-models
+      - link "客户预约" [ref=f3e21] [cursor=pointer]:
+        - /url: /appointments
+      - button "配件库存" [ref=f3e23]
+      - generic [ref=f3e27]:
+        - button "采购管理" [ref=f3e28]
+        - generic [ref=f3e32]:
+          - link "采购流程" [ref=f3e33] [cursor=pointer]:
+            - /url: /procurement
+          - link "入库单" [ref=f3e35] [cursor=pointer]:
+            - /url: /inbound-orders
+          - link "采退单" [ref=f3e37] [cursor=pointer]:
+            - /url: /return-orders
+      - link "物流运单" [ref=f3e39] [cursor=pointer]:
+        - /url: /logistics
+      - button "维修项目" [ref=f3e41]
+      - link "知识库" [ref=f3e45] [cursor=pointer]:
+        - /url: /knowledge
+      - button "培训晋级" [ref=f3e47]
+      - link "工具管理" [ref=f3e51] [cursor=pointer]:
+        - /url: /tools/management
+      - link "员工管理" [ref=f3e52] [cursor=pointer]:
+        - /url: /employees
+      - button "财务管理" [ref=f3e54]
+      - button "报表统计" [ref=f3e59]
+      - link "售后回访" [ref=f3e63] [cursor=pointer]:
+        - /url: /follow-ups
+      - link "操作日志" [ref=f3e64] [cursor=pointer]:
+        - /url: /operation-logs
+      - button "系统设置" [ref=f3e66]
+    - generic [ref=f3e70]:
+      - link "个人信息" [ref=f3e71] [cursor=pointer]:
+        - /url: /profile
+      - button "退出登录" [ref=f3e72]
+  - main [ref=f3e73]:
+    - generic [ref=f3e74]:
+      - generic [ref=f3e75]:
+        - generic [ref=f3e77]:
+          - heading "采购管理" [level=1] [ref=f3e78]
+          - paragraph [ref=f3e79]: 按阶段集中处理工单配件的采购流转
+        - generic [ref=f3e80]:
+          - generic [ref=f3e81]:
+            - link "采购订单" [ref=f3e82] [cursor=pointer]:
+              - /url: /procurement/orders
+            - link "供应商管理" [ref=f3e83] [cursor=pointer]:
+              - /url: /suppliers
+            - link "入库登记" [ref=f3e84] [cursor=pointer]:
+              - /url: /inventory/in
+            - link "退货记录" [ref=f3e85] [cursor=pointer]:
+              - /url: /supplier-returns
+            - link "往来款项" [ref=f3e86] [cursor=pointer]:
+              - /url: /supplier-transactions
+            - link "物流运单" [ref=f3e87] [cursor=pointer]:
+              - /url: /logistics
+          - button "开启桌面通知" [ref=f3e88]
+        - generic [ref=f3e91]:
+          - link "待询价 54" [ref=f3e149] [cursor=pointer]:
+            - /url: /procurement?tab=pending_inquiry
+            - text: 待询价
+            - generic [ref=f3e150]: "54"
+          - link "待报价 2" [ref=f3e151] [cursor=pointer]:
+            - /url: /procurement?tab=pending_quote
+            - text: 待报价
+            - generic [ref=f3e152]: "2"
+          - link "待确认 3" [ref=f3e153] [cursor=pointer]:
+            - /url: /procurement?tab=pending_confirm
+            - text: 待确认
+            - generic [ref=f3e154]: "3"
+          - link "待采购" [ref=f3e95] [cursor=pointer]:
+            - /url: /procurement?tab=pending_purchase
+          - link "待收货 4" [ref=f3e155] [cursor=pointer]:
+            - /url: /procurement?tab=pending_receipt
+            - text: 待收货
+            - generic [ref=f3e156]: "4"
+          - link "待入库 1" [ref=f3e157] [cursor=pointer]:
+            - /url: /procurement?tab=pending_storage
+            - text: 待入库
+            - generic [ref=f3e158]: "1"
+          - link "已入库" [ref=f3e98] [cursor=pointer]:
+            - /url: /procurement?tab=completed_storage
+          - link "待退货" [ref=f3e99] [cursor=pointer]:
+            - /url: /procurement?tab=pending_return
+          - link "已退货" [ref=f3e100] [cursor=pointer]:
+            - /url: /procurement?tab=completed_return
+          - link "入库单" [ref=f3e101] [cursor=pointer]:
+            - /url: /inbound-orders
+          - link "采退单" [ref=f3e102] [cursor=pointer]:
+            - /url: /return-orders
+      - generic [ref=f3e103]:
+        - generic [ref=f3e104]:
+          - heading "待询价共 54 条" [level=3] [ref=f3e159]:
+            - text: 待询价
+            - generic [ref=f3e106]: 共 54 条
+          - generic [ref=f3e107]:
+            - generic [ref=f3e108]: "分组:"
+            - button "按车牌" [ref=f3e109]
+            - button "按分类" [ref=f3e110]
+            - button "按名称" [ref=f3e111]
+            - button "按供货商" [ref=f3e112]
+        - generic [ref=f3e114]:
+          - generic [ref=f3e2211]: 已选 2 条
+          - button "批量设置供应商..." [ref=f3e2213]
+          - button "取消选择" [ref=f3e2214]
+        - table [ref=f3e117]:
+          - rowgroup [ref=f3e118]:
+            - row [ref=f3e119]:
+              - columnheader [ref=f3e120]:
+                - checkbox [ref=f3e121]
+              - columnheader "工单号" [ref=f3e122]
+              - columnheader "编码" [ref=f3e123]
+              - columnheader "配件" [ref=f3e124]
+              - columnheader "品牌" [ref=f3e125]
+              - columnheader "规格" [ref=f3e126]
+              - columnheader "数量" [ref=f3e127]
+              - columnheader "库存" [ref=f3e128]
+              - columnheader "采购价" [ref=f3e129]
+              - columnheader "销售价" [ref=f3e130]
+              - columnheader "客户意见" [ref=f3e131]
+              - columnheader "供应商" [ref=f3e132]
+              - columnheader "备注" [ref=f3e133]
+              - columnheader "图片" [ref=f3e134]
+              - columnheader "操作" [ref=f3e135]
+          - rowgroup [ref=f3e136]:
+            - row [ref=f3e160]:
+              - cell "车牌 黑A0Y1Z1VIN:LVSHFFALXNF850805客户:董（莎莎女婿）手机:18686868995(4 条)" [ref=f3e161]:
+                - generic [ref=f3e162]: 车牌
+                - text: 黑A0Y1Z1
+                - generic [ref=f3e163]: VIN:LVSHFFALXNF850805
+                - generic [ref=f3e164]: 客户:董（莎莎女婿）
+                - generic [ref=f3e165]: 手机:18686868995
+                - generic [ref=f3e166]: (4 条)
+            - row [ref=f3e167]:
+              - cell [ref=f3e168]:
+                - checkbox [ref=f3e169]
+              - cell [ref=f3e170]:
+                - link "WO20260527001" [ref=f3e171] [cursor=pointer]:
+                  - /url: /work-orders/4186e388-1853-40e2-a528-81f5d3fb69d9
+              - cell [ref=f3e172]:
+                - textbox "编码/条码" [ref=f3e174]
+              - cell "机油-4升" [ref=f3e175]
+              - cell [ref=f3e176]:
+                - combobox "-" [ref=f3e177]
+              - cell [ref=f3e178]:
+                - combobox "-" [ref=f3e179]
+              - cell "1 桶" [ref=f3e180]
+              - cell "-" [ref=f3e181]
+              - cell "¥" [ref=f3e182]:
+                - generic [ref=f3e183]:
+                  - generic [ref=f3e184]: ¥
+                  - spinbutton "-" [ref=f3e185]
+              - cell "¥" [ref=f3e186]:
+                - generic [ref=f3e187]:
+                  - generic [ref=f3e188]: ¥
+                  - spinbutton "-" [ref=f3e189]
+              - cell "同意" [ref=f3e190]:
+                - combobox [ref=f3e191]:
+                  - option "未确定"
+                  - option "同意" [selected]
+                  - option "否决"
+              - cell [ref=f3e192]:
+                - button "佳汇汽配" [ref=f3e193]
+              - cell [ref=f3e194]:
+                - textbox "-" [ref=f3e195]
+              - cell "-" [ref=f3e196]
+              - cell [ref=f3e197]:
+                - generic [ref=f3e198]:
+                  - link "处理" [ref=f3e199] [cursor=pointer]:
+                    - /url: /work-orders/4186e388-1853-40e2-a528-81f5d3fb69d9
+                  - button "编辑" [ref=f3e200]
+                  - button "分支" [ref=f3e201]
+                  - button "删除" [ref=f3e202]
+            - row [ref=f3e203]:
+              - cell [ref=f3e204]:
+                - checkbox [ref=f3e205]
+              - cell [ref=f3e206]:
+                - link "WO20260527001" [ref=f3e207] [cursor=pointer]:
+                  - /url: /work-orders/4186e388-1853-40e2-a528-81f5d3fb69d9
+              - cell [ref=f3e208]:
+                - textbox "编码/条码" [ref=f3e210]
+              - cell "机油滤" [ref=f3e211]
+              - cell [ref=f3e212]:
+                - combobox "-" [ref=f3e213]
+              - cell [ref=f3e214]:
+                - combobox "-" [ref=f3e215]
+              - cell "1 个" [ref=f3e216]
+              - cell "-" [ref=f3e217]
+              - cell "¥" [ref=f3e218]:
+                - generic [ref=f3e219]:
+                  - generic [ref=f3e220]: ¥
+                  - spinbutton "-" [ref=f3e221]
+              - cell "¥" [ref=f3e222]:
+                - generic [ref=f3e223]:
+                  - generic [ref=f3e224]: ¥
+                  - spinbutton "-" [ref=f3e225]
+              - cell "同意" [ref=f3e226]:
+                - combobox [ref=f3e227]:
+                  - option "未确定"
+                  - option "同意" [selected]
+                  - option "否决"
+              - cell [ref=f3e228]:
+                - button "请选择" [ref=f3e229]
+              - cell [ref=f3e230]:
+                - textbox "-" [ref=f3e231]
+              - cell "-" [ref=f3e232]
+              - cell [ref=f3e233]:
+                - generic [ref=f3e234]:
+                  - link "处理" [ref=f3e235] [cursor=pointer]:
+                    - /url: /work-orders/4186e388-1853-40e2-a528-81f5d3fb69d9
+                  - button "编辑" [ref=f3e236]
+                  - button "分支" [ref=f3e237]
+                  - button "删除" [ref=f3e238]
+            - row [ref=f3e239]:
+              - cell [ref=f3e240]:
+                - checkbox [ref=f3e241]
+              - cell [ref=f3e242]:
+                - link "WO20260527001" [ref=f3e243] [cursor=pointer]:
+                  - /url: /work-orders/4186e388-1853-40e2-a528-81f5d3fb69d9
+              - cell [ref=f3e244]:
+                - textbox "编码/条码" [ref=f3e246]
+              - cell "空调滤" [ref=f3e247]
+              - cell [ref=f3e248]:
+                - combobox "-" [ref=f3e249]
+              - cell [ref=f3e250]:
+                - combobox "-" [ref=f3e251]
+              - cell "1 个" [ref=f3e252]
+              - cell "-" [ref=f3e253]
+              - cell "¥" [ref=f3e254]:
+                - generic [ref=f3e255]:
+                  - generic [ref=f3e256]: ¥
+                  - spinbutton "-" [ref=f3e257]
+              - cell "¥" [ref=f3e258]:
+                - generic [ref=f3e259]:
+                  - generic [ref=f3e260]: ¥
+                  - spinbutton "-" [ref=f3e261]
+              - cell "同意" [ref=f3e262]:
+                - combobox [ref=f3e263]:
+                  - option "未确定"
+                  - option "同意" [selected]
+                  - option "否决"
+              - cell [ref=f3e264]:
+                - button "请选择" [ref=f3e265]
+              - cell [ref=f3e266]:
+                - textbox "-" [ref=f3e267]
+              - cell [ref=f3e268]
+              - cell [ref=f3e269]:
+                - generic [ref=f3e270]:
+                  - link "处理" [ref=f3e271] [cursor=pointer]:
+                    - /url: /work-orders/4186e388-1853-40e2-a528-81f5d3fb69d9
+                  - button "编辑" [ref=f3e272]
+                  - button "分支" [ref=f3e273]
+                  - button "删除" [ref=f3e274]
+            - row [ref=f3e275]:
+              - cell [ref=f3e276]:
+                - checkbox [ref=f3e277]
+              - cell [ref=f3e278]:
+                - link "WO20260527001" [ref=f3e279] [cursor=pointer]:
+                  - /url: /work-orders/4186e388-1853-40e2-a528-81f5d3fb69d9
+              - cell [ref=f3e280]:
+                - textbox "编码/条码" [ref=f3e282]
+              - cell "空气滤" [ref=f3e283]
+              - cell [ref=f3e284]:
+                - combobox "-" [ref=f3e285]
+              - cell [ref=f3e286]:
+                - combobox "-" [ref=f3e287]
+              - cell "1 件" [ref=f3e288]
+              - cell "-" [ref=f3e289]
+              - cell "¥" [ref=f3e290]:
+                - generic [ref=f3e291]:
+                  - generic [ref=f3e292]: ¥
+                  - spinbutton "-" [ref=f3e293]
+              - cell "¥" [ref=f3e294]:
+                - generic [ref=f3e295]:
+                  - generic [ref=f3e296]: ¥
+                  - spinbutton "-" [ref=f3e297]
+              - cell "同意" [ref=f3e298]:
+                - combobox [ref=f3e299]:
+                  - option "未确定"
+                  - option "同意" [selected]
+                  - option "否决"
+              - cell [ref=f3e300]:
+                - button "请选择" [ref=f3e301]
+              - cell [ref=f3e302]:
+                - textbox "-" [ref=f3e303]
+              - cell "-" [ref=f3e304]
+              - cell [ref=f3e305]:
+                - generic [ref=f3e306]:
+                  - link "处理" [ref=f3e307] [cursor=pointer]:
+                    - /url: /work-orders/4186e388-1853-40e2-a528-81f5d3fb69d9
+                  - button "编辑" [ref=f3e308]
+                  - button "分支" [ref=f3e309]
+                  - button "删除" [ref=f3e310]
+            - row [ref=f3e311]:
+              - cell "车牌 黑A1E81RVIN:LFV3A24G2C3099459客户:贾手机:15600714567(8 条)" [ref=f3e312]:
+                - generic [ref=f3e313]: 车牌
+                - text: 黑A1E81R
+                - generic [ref=f3e314]: VIN:LFV3A24G2C3099459
+                - generic [ref=f3e315]: 客户:贾
+                - generic [ref=f3e316]: 手机:15600714567
+                - generic [ref=f3e317]: (8 条)
+            - row [ref=f3e318]:
+              - cell [ref=f3e319]:
+                - checkbox [ref=f3e320]
+              - cell [ref=f3e321]:
+                - link "WO20260614001" [ref=f3e322] [cursor=pointer]:
+                  - /url: /work-orders/90e950ea-4375-47cf-a655-0a52255fd6f2
+              - cell [ref=f3e323]:
+                - textbox "编码/条码" [ref=f3e325]
+              - cell "机油-4升" [ref=f3e326]
+              - cell [ref=f3e327]:
+                - combobox "-" [ref=f3e328]
+              - cell [ref=f3e329]:
+                - combobox "-" [ref=f3e330]
+              - cell "1 桶" [ref=f3e331]
+              - cell "-" [ref=f3e332]
+              - cell "¥" [ref=f3e333]:
+                - generic [ref=f3e334]:
+                  - generic [ref=f3e335]: ¥
+                  - spinbutton "-" [ref=f3e336]
+              - cell "¥" [ref=f3e337]:
+                - generic [ref=f3e338]:
+                  - generic [ref=f3e339]: ¥
+                  - spinbutton "-" [ref=f3e340]
+              - cell "未确定" [ref=f3e341]:
+                - combobox [ref=f3e342]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e343]:
+                - button "请选择" [ref=f3e344]
+              - cell [ref=f3e345]:
+                - textbox "-" [ref=f3e346]
+              - cell "-" [ref=f3e347]
+              - cell [ref=f3e348]:
+                - generic [ref=f3e349]:
+                  - link "处理" [ref=f3e350] [cursor=pointer]:
+                    - /url: /work-orders/90e950ea-4375-47cf-a655-0a52255fd6f2
+                  - button "编辑" [ref=f3e351]
+                  - button "分支" [ref=f3e352]
+                  - button "删除" [ref=f3e353]
+            - row [ref=f3e354]:
+              - cell [ref=f3e355]:
+                - checkbox [ref=f3e356]
+              - cell [ref=f3e357]:
+                - link "BY-20260720-001" [ref=f3e358] [cursor=pointer]:
+                  - /url: /work-orders/a1b74d3c-71d1-4591-8eb5-44832bd0d93c
+              - cell [ref=f3e359]:
+                - textbox "编码/条码" [ref=f3e361]
+              - cell "机油-4升" [ref=f3e362]
+              - cell [ref=f3e363]:
+                - combobox "-" [ref=f3e364]
+              - cell [ref=f3e365]:
+                - combobox "-" [ref=f3e366]
+              - cell "1 桶" [ref=f3e367]
+              - cell "-" [ref=f3e368]
+              - cell "¥" [ref=f3e369]:
+                - generic [ref=f3e370]:
+                  - generic [ref=f3e371]: ¥
+                  - spinbutton "-" [ref=f3e372]
+              - cell "¥" [ref=f3e373]:
+                - generic [ref=f3e374]:
+                  - generic [ref=f3e375]: ¥
+                  - spinbutton "-" [ref=f3e376]
+              - cell "未确定" [ref=f3e377]:
+                - combobox [ref=f3e378]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e379]:
+                - button "请选择" [ref=f3e380]
+              - cell [ref=f3e381]:
+                - textbox "-" [ref=f3e382]
+              - cell "-" [ref=f3e383]
+              - cell [ref=f3e384]:
+                - generic [ref=f3e385]:
+                  - link "处理" [ref=f3e386] [cursor=pointer]:
+                    - /url: /work-orders/a1b74d3c-71d1-4591-8eb5-44832bd0d93c
+                  - button "编辑" [ref=f3e387]
+                  - button "分支" [ref=f3e388]
+                  - button "删除" [ref=f3e389]
+            - row [ref=f3e390]:
+              - cell [ref=f3e391]:
+                - checkbox [ref=f3e392]
+              - cell [ref=f3e393]:
+                - link "WO20260614001" [ref=f3e394] [cursor=pointer]:
+                  - /url: /work-orders/90e950ea-4375-47cf-a655-0a52255fd6f2
+              - cell [ref=f3e395]:
+                - textbox "编码/条码" [ref=f3e397]
+              - cell "机油滤" [ref=f3e398]
+              - cell [ref=f3e399]:
+                - combobox "-" [ref=f3e400]
+              - cell [ref=f3e401]:
+                - combobox "-" [ref=f3e402]
+              - cell "1 个" [ref=f3e403]
+              - cell "-" [ref=f3e404]
+              - cell "¥" [ref=f3e405]:
+                - generic [ref=f3e406]:
+                  - generic [ref=f3e407]: ¥
+                  - spinbutton "-" [ref=f3e408]
+              - cell "¥" [ref=f3e409]:
+                - generic [ref=f3e410]:
+                  - generic [ref=f3e411]: ¥
+                  - spinbutton "-" [ref=f3e412]
+              - cell "未确定" [ref=f3e413]:
+                - combobox [ref=f3e414]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e415]:
+                - button "请选择" [ref=f3e416]
+              - cell [ref=f3e417]:
+                - textbox "-" [ref=f3e418]
+              - cell "-" [ref=f3e419]
+              - cell [ref=f3e420]:
+                - generic [ref=f3e421]:
+                  - link "处理" [ref=f3e422] [cursor=pointer]:
+                    - /url: /work-orders/90e950ea-4375-47cf-a655-0a52255fd6f2
+                  - button "编辑" [ref=f3e423]
+                  - button "分支" [ref=f3e424]
+                  - button "删除" [ref=f3e425]
+            - row [ref=f3e426]:
+              - cell [ref=f3e427]:
+                - checkbox [ref=f3e428]
+              - cell [ref=f3e429]:
+                - link "BY-20260720-001" [ref=f3e430] [cursor=pointer]:
+                  - /url: /work-orders/a1b74d3c-71d1-4591-8eb5-44832bd0d93c
+              - cell [ref=f3e431]:
+                - textbox "编码/条码" [ref=f3e433]
+              - cell "机油滤" [ref=f3e434]
+              - cell [ref=f3e435]:
+                - combobox "-" [ref=f3e436]
+              - cell [ref=f3e437]:
+                - combobox "-" [ref=f3e438]
+              - cell "1 个" [ref=f3e439]
+              - cell "-" [ref=f3e440]
+              - cell "¥" [ref=f3e441]:
+                - generic [ref=f3e442]:
+                  - generic [ref=f3e443]: ¥
+                  - spinbutton "-" [ref=f3e444]
+              - cell "¥" [ref=f3e445]:
+                - generic [ref=f3e446]:
+                  - generic [ref=f3e447]: ¥
+                  - spinbutton "-" [ref=f3e448]
+              - cell "未确定" [ref=f3e449]:
+                - combobox [ref=f3e450]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e451]:
+                - button "请选择" [ref=f3e452]
+              - cell [ref=f3e453]:
+                - textbox "-" [ref=f3e454]
+              - cell "-" [ref=f3e455]
+              - cell [ref=f3e456]:
+                - generic [ref=f3e457]:
+                  - link "处理" [ref=f3e458] [cursor=pointer]:
+                    - /url: /work-orders/a1b74d3c-71d1-4591-8eb5-44832bd0d93c
+                  - button "编辑" [ref=f3e459]
+                  - button "分支" [ref=f3e460]
+                  - button "删除" [ref=f3e461]
+            - row [ref=f3e462]:
+              - cell [ref=f3e463]:
+                - checkbox [ref=f3e464]
+              - cell [ref=f3e465]:
+                - link "WO20260614001" [ref=f3e466] [cursor=pointer]:
+                  - /url: /work-orders/90e950ea-4375-47cf-a655-0a52255fd6f2
+              - cell [ref=f3e467]:
+                - textbox "编码/条码" [ref=f3e469]
+              - cell "空调滤" [ref=f3e470]
+              - cell [ref=f3e471]:
+                - combobox "-" [ref=f3e472]
+              - cell [ref=f3e473]:
+                - combobox "-" [ref=f3e474]
+              - cell "1 个" [ref=f3e475]
+              - cell "-" [ref=f3e476]
+              - cell "¥" [ref=f3e477]:
+                - generic [ref=f3e478]:
+                  - generic [ref=f3e479]: ¥
+                  - spinbutton "-" [ref=f3e480]
+              - cell "¥" [ref=f3e481]:
+                - generic [ref=f3e482]:
+                  - generic [ref=f3e483]: ¥
+                  - spinbutton "-" [ref=f3e484]
+              - cell "未确定" [ref=f3e485]:
+                - combobox [ref=f3e486]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e487]:
+                - button "请选择" [ref=f3e488]
+              - cell [ref=f3e489]:
+                - textbox "-" [ref=f3e490]
+              - cell "-" [ref=f3e491]
+              - cell [ref=f3e492]:
+                - generic [ref=f3e493]:
+                  - link "处理" [ref=f3e494] [cursor=pointer]:
+                    - /url: /work-orders/90e950ea-4375-47cf-a655-0a52255fd6f2
+                  - button "编辑" [ref=f3e495]
+                  - button "分支" [ref=f3e496]
+                  - button "删除" [ref=f3e497]
+            - row [ref=f3e498]:
+              - cell [ref=f3e499]:
+                - checkbox [ref=f3e500]
+              - cell [ref=f3e501]:
+                - link "BY-20260720-001" [ref=f3e502] [cursor=pointer]:
+                  - /url: /work-orders/a1b74d3c-71d1-4591-8eb5-44832bd0d93c
+              - cell [ref=f3e503]:
+                - textbox "编码/条码" [ref=f3e505]
+              - cell "空调滤" [ref=f3e506]
+              - cell [ref=f3e507]:
+                - combobox "-" [ref=f3e508]
+              - cell [ref=f3e509]:
+                - combobox "-" [ref=f3e510]
+              - cell "1 个" [ref=f3e511]
+              - cell "-" [ref=f3e512]
+              - cell "¥" [ref=f3e513]:
+                - generic [ref=f3e514]:
+                  - generic [ref=f3e515]: ¥
+                  - spinbutton "-" [ref=f3e516]
+              - cell "¥" [ref=f3e517]:
+                - generic [ref=f3e518]:
+                  - generic [ref=f3e519]: ¥
+                  - spinbutton "-" [ref=f3e520]
+              - cell "未确定" [ref=f3e521]:
+                - combobox [ref=f3e522]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e523]:
+                - button "请选择" [ref=f3e524]
+              - cell [ref=f3e525]:
+                - textbox "-" [ref=f3e526]
+              - cell "-" [ref=f3e527]
+              - cell [ref=f3e528]:
+                - generic [ref=f3e529]:
+                  - link "处理" [ref=f3e530] [cursor=pointer]:
+                    - /url: /work-orders/a1b74d3c-71d1-4591-8eb5-44832bd0d93c
+                  - button "编辑" [ref=f3e531]
+                  - button "分支" [ref=f3e532]
+                  - button "删除" [ref=f3e533]
+            - row [ref=f3e534]:
+              - cell [ref=f3e535]:
+                - checkbox [ref=f3e536]
+              - cell [ref=f3e537]:
+                - link "WO20260614001" [ref=f3e538] [cursor=pointer]:
+                  - /url: /work-orders/90e950ea-4375-47cf-a655-0a52255fd6f2
+              - cell [ref=f3e539]:
+                - textbox "编码/条码" [ref=f3e541]
+              - cell "空气滤" [ref=f3e542]
+              - cell [ref=f3e543]:
+                - combobox "-" [ref=f3e544]
+              - cell [ref=f3e545]:
+                - combobox "-" [ref=f3e546]
+              - cell "1 件" [ref=f3e547]
+              - cell "-" [ref=f3e548]
+              - cell "¥" [ref=f3e549]:
+                - generic [ref=f3e550]:
+                  - generic [ref=f3e551]: ¥
+                  - spinbutton "-" [ref=f3e552]
+              - cell "¥" [ref=f3e553]:
+                - generic [ref=f3e554]:
+                  - generic [ref=f3e555]: ¥
+                  - spinbutton "-" [ref=f3e556]
+              - cell "未确定" [ref=f3e557]:
+                - combobox [ref=f3e558]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e559]:
+                - button "请选择" [ref=f3e560]
+              - cell [ref=f3e561]:
+                - textbox "-" [ref=f3e562]
+              - cell "-" [ref=f3e563]
+              - cell [ref=f3e564]:
+                - generic [ref=f3e565]:
+                  - link "处理" [ref=f3e566] [cursor=pointer]:
+                    - /url: /work-orders/90e950ea-4375-47cf-a655-0a52255fd6f2
+                  - button "编辑" [ref=f3e567]
+                  - button "分支" [ref=f3e568]
+                  - button "删除" [ref=f3e569]
+            - row [ref=f3e570]:
+              - cell [ref=f3e571]:
+                - checkbox [ref=f3e572]
+              - cell [ref=f3e573]:
+                - link "BY-20260720-001" [ref=f3e574] [cursor=pointer]:
+                  - /url: /work-orders/a1b74d3c-71d1-4591-8eb5-44832bd0d93c
+              - cell [ref=f3e575]:
+                - textbox "编码/条码" [ref=f3e577]
+              - cell "空气滤" [ref=f3e578]
+              - cell [ref=f3e579]:
+                - combobox "-" [ref=f3e580]
+              - cell [ref=f3e581]:
+                - combobox "-" [ref=f3e582]
+              - cell "1 件" [ref=f3e583]
+              - cell "-" [ref=f3e584]
+              - cell "¥" [ref=f3e585]:
+                - generic [ref=f3e586]:
+                  - generic [ref=f3e587]: ¥
+                  - spinbutton "-" [ref=f3e588]
+              - cell "¥" [ref=f3e589]:
+                - generic [ref=f3e590]:
+                  - generic [ref=f3e591]: ¥
+                  - spinbutton "-" [ref=f3e592]
+              - cell "未确定" [ref=f3e593]:
+                - combobox [ref=f3e594]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e595]:
+                - button "请选择" [ref=f3e596]
+              - cell [ref=f3e597]:
+                - textbox "-" [ref=f3e598]
+              - cell "-" [ref=f3e599]
+              - cell [ref=f3e600]:
+                - generic [ref=f3e601]:
+                  - link "处理" [ref=f3e602] [cursor=pointer]:
+                    - /url: /work-orders/a1b74d3c-71d1-4591-8eb5-44832bd0d93c
+                  - button "编辑" [ref=f3e603]
+                  - button "分支" [ref=f3e604]
+                  - button "删除" [ref=f3e605]
+            - row [ref=f3e606]:
+              - cell "车牌 黑A35VE7VIN:LFV5A24G1D3090004客户:邸世铭手机:15846302125(10 条)" [ref=f3e607]:
+                - generic [ref=f3e608]: 车牌
+                - text: 黑A35VE7
+                - generic [ref=f3e609]: VIN:LFV5A24G1D3090004
+                - generic [ref=f3e610]: 客户:邸世铭
+                - generic [ref=f3e611]: 手机:15846302125
+                - generic [ref=f3e612]: (10 条)
+            - row [ref=f3e613]:
+              - cell [ref=f3e614]:
+                - checkbox [checked] [ref=f3e615]
+              - cell [ref=f3e616]:
+                - link "BY-20260721-001" [ref=f3e617] [cursor=pointer]:
+                  - /url: /work-orders/4425bd44-61ec-45d4-94fb-429582dfa8e6
+              - cell [ref=f3e618]:
+                - textbox "编码/条码" [ref=f3e620]
+              - cell "机油-1升" [ref=f3e621]
+              - cell [ref=f3e622]:
+                - combobox "-" [ref=f3e623]
+              - cell [ref=f3e624]:
+                - combobox "-" [ref=f3e625]
+              - cell "1 桶" [ref=f3e626]
+              - cell "-" [ref=f3e627]
+              - cell "¥" [ref=f3e628]:
+                - generic [ref=f3e629]:
+                  - generic [ref=f3e630]: ¥
+                  - spinbutton "-" [ref=f3e631]
+              - cell "¥" [ref=f3e632]:
+                - generic [ref=f3e633]:
+                  - generic [ref=f3e634]: ¥
+                  - spinbutton "-" [ref=f3e635]
+              - cell "未确定" [ref=f3e636]:
+                - combobox [ref=f3e637]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e638]:
+                - button "请选择" [ref=f3e639]
+              - cell [ref=f3e640]:
+                - textbox "-" [ref=f3e641]
+              - cell "-" [ref=f3e642]
+              - cell [ref=f3e643]:
+                - generic [ref=f3e644]:
+                  - link "处理" [ref=f3e645] [cursor=pointer]:
+                    - /url: /work-orders/4425bd44-61ec-45d4-94fb-429582dfa8e6
+                  - button "编辑" [ref=f3e646]
+                  - button "分支" [ref=f3e647]
+                  - button "删除" [ref=f3e648]
+            - row [ref=f3e649]:
+              - cell [ref=f3e650]:
+                - checkbox [ref=f3e651]
+              - cell [ref=f3e652]:
+                - link "WO20260520003" [ref=f3e653] [cursor=pointer]:
+                  - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e
+              - cell [ref=f3e654]:
+                - textbox "编码/条码" [ref=f3e656]
+              - cell "机油-1升" [ref=f3e657]
+              - cell [ref=f3e658]:
+                - combobox "-" [ref=f3e659]
+              - cell [ref=f3e660]:
+                - combobox "-" [ref=f3e661]
+              - cell "1 桶" [ref=f3e662]
+              - cell "-" [ref=f3e663]
+              - cell "¥" [ref=f3e664]:
+                - generic [ref=f3e665]:
+                  - generic [ref=f3e666]: ¥
+                  - spinbutton "-" [ref=f3e667]
+              - cell "¥" [ref=f3e668]:
+                - generic [ref=f3e669]:
+                  - generic [ref=f3e670]: ¥
+                  - spinbutton "-" [ref=f3e671]
+              - cell "同意" [ref=f3e672]:
+                - combobox [ref=f3e673]:
+                  - option "未确定"
+                  - option "同意" [selected]
+                  - option "否决"
+              - cell [ref=f3e674]:
+                - button "请选择" [ref=f3e675]
+              - cell [ref=f3e676]:
+                - textbox "-" [ref=f3e677]
+              - cell "-" [ref=f3e678]
+              - cell [ref=f3e679]:
+                - generic [ref=f3e680]:
+                  - link "处理" [ref=f3e681] [cursor=pointer]:
+                    - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e
+                  - button "编辑" [ref=f3e682]
+                  - button "分支" [ref=f3e683]
+                  - button "删除" [ref=f3e684]
+            - row [ref=f3e685]:
+              - cell [ref=f3e686]:
+                - checkbox [checked] [active] [ref=f3e687]
+              - cell [ref=f3e688]:
+                - link "BY-20260721-001" [ref=f3e689] [cursor=pointer]:
+                  - /url: /work-orders/4425bd44-61ec-45d4-94fb-429582dfa8e6
+              - cell [ref=f3e690]:
+                - textbox "编码/条码" [ref=f3e692]
+              - cell "机油-4升" [ref=f3e693]
+              - cell [ref=f3e694]:
+                - combobox "-" [ref=f3e695]
+              - cell [ref=f3e696]:
+                - combobox "-" [ref=f3e697]
+              - cell "1 桶" [ref=f3e698]
+              - cell "-" [ref=f3e699]
+              - cell "¥" [ref=f3e700]:
+                - generic [ref=f3e701]:
+                  - generic [ref=f3e702]: ¥
+                  - spinbutton "-" [ref=f3e703]
+              - cell "¥" [ref=f3e704]:
+                - generic [ref=f3e705]:
+                  - generic [ref=f3e706]: ¥
+                  - spinbutton "-" [ref=f3e707]
+              - cell "未确定" [ref=f3e708]:
+                - combobox [ref=f3e709]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e710]:
+                - button "请选择" [ref=f3e711]
+              - cell [ref=f3e712]:
+                - textbox "-" [ref=f3e713]
+              - cell "-" [ref=f3e714]
+              - cell [ref=f3e715]:
+                - generic [ref=f3e716]:
+                  - link "处理" [ref=f3e717] [cursor=pointer]:
+                    - /url: /work-orders/4425bd44-61ec-45d4-94fb-429582dfa8e6
+                  - button "编辑" [ref=f3e718]
+                  - button "分支" [ref=f3e719]
+                  - button "删除" [ref=f3e720]
+            - row [ref=f3e721]:
+              - cell [ref=f3e722]:
+                - checkbox [ref=f3e723]
+              - cell [ref=f3e724]:
+                - link "WO20260520003" [ref=f3e725] [cursor=pointer]:
+                  - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e
+              - cell [ref=f3e726]:
+                - textbox "编码/条码" [ref=f3e728]
+              - cell "机油-4升" [ref=f3e729]
+              - cell [ref=f3e730]:
+                - combobox "-" [ref=f3e731]
+              - cell [ref=f3e732]:
+                - combobox "-" [ref=f3e733]
+              - cell "1 桶" [ref=f3e734]
+              - cell "-" [ref=f3e735]
+              - cell "¥" [ref=f3e736]:
+                - generic [ref=f3e737]:
+                  - generic [ref=f3e738]: ¥
+                  - spinbutton "-" [ref=f3e739]
+              - cell "¥" [ref=f3e740]:
+                - generic [ref=f3e741]:
+                  - generic [ref=f3e742]: ¥
+                  - spinbutton "-" [ref=f3e743]
+              - cell "同意" [ref=f3e744]:
+                - combobox [ref=f3e745]:
+                  - option "未确定"
+                  - option "同意" [selected]
+                  - option "否决"
+              - cell [ref=f3e746]:
+                - button "请选择" [ref=f3e747]
+              - cell [ref=f3e748]:
+                - textbox "-" [ref=f3e749]
+              - cell "-" [ref=f3e750]
+              - cell [ref=f3e751]:
+                - generic [ref=f3e752]:
+                  - link "处理" [ref=f3e753] [cursor=pointer]:
+                    - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e
+                  - button "编辑" [ref=f3e754]
+                  - button "分支" [ref=f3e755]
+                  - button "删除" [ref=f3e756]
+            - row [ref=f3e757]:
+              - cell [ref=f3e758]:
+                - checkbox [ref=f3e759]
+              - cell [ref=f3e760]:
+                - link "BY-20260721-001" [ref=f3e761] [cursor=pointer]:
+                  - /url: /work-orders/4425bd44-61ec-45d4-94fb-429582dfa8e6
+              - cell [ref=f3e762]:
+                - textbox "编码/条码" [ref=f3e764]
+              - cell "机油滤" [ref=f3e765]
+              - cell [ref=f3e766]:
+                - combobox "-" [ref=f3e767]
+              - cell [ref=f3e768]:
+                - combobox "-" [ref=f3e769]
+              - cell "1 个" [ref=f3e770]
+              - cell "-" [ref=f3e771]
+              - cell "¥" [ref=f3e772]:
+                - generic [ref=f3e773]:
+                  - generic [ref=f3e774]: ¥
+                  - spinbutton "-" [ref=f3e775]
+              - cell "¥" [ref=f3e776]:
+                - generic [ref=f3e777]:
+                  - generic [ref=f3e778]: ¥
+                  - spinbutton "-" [ref=f3e779]
+              - cell "未确定" [ref=f3e780]:
+                - combobox [ref=f3e781]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e782]:
+                - button "请选择" [ref=f3e783]
+              - cell [ref=f3e784]:
+                - textbox "-" [ref=f3e785]
+              - cell "-" [ref=f3e786]
+              - cell [ref=f3e787]:
+                - generic [ref=f3e788]:
+                  - link "处理" [ref=f3e789] [cursor=pointer]:
+                    - /url: /work-orders/4425bd44-61ec-45d4-94fb-429582dfa8e6
+                  - button "编辑" [ref=f3e790]
+                  - button "分支" [ref=f3e791]
+                  - button "删除" [ref=f3e792]
+            - row [ref=f3e793]:
+              - cell [ref=f3e794]:
+                - checkbox [ref=f3e795]
+              - cell [ref=f3e796]:
+                - link "WO20260520003" [ref=f3e797] [cursor=pointer]:
+                  - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e
+              - cell [ref=f3e798]:
+                - textbox "编码/条码" [ref=f3e800]
+              - cell "机油滤" [ref=f3e801]
+              - cell [ref=f3e802]:
+                - combobox "-" [ref=f3e803]
+              - cell [ref=f3e804]:
+                - combobox "-" [ref=f3e805]
+              - cell "1 个" [ref=f3e806]
+              - cell "-" [ref=f3e807]
+              - cell "¥" [ref=f3e808]:
+                - generic [ref=f3e809]:
+                  - generic [ref=f3e810]: ¥
+                  - spinbutton "-" [ref=f3e811]
+              - cell "¥" [ref=f3e812]:
+                - generic [ref=f3e813]:
+                  - generic [ref=f3e814]: ¥
+                  - spinbutton "-" [ref=f3e815]
+              - cell "同意" [ref=f3e816]:
+                - combobox [ref=f3e817]:
+                  - option "未确定"
+                  - option "同意" [selected]
+                  - option "否决"
+              - cell [ref=f3e818]:
+                - button "请选择" [ref=f3e819]
+              - cell [ref=f3e820]:
+                - textbox "-" [ref=f3e821]
+              - cell "-" [ref=f3e822]
+              - cell [ref=f3e823]:
+                - generic [ref=f3e824]:
+                  - link "处理" [ref=f3e825] [cursor=pointer]:
+                    - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e
+                  - button "编辑" [ref=f3e826]
+                  - button "分支" [ref=f3e827]
+                  - button "删除" [ref=f3e828]
+            - row [ref=f3e829]:
+              - cell [ref=f3e830]:
+                - checkbox [ref=f3e831]
+              - cell [ref=f3e832]:
+                - link "BY-20260721-001" [ref=f3e833] [cursor=pointer]:
+                  - /url: /work-orders/4425bd44-61ec-45d4-94fb-429582dfa8e6
+              - cell [ref=f3e834]:
+                - textbox "编码/条码" [ref=f3e836]
+              - cell "空调滤" [ref=f3e837]
+              - cell [ref=f3e838]:
+                - combobox "-" [ref=f3e839]
+              - cell [ref=f3e840]:
+                - combobox "-" [ref=f3e841]
+              - cell "1 个" [ref=f3e842]
+              - cell "-" [ref=f3e843]
+              - cell "¥" [ref=f3e844]:
+                - generic [ref=f3e845]:
+                  - generic [ref=f3e846]: ¥
+                  - spinbutton "-" [ref=f3e847]
+              - cell "¥" [ref=f3e848]:
+                - generic [ref=f3e849]:
+                  - generic [ref=f3e850]: ¥
+                  - spinbutton "-" [ref=f3e851]
+              - cell "未确定" [ref=f3e852]:
+                - combobox [ref=f3e853]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e854]:
+                - button "请选择" [ref=f3e855]
+              - cell [ref=f3e856]:
+                - textbox "-" [ref=f3e857]
+              - cell "-" [ref=f3e858]
+              - cell [ref=f3e859]:
+                - generic [ref=f3e860]:
+                  - link "处理" [ref=f3e861] [cursor=pointer]:
+                    - /url: /work-orders/4425bd44-61ec-45d4-94fb-429582dfa8e6
+                  - button "编辑" [ref=f3e862]
+                  - button "分支" [ref=f3e863]
+                  - button "删除" [ref=f3e864]
+            - row [ref=f3e865]:
+              - cell [ref=f3e866]:
+                - checkbox [ref=f3e867]
+              - cell [ref=f3e868]:
+                - link "WO20260520003" [ref=f3e869] [cursor=pointer]:
+                  - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e
+              - cell [ref=f3e870]:
+                - textbox "编码/条码" [ref=f3e872]
+              - cell "空调滤" [ref=f3e873]
+              - cell [ref=f3e874]:
+                - combobox "-" [ref=f3e875]
+              - cell [ref=f3e876]:
+                - combobox "-" [ref=f3e877]
+              - cell "1 个" [ref=f3e878]
+              - cell "-" [ref=f3e879]
+              - cell "¥" [ref=f3e880]:
+                - generic [ref=f3e881]:
+                  - generic [ref=f3e882]: ¥
+                  - spinbutton "-" [ref=f3e883]
+              - cell "¥" [ref=f3e884]:
+                - generic [ref=f3e885]:
+                  - generic [ref=f3e886]: ¥
+                  - spinbutton "-" [ref=f3e887]
+              - cell "同意" [ref=f3e888]:
+                - combobox [ref=f3e889]:
+                  - option "未确定"
+                  - option "同意" [selected]
+                  - option "否决"
+              - cell [ref=f3e890]:
+                - button "请选择" [ref=f3e891]
+              - cell [ref=f3e892]:
+                - textbox "-" [ref=f3e893]
+              - cell "-" [ref=f3e894]
+              - cell [ref=f3e895]:
+                - generic [ref=f3e896]:
+                  - link "处理" [ref=f3e897] [cursor=pointer]:
+                    - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e
+                  - button "编辑" [ref=f3e898]
+                  - button "分支" [ref=f3e899]
+                  - button "删除" [ref=f3e900]
+            - row [ref=f3e901]:
+              - cell [ref=f3e902]:
+                - checkbox [ref=f3e903]
+              - cell [ref=f3e904]:
+                - link "BY-20260721-001" [ref=f3e905] [cursor=pointer]:
+                  - /url: /work-orders/4425bd44-61ec-45d4-94fb-429582dfa8e6
+              - cell [ref=f3e906]:
+                - textbox "编码/条码" [ref=f3e908]
+              - cell "空气滤" [ref=f3e909]
+              - cell [ref=f3e910]:
+                - combobox "-" [ref=f3e911]
+              - cell [ref=f3e912]:
+                - combobox "-" [ref=f3e913]
+              - cell "1 件" [ref=f3e914]
+              - cell "-" [ref=f3e915]
+              - cell "¥" [ref=f3e916]:
+                - generic [ref=f3e917]:
+                  - generic [ref=f3e918]: ¥
+                  - spinbutton "-" [ref=f3e919]
+              - cell "¥" [ref=f3e920]:
+                - generic [ref=f3e921]:
+                  - generic [ref=f3e922]: ¥
+                  - spinbutton "-" [ref=f3e923]
+              - cell "未确定" [ref=f3e924]:
+                - combobox [ref=f3e925]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e926]:
+                - button "请选择" [ref=f3e927]
+              - cell [ref=f3e928]:
+                - textbox "-" [ref=f3e929]
+              - cell "-" [ref=f3e930]
+              - cell [ref=f3e931]:
+                - generic [ref=f3e932]:
+                  - link "处理" [ref=f3e933] [cursor=pointer]:
+                    - /url: /work-orders/4425bd44-61ec-45d4-94fb-429582dfa8e6
+                  - button "编辑" [ref=f3e934]
+                  - button "分支" [ref=f3e935]
+                  - button "删除" [ref=f3e936]
+            - row [ref=f3e937]:
+              - cell [ref=f3e938]:
+                - checkbox [ref=f3e939]
+              - cell [ref=f3e940]:
+                - link "WO20260520003" [ref=f3e941] [cursor=pointer]:
+                  - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e
+              - cell [ref=f3e942]:
+                - textbox "编码/条码" [ref=f3e944]
+              - cell "空气滤" [ref=f3e945]
+              - cell [ref=f3e946]:
+                - combobox "-" [ref=f3e947]
+              - cell [ref=f3e948]:
+                - combobox "-" [ref=f3e949]
+              - cell "1 件" [ref=f3e950]
+              - cell "-" [ref=f3e951]
+              - cell "¥" [ref=f3e952]:
+                - generic [ref=f3e953]:
+                  - generic [ref=f3e954]: ¥
+                  - spinbutton "-" [ref=f3e955]
+              - cell "¥" [ref=f3e956]:
+                - generic [ref=f3e957]:
+                  - generic [ref=f3e958]: ¥
+                  - spinbutton "-" [ref=f3e959]
+              - cell "同意" [ref=f3e960]:
+                - combobox [ref=f3e961]:
+                  - option "未确定"
+                  - option "同意" [selected]
+                  - option "否决"
+              - cell [ref=f3e962]:
+                - button "请选择" [ref=f3e963]
+              - cell [ref=f3e964]:
+                - textbox "-" [ref=f3e965]
+              - cell "-" [ref=f3e966]
+              - cell [ref=f3e967]:
+                - generic [ref=f3e968]:
+                  - link "处理" [ref=f3e969] [cursor=pointer]:
+                    - /url: /work-orders/fe90432f-385c-4b71-81a3-9a7b48b2af3e
+                  - button "编辑" [ref=f3e970]
+                  - button "分支" [ref=f3e971]
+                  - button "删除" [ref=f3e972]
+            - row [ref=f3e973]:
+              - cell "车牌 黑A86N7SVIN:SALGA3BV6JA383372客户:刁先生手机:13936361741(5 条)" [ref=f3e974]:
+                - generic [ref=f3e975]: 车牌
+                - text: 黑A86N7S
+                - generic [ref=f3e976]: VIN:SALGA3BV6JA383372
+                - generic [ref=f3e977]: 客户:刁先生
+                - generic [ref=f3e978]: 手机:13936361741
+                - generic [ref=f3e979]: (5 条)
+            - row [ref=f3e980]:
+              - cell [ref=f3e981]:
+                - checkbox [ref=f3e982]
+              - cell [ref=f3e983]:
+                - link "WO20260803001" [ref=f3e984] [cursor=pointer]:
+                  - /url: /work-orders/8db3a0d8-9016-4f9c-9fa6-4929212560ae
+              - cell [ref=f3e985]:
+                - textbox "编码/条码" [ref=f3e987]
+              - cell "机油-1升" [ref=f3e988]
+              - cell [ref=f3e989]:
+                - combobox "-" [ref=f3e990]
+              - cell [ref=f3e991]:
+                - combobox "-" [ref=f3e992]
+              - cell "1 桶" [ref=f3e993]
+              - cell "-" [ref=f3e994]
+              - cell "¥" [ref=f3e995]:
+                - generic [ref=f3e996]:
+                  - generic [ref=f3e997]: ¥
+                  - spinbutton "-" [ref=f3e998]
+              - cell "¥" [ref=f3e999]:
+                - generic [ref=f3e1000]:
+                  - generic [ref=f3e1001]: ¥
+                  - spinbutton "-" [ref=f3e1002]
+              - cell "未确定" [ref=f3e1003]:
+                - combobox [ref=f3e1004]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1005]:
+                - button "请选择" [ref=f3e1006]
+              - cell [ref=f3e1007]:
+                - textbox "-" [ref=f3e1008]: 请填写数据
+              - cell "-" [ref=f3e1009]
+              - cell [ref=f3e1010]:
+                - generic [ref=f3e1011]:
+                  - link "处理" [ref=f3e1012] [cursor=pointer]:
+                    - /url: /work-orders/8db3a0d8-9016-4f9c-9fa6-4929212560ae
+                  - button "编辑" [ref=f3e1013]
+                  - button "分支" [ref=f3e1014]
+                  - button "删除" [ref=f3e1015]
+            - row [ref=f3e1016]:
+              - cell [ref=f3e1017]:
+                - checkbox [ref=f3e1018]
+              - cell [ref=f3e1019]:
+                - link "WO20260803001" [ref=f3e1020] [cursor=pointer]:
+                  - /url: /work-orders/8db3a0d8-9016-4f9c-9fa6-4929212560ae
+              - cell [ref=f3e1021]:
+                - textbox "编码/条码" [ref=f3e1023]
+              - cell "机油-4升" [ref=f3e1024]
+              - cell [ref=f3e1025]:
+                - combobox "-" [ref=f3e1026]
+              - cell [ref=f3e1027]:
+                - combobox "-" [ref=f3e1028]
+              - cell "1 桶" [ref=f3e1029]
+              - cell "-" [ref=f3e1030]
+              - cell "¥" [ref=f3e1031]:
+                - generic [ref=f3e1032]:
+                  - generic [ref=f3e1033]: ¥
+                  - spinbutton "-" [ref=f3e1034]
+              - cell "¥ 380" [ref=f3e1035]:
+                - generic [ref=f3e1036]:
+                  - generic [ref=f3e1037]: ¥
+                  - spinbutton "-" [ref=f3e1038]: "380"
+              - cell "未确定" [ref=f3e1039]:
+                - combobox [ref=f3e1040]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1041]:
+                - button "请选择" [ref=f3e1042]
+              - cell [ref=f3e1043]:
+                - textbox "-" [ref=f3e1044]
+              - cell "-" [ref=f3e1045]
+              - cell [ref=f3e1046]:
+                - generic [ref=f3e1047]:
+                  - link "处理" [ref=f3e1048] [cursor=pointer]:
+                    - /url: /work-orders/8db3a0d8-9016-4f9c-9fa6-4929212560ae
+                  - button "编辑" [ref=f3e1049]
+                  - button "分支" [ref=f3e1050]
+                  - button "删除" [ref=f3e1051]
+            - row [ref=f3e1052]:
+              - cell [ref=f3e1053]:
+                - checkbox [ref=f3e1054]
+              - cell [ref=f3e1055]:
+                - link "WO20260803001" [ref=f3e1056] [cursor=pointer]:
+                  - /url: /work-orders/8db3a0d8-9016-4f9c-9fa6-4929212560ae
+              - cell [ref=f3e1057]:
+                - textbox "编码/条码" [ref=f3e1059]
+              - cell "机油滤" [ref=f3e1060]
+              - cell [ref=f3e1061]:
+                - combobox "-" [ref=f3e1062]
+              - cell [ref=f3e1063]:
+                - combobox "-" [ref=f3e1064]
+              - cell "1 个" [ref=f3e1065]
+              - cell "-" [ref=f3e1066]
+              - cell "¥" [ref=f3e1067]:
+                - generic [ref=f3e1068]:
+                  - generic [ref=f3e1069]: ¥
+                  - spinbutton "-" [ref=f3e1070]
+              - cell "¥" [ref=f3e1071]:
+                - generic [ref=f3e1072]:
+                  - generic [ref=f3e1073]: ¥
+                  - spinbutton "-" [ref=f3e1074]
+              - cell "未确定" [ref=f3e1075]:
+                - combobox [ref=f3e1076]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1077]:
+                - button "请选择" [ref=f3e1078]
+              - cell [ref=f3e1079]:
+                - textbox "-" [ref=f3e1080]
+              - cell [ref=f3e1081]
+              - cell [ref=f3e1082]:
+                - generic [ref=f3e1083]:
+                  - link "处理" [ref=f3e1084] [cursor=pointer]:
+                    - /url: /work-orders/8db3a0d8-9016-4f9c-9fa6-4929212560ae
+                  - button "编辑" [ref=f3e1085]
+                  - button "分支" [ref=f3e1086]
+                  - button "删除" [ref=f3e1087]
+            - row [ref=f3e1088]:
+              - cell [ref=f3e1089]:
+                - checkbox [ref=f3e1090]
+              - cell [ref=f3e1091]:
+                - link "WO20260803001" [ref=f3e1092] [cursor=pointer]:
+                  - /url: /work-orders/8db3a0d8-9016-4f9c-9fa6-4929212560ae
+              - cell [ref=f3e1093]:
+                - textbox "编码/条码" [ref=f3e1095]
+              - cell "空调滤" [ref=f3e1096]
+              - cell [ref=f3e1097]:
+                - combobox "-" [ref=f3e1098]
+              - cell [ref=f3e1099]:
+                - combobox "-" [ref=f3e1100]
+              - cell "1 个" [ref=f3e1101]
+              - cell "-" [ref=f3e1102]
+              - cell "¥" [ref=f3e1103]:
+                - generic [ref=f3e1104]:
+                  - generic [ref=f3e1105]: ¥
+                  - spinbutton "-" [ref=f3e1106]
+              - cell "¥" [ref=f3e1107]:
+                - generic [ref=f3e1108]:
+                  - generic [ref=f3e1109]: ¥
+                  - spinbutton "-" [ref=f3e1110]
+              - cell "未确定" [ref=f3e1111]:
+                - combobox [ref=f3e1112]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1113]:
+                - button "请选择" [ref=f3e1114]
+              - cell [ref=f3e1115]:
+                - textbox "-" [ref=f3e1116]
+              - cell [ref=f3e1117]
+              - cell [ref=f3e1118]:
+                - generic [ref=f3e1119]:
+                  - link "处理" [ref=f3e1120] [cursor=pointer]:
+                    - /url: /work-orders/8db3a0d8-9016-4f9c-9fa6-4929212560ae
+                  - button "编辑" [ref=f3e1121]
+                  - button "分支" [ref=f3e1122]
+                  - button "删除" [ref=f3e1123]
+            - row [ref=f3e1124]:
+              - cell [ref=f3e1125]:
+                - checkbox [ref=f3e1126]
+              - cell [ref=f3e1127]:
+                - link "WO20260803001" [ref=f3e1128] [cursor=pointer]:
+                  - /url: /work-orders/8db3a0d8-9016-4f9c-9fa6-4929212560ae
+              - cell [ref=f3e1129]:
+                - textbox "编码/条码" [ref=f3e1131]
+              - cell "空气滤" [ref=f3e1132]
+              - cell [ref=f3e1133]:
+                - combobox "-" [ref=f3e1134]
+              - cell [ref=f3e1135]:
+                - combobox "-" [ref=f3e1136]
+              - cell "1 件" [ref=f3e1137]
+              - cell "-" [ref=f3e1138]
+              - cell "¥" [ref=f3e1139]:
+                - generic [ref=f3e1140]:
+                  - generic [ref=f3e1141]: ¥
+                  - spinbutton "-" [ref=f3e1142]
+              - cell "¥" [ref=f3e1143]:
+                - generic [ref=f3e1144]:
+                  - generic [ref=f3e1145]: ¥
+                  - spinbutton "-" [ref=f3e1146]
+              - cell "未确定" [ref=f3e1147]:
+                - combobox [ref=f3e1148]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1149]:
+                - button "请选择" [ref=f3e1150]
+              - cell [ref=f3e1151]:
+                - textbox "-" [ref=f3e1152]
+              - cell "-" [ref=f3e1153]
+              - cell [ref=f3e1154]:
+                - generic [ref=f3e1155]:
+                  - link "处理" [ref=f3e1156] [cursor=pointer]:
+                    - /url: /work-orders/8db3a0d8-9016-4f9c-9fa6-4929212560ae
+                  - button "编辑" [ref=f3e1157]
+                  - button "分支" [ref=f3e1158]
+                  - button "删除" [ref=f3e1159]
+            - row [ref=f3e1160]:
+              - cell "车牌 黑A8M06VVIN:LFV2A215XM3643299客户:常手机:15245608989(8 条)" [ref=f3e1161]:
+                - generic [ref=f3e1162]: 车牌
+                - text: 黑A8M06V
+                - generic [ref=f3e1163]: VIN:LFV2A215XM3643299
+                - generic [ref=f3e1164]: 客户:常
+                - generic [ref=f3e1165]: 手机:15245608989
+                - generic [ref=f3e1166]: (8 条)
+            - row [ref=f3e1167]:
+              - cell [ref=f3e1168]:
+                - checkbox [ref=f3e1169]
+              - cell [ref=f3e1170]:
+                - link "WO20260523005" [ref=f3e1171] [cursor=pointer]:
+                  - /url: /work-orders/a44929db-5000-43e7-9c0d-2b0ad55040a8
+              - cell [ref=f3e1172]:
+                - textbox "编码/条码" [ref=f3e1174]
+              - cell "机油-1升" [ref=f3e1175]
+              - cell [ref=f3e1176]:
+                - combobox "-" [ref=f3e1177]
+              - cell [ref=f3e1178]:
+                - combobox "-" [ref=f3e1179]
+              - cell "1 桶" [ref=f3e1180]
+              - cell "-" [ref=f3e1181]
+              - cell "¥" [ref=f3e1182]:
+                - generic [ref=f3e1183]:
+                  - generic [ref=f3e1184]: ¥
+                  - spinbutton "-" [ref=f3e1185]
+              - cell "¥" [ref=f3e1186]:
+                - generic [ref=f3e1187]:
+                  - generic [ref=f3e1188]: ¥
+                  - spinbutton "-" [ref=f3e1189]
+              - cell "未确定" [ref=f3e1190]:
+                - combobox [ref=f3e1191]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1192]:
+                - button "请选择" [ref=f3e1193]
+              - cell [ref=f3e1194]:
+                - textbox "-" [ref=f3e1195]
+              - cell "-" [ref=f3e1196]
+              - cell [ref=f3e1197]:
+                - generic [ref=f3e1198]:
+                  - link "处理" [ref=f3e1199] [cursor=pointer]:
+                    - /url: /work-orders/a44929db-5000-43e7-9c0d-2b0ad55040a8
+                  - button "编辑" [ref=f3e1200]
+                  - button "分支" [ref=f3e1201]
+                  - button "删除" [ref=f3e1202]
+            - row [ref=f3e1203]:
+              - cell [ref=f3e1204]:
+                - checkbox [ref=f3e1205]
+              - cell [ref=f3e1206]:
+                - link "BY-20260720-004" [ref=f3e1207] [cursor=pointer]:
+                  - /url: /work-orders/1ab2e8d9-e4e2-4ed4-914f-cc542461e8dc
+              - cell [ref=f3e1208]:
+                - textbox "编码/条码" [ref=f3e1210]
+              - cell "机油-1升" [ref=f3e1211]
+              - cell [ref=f3e1212]:
+                - combobox "-" [ref=f3e1213]
+              - cell [ref=f3e1214]:
+                - combobox "-" [ref=f3e1215]
+              - cell "1 桶" [ref=f3e1216]
+              - cell "-" [ref=f3e1217]
+              - cell "¥" [ref=f3e1218]:
+                - generic [ref=f3e1219]:
+                  - generic [ref=f3e1220]: ¥
+                  - spinbutton "-" [ref=f3e1221]
+              - cell "¥" [ref=f3e1222]:
+                - generic [ref=f3e1223]:
+                  - generic [ref=f3e1224]: ¥
+                  - spinbutton "-" [ref=f3e1225]
+              - cell "未确定" [ref=f3e1226]:
+                - combobox [ref=f3e1227]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1228]:
+                - button "请选择" [ref=f3e1229]
+              - cell [ref=f3e1230]:
+                - textbox "-" [ref=f3e1231]
+              - cell "-" [ref=f3e1232]
+              - cell [ref=f3e1233]:
+                - generic [ref=f3e1234]:
+                  - link "处理" [ref=f3e1235] [cursor=pointer]:
+                    - /url: /work-orders/1ab2e8d9-e4e2-4ed4-914f-cc542461e8dc
+                  - button "编辑" [ref=f3e1236]
+                  - button "分支" [ref=f3e1237]
+                  - button "删除" [ref=f3e1238]
+            - row [ref=f3e1239]:
+              - cell [ref=f3e1240]:
+                - checkbox [ref=f3e1241]
+              - cell [ref=f3e1242]:
+                - link "WO20260523005" [ref=f3e1243] [cursor=pointer]:
+                  - /url: /work-orders/a44929db-5000-43e7-9c0d-2b0ad55040a8
+              - cell [ref=f3e1244]:
+                - generic [ref=f3e1245]:
+                  - textbox "编码/条码" [ref=f3e1246]: XYO-7700
+                  - button "×" [ref=f3e1247]
+              - cell "机油滤" [ref=f3e1248]
+              - cell [ref=f3e1249]:
+                - combobox "-" [ref=f3e1250]
+              - cell [ref=f3e1251]:
+                - combobox "-" [ref=f3e1252]
+              - cell "1 件" [ref=f3e1253]
+              - cell "0" [ref=f3e1254]
+              - cell "¥" [ref=f3e1255]:
+                - generic [ref=f3e1256]:
+                  - generic [ref=f3e1257]: ¥
+                  - spinbutton "-" [ref=f3e1258]
+              - cell "¥ 30" [ref=f3e1259]:
+                - generic [ref=f3e1260]:
+                  - generic [ref=f3e1261]: ¥
+                  - spinbutton "-" [ref=f3e1262]: "30"
+              - cell "同意" [ref=f3e1263]:
+                - combobox [ref=f3e1264]:
+                  - option "未确定"
+                  - option "同意" [selected]
+                  - option "否决"
+              - cell [ref=f3e1265]:
+                - button "请选择" [ref=f3e1266]
+              - cell [ref=f3e1267]:
+                - textbox "-" [ref=f3e1268]
+              - cell "-" [ref=f3e1269]
+              - cell [ref=f3e1270]:
+                - generic [ref=f3e1271]:
+                  - link "处理" [ref=f3e1272] [cursor=pointer]:
+                    - /url: /work-orders/a44929db-5000-43e7-9c0d-2b0ad55040a8
+                  - button "编辑" [ref=f3e1273]
+                  - button "分支" [ref=f3e1274]
+                  - button "删除" [ref=f3e1275]
+            - row [ref=f3e1276]:
+              - cell [ref=f3e1277]:
+                - checkbox [ref=f3e1278]
+              - cell [ref=f3e1279]:
+                - link "BY-20260720-004" [ref=f3e1280] [cursor=pointer]:
+                  - /url: /work-orders/1ab2e8d9-e4e2-4ed4-914f-cc542461e8dc
+              - cell [ref=f3e1281]:
+                - generic [ref=f3e1282]:
+                  - textbox "编码/条码" [ref=f3e1283]: XYO-7700
+                  - button "×" [ref=f3e1284]
+              - cell "机油滤" [ref=f3e1285]
+              - cell [ref=f3e1286]:
+                - combobox "-" [ref=f3e1287]
+              - cell [ref=f3e1288]:
+                - combobox "-" [ref=f3e1289]
+              - cell "1 件" [ref=f3e1290]
+              - cell "0" [ref=f3e1291]
+              - cell "¥" [ref=f3e1292]:
+                - generic [ref=f3e1293]:
+                  - generic [ref=f3e1294]: ¥
+                  - spinbutton "-" [ref=f3e1295]
+              - cell "¥ 30" [ref=f3e1296]:
+                - generic [ref=f3e1297]:
+                  - generic [ref=f3e1298]: ¥
+                  - spinbutton "-" [ref=f3e1299]: "30"
+              - cell "同意" [ref=f3e1300]:
+                - combobox [ref=f3e1301]:
+                  - option "未确定"
+                  - option "同意" [selected]
+                  - option "否决"
+              - cell [ref=f3e1302]:
+                - button "请选择" [ref=f3e1303]
+              - cell [ref=f3e1304]:
+                - textbox "-" [ref=f3e1305]
+              - cell "-" [ref=f3e1306]
+              - cell [ref=f3e1307]:
+                - generic [ref=f3e1308]:
+                  - link "处理" [ref=f3e1309] [cursor=pointer]:
+                    - /url: /work-orders/1ab2e8d9-e4e2-4ed4-914f-cc542461e8dc
+                  - button "编辑" [ref=f3e1310]
+                  - button "分支" [ref=f3e1311]
+                  - button "删除" [ref=f3e1312]
+            - row [ref=f3e1313]:
+              - cell [ref=f3e1314]:
+                - checkbox [ref=f3e1315]
+              - cell [ref=f3e1316]:
+                - link "WO20260523005" [ref=f3e1317] [cursor=pointer]:
+                  - /url: /work-orders/a44929db-5000-43e7-9c0d-2b0ad55040a8
+              - cell [ref=f3e1318]:
+                - textbox "编码/条码" [ref=f3e1320]
+              - cell "空调滤" [ref=f3e1321]
+              - cell [ref=f3e1322]:
+                - combobox "-" [ref=f3e1323]
+              - cell [ref=f3e1324]:
+                - combobox "-" [ref=f3e1325]
+              - cell "1 个" [ref=f3e1326]
+              - cell "-" [ref=f3e1327]
+              - cell "¥" [ref=f3e1328]:
+                - generic [ref=f3e1329]:
+                  - generic [ref=f3e1330]: ¥
+                  - spinbutton "-" [ref=f3e1331]
+              - cell "¥ 30" [ref=f3e1332]:
+                - generic [ref=f3e1333]:
+                  - generic [ref=f3e1334]: ¥
+                  - spinbutton "-" [ref=f3e1335]: "30"
+              - cell "未确定" [ref=f3e1336]:
+                - combobox [ref=f3e1337]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1338]:
+                - button "请选择" [ref=f3e1339]
+              - cell [ref=f3e1340]:
+                - textbox "-" [ref=f3e1341]
+              - cell "-" [ref=f3e1342]
+              - cell [ref=f3e1343]:
+                - generic [ref=f3e1344]:
+                  - link "处理" [ref=f3e1345] [cursor=pointer]:
+                    - /url: /work-orders/a44929db-5000-43e7-9c0d-2b0ad55040a8
+                  - button "编辑" [ref=f3e1346]
+                  - button "分支" [ref=f3e1347]
+                  - button "删除" [ref=f3e1348]
+            - row [ref=f3e1349]:
+              - cell [ref=f3e1350]:
+                - checkbox [ref=f3e1351]
+              - cell [ref=f3e1352]:
+                - link "BY-20260720-004" [ref=f3e1353] [cursor=pointer]:
+                  - /url: /work-orders/1ab2e8d9-e4e2-4ed4-914f-cc542461e8dc
+              - cell [ref=f3e1354]:
+                - textbox "编码/条码" [ref=f3e1356]
+              - cell "空调滤" [ref=f3e1357]
+              - cell [ref=f3e1358]:
+                - combobox "-" [ref=f3e1359]
+              - cell [ref=f3e1360]:
+                - combobox "-" [ref=f3e1361]
+              - cell "1 个" [ref=f3e1362]
+              - cell "-" [ref=f3e1363]
+              - cell "¥" [ref=f3e1364]:
+                - generic [ref=f3e1365]:
+                  - generic [ref=f3e1366]: ¥
+                  - spinbutton "-" [ref=f3e1367]
+              - cell "¥ 30" [ref=f3e1368]:
+                - generic [ref=f3e1369]:
+                  - generic [ref=f3e1370]: ¥
+                  - spinbutton "-" [ref=f3e1371]: "30"
+              - cell "未确定" [ref=f3e1372]:
+                - combobox [ref=f3e1373]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1374]:
+                - button "请选择" [ref=f3e1375]
+              - cell [ref=f3e1376]:
+                - textbox "-" [ref=f3e1377]
+              - cell "-" [ref=f3e1378]
+              - cell [ref=f3e1379]:
+                - generic [ref=f3e1380]:
+                  - link "处理" [ref=f3e1381] [cursor=pointer]:
+                    - /url: /work-orders/1ab2e8d9-e4e2-4ed4-914f-cc542461e8dc
+                  - button "编辑" [ref=f3e1382]
+                  - button "分支" [ref=f3e1383]
+                  - button "删除" [ref=f3e1384]
+            - row [ref=f3e1385]:
+              - cell [ref=f3e1386]:
+                - checkbox [ref=f3e1387]
+              - cell [ref=f3e1388]:
+                - link "WO20260523005" [ref=f3e1389] [cursor=pointer]:
+                  - /url: /work-orders/a44929db-5000-43e7-9c0d-2b0ad55040a8
+              - cell [ref=f3e1390]:
+                - textbox "编码/条码" [ref=f3e1392]
+              - cell "空气滤" [ref=f3e1393]
+              - cell [ref=f3e1394]:
+                - combobox "-" [ref=f3e1395]
+              - cell [ref=f3e1396]:
+                - combobox "-" [ref=f3e1397]
+              - cell "1 件" [ref=f3e1398]
+              - cell "-" [ref=f3e1399]
+              - cell "¥" [ref=f3e1400]:
+                - generic [ref=f3e1401]:
+                  - generic [ref=f3e1402]: ¥
+                  - spinbutton "-" [ref=f3e1403]
+              - cell "¥" [ref=f3e1404]:
+                - generic [ref=f3e1405]:
+                  - generic [ref=f3e1406]: ¥
+                  - spinbutton "-" [ref=f3e1407]
+              - cell "未确定" [ref=f3e1408]:
+                - combobox [ref=f3e1409]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1410]:
+                - button "请选择" [ref=f3e1411]
+              - cell [ref=f3e1412]:
+                - textbox "-" [ref=f3e1413]
+              - cell "-" [ref=f3e1414]
+              - cell [ref=f3e1415]:
+                - generic [ref=f3e1416]:
+                  - link "处理" [ref=f3e1417] [cursor=pointer]:
+                    - /url: /work-orders/a44929db-5000-43e7-9c0d-2b0ad55040a8
+                  - button "编辑" [ref=f3e1418]
+                  - button "分支" [ref=f3e1419]
+                  - button "删除" [ref=f3e1420]
+            - row [ref=f3e1421]:
+              - cell [ref=f3e1422]:
+                - checkbox [ref=f3e1423]
+              - cell [ref=f3e1424]:
+                - link "BY-20260720-004" [ref=f3e1425] [cursor=pointer]:
+                  - /url: /work-orders/1ab2e8d9-e4e2-4ed4-914f-cc542461e8dc
+              - cell [ref=f3e1426]:
+                - textbox "编码/条码" [ref=f3e1428]
+              - cell "空气滤" [ref=f3e1429]
+              - cell [ref=f3e1430]:
+                - combobox "-" [ref=f3e1431]
+              - cell [ref=f3e1432]:
+                - combobox "-" [ref=f3e1433]
+              - cell "1 件" [ref=f3e1434]
+              - cell "-" [ref=f3e1435]
+              - cell "¥" [ref=f3e1436]:
+                - generic [ref=f3e1437]:
+                  - generic [ref=f3e1438]: ¥
+                  - spinbutton "-" [ref=f3e1439]
+              - cell "¥" [ref=f3e1440]:
+                - generic [ref=f3e1441]:
+                  - generic [ref=f3e1442]: ¥
+                  - spinbutton "-" [ref=f3e1443]
+              - cell "未确定" [ref=f3e1444]:
+                - combobox [ref=f3e1445]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1446]:
+                - button "请选择" [ref=f3e1447]
+              - cell [ref=f3e1448]:
+                - textbox "-" [ref=f3e1449]
+              - cell "-" [ref=f3e1450]
+              - cell [ref=f3e1451]:
+                - generic [ref=f3e1452]:
+                  - link "处理" [ref=f3e1453] [cursor=pointer]:
+                    - /url: /work-orders/1ab2e8d9-e4e2-4ed4-914f-cc542461e8dc
+                  - button "编辑" [ref=f3e1454]
+                  - button "分支" [ref=f3e1455]
+                  - button "删除" [ref=f3e1456]
+            - row [ref=f3e1457]:
+              - cell "车牌 黑A9B6N3VIN:LVGCJE239MG823874客户:周手机:13766927638(2 条)" [ref=f3e1458]:
+                - generic [ref=f3e1459]: 车牌
+                - text: 黑A9B6N3
+                - generic [ref=f3e1460]: VIN:LVGCJE239MG823874
+                - generic [ref=f3e1461]: 客户:周
+                - generic [ref=f3e1462]: 手机:13766927638
+                - generic [ref=f3e1463]: (2 条)
+            - row [ref=f3e1464]:
+              - cell [ref=f3e1465]:
+                - checkbox [ref=f3e1466]
+              - cell [ref=f3e1467]:
+                - link "WO20260605001" [ref=f3e1468] [cursor=pointer]:
+                  - /url: /work-orders/22d1164f-5fec-40fd-b9b1-5a7d68aeff5d
+              - cell [ref=f3e1469]:
+                - generic [ref=f3e1470]:
+                  - textbox "编码/条码" [ref=f3e1471]: "11428570590"
+                  - button "×" [ref=f3e1472]
+              - cell "机油滤" [ref=f3e1473]
+              - cell [ref=f3e1474]:
+                - combobox "-" [ref=f3e1475]: 原厂
+              - cell [ref=f3e1476]:
+                - combobox "-" [ref=f3e1477]
+              - cell "1 个" [ref=f3e1478]
+              - cell "0" [ref=f3e1479]
+              - cell "¥" [ref=f3e1480]:
+                - generic [ref=f3e1481]:
+                  - generic [ref=f3e1482]: ¥
+                  - spinbutton "-" [ref=f3e1483]
+              - cell "¥" [ref=f3e1484]:
+                - generic [ref=f3e1485]:
+                  - generic [ref=f3e1486]: ¥
+                  - spinbutton "-" [ref=f3e1487]
+              - cell "未确定" [ref=f3e1488]:
+                - combobox [ref=f3e1489]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1490]:
+                - button "请选择" [ref=f3e1491]
+              - cell [ref=f3e1492]:
+                - textbox "-" [ref=f3e1493]
+              - cell "-" [ref=f3e1494]
+              - cell [ref=f3e1495]:
+                - generic [ref=f3e1496]:
+                  - link "处理" [ref=f3e1497] [cursor=pointer]:
+                    - /url: /work-orders/22d1164f-5fec-40fd-b9b1-5a7d68aeff5d
+                  - button "编辑" [ref=f3e1498]
+                  - button "分支" [ref=f3e1499]
+                  - button "删除" [ref=f3e1500]
+            - row [ref=f3e1501]:
+              - cell [ref=f3e1502]:
+                - checkbox [ref=f3e1503]
+              - cell [ref=f3e1504]:
+                - link "WO20260605001" [ref=f3e1505] [cursor=pointer]:
+                  - /url: /work-orders/22d1164f-5fec-40fd-b9b1-5a7d68aeff5d
+              - cell [ref=f3e1506]:
+                - textbox "编码/条码" [ref=f3e1508]
+              - cell "下支臂-右前" [ref=f3e1509]
+              - cell [ref=f3e1510]:
+                - combobox "-" [ref=f3e1511]
+              - cell [ref=f3e1512]:
+                - combobox "-" [ref=f3e1513]
+              - cell "1 支" [ref=f3e1514]
+              - cell "-" [ref=f3e1515]
+              - cell "¥" [ref=f3e1516]:
+                - generic [ref=f3e1517]:
+                  - generic [ref=f3e1518]: ¥
+                  - spinbutton "-" [ref=f3e1519]
+              - cell "¥" [ref=f3e1520]:
+                - generic [ref=f3e1521]:
+                  - generic [ref=f3e1522]: ¥
+                  - spinbutton "-" [ref=f3e1523]
+              - cell "未确定" [ref=f3e1524]:
+                - combobox [ref=f3e1525]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1526]:
+                - button "请选择" [ref=f3e1527]
+              - cell [ref=f3e1528]:
+                - textbox "-" [ref=f3e1529]
+              - cell "-" [ref=f3e1530]
+              - cell [ref=f3e1531]:
+                - generic [ref=f3e1532]:
+                  - link "处理" [ref=f3e1533] [cursor=pointer]:
+                    - /url: /work-orders/22d1164f-5fec-40fd-b9b1-5a7d68aeff5d
+                  - button "编辑" [ref=f3e1534]
+                  - button "分支" [ref=f3e1535]
+                  - button "删除" [ref=f3e1536]
+            - row [ref=f3e1537]:
+              - cell "车牌 黑AD6G70VIN:LSV5L8CA3LN549132客户:暂无手机:18518076888(5 条)" [ref=f3e1538]:
+                - generic [ref=f3e1539]: 车牌
+                - text: 黑AD6G70
+                - generic [ref=f3e1540]: VIN:LSV5L8CA3LN549132
+                - generic [ref=f3e1541]: 客户:暂无
+                - generic [ref=f3e1542]: 手机:18518076888
+                - generic [ref=f3e1543]: (5 条)
+            - row [ref=f3e1544]:
+              - cell [ref=f3e1545]:
+                - checkbox [ref=f3e1546]
+              - cell [ref=f3e1547]:
+                - link "WO20260614002" [ref=f3e1548] [cursor=pointer]:
+                  - /url: /work-orders/77408140-b8a1-4b94-a73b-bf5db36fa81a
+              - cell [ref=f3e1549]:
+                - textbox "编码/条码" [ref=f3e1551]
+              - cell "机油-1升" [ref=f3e1552]
+              - cell [ref=f3e1553]:
+                - combobox "-" [ref=f3e1554]
+              - cell [ref=f3e1555]:
+                - combobox "-" [ref=f3e1556]
+              - cell "1 桶" [ref=f3e1557]
+              - cell "-" [ref=f3e1558]
+              - cell "¥" [ref=f3e1559]:
+                - generic [ref=f3e1560]:
+                  - generic [ref=f3e1561]: ¥
+                  - spinbutton "-" [ref=f3e1562]
+              - cell "¥" [ref=f3e1563]:
+                - generic [ref=f3e1564]:
+                  - generic [ref=f3e1565]: ¥
+                  - spinbutton "-" [ref=f3e1566]
+              - cell "未确定" [ref=f3e1567]:
+                - combobox [ref=f3e1568]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1569]:
+                - button "请选择" [ref=f3e1570]
+              - cell [ref=f3e1571]:
+                - textbox "-" [ref=f3e1572]
+              - cell "-" [ref=f3e1573]
+              - cell [ref=f3e1574]:
+                - generic [ref=f3e1575]:
+                  - link "处理" [ref=f3e1576] [cursor=pointer]:
+                    - /url: /work-orders/77408140-b8a1-4b94-a73b-bf5db36fa81a
+                  - button "编辑" [ref=f3e1577]
+                  - button "分支" [ref=f3e1578]
+                  - button "删除" [ref=f3e1579]
+            - row [ref=f3e1580]:
+              - cell [ref=f3e1581]:
+                - checkbox [ref=f3e1582]
+              - cell [ref=f3e1583]:
+                - link "WO20260614002" [ref=f3e1584] [cursor=pointer]:
+                  - /url: /work-orders/77408140-b8a1-4b94-a73b-bf5db36fa81a
+              - cell [ref=f3e1585]:
+                - textbox "编码/条码" [ref=f3e1587]
+              - cell "机油-4升" [ref=f3e1588]
+              - cell [ref=f3e1589]:
+                - combobox "-" [ref=f3e1590]
+              - cell [ref=f3e1591]:
+                - combobox "-" [ref=f3e1592]
+              - cell "2 桶" [ref=f3e1593]
+              - cell "-" [ref=f3e1594]
+              - cell "¥" [ref=f3e1595]:
+                - generic [ref=f3e1596]:
+                  - generic [ref=f3e1597]: ¥
+                  - spinbutton "-" [ref=f3e1598]
+              - cell "¥ 380" [ref=f3e1599]:
+                - generic [ref=f3e1600]:
+                  - generic [ref=f3e1601]: ¥
+                  - spinbutton "-" [ref=f3e1602]: "380"
+              - cell "未确定" [ref=f3e1603]:
+                - combobox [ref=f3e1604]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1605]:
+                - button "请选择" [ref=f3e1606]
+              - cell [ref=f3e1607]:
+                - textbox "-" [ref=f3e1608]
+              - cell "-" [ref=f3e1609]
+              - cell [ref=f3e1610]:
+                - generic [ref=f3e1611]:
+                  - link "处理" [ref=f3e1612] [cursor=pointer]:
+                    - /url: /work-orders/77408140-b8a1-4b94-a73b-bf5db36fa81a
+                  - button "编辑" [ref=f3e1613]
+                  - button "分支" [ref=f3e1614]
+                  - button "删除" [ref=f3e1615]
+            - row [ref=f3e1616]:
+              - cell [ref=f3e1617]:
+                - checkbox [ref=f3e1618]
+              - cell [ref=f3e1619]:
+                - link "WO20260614002" [ref=f3e1620] [cursor=pointer]:
+                  - /url: /work-orders/77408140-b8a1-4b94-a73b-bf5db36fa81a
+              - cell [ref=f3e1621]:
+                - textbox "编码/条码" [ref=f3e1623]
+              - cell "机油滤" [ref=f3e1624]
+              - cell [ref=f3e1625]:
+                - combobox "-" [ref=f3e1626]
+              - cell [ref=f3e1627]:
+                - combobox "-" [ref=f3e1628]
+              - cell "1 个" [ref=f3e1629]
+              - cell "-" [ref=f3e1630]
+              - cell "¥" [ref=f3e1631]:
+                - generic [ref=f3e1632]:
+                  - generic [ref=f3e1633]: ¥
+                  - spinbutton "-" [ref=f3e1634]
+              - cell "¥" [ref=f3e1635]:
+                - generic [ref=f3e1636]:
+                  - generic [ref=f3e1637]: ¥
+                  - spinbutton "-" [ref=f3e1638]
+              - cell "未确定" [ref=f3e1639]:
+                - combobox [ref=f3e1640]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1641]:
+                - button "请选择" [ref=f3e1642]
+              - cell [ref=f3e1643]:
+                - textbox "-" [ref=f3e1644]
+              - cell "-" [ref=f3e1645]
+              - cell [ref=f3e1646]:
+                - generic [ref=f3e1647]:
+                  - link "处理" [ref=f3e1648] [cursor=pointer]:
+                    - /url: /work-orders/77408140-b8a1-4b94-a73b-bf5db36fa81a
+                  - button "编辑" [ref=f3e1649]
+                  - button "分支" [ref=f3e1650]
+                  - button "删除" [ref=f3e1651]
+            - row [ref=f3e1652]:
+              - cell [ref=f3e1653]:
+                - checkbox [ref=f3e1654]
+              - cell [ref=f3e1655]:
+                - link "WO20260614002" [ref=f3e1656] [cursor=pointer]:
+                  - /url: /work-orders/77408140-b8a1-4b94-a73b-bf5db36fa81a
+              - cell [ref=f3e1657]:
+                - textbox "编码/条码" [ref=f3e1659]
+              - cell "空调滤" [ref=f3e1660]
+              - cell [ref=f3e1661]:
+                - combobox "-" [ref=f3e1662]
+              - cell [ref=f3e1663]:
+                - combobox "-" [ref=f3e1664]
+              - cell "1 个" [ref=f3e1665]
+              - cell "-" [ref=f3e1666]
+              - cell "¥" [ref=f3e1667]:
+                - generic [ref=f3e1668]:
+                  - generic [ref=f3e1669]: ¥
+                  - spinbutton "-" [ref=f3e1670]
+              - cell "¥" [ref=f3e1671]:
+                - generic [ref=f3e1672]:
+                  - generic [ref=f3e1673]: ¥
+                  - spinbutton "-" [ref=f3e1674]
+              - cell "未确定" [ref=f3e1675]:
+                - combobox [ref=f3e1676]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1677]:
+                - button "请选择" [ref=f3e1678]
+              - cell [ref=f3e1679]:
+                - textbox "-" [ref=f3e1680]
+              - cell "-" [ref=f3e1681]
+              - cell [ref=f3e1682]:
+                - generic [ref=f3e1683]:
+                  - link "处理" [ref=f3e1684] [cursor=pointer]:
+                    - /url: /work-orders/77408140-b8a1-4b94-a73b-bf5db36fa81a
+                  - button "编辑" [ref=f3e1685]
+                  - button "分支" [ref=f3e1686]
+                  - button "删除" [ref=f3e1687]
+            - row [ref=f3e1688]:
+              - cell [ref=f3e1689]:
+                - checkbox [ref=f3e1690]
+              - cell [ref=f3e1691]:
+                - link "WO20260614002" [ref=f3e1692] [cursor=pointer]:
+                  - /url: /work-orders/77408140-b8a1-4b94-a73b-bf5db36fa81a
+              - cell [ref=f3e1693]:
+                - textbox "编码/条码" [ref=f3e1695]
+              - cell "空气滤" [ref=f3e1696]
+              - cell [ref=f3e1697]:
+                - combobox "-" [ref=f3e1698]
+              - cell [ref=f3e1699]:
+                - combobox "-" [ref=f3e1700]
+              - cell "1 件" [ref=f3e1701]
+              - cell "-" [ref=f3e1702]
+              - cell "¥" [ref=f3e1703]:
+                - generic [ref=f3e1704]:
+                  - generic [ref=f3e1705]: ¥
+                  - spinbutton "-" [ref=f3e1706]
+              - cell "¥" [ref=f3e1707]:
+                - generic [ref=f3e1708]:
+                  - generic [ref=f3e1709]: ¥
+                  - spinbutton "-" [ref=f3e1710]
+              - cell "未确定" [ref=f3e1711]:
+                - combobox [ref=f3e1712]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1713]:
+                - button "请选择" [ref=f3e1714]
+              - cell [ref=f3e1715]:
+                - textbox "-" [ref=f3e1716]
+              - cell "-" [ref=f3e1717]
+              - cell [ref=f3e1718]:
+                - generic [ref=f3e1719]:
+                  - link "处理" [ref=f3e1720] [cursor=pointer]:
+                    - /url: /work-orders/77408140-b8a1-4b94-a73b-bf5db36fa81a
+                  - button "编辑" [ref=f3e1721]
+                  - button "分支" [ref=f3e1722]
+                  - button "删除" [ref=f3e1723]
+            - row [ref=f3e1724]:
+              - cell "车牌 黑AG0P13VIN:WBA7E4102HGV24594客户:物之粹药业有限公司手机:15577347777(6 条)" [ref=f3e1725]:
+                - generic [ref=f3e1726]: 车牌
+                - text: 黑AG0P13
+                - generic [ref=f3e1727]: VIN:WBA7E4102HGV24594
+                - generic [ref=f3e1728]: 客户:物之粹药业有限公司
+                - generic [ref=f3e1729]: 手机:15577347777
+                - generic [ref=f3e1730]: (6 条)
+            - row [ref=f3e1731]:
+              - cell [ref=f3e1732]:
+                - checkbox [ref=f3e1733]
+              - cell [ref=f3e1734]:
+                - link "WO20260526001" [ref=f3e1735] [cursor=pointer]:
+                  - /url: /work-orders/267a19ad-4f70-432a-9817-26932145bb52
+              - cell [ref=f3e1736]:
+                - textbox "编码/条码" [ref=f3e1738]
+              - cell "机油-1升" [ref=f3e1739]
+              - cell [ref=f3e1740]:
+                - combobox "-" [ref=f3e1741]
+              - cell [ref=f3e1742]:
+                - combobox "-" [ref=f3e1743]
+              - cell "1 桶" [ref=f3e1744]
+              - cell "-" [ref=f3e1745]
+              - cell "¥" [ref=f3e1746]:
+                - generic [ref=f3e1747]:
+                  - generic [ref=f3e1748]: ¥
+                  - spinbutton "-" [ref=f3e1749]
+              - cell "¥" [ref=f3e1750]:
+                - generic [ref=f3e1751]:
+                  - generic [ref=f3e1752]: ¥
+                  - spinbutton "-" [ref=f3e1753]
+              - cell "未确定" [ref=f3e1754]:
+                - combobox [ref=f3e1755]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1756]:
+                - button "请选择" [ref=f3e1757]
+              - cell [ref=f3e1758]:
+                - textbox "-" [ref=f3e1759]
+              - cell "-" [ref=f3e1760]
+              - cell [ref=f3e1761]:
+                - generic [ref=f3e1762]:
+                  - link "处理" [ref=f3e1763] [cursor=pointer]:
+                    - /url: /work-orders/267a19ad-4f70-432a-9817-26932145bb52
+                  - button "编辑" [ref=f3e1764]
+                  - button "分支" [ref=f3e1765]
+                  - button "删除" [ref=f3e1766]
+            - row [ref=f3e1767]:
+              - cell [ref=f3e1768]:
+                - checkbox [ref=f3e1769]
+              - cell [ref=f3e1770]:
+                - link "BY-20260720-003" [ref=f3e1771] [cursor=pointer]:
+                  - /url: /work-orders/26584746-a2dc-4038-9984-d840ee83bf8b
+              - cell [ref=f3e1772]:
+                - textbox "编码/条码" [ref=f3e1774]
+              - cell "机油-1升" [ref=f3e1775]
+              - cell [ref=f3e1776]:
+                - combobox "-" [ref=f3e1777]
+              - cell [ref=f3e1778]:
+                - combobox "-" [ref=f3e1779]
+              - cell "1 桶" [ref=f3e1780]
+              - cell "-" [ref=f3e1781]
+              - cell "¥" [ref=f3e1782]:
+                - generic [ref=f3e1783]:
+                  - generic [ref=f3e1784]: ¥
+                  - spinbutton "-" [ref=f3e1785]
+              - cell "¥" [ref=f3e1786]:
+                - generic [ref=f3e1787]:
+                  - generic [ref=f3e1788]: ¥
+                  - spinbutton "-" [ref=f3e1789]
+              - cell "未确定" [ref=f3e1790]:
+                - combobox [ref=f3e1791]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1792]:
+                - button "请选择" [ref=f3e1793]
+              - cell [ref=f3e1794]:
+                - textbox "-" [ref=f3e1795]
+              - cell "-" [ref=f3e1796]
+              - cell [ref=f3e1797]:
+                - generic [ref=f3e1798]:
+                  - link "处理" [ref=f3e1799] [cursor=pointer]:
+                    - /url: /work-orders/26584746-a2dc-4038-9984-d840ee83bf8b
+                  - button "编辑" [ref=f3e1800]
+                  - button "分支" [ref=f3e1801]
+                  - button "删除" [ref=f3e1802]
+            - row [ref=f3e1803]:
+              - cell [ref=f3e1804]:
+                - checkbox [ref=f3e1805]
+              - cell [ref=f3e1806]:
+                - link "WO20260526001" [ref=f3e1807] [cursor=pointer]:
+                  - /url: /work-orders/267a19ad-4f70-432a-9817-26932145bb52
+              - cell [ref=f3e1808]:
+                - textbox "编码/条码" [ref=f3e1810]
+              - cell "机油-4升" [ref=f3e1811]
+              - cell [ref=f3e1812]:
+                - combobox "-" [ref=f3e1813]
+              - cell [ref=f3e1814]:
+                - combobox "-" [ref=f3e1815]
+              - cell "1 桶" [ref=f3e1816]
+              - cell "-" [ref=f3e1817]
+              - cell "¥" [ref=f3e1818]:
+                - generic [ref=f3e1819]:
+                  - generic [ref=f3e1820]: ¥
+                  - spinbutton "-" [ref=f3e1821]
+              - cell "¥" [ref=f3e1822]:
+                - generic [ref=f3e1823]:
+                  - generic [ref=f3e1824]: ¥
+                  - spinbutton "-" [ref=f3e1825]
+              - cell "未确定" [ref=f3e1826]:
+                - combobox [ref=f3e1827]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1828]:
+                - button "请选择" [ref=f3e1829]
+              - cell [ref=f3e1830]:
+                - textbox "-" [ref=f3e1831]
+              - cell "-" [ref=f3e1832]
+              - cell [ref=f3e1833]:
+                - generic [ref=f3e1834]:
+                  - link "处理" [ref=f3e1835] [cursor=pointer]:
+                    - /url: /work-orders/267a19ad-4f70-432a-9817-26932145bb52
+                  - button "编辑" [ref=f3e1836]
+                  - button "分支" [ref=f3e1837]
+                  - button "删除" [ref=f3e1838]
+            - row [ref=f3e1839]:
+              - cell [ref=f3e1840]:
+                - checkbox [ref=f3e1841]
+              - cell [ref=f3e1842]:
+                - link "BY-20260720-003" [ref=f3e1843] [cursor=pointer]:
+                  - /url: /work-orders/26584746-a2dc-4038-9984-d840ee83bf8b
+              - cell [ref=f3e1844]:
+                - textbox "编码/条码" [ref=f3e1846]
+              - cell "机油-4升" [ref=f3e1847]
+              - cell [ref=f3e1848]:
+                - combobox "-" [ref=f3e1849]
+              - cell [ref=f3e1850]:
+                - combobox "-" [ref=f3e1851]
+              - cell "1 桶" [ref=f3e1852]
+              - cell "-" [ref=f3e1853]
+              - cell "¥" [ref=f3e1854]:
+                - generic [ref=f3e1855]:
+                  - generic [ref=f3e1856]: ¥
+                  - spinbutton "-" [ref=f3e1857]
+              - cell "¥" [ref=f3e1858]:
+                - generic [ref=f3e1859]:
+                  - generic [ref=f3e1860]: ¥
+                  - spinbutton "-" [ref=f3e1861]
+              - cell "未确定" [ref=f3e1862]:
+                - combobox [ref=f3e1863]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1864]:
+                - button "请选择" [ref=f3e1865]
+              - cell [ref=f3e1866]:
+                - textbox "-" [ref=f3e1867]
+              - cell "-" [ref=f3e1868]
+              - cell [ref=f3e1869]:
+                - generic [ref=f3e1870]:
+                  - link "处理" [ref=f3e1871] [cursor=pointer]:
+                    - /url: /work-orders/26584746-a2dc-4038-9984-d840ee83bf8b
+                  - button "编辑" [ref=f3e1872]
+                  - button "分支" [ref=f3e1873]
+                  - button "删除" [ref=f3e1874]
+            - row [ref=f3e1875]:
+              - cell [ref=f3e1876]:
+                - checkbox [ref=f3e1877]
+              - cell [ref=f3e1878]:
+                - link "WO20260526001" [ref=f3e1879] [cursor=pointer]:
+                  - /url: /work-orders/267a19ad-4f70-432a-9817-26932145bb52
+              - cell [ref=f3e1880]:
+                - textbox "编码/条码" [ref=f3e1882]
+              - cell "机油滤" [ref=f3e1883]
+              - cell [ref=f3e1884]:
+                - combobox "-" [ref=f3e1885]
+              - cell [ref=f3e1886]:
+                - combobox "-" [ref=f3e1887]
+              - cell "1 个" [ref=f3e1888]
+              - cell "-" [ref=f3e1889]
+              - cell "¥" [ref=f3e1890]:
+                - generic [ref=f3e1891]:
+                  - generic [ref=f3e1892]: ¥
+                  - spinbutton "-" [ref=f3e1893]
+              - cell "¥ 30" [ref=f3e1894]:
+                - generic [ref=f3e1895]:
+                  - generic [ref=f3e1896]: ¥
+                  - spinbutton "-" [ref=f3e1897]: "30"
+              - cell "未确定" [ref=f3e1898]:
+                - combobox [ref=f3e1899]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1900]:
+                - button "请选择" [ref=f3e1901]
+              - cell [ref=f3e1902]:
+                - textbox "-" [ref=f3e1903]
+              - cell [ref=f3e1904]
+              - cell [ref=f3e1905]:
+                - generic [ref=f3e1906]:
+                  - link "处理" [ref=f3e1907] [cursor=pointer]:
+                    - /url: /work-orders/267a19ad-4f70-432a-9817-26932145bb52
+                  - button "编辑" [ref=f3e1908]
+                  - button "分支" [ref=f3e1909]
+                  - button "删除" [ref=f3e1910]
+            - row [ref=f3e1911]:
+              - cell [ref=f3e1912]:
+                - checkbox [ref=f3e1913]
+              - cell [ref=f3e1914]:
+                - link "BY-20260720-003" [ref=f3e1915] [cursor=pointer]:
+                  - /url: /work-orders/26584746-a2dc-4038-9984-d840ee83bf8b
+              - cell [ref=f3e1916]:
+                - textbox "编码/条码" [ref=f3e1918]
+              - cell "机油滤" [ref=f3e1919]
+              - cell [ref=f3e1920]:
+                - combobox "-" [ref=f3e1921]
+              - cell [ref=f3e1922]:
+                - combobox "-" [ref=f3e1923]
+              - cell "1 个" [ref=f3e1924]
+              - cell "-" [ref=f3e1925]
+              - cell "¥" [ref=f3e1926]:
+                - generic [ref=f3e1927]:
+                  - generic [ref=f3e1928]: ¥
+                  - spinbutton "-" [ref=f3e1929]
+              - cell "¥ 30" [ref=f3e1930]:
+                - generic [ref=f3e1931]:
+                  - generic [ref=f3e1932]: ¥
+                  - spinbutton "-" [ref=f3e1933]: "30"
+              - cell "未确定" [ref=f3e1934]:
+                - combobox [ref=f3e1935]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1936]:
+                - button "请选择" [ref=f3e1937]
+              - cell [ref=f3e1938]:
+                - textbox "-" [ref=f3e1939]
+              - cell "-" [ref=f3e1940]
+              - cell [ref=f3e1941]:
+                - generic [ref=f3e1942]:
+                  - link "处理" [ref=f3e1943] [cursor=pointer]:
+                    - /url: /work-orders/26584746-a2dc-4038-9984-d840ee83bf8b
+                  - button "编辑" [ref=f3e1944]
+                  - button "分支" [ref=f3e1945]
+                  - button "删除" [ref=f3e1946]
+            - row [ref=f3e1947]:
+              - cell "车牌 黑AP5W03VIN:LSVCE23T0A2834143客户:邸春利手机:15846305858(1 条)" [ref=f3e1948]:
+                - generic [ref=f3e1949]: 车牌
+                - text: 黑AP5W03
+                - generic [ref=f3e1950]: VIN:LSVCE23T0A2834143
+                - generic [ref=f3e1951]: 客户:邸春利
+                - generic [ref=f3e1952]: 手机:15846305858
+                - generic [ref=f3e1953]: (1 条)
+            - row [ref=f3e1954]:
+              - cell [ref=f3e1955]:
+                - checkbox [ref=f3e1956]
+              - cell [ref=f3e1957]:
+                - link "WO-20260502-001" [ref=f3e1958] [cursor=pointer]:
+                  - /url: /work-orders/4d350b13-97d1-41f5-81cb-300da5db804b
+              - cell [ref=f3e1959]:
+                - textbox "编码/条码" [ref=f3e1961]
+              - cell "空调滤" [ref=f3e1962]
+              - cell [ref=f3e1963]:
+                - combobox "-" [ref=f3e1964]
+              - cell [ref=f3e1965]:
+                - combobox "-" [ref=f3e1966]
+              - cell "1 个" [ref=f3e1967]
+              - cell "-" [ref=f3e1968]
+              - cell "¥" [ref=f3e1969]:
+                - generic [ref=f3e1970]:
+                  - generic [ref=f3e1971]: ¥
+                  - spinbutton "-" [ref=f3e1972]
+              - cell "¥" [ref=f3e1973]:
+                - generic [ref=f3e1974]:
+                  - generic [ref=f3e1975]: ¥
+                  - spinbutton "-" [ref=f3e1976]
+              - cell "未确定" [ref=f3e1977]:
+                - combobox [ref=f3e1978]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e1979]:
+                - button "多田汽配" [ref=f3e1980]
+              - cell [ref=f3e1981]:
+                - textbox "-" [ref=f3e1982]
+              - cell "-" [ref=f3e1983]
+              - cell [ref=f3e1984]:
+                - generic [ref=f3e1985]:
+                  - link "处理" [ref=f3e1986] [cursor=pointer]:
+                    - /url: /work-orders/4d350b13-97d1-41f5-81cb-300da5db804b
+                  - button "编辑" [ref=f3e1987]
+                  - button "分支" [ref=f3e1988]
+                  - button "删除" [ref=f3e1989]
+            - row [ref=f3e1990]:
+              - cell "车牌 黑AS22R2VIN:LRH12A2B2G0000048客户:郭先生手机:18088778300(5 条)" [ref=f3e1991]:
+                - generic [ref=f3e1992]: 车牌
+                - text: 黑AS22R2
+                - generic [ref=f3e1993]: VIN:LRH12A2B2G0000048
+                - generic [ref=f3e1994]: 客户:郭先生
+                - generic [ref=f3e1995]: 手机:18088778300
+                - generic [ref=f3e1996]: (5 条)
+            - row [ref=f3e1997]:
+              - cell [ref=f3e1998]:
+                - checkbox [ref=f3e1999]
+              - cell [ref=f3e2000]:
+                - link "BY-20260722-001" [ref=f3e2001] [cursor=pointer]:
+                  - /url: /work-orders/efa5d7e7-3bee-4e8d-959b-b40c1d07b93a
+              - cell [ref=f3e2002]:
+                - textbox "编码/条码" [ref=f3e2004]
+              - cell "机油-1升" [ref=f3e2005]
+              - cell [ref=f3e2006]:
+                - combobox "-" [ref=f3e2007]
+              - cell [ref=f3e2008]:
+                - combobox "-" [ref=f3e2009]
+              - cell "1 桶" [ref=f3e2010]
+              - cell "-" [ref=f3e2011]
+              - cell "¥" [ref=f3e2012]:
+                - generic [ref=f3e2013]:
+                  - generic [ref=f3e2014]: ¥
+                  - spinbutton "-" [ref=f3e2015]
+              - cell "¥ 100" [ref=f3e2016]:
+                - generic [ref=f3e2017]:
+                  - generic [ref=f3e2018]: ¥
+                  - spinbutton "-" [ref=f3e2019]: "100"
+              - cell "未确定" [ref=f3e2020]:
+                - combobox [ref=f3e2021]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e2022]:
+                - button "请选择" [ref=f3e2023]
+              - cell [ref=f3e2024]:
+                - textbox "-" [ref=f3e2025]
+              - cell "-" [ref=f3e2026]
+              - cell [ref=f3e2027]:
+                - generic [ref=f3e2028]:
+                  - link "处理" [ref=f3e2029] [cursor=pointer]:
+                    - /url: /work-orders/efa5d7e7-3bee-4e8d-959b-b40c1d07b93a
+                  - button "编辑" [ref=f3e2030]
+                  - button "分支" [ref=f3e2031]
+                  - button "删除" [ref=f3e2032]
+            - row [ref=f3e2033]:
+              - cell [ref=f3e2034]:
+                - checkbox [ref=f3e2035]
+              - cell [ref=f3e2036]:
+                - link "BY-20260722-001" [ref=f3e2037] [cursor=pointer]:
+                  - /url: /work-orders/efa5d7e7-3bee-4e8d-959b-b40c1d07b93a
+              - cell [ref=f3e2038]:
+                - textbox "编码/条码" [ref=f3e2040]
+              - cell "机油-4升" [ref=f3e2041]
+              - cell [ref=f3e2042]:
+                - combobox "-" [ref=f3e2043]
+              - cell [ref=f3e2044]:
+                - combobox "-" [ref=f3e2045]
+              - cell "1 桶" [ref=f3e2046]
+              - cell "-" [ref=f3e2047]
+              - cell "¥" [ref=f3e2048]:
+                - generic [ref=f3e2049]:
+                  - generic [ref=f3e2050]: ¥
+                  - spinbutton "-" [ref=f3e2051]
+              - cell "¥ 380" [ref=f3e2052]:
+                - generic [ref=f3e2053]:
+                  - generic [ref=f3e2054]: ¥
+                  - spinbutton "-" [ref=f3e2055]: "380"
+              - cell "未确定" [ref=f3e2056]:
+                - combobox [ref=f3e2057]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e2058]:
+                - button "请选择" [ref=f3e2059]
+              - cell [ref=f3e2060]:
+                - textbox "-" [ref=f3e2061]
+              - cell "-" [ref=f3e2062]
+              - cell [ref=f3e2063]:
+                - generic [ref=f3e2064]:
+                  - link "处理" [ref=f3e2065] [cursor=pointer]:
+                    - /url: /work-orders/efa5d7e7-3bee-4e8d-959b-b40c1d07b93a
+                  - button "编辑" [ref=f3e2066]
+                  - button "分支" [ref=f3e2067]
+                  - button "删除" [ref=f3e2068]
+            - row [ref=f3e2069]:
+              - cell [ref=f3e2070]:
+                - checkbox [ref=f3e2071]
+              - cell [ref=f3e2072]:
+                - link "BY-20260722-001" [ref=f3e2073] [cursor=pointer]:
+                  - /url: /work-orders/efa5d7e7-3bee-4e8d-959b-b40c1d07b93a
+              - cell [ref=f3e2074]:
+                - textbox "编码/条码" [ref=f3e2076]
+              - cell "机油滤" [ref=f3e2077]
+              - cell [ref=f3e2078]:
+                - combobox "-" [ref=f3e2079]
+              - cell [ref=f3e2080]:
+                - combobox "-" [ref=f3e2081]
+              - cell "1 个" [ref=f3e2082]
+              - cell "-" [ref=f3e2083]
+              - cell "¥" [ref=f3e2084]:
+                - generic [ref=f3e2085]:
+                  - generic [ref=f3e2086]: ¥
+                  - spinbutton "-" [ref=f3e2087]
+              - cell "¥" [ref=f3e2088]:
+                - generic [ref=f3e2089]:
+                  - generic [ref=f3e2090]: ¥
+                  - spinbutton "-" [ref=f3e2091]
+              - cell "未确定" [ref=f3e2092]:
+                - combobox [ref=f3e2093]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e2094]:
+                - button "请选择" [ref=f3e2095]
+              - cell [ref=f3e2096]:
+                - textbox "-" [ref=f3e2097]: 赠送机油滤
+              - cell "-" [ref=f3e2098]
+              - cell [ref=f3e2099]:
+                - generic [ref=f3e2100]:
+                  - link "处理" [ref=f3e2101] [cursor=pointer]:
+                    - /url: /work-orders/efa5d7e7-3bee-4e8d-959b-b40c1d07b93a
+                  - button "编辑" [ref=f3e2102]
+                  - button "分支" [ref=f3e2103]
+                  - button "删除" [ref=f3e2104]
+            - row [ref=f3e2105]:
+              - cell [ref=f3e2106]:
+                - checkbox [ref=f3e2107]
+              - cell [ref=f3e2108]:
+                - link "BY-20260722-001" [ref=f3e2109] [cursor=pointer]:
+                  - /url: /work-orders/efa5d7e7-3bee-4e8d-959b-b40c1d07b93a
+              - cell [ref=f3e2110]:
+                - textbox "编码/条码" [ref=f3e2112]
+              - cell "空调滤" [ref=f3e2113]
+              - cell [ref=f3e2114]:
+                - combobox "-" [ref=f3e2115]
+              - cell [ref=f3e2116]:
+                - combobox "-" [ref=f3e2117]
+              - cell "1 个" [ref=f3e2118]
+              - cell "-" [ref=f3e2119]
+              - cell "¥" [ref=f3e2120]:
+                - generic [ref=f3e2121]:
+                  - generic [ref=f3e2122]: ¥
+                  - spinbutton "-" [ref=f3e2123]
+              - cell "¥" [ref=f3e2124]:
+                - generic [ref=f3e2125]:
+                  - generic [ref=f3e2126]: ¥
+                  - spinbutton "-" [ref=f3e2127]
+              - cell "未确定" [ref=f3e2128]:
+                - combobox [ref=f3e2129]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e2130]:
+                - button "请选择" [ref=f3e2131]
+              - cell [ref=f3e2132]:
+                - textbox "-" [ref=f3e2133]
+              - cell "-" [ref=f3e2134]
+              - cell [ref=f3e2135]:
+                - generic [ref=f3e2136]:
+                  - link "处理" [ref=f3e2137] [cursor=pointer]:
+                    - /url: /work-orders/efa5d7e7-3bee-4e8d-959b-b40c1d07b93a
+                  - button "编辑" [ref=f3e2138]
+                  - button "分支" [ref=f3e2139]
+                  - button "删除" [ref=f3e2140]
+            - row [ref=f3e2141]:
+              - cell [ref=f3e2142]:
+                - checkbox [ref=f3e2143]
+              - cell [ref=f3e2144]:
+                - link "BY-20260722-001" [ref=f3e2145] [cursor=pointer]:
+                  - /url: /work-orders/efa5d7e7-3bee-4e8d-959b-b40c1d07b93a
+              - cell [ref=f3e2146]:
+                - textbox "编码/条码" [ref=f3e2148]
+              - cell "空气滤" [ref=f3e2149]
+              - cell [ref=f3e2150]:
+                - combobox "-" [ref=f3e2151]
+              - cell [ref=f3e2152]:
+                - combobox "-" [ref=f3e2153]
+              - cell "1 件" [ref=f3e2154]
+              - cell "-" [ref=f3e2155]
+              - cell "¥" [ref=f3e2156]:
+                - generic [ref=f3e2157]:
+                  - generic [ref=f3e2158]: ¥
+                  - spinbutton "-" [ref=f3e2159]
+              - cell "¥" [ref=f3e2160]:
+                - generic [ref=f3e2161]:
+                  - generic [ref=f3e2162]: ¥
+                  - spinbutton "-" [ref=f3e2163]
+              - cell "未确定" [ref=f3e2164]:
+                - combobox [ref=f3e2165]:
+                  - option "未确定" [selected]
+                  - option "同意"
+                  - option "否决"
+              - cell [ref=f3e2166]:
+                - button "请选择" [ref=f3e2167]
+              - cell [ref=f3e2168]:
+                - textbox "-" [ref=f3e2169]
+              - cell "-" [ref=f3e2170]
+              - cell [ref=f3e2171]:
+                - generic [ref=f3e2172]:
+                  - link "处理" [ref=f3e2173] [cursor=pointer]:
+                    - /url: /work-orders/efa5d7e7-3bee-4e8d-959b-b40c1d07b93a
+                  - button "编辑" [ref=f3e2174]
+                  - button "分支" [ref=f3e2175]
+                  - button "删除" [ref=f3e2176]
+  - button "Open Next.js Dev Tools" [ref=f3e144] [cursor=pointer]
+  - alert [ref=f3e148]

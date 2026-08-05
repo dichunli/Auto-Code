@@ -1,0 +1,6 @@
+[    2460ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://www.chromium.org/developers/design-documents/create-amazing-password-forms) %o @ http://localhost:3002/login:0
+[    2953ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[    3036ms] [LOG] [HMR] connected @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[   27563ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[   28977ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27
+[   29045ms] [LOG] [HMR] connected @ webpack-internal:///(app-pages-browser)/../auto-repair-shop/node_modules/next/dist/next-devtools/shared/forward-logs-shared.js:27

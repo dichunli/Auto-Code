@@ -1,0 +1,42 @@
+- generic [active] [ref=f2e1]:
+  - complementary [ref=f2e2]:
+    - link "修 汽修管家" [ref=f2e4] [cursor=pointer]:
+      - /url: /
+      - generic [ref=f2e5]: 修
+      - generic [ref=f2e7]: 汽修管家
+    - navigation [ref=f2e8]:
+      - link "仪表盘" [ref=f2e9] [cursor=pointer]:
+        - /url: /
+      - button "工单管理" [ref=f2e11]
+      - button "客户车辆" [ref=f2e16]
+      - link "车型库" [ref=f2e20] [cursor=pointer]:
+        - /url: /vehicle-models
+      - link "客户预约" [ref=f2e21] [cursor=pointer]:
+        - /url: /appointments
+      - button "配件库存" [ref=f2e23]
+      - button "采购管理" [ref=f2e28]
+      - link "物流运单" [ref=f2e32] [cursor=pointer]:
+        - /url: /logistics
+      - button "维修项目" [ref=f2e34]
+      - link "知识库" [ref=f2e38] [cursor=pointer]:
+        - /url: /knowledge
+      - button "培训晋级" [ref=f2e40]
+      - link "工具管理" [ref=f2e44] [cursor=pointer]:
+        - /url: /tools/management
+      - link "员工管理" [ref=f2e45] [cursor=pointer]:
+        - /url: /employees
+      - button "财务管理" [ref=f2e47]
+      - button "报表统计" [ref=f2e52]
+      - link "售后回访" [ref=f2e56] [cursor=pointer]:
+        - /url: /follow-ups
+      - link "操作日志" [ref=f2e57] [cursor=pointer]:
+        - /url: /operation-logs
+      - button "系统设置" [ref=f2e59]
+    - generic [ref=f2e63]:
+      - link "个人信息" [ref=f2e64] [cursor=pointer]:
+        - /url: /profile
+      - button "退出登录" [ref=f2e65]
+  - main [ref=f2e66]:
+    - generic [ref=f2e67]: 正在加载...
+  - button "Open Next.js Dev Tools" [ref=f2e73] [cursor=pointer]
+  - alert [ref=f2e77]

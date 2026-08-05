@@ -1,0 +1,133 @@
+- generic [active] [ref=f8e1]:
+  - complementary [ref=f8e2]:
+    - link "修 汽修管家" [ref=f8e4] [cursor=pointer]:
+      - /url: /
+      - generic [ref=f8e5]: 修
+      - generic [ref=f8e7]: 汽修管家
+    - navigation [ref=f8e8]:
+      - link "仪表盘" [ref=f8e9] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f8e10]:
+        - button "工单管理" [ref=f8e11]
+        - generic [ref=f8e15]:
+          - link "在修工单 18" [ref=f8e16] [cursor=pointer]:
+            - /url: /work-orders?status=active
+            - generic [ref=f8e17]: 在修工单
+            - generic [ref=f8e18]: "18"
+          - link "历史工单" [ref=f8e19] [cursor=pointer]:
+            - /url: /work-orders?status=history
+          - link "预约单" [ref=f8e21] [cursor=pointer]:
+            - /url: /work-orders?type=appointment
+          - link "历史报价单 1" [ref=f8e23] [cursor=pointer]:
+            - /url: /work-orders?type=quote
+            - generic [ref=f8e24]: 历史报价单
+            - generic [ref=f8e25]: "1"
+          - link "保养工单 6" [ref=f8e26] [cursor=pointer]:
+            - /url: /work-orders?type=maintenance
+            - generic [ref=f8e27]: 保养工单
+            - generic [ref=f8e28]: "6"
+          - link "作废工单 3" [ref=f8e29] [cursor=pointer]:
+            - /url: /work-orders?type=cancelled
+            - generic [ref=f8e30]: 作废工单
+            - generic [ref=f8e31]: "3"
+          - link "外包服务单" [ref=f8e32] [cursor=pointer]:
+            - /url: /outsource-orders
+          - link "全部工单 28" [ref=f8e34] [cursor=pointer]:
+            - /url: /work-orders?status=all
+            - generic [ref=f8e35]: 全部工单
+            - generic [ref=f8e36]: "28"
+      - button "客户车辆" [ref=f8e38]
+      - link "车型库" [ref=f8e42] [cursor=pointer]:
+        - /url: /vehicle-models
+      - link "客户预约" [ref=f8e43] [cursor=pointer]:
+        - /url: /appointments
+      - button "配件库存" [ref=f8e45]
+      - button "采购管理" [ref=f8e50]
+      - link "物流运单" [ref=f8e54] [cursor=pointer]:
+        - /url: /logistics
+      - button "维修项目" [ref=f8e56]
+      - link "知识库" [ref=f8e60] [cursor=pointer]:
+        - /url: /knowledge
+      - button "培训晋级" [ref=f8e62]
+      - link "工具管理" [ref=f8e66] [cursor=pointer]:
+        - /url: /tools/management
+      - link "员工管理" [ref=f8e67] [cursor=pointer]:
+        - /url: /employees
+      - button "财务管理" [ref=f8e69]
+      - button "报表统计" [ref=f8e74]
+      - link "售后回访" [ref=f8e78] [cursor=pointer]:
+        - /url: /follow-ups
+      - link "操作日志" [ref=f8e79] [cursor=pointer]:
+        - /url: /operation-logs
+      - button "系统设置" [ref=f8e81]
+    - generic [ref=f8e85]:
+      - link "个人信息" [ref=f8e86] [cursor=pointer]:
+        - /url: /profile
+      - button "退出登录" [ref=f8e87]
+  - main [ref=f8e88]:
+    - generic [ref=f8e89]:
+      - generic [ref=f8e90]:
+        - heading "工单管理" [level=1] [ref=f8e91]
+        - link "新建工单" [ref=f8e92] [cursor=pointer]:
+          - /url: /work-orders/new
+      - generic [ref=f8e93]:
+        - generic [ref=f8e94]:
+          - link "全部 18" [ref=f8e95] [cursor=pointer]:
+            - /url: /work-orders?page=1
+            - text: 全部
+            - generic [ref=f8e96]: "18"
+          - link "待诊断 12" [ref=f8e97] [cursor=pointer]:
+            - /url: /work-orders?status=pending_diagnosis&page=1
+            - text: 待诊断
+            - generic [ref=f8e98]: "12"
+          - link "待确认 8" [ref=f8e99] [cursor=pointer]:
+            - /url: /work-orders?status=pending_confirm&page=1
+            - text: 待确认
+            - generic [ref=f8e100]: "8"
+          - link "待派工 4" [ref=f8e101] [cursor=pointer]:
+            - /url: /work-orders?status=pending_dispatch&page=1
+            - text: 待派工
+            - generic [ref=f8e102]: "4"
+          - link "待施工 2" [ref=f8e103] [cursor=pointer]:
+            - /url: /work-orders?status=pending_construction&page=1
+            - text: 待施工
+            - generic [ref=f8e104]: "2"
+          - link "施工中 2" [ref=f8e105] [cursor=pointer]:
+            - /url: /work-orders?status=in_progress&page=1
+            - text: 施工中
+            - generic [ref=f8e106]: "2"
+          - link "已中断" [ref=f8e107] [cursor=pointer]:
+            - /url: /work-orders?status=paused&page=1
+          - link "待质检" [ref=f8e108] [cursor=pointer]:
+            - /url: /work-orders?status=pending_qc&page=1
+          - link "已完工 4" [ref=f8e109] [cursor=pointer]:
+            - /url: /work-orders?status=completed&page=1
+            - text: 已完工
+            - generic [ref=f8e110]: "4"
+          - link "待结单" [ref=f8e111] [cursor=pointer]:
+            - /url: /work-orders?status=pending_close&page=1
+          - link "待结算" [ref=f8e112] [cursor=pointer]:
+            - /url: /work-orders?status=pending_settlement&page=1
+          - link "已结算" [ref=f8e113] [cursor=pointer]:
+            - /url: /work-orders?status=history
+        - generic [ref=f8e114]:
+          - generic [ref=f8e115]: 结算状态
+          - generic [ref=f8e116]:
+            - link "全部" [ref=f8e117] [cursor=pointer]:
+              - /url: /work-orders?page=1
+            - link "未结算" [ref=f8e118] [cursor=pointer]:
+              - /url: /work-orders?settlement=unsettled&page=1
+            - link "待结算" [ref=f8e119] [cursor=pointer]:
+              - /url: /work-orders?settlement=pending&page=1
+            - link "已结算" [ref=f8e120] [cursor=pointer]:
+              - /url: /work-orders?settlement=settled&page=1
+        - textbox "搜索工单号、车牌号、VIN、客户名称、电话、单位..." [ref=f8e122]
+        - button "↻ 刷新" [ref=f8e125]
+      - generic [ref=f8e126]:
+        - link "列表视图" [ref=f8e127] [cursor=pointer]:
+          - /url: /work-orders
+        - link "维修看板" [ref=f8e128] [cursor=pointer]:
+          - /url: /work-orders/board
+      - generic [ref=f8e129]: 暂无「已中断」状态的工单
+  - button "Open Next.js Dev Tools" [ref=f8e136] [cursor=pointer]
+  - alert [ref=f8e140]

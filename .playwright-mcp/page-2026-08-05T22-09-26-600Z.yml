@@ -1,0 +1,27 @@
+- generic [ref=f2e1]:
+  - main [ref=f2e2]:
+    - generic [ref=f2e4]:
+      - generic [ref=f2e5]:
+        - generic [ref=f2e6]: 配件报价单
+        - generic [ref=f2e7]: 佳汇汽配 您好，请为以下 1 个配件报价
+      - generic [ref=f2e8]: 请于 8/6 09:06 前提交，过期链接将失效
+      - generic [ref=f2e10]:
+        - generic [ref=f2e11]:
+          - generic [ref=f2e12]: 1. 机油滤
+          - generic [ref=f2e13]: 1 个
+        - generic [ref=f2e14]: 车型：福特 蒙迪欧 蒙迪欧 2007 2.0L
+        - generic [ref=f2e15]:
+          - generic [ref=f2e16]:
+            - textbox "配件编码（选填）" [ref=f2e17]: XYO-7700
+            - generic [ref=f2e39]: ✓ 编码已匹配系统配件，品牌规格已带出
+          - generic [ref=f2e18]:
+            - textbox "品牌（选填）" [active] [ref=f2e19]: 翔宇
+            - textbox "规格（选填）" [ref=f2e20]
+          - generic [ref=f2e21]:
+            - generic [ref=f2e22]: ¥
+            - spinbutton "采购价（必填）" [ref=f2e23]
+            - generic [ref=f2e24]: /个
+          - textbox "备注（选填，如货期、替代品牌）" [ref=f2e25]
+      - button "提交报价" [ref=f2e28]
+  - button "Open Next.js Dev Tools" [ref=f2e34] [cursor=pointer]
+  - alert [ref=f2e38]
