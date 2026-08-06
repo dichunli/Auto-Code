@@ -1361,7 +1361,7 @@ export function PartBranchStatusList({ status }: Props) {
           <div className="flex items-center gap-2">
             {wo && (
               <Link href={`/work-orders/${wo.id}`} className="text-xs text-blue-600 hover:text-blue-700">
-                处理
+                工单详情
               </Link>
             )}
             <button
