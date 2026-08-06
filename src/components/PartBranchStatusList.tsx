@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { requestNotificationPermission, sendBrowserNotification } from "@/lib/notification";
 import { PartBranchImages } from "./PartBranchImages";
+import { 压缩图片 } from "@/lib/imageCompress";
 import { usePriceVisibility } from "./PriceVisibilityContext";
 import { PartSearchDropdown } from "./PartSearchDropdown";
 import QuoteSheetModal from "./QuoteSheetModal";
@@ -59,6 +60,7 @@ interface PartBranchRow {
     quantity: number;
     unit_cost: number | null;
     unit_price: number | null;
+    notes?: string | null;
     part_brands: { name: string | null } | null;
     part_specifications: { name: string | null } | null;
     part_images: { storage_path: string }[] | null;
@@ -125,6 +127,10 @@ export function PartBranchStatusList({ status }: Props) {
   const supplierDropdownRef = useRef<HTMLDivElement>(null);
   const [supplierDropdownPos, setSupplierDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [partMediaMap, setPartMediaMap] = useState<Record<string, { id: string; storage_path: string }[]>>({});
+
+  /* 配件信息图片编辑（图片列直接增删 part_images；rowId 级状态） */
+  const [图片上传中, set图片上传中] = useState<string | null>(null);
+  const 图片输入Refs = useRef<Record<string, HTMLInputElement | null>>({});
 
   /* 批量选择 */
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -215,7 +221,7 @@ export function PartBranchStatusList({ status }: Props) {
           work_order_item_id, part_name_id, branch_group_id, part_id, part_number, notes,
           part_names(name, category_id, part_categories(name)),
           parts(
-            id, part_number, name, quantity, unit_cost, unit_price,
+            id, part_number, name, quantity, unit_cost, unit_price, notes,
             part_brands(name),
             part_specifications(name),
             part_images(storage_path)
@@ -330,6 +336,50 @@ export function PartBranchStatusList({ status }: Props) {
     setSupplierBrandIds(spbMap);
 
     setLoading(false);
+  }
+
+  /* 上传配件信息图片：压缩 → /api/upload → part_images 插行 → 重载 */
+  async function 上传目录图片(row: PartBranchRow, file: File) {
+    if (!row.parts?.id) return;
+    if (!file.type.startsWith("image/")) {
+      alert("请选择图片文件");
+      return;
+    }
+    set图片上传中(row.id);
+    try {
+      const compressed = await 压缩图片(file);
+      const formData = new FormData();
+      formData.append("file", compressed, file.name);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "上传失败");
+      const { error } = await supabase.from("part_images").insert({
+        part_id: row.parts.id,
+        storage_path: result.path,
+        sort_order: (row.parts.part_images || []).length,
+      });
+      if (error) throw new Error(error.message);
+      await loadData();
+    } catch (err: unknown) {
+      alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      set图片上传中(null);
+    }
+  }
+
+  /* 删除配件信息图片 */
+  async function 删除目录图片(row: PartBranchRow, storagePath: string) {
+    if (!row.parts?.id) return;
+    const { error } = await supabase
+      .from("part_images")
+      .delete()
+      .eq("part_id", row.parts.id)
+      .eq("storage_path", storagePath);
+    if (error) {
+      alert("删除失败: " + error.message);
+      return;
+    }
+    await loadData();
   }
 
   function setEditValue(rowId: string, field: EditableField, value: string) {
@@ -991,10 +1041,9 @@ export function PartBranchStatusList({ status }: Props) {
     const costValue = costDraft !== undefined ? costDraft : (row.unit_cost != null && row.unit_cost > 0 ? String(row.unit_cost) : "");
     const priceValue = priceDraft !== undefined ? priceDraft : (row.unit_price != null && row.unit_price > 0 ? String(row.unit_price) : "");
     const supplierValue = supplierDraft !== undefined ? supplierDraft : (row.supplier_name || "");
-    const notesValue = notesDraft !== undefined ? notesDraft : (row.notes || "");
+    /* 备注：工单配件自己的备注优先；没填则带入配件信息里的备注（只读带入，编辑后保存到工单配件） */
+    const notesValue = notesDraft !== undefined ? notesDraft : (row.notes || row.parts?.notes || "");
     const quantityValue = quantityDraft !== undefined ? quantityDraft : (row.quantity != null ? String(row.quantity) : "");
-
-    const firstImage = row.parts?.part_images?.[0]?.storage_path;
 
     const hasDraft = !!edits[row.id] && Object.keys(edits[row.id]!).length > 0;
     const branchBg = hasDraft ? "" : BRANCH_BG_COLORS[branchColorIndex % BRANCH_BG_COLORS.length];
@@ -1101,8 +1150,15 @@ export function PartBranchStatusList({ status }: Props) {
                 value={costValue}
                 onChange={(e) => setEditValue(row.id, "cost", e.target.value)}
                 onKeyDown={(e) => handleKeyDown(e, row, "cost")}
-                placeholder="-"
-                className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && costDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+                placeholder="必填"
+                title="采购价（必填）"
+                className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
+                  hasDraft && costDraft !== undefined
+                    ? "border-yellow-400 bg-yellow-50"
+                    : !costValue
+                      ? "border-red-400 bg-red-50"
+                      : "border-gray-200"
+                }`}
               />
             </div>
           ) : (
@@ -1149,14 +1205,21 @@ export function PartBranchStatusList({ status }: Props) {
           <button
             type="button"
             disabled={isSaving}
+            title="供应商（必填）"
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               setSupplierDropdownPos({ top: rect.bottom + 4, left: rect.left });
               setOpenSupplierRowId(openSupplierRowId === row.id ? null : row.id);
             }}
-            className={`w-28 px-2 py-1 text-xs rounded border text-left truncate hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && supplierDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"} ${supplierValue ? "text-gray-900" : "text-gray-400"}`}
+            className={`w-28 px-2 py-1 text-xs rounded border text-left truncate hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
+              hasDraft && supplierDraft !== undefined
+                ? "border-yellow-400 bg-yellow-50"
+                : !supplierValue
+                  ? "border-red-400 bg-red-50 text-red-600"
+                  : "border-gray-200"
+            } ${supplierValue ? "text-gray-900" : ""}`}
           >
-            {supplierValue || "请选择"}
+            {supplierValue || "必选"}
           </button>
           {openSupplierRowId === row.id && (
             <div
@@ -1206,18 +1269,57 @@ export function PartBranchStatusList({ status }: Props) {
             className={`w-28 px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && notesDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
           />
         </td>
-        {/* 图片 */}
+        {/* 图片：工单配件自己的图片优先；没有则带入配件信息图片（part_images，可直接增删编辑） */}
         <td className="px-3 py-3">
           {(() => {
             const media = partMediaMap[row.id] || [];
-            const allImages = media.length > 0
-              ? media
-              : firstImage
-                ? [{ id: `fallback-${row.id}`, storage_path: firstImage }]
-                : [];
-            return allImages.length > 0
-              ? <PartBranchImages images={allImages} />
-              : <span className="text-xs text-gray-300">-</span>;
+            if (media.length > 0) return <PartBranchImages images={media} />;
+
+            const 目录图 = (row.parts?.part_images || []).filter((p) => p.storage_path);
+            /* 已关联库存配件：显示配件信息图片并支持增删（分支中的图片=配件信息中的图片） */
+            if (row.parts?.id) {
+              return (
+                <div className="flex flex-wrap items-center gap-1">
+                  {目录图.map((p) => (
+                    <div key={p.storage_path} className="relative w-10 h-10 rounded border border-gray-100 overflow-hidden">
+                      <img src={p.storage_path} alt="" className="w-full h-full object-cover" loading="lazy" />
+                      <button
+                        type="button"
+                        title="删除此图"
+                        onClick={() => 删除目录图片(row, p.storage_path)}
+                        className="absolute top-0 right-0 w-3.5 h-3.5 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    title="添加配件信息图片"
+                    disabled={图片上传中 === row.id}
+                    onClick={() => 图片输入Refs.current[row.id]?.click()}
+                    className="w-10 h-10 rounded border border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-sm hover:border-blue-400 hover:text-blue-500 disabled:opacity-50"
+                  >
+                    {图片上传中 === row.id ? "…" : "+"}
+                  </button>
+                  <input
+                    ref={(el) => { 图片输入Refs.current[row.id] = el; }}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void 上传目录图片(row, f);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+              );
+            }
+            if (目录图.length > 0) {
+              return <PartBranchImages images={目录图.map((p, i) => ({ id: `c-${row.id}-${i}`, storage_path: p.storage_path }))} />;
+            }
+            return <span className="text-xs text-gray-300">-</span>;
           })()}
         </td>
         <td className="px-3 py-3 sticky right-0 bg-white z-10">
@@ -1474,7 +1576,8 @@ export function PartBranchStatusList({ status }: Props) {
                                 客户:{customer.name}
                               </span>
                             )}
-                            {customer?.phone && (
+                            {/* 手机号只在待确认页显示（联系客户确认价格用；询价/报价阶段不显示） */}
+                            {status === "pending_confirm" && customer?.phone && (
                               <span className="ml-4 text-sm text-gray-600 font-normal">
                                 手机:{customer.phone}
                               </span>
