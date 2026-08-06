@@ -249,6 +249,9 @@ export interface 询价单公开信息 {
     quantity: number | null;
     unit: string;
     vehicleModel: string;
+    /* 车牌 + VIN（供应商按 VIN 查件，页面醒目展示带复制按钮） */
+    plate: string;
+    vin: string;
     quotedPartNumber: string;
     quotedBrand: string;
     quotedSpec: string;
@@ -284,7 +287,7 @@ export async function 获取询价单公开信息(token: string): Promise<结果
 
   const { data: 明细 } = await admin
     .from("supplier_quote_items")
-    .select("id, part_name, quantity, unit, vehicle_model, quoted_part_number, quoted_brand, quoted_specification, quoted_price, quoted_notes, quoted_images")
+    .select("id, part_name, quantity, unit, vehicle_model, quoted_part_number, quoted_brand, quoted_specification, quoted_price, quoted_notes, quoted_images, work_order_item_parts(work_order_items(work_orders(vehicles(vin, plate_number))))")
     .eq("sheet_id", 单.id)
     .order("created_at", { ascending: true });
 
@@ -300,6 +303,11 @@ export async function 获取询价单公开信息(token: string): Promise<结果
     quoted_price: number | null;
     quoted_notes: string | null;
     quoted_images: string[] | null;
+    work_order_item_parts: {
+      work_order_items: {
+        work_orders: { vehicles: { vin: string | null; plate_number: string | null } | null } | null;
+      } | null;
+    } | null;
   }
 
   return {
@@ -315,6 +323,8 @@ export async function 获取询价单公开信息(token: string): Promise<结果
         quantity: i.quantity,
         unit: i.unit || "件",
         vehicleModel: i.vehicle_model || "",
+        plate: i.work_order_item_parts?.work_order_items?.work_orders?.vehicles?.plate_number || "",
+        vin: i.work_order_item_parts?.work_order_items?.work_orders?.vehicles?.vin || "",
         quotedPartNumber: i.quoted_part_number || "",
         quotedBrand: i.quoted_brand || "",
         quotedSpec: i.quoted_specification || "",
