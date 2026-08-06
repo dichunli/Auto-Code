@@ -136,7 +136,8 @@ export function ConstructionControls({
       .select("mechanic_id, work_order_item_mechanics(mechanic_id, profiles(full_name))")
       .eq("id", itemId)
       .single();
-    const row = data as {
+    /* supabase 关联查询推导类型与目标结构重叠不足，先转 unknown 再断言 */
+    const row = data as unknown as {
       mechanic_id: string | null;
       work_order_item_mechanics: { mechanic_id: string; profiles?: { full_name: string } | null }[] | null;
     } | null;

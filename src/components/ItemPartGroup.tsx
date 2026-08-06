@@ -25,13 +25,15 @@ interface LogisticsLite {
   id: string;
   name: string;
 }
+/* 导出给 ItemPartsLive 复用（它的 props 透传给本组件，类型需一致） */
+export type { SupplierLite, LogisticsLite };
 
 interface Props {
   group: { repId: string; name: string; parts: PartBranch[]; extraIds: string[]; images: string[] };
   itemId: string;
   需求序号: number; // 需求在工单内的序号（显示序号），序号前两段由此和排序 Context 动态计算
   isLocked: boolean;
-  vehicleModelId?: number;
+  vehicleModelId?: number | null;
   suppliers: SupplierLite[];
   logisticsCompanies: LogisticsLite[];
   pickingByPart: Record<string, number>;

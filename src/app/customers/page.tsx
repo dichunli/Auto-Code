@@ -53,11 +53,12 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
 
   const customerIds = customers?.map((c: { id: string }) => c.id) || [];
 
-  const { data: memberMap } = customerIds.length > 0
+  /* 三元空分支 [] 会推导 any[]，给解构模式加注解统一类型 */
+  const { data: memberMap }: { data: { customer_id: string; card_no: string | null; balance: number | null; id: string }[] | null } = customerIds.length > 0
     ? await supabase.from("members").select("customer_id, card_no, balance, id").in("customer_id", customerIds)
     : { data: [] };
 
-  const { data: allContacts } = customerIds.length > 0
+  const { data: allContacts }: { data: { id: string; customer_id: string; name: string | null; phone: string | null; relationship: string | null }[] | null } = customerIds.length > 0
     ? await supabase
         .from("customer_contacts")
         .select("id, customer_id, name, phone, relationship")

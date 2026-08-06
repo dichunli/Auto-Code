@@ -62,7 +62,7 @@ interface Props {
   canDelete: boolean;
   isLocked: boolean;
   siblingIds?: string[];
-  vehicleModelId?: number;
+  vehicleModelId?: number | null;
   children?: React.ReactNode;
 }
 

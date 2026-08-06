@@ -6,7 +6,8 @@ import { useConfirm } from "./ConfirmDialog";
 
 interface Profile {
   id: string;
-  full_name: string;
+  /* 可空：数据源 员工档案.full_name 本身可选 */
+  full_name?: string | null;
 }
 
 interface Props {

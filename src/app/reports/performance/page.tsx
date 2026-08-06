@@ -70,7 +70,8 @@ export default async function PerformanceReportPage() {
     woSet: Set<string>;
   }> = {};
 
-  (mechanics as MechanicRow[] | null)?.forEach((m) => {
+  /* supabase 关联查询推导类型与目标接口重叠不足，先转 unknown 再断言 */
+  (mechanics as unknown as MechanicRow[] | null)?.forEach((m) => {
     mechanicStats[m.id] = {
       name: m.full_name,
       level: m.mechanic_levels?.name || "",
@@ -84,7 +85,7 @@ export default async function PerformanceReportPage() {
   });
 
   // 按 share_pct 计算业绩
-  (mechanicCommissions as CommissionRow[] | null || []).forEach((row) => {
+  (mechanicCommissions as unknown as CommissionRow[] | null || []).forEach((row) => {
     const stats = mechanicStats[row.mechanic_id];
     if (stats && row.work_order_items) {
       const price = row.work_order_items.total_price || 0;
@@ -104,7 +105,7 @@ export default async function PerformanceReportPage() {
     .from("work_order_item_mechanics")
     .select("mechanic_id, work_order_item_id(work_order_id)");
 
-  (mechanicWos as MechanicWoRow[] | null || []).forEach((row) => {
+  (mechanicWos as unknown as MechanicWoRow[] | null || []).forEach((row) => {
     const stats = mechanicStats[row.mechanic_id];
     if (stats && row.work_order_item_id?.work_order_id) {
       stats.woSet.add(row.work_order_item_id.work_order_id);

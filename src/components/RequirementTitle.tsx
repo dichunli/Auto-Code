@@ -10,7 +10,8 @@ interface Profile {
 
 interface Requirement {
   id: string;
-  seq: number;
+  /* 可选：数据源 维修需求.seq 本身可选（displaySeq 缺省时回退到它） */
+  seq?: number;
   description?: string | null;
   submitted_by?: string | null;
   diagnosis_submitter_id?: string | null;
@@ -21,8 +22,9 @@ interface Requirement {
 
 interface MediaItem {
   id?: string;
-  media_type: "image" | "video" | "audio";
-  storage_path: string;
+  /* 放宽为 string：数据源 MediaRecord.media_type 可空，组件内部按 === "video" 等判断兼容 */
+  media_type?: string;
+  storage_path?: string;
 }
 
 interface Props {

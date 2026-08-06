@@ -5,8 +5,9 @@ import { 是否本机最近操作 } from "@/lib/localEditSignal";
 /* 假 supabase 客户端：模拟 from() 返回的查询构造器和 rpc()，记录调用 */
 function 造假客户端() {
   const 调用记录: string[] = [];
-  const builder: Record<string, unknown> = {
-    select: () => { 调用记录.push("select"); return { data: [] }; },
+  /* builder 用具体类型（不用 Record<string, unknown>），保证测试里 .select() 等调用有类型 */
+  const builder = {
+    select: () => { 调用记录.push("select"); return { data: [] as unknown[] }; },
     insert: (...args: unknown[]) => { 调用记录.push("insert"); return { data: args }; },
     update: (...args: unknown[]) => { 调用记录.push("update"); return { data: args }; },
     upsert: (...args: unknown[]) => { 调用记录.push("upsert"); return { data: args }; },
@@ -15,7 +16,7 @@ function 造假客户端() {
   return {
     调用记录,
     from: (_relation: string) => builder,
-    rpc: (..._args: unknown[]) => { 调用记录.push("rpc"); return { data: null }; },
+    rpc: (..._args: unknown[]) => { 调用记录.push("rpc"); return { data: null as unknown }; },
   };
 }
 
@@ -68,8 +69,8 @@ describe("包装写操作标记", () => {
 
   it("from 缺少写方法时包装不报错", () => {
     const 残缺 = {
-      from: (_relation: string) => ({ select: () => ({ data: [] }) }),
-      rpc: () => ({ data: null }),
+      from: (_relation: string) => ({ select: () => ({ data: [] as unknown[] }) }),
+      rpc: () => ({ data: null as unknown }),
     };
     expect(() => 包装写操作标记(残缺)).not.toThrow();
   });

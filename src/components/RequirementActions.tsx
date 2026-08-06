@@ -5,12 +5,14 @@ import { createClient } from "@/lib/supabase/client";
 
 interface Requirement {
   id: string;
-  assigned_to: string | null;
+  /* 可选：新建需求尚未派工时此字段不存在 */
+  assigned_to?: string | null;
 }
 
 interface Profile {
   id: string;
-  full_name: string;
+  /* 可空：数据源 员工档案.full_name 本身可选 */
+  full_name?: string | null;
 }
 
 export default function RequirementActions({
@@ -22,7 +24,7 @@ export default function RequirementActions({
 }) {
   const supabase = createClient();
   // 本地保存当前指派人：保存成功后只更新按钮和标签，不整页刷新
-  const [当前指派, 设置当前指派] = useState<string | null>(requirement.assigned_to);
+  const [当前指派, 设置当前指派] = useState<string | null>(requirement.assigned_to ?? null);
 
   async function handleAssign(assignedToId: string, type: "assigned" | "claimed") {
     const { data: authData } = await supabase.auth.getUser();

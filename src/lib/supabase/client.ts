@@ -18,7 +18,7 @@
  * ║  仍为主仓库（读取优先），老用户不掉线。                              ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { stringFromBase64URL, stringToBase64URL, createChunks } from "@supabase/ssr";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 标记本机操作 } from "@/lib/localEditSignal";
@@ -42,21 +42,24 @@ function 标记化查询构造器(builder: Record<string, unknown>): Record<stri
 }
 
 /** 包装 supabase 客户端：from() 返回的写方法、rpc() 调用时自动标记本机操作。
+ *  泛型无约束透传（T 进 T 出），保证真实 SupabaseClient 包装后类型不丢属性；
  *  方法不存在时（如测试 mock 的简化客户端）跳过包装，不报错。 */
-export function 包装写操作标记<T extends { from?: (relation: string) => unknown; rpc?: (...args: unknown[]) => unknown }>(client: T): T {
-  if (typeof client.from === "function") {
-    const 原始from = client.from.bind(client);
-    client.from = ((relation: string) =>
+export function 包装写操作标记<T extends object>(client: T): T {
+  /* 结构化视图：from/rpc 能力逐个 typeof 判断，真实客户端与测试 mock 都兼容 */
+  const c = client as { from?: (relation: string) => unknown; rpc?: (...args: unknown[]) => unknown };
+  if (typeof c.from === "function") {
+    const 原始from = c.from.bind(client);
+    c.from = ((relation: string) =>
       标记化查询构造器(原始from(relation) as Record<string, unknown>)
-    ) as unknown as T["from"];
+    ) as typeof c.from;
   }
 
-  if (typeof client.rpc === "function") {
-    const 原始rpc = client.rpc.bind(client);
-    client.rpc = ((...args: unknown[]) => {
+  if (typeof c.rpc === "function") {
+    const 原始rpc = c.rpc.bind(client);
+    c.rpc = ((...args: unknown[]) => {
       标记本机操作();
       return 原始rpc(...args);
-    }) as unknown as T["rpc"];
+    }) as typeof c.rpc;
   }
 
   return client;
@@ -68,8 +71,10 @@ export function 包装写操作标记<T extends { from?: (relation: string) => u
  */
 const COOKIE最大段大小 = 3180;
 
-let browserClient: ReturnType<typeof createSupabaseClient> | null = null;
-let appClient: ReturnType<typeof createSupabaseClient> | null = null;
+/* 裸 SupabaseClient（默认泛型）：与 createSupabaseClient(url, key) 推导出的实例类型一致。
+ * 不能用 ReturnType<typeof createSupabaseClient>——泛型函数 typeof 的 ReturnType 会按 unknown 实例化，太窄 */
+let browserClient: SupabaseClient | null = null;
+let appClient: SupabaseClient | null = null;
 
 /* 从 Supabase URL 中提取项目引用 ID（用于构造 storage key） */
 function 获取项目引用(): string {
@@ -367,7 +372,7 @@ export function 获取当前环境(): "APP" | "浏览器" | "服务端" {
  * 确保有session 在写库/查询前每次强制注入。
  */
 async function 注入本地存储会话(
-  supabase: ReturnType<typeof createSupabaseClient>
+  supabase: SupabaseClient
 ): Promise<void> {
   /* 优先读 localStorage */
   let 原始值: string | null = window.localStorage.getItem(认证存储Key);

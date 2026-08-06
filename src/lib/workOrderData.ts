@@ -383,7 +383,8 @@ export function 清基础数据缓存(): void {
 /** 带缓存的查询：缓存新鲜（30分钟内）直接返回，否则查询后写入缓存 */
 async function 缓存查询<T>(
   key: string,
-  查询: () => Promise<{ data: T }>
+  /* supabase 查询构造器是 thenable 而非真 Promise，用 PromiseLike 兼容两者 */
+  查询: () => PromiseLike<{ data: T }>
 ): Promise<{ data: T }> {
   const 条目 = 基础缓存.get(key);
   if (条目 && Date.now() - 条目.时间 < 基础缓存时长) {

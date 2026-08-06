@@ -471,7 +471,8 @@ async function PickingDoc({ order }: { order: WorkOrder }) {
   const typedItemParts = (itemParts || []) as unknown as WorkOrderItemPart[];
   const partIds = typedItemParts.map((p) => p.id);
 
-  const { data: pickingRecords } = partIds.length > 0
+  /* 三元空分支 [] 会推导 any[]，给解构模式加注解统一类型 */
+  const { data: pickingRecords }: { data: unknown[] | null } = partIds.length > 0
     ? await supabase
         .from("part_picking_records")
         .select("*, profiles(full_name)")

@@ -120,7 +120,8 @@ function MaintenanceImportModal({ vehicleId, orderId, onClose }: Props & { onClo
         return;
       }
 
-      const 保养单 = 保养单数据 as 保养单;
+      /* supabase 关联查询推导类型与 保养单 接口重叠不足，先转 unknown 再断言 */
+      const 保养单 = 保养单数据 as unknown as 保养单;
       设置保养单(保养单);
 
       const 当前工单 = 当前工单结果.data;

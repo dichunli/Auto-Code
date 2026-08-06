@@ -805,7 +805,8 @@ function blockToDocxElement(
     }
 
     case "table": {
-      const tableContent = block.content as { type: string; rows: { cells: unknown[][] }[] } | undefined;
+      /* BlockNote 表格内容类型与目标结构重叠不足，先转 unknown 再断言 */
+      const tableContent = block.content as unknown as { type: string; rows: { cells: unknown[][] }[] } | undefined;
       if (!tableContent?.rows?.length) return null;
 
       const rows: (typeof TableRow.prototype)[] = [];

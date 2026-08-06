@@ -34,7 +34,8 @@ export default async function CompaniesPage(props: { searchParams?: Promise<Reco
   }
 
   const companyIds = (companies as CompanyRow[] | null)?.map((c) => c.id) || [];
-  const { data: vehicleCounts } = companyIds.length > 0
+  /* 三元空分支 [] 会推导 any[]，给解构模式加注解统一类型 */
+  const { data: vehicleCounts }: { data: { company_id: string }[] | null } = companyIds.length > 0
     ? await supabase.from("vehicles").select("company_id").in("company_id", companyIds)
     : { data: [] };
 
