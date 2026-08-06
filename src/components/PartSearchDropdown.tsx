@@ -101,8 +101,12 @@ export function PartSearchDropdown({
       setResults([]);
     } else {
       setResults((data || []) as unknown as MatchedPart[]);
-      setShowDropdown(true);
-      updatePosition();
+      /* 只在输入框真正聚焦时自动展开：页面加载/整表刷新触发的搜索不应弹浮层
+       *（否则所有预填了编码的行一打开页面就挂着建议框） */
+      if (inputRef.current && document.activeElement === inputRef.current) {
+        setShowDropdown(true);
+        updatePosition();
+      }
     }
     setSearching(false);
     setActiveIndex(-1);
