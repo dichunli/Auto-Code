@@ -1,12 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, Fragment } from "react";
 import { 按编码查配件, 提交报价, 更新报价图片, type 询价单公开信息 } from "../actions";
 import { 压缩图片 } from "@/lib/imageCompress";
 
-/* 供应商报价表单（手机端优先，大输入框大按钮）
- * 每行填：编码/品牌/规格（选填）+ 采购价（必填）+ 备注/图片（选填）；
- * 编码失焦自动查系统配件库带出品牌规格；图片即传即存；
+/* 供应商报价表单（桌面表格样式，与采购管理"待询价"列表同格式）
+ * 按车牌分组、VIN 醒目展示带复制按钮；无工单详情等内部信息。
+ * 每行填：编码（失焦自动带出品牌规格）+ 采购价（必填）+ 品牌/规格/备注/图片（选填）；
  * 提交后仍可修改，采购员采用后锁死只读 */
 
 interface 行状态 {
@@ -15,6 +15,8 @@ interface 行状态 {
   quantity: number | null;
   unit: string;
   vehicleModel: string;
+  plate: string;
+  vin: string;
   partNumber: string;
   brand: string;
   spec: string;
@@ -30,6 +32,28 @@ interface Props {
   初始数据: 询价单公开信息;
 }
 
+/* 复制 VIN 到剪贴板（clipboard API 失败时回退 execCommand） */
+async function 复制文本(文本: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(文本);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = 文本;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 export default function QuoteForm({ token, 初始数据 }: Props) {
   const 只读 = 初始数据.status === "adopted";
   const [行列表, set行列表] = useState<行状态[]>(
@@ -39,6 +63,8 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
       quantity: i.quantity,
       unit: i.unit,
       vehicleModel: i.vehicleModel,
+      plate: i.plate,
+      vin: i.vin,
       partNumber: i.quotedPartNumber,
       brand: i.quotedBrand,
       spec: i.quotedSpec,
@@ -52,7 +78,49 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
   const [提交成功, set提交成功] = useState(初始数据.status === "submitted");
   const [上传中, set上传中] = useState<string | null>(null); // 正在上传图片的 itemId
   const [预览图, set预览图] = useState<string | null>(null);
+  const [复制成功, set复制成功] = useState<string | null>(null); // 刚复制过的 VIN
   const 文件输入Refs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  function 改行(itemId: string, 字段: "partNumber" | "brand" | "spec" | "price" | "notes", 值: string) {
+    set行列表((prev) =>
+      prev.map((r) => (r.itemId === itemId ? { ...r, [字段]: 值, ...(字段 === "partNumber" ? { matchHint: "" as const } : {}) } : r))
+    );
+  }
+
+  async function 复制VIN(vin: string) {
+    if (await 复制文本(vin)) {
+      set复制成功(vin);
+      setTimeout(() => set复制成功(null), 1500);
+    } else {
+      alert("复制失败，请手动长按复制：" + vin);
+    }
+  }
+
+  /* 编码失焦：查系统配件库，带出品牌/规格（供应商可再改） */
+  async function 编码失焦(itemId: string) {
+    const 行 = 行列表.find((r) => r.itemId === itemId);
+    if (!行 || !行.partNumber.trim()) return;
+    try {
+      const 结果 = await 按编码查配件(token, 行.partNumber);
+      set行列表((prev) =>
+        prev.map((r) => {
+          if (r.itemId !== itemId) return r;
+          if (结果.success && 结果.data) {
+            return {
+              ...r,
+              partNumber: 结果.data.partNumber || r.partNumber,
+              brand: r.brand || 结果.data.brand,
+              spec: r.spec || 结果.data.spec,
+              matchHint: "matched" as const,
+            };
+          }
+          return { ...r, matchHint: "none" as const };
+        })
+      );
+    } catch {
+      /* 查询失败不打扰填价 */
+    }
+  }
 
   /* 上传图片：压缩 → 凭 token 走 /api/upload（存 quote/ 目录）→ 立即保存到明细 */
   async function 上传图片(itemId: string, file: File) {
@@ -93,38 +161,6 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
     set行列表((prev) => prev.map((r) => (r.itemId === itemId ? { ...r, images: 新图片 } : r)));
     const 保存 = await 更新报价图片(token, itemId, 新图片);
     if (!保存.success) alert("删除失败: " + (保存.error || "未知错误"));
-  }
-
-  function 改行(itemId: string, 字段: "partNumber" | "brand" | "spec" | "price" | "notes", 值: string) {
-    set行列表((prev) =>
-      prev.map((r) => (r.itemId === itemId ? { ...r, [字段]: 值, ...(字段 === "partNumber" ? { matchHint: "" as const } : {}) } : r))
-    );
-  }
-
-  /* 编码失焦：查系统配件库，带出品牌/规格（供应商可再改） */
-  async function 编码失焦(itemId: string) {
-    const 行 = 行列表.find((r) => r.itemId === itemId);
-    if (!行 || !行.partNumber.trim()) return;
-    try {
-      const 结果 = await 按编码查配件(token, 行.partNumber);
-      set行列表((prev) =>
-        prev.map((r) => {
-          if (r.itemId !== itemId) return r;
-          if (结果.success && 结果.data) {
-            return {
-              ...r,
-              partNumber: 结果.data.partNumber || r.partNumber,
-              brand: r.brand || 结果.data.brand,
-              spec: r.spec || 结果.data.spec,
-              matchHint: "matched" as const,
-            };
-          }
-          return { ...r, matchHint: "none" as const };
-        })
-      );
-    } catch {
-      /* 查询失败不打扰填价 */
-    }
   }
 
   async function 提交() {
@@ -169,9 +205,18 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
     minute: "2-digit",
   });
 
+  /* 按车牌分组（同车配件归一组，组头显示车牌 + 醒目 VIN + 复制按钮） */
+  const 分组: { key: string; plate: string; vin: string; rows: 行状态[] }[] = [];
+  for (const r of 行列表) {
+    const key = r.plate || r.vin || "未识别车辆";
+    const g = 分组.find((x) => x.key === key);
+    if (g) g.rows.push(r);
+    else 分组.push({ key, plate: r.plate, vin: r.vin, rows: [r] });
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <div className="max-w-lg mx-auto">
+      <div className="max-w-6xl mx-auto">
         {/* 头部 */}
         <div className="bg-blue-600 text-white px-5 py-6">
           <div className="text-lg font-bold">配件报价单</div>
@@ -197,139 +242,191 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
           </div>
         )}
 
-        {/* 配件行 */}
-        <div className="px-4 mt-4 space-y-4">
-          {行列表.map((r, 序号) => (
-            <div key={r.itemId} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-              <div className="flex items-start justify-between gap-2 mb-3">
-                <div className="text-base font-semibold text-gray-900">
-                  {序号 + 1}. {r.partName}
-                </div>
-                <div className="shrink-0 text-sm text-gray-500">
-                  {r.quantity ?? "—"} {r.unit}
-                </div>
-              </div>
-              {r.vehicleModel && (
-                <div className="text-xs text-gray-400 mb-3">车型：{r.vehicleModel}</div>
-              )}
-
-              <div className="space-y-3">
-                <div>
-                  <input
-                    type="text"
-                    disabled={只读}
-                    value={r.partNumber}
-                    onChange={(e) => 改行(r.itemId, "partNumber", e.target.value)}
-                    onBlur={() => 编码失焦(r.itemId)}
-                    placeholder="配件编码（选填）"
-                    className="w-full px-3 py-2.5 text-base rounded-lg border border-gray-200 focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
-                  />
-                  {r.matchHint === "matched" && (
-                    <div className="text-xs text-green-600 mt-1">✓ 编码已匹配系统配件，品牌规格已带出</div>
-                  )}
-                  {r.matchHint === "none" && (
-                    <div className="text-xs text-gray-400 mt-1">编码不在系统配件库中，将按您填写的保存</div>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    disabled={只读}
-                    value={r.brand}
-                    onChange={(e) => 改行(r.itemId, "brand", e.target.value)}
-                    placeholder="品牌（选填）"
-                    className="w-full px-3 py-2.5 text-base rounded-lg border border-gray-200 focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
-                  />
-                  <input
-                    type="text"
-                    disabled={只读}
-                    value={r.spec}
-                    onChange={(e) => 改行(r.itemId, "spec", e.target.value)}
-                    placeholder="规格（选填）"
-                    className="w-full px-3 py-2.5 text-base rounded-lg border border-gray-200 focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg text-gray-500">¥</span>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    step="0.01"
-                    disabled={只读}
-                    value={r.price}
-                    onChange={(e) => 改行(r.itemId, "price", e.target.value)}
-                    placeholder="采购价（必填）"
-                    className="flex-1 px-3 py-2.5 text-lg font-semibold rounded-lg border border-gray-200 focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
-                  />
-                  <span className="text-sm text-gray-400">/{r.unit}</span>
-                </div>
-                <input
-                  type="text"
-                  disabled={只读}
-                  value={r.notes}
-                  onChange={(e) => 改行(r.itemId, "notes", e.target.value)}
-                  placeholder="备注（选填，如货期、替代品牌）"
-                  className="w-full px-3 py-2.5 text-base rounded-lg border border-gray-200 focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
-                />
-                {/* 配件图片（选填）：拍照/相册上传，即传即存，可删除、可点开看大图 */}
-                <div>
-                  <div className="text-xs text-gray-400 mb-1.5">配件图片（选填）</div>
-                  <div className="flex flex-wrap gap-2">
-                    {r.images.map((p, idx) => (
-                      <div key={p} className="relative w-16 h-16 rounded-lg border border-gray-200 overflow-hidden">
-                        <img
-                          src={p}
-                          alt=""
-                          className="w-full h-full object-cover cursor-pointer"
-                          loading="lazy"
-                          onClick={() => set预览图(p)}
-                        />
-                        {!只读 && (
+        {/* 表格（桌面端格式，与采购管理"待询价"一致；手机上可左右滑动） */}
+        <div className="mx-4 mt-4 bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+          <table className="w-full text-xs min-w-[1000px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50">编码</th>
+                <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50">配件</th>
+                <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50">品牌</th>
+                <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50">规格</th>
+                <th className="px-2 py-2 text-right font-bold text-gray-700 sticky top-0 bg-gray-50">数量</th>
+                <th className="px-2 py-2 text-right font-bold text-gray-700 sticky top-0 bg-gray-50">采购价</th>
+                <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50">备注</th>
+                <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50">图片</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {分组.map((g) => (
+                <Fragment key={`grp-${g.key}`}>
+                  {/* 组头：车牌 + 醒目 VIN + 复制按钮 */}
+                  <tr key={`grp-${g.key}`} className="bg-gray-200">
+                    <td colSpan={8} className="px-3 py-2">
+                      <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 mr-2 text-xs font-semibold">
+                        车牌
+                      </span>
+                      <span className="text-sm font-bold text-gray-900">{g.plate || "-"}</span>
+                      {g.vin && (
+                        <span className="ml-4 inline-flex items-center gap-1.5">
+                          <span className="text-sm font-bold text-gray-900 font-mono">VIN:{g.vin}</span>
                           <button
                             type="button"
-                            onClick={() => 删除图片(r.itemId, idx)}
-                            className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center"
+                            onClick={() => 复制VIN(g.vin)}
+                            className="px-1.5 py-0.5 text-[11px] rounded border border-blue-300 text-blue-600 bg-white hover:bg-blue-50"
                           >
-                            ×
+                            {复制成功 === g.vin ? "✓ 已复制" : "复制"}
                           </button>
-                        )}
-                      </div>
-                    ))}
-                    {!只读 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => 文件输入Refs.current[r.itemId]?.click()}
-                          disabled={上传中 === r.itemId}
-                          className="w-16 h-16 rounded-lg border border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-xl disabled:opacity-50"
-                        >
-                          {上传中 === r.itemId ? "…" : "+"}
-                        </button>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                  {g.rows.map((r) => (
+                    <tr key={r.itemId} className="hover:bg-gray-50">
+                      {/* 编码（失焦带出品牌规格） */}
+                      <td className="px-2 py-2">
                         <input
-                          ref={(el) => { 文件输入Refs.current[r.itemId] = el; }}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) void 上传图片(r.itemId, f);
-                            e.target.value = "";
-                          }}
+                          type="text"
+                          disabled={只读}
+                          value={r.partNumber}
+                          onChange={(e) => 改行(r.itemId, "partNumber", e.target.value)}
+                          onBlur={() => 编码失焦(r.itemId)}
+                          placeholder="编码/条码"
+                          className="w-28 px-2 py-1 text-xs rounded border border-gray-300 bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
                         />
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
+                        {r.matchHint === "matched" && (
+                          <div className="text-[10px] text-green-600 mt-0.5">✓ 已匹配系统配件</div>
+                        )}
+                        {r.matchHint === "none" && (
+                          <div className="text-[10px] text-gray-400 mt-0.5">编码不在配件库，按填写保存</div>
+                        )}
+                      </td>
+                      {/* 配件名 + 车型 */}
+                      <td className="px-2 py-2 text-gray-900 font-medium">
+                        {r.partName}
+                        {r.vehicleModel && (
+                          <div className="text-[10px] text-gray-400 font-normal mt-0.5">{r.vehicleModel}</div>
+                        )}
+                      </td>
+                      {/* 品牌 */}
+                      <td className="px-2 py-2">
+                        <input
+                          type="text"
+                          disabled={只读}
+                          value={r.brand}
+                          onChange={(e) => 改行(r.itemId, "brand", e.target.value)}
+                          placeholder="品牌（选填）"
+                          className="w-24 px-2 py-1 text-xs rounded border border-gray-300 bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
+                        />
+                      </td>
+                      {/* 规格 */}
+                      <td className="px-2 py-2">
+                        <input
+                          type="text"
+                          disabled={只读}
+                          value={r.spec}
+                          onChange={(e) => 改行(r.itemId, "spec", e.target.value)}
+                          placeholder="规格（选填）"
+                          className="w-24 px-2 py-1 text-xs rounded border border-gray-300 bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
+                        />
+                      </td>
+                      {/* 数量（只读快照，未填显示—） */}
+                      <td className="px-2 py-2 text-right text-gray-700">
+                        {r.quantity ?? "—"} {r.unit}
+                      </td>
+                      {/* 采购价（必填，空时红框提示） */}
+                      <td className="px-2 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="text-gray-400">¥</span>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="0.01"
+                            disabled={只读}
+                            value={r.price}
+                            onChange={(e) => 改行(r.itemId, "price", e.target.value)}
+                            placeholder="必填"
+                            className={`w-20 px-2 py-1 text-right text-xs rounded border placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:bg-gray-50 ${
+                              !r.price.trim() ? "border-red-400 bg-red-50" : "border-gray-300 bg-white"
+                            }`}
+                          />
+                          <span className="text-gray-400">/{r.unit}</span>
+                        </div>
+                      </td>
+                      {/* 备注 */}
+                      <td className="px-2 py-2">
+                        <input
+                          type="text"
+                          disabled={只读}
+                          value={r.notes}
+                          onChange={(e) => 改行(r.itemId, "notes", e.target.value)}
+                          placeholder="备注（选填，如货期、替代品牌）"
+                          className="w-44 px-2 py-1 text-xs rounded border border-gray-300 bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
+                        />
+                      </td>
+                      {/* 图片（点开看大图、可加可删） */}
+                      <td className="px-2 py-2">
+                        <div className="flex flex-wrap items-center gap-1">
+                          {r.images.map((p, idx) => (
+                            <div key={p} className="relative w-10 h-10 rounded border border-gray-100 overflow-hidden">
+                              <img
+                                src={p}
+                                alt=""
+                                className="w-full h-full object-cover cursor-pointer"
+                                loading="lazy"
+                                onClick={() => set预览图(p)}
+                              />
+                              {!只读 && (
+                                <button
+                                  type="button"
+                                  title="删除此图"
+                                  onClick={() => 删除图片(r.itemId, idx)}
+                                  className="absolute top-0 right-0 w-3.5 h-3.5 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          {!只读 && (
+                            <>
+                              <button
+                                type="button"
+                                title="添加图片"
+                                disabled={上传中 === r.itemId}
+                                onClick={() => 文件输入Refs.current[r.itemId]?.click()}
+                                className="w-10 h-10 rounded border border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-sm hover:border-blue-400 hover:text-blue-500 disabled:opacity-50"
+                              >
+                                {上传中 === r.itemId ? "…" : "+"}
+                              </button>
+                              <input
+                                ref={(el) => { 文件输入Refs.current[r.itemId] = el; }}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) void 上传图片(r.itemId, f);
+                                  e.target.value = "";
+                                }}
+                              />
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
         </div>
 
         {/* 提交按钮（吸底） */}
         {!只读 && (
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4">
-            <div className="max-w-lg mx-auto">
+            <div className="max-w-6xl mx-auto">
               <button
                 type="button"
                 onClick={提交}
