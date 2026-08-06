@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { 按编码查配件, 提交报价, type 询价单公开信息 } from "../actions";
+import { useRef, useState } from "react";
+import { 按编码查配件, 提交报价, 更新报价图片, type 询价单公开信息 } from "../actions";
+import { 压缩图片 } from "@/lib/imageCompress";
 
 /* 供应商报价表单（手机端优先，大输入框大按钮）
- * 每行填：编码/品牌/规格（选填）+ 采购价（必填）；
- * 编码失焦自动查系统配件库带出品牌规格；
+ * 每行填：编码/品牌/规格（选填）+ 采购价（必填）+ 备注/图片（选填）；
+ * 编码失焦自动查系统配件库带出品牌规格；图片即传即存；
  * 提交后仍可修改，采购员采用后锁死只读 */
 
 interface 行状态 {
@@ -19,6 +20,7 @@ interface 行状态 {
   spec: string;
   price: string;
   notes: string;
+  images: string[];
   /* 编码匹配反馈：matched=系统有这个编码 / none=没有 / ""=还没查 */
   matchHint: "" | "matched" | "none";
 }
@@ -42,11 +44,56 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
       spec: i.quotedSpec,
       price: i.quotedPrice,
       notes: i.quotedNotes,
+      images: i.quotedImages,
       matchHint: "",
     }))
   );
   const [提交中, set提交中] = useState(false);
   const [提交成功, set提交成功] = useState(初始数据.status === "submitted");
+  const [上传中, set上传中] = useState<string | null>(null); // 正在上传图片的 itemId
+  const [预览图, set预览图] = useState<string | null>(null);
+  const 文件输入Refs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  /* 上传图片：压缩 → 凭 token 走 /api/upload（存 quote/ 目录）→ 立即保存到明细 */
+  async function 上传图片(itemId: string, file: File) {
+    if (!file.type.startsWith("image/")) {
+      alert("请选择图片文件");
+      return;
+    }
+    set上传中(itemId);
+    try {
+      const compressed = await 压缩图片(file);
+      const formData = new FormData();
+      formData.append("file", compressed, file.name);
+      const res = await fetch(`/api/upload?quote_token=${encodeURIComponent(token)}`, {
+        method: "POST",
+        body: formData,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "上传失败");
+      const 新路径 = result.path as string;
+
+      const 行 = 行列表.find((r) => r.itemId === itemId);
+      const 新图片 = [...(行?.images || []), 新路径];
+      set行列表((prev) => prev.map((r) => (r.itemId === itemId ? { ...r, images: 新图片 } : r)));
+      const 保存 = await 更新报价图片(token, itemId, 新图片);
+      if (!保存.success) alert("图片保存失败: " + (保存.error || "未知错误"));
+    } catch (err: unknown) {
+      alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      set上传中(null);
+    }
+  }
+
+  /* 删除图片：立即从明细移除 */
+  async function 删除图片(itemId: string, idx: number) {
+    const 行 = 行列表.find((r) => r.itemId === itemId);
+    if (!行) return;
+    const 新图片 = 行.images.filter((_, i) => i !== idx);
+    set行列表((prev) => prev.map((r) => (r.itemId === itemId ? { ...r, images: 新图片 } : r)));
+    const 保存 = await 更新报价图片(token, itemId, 新图片);
+    if (!保存.success) alert("删除失败: " + (保存.error || "未知错误"));
+  }
 
   function 改行(itemId: string, 字段: "partNumber" | "brand" | "spec" | "price" | "notes", 值: string) {
     set行列表((prev) =>
@@ -225,6 +272,55 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
                   placeholder="备注（选填，如货期、替代品牌）"
                   className="w-full px-3 py-2.5 text-base rounded-lg border border-gray-200 focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
                 />
+                {/* 配件图片（选填）：拍照/相册上传，即传即存，可删除、可点开看大图 */}
+                <div>
+                  <div className="text-xs text-gray-400 mb-1.5">配件图片（选填）</div>
+                  <div className="flex flex-wrap gap-2">
+                    {r.images.map((p, idx) => (
+                      <div key={p} className="relative w-16 h-16 rounded-lg border border-gray-200 overflow-hidden">
+                        <img
+                          src={p}
+                          alt=""
+                          className="w-full h-full object-cover cursor-pointer"
+                          loading="lazy"
+                          onClick={() => set预览图(p)}
+                        />
+                        {!只读 && (
+                          <button
+                            type="button"
+                            onClick={() => 删除图片(r.itemId, idx)}
+                            className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {!只读 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => 文件输入Refs.current[r.itemId]?.click()}
+                          disabled={上传中 === r.itemId}
+                          className="w-16 h-16 rounded-lg border border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-xl disabled:opacity-50"
+                        >
+                          {上传中 === r.itemId ? "…" : "+"}
+                        </button>
+                        <input
+                          ref={(el) => { 文件输入Refs.current[r.itemId] = el; }}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) void 上传图片(r.itemId, f);
+                            e.target.value = "";
+                          }}
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           ))}
@@ -246,6 +342,16 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
           </div>
         )}
       </div>
+
+      {/* 图片大图预览（点任意处关闭） */}
+      {预览图 && (
+        <div
+          className="fixed inset-0 z-[130] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => set预览图(null)}
+        >
+          <img src={预览图} alt="" className="max-w-full max-h-full object-contain rounded" />
+        </div>
+      )}
     </div>
   );
 }
