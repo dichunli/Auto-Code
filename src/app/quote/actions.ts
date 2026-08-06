@@ -258,6 +258,8 @@ export interface 询价单公开信息 {
     quotedPrice: string;
     quotedNotes: string;
     quotedImages: string[];
+    /* 供应商自己加的备选分支（可删除；原始行不可删） */
+    isSupplierAdded: boolean;
   }[];
 }
 
@@ -287,7 +289,7 @@ export async function 获取询价单公开信息(token: string): Promise<结果
 
   const { data: 明细 } = await admin
     .from("supplier_quote_items")
-    .select("id, part_name, quantity, unit, vehicle_model, quoted_part_number, quoted_brand, quoted_specification, quoted_price, quoted_notes, quoted_images, work_order_item_parts(work_order_items(work_orders(vehicles(vin, plate_number))))")
+    .select("id, part_name, quantity, unit, vehicle_model, quoted_part_number, quoted_brand, quoted_specification, quoted_price, quoted_notes, quoted_images, is_supplier_added, work_order_item_parts(work_order_items(work_orders(vehicles(vin, plate_number))))")
     .eq("sheet_id", 单.id)
     .order("created_at", { ascending: true });
 
@@ -303,6 +305,7 @@ export async function 获取询价单公开信息(token: string): Promise<结果
     quoted_price: number | null;
     quoted_notes: string | null;
     quoted_images: string[] | null;
+    is_supplier_added: boolean | null;
     work_order_item_parts: {
       work_order_items: {
         work_orders: { vehicles: { vin: string | null; plate_number: string | null } | null } | null;
@@ -331,6 +334,7 @@ export async function 获取询价单公开信息(token: string): Promise<结果
         quotedPrice: i.quoted_price != null ? String(i.quoted_price) : "",
         quotedNotes: i.quoted_notes || "",
         quotedImages: i.quoted_images || [],
+        isSupplierAdded: !!i.is_supplier_added,
       })),
     },
   };
@@ -354,9 +358,81 @@ export async function 更新报价图片(token: string, itemId: string, images: 
   return { success: true };
 }
 
-/* 供应商填编码失焦：查库存配件（只返回名称/品牌/规格/单位，不暴露库存和价格） */
+/* 供应商"+分支"：对某行配件加一条备选报价（多品牌/多价格选择）。
+ * 复制源行的配件名/数量/单位/车型/关联分支，标记 is_supplier_added=true；
+ * 提交报价时由提交逻辑在工单里生成同目录新分支。 */
+export async function 添加供应商分支(token: string, 源itemId: string): Promise<结果 & { item?: 询价单公开信息["items"][number] }> {
+  const 结果0 = await 校验并取单(token);
+  if ("错误" in 结果0) return { success: false, error: 结果0.错误 };
+  const { 单, admin } = 结果0;
+  if (单.status === "adopted") return { success: false, error: "该询价单已采用，不能再修改" };
+
+  const { data: 源行 } = await admin
+    .from("supplier_quote_items")
+    .select("part_name, quantity, unit, vehicle_model, work_order_item_part_id")
+    .eq("id", 源itemId)
+    .eq("sheet_id", 单.id)
+    .maybeSingle();
+  if (!源行) return { success: false, error: "源配件行不存在" };
+  const 源 = 源行 as { part_name: string | null; quantity: number | null; unit: string | null; vehicle_model: string | null; work_order_item_part_id: string };
+
+  const { data: 新行, error } = await admin
+    .from("supplier_quote_items")
+    .insert({
+      sheet_id: 单.id,
+      work_order_item_part_id: 源.work_order_item_part_id,
+      part_name: 源.part_name,
+      quantity: 源.quantity,
+      unit: 源.unit,
+      vehicle_model: 源.vehicle_model,
+      is_supplier_added: true,
+    })
+    .select("id")
+    .single();
+  if (error || !新行) return { success: false, error: error?.message || "添加分支失败" };
+
+  const 新id = (新行 as { id: string }).id;
+  return {
+    success: true,
+    item: {
+      itemId: 新id,
+      partName: 源.part_name || "配件",
+      quantity: 源.quantity,
+      unit: 源.unit || "件",
+      vehicleModel: 源.vehicle_model || "",
+      plate: "",
+      vin: "",
+      quotedPartNumber: "",
+      quotedBrand: "",
+      quotedSpec: "",
+      quotedPrice: "",
+      quotedNotes: "",
+      quotedImages: [],
+      isSupplierAdded: true,
+    },
+  };
+}
+
+/* 删除供应商自己加的分支（我们提供的原始行不可删） */
+export async function 删除供应商分支(token: string, itemId: string): Promise<结果> {
+  const 结果0 = await 校验并取单(token);
+  if ("错误" in 结果0) return { success: false, error: 结果0.错误 };
+  const { 单, admin } = 结果0;
+  if (单.status === "adopted") return { success: false, error: "该询价单已采用，不能再修改" };
+
+  const { error } = await admin
+    .from("supplier_quote_items")
+    .delete()
+    .eq("id", itemId)
+    .eq("sheet_id", 单.id)
+    .eq("is_supplier_added", true);
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+/* 供应商填编码失焦：查库存配件（只返回名称/编码/品牌/规格/单位/单据名，不暴露库存和价格——价格必须供应商自己填） */
 export async function 按编码查配件(token: string, 编码: string): Promise<结果 & {
-  data?: { partId: string; name: string; partNumber: string; brand: string; spec: string; unit: string };
+  data?: { partId: string; name: string; partNumber: string; brand: string; spec: string; unit: string; documentName: string };
 }> {
   const 结果0 = await 校验并取单(token);
   if ("错误" in 结果0) return { success: false, error: 结果0.错误 };
@@ -371,7 +447,7 @@ export async function 按编码查配件(token: string, 编码: string): Promise
 
   const { data } = await admin
     .from("parts")
-    .select("id, name, part_number, unit, part_brands(name), part_specifications(name)")
+    .select("id, name, part_number, unit, document_name, part_brands(name), part_specifications(name)")
     .or(`part_number.eq.${code},barcode.eq.${code}`)
     .limit(1);
 
@@ -380,6 +456,7 @@ export async function 按编码查配件(token: string, 编码: string): Promise
     name: string | null;
     part_number: string | null;
     unit: string | null;
+    document_name: string | null;
     part_brands: { name: string | null } | null;
     part_specifications: { name: string | null } | null;
   }
@@ -396,6 +473,7 @@ export async function 按编码查配件(token: string, 编码: string): Promise
       brand: p.part_brands?.name || "",
       spec: p.part_specifications?.name || "",
       unit: p.unit || "",
+      documentName: p.document_name || "",
     },
   };
 }
@@ -418,7 +496,7 @@ export async function 提交报价(token: string, 报价列表: {
   /* 取本单明细，校验报价属于本单且每行都填了价格（采购价必填） */
   const { data: 明细 } = await admin
     .from("supplier_quote_items")
-    .select("id, work_order_item_part_id, part_name, quoted_images, work_order_item_parts(notes, part_id)")
+    .select("id, work_order_item_part_id, part_name, quoted_images, is_supplier_added, created_branch_id, work_order_item_parts(notes, part_id, work_order_item_id, branch_group_id, part_name_id, name, unit, quantity, supplier_name, unit_cost)")
     .eq("sheet_id", 单.id);
 
   interface 明细行 {
@@ -426,7 +504,21 @@ export async function 提交报价(token: string, 报价列表: {
     work_order_item_part_id: string;
     part_name: string | null;
     quoted_images: string[] | null;
-    work_order_item_parts: { notes: string | null; part_id: string | null } | null;
+    is_supplier_added: boolean | null;
+    /* 备选/冲突分支已生成的工单分支 id（重复提交时更新它，不重复创建） */
+    created_branch_id: string | null;
+    work_order_item_parts: {
+      notes: string | null;
+      part_id: string | null;
+      work_order_item_id: string | null;
+      branch_group_id: string | null;
+      part_name_id: string | null;
+      name: string | null;
+      unit: string | null;
+      quantity: number | null;
+      supplier_name: string | null;
+      unit_cost: number | null;
+    } | null;
   }
   const 明细列表 = (明细 || []) as unknown as 明细行[];
   const 明细Map = new Map(明细列表.map((i) => [i.id, i]));
@@ -478,7 +570,10 @@ export async function 提交报价(token: string, 报价列表: {
   }
 
   /* 2. 回写工单配件行：采购价+供应商（+填了的编码/品牌/规格；编码匹配上关联库存件，没匹配上解除关联）。
-   * 备注：供应商填了就拼到工单配件备注后面（不覆盖店里自己写的；重复提交不重复拼） */
+   * 备注：供应商填了就拼到工单配件备注后面（不覆盖店里自己写的；重复提交不重复拼）。
+   * 供应商备选行：首次提交在工单里创建同目录新分支（is_selected=false），记下 created_branch_id，
+   * 重复提交更新同一分支不重复创建。 */
+  const 分支id按报价行 = new Map<string, string>(); // itemId → 工单配件分支 id（图片回写用）
   for (const b of 报价列表) {
     const m = 明细Map.get(b.itemId)!;
     const code = b.partNumber.trim().toUpperCase();
@@ -494,6 +589,39 @@ export async function 提交报价(token: string, 报价列表: {
     if (b.brand.trim()) 回写.brand = b.brand.trim();
     if (b.spec.trim()) 回写.specification = b.spec.trim();
     const 供应商备注 = b.notes.trim();
+
+    if (m.is_supplier_added) {
+      const src = m.work_order_item_parts;
+      if (m.created_branch_id) {
+        /* 已创建过：更新原分支 */
+        await admin.from("work_order_item_parts").update(回写).eq("id", m.created_branch_id);
+        分支id按报价行.set(b.itemId, m.created_branch_id);
+      } else {
+        /* 首次：创建同目录新分支（数量跟随目录，永不选中） */
+        const { data: 新分支, error: 建分支错误 } = await admin
+          .from("work_order_item_parts")
+          .insert({
+            work_order_item_id: src?.work_order_item_id,
+            branch_group_id: src?.branch_group_id || null,
+            part_name_id: src?.part_name_id || null,
+            name: src?.name || m.part_name,
+            unit: src?.unit || "件",
+            quantity: src?.quantity ?? null,
+            ...回写,
+            notes: 供应商备注 || null,
+            customer_opinion: "pending",
+            is_selected: false,
+          })
+          .select("id")
+          .single();
+        if (建分支错误 || !新分支) return { success: false, error: "创建备选分支失败: " + (建分支错误?.message || "") };
+        const 新分支id = (新分支 as { id: string }).id;
+        await admin.from("supplier_quote_items").update({ created_branch_id: 新分支id }).eq("id", m.id);
+        分支id按报价行.set(b.itemId, 新分支id);
+      }
+      continue;
+    }
+
     if (供应商备注) {
       const 现有备注 = m.work_order_item_parts?.notes || "";
       if (!现有备注.includes(供应商备注)) {
@@ -501,10 +629,43 @@ export async function 提交报价(token: string, 报价列表: {
       }
     }
 
+    /* 多供应商比价：目标分支已有【别的供应商】的价格时，不覆盖——自动创建独立分支
+     *（同目录多分支并排，采购员在工单里比价后选用）。重复提交更新同一分支。 */
+    const src = m.work_order_item_parts;
+    const 被别人占用 = !!src?.supplier_name && src.supplier_name !== 单.supplier_name && Number(src.unit_cost || 0) > 0;
+    if (被别人占用) {
+      if (m.created_branch_id) {
+        await admin.from("work_order_item_parts").update(回写).eq("id", m.created_branch_id);
+        分支id按报价行.set(b.itemId, m.created_branch_id);
+      } else {
+        const { data: 新分支, error: 建分支错误 } = await admin
+          .from("work_order_item_parts")
+          .insert({
+            work_order_item_id: src?.work_order_item_id,
+            branch_group_id: src?.branch_group_id || null,
+            part_name_id: src?.part_name_id || null,
+            name: src?.name || m.part_name,
+            unit: src?.unit || "件",
+            quantity: src?.quantity ?? null,
+            ...回写,
+            customer_opinion: "pending",
+            is_selected: false,
+          })
+          .select("id")
+          .single();
+        if (建分支错误 || !新分支) return { success: false, error: "创建比价分支失败: " + (建分支错误?.message || "") };
+        const 新分支id = (新分支 as { id: string }).id;
+        await admin.from("supplier_quote_items").update({ created_branch_id: 新分支id }).eq("id", m.id);
+        分支id按报价行.set(b.itemId, 新分支id);
+      }
+      continue;
+    }
+
     await admin
       .from("work_order_item_parts")
       .update(回写)
       .eq("id", m.work_order_item_part_id);
+    分支id按报价行.set(b.itemId, m.work_order_item_part_id);
   }
 
   /* 2.5 把供应商上传的图片回写到工单配件图片表 + 配件信息图片表（都按 storage_path 去重）。
@@ -512,18 +673,19 @@ export async function 提交报价(token: string, 报价列表: {
    * 图片同时进 part_images，配件库里也能看到。 */
   for (const b of 报价列表) {
     const m = 明细Map.get(b.itemId)!;
+    const 目标分支id = 分支id按报价行.get(b.itemId) || m.work_order_item_part_id;
     const 图片 = (m.quoted_images || []).filter((p) => p.startsWith("/api/media/"));
     if (图片.length === 0) continue;
     const { data: 已有 } = await admin
       .from("work_order_item_part_media")
       .select("storage_path")
-      .eq("work_order_item_part_id", m.work_order_item_part_id);
+      .eq("work_order_item_part_id", 目标分支id);
     const 已有路径 = new Set(((已有 || []) as { storage_path: string | null }[]).map((r) => r.storage_path));
     const 新图 = 图片.filter((p) => !已有路径.has(p));
     if (新图.length > 0) {
       await admin.from("work_order_item_part_media").insert(
         新图.map((p) => ({
-          work_order_item_part_id: m.work_order_item_part_id,
+          work_order_item_part_id: 目标分支id,
           media_type: "image",
           storage_path: p,
         }))
