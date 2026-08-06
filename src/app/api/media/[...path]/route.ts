@@ -75,13 +75,20 @@ export async function GET(
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   try {
+    const { path: pathSegments } = await params;
+
+    /* quote/ 目录是供应商报价图片：文件名为随机串不可猜测，免登录公开可读
+     *（供应商打开询价链接时没有登录态，看不到图就没法核对） */
+    const 是公开报价图片 = pathSegments[0] === "quote";
+
     /* ── 轻量级认证：只检查 cookie 存在性，不调 Supabase 远程验证 ── */
-    const userAgent = request.headers.get("user-agent") || "";
-    if (!是APP环境(userAgent) && !有SessionCookie(request)) {
-      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    if (!是公开报价图片) {
+      const userAgent = request.headers.get("user-agent") || "";
+      if (!是APP环境(userAgent) && !有SessionCookie(request)) {
+        return NextResponse.json({ error: "未登录" }, { status: 401 });
+      }
     }
 
-    const { path: pathSegments } = await params;
     const filePath = path.join(UPLOAD_DIR, ...pathSegments);
 
     /* 安全检查：防止目录遍历 */

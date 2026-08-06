@@ -254,6 +254,7 @@ export interface 询价单公开信息 {
     quotedSpec: string;
     quotedPrice: string;
     quotedNotes: string;
+    quotedImages: string[];
   }[];
 }
 
@@ -283,7 +284,7 @@ export async function 获取询价单公开信息(token: string): Promise<结果
 
   const { data: 明细 } = await admin
     .from("supplier_quote_items")
-    .select("id, part_name, quantity, unit, vehicle_model, quoted_part_number, quoted_brand, quoted_specification, quoted_price, quoted_notes")
+    .select("id, part_name, quantity, unit, vehicle_model, quoted_part_number, quoted_brand, quoted_specification, quoted_price, quoted_notes, quoted_images")
     .eq("sheet_id", 单.id)
     .order("created_at", { ascending: true });
 
@@ -298,6 +299,7 @@ export async function 获取询价单公开信息(token: string): Promise<结果
     quoted_specification: string | null;
     quoted_price: number | null;
     quoted_notes: string | null;
+    quoted_images: string[] | null;
   }
 
   return {
@@ -318,9 +320,28 @@ export async function 获取询价单公开信息(token: string): Promise<结果
         quotedSpec: i.quoted_specification || "",
         quotedPrice: i.quoted_price != null ? String(i.quoted_price) : "",
         quotedNotes: i.quoted_notes || "",
+        quotedImages: i.quoted_images || [],
       })),
     },
   };
+}
+
+/* 供应商上传/删除图片后保存明细的图片列表（凭 token；已采用锁死不可改） */
+export async function 更新报价图片(token: string, itemId: string, images: string[]): Promise<结果> {
+  const 结果0 = await 校验并取单(token);
+  if ("错误" in 结果0) return { success: false, error: 结果0.错误 };
+  const { 单, admin } = 结果0;
+  if (单.status === "adopted") return { success: false, error: "该询价单已采用，不能再修改" };
+
+  /* 只接受本站媒体路径（/api/media/ 前缀，路径来自我们自己的上传接口返回） */
+  const 合法图片 = (images || []).filter((p) => typeof p === "string" && p.startsWith("/api/media/")).slice(0, 9);
+  const { error } = await admin
+    .from("supplier_quote_items")
+    .update({ quoted_images: 合法图片, updated_at: new Date().toISOString() })
+    .eq("id", itemId)
+    .eq("sheet_id", 单.id);
+  if (error) return { success: false, error: error.message };
+  return { success: true };
 }
 
 /* 供应商填编码失焦：查库存配件（只返回名称/品牌/规格/单位，不暴露库存和价格） */
@@ -387,10 +408,16 @@ export async function 提交报价(token: string, 报价列表: {
   /* 取本单明细，校验报价属于本单且每行都填了价格（采购价必填） */
   const { data: 明细 } = await admin
     .from("supplier_quote_items")
-    .select("id, work_order_item_part_id, part_name")
+    .select("id, work_order_item_part_id, part_name, quoted_images, work_order_item_parts(notes, part_id)")
     .eq("sheet_id", 单.id);
 
-  interface 明细行 { id: string; work_order_item_part_id: string; part_name: string | null }
+  interface 明细行 {
+    id: string;
+    work_order_item_part_id: string;
+    part_name: string | null;
+    quoted_images: string[] | null;
+    work_order_item_parts: { notes: string | null; part_id: string | null } | null;
+  }
   const 明细列表 = (明细 || []) as unknown as 明细行[];
   const 明细Map = new Map(明细列表.map((i) => [i.id, i]));
 
@@ -440,7 +467,8 @@ export async function 提交报价(token: string, 报价列表: {
       .eq("id", b.itemId);
   }
 
-  /* 2. 回写工单配件行：采购价+供应商（+填了的编码/品牌/规格；编码匹配上关联库存件，没匹配上解除关联） */
+  /* 2. 回写工单配件行：采购价+供应商（+填了的编码/品牌/规格；编码匹配上关联库存件，没匹配上解除关联）。
+   * 备注：供应商填了就拼到工单配件备注后面（不覆盖店里自己写的；重复提交不重复拼） */
   for (const b of 报价列表) {
     const m = 明细Map.get(b.itemId)!;
     const code = b.partNumber.trim().toUpperCase();
@@ -455,11 +483,63 @@ export async function 提交报价(token: string, 报价列表: {
     }
     if (b.brand.trim()) 回写.brand = b.brand.trim();
     if (b.spec.trim()) 回写.specification = b.spec.trim();
+    const 供应商备注 = b.notes.trim();
+    if (供应商备注) {
+      const 现有备注 = m.work_order_item_parts?.notes || "";
+      if (!现有备注.includes(供应商备注)) {
+        回写.notes = 现有备注 ? `${现有备注}；${供应商备注}` : 供应商备注;
+      }
+    }
 
     await admin
       .from("work_order_item_parts")
       .update(回写)
       .eq("id", m.work_order_item_part_id);
+  }
+
+  /* 2.5 把供应商上传的图片回写到工单配件图片表 + 配件信息图片表（都按 storage_path 去重）。
+   * 规则（用户拍板）：分支中的图片 = 配件信息中的图片——编码匹配上库存配件（或分支本已关联）时，
+   * 图片同时进 part_images，配件库里也能看到。 */
+  for (const b of 报价列表) {
+    const m = 明细Map.get(b.itemId)!;
+    const 图片 = (m.quoted_images || []).filter((p) => p.startsWith("/api/media/"));
+    if (图片.length === 0) continue;
+    const { data: 已有 } = await admin
+      .from("work_order_item_part_media")
+      .select("storage_path")
+      .eq("work_order_item_part_id", m.work_order_item_part_id);
+    const 已有路径 = new Set(((已有 || []) as { storage_path: string | null }[]).map((r) => r.storage_path));
+    const 新图 = 图片.filter((p) => !已有路径.has(p));
+    if (新图.length > 0) {
+      await admin.from("work_order_item_part_media").insert(
+        新图.map((p) => ({
+          work_order_item_part_id: m.work_order_item_part_id,
+          media_type: "image",
+          storage_path: p,
+        }))
+      );
+    }
+
+    /* 同步到配件信息图片（part_images）：分支关联的库存配件 = 编码匹配结果，无编码则用分支原有关联 */
+    const code = b.partNumber.trim().toUpperCase();
+    const 关联配件id = code ? (编码匹配Map.get(code)?.id || null) : (m.work_order_item_parts?.part_id || null);
+    if (!关联配件id) continue;
+    const { data: 已有配件图 } = await admin
+      .from("part_images")
+      .select("storage_path, sort_order")
+      .eq("part_id", 关联配件id);
+    const 已有配件路径 = new Set(((已有配件图 || []) as { storage_path: string | null; sort_order: number | null }[]).map((r) => r.storage_path));
+    const 新配件图 = 图片.filter((p) => !已有配件路径.has(p));
+    if (新配件图.length > 0) {
+      const 起始序号 = ((已有配件图 || []) as { sort_order: number | null }[]).reduce((s, r) => Math.max(s, r.sort_order || 0), 0);
+      await admin.from("part_images").insert(
+        新配件图.map((p, i) => ({
+          part_id: 关联配件id,
+          storage_path: p,
+          sort_order: 起始序号 + i + 1,
+        }))
+      );
+    }
   }
 
   /* 3. 单状态推进（重复提交只更新时间和内容，状态不变） */

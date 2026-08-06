@@ -954,7 +954,9 @@ export function PartBranchStatusList({ status }: Props) {
      
   }, [rows, groupBy]);
 
-  const totalCols = 15;
+  /* 待询价阶段不显示"销售价/客户意见"两列（用户拍板 2026-08-06：询价阶段只关心采购侧信息） */
+  const 隐藏销售价客户意见 = status === "pending_inquiry";
+  const totalCols = 隐藏销售价客户意见 ? 13 : 15;
 
   /* 分支同色背景色表（草稿黄色已占用，此处避开黄色） */
   const BRANCH_BG_COLORS = [
@@ -1107,38 +1109,42 @@ export function PartBranchStatusList({ status }: Props) {
             <span className="text-gray-700">***</span>
           )}
         </td>
-        <td className="px-3 py-3 text-right">
-          {showPrices ? (
-            <div className="flex items-center justify-end gap-1">
-              <span className="text-gray-400">¥</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
+        {!隐藏销售价客户意见 && (
+          <>
+            <td className="px-3 py-3 text-right">
+              {showPrices ? (
+                <div className="flex items-center justify-end gap-1">
+                  <span className="text-gray-400">¥</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    disabled={isSaving}
+                    value={priceValue}
+                    onChange={(e) => setEditValue(row.id, "price", e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(e, row, "price")}
+                    placeholder="-"
+                    className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && priceDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+                  />
+                </div>
+              ) : (
+                <span className="text-gray-700">***</span>
+              )}
+            </td>
+            <td className="px-3 py-3">
+              <select
                 disabled={isSaving}
-                value={priceValue}
-                onChange={(e) => setEditValue(row.id, "price", e.target.value)}
-                onKeyDown={(e) => handleKeyDown(e, row, "price")}
-                placeholder="-"
-                className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && priceDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
-              />
-            </div>
-          ) : (
-            <span className="text-gray-700">***</span>
-          )}
-        </td>
-        <td className="px-3 py-3">
-          <select
-            disabled={isSaving}
-  value={edits[row.id]?.customer_opinion !== undefined ? edits[row.id]!.customer_opinion! : (row.customer_opinion || "pending")}
-            onChange={(e) => setEditValue(row.id, "customer_opinion", e.target.value)}
-            className={`px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && edits[row.id]?.customer_opinion !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
-          >
-            <option value="pending">未确定</option>
-            <option value="agree">同意</option>
-            <option value="reject">否决</option>
-          </select>
-        </td>
+                value={edits[row.id]?.customer_opinion !== undefined ? edits[row.id]!.customer_opinion! : (row.customer_opinion || "pending")}
+                onChange={(e) => setEditValue(row.id, "customer_opinion", e.target.value)}
+                className={`px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && edits[row.id]?.customer_opinion !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+              >
+                <option value="pending">未确定</option>
+                <option value="agree">同意</option>
+                <option value="reject">否决</option>
+              </select>
+            </td>
+          </>
+        )}
         <td className="px-3 py-3">
           <button
             type="button"
@@ -1416,8 +1422,12 @@ export function PartBranchStatusList({ status }: Props) {
               <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">数量</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">库存</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">采购价</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">销售价</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">客户意见</th>
+              {!隐藏销售价客户意见 && (
+                <>
+                  <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">销售价</th>
+                  <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">客户意见</th>
+                </>
+              )}
               <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">供应商</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">备注</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">图片</th>
