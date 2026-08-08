@@ -373,14 +373,11 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
                           <div className="text-[10px] text-gray-400 mt-0.5">编码不在配件库，按填写保存</div>
                         )}
                       </td>
-                      {/* 配件名 + 车型 */}
+                      {/* 配件名（不显示车型——供应商只需要知道配件叫什么） */}
                       <td className="px-2 py-2 text-gray-900 font-medium">
                         {r.partName}
                         {r.isSupplierAdded && (
                           <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-700">备选</span>
-                        )}
-                        {r.vehicleModel && (
-                          <div className="text-[10px] text-gray-400 font-normal mt-0.5">{r.vehicleModel}</div>
                         )}
                       </td>
                       {/* 品牌 */}
