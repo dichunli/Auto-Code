@@ -98,7 +98,8 @@ export async function 生成询价单(参数: {
       .from("vehicle_models")
       .select("id, 品牌, 车系, 车型, 年款, 排量")
       .in("id", 车型id列表);
-    for (const v of (车型数据 || []) as { id: string; 品牌: string | null; 车系: string | null; 车型: string | null; 年款: string | null; 排量: string | null }[]) {
+    /* 中文字段名导致 supabase 类型推导失败（ParserError），先转 unknown 再断言 */
+    for (const v of (车型数据 || []) as unknown as { id: string; 品牌: string | null; 车系: string | null; 车型: string | null; 年款: string | null; 排量: string | null }[]) {
       车型Map.set(v.id, [v.品牌, v.车系, v.车型, v.年款, v.排量].filter(Boolean).join(" "));
     }
   }

@@ -6,7 +6,8 @@ import { useConfirm } from "./ConfirmDialog";
 
 interface Profile {
   id: string;
-  full_name: string;
+  /* 可空：数据源 员工档案.full_name 本身可选 */
+  full_name?: string | null;
   is_mechanic?: boolean;
   group_name?: string | null;
   level_sort?: number; // 技师等级 sort_order，越大等级越高，无等级为 -1
@@ -15,7 +16,8 @@ interface Profile {
 interface MechanicGroup {
   id: string;
   name: string;
-  members: { mechanic_id: string; profiles?: { full_name: string } | null }[];
+  /* full_name 可空：数据源 技师组成员.profiles.full_name 本身可选 */
+  members: { mechanic_id: string; profiles?: { full_name?: string | null } | null }[];
 }
 
 interface ExistingMechanic {

@@ -40,7 +40,7 @@ async function 获取嵌入管道(): Promise<FeatureExtractionPipeline | null> {
       console.log("[localEmbedding] 模型加载完成：", 模型名称);
       return pipe;
     })
-    .catch((err: unknown) => {
+    .catch((err: unknown): null => {
       加载失败 = true;
       加载中 = null;
       const 错误信息 = err instanceof Error ? err.message : String(err);

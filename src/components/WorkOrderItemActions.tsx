@@ -12,6 +12,8 @@ interface Props {
   quantity?: number;
   unitPrice?: number;
   requireQc?: boolean | null;
+  /* 编辑弹窗回显用：关联的维修项目库 id（新项目行会传入） */
+  serviceItemId?: string | null;
 }
 
 export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, unitPrice, requireQc }: Props) {

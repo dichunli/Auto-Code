@@ -2,9 +2,9 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
-import ItemPartGroup from "./ItemPartGroup";
+import ItemPartGroup, { type SupplierLite, type LogisticsLite } from "./ItemPartGroup";
 import SortableList from "./SortableList";
-import type { PartBranch, PartGroupInfo } from "@/lib/workOrderView";
+import type { PartBranch, PartGroupInfo, MediaRecord } from "@/lib/workOrderView";
 
 /* 与 workOrderView 相同的配件分组逻辑：按目录（branch_group_id）分组，
  * 组内按 sort_order 排序，第一个分支为代表分支 */
@@ -44,13 +44,14 @@ interface Props {
   seqPrefix: string;
   isLocked: boolean;
   vehicleModelId?: number | null;
-  suppliers: unknown[];
-  logisticsCompanies: unknown[];
+  suppliers: SupplierLite[];
+  logisticsCompanies: LogisticsLite[];
   pickingByPart: Record<string, number>;
   returnByPart: Record<string, number>;
   inventoryByPart: Record<string, number>;
-  pendingSupplierReturnByPart: Record<string, number>;
-  imagesByPart: Record<string, { storage_path: string | null }[]>;
+  /* 数据源 workOrderView 是 boolean 标记（是否有待退货），原声明 number 是笔误 */
+  pendingSupplierReturnByPart: Record<string, boolean>;
+  imagesByPart: Record<string, MediaRecord[]>;
   children: ReactNode;
 }
 

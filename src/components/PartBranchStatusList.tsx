@@ -268,7 +268,8 @@ export function PartBranchStatusList({ status }: Props) {
 
     /* 查询配件分支图片 */
     const partIds = (filtered || []).map((p) => p.id);
-    const { data: partMediaData } = partIds.length > 0
+    /* 三元空分支 [] 会推导 any[]，给解构模式加注解统一类型 */
+    const { data: partMediaData }: { data: { id: string; work_order_item_part_id: string; storage_path: string }[] | null } = partIds.length > 0
       ? await supabase.from("work_order_item_part_media").select("id, work_order_item_part_id, storage_path").in("work_order_item_part_id", partIds)
       : { data: [] };
     const mediaMap: Record<string, { id: string; storage_path: string }[]> = {};

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import NewItemRow from "./NewItemRow";
+import type { SupplierLite, LogisticsLite } from "./ItemPartGroup";
 
 interface 新项目 {
   id: string;
@@ -20,7 +21,8 @@ interface 新项目 {
 interface 组信息 {
   id: string;
   name: string;
-  members: unknown[];
+  /* 组员具体化：与 ItemPersonSelectors.MechanicGroup.members 对齐 */
+  members: { mechanic_id: string; profiles?: { full_name?: string | null } | null }[];
 }
 
 interface Props {
@@ -31,12 +33,12 @@ interface Props {
   已有项目IDs: string[];
   orderId: string;
   实际锁定: boolean;
-  profiles: { id: string; full_name: string }[];
+  profiles: { id: string; full_name?: string | null }[];
   mechanicGroups: 组信息[];
   vehicleModelId?: number | null;
-  vehicleVin?: string;
-  suppliers?: unknown[];
-  logisticsCompanies?: unknown[];
+  vehicleVin?: string | null;
+  suppliers?: SupplierLite[];
+  logisticsCompanies?: LogisticsLite[];
   /* 空态内容：追加需求卡片传入"暂无项目"文案；服务端需求卡片不传（无追加行时渲染 null，行为不变） */
   emptyFallback?: ReactNode;
 }
@@ -93,7 +95,7 @@ export default function LiveItemsList({
   const 已有IDs拼串 = 已有项目IDs.join(",");
   useEffect(() => {
     设置追加项目((prev) => prev.filter((p) => !已有项目IDs.includes(p.id)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [已有IDs拼串]);
 
   if (追加项目.length === 0) return <>{emptyFallback}</>;

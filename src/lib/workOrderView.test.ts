@@ -14,6 +14,7 @@ function 造输入(覆盖: Partial<WorkOrderViewInput> = {}): WorkOrderViewInput
     itemParts: [],
     partMedia: [],
     pickingRecords: [],
+    pickRequests: null,
     returnRecords: [],
     supplierReturnRecords: [],
     partBatches: [],

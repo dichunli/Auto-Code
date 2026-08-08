@@ -12,6 +12,7 @@ import AddItemPartButton from "./AddItemPartButton";
 import { WorkOrderItemActions } from "./WorkOrderItemActions";
 import ItemSubtotalDisplay from "./ItemSubtotalDisplay";
 import ItemPartsLive from "./ItemPartsLive";
+import type { SupplierLite, LogisticsLite } from "./ItemPartGroup";
 
 interface 新项目 {
   id: string;
@@ -30,7 +31,8 @@ interface 新项目 {
 interface 组信息 {
   id: string;
   name: string;
-  members: unknown[];
+  /* 组员具体化：与 ItemPersonSelectors.MechanicGroup.members 对齐 */
+  members: { mechanic_id: string; profiles?: { full_name?: string | null } | null }[];
 }
 
 interface Props {
@@ -38,12 +40,12 @@ interface Props {
   序号: string;
   orderId: string;
   实际锁定: boolean;
-  profiles: { id: string; full_name: string }[];
+  profiles: { id: string; full_name?: string | null }[];
   mechanicGroups: 组信息[];
   vehicleModelId?: number | null;
-  vehicleVin?: string;
-  suppliers?: unknown[];
-  logisticsCompanies?: unknown[];
+  vehicleVin?: string | null;
+  suppliers?: SupplierLite[];
+  logisticsCompanies?: LogisticsLite[];
 }
 
 /* 新添加项目的行渲染（局部更新用）：

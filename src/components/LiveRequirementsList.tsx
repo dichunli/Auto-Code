@@ -6,11 +6,13 @@ import RequirementActions from "./RequirementActions";
 import AddRequirementItemsButton from "./AddRequirementItemsButton";
 import AssignmentBadge from "./AssignmentBadge";
 import LiveItemsList from "./LiveItemsList";
+import type { SupplierLite, LogisticsLite } from "./ItemPartGroup";
 
 interface 组信息 {
   id: string;
   name: string;
-  members: unknown[];
+  /* 组员具体化：与 ItemPersonSelectors.MechanicGroup.members 对齐 */
+  members: { mechanic_id: string; profiles?: { full_name?: string | null } | null }[];
 }
 
 interface 新需求 {
@@ -18,6 +20,8 @@ interface 新需求 {
   seq: number;
   description?: string | null;
   submitted_by?: string | null;
+  /* 新建需求尚未派工，补此字段对齐 RequirementActions 的类型要求 */
+  assigned_to?: string | null;
 }
 
 interface 新媒体 {
@@ -29,14 +33,15 @@ interface Props {
   orderId: string;
   vehicleModelId?: number | null;
   实际锁定: boolean;
-  profiles: { id: string; full_name: string }[];
+  /* full_name 可空：数据源 员工档案.full_name 本身可选，显示处有 ?? "-" 兜底 */
+  profiles: { id: string; full_name?: string | null }[];
   /* 服务端渲染的现有需求 id 列表：整页刷新后用于清理已入库的追加卡片，防止重复显示 */
   已有需求IDs: string[];
   /* 以下 4 项用于追加需求卡片里的 LiveItemsList（添加项目后立即显示，不整页刷新） */
   mechanicGroups: 组信息[];
-  vehicleVin?: string;
-  suppliers?: unknown[];
-  logisticsCompanies?: unknown[];
+  vehicleVin?: string | null;
+  suppliers?: SupplierLite[];
+  logisticsCompanies?: LogisticsLite[];
   children: ReactNode;
 }
 
