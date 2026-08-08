@@ -6,7 +6,7 @@ import { 压缩图片 } from "@/lib/imageCompress";
 import { useDebounce } from "@/lib/useDebounce";
 
 /* 供应商报价表单（桌面表格样式，与采购管理"待询价"列表同格式）
- * 行默认只读，点"编辑"解锁改该行；"+分支"给同一配件加备选报价（多品牌/多价格），
+ * 所有行一直保持可编辑，供应商填完直接提交；"+分支"给同一配件加备选报价（多品牌/多价格），
  * 同配件的分支底色相同；只能删除自己加的分支，我们提供的行不可删。
  * 采购员采用后整单锁死只读 */
 
@@ -96,8 +96,6 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
   const [上传中, set上传中] = useState<string | null>(null); // 正在上传图片的 itemId
   const [预览图, set预览图] = useState<string | null>(null);
   const [复制成功, set复制成功] = useState<string | null>(null); // 刚复制过的 VIN
-  /* 行默认只读：解锁中的行 id 集合（点"编辑"解锁，点"完成"锁回） */
-  const [解锁行, set解锁行] = useState<Set<string>>(new Set());
   const 文件输入Refs = useRef<Record<string, HTMLInputElement | null>>({});
   /* 编码联想：当前聚焦编码框的行 + 候选列表（输入防抖后模糊搜配件库） */
   const [联想行, set联想行] = useState<string | null>(null);
@@ -126,15 +124,6 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
     };
   }, [联想词, 联想行, token]);
 
-  function 切换解锁(itemId: string) {
-    set解锁行((prev) => {
-      const next = new Set(prev);
-      if (next.has(itemId)) next.delete(itemId);
-      else next.add(itemId);
-      return next;
-    });
-  }
-
   /* +分支：供应商给同一配件加备选报价（服务端建行后本地追加，继承源行车牌/VIN 分组） */
   async function 加分支(源行: 行状态) {
     const r = await 添加供应商分支(token, 源行.itemId);
@@ -161,8 +150,6 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
       matchDoc: "",
     };
     set行列表((prev) => [...prev, 新行]);
-    /* 新分支直接进入编辑状态 */
-    set解锁行((prev) => new Set(prev).add(新行.itemId));
   }
 
   /* 删除供应商自己加的分支 */
@@ -409,8 +396,8 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
                     /* 同配件（含供应商备选分支）用同一底色 */
                     if (行idx === 0 || g.rows[行idx - 1].partName !== r.partName) 色序++;
                     const 行底色 = 分支底色[色序 % 分支底色.length];
-                    const 已解锁 = 解锁行.has(r.itemId);
-                    const 行只读 = 只读 || !已解锁;
+                    /* 所有行一直可编辑；采购员采用后整单锁死只读 */
+                    const 行只读 = 只读;
                     return (
                     <tr key={r.itemId} className={`${行底色} hover:bg-gray-50`}>
                       {/* 编码（输入联想候选，点选带出品牌规格；失焦精确查兜底） */}
@@ -577,17 +564,10 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
                           )}
                         </div>
                       </td>
-                      {/* 操作：编辑解锁 / +分支报备选 / 删除（仅自己加的分支可删） */}
+                      {/* 操作：+分支报备选 / 删除（仅自己加的分支可删） */}
                       <td className="px-2 py-2 whitespace-nowrap">
                         {!只读 && (
                           <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => 切换解锁(r.itemId)}
-                              className="text-xs text-blue-600 hover:text-blue-700"
-                            >
-                              {已解锁 ? "完成" : "编辑"}
-                            </button>
                             <button
                               type="button"
                               onClick={() => 加分支(r)}
