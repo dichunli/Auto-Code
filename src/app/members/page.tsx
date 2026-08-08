@@ -3,9 +3,15 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 
-export default async function MembersPage({ searchParams }: { searchParams?: Promise<{ status?: string; q?: string }> }) {
-  const { status, q } = (await searchParams) || {};
+export default async function MembersPage({ searchParams }: { searchParams?: Promise<{ status?: string; q?: string; page?: string }> }) {
+  const { status, q, page: pageParam } = (await searchParams) || {};
   const supabase = await createClient();
+
+  /* 分页：每页 20 条，防止会员量增长后全量拉取拖慢页面 */
+  const pageSize = 20;
+  const page = Math.max(1, parseInt(pageParam || "1", 10) || 1);
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
 
   let query = supabase.from("members").select("*, customers(name, phone)", { count: "exact" });
 
@@ -18,7 +24,12 @@ export default async function MembersPage({ searchParams }: { searchParams?: Pro
     }
   }
 
-  const { data: members, count } = await query.order("created_at", { ascending: false });
+  const { data: members, count } = await query
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  const total = count || 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const statusMap: Record<string, string> = {
     active: "正常",
@@ -109,6 +120,44 @@ export default async function MembersPage({ searchParams }: { searchParams?: Pro
           </tbody>
         </table>
       </div>
+
+      {/* 分页导航：保留搜索条件，仅切换页码 */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-gray-500">
+            共 {total} 条，第 {page}/{totalPages} 页
+          </div>
+          <div className="flex items-center gap-2">
+            {(() => {
+              const 构造链接 = (目标页: number) => {
+                const params = new URLSearchParams();
+                if (q) params.set("q", q);
+                if (status && status !== "all") params.set("status", status);
+                params.set("page", String(目标页));
+                return `/members?${params.toString()}`;
+              };
+              return (
+                <>
+                  {page > 1 ? (
+                    <Link href={构造链接(page - 1)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                      上一页
+                    </Link>
+                  ) : (
+                    <span className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-300">上一页</span>
+                  )}
+                  {page < totalPages ? (
+                    <Link href={构造链接(page + 1)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                      下一页
+                    </Link>
+                  ) : (
+                    <span className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-300">下一页</span>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
