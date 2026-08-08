@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, Fragment } from "react";
 import { 按编码查配件, 按编码搜配件, 提交报价, 更新报价图片, 添加供应商分支, 删除供应商分支, type 询价单公开信息 } from "../actions";
 import { 压缩图片 } from "@/lib/imageCompress";
 import { useDebounce } from "@/lib/useDebounce";
+import { copyText } from "@/lib/copyText";
 
 /* 供应商报价表单（桌面表格样式，与采购管理"待询价"列表同格式）
  * 所有行一直保持可编辑，供应商填完直接提交；"+分支"给同一配件加备选报价（多品牌/多价格），
@@ -45,28 +46,6 @@ interface 配件候选 {
 interface Props {
   token: string;
   初始数据: 询价单公开信息;
-}
-
-/* 复制 VIN 到剪贴板（clipboard API 失败时回退 execCommand） */
-async function 复制文本(文本: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(文本);
-    return true;
-  } catch {
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = 文本;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand("copy");
-      document.body.removeChild(ta);
-      return ok;
-    } catch {
-      return false;
-    }
-  }
 }
 
 export default function QuoteForm({ token, 初始数据 }: Props) {
@@ -169,8 +148,9 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
     );
   }
 
+  /* 复制 VIN 到剪贴板（clipboard 失败时 copyText 内部回退 execCommand） */
   async function 复制VIN(vin: string) {
-    if (await 复制文本(vin)) {
+    if (await copyText(vin)) {
       set复制成功(vin);
       setTimeout(() => set复制成功(null), 1500);
     } else {
