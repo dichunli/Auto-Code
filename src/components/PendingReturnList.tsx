@@ -5,14 +5,11 @@ import { createClient } from "@/lib/supabase/client";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
+import { RETURN_REASON_LABELS } from "@/lib/purchaseFlowLabels";
+import { usePartLinking } from "./usePartLinking";
 
-const returnReasonMap: Record<string, string> = {
-  wrong_ship: "错发",
-  excess: "多发退货",
-  damaged: "损坏",
-  cancel: "客户悔单",
-  quality: "质量问题",
-};
+/* 退货原因中文化：保持原变量名，引用处零改动 */
+const returnReasonMap = RETURN_REASON_LABELS;
 
 interface WorkOrderItemPart {
   id: string;
@@ -58,10 +55,6 @@ export function PendingReturnList() {
   const [returnListOpen, setReturnListOpen] = useState(false);
   const [returnListItems, setReturnListItems] = useState<ReturnRecord[]>([]);
 
-  /* 编辑配件信息弹窗 */
-  const [editItem, setEditItem] = useState<ReturnRecord | null>(null);
-  const [newPartQuery, setNewPartQuery] = useState("");
-
   /* 采退单确认弹窗 */
   interface ReturnModalGroup {
     supplierName: string;
@@ -73,6 +66,9 @@ export function PendingReturnList() {
     shippingFeePayer: string;
     shippingFee: string;
   }
+
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
+  const [returnModalGroups, setReturnModalGroups] = useState<ReturnModalGroup[]>([]);
 
   interface RecordDetail {
     id: string;
@@ -129,19 +125,6 @@ export function PendingReturnList() {
     notes: string | null;
   }
 
-  interface InlinePart {
-    id: string;
-    part_number: string | null;
-    barcode: string | null;
-    name: string | null;
-    unit: string | null;
-    part_names: { name: string | null; unit?: string | null } | null;
-    part_brands: { name: string | null } | null;
-    part_specifications: { name: string | null } | null;
-    purchase_price: number | null;
-  }
-  const [returnModalOpen, setReturnModalOpen] = useState(false);
-  const [returnModalGroups, setReturnModalGroups] = useState<ReturnModalGroup[]>([]);
 
   async function loadData() {
     setLoading(true);
@@ -502,118 +485,36 @@ export function PendingReturnList() {
     }
   }
 
-  /* 编辑配件信息 */
-  function openEditModal(item: ReturnRecord) {
-    setNewPartQuery("");
-    setEditItem(item);
-  }
+  /* 行内配件编辑逻辑已抽到 usePartLinking（对照表驱动的共享实现） */
+  const 配件联动 = usePartLinking<ReturnRecord>({
+    supabase,
+    主表: "work_order_item_parts",
+    双写WOI: false,
+    getRowId: (r) => r.work_order_item_parts?.id || "",
+    getWoiId: () => null,
+    getWoi当前值: (r) => r.work_order_item_parts,
+    写WoiPartId: true,
+    行内unitCost来源: "purchase_price",
+    行内写售价: false,
+    弹窗写supplierPartName: false,
+    弹窗写WoiDocumentName: false,
+    弹窗规格来源: "specification_text",
+    取弹前行: (r) => r.work_order_item_parts || {},
+    setSubmitting,
+    reload: loadData,
+  });
+  const {
+    editRow: editItem,
+    editId,
+    prefillData: 配件预填,
+    openEditModal,
+    openCreateNewModal,
+    closeEditModal,
+    handlePartSaved,
+    handleInlinePartSelect,
+    handleInlineClear,
+  } = 配件联动;
 
-  function closeEditModal() {
-    setNewPartQuery("");
-    setEditItem(null);
-  }
-
-  async function handlePartSaved(partId: string) {
-    if (!editItem?.work_order_item_parts) return;
-    setSubmitting(`edit-${editItem.id}`);
-    try {
-      const { data: part } = await supabase
-        .from("parts")
-        .select(
-          "part_number, name, unit, brand_id, part_brands(name), specification_text, purchase_price, notes"
-        )
-        .eq("id", partId)
-        .single();
-
-      const woiUpdates: Record<string, string | number | null> = { part_id: partId };
-      const typedPart = part as PartInfo | null;
-      if (typedPart) {
-        if (typedPart.part_number != null) woiUpdates.part_number = typedPart.part_number;
-        if (typedPart.name != null) woiUpdates.name = typedPart.name;
-        if (typedPart.unit != null) woiUpdates.unit = typedPart.unit;
-        if (typedPart.brand_id != null) {
-          const pb = typedPart.part_brands;
-          woiUpdates.brand = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || null;
-        }
-        if (typedPart.specification_text != null) woiUpdates.specification = typedPart.specification_text;
-        if (typedPart.purchase_price != null) woiUpdates.unit_cost = typedPart.purchase_price;
-        if (typedPart.notes != null) woiUpdates.notes = typedPart.notes;
-      }
-
-      const { error: woiErr } = await supabase
-        .from("work_order_item_parts")
-        .update(woiUpdates)
-        .eq("id", editItem.work_order_item_parts.id);
-      if (woiErr) throw woiErr;
-
-      closeEditModal();
-      loadData();
-    } catch (err: unknown) {
-      alert("同步配件信息失败: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setSubmitting(null);
-    }
-  }
-
-  /* 行内搜索选中配件 */
-  async function handleInlinePartSelect(item: ReturnRecord, part: InlinePart) {
-    if (!item.work_order_item_parts) return;
-    setSubmitting(`inline-${item.id}`);
-    try {
-      const woi = item.work_order_item_parts;
-      const woiUpdates: Record<string, string | number | null> = { part_id: part.id };
-      if (part.part_number != null) woiUpdates.part_number = part.part_number;
-      if (part.barcode != null && !part.part_number) woiUpdates.part_number = part.barcode;
-      if (!woi.name) {
-        if (part.name != null) woiUpdates.name = part.name;
-        else if (part.part_names?.name != null) woiUpdates.name = part.part_names.name;
-      }
-      if (!woi.unit) {
-        if (part.unit != null) woiUpdates.unit = part.unit;
-        else if (part.part_names?.unit != null) woiUpdates.unit = part.part_names.unit;
-      }
-      if (!woi.brand && part.part_brands?.name != null) woiUpdates.brand = part.part_brands.name;
-      if (!woi.specification && part.part_specifications?.name != null) woiUpdates.specification = part.part_specifications.name;
-      if ((woi.unit_cost == null || woi.unit_cost === 0) && part.purchase_price != null) {
-        woiUpdates.unit_cost = part.purchase_price;
-      }
-
-      const { error: woiErr } = await supabase
-        .from("work_order_item_parts")
-        .update(woiUpdates)
-        .eq("id", woi.id);
-      if (woiErr) throw woiErr;
-
-      loadData();
-    } catch (err: unknown) {
-      alert("更新配件信息失败: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setSubmitting(null);
-    }
-  }
-
-  async function handleInlineClear(item: ReturnRecord) {
-    if (!item.work_order_item_parts) return;
-    setSubmitting(`inline-${item.id}`);
-    try {
-      const { error: woiErr } = await supabase
-        .from("work_order_item_parts")
-        .update({ part_id: null, part_number: null })
-        .eq("id", item.work_order_item_parts.id);
-      if (woiErr) throw woiErr;
-
-      loadData();
-    } catch (err: unknown) {
-      alert("清除配件关联失败: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setSubmitting(null);
-    }
-  }
-
-  function handleInlineCreateNew(item: ReturnRecord, query: string) {
-    setNewPartQuery(query);
-    openEditModal(item);
-  }
 
   /* 供应商选项 */
   const supplierOptions = useMemo(() => {
@@ -820,7 +721,7 @@ export function PendingReturnList() {
                           value={r.work_order_item_parts?.part_number || ""}
                           onChange={() => {}}
                           onSelect={(part) => handleInlinePartSelect(r, part)}
-                          onCreateNew={(query) => handleInlineCreateNew(r, query)}
+                          onCreateNew={(query) => openCreateNewModal(r, query)}
                           onClear={() => handleInlineClear(r)}
                           disabled={submitting === `inline-${r.id}`}
                           placeholder="编码"
@@ -1157,16 +1058,10 @@ export function PendingReturnList() {
             </div>
             <div className="p-6">
               <PartForm
-                editId={editItem.work_order_item_parts?.part_id || undefined}
+                editId={editId}
                 onSaved={handlePartSaved}
                 onCancel={closeEditModal}
-                prefillData={{
-                  part_number: newPartQuery || editItem.work_order_item_parts?.part_number || undefined,
-                  name: editItem.work_order_item_parts?.name || undefined,
-                  unit: editItem.work_order_item_parts?.unit || undefined,
-                  purchase_price: editItem.work_order_item_parts?.unit_cost != null ? String(editItem.work_order_item_parts.unit_cost) : undefined,
-                  notes: editItem.work_order_item_parts?.notes || undefined,
-                }}
+                prefillData={配件预填}
               />
             </div>
           </div>
