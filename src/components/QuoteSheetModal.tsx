@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { 生成询价单 } from "@/app/quote/actions";
+import { copyText } from "@/lib/copyText";
 
 /* 生成询价链接弹窗：待询价页勾选行后，选供应商 → 生成 3 小时有效的链接发给供应商 */
 
@@ -84,15 +85,15 @@ export default function QuoteSheetModal({ open, rows, suppliers, onClose }: Prop
   }
 
   async function 复制链接() {
-    try {
-      await navigator.clipboard.writeText(链接);
+    /* copyText 内部已带 execCommand 老式兜底，http 页面也能复制成功 */
+    if (await copyText(链接)) {
       set复制成功(true);
-    } catch {
-      /* 剪贴板不可用时选中输入框内容手动复制 */
-      const input = document.getElementById("quote-link-input") as HTMLInputElement | null;
-      input?.select();
-      alert("自动复制失败，请按 Ctrl+C 手动复制");
+      return;
     }
+    /* 两种复制方式都不可用：选中输入框内容，提示手动复制 */
+    const input = document.getElementById("quote-link-input") as HTMLInputElement | null;
+    input?.select();
+    alert("自动复制失败，请按 Ctrl+C 手动复制");
   }
 
   if (!open) return null;

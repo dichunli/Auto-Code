@@ -26,6 +26,20 @@ function 检查限流(token: string): boolean {
   return true;
 }
 
+/* ── 联想限流：独立于精确查询，每小时 120 次（输入联想触发频繁，防抖后仍比失焦多） ── */
+const 联想限流桶 = new Map<string, { count: number; resetAt: number }>();
+function 检查联想限流(token: string): boolean {
+  const now = Date.now();
+  const 桶 = 联想限流桶.get(token);
+  if (!桶 || 桶.resetAt < now) {
+    联想限流桶.set(token, { count: 1, resetAt: now + 60 * 60 * 1000 });
+    return true;
+  }
+  if (桶.count >= 120) return false;
+  桶.count++;
+  return true;
+}
+
 interface 结果 {
   success: boolean;
   error?: string;
@@ -475,6 +489,52 @@ export async function 按编码查配件(token: string, 编码: string): Promise
       unit: p.unit || "",
       documentName: p.document_name || "",
     },
+  };
+}
+
+/* 供应商报价页编码联想：按编码/条码模糊搜配件库，返回最多 8 条候选（不暴露库存和价格） */
+export async function 按编码搜配件(token: string, 关键词: string): Promise<结果 & {
+  data?: { partId: string; name: string; partNumber: string; brand: string; spec: string; unit: string; documentName: string }[];
+}> {
+  const 结果0 = await 校验并取单(token);
+  if ("错误" in 结果0) return { success: false, error: 结果0.错误 };
+  const { 单, admin } = 结果0;
+
+  /* 已采用的单锁死，不需要再查 */
+  if (单.status === "adopted") return { success: false, error: "该询价单已采用，不能再修改" };
+  if (!检查联想限流(token)) return { success: false, error: "查询太频繁，请稍后再试" };
+
+  /* 只保留字母数字和横杠：防 PostgREST or 语法被逗号/通配符破坏（编码本身也只含这些字符） */
+  const kw = 关键词.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
+  if (kw.length < 2) return { success: true, data: [] };
+
+  const { data } = await admin
+    .from("parts")
+    .select("id, name, part_number, unit, document_name, part_brands(name), part_specifications(name)")
+    .or(`part_number.ilike.%${kw}%,barcode.ilike.%${kw}%`)
+    .limit(8);
+
+  interface 配件 {
+    id: string;
+    name: string | null;
+    part_number: string | null;
+    unit: string | null;
+    document_name: string | null;
+    part_brands: { name: string | null } | null;
+    part_specifications: { name: string | null } | null;
+  }
+
+  return {
+    success: true,
+    data: ((data || []) as unknown as 配件[]).map((p) => ({
+      partId: p.id,
+      name: p.name || "",
+      partNumber: p.part_number || "",
+      brand: p.part_brands?.name || "",
+      spec: p.part_specifications?.name || "",
+      unit: p.unit || "",
+      documentName: p.document_name || "",
+    })),
   };
 }
 
