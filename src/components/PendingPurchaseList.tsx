@@ -8,6 +8,7 @@ import { PriceValue } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
+import { PURCHASE_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 
 interface PartBranchRow {
   id: string;
@@ -87,11 +88,7 @@ const BRANCH_BG_COLORS = [
 ];
 
 /* 配件需求来源标签 — 由「待收货」流程中的换货/补货动作生成 */
-const PURCHASE_REASON_LABELS: Record<string, { text: string; color: string }> = {
-  broken_resupply: { text: "破损补发", color: "bg-orange-50 text-orange-700 border-orange-200" },
-  wrong_exchange: { text: "错发换货", color: "bg-purple-50 text-purple-700 border-purple-200" },
-  short_resupply: { text: "少发补货", color: "bg-red-50 text-red-700 border-red-200" },
-};
+/* purchase_reason 徽标已抽到 @/lib/purchaseFlowLabels（唯一来源） */
 
 function getGroupKey(r: PartBranchRow, groupBy: GroupBy): string {
   switch (groupBy) {

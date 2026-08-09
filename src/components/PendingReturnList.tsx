@@ -5,14 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
+import { RETURN_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 
-const returnReasonMap: Record<string, string> = {
-  wrong_ship: "错发",
-  excess: "多发退货",
-  damaged: "损坏",
-  cancel: "客户悔单",
-  quality: "质量问题",
-};
+/* 退货原因中文化：保持原变量名，引用处零改动 */
+const returnReasonMap = RETURN_REASON_LABELS;
 
 interface WorkOrderItemPart {
   id: string;

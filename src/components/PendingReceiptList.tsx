@@ -8,6 +8,7 @@ import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { ImageUploader } from "@/components/ImageUploader";
 import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
+import { ACTION_LABELS, ACTION_TO_PURCHASE_REASON } from "@/lib/purchaseFlowLabels";
 
 interface PurchaseOrderItem {
   id: string;
@@ -66,26 +67,7 @@ const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
   { key: "logistics", label: "按物流公司" },
 ];
 
-/* 处理动作标签 */
-const ACTION_LABELS: Record<string, { text: string; color: string }> = {
-  normal: { text: "正常", color: "bg-green-100 text-green-700" },
-  broken_exchange: { text: "破损换货", color: "bg-orange-100 text-orange-700" },
-  broken_discard: { text: "破损弃货", color: "bg-orange-100 text-orange-700" },
-  wrong_exchange: { text: "错发换货", color: "bg-purple-100 text-purple-700" },
-  wrong_discard: { text: "错发弃货", color: "bg-purple-100 text-purple-700" },
-  excess_return: { text: "多发退货", color: "bg-blue-100 text-blue-700" },
-  excess_paid: { text: "多发备用·付款", color: "bg-blue-100 text-blue-700" },
-  excess_free: { text: "多发备用·免费", color: "bg-blue-100 text-blue-700" },
-  short_repurchase: { text: "少发补货", color: "bg-red-100 text-red-700" },
-  short_discard: { text: "少发弃货", color: "bg-red-100 text-red-700" },
-};
-
-/* 哪些 action 需要生成新的"待采购"行(写回 work_order_item_parts) */
-const ACTION_TO_PURCHASE_REASON: Record<string, string> = {
-  broken_exchange: "broken_resupply",
-  wrong_exchange: "wrong_exchange",
-  short_repurchase: "short_resupply",
-};
+/* 处理动作标签与跨阶段约定已抽到 @/lib/purchaseFlowLabels（唯一来源） */
 
 function resolveImageUrl(path: string): string {
   if (!path) return "";
