@@ -8,6 +8,7 @@ import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS, ACTION_TO_RETURN_REASON } from "@/lib/purchaseFlowLabels";
+import { usePartLinking } from "./usePartLinking";
 
 interface PurchaseOrderItem {
   id: string;
@@ -94,10 +95,6 @@ export function PendingStorageList() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
-
-  /* 编辑配件信息弹窗 */
-  const [editItem, setEditItem] = useState<PurchaseOrderItem | null>(null);
-  const [newPartQuery, setNewPartQuery] = useState("");
 
   /* 入库单确认弹窗 */
   const [inboundModalOpen, setInboundModalOpen] = useState(false);
@@ -592,202 +589,44 @@ export function PendingStorageList() {
     }
   }
 
-  /* 编辑配件信息 */
-  function openEditModal(item: PurchaseOrderItem) {
-    setNewPartQuery("");
-    setEditItem(item);
-  }
-
-  function closeEditModal() {
-    setNewPartQuery("");
-    setEditItem(null);
-  }
-
-  async function handlePartSaved(partId: string) {
-    if (!editItem) return;
-    setSubmitting(`edit-${editItem.id}`);
-    try {
-      const { data: part } = await supabase
-        .from("parts")
-        .select("part_number, name, unit, category_id, part_categories(name), brand_id, part_brands(name), specification_text, purchase_price, notes, document_name")
-        .eq("id", partId)
+  /* 行内配件编辑逻辑已抽到 usePartLinking（对照表驱动的共享实现） */
+  const 配件联动 = usePartLinking<PurchaseOrderItem>({
+    supabase,
+    主表: "purchase_order_items",
+    双写WOI: true,
+    getRowId: (item) => item.id,
+    getWoiId: (item) => item.work_order_item_part_id,
+    getWoi当前值: async (item) => {
+      if (!item.work_order_item_part_id) return null;
+      const { data } = await supabase
+        .from("work_order_item_parts")
+        .select("name, unit, brand, specification, unit_cost, unit_price")
+        .eq("id", item.work_order_item_part_id)
         .single();
+      return data;
+    },
+    写WoiPartId: false,
+    行内unitCost来源: "unit_cost",
+    行内写售价: true,
+    弹窗写supplierPartName: true,
+    弹窗写WoiDocumentName: true,
+    弹窗规格来源: "specification_text",
+    取弹前行: (item) => item,
+    setSubmitting,
+    reload: loadData,
+  });
+  const {
+    editRow: editItem,
+    editId,
+    prefillData: 配件预填,
+    openEditModal,
+    openCreateNewModal,
+    closeEditModal,
+    handlePartSaved,
+    handleInlinePartSelect,
+    handleInlineClear,
+  } = 配件联动;
 
-      const poiUpdates: Record<string, unknown> = { part_id: partId };
-      if (part) {
-        const p = part as Record<string, unknown>;
-        if (p.part_number != null) poiUpdates.part_number = p.part_number;
-        if (p.name != null) poiUpdates.name = p.name;
-        if (p.unit != null) poiUpdates.unit = p.unit;
-        const pc = p.part_categories as { name?: string }[] | { name?: string } | null | undefined;
-        const pb = p.part_brands as { name?: string }[] | { name?: string } | null | undefined;
-        const catName = Array.isArray(pc) ? pc[0]?.name : pc?.name;
-        const brandName = Array.isArray(pb) ? pb[0]?.name : pb?.name;
-        if (catName != null) poiUpdates.category = catName;
-        if (p.brand_id != null) poiUpdates.brand = brandName || null;
-        if (p.specification_text != null) poiUpdates.specification = p.specification_text;
-        if (p.purchase_price != null) poiUpdates.unit_cost = p.purchase_price;
-        if (p.notes != null) poiUpdates.notes = p.notes;
-        if (p.document_name != null) poiUpdates.supplier_part_name = p.document_name;
-      }
-      const { error: poiErr } = await supabase
-        .from("purchase_order_items")
-        .update(poiUpdates)
-        .eq("id", editItem.id);
-      if (poiErr) throw poiErr;
-
-      if (editItem.work_order_item_part_id) {
-        const woiUpdates: Record<string, unknown> = {};
-        if (part) {
-          const p = part as Record<string, unknown>;
-          if (p.part_number != null) woiUpdates.part_number = p.part_number;
-          if (p.name != null) woiUpdates.name = p.name;
-          if (p.unit != null) woiUpdates.unit = p.unit;
-          if (p.brand_id != null) {
-            const pb = p.part_brands as { name?: string }[] | { name?: string } | null | undefined;
-            woiUpdates.brand = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || null;
-          }
-          if (p.specification_text != null) woiUpdates.specification = p.specification_text;
-          if (p.purchase_price != null) woiUpdates.unit_cost = p.purchase_price;
-          if (p.notes != null) woiUpdates.notes = p.notes;
-          if (p.document_name != null) woiUpdates.document_name = p.document_name;
-        }
-        if (Object.keys(woiUpdates).length > 0) {
-          const { error: woiErr } = await supabase
-            .from("work_order_item_parts")
-            .update(woiUpdates)
-            .eq("id", editItem.work_order_item_part_id);
-          if (woiErr) console.warn("同步工单配件信息失败:", woiErr);
-        }
-      }
-
-      closeEditModal();
-      loadData();
-    } catch (err: unknown) {
-      const e = err as Error;
-      alert("同步配件信息失败: " + (e.message || String(err)));
-    } finally {
-      setSubmitting(null);
-    }
-  }
-
-  interface InlinePart {
-    id: string;
-    part_number?: string | null;
-    barcode?: string | null;
-    name?: string | null;
-    unit?: string | null;
-    unit_cost?: number | null;
-    unit_price?: number | null;
-    part_names?: { name?: string | null; unit?: string | null } | null;
-    part_brands?: { name?: string | null } | null;
-    part_specifications?: { name?: string | null } | null;
-    part_categories?: { name?: string | null } | null;
-  }
-
-  /* 行内搜索选中配件（待入库阶段不更新售价） */
-  async function handleInlinePartSelect(item: PurchaseOrderItem, part: InlinePart) {
-    setSubmitting(`inline-${item.id}`);
-    try {
-      /* 已有内容保留，为空才按配件填充 */
-      const poiUpdates: Record<string, unknown> = { part_id: part.id };
-      if (part.part_number != null) poiUpdates.part_number = part.part_number;
-      if (part.barcode != null && !part.part_number) poiUpdates.part_number = part.barcode;
-      if (!item.name) {
-        if (part.name != null) poiUpdates.name = part.name;
-        else if (part.part_names?.name != null) poiUpdates.name = part.part_names.name;
-      }
-      if (!item.unit) {
-        if (part.unit != null) poiUpdates.unit = part.unit;
-        else if (part.part_names?.unit != null) poiUpdates.unit = part.part_names.unit;
-      }
-      if (!item.brand && part.part_brands?.name != null) poiUpdates.brand = part.part_brands.name;
-      if (!item.specification && part.part_specifications?.name != null) poiUpdates.specification = part.part_specifications.name;
-      if (!item.category && part.part_categories?.name != null) poiUpdates.category = part.part_categories.name;
-
-      const { error: poiErr } = await supabase
-        .from("purchase_order_items")
-        .update(poiUpdates)
-        .eq("id", item.id);
-      if (poiErr) throw poiErr;
-
-      /* 同步更新工单配件表 */
-      if (item.work_order_item_part_id) {
-        const { data: woiCurrent } = await supabase
-          .from("work_order_item_parts")
-          .select("name, unit, brand, specification, unit_cost, unit_price")
-          .eq("id", item.work_order_item_part_id)
-          .single();
-
-        const woiUpdates: Record<string, unknown> = {};
-        if (part.part_number != null) woiUpdates.part_number = part.part_number;
-        if (!woiCurrent?.name) {
-          if (part.name != null) woiUpdates.name = part.name;
-        }
-        if (!woiCurrent?.unit) {
-          if (part.unit != null) woiUpdates.unit = part.unit;
-        }
-        if (!woiCurrent?.brand && part.part_brands?.name != null) woiUpdates.brand = part.part_brands.name;
-        if (!woiCurrent?.specification && part.part_specifications?.name != null) woiUpdates.specification = part.part_specifications.name;
-
-        /* 采购价：为空才填充 */
-        if ((woiCurrent?.unit_cost == null || woiCurrent.unit_cost === 0) && part.unit_cost != null) {
-          woiUpdates.unit_cost = part.unit_cost;
-        }
-
-        /* 售价：已报不覆盖，没有才按配件更新 */
-        if (woiCurrent?.unit_price == null && part.unit_price != null) {
-          woiUpdates.unit_price = part.unit_price;
-        }
-
-        if (Object.keys(woiUpdates).length > 0) {
-          const { error: woiErr } = await supabase
-            .from("work_order_item_parts")
-            .update(woiUpdates)
-            .eq("id", item.work_order_item_part_id);
-          if (woiErr) console.warn("同步工单配件信息失败:", woiErr);
-        }
-      }
-
-      loadData();
-    } catch (err: unknown) {
-      const e = err as Error;
-      alert("更新配件信息失败: " + (e.message || String(err)));
-    } finally {
-      setSubmitting(null);
-    }
-  }
-
-  async function handleInlineClear(item: PurchaseOrderItem) {
-    setSubmitting(`inline-${item.id}`);
-    try {
-      const { error: poiErr } = await supabase
-        .from("purchase_order_items")
-        .update({ part_id: null, part_number: null })
-        .eq("id", item.id);
-      if (poiErr) throw poiErr;
-
-      if (item.work_order_item_part_id) {
-        const { error: woiErr } = await supabase
-          .from("work_order_item_parts")
-          .update({ part_id: null, part_number: null })
-          .eq("id", item.work_order_item_part_id);
-        if (woiErr) console.warn("同步清除工单配件信息失败:", woiErr);
-      }
-
-      loadData();
-    } catch (err: unknown) {
-      const e = err as Error;
-      alert("清除配件关联失败: " + (e.message || String(err)));
-    } finally {
-      setSubmitting(null);
-    }
-  }
-
-  function handleInlineCreateNew(item: PurchaseOrderItem, query: string) {
-    setNewPartQuery(query);
-    openEditModal(item);
-  }
 
   const supplierOptions = useMemo(() => {
     const set = new Set<string>();
@@ -935,7 +774,7 @@ export function PendingStorageList() {
                                 value={item.part_number || ""}
                                 onChange={() => {}}
                                 onSelect={(part) => handleInlinePartSelect(item, part)}
-                                onCreateNew={(query) => handleInlineCreateNew(item, query)}
+                                onCreateNew={(query) => openCreateNewModal(item, query)}
                                 onClear={() => handleInlineClear(item)}
                                 disabled={submitting === `inline-${item.id}`}
                                 placeholder="编码"
@@ -1327,17 +1166,10 @@ export function PendingStorageList() {
             </div>
             <div className="p-6">
               <PartForm
-                editId={editItem.part_id || undefined}
+                editId={editId}
                 onSaved={handlePartSaved}
                 onCancel={closeEditModal}
-                prefillData={{
-                  part_number: newPartQuery || editItem.part_number || undefined,
-                  name: editItem.name || undefined,
-                  unit: editItem.unit || undefined,
-                  purchase_price: editItem.unit_cost != null ? String(editItem.unit_cost) : undefined,
-                  notes: editItem.notes || undefined,
-                  document_name: editItem.supplier_part_name || undefined,
-                }}
+                prefillData={配件预填}
               />
             </div>
           </div>
