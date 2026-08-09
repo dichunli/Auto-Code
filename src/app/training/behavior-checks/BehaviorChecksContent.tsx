@@ -119,7 +119,7 @@ export default function BehaviorChecksContent({ initialRecords }: { initialRecor
         check_date: rec.check_date,
         status: rec.status,
         score_record_id: rec.score_record_id,
-        media_urls: [],
+        media_urls: [] as string[],
       };
     });
 
