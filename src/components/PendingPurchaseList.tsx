@@ -190,6 +190,8 @@ export function PendingPurchaseList() {
       if (!wo) return false;
       if (wo.settled_at) return false;
       if (wo.order_type === "cancelled") return false;
+      /* 保养单不走采购流程 */
+      if (wo.order_type === "maintenance") return false;
       const cost = Number(r.unit_cost || 0);
       const price = Number(r.unit_price || 0);
       if (cost <= 0 || price <= 0) return false;

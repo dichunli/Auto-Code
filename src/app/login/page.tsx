@@ -27,6 +27,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient, 获取当前环境 } from "@/lib/supabase/client";
+import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { logLogin } from "@/lib/operationLog";
 import { 账号转邮箱 } from "@/lib/loginCredentials";
 
@@ -47,13 +48,13 @@ export default function LoginPage() {
 
   /* 检测页面是否从浏览器缓存恢复（bfcache） */
   /* 注意：APP 环境下某些国产手机的 WebView 会误触发 persisted，导致输入框被清空 */
-  /* 在事件触发时再检查 window.Capacitor，比 useEffect 执行时检查更可靠 */
+  /* 环境判断必须用 是Capacitor环境()（isNativePlatform），禁止 window.Capacitor：
+     浏览器 import @capacitor/core 后会生成 Web 垫片，导致浏览器被误判成 APP 而不跳回首页 */
   useEffect(() => {
     function handlePageShow(e: PageTransitionEvent) {
       if (e.persisted) {
         /* 事件触发时双重检查：如果是 APP 环境直接忽略 */
-        const w = window as unknown as Record<string, unknown>;
-        if (w.Capacitor || w.CapacitorIsNative) return;
+        if (是Capacitor环境()) return;
 
         /* 浏览器环境：从缓存恢复时，如果已经有 session 则跳走 */
         const hasToken = document.cookie.includes("sb-") || !!window.localStorage.getItem("sb-");

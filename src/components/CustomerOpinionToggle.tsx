@@ -6,9 +6,11 @@ import { useState, useCallback } from "react";
 interface Props {
   itemId: string;
   opinion: string;
+  /* 只读（保养单未进编辑模式 / 工单已锁定）：仅展示当前意见，不可点击修改 */
+  disabled?: boolean;
 }
 
-export function CustomerOpinionToggle({ itemId, opinion }: Props) {
+export function CustomerOpinionToggle({ itemId, opinion, disabled = false }: Props) {
   const supabase = createClient();
   const [updating, setUpdating] = useState(false);
   // 用本地状态保存当前客户意见，保存成功后只更新这个按钮，不刷新整页（性能优化）
@@ -59,8 +61,8 @@ export function CustomerOpinionToggle({ itemId, opinion }: Props) {
         type="button"
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
-        disabled={updating}
-        className={`px-2 py-0.5 rounded border font-medium cursor-pointer disabled:opacity-50 ${style}`}
+        disabled={updating || disabled}
+        className={`px-2 py-0.5 rounded border font-medium ${disabled ? "cursor-default" : "cursor-pointer"} disabled:opacity-50 ${style}`}
       >
         {updating ? "..." : label}
       </button>

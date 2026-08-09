@@ -144,7 +144,8 @@ export default function ItemQcActions({ itemId, itemName, requireQc, 实际锁�
       </button>
 
       {open && (
-        <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50">
+        /* z-[120]：移动端会从项目弹窗（z-[100]）里打开本弹窗，必须比它高 */
+        <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-[120]">
           <div className="bg-white rounded-t-xl md:rounded-xl shadow-2xl w-full md:max-w-lg md:mx-4 flex flex-col max-h-[90vh]">
             <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
               <h2 className="text-base font-semibold text-gray-900">质检单 — {itemName}</h2>

@@ -38,6 +38,8 @@ interface Props {
   returnByPart: Record<string, number>;
   inventoryByPart: Record<string, number>;
   pendingSupplierReturnByPart: Record<string, boolean>;
+  /* 待出库申领数（按分支）：手机端师傅申领后桌面行显示"已申领"角标，库管实领自动核销 */
+  申领ByPart?: Record<string, number>;
   imagesByPart: Record<string, { id?: string; storage_path?: string }[]>;
 }
 
@@ -53,6 +55,7 @@ export default function ItemPartGroup({
   returnByPart,
   inventoryByPart,
   pendingSupplierReturnByPart,
+  申领ByPart = {},
   imagesByPart,
 }: Props) {
   // 序号前缀（形如 "1.1.1"）：项目位置 + 组位置从排序 Context 实时读取，拖拽后自动重排
@@ -156,6 +159,12 @@ export default function ItemPartGroup({
                     logisticsCompanies={logisticsCompanies}
                     locked={isLocked}
                   />
+                  {/* 待出库申领角标：师傅手机端申领的数量，库管看到后备货实领（实领自动核销） */}
+                  {(申领ByPart[p.id as string] || 0) > 0 && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border bg-amber-50 text-amber-700 border-amber-200">
+                      已申领×{申领ByPart[p.id as string]}
+                    </span>
+                  )}
                 </div>
                 <ShowCommission>
                   {(() => {

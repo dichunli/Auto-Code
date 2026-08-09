@@ -5,8 +5,10 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { requestNotificationPermission, sendBrowserNotification } from "@/lib/notification";
 import { PartBranchImages } from "./PartBranchImages";
+import { 压缩图片 } from "@/lib/imageCompress";
 import { usePriceVisibility } from "./PriceVisibilityContext";
 import { PartSearchDropdown } from "./PartSearchDropdown";
+import QuoteSheetModal from "./QuoteSheetModal";
 import { resolvePartSellingPrice } from "@/lib/partPriceResolver";
 import PartForm from "@/app/parts/new/PartForm";
 import { useConfirm } from "./ConfirmDialog";
@@ -17,7 +19,7 @@ const STATUS_TITLES: Record<string, string> = {
   pending_confirm: "待确认",
 };
 
-type EditableField = "part_number" | "brand" | "specification" | "cost" | "price" | "supplier" | "notes" | "customer_opinion" | "name" | "unit";
+type EditableField = "part_number" | "brand" | "specification" | "cost" | "price" | "supplier" | "notes" | "customer_opinion" | "name" | "unit" | "quantity";
 type GroupBy = "plate" | "category" | "name" | "supplier" | "none";
 
 const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
@@ -33,7 +35,7 @@ interface PartBranchRow {
   brand: string | null;
   specification: string | null;
   unit: string | null;
-  quantity: number;
+  quantity: number | null;
   unit_cost: number | null;
   unit_price: number | null;
   customer_opinion: string | null;
@@ -58,6 +60,7 @@ interface PartBranchRow {
     quantity: number;
     unit_cost: number | null;
     unit_price: number | null;
+    notes?: string | null;
     part_brands: { name: string | null } | null;
     part_specifications: { name: string | null } | null;
     part_images: { storage_path: string }[] | null;
@@ -125,9 +128,20 @@ export function PartBranchStatusList({ status }: Props) {
   const [supplierDropdownPos, setSupplierDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [partMediaMap, setPartMediaMap] = useState<Record<string, { id: string; storage_path: string }[]>>({});
 
+  /* 配件信息图片编辑（图片列直接增删 part_images；rowId 级状态） */
+  const [图片上传中, set图片上传中] = useState<string | null>(null);
+  const 图片输入Refs = useRef<Record<string, HTMLInputElement | null>>({});
+  /* 图片大图预览 */
+  const [预览图, set预览图] = useState<string | null>(null);
+
   /* 批量选择 */
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [batchSupplier, setBatchSupplier] = useState<string>("");
+  /* 批量设置供应商：可搜索弹层（替代原来的原生 select 长列表） */
+  const [批量供应商弹层开, set批量供应商弹层开] = useState(false);
+  const [批量供应商搜索, set批量供应商搜索] = useState("");
+  const 批量供应商弹层ref = useRef<HTMLDivElement>(null);
+  /* 生成询价链接弹窗 */
+  const [询价弹窗开, set询价弹窗开] = useState(false);
 
   /* 编辑配件弹窗 */
   const [editRow, setEditRow] = useState<PartBranchRow | null>(null);
@@ -143,6 +157,18 @@ export function PartBranchStatusList({ status }: Props) {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [openSupplierRowId]);
+
+  /* 批量供应商弹层：点击外部关闭 */
+  useEffect(() => {
+    if (!批量供应商弹层开) return;
+    function handleClick(e: MouseEvent) {
+      if (批量供应商弹层ref.current && !批量供应商弹层ref.current.contains(e.target as Node)) {
+        set批量供应商弹层开(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [批量供应商弹层开]);
 
   useEffect(() => {
     loadData();
@@ -197,7 +223,7 @@ export function PartBranchStatusList({ status }: Props) {
           work_order_item_id, part_name_id, branch_group_id, part_id, part_number, notes,
           part_names(name, category_id, part_categories(name)),
           parts(
-            id, part_number, name, quantity, unit_cost, unit_price,
+            id, part_number, name, quantity, unit_cost, unit_price, notes,
             part_brands(name),
             part_specifications(name),
             part_images(storage_path)
@@ -226,6 +252,8 @@ export function PartBranchStatusList({ status }: Props) {
       if (!wo) return false;
       if (wo.settled_at) return false;
       if (wo.order_type === "cancelled") return false;
+      /* 保养单不走询价/报价等采购流程（用户定的规则） */
+      if (wo.order_type === "maintenance") return false;
       if (r.is_purchased || r.is_arrived) return false;
 
       const cost = Number(r.unit_cost || 0);
@@ -312,6 +340,78 @@ export function PartBranchStatusList({ status }: Props) {
     setLoading(false);
   }
 
+  /* 上传配件信息图片：压缩 → /api/upload → part_images 插行 → 重载 */
+  async function 上传目录图片(row: PartBranchRow, file: File) {
+    if (!row.parts?.id) return;
+    if (!file.type.startsWith("image/")) {
+      alert("请选择图片文件");
+      return;
+    }
+    set图片上传中(row.id);
+    try {
+      const compressed = await 压缩图片(file);
+      const formData = new FormData();
+      formData.append("file", compressed, file.name);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "上传失败");
+      const { error } = await supabase.from("part_images").insert({
+        part_id: row.parts.id,
+        storage_path: result.path,
+        sort_order: (row.parts.part_images || []).length,
+      });
+      if (error) throw new Error(error.message);
+      await loadData();
+    } catch (err: unknown) {
+      alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      set图片上传中(null);
+    }
+  }
+
+  /* 删除配件信息图片 */
+  async function 删除目录图片(row: PartBranchRow, storagePath: string) {
+    if (!row.parts?.id) return;
+    const { error } = await supabase
+      .from("part_images")
+      .delete()
+      .eq("part_id", row.parts.id)
+      .eq("storage_path", storagePath);
+    if (error) {
+      alert("删除失败: " + error.message);
+      return;
+    }
+    await loadData();
+  }
+
+  /* 上传工单配件图片（未关联库存配件的分支：图片挂到工单配件上） */
+  async function 上传分支图片(row: PartBranchRow, file: File) {
+    if (!file.type.startsWith("image/")) {
+      alert("请选择图片文件");
+      return;
+    }
+    set图片上传中(row.id);
+    try {
+      const compressed = await 压缩图片(file);
+      const formData = new FormData();
+      formData.append("file", compressed, file.name);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "上传失败");
+      const { error } = await supabase.from("work_order_item_part_media").insert({
+        work_order_item_part_id: row.id,
+        media_type: "image",
+        storage_path: result.path,
+      });
+      if (error) throw new Error(error.message);
+      await loadData();
+    } catch (err: unknown) {
+      alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      set图片上传中(null);
+    }
+  }
+
   function setEditValue(rowId: string, field: EditableField, value: string) {
     setEdits((prev) => ({
       ...prev,
@@ -367,6 +467,15 @@ export function PartBranchStatusList({ status }: Props) {
       } else if (_field === "unit") {
         const val = trimmed === "" ? null : trimmed;
         if (val !== (row.unit || null)) update.unit = val;
+      } else if (_field === "quantity") {
+        /* 数量：留空=未填存 NULL 保持标红提醒（用户要求不兜底）；填了必须是正整数 */
+        if (trimmed === "") {
+          if (row.quantity !== null) update.quantity = null;
+          continue;
+        }
+        const num = Number(trimmed);
+        if (!Number.isInteger(num) || num <= 0) continue;
+        if (num !== row.quantity) update.quantity = num;
       } else if (_field === "cost" || _field === "price") {
         const dbField = _field === "cost" ? "unit_cost" : "unit_price";
         if (trimmed === "") {
@@ -647,7 +756,10 @@ export function PartBranchStatusList({ status }: Props) {
     const rowIds = Object.keys(edits);
     if (rowIds.length === 0) return;
 
-    /* 提交时，如果编辑会导致记录推进到下阶段，必须填写采购价和供应商 */
+    /* 提交校验：
+     * 待询价页（用户定的规则）——供应商和采购价必须同时填写：
+     * 只填其中一个（含草稿和已保存值的合并结果）就拦截，并指出是哪行缺哪项。
+     * 其他阶段页——保持原规则：会导致记录推进到下阶段的编辑，必须填写采购价和供应商 */
     for (const id of rowIds) {
       const row = rows.find((r) => r.id === id);
       if (!row) continue;
@@ -656,18 +768,29 @@ export function PartBranchStatusList({ status }: Props) {
       const newOpinion = edits[id]?.customer_opinion !== undefined ? edits[id].customer_opinion : row.customer_opinion;
       const newSupplier = edits[id]?.supplier !== undefined ? edits[id].supplier : row.supplier_name;
 
+      if (status === "pending_inquiry") {
+        const 有采购价 = newCost > 0;
+        const 有供应商 = !!(newSupplier && newSupplier.trim() !== "");
+        if (有采购价 !== 有供应商) {
+          alert(
+            `「${row.name || "未命名配件"}」${有采购价 ? "已填采购价，但还没选供应商" : "已选供应商，但还没填采购价"}。\n供应商和采购价必须同时填写。`
+          );
+          return;
+        }
+        continue;
+      }
+
       const willAdvance =
-        (status === "pending_inquiry" && newCost > 0) ||
         (status === "pending_quote" && newPrice > 0) ||
         (status === "pending_confirm" && newOpinion === "agree");
 
       if (willAdvance) {
         if (newCost <= 0) {
-          alert("推进到下阶段必须填写采购价");
+          alert(`「${row.name || "未命名配件"}」推进到下阶段必须填写采购价`);
           return;
         }
         if (!newSupplier || newSupplier.trim() === "") {
-          alert("推进到下阶段必须填写供应商");
+          alert(`「${row.name || "未命名配件"}」推进到下阶段必须填写供应商`);
           return;
         }
       }
@@ -744,7 +867,8 @@ export function PartBranchStatusList({ status }: Props) {
       // 会被数据库默认值生成新目录ID(自成一组的病根)
       branch_group_id: row.branch_group_id,
       name: row.name,
-      quantity: row.quantity,
+      /* 数量留空（NULL）：未填数量的配件红底留白提醒补填，不兜底成 1 */
+      quantity: row.quantity ?? null,
       unit: row.unit,
       customer_opinion: "pending",
       // 原行为该目录默认(选中)分支，新增分支默认不选中，维持"每目录仅一个选中"
@@ -850,17 +974,50 @@ export function PartBranchStatusList({ status }: Props) {
     }
   }
 
-  function applyBatchSupplier() {
-    if (!batchSupplier) return;
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      for (const id of next) {
-        setEditValue(id, "supplier", batchSupplier);
-      }
-      return next;
-    });
-    setBatchSupplier("");
+  /* 批量设置供应商：在弹层里点一个供应商，直接写入所有选中行的草稿 */
+  function applyBatchSupplier(供应商名: string) {
+    if (!供应商名) return;
+    for (const id of selectedIds) {
+      setEditValue(id, "supplier", 供应商名);
+    }
+    set批量供应商弹层开(false);
+    set批量供应商搜索("");
   }
+
+  /* 批量供应商列表：按"匹配选中行数 + 推荐星级"排序，支持按名称搜索 */
+  const 批量供应商列表 = useMemo(() => {
+    const 选中行 = rows.filter((r) => selectedIds.has(r.id));
+    const q = 批量供应商搜索.trim().toLowerCase();
+    return suppliers
+      .map((s) => {
+        let 匹配行数 = 0;
+        for (const row of 选中行) {
+          if (getSupplierMatchReasons(row, s).length > 0) 匹配行数++;
+        }
+        return { s, 匹配行数 };
+      })
+      .filter(({ s }) => !q || (s.name || "").toLowerCase().includes(q))
+      .sort((a, b) =>
+        (b.匹配行数 - a.匹配行数) ||
+        ((b.s.recommendation_level || 0) - (a.s.recommendation_level || 0)) ||
+        (a.s.name || "").localeCompare(b.s.name || "", "zh-CN")
+      );
+
+  }, [suppliers, rows, selectedIds, 批量供应商搜索]);
+
+  /* 待询价页：有行已选供应商但还没采购价时提示（规则：两者必须同时填写） */
+  const 缺采购价行数 = useMemo(() => {
+    if (status !== "pending_inquiry") return 0;
+    let n = 0;
+    for (const [id, e] of Object.entries(edits)) {
+      const row = rows.find((r) => r.id === id);
+      if (!row) continue;
+      const supplier = e.supplier !== undefined ? e.supplier : row.supplier_name;
+      const cost = e.cost !== undefined ? e.cost : (row.unit_cost != null ? String(row.unit_cost) : "");
+      if (supplier && supplier.trim() !== "" && !(Number(cost || 0) > 0)) n++;
+    }
+    return n;
+  }, [edits, rows, status]);
 
   /* 按 groupBy 把 rows 分组,保持原排序;返回 [key, rows][] */
   const groups = useMemo<Array<{ key: string; rows: PartBranchRow[] }>>(() => {
@@ -877,7 +1034,9 @@ export function PartBranchStatusList({ status }: Props) {
      
   }, [rows, groupBy]);
 
-  const totalCols = 15;
+  /* 待询价阶段不显示"销售价/客户意见"两列（用户拍板 2026-08-06：询价阶段只关心采购侧信息） */
+  const 隐藏销售价客户意见 = status === "pending_inquiry";
+  const totalCols = 隐藏销售价客户意见 ? 13 : 15;
 
   /* 分支同色背景色表（草稿黄色已占用，此处避开黄色） */
   const BRANCH_BG_COLORS = [
@@ -902,6 +1061,7 @@ export function PartBranchStatusList({ status }: Props) {
     const priceDraft = edits[row.id]?.price;
     const supplierDraft = edits[row.id]?.supplier;
     const notesDraft = edits[row.id]?.notes;
+    const quantityDraft = edits[row.id]?.quantity;
 
     const partNumberValue = partNumberDraft !== undefined ? partNumberDraft : (row.part_number || "");
     const nameValue = nameDraft !== undefined ? nameDraft : (row.name || "");
@@ -911,16 +1071,16 @@ export function PartBranchStatusList({ status }: Props) {
     const costValue = costDraft !== undefined ? costDraft : (row.unit_cost != null && row.unit_cost > 0 ? String(row.unit_cost) : "");
     const priceValue = priceDraft !== undefined ? priceDraft : (row.unit_price != null && row.unit_price > 0 ? String(row.unit_price) : "");
     const supplierValue = supplierDraft !== undefined ? supplierDraft : (row.supplier_name || "");
-    const notesValue = notesDraft !== undefined ? notesDraft : (row.notes || "");
-
-    const firstImage = row.parts?.part_images?.[0]?.storage_path;
+    /* 备注：工单配件自己的备注优先；没填则带入配件信息里的备注（只读带入，编辑后保存到工单配件） */
+    const notesValue = notesDraft !== undefined ? notesDraft : (row.notes || row.parts?.notes || "");
+    const quantityValue = quantityDraft !== undefined ? quantityDraft : (row.quantity != null ? String(row.quantity) : "");
 
     const hasDraft = !!edits[row.id] && Object.keys(edits[row.id]!).length > 0;
     const branchBg = hasDraft ? "" : BRANCH_BG_COLORS[branchColorIndex % BRANCH_BG_COLORS.length];
 
     return (
       <tr key={row.id} className={`hover:bg-gray-50 ${hasDraft ? "bg-yellow-50/40" : branchBg} ${isNewBranch ? "border-t-2 border-gray-200" : ""}`}>
-        <td className="px-3 py-3">
+        <td className="px-2 py-2">
           <input
             type="checkbox"
             checked={selectedIds.has(row.id)}
@@ -928,7 +1088,7 @@ export function PartBranchStatusList({ status }: Props) {
             className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
         </td>
-        <td className="px-3 py-3">
+        <td className="px-2 py-2">
           {wo ? (
             <Link href={`/work-orders/${wo.id}`} className="text-blue-600 hover:text-blue-700 font-medium">
               {wo.order_no}
@@ -938,55 +1098,77 @@ export function PartBranchStatusList({ status }: Props) {
           )}
         </td>
         {/* 编码 */}
-        <td className="px-3 py-3">
+        <td className="px-2 py-2">
           <PartSearchDropdown
             value={partNumberValue}
-            onChange={(val) => setEditValue(row.id, "part_number", val.toUpperCase())}
+            /* 输入时不转大写（保存时 getDbUpdate 会统一转）：中文输入法打字过程中
+             * 强行改值会打断拼音上屏，导致输入 xy 变成 XXY 这类重复字符 */
+            onChange={(val) => setEditValue(row.id, "part_number", val)}
             onSelect={(part) => handleInlinePartSelect(row, part)}
             onCreateNew={(query) => handleInlineCreateNew(row, query)}
             onClear={() => handleInlineClear(row)}
             disabled={isSaving}
             placeholder="编码/条码"
-            inputClassName={`w-28 ${hasDraft && partNumberDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+            inputClassName={`w-28 bg-white placeholder:text-gray-400 ${hasDraft && partNumberDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
         </td>
-        <td className={`px-3 py-3 text-gray-900 ${hasDraft && nameDraft !== undefined ? "text-blue-700 font-medium" : ""}`}>{nameValue}</td>
-        <td className="px-3 py-3">
+        <td className={`px-2 py-2 text-gray-900 ${hasDraft && nameDraft !== undefined ? "text-blue-700 font-medium" : ""}`}>{nameValue}</td>
+        <td className="px-2 py-2">
           <input
             type="text"
             disabled={isSaving}
             value={brandValue}
             onChange={(e) => setEditValue(row.id, "brand", e.target.value)}
             onKeyDown={(e) => handleKeyDown(e, row, "brand")}
-            placeholder="-"
+            placeholder="品牌（选填）"
             list="brand-suggestions"
-            className={`w-24 px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && brandDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+            className={`w-24 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && brandDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
         </td>
-        <td className="px-3 py-3">
+        <td className="px-2 py-2">
           <input
             type="text"
             disabled={isSaving}
             value={specValue}
             onChange={(e) => setEditValue(row.id, "specification", e.target.value)}
             onKeyDown={(e) => handleKeyDown(e, row, "specification")}
-            placeholder="-"
+            placeholder="规格（选填）"
             list="spec-suggestions"
-            className={`w-24 px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && specDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+            className={`w-24 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && specDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
         </td>
-        <td className={`px-3 py-3 text-right ${row.quantity <= 0 ? "bg-red-50 text-red-600 font-semibold" : "text-gray-700"}`}>
-          {row.quantity} {unitValue || "件"}
+        {/* 数量：可直接编辑，保存写回工单；留空保持红框提醒（用户要求：红框提醒保留 + 可输入联动工单） */}
+        <td className="px-2 py-2 text-right">
+          <div className="flex items-center justify-end gap-1">
+            <input
+              type="number"
+              min="1"
+              step="1"
+              disabled={isSaving}
+              value={quantityValue}
+              onChange={(e) => setEditValue(row.id, "quantity", e.target.value)}
+              onKeyDown={(e) => handleKeyDown(e, row, "quantity")}
+              placeholder="未填"
+              className={`w-14 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
+                quantityValue.trim() === ""
+                  ? "border-red-300 bg-red-50 text-red-600 placeholder-red-400"
+                  : hasDraft && quantityDraft !== undefined
+                    ? "border-yellow-400 bg-yellow-50"
+                    : "border-gray-200"
+              }`}
+            />
+            <span className="text-xs text-gray-500">{unitValue || "件"}</span>
+          </div>
         </td>
         {/* 库存 */}
-        <td className="px-3 py-3 text-right text-gray-700">
+        <td className="px-2 py-2 text-right text-gray-700">
           {row.parts ? (
             <span className={row.parts.quantity <= 0 ? "text-red-600 font-semibold" : ""}>{row.parts.quantity}</span>
           ) : (
             <span className="text-gray-300">-</span>
           )}
         </td>
-        <td className="px-3 py-3 text-right">
+        <td className="px-2 py-2 text-right">
           {showPrices ? (
             <div className="flex items-center justify-end gap-1">
               <span className="text-gray-400">¥</span>
@@ -998,58 +1180,76 @@ export function PartBranchStatusList({ status }: Props) {
                 value={costValue}
                 onChange={(e) => setEditValue(row.id, "cost", e.target.value)}
                 onKeyDown={(e) => handleKeyDown(e, row, "cost")}
-                placeholder="-"
-                className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && costDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+                placeholder="必填"
+                title="采购价（必填）"
+                className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
+                  hasDraft && costDraft !== undefined
+                    ? "border-yellow-400 bg-yellow-50"
+                    : !costValue
+                      ? "border-red-400 bg-red-50"
+                      : "border-gray-200"
+                }`}
               />
             </div>
           ) : (
             <span className="text-gray-700">***</span>
           )}
         </td>
-        <td className="px-3 py-3 text-right">
-          {showPrices ? (
-            <div className="flex items-center justify-end gap-1">
-              <span className="text-gray-400">¥</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
+        {!隐藏销售价客户意见 && (
+          <>
+            <td className="px-2 py-2 text-right">
+              {showPrices ? (
+                <div className="flex items-center justify-end gap-1">
+                  <span className="text-gray-400">¥</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    disabled={isSaving}
+                    value={priceValue}
+                    onChange={(e) => setEditValue(row.id, "price", e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(e, row, "price")}
+                    placeholder="-"
+                    className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && priceDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+                  />
+                </div>
+              ) : (
+                <span className="text-gray-700">***</span>
+              )}
+            </td>
+            <td className="px-2 py-2">
+              <select
                 disabled={isSaving}
-                value={priceValue}
-                onChange={(e) => setEditValue(row.id, "price", e.target.value)}
-                onKeyDown={(e) => handleKeyDown(e, row, "price")}
-                placeholder="-"
-                className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && priceDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
-              />
-            </div>
-          ) : (
-            <span className="text-gray-700">***</span>
-          )}
-        </td>
-        <td className="px-3 py-3">
-          <select
-            disabled={isSaving}
-  value={edits[row.id]?.customer_opinion !== undefined ? edits[row.id]!.customer_opinion! : (row.customer_opinion || "pending")}
-            onChange={(e) => setEditValue(row.id, "customer_opinion", e.target.value)}
-            className={`px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && edits[row.id]?.customer_opinion !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
-          >
-            <option value="pending">未确定</option>
-            <option value="agree">同意</option>
-            <option value="reject">否决</option>
-          </select>
-        </td>
-        <td className="px-3 py-3">
+                value={edits[row.id]?.customer_opinion !== undefined ? edits[row.id]!.customer_opinion! : (row.customer_opinion || "pending")}
+                onChange={(e) => setEditValue(row.id, "customer_opinion", e.target.value)}
+                className={`px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && edits[row.id]?.customer_opinion !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+              >
+                <option value="pending">未确定</option>
+                <option value="agree">同意</option>
+                <option value="reject">否决</option>
+              </select>
+            </td>
+          </>
+        )}
+        <td className="px-2 py-2">
           <button
             type="button"
             disabled={isSaving}
+            title="供应商（必填）"
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               setSupplierDropdownPos({ top: rect.bottom + 4, left: rect.left });
               setOpenSupplierRowId(openSupplierRowId === row.id ? null : row.id);
             }}
-            className={`w-28 px-2 py-1 text-xs rounded border text-left truncate hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && supplierDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"} ${supplierValue ? "text-gray-900" : "text-gray-400"}`}
+            className={`w-28 px-2 py-1 text-xs rounded border text-left truncate hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
+              hasDraft && supplierDraft !== undefined
+                ? "border-yellow-400 bg-yellow-50"
+                : !supplierValue
+                  ? "border-red-400 bg-red-50 text-red-600"
+                  : "border-gray-200"
+            } ${supplierValue ? "text-gray-900" : ""}`}
           >
-            {supplierValue || "请选择"}
+            {supplierValue || "必选"}
           </button>
           {openSupplierRowId === row.id && (
             <div
@@ -1087,37 +1287,81 @@ export function PartBranchStatusList({ status }: Props) {
             </div>
           )}
         </td>
-        {/* 备注 */}
-        <td className="px-3 py-3">
+        {/* 备注（没填时默认带入配件信息备注；框线加深 + 明确提示文字） */}
+        <td className="px-2 py-2">
           <input
             type="text"
             disabled={isSaving}
             value={notesValue}
             onChange={(e) => setEditValue(row.id, "notes", e.target.value)}
             onKeyDown={(e) => handleKeyDown(e, row, "notes")}
-            placeholder="-"
-            className={`w-28 px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && notesDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+            placeholder="备注（选填）"
+            className={`w-44 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && notesDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
         </td>
-        {/* 图片 */}
-        <td className="px-3 py-3">
+        {/* 图片：可点开看大图、可添加。工单配件自己的图优先；没有则带入配件信息图片。
+           添加去向：已关联库存配件→配件信息图片(part_images)；未关联→工单配件图片(分支媒体) */}
+        <td className="px-2 py-2">
           {(() => {
             const media = partMediaMap[row.id] || [];
-            const allImages = media.length > 0
-              ? media
-              : firstImage
-                ? [{ id: `fallback-${row.id}`, storage_path: firstImage }]
-                : [];
-            return allImages.length > 0
-              ? <PartBranchImages images={allImages} />
-              : <span className="text-xs text-gray-300">-</span>;
+            const 目录图 = (row.parts?.part_images || []).filter((p) => p.storage_path);
+            return (
+              <div className="flex flex-wrap items-center gap-1">
+                {media.length > 0 && <PartBranchImages images={media} />}
+                {media.length === 0 &&
+                  目录图.map((p) => (
+                    <div key={p.storage_path} className="relative w-10 h-10 rounded border border-gray-100 overflow-hidden">
+                      <img
+                        src={p.storage_path}
+                        alt=""
+                        className="w-full h-full object-cover cursor-pointer"
+                        loading="lazy"
+                        onClick={() => set预览图(p.storage_path)}
+                      />
+                      {row.parts?.id && (
+                        <button
+                          type="button"
+                          title="删除此图"
+                          onClick={() => 删除目录图片(row, p.storage_path)}
+                          className="absolute top-0 right-0 w-3.5 h-3.5 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                <button
+                  type="button"
+                  title={row.parts?.id ? "添加配件信息图片" : "添加工单配件图片"}
+                  disabled={图片上传中 === row.id}
+                  onClick={() => 图片输入Refs.current[row.id]?.click()}
+                  className="w-10 h-10 rounded border border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-sm hover:border-blue-400 hover:text-blue-500 disabled:opacity-50"
+                >
+                  {图片上传中 === row.id ? "…" : "+"}
+                </button>
+                <input
+                  ref={(el) => { 图片输入Refs.current[row.id] = el; }}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      if (row.parts?.id) void 上传目录图片(row, f);
+                      else void 上传分支图片(row, f);
+                    }
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            );
           })()}
         </td>
-        <td className="px-3 py-3 sticky right-0 bg-white z-10">
+        <td className="px-2 py-2 sticky right-0 bg-white z-10">
           <div className="flex items-center gap-2">
             {wo && (
               <Link href={`/work-orders/${wo.id}`} className="text-xs text-blue-600 hover:text-blue-700">
-                处理
+                工单详情
               </Link>
             )}
             <button
@@ -1186,24 +1430,53 @@ export function PartBranchStatusList({ status }: Props) {
           {selectedIds.size > 0 && (
             <>
               <span className="text-xs text-gray-500">已选 {selectedIds.size} 条</span>
-              <select
-                value={batchSupplier}
-                onChange={(e) => setBatchSupplier(e.target.value)}
-                className="text-xs px-2 py-1 border border-gray-200 rounded focus:border-blue-500 focus:outline-none"
-              >
-                <option value="">选择供应商批量设置...</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.name}>{s.name}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={applyBatchSupplier}
-                disabled={!batchSupplier}
-                className="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
-              >
-                批量应用
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => set批量供应商弹层开((v) => !v)}
+                  className="px-3 py-1 text-xs rounded bg-green-600 text-white hover:bg-green-700 transition-colors"
+                >
+                  批量设置供应商...
+                </button>
+                {批量供应商弹层开 && (
+                  <div
+                    ref={批量供应商弹层ref}
+                    className="absolute left-0 top-full mt-1 z-50 w-64 bg-white border border-gray-200 rounded-lg shadow-lg"
+                  >
+                    <div className="p-2 border-b border-gray-100">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={批量供应商搜索}
+                        onChange={(e) => set批量供应商搜索(e.target.value)}
+                        placeholder="搜索供应商..."
+                        className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                      {批量供应商列表.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-gray-400">无匹配供应商</div>
+                      )}
+                      {批量供应商列表.map(({ s, 匹配行数 }) => (
+                        <div
+                          key={s.id}
+                          onClick={() => applyBatchSupplier(s.name || "")}
+                          className="px-3 py-1.5 text-xs hover:bg-blue-50 cursor-pointer border-t border-gray-50 flex items-center justify-between gap-2"
+                        >
+                          <span className="font-medium text-gray-900 truncate">{s.name}</span>
+                          <span className="shrink-0 text-[10px] text-gray-400">
+                            {匹配行数 > 0 && <span className="text-blue-600 mr-1">匹配{匹配行数}行</span>}
+                            {s.recommendation_level ? "⭐".repeat(s.recommendation_level) : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-3 py-1.5 text-[10px] text-gray-400 border-t border-gray-100">
+                      点击供应商即应用到已选 {selectedIds.size} 行（草稿），再点「提交保存」生效
+                    </div>
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedIds(new Set())}
@@ -1211,6 +1484,20 @@ export function PartBranchStatusList({ status }: Props) {
               >
                 取消选择
               </button>
+              {status === "pending_inquiry" && (
+                <button
+                  type="button"
+                  onClick={() => set询价弹窗开(true)}
+                  className="px-3 py-1 text-xs rounded border border-blue-600 text-blue-600 hover:bg-blue-50 transition-colors"
+                >
+                  生成询价链接
+                </button>
+              )}
+              {缺采购价行数 > 0 && (
+                <span className="text-xs text-amber-600">
+                  有 {缺采购价行数} 行已选供应商但未填采购价，两者必须同时填写才能提交
+                </span>
+              )}
             </>
           )}
           {selectedIds.size === 0 && (
@@ -1256,7 +1543,7 @@ export function PartBranchStatusList({ status }: Props) {
         <table className="w-full text-xs min-w-[1200px]">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 w-10 sticky top-0 bg-gray-50 z-10">
+              <th className="px-2 py-2 text-left font-medium text-gray-500 w-10 sticky top-0 bg-gray-50 z-10">
                 <input
                   type="checkbox"
                   checked={rows.length > 0 && selectedIds.size === rows.length}
@@ -1264,20 +1551,24 @@ export function PartBranchStatusList({ status }: Props) {
                   className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
               </th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">工单号</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">编码</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">配件</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">品牌</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">规格</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">数量</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">库存</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">采购价</th>
-              <th className="px-3 py-3 text-right font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">销售价</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">客户意见</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">供应商</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">备注</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 bg-gray-50 z-10">图片</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500 sticky top-0 right-0 bg-gray-50 z-20">操作</th>
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">工单号</th>
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">编码</th>
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">配件</th>
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">品牌</th>
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">规格</th>
+              <th className="px-2 py-2 text-right font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">数量</th>
+              <th className="px-2 py-2 text-right font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">库存</th>
+              <th className="px-2 py-2 text-right font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">采购价</th>
+              {!隐藏销售价客户意见 && (
+                <>
+                  <th className="px-2 py-2 text-right font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">销售价</th>
+                  <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">客户意见</th>
+                </>
+              )}
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">供应商</th>
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">备注</th>
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">图片</th>
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 right-0 bg-gray-50 z-20">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -1303,7 +1594,12 @@ export function PartBranchStatusList({ status }: Props) {
                       <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 mr-2">
                         {GROUP_OPTIONS.find((o) => o.key === groupBy)?.label.replace("按", "")}
                       </span>
-                      {g.key}
+                      {/* 车牌分组时车牌号放大加粗（采购员按车找配件，车牌是主线索） */}
+                      {groupBy === "plate" ? (
+                        <span className="text-sm font-bold text-gray-900">{g.key}</span>
+                      ) : (
+                        g.key
+                      )}
                       {(() => {
                         const wo = g.rows[0]?.work_order_items?.work_orders;
                         const vin = wo?.vehicles?.vin;
@@ -1320,7 +1616,8 @@ export function PartBranchStatusList({ status }: Props) {
                                 客户:{customer.name}
                               </span>
                             )}
-                            {customer?.phone && (
+                            {/* 手机号只在待确认页显示（联系客户确认价格用；询价/报价阶段不显示） */}
+                            {status === "pending_confirm" && customer?.phone && (
                               <span className="ml-4 text-sm text-gray-600 font-normal">
                                 手机:{customer.phone}
                               </span>
@@ -1382,7 +1679,25 @@ export function PartBranchStatusList({ status }: Props) {
           </div>
         </div>
       )}
+      {/* 图片大图预览（点任意处关闭） */}
+      {预览图 && (
+        <div
+          className="fixed inset-0 z-[130] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => set预览图(null)}
+        >
+          <img src={预览图} alt="" className="max-w-full max-h-full object-contain rounded" />
+        </div>
+      )}
       {确认弹窗}
+      {/* 生成询价链接弹窗：勾选项发给供应商自助报价 */}
+      <QuoteSheetModal
+        open={询价弹窗开}
+        rows={rows
+          .filter((r) => selectedIds.has(r.id))
+          .map((r) => ({ id: r.id, name: r.name, quantity: r.quantity, unit: r.unit, supplier_name: r.supplier_name }))}
+        suppliers={suppliers}
+        onClose={() => set询价弹窗开(false)}
+      />
     </div>
   );
 }

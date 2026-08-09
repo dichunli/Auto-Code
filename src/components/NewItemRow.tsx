@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import ItemNameDisplay from "./ItemNameDisplay";
 import { ItemPersonSelectors } from "./ItemPersonSelectors";
 import { CustomerOpinionToggle } from "./CustomerOpinionToggle";
@@ -62,6 +63,18 @@ export default function NewItemRow({
   suppliers = [],
   logisticsCompanies = [],
 }: Props) {
+  /* 添加配件成功后（弹窗广播 wo-parts-reload）隐藏"配件：无"提示，
+   * 配件列表由下方 ItemPartsLive 局部刷新展示 */
+  const [已有配件, 设已有配件] = useState(false);
+  useEffect(() => {
+    function 监听重查(e: Event) {
+      const detail = (e as CustomEvent).detail as { itemId?: string };
+      if (detail?.itemId === item.id) 设已有配件(true);
+    }
+    window.addEventListener("wo-parts-reload", 监听重查 as EventListener);
+    return () => window.removeEventListener("wo-parts-reload", 监听重查 as EventListener);
+  }, [item.id]);
+
   return (
     <div className={`rounded-lg px-4 py-3 text-sm mb-2 ${item.item_type === "labor" ? "bg-blue-50/60 border-l-4 border-blue-300" : "bg-gray-50/60 border-l-4 border-gray-300"}`}>
       <div className="hidden md:block overflow-x-auto relative">
@@ -77,9 +90,10 @@ export default function NewItemRow({
               profiles={profiles}
               mechanicGroups={mechanicGroups}
               existingMechanics={[]}
+              disabled={实际锁定}
             />
             <div className="ml-6">
-              <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion || "pending"} />
+              <CustomerOpinionToggle itemId={item.id} opinion={item.customer_opinion || "pending"} disabled={实际锁定} />
             </div>
             <BusinessTypeToggle itemId={item.id} businessType={item.business_type || "normal"} disabled={实际锁定} />
             <div className="ml-4">
@@ -92,11 +106,12 @@ export default function NewItemRow({
                 itemName={item.name}
                 existingOrder={null}
                 existingItem={null}
+                disabled={实际锁定}
               />
             </div>
             <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-400 ml-2">维修指导</span>
             <div className="ml-4">
-              <ItemNotesEditor itemId={item.id} description={item.description} />
+              <ItemNotesEditor itemId={item.id} description={item.description} disabled={实际锁定} />
             </div>
             <div className="ml-[10ch]">
               <ItemImageUploader itemId={item.id} existingImages={[]} isLocked={实际锁定} />
@@ -104,27 +119,48 @@ export default function NewItemRow({
           </div>
           <div className="w-[10ch] flex-shrink-0" />
           <div className={`flex items-center gap-2 flex-shrink-0 sticky right-0 pl-2 ${item.item_type === "labor" ? "bg-blue-50" : "bg-gray-50"}`}>
-            <AddItemPartButton
-              itemId={item.id}
-              serviceItemId={item.service_item_id}
-              itemName={item.alias_name || item.name}
-              vehicleModelId={vehicleModelId}
-              vin={vehicleVin}
-            />
-            <WorkOrderItemActions
-              itemId={item.id}
-              itemName={item.name}
-              aliasName={item.alias_name}
-              quantity={item.quantity}
-              unitPrice={item.unit_price}
-              serviceItemId={item.service_item_id}
-            />
+            {/* 添加配件 / 编辑删除项目：只读（保养单未编辑、工单锁定）时隐藏 */}
+            {!实际锁定 && (
+              <>
+                <AddItemPartButton
+                  itemId={item.id}
+                  serviceItemId={item.service_item_id}
+                  itemName={item.alias_name || item.name}
+                  vehicleModelId={vehicleModelId}
+                  vin={vehicleVin}
+                />
+                <WorkOrderItemActions
+                  itemId={item.id}
+                  itemName={item.name}
+                  aliasName={item.alias_name}
+                  quantity={item.quantity}
+                  unitPrice={item.unit_price}
+                  serviceItemId={item.service_item_id}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>
-      {/* 移动端简版（整页刷新后恢复完整卡片） */}
-      <div className="md:hidden text-sm">
+      {/* 移动端简版（整页刷新后恢复完整卡片）：项目名 + 配件入口。
+         新项目必然无配件，显示"配件：无 + 添加配件"；通过弹窗添加后
+         监听重查事件把"配件：无"藏掉（配件区由下方 ItemPartsLive 局部刷新展示） */}
+      <div className="md:hidden text-sm flex items-center justify-between gap-2">
         <span className="font-medium text-gray-900">{item.alias_name || item.name}</span>
+        {!已有配件 && (
+          <span className="flex items-center gap-1.5 text-xs text-gray-400 shrink-0">
+            配件：无
+            {!实际锁定 && (
+              <AddItemPartButton
+                itemId={item.id}
+                serviceItemId={item.service_item_id}
+                itemName={item.alias_name || item.name}
+                vehicleModelId={vehicleModelId}
+                vin={vehicleVin}
+              />
+            )}
+          </span>
+        )}
       </div>
       {/* 项目价格 + 小计 */}
       <ItemSubtotalDisplay

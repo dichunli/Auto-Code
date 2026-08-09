@@ -25,9 +25,11 @@ interface Props {
   profiles: Profile[];
   mechanicGroups: MechanicGroup[];
   existingMechanics: ExistingMechanic[];
+  /* 只读（保养单未进编辑模式 / 工单已锁定）：仅展示施工人，不可打开派工弹窗 */
+  disabled?: boolean;
 }
 
-export function ItemMechanicAssigner({ itemId, profiles, mechanicGroups, existingMechanics }: Props) {
+export function ItemMechanicAssigner({ itemId, profiles, mechanicGroups, existingMechanics, disabled = false }: Props) {
   const [open, setOpen] = useState(false);
   // 本地保存当前施工人列表，保存成功后只更新这里、不刷新整页（性能优化）
   const [mechanics, setMechanics] = useState<ExistingMechanic[]>(existingMechanics);
@@ -41,7 +43,8 @@ export function ItemMechanicAssigner({ itemId, profiles, mechanicGroups, existin
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="px-1.5 py-0.5 border border-gray-200 rounded text-[10px] bg-white hover:bg-gray-50 cursor-pointer"
+        disabled={disabled}
+        className={`px-1.5 py-0.5 border border-gray-200 rounded text-[10px] bg-white ${disabled ? "cursor-default text-gray-500" : "hover:bg-gray-50 cursor-pointer"}`}
       >
         施工人: {names}
       </button>

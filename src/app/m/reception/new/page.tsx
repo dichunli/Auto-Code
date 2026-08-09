@@ -596,12 +596,13 @@ export default function MobileReceptionNewPage() {
 
     const { data: orders } = await supabase
       .from("work_orders")
-      .select("id, order_no, status")
+      .select("id, order_no, status, order_type")
       .eq("vehicle_id", vehicle.id)
       .limit(1);
 
+    /* 作废单（cancelled）不算"未完成"，不拦新单 */
     const activeOrders = (orders || []).filter(
-      (o: Record<string, unknown>) => o.status !== "settled" && o.status !== "delivered"
+      (o: Record<string, unknown>) => o.status !== "settled" && o.status !== "delivered" && o.order_type !== "cancelled"
     );
     if (activeOrders.length > 0) {
       return { hasDuplicate: true, orderNo: activeOrders[0].order_no };

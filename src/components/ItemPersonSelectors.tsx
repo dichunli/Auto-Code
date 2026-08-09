@@ -29,9 +29,11 @@ interface Props {
   profiles: Profile[];
   mechanicGroups?: MechanicGroup[];
   existingMechanics?: ExistingMechanic[];
+  /* 只读（保养单未进编辑模式 / 工单已锁定）：施工人/质检人仅展示，不可修改 */
+  disabled?: boolean;
 }
 
-export function ItemPersonSelectors({ itemId, submitterId, inspectorId, profiles, mechanicGroups, existingMechanics }: Props) {
+export function ItemPersonSelectors({ itemId, submitterId, inspectorId, profiles, mechanicGroups, existingMechanics, disabled = false }: Props) {
   const [openInspector, setOpenInspector] = useState(false);
   // 本地保存当前质检人ID，保存成功后只更新这里、不刷新整页（性能优化）
   const [currentInspectorId, setCurrentInspectorId] = useState<string | null>(inspectorId ?? null);
@@ -48,11 +50,13 @@ export function ItemPersonSelectors({ itemId, submitterId, inspectorId, profiles
         profiles={profiles}
         mechanicGroups={mechanicGroups || []}
         existingMechanics={existingMechanics || []}
+        disabled={disabled}
       />
       <button
         type="button"
         onClick={() => setOpenInspector(true)}
-        className="px-1 py-0.5 border border-gray-200 rounded text-[10px] bg-white hover:bg-gray-50 cursor-pointer"
+        disabled={disabled}
+        className={`px-1 py-0.5 border border-gray-200 rounded text-[10px] bg-white ${disabled ? "cursor-default text-gray-500" : "hover:bg-gray-50 cursor-pointer"}`}
       >
         质检人: {inspectorName}
       </button>

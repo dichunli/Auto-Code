@@ -11,6 +11,13 @@ import ItemImageUploader from "./ItemImageUploader";
 import { PartPickerModal } from "./PartPickerModal";
 import { OutsourceModal } from "./OutsourceModal";
 import BarcodeScanModal from "./BarcodeScanModal";
+import ItemStageBadge from "./ItemStageBadge";
+import ItemQcActions from "./ItemQcActions";
+import { PartWorkflowActions } from "./PartWorkflowActions";
+import { getPartWorkflowStatus } from "@/lib/partWorkflow";
+import { 申领配件, 取消申领 } from "@/app/picking-orders/actions";
+import { ShowCommission } from "./WorkOrderToggleContext";
+import { calculateItemCommission, type CommissionSource } from "@/lib/commission";
 import { useConfirm } from "./ConfirmDialog";
 
 /* ==================== 类型定义 ==================== */
@@ -58,6 +65,8 @@ interface ItemData {
   is_outsourced?: boolean | null;
   is_customer_part?: boolean | null;
   status?: string | null;
+  require_qc?: boolean | null;
+  qc_status?: string | null;
   mechanic_id?: string | null;
   submitter_id?: string | null;
   inspector_id?: string | null;
@@ -173,6 +182,50 @@ interface PickerPart {
   selectedQuantity?: number | null;
 }
 
+/* 编码/扫码/搜索命中的库存配件（带回分支用） */
+interface 编码命中配件 {
+  id: string;
+  part_number: string | null;
+  part_name_id: string | null;
+  name: string;
+  brand: string;
+  specification: string;
+  unit_cost: number | null;
+  unit_price: number | null;
+  document_name: string | null;
+}
+
+/* parts 表带关联名称的查询行 */
+interface 配件库行 {
+  id: string;
+  part_number: string | null;
+  part_name_id: string | null;
+  unit_cost: number | null;
+  unit_price: number | null;
+  document_name: string | null;
+  part_names: { name: string } | { name: string }[] | null;
+  part_brands: { name: string } | { name: string }[] | null;
+  part_specifications: { name: string } | { name: string }[] | null;
+}
+
+/* 把配件库查询行整理成命中结构（关联名称可能是对象或数组） */
+function 转命中配件(d: 配件库行): 编码命中配件 {
+  const pn = d.part_names;
+  const pb = d.part_brands;
+  const ps = d.part_specifications;
+  return {
+    id: d.id,
+    part_number: d.part_number,
+    part_name_id: d.part_name_id,
+    name: (Array.isArray(pn) ? pn[0]?.name : pn?.name) || "",
+    brand: (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "",
+    specification: (Array.isArray(ps) ? ps[0]?.name : ps?.name) || "",
+    unit_cost: d.unit_cost,
+    unit_price: d.unit_price,
+    document_name: d.document_name,
+  };
+}
+
 interface Props {
   item: ItemData;
   orderId: string;
@@ -188,6 +241,13 @@ interface Props {
   existingItem?: ExistingItem | null;
   partInventory?: Record<string, number>;
   partImages?: Record<string, PartImageRecord[]>;
+  /* 配件工作流（领料/退库/退货/采购/到货）需要的数据 */
+  suppliers?: { id: string; name: string; region?: string | null }[];
+  logisticsCompanies?: { id: string; name: string; scopes?: string[] | null }[];
+  returnByPart?: Record<string, number>;
+  pendingSupplierReturnByPart?: Record<string, boolean>;
+  /* 待出库申领数（按分支）：详情抽屉显示"已申领"角标 + 申领入口 */
+  申领ByPart?: Record<string, number>;
 }
 
 /* ==================== 工具函数 ==================== */
@@ -258,6 +318,11 @@ export default function MobileItemEditor({
   existingItem,
   partInventory,
   partImages,
+  suppliers = [],
+  logisticsCompanies = [],
+  returnByPart = {},
+  pendingSupplierReturnByPart = {},
+  申领ByPart = {},
 }: Props) {
   const router = useRouter();
   const supabase = createClient();
@@ -273,6 +338,17 @@ export default function MobileItemEditor({
   /* 批量草稿 */
   const [draftOpinion, setDraftOpinion] = useState(item.customer_opinion || "pending");
   const [draftCustomerPart, setDraftCustomerPart] = useState(!!item.is_customer_part);
+
+  /* 价格草稿：弹窗内可编辑数量/单价，点"确认"时随其他修改一起保存 */
+  const [draftQuantity, setDraftQuantity] = useState(String(item.quantity ?? 1));
+  const [draftUnitPrice, setDraftUnitPrice] = useState(item.unit_price != null ? String(item.unit_price) : "");
+  /* 每次打开弹窗时重置为项目当前值（防止上次编辑残留） */
+  useEffect(() => {
+    if (open) {
+      setDraftQuantity(String(item.quantity ?? 1));
+      setDraftUnitPrice(item.unit_price != null ? String(item.unit_price) : "");
+    }
+  }, [open, item.quantity, item.unit_price]);
 
   /* 备注 */
   const [notes, setNotes] = useState(item.description || "");
@@ -390,6 +466,34 @@ export default function MobileItemEditor({
   const [selectedPartForDetail, setSelectedPartForDetail] = useState<ItemPart | null>(null);
   const [detailActiveBranchId, setDetailActiveBranchId] = useState<string | null>(null);
   const [detailEditing, setDetailEditing] = useState(false);
+
+  /* 配件图片本地覆盖：上传/删除后立即更新抽屉显示（props 要等整页刷新才变），
+   * props 刷新（partImages 变化）后清空覆盖、以服务端数据为准 */
+  const [本地图片覆盖, set本地图片覆盖] = useState<Record<string, PartImageRecord[]>>({});
+  useEffect(() => { set本地图片覆盖({}); }, [partImages]);
+  function 分支图片(branchId: string): PartImageRecord[] {
+    return 本地图片覆盖[branchId] ?? (partImages?.[branchId] ?? []);
+  }
+  /* 图片大图预览 */
+  const [预览图片, set预览图片] = useState<string | null>(null);
+
+  /* 配件编辑态：编码智能候选 / 扫码 / 按名称搜配件（同桌面端分支编辑） */
+  const [编码查询, 设编码查询] = useState("");
+  const [编码候选, 设编码候选] = useState<编码命中配件[]>([]);
+  const [detailScanOpen, setDetailScanOpen] = useState(false);
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  const debounced编码查询 = useDebounce(编码查询, 300);
+
+  /* 配件申领：展开申领面板 / 申领数量 / 该分支待出库申领列表（面板展开时拉取） */
+  interface 申领行 {
+    id: string;
+    quantity: number;
+    notes: string | null;
+    created_at: string;
+  }
+  const [申领展开, set申领展开] = useState(false);
+  const [申领数量, set申领数量] = useState("1");
+  const [申领列表, set申领列表] = useState<申领行[]>([]);
 
   /* 替换配件弹窗 */
   const [replacePartTarget, setReplacePartTarget] = useState<ItemPart | null>(null);
@@ -641,6 +745,10 @@ export default function MobileItemEditor({
         }
       }
     }
+
+    /* 数量/单价：以弹窗里手动的值为准（放在"自带件"自动取价之后，手动修改优先） */
+    updateData.quantity = parseFloat(draftQuantity) || 1;
+    updateData.unit_price = parseFloat(draftUnitPrice) || 0;
 
     const { error } = await supabase.from("work_order_items").update(updateData).eq("id", item.id);
     setLoading(false);
@@ -1130,9 +1238,8 @@ export default function MobileItemEditor({
       alert("保存失败: " + error.message);
       return;
     }
-    if (selectedPartForDetail) {
-      setSelectedPartForDetail({ ...selectedPartForDetail, quantity: qty });
-    }
+    /* 函数式更新：等待保存期间用户可能已关闭抽屉，prev 为 null 时不得"复活"抽屉 */
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, quantity: qty } : prev));
     refresh();
   }
 
@@ -1145,9 +1252,9 @@ export default function MobileItemEditor({
       alert("保存失败: " + error.message);
       return;
     }
-    if (selectedPartForDetail) {
-      setSelectedPartForDetail({ ...selectedPartForDetail, customer_opinion: opinion });
-    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, customer_opinion: opinion } : prev));
+    /* 客户意见参与工作流状态判定（待确认→待采购/待领料），刷新让状态标签立即更新 */
+    refresh();
   }
 
   /* 保存配件备注 */
@@ -1159,9 +1266,7 @@ export default function MobileItemEditor({
       alert("保存失败: " + error.message);
       return;
     }
-    if (selectedPartForDetail) {
-      setSelectedPartForDetail({ ...selectedPartForDetail, notes: notes.trim() || null });
-    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, notes: notes.trim() || null } : prev));
   }
 
   /* 通用保存配件字段 */
@@ -1173,12 +1278,197 @@ export default function MobileItemEditor({
       alert("保存失败: " + error.message);
       return;
     }
-    if (selectedPartForDetail) {
-      setSelectedPartForDetail({ ...selectedPartForDetail, [field]: value });
-    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, [field]: value } : prev));
     // 价格/数量变更时刷新工单金额
     if (field === "unit_price" || field === "unit_cost") {
       refresh();
+    }
+  }
+
+  /* 编码输入的智能候选：按编码模糊查配件库（同桌面端分支编辑的编码功能） */
+  useEffect(() => {
+    const kw = debounced编码查询.trim();
+    if (!kw || !detailEditing) {
+      设编码候选([]);
+      return;
+    }
+    let 取消 = false;
+    (async () => {
+      const { data } = await supabase
+        .from("parts")
+        .select("id, part_number, part_name_id, unit_cost, unit_price, document_name, part_names(name), part_brands(name), part_specifications(name)")
+        .ilike("part_number", `%${kw}%`)
+        .limit(10);
+      if (取消) return;
+      设编码候选(((data || []) as 配件库行[]).map(转命中配件));
+    })();
+    return () => {
+      取消 = true;
+    };
+     
+  }, [debounced编码查询, detailEditing]);
+
+  /* 当前详情面板正在看的分支（与渲染处同一套口径） */
+  function 当前详情分支(): ItemPart | null {
+    if (!selectedPartForDetail) return null;
+    const branchParts = selectedPartForDetail.branch_group_id
+      ? parts合并.filter((p) => p.branch_group_id === selectedPartForDetail.branch_group_id)
+      : selectedPartForDetail.part_name_id
+      ? parts合并.filter((p) => p.part_name_id === selectedPartForDetail.part_name_id)
+      : [selectedPartForDetail];
+    return branchParts.find((p) => p.id === detailActiveBranchId) || branchParts[0];
+  }
+
+  /* 把命中的库存配件带回当前分支：关联 part_id 并补齐编码/品牌/规格/价格/单据名
+   * （同桌面端"应用命中配件"，但不改配件名称和分组归属） */
+  async function 应用命中配件到分支(branchId: string, hit: 编码命中配件) {
+    setLoading(true);
+    const 更新 = {
+      part_id: hit.id,
+      part_number: hit.part_number || null,
+      brand: hit.brand || null,
+      specification: hit.specification || null,
+      unit_cost: hit.unit_cost,
+      unit_price: hit.unit_price,
+      document_name: hit.document_name || null,
+    };
+    const { error } = await supabase.from("work_order_item_parts").update(更新).eq("id", branchId);
+    setLoading(false);
+    if (error) {
+      alert("带回配件信息失败: " + error.message);
+      return;
+    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, ...更新 } : prev));
+    if (hit.unit_price != null) {
+      window.dispatchEvent(
+        new CustomEvent("wo-part-update", { detail: { itemId: item.id, partId: branchId, unit_price: hit.unit_price } })
+      );
+    }
+    设编码候选([]);
+    refresh();
+  }
+
+  /* 编辑态扫码：按编码精确查，唯一命中直接带回（同桌面端分支扫码） */
+  async function handleDetailScan(code: string) {
+    setDetailScanOpen(false);
+    const kw = code.trim();
+    const branch = 当前详情分支();
+    if (!kw || !branch) return;
+    const { data } = await supabase
+      .from("parts")
+      .select("id, part_number, part_name_id, unit_cost, unit_price, document_name, part_names(name), part_brands(name), part_specifications(name)")
+      .eq("part_number", kw)
+      .limit(2);
+    const rows = (data || []) as 配件库行[];
+    if (rows.length === 0) {
+      alert(`未找到编码「${kw}」对应的配件`);
+      return;
+    }
+    if (rows.length > 1) {
+      alert(`编码「${kw}」对应多个配件，请手动输入编码从候选中选择`);
+      return;
+    }
+    await 应用命中配件到分支(branch.id, 转命中配件(rows[0]));
+  }
+
+  /* 采购/到货标记（守卫逻辑同桌面端 PartBranchEditor） */
+  async function 切换采购(part: ItemPart) {
+    if ((part.customer_opinion || "pending") !== "agree") {
+      alert("需客户同意后才能采购");
+      return;
+    }
+    const 库存数 = (part.part_id && partInventory) ? (partInventory[part.part_id] || 0) : 0;
+    if (!part.is_purchased && 库存数 > 0) {
+      alert("库存不为0，无需采购");
+      return;
+    }
+    const next = !part.is_purchased;
+    setLoading(true);
+    const { error } = await supabase.from("work_order_item_parts").update({ is_purchased: next }).eq("id", part.id);
+    setLoading(false);
+    if (error) {
+      alert("操作失败: " + error.message);
+      return;
+    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, is_purchased: next } : prev));
+    refresh();
+  }
+
+  async function 切换到货(part: ItemPart) {
+    if (!part.is_purchased) {
+      alert("需先采购后才能标记到货");
+      return;
+    }
+    const next = !part.is_arrived;
+    setLoading(true);
+    const { error } = await supabase.from("work_order_item_parts").update({ is_arrived: next }).eq("id", part.id);
+    setLoading(false);
+    if (error) {
+      alert("操作失败: " + error.message);
+      return;
+    }
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, is_arrived: next } : prev));
+    refresh();
+  }
+
+  /* 申领面板展开时拉取该分支的待出库申领列表 */
+  useEffect(() => {
+    if (!申领展开) return;
+    const branch = 当前详情分支();
+    if (!branch) return;
+    (async () => {
+      const { data } = await supabase
+        .from("part_pick_requests")
+        .select("id, quantity, notes, created_at")
+        .eq("work_order_item_part_id", branch.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      set申领列表((data || []) as 申领行[]);
+    })();
+     
+  }, [申领展开, detailActiveBranchId, selectedPartForDetail?.id]);
+
+  /* 提交申领（走 Server Action，只记需求不动库存；库管实领后自动核销） */
+  async function 提交申领() {
+    const branch = 当前详情分支();
+    if (!branch) return;
+    const 数量 = parseInt(申领数量);
+    if (!Number.isInteger(数量) || 数量 <= 0) {
+      alert("申领数量必须是大于 0 的整数");
+      return;
+    }
+    setLoading(true);
+    try {
+      const r = await 申领配件(branch.id, 数量, "");
+      if (!r.success) {
+        alert("申领失败: " + (r.error || "未知错误"));
+        return;
+      }
+      set申领展开(false);
+      set申领数量("1");
+      refresh();
+    } catch (err: unknown) {
+      alert("申领失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* 取消一条待出库申领 */
+  async function 取消一条申领(申领id: string) {
+    setLoading(true);
+    try {
+      const r = await 取消申领(申领id);
+      if (!r.success) {
+        alert("取消失败: " + (r.error || "未知错误"));
+        return;
+      }
+      set申领列表((prev) => prev.filter((x) => x.id !== 申领id));
+      refresh();
+    } catch (err: unknown) {
+      alert("取消失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -1352,11 +1642,12 @@ export default function MobileItemEditor({
       });
       if (dbError) throw dbError;
 
-      // 更新本地图片缓存
-      if (partImages && result.path) {
-        const updated = { ...partImages };
-        if (!updated[branchId]) updated[branchId] = [];
-        updated[branchId] = [...updated[branchId], { storage_path: result.path, media_type: "image" }];
+      /* 立即更新抽屉里的图片显示（本地覆盖，不用等整页刷新） */
+      if (result.path) {
+        set本地图片覆盖((prev) => ({
+          ...prev,
+          [branchId]: [...(prev[branchId] ?? partImages?.[branchId] ?? []), { storage_path: result.path, media_type: "image" }],
+        }));
       }
     } catch (err: unknown) {
       alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
@@ -1378,13 +1669,11 @@ export default function MobileItemEditor({
       alert("删除失败: " + error.message);
       return;
     }
-    // 更新本地图片缓存
-    if (partImages) {
-      const updated = { ...partImages };
-      if (updated[branchId]) {
-        updated[branchId] = updated[branchId].filter((_, i) => i !== index);
-      }
-    }
+    /* 立即从抽屉显示中移除（本地覆盖） */
+    set本地图片覆盖((prev) => ({
+      ...prev,
+      [branchId]: (prev[branchId] ?? partImages?.[branchId] ?? []).filter((_, i) => i !== index),
+    }));
   }
 
   async function saveParts() {
@@ -1404,7 +1693,8 @@ export default function MobileItemEditor({
         part_name_id: sp.part_name_id,
         name: sp.name,
         unit: sp.unit,
-        quantity: sp.quantity,
+        /* 数量留空（NULL）：未填数量的配件红底留白提醒补填，不兜底成 1 */
+        quantity: sp.quantity ?? null,
         customer_opinion: "pending",
         is_selected: true,
       });
@@ -1421,7 +1711,8 @@ export default function MobileItemEditor({
         specification: sp.specification,
         unit_cost: sp.unit_cost,
         unit_price: sp.unit_price,
-        quantity: sp.quantity,
+        /* 从配件库选的配件带明确数量（默认1），留空同样允许 */
+        quantity: sp.quantity ?? null,
         customer_opinion: "pending",
         is_selected: true,
       });
@@ -1550,12 +1841,22 @@ export default function MobileItemEditor({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-gray-900 text-sm">{item.alias_name || item.name}</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${opinionColor}`}>{opinionLabel}</span>
+            {/* 阶段徽章：待派工/待施工/施工中/已中断/待质检/已完工（仅 labor 显示，组件内自判断） */}
+            <ItemStageBadge
+              itemId={item.id}
+              itemType={item.item_type}
+              status={item.status ?? null}
+              requireQc={item.require_qc ?? null}
+              qcStatus={item.qc_status ?? null}
+              customerOpinion={item.customer_opinion ?? null}
+              初始已派工={existingMechanics.length > 0 || !!item.mechanic_id}
+            />
+            {/* 客户意见徽章：labor 项目的阶段徽章已含"待确认"，只给非 labor 项目显示，避免重复 */}
+            {item.item_type !== "labor" && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${opinionColor}`}>{opinionLabel}</span>
+            )}
             {item.is_outsourced && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">外包</span>}
             {item.is_customer_part && <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700">自带</span>}
-            {item.item_type === "labor" && status === "running" && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">施工中</span>
-            )}
           </div>
           <div className="flex items-center gap-2 shrink-0 ml-2">
             <span className="text-sm font-medium text-gray-900">
@@ -1666,16 +1967,22 @@ export default function MobileItemEditor({
             )}
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowPartModal(true);
-            }}
-            className="mt-1 text-xs text-gray-400 hover:text-blue-600"
-          >
-            配件：无
-          </button>
+          /* 无配件：灰色"配件：无"提示 + 蓝色"+ 配件"明确入口（锁定时只展示不可点） */
+          <span className="mt-1 flex items-center gap-1.5 text-xs">
+            <span className="text-gray-400">配件：无</span>
+            {!isLocked && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowPartModal(true);
+                }}
+                className="text-blue-600 hover:text-blue-700 font-medium"
+              >
+                + 配件
+              </button>
+            )}
+          </span>
         )}
         {item.description && (
           <div className="text-xs text-gray-400 mt-1 line-clamp-1">备注: {item.description}</div>
@@ -1756,6 +2063,73 @@ export default function MobileItemEditor({
 
             {/* 可滚动内容 */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
+              {/* 价格：数量 × 单价（锁定时只读） */}
+              <section>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">价格</h4>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={draftQuantity}
+                    onChange={(e) => setDraftQuantity(e.target.value)}
+                    disabled={isLocked}
+                    aria-label="数量"
+                    className="w-16 px-2 py-1.5 border border-gray-300 rounded text-sm text-center disabled:bg-gray-50 disabled:text-gray-500"
+                  />
+                  <span className="text-gray-400 text-sm">×</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={draftUnitPrice}
+                    onChange={(e) => setDraftUnitPrice(e.target.value)}
+                    disabled={isLocked}
+                    aria-label="单价"
+                    className="w-24 px-2 py-1.5 border border-gray-300 rounded text-sm text-right disabled:bg-gray-50 disabled:text-gray-500"
+                  />
+                  <span className="text-sm text-gray-500">
+                    = ¥{((parseFloat(draftQuantity) || 0) * (parseFloat(draftUnitPrice) || 0)).toFixed(2)}
+                  </span>
+                </div>
+              </section>
+
+              {/* 提成（沿用页面顶部"提成信息"开关控制显隐，与桌面端同一权限） */}
+              <ShowCommission>
+                {(() => {
+                  const comm = calculateItemCommission(
+                    item as unknown as CommissionSource,
+                    item.service_items as unknown as CommissionSource | null,
+                    null,
+                    null,
+                    item.total_price || 0,
+                    0
+                  );
+                  if (comm.diagnosis === 0 && comm.repair === 0 && comm.sales === 0 && comm.qc === 0) return null;
+                  return (
+                    <section>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">提成</h4>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {comm.diagnosis > 0 && <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">诊断 {comm.diagnosis.toFixed(2)}元</span>}
+                        {comm.repair > 0 && <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">维修 {comm.repair.toFixed(2)}元</span>}
+                        {comm.sales > 0 && <span className="text-green-600 bg-green-50 px-1.5 py-0.5 rounded">销售 {comm.sales.toFixed(2)}元</span>}
+                        {comm.qc > 0 && <span className="text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">质检 {comm.qc.toFixed(2)}元</span>}
+                      </div>
+                    </section>
+                  );
+                })()}
+              </ShowCommission>
+
+              {/* 质检：仅"待质检"且当前用户是质检人本人时显示质检按钮（组件内自判断，其余情况不渲染）。
+                 质检单支持合格一键提交；不合格强制填原因；可附图片/视频凭证；含历史质检单 */}
+              {item.item_type === "labor" && !!item.require_qc && (
+                <ItemQcActions
+                  itemId={item.id}
+                  itemName={(item.alias_name || item.name) ?? ""}
+                  requireQc={item.require_qc}
+                  实际锁定={isLocked}
+                />
+              )}
               {/* 施工人 */}
               <section>
                 <div className="flex items-center justify-between mb-2">
@@ -2788,22 +3162,72 @@ export default function MobileItemEditor({
 
                 {/* 基本信息（按当前分支 key，切换分支时重新播放淡入动画） */}
                 <div key={activeBranch.id} className="space-y-2 branch-switch-anim">
-                  {/* 编码 */}
+                  {/* 编码（编辑态：可手输+智能候选、扫码、按名称搜配件，同桌面端分支编辑） */}
                   {detailEditing ? (
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-500 text-xs">编码</span>
-                      <input
-                        type="text"
-                        key={activeBranch.id + "-pn"}
-                        defaultValue={activeBranch.part_number || ""}
-                        onBlur={(e) => {
-                          const val = e.target.value.trim() || null;
-                          if (val !== (activeBranch.part_number || null)) {
-                            savePartField(activeBranch.id, "part_number", val);
-                          }
-                        }}
-                        className="w-32 px-2 py-1 border border-gray-300 rounded text-xs text-right"
-                      />
+                    <div>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-gray-500 text-xs shrink-0">编码</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            key={activeBranch.id + "-pn-" + (activeBranch.part_number || "")}
+                            defaultValue={activeBranch.part_number || ""}
+                            onChange={(e) => 设编码查询(e.target.value)}
+                            onBlur={(e) => {
+                              const val = e.target.value.trim() || null;
+                              if (val !== (activeBranch.part_number || null)) {
+                                savePartField(activeBranch.id, "part_number", val);
+                              }
+                              设编码查询("");
+                              设编码候选([]);
+                            }}
+                            className="w-28 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setDetailScanOpen(true)}
+                            title="扫码录入编码"
+                            className="w-7 h-7 flex items-center justify-center rounded border border-gray-300 text-gray-500 hover:bg-gray-50"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M4 12h16" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBranchPickerOpen(true)}
+                            title="搜索该名称的配件"
+                            className="w-7 h-7 flex items-center justify-center rounded border border-gray-300 text-gray-500 hover:bg-gray-50"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      {/* 编码智能候选：选中即把该配件信息带回本分支。
+                         用 onMouseDown + preventDefault（不用 onClick）：点击候选若先触发输入框
+                         失焦保存，候选列表会被卸载导致点击丢失，且失焦保存的原始输入会覆盖带回结果 */}
+                      {编码候选.length > 0 && (
+                        <div className="mt-1 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
+                          {编码候选.map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                void 应用命中配件到分支(activeBranch.id, c);
+                              }}
+                              className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                            >
+                              <span className="font-mono text-gray-900">{c.part_number}</span>
+                              <span className="ml-2 text-gray-600">{c.name}</span>
+                              {c.brand && <span className="ml-1 text-gray-400">{c.brand}</span>}
+                              {c.specification && <span className="ml-1 text-gray-400">{c.specification}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="flex justify-between">
@@ -2835,9 +3259,9 @@ export default function MobileItemEditor({
                       <span className="text-gray-900 text-xs">{activeBranch.document_name}</span>
                     </div>
                   ) : null}
-                  {/* 数量 + 库存 */}
+                  {/* 数量 + 库存（数量无需进入编辑模式，未锁定即可直接改） */}
                   <div className="grid grid-cols-2 gap-3">
-                    {detailEditing ? (
+                    {!isLocked ? (
                       <div className="flex items-center justify-between">
                         <span className="text-gray-500 text-xs">数量</span>
                         <input
@@ -2994,6 +3418,30 @@ export default function MobileItemEditor({
                       </div>
                     )}
                   </div>
+                  {/* 供应商（无需进入编辑模式，未锁定即可直接选） */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-xs">供应商</span>
+                    {!isLocked ? (
+                      <select
+                        key={activeBranch.id + "-supplier"}
+                        value={activeBranch.supplier_name || ""}
+                        onChange={(e) => {
+                          const val = e.target.value || null;
+                          if (val !== (activeBranch.supplier_name || null)) {
+                            savePartField(activeBranch.id, "supplier_name", val);
+                          }
+                        }}
+                        className="w-32 px-1 py-1 border border-gray-300 rounded text-xs text-right bg-white"
+                      >
+                        <option value="">未选择</option>
+                        {suppliers.map((s) => (
+                          <option key={s.id} value={s.name}>{s.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-gray-900 text-xs">{activeBranch.supplier_name || "-"}</span>
+                    )}
+                  </div>
                   {/* 小计 */}
                   <div className="border-t border-gray-100 pt-1.5 flex justify-between"
                   >
@@ -3004,26 +3452,159 @@ export default function MobileItemEditor({
                   </div>
                 </div>
 
+                {/* 配件状态 + 领料/退库/退货/采购/到货（状态判定与桌面端同一套 getPartWorkflowStatus，
+                   领料/退库/退货直接复用桌面端的 PartWorkflowActions 组件和弹窗） */}
+                {(() => {
+                  const 退库数 = returnByPart[activeBranch.id] || 0;
+                  const 净领 = Math.max(0, (activeBranch.pickedQty || 0) - 退库数);
+                  const 库存数 = (activeBranch.part_id && partInventory) ? (partInventory[activeBranch.part_id] || 0) : 0;
+                  const 工作流状态 = getPartWorkflowStatus({
+                    unit_cost: activeBranch.unit_cost ?? null,
+                    unit_price: activeBranch.unit_price ?? null,
+                    customer_opinion: activeBranch.customer_opinion || null,
+                    is_purchased: !!activeBranch.is_purchased,
+                    is_arrived: !!activeBranch.is_arrived,
+                    part_id: activeBranch.part_id || null,
+                    quantity: activeBranch.quantity,
+                    inventoryQty: 库存数,
+                    pickedQty: 净领,
+                    hasReturnRecords: 退库数 > 0,
+                    hasPendingSupplierReturn: !!pendingSupplierReturnByPart[activeBranch.id],
+                  });
+                  return (
+                    <div>
+                      <p className="text-xs text-gray-500 mb-2">配件状态</p>
+                      <div className="flex items-center flex-wrap gap-2">
+                        <PartWorkflowActions
+                          status={工作流状态}
+                          partName={activeBranch.name}
+                          workOrderItemPartId={activeBranch.id}
+                          partId={activeBranch.part_id || null}
+                          quantity={activeBranch.quantity}
+                          pickedQty={净领}
+                          returnQty={退库数}
+                          suppliers={suppliers}
+                          logisticsCompanies={logisticsCompanies}
+                          locked={isLocked}
+                        />
+                        {/* 采购/到货标记（点按切换，守卫同桌面端） */}
+                        <button
+                          type="button"
+                          onClick={() => !isLocked && 切换采购(activeBranch)}
+                          disabled={isLocked || loading}
+                          className={`text-[10px] px-1.5 py-0.5 rounded border disabled:opacity-50 ${
+                            activeBranch.is_purchased
+                              ? "bg-green-50 text-green-700 border-green-200 font-medium"
+                              : "bg-white text-gray-400 border-gray-200"
+                          }`}
+                        >
+                          {activeBranch.is_purchased ? "已采购" : "未采购"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => !isLocked && 切换到货(activeBranch)}
+                          disabled={isLocked || loading}
+                          className={`text-[10px] px-1.5 py-0.5 rounded border disabled:opacity-50 ${
+                            activeBranch.is_arrived
+                              ? "bg-green-50 text-green-700 border-green-200 font-medium"
+                              : "bg-white text-gray-400 border-gray-200"
+                          }`}
+                        >
+                          {activeBranch.is_arrived ? "已到货" : "未到货"}
+                        </button>
+                        {/* 申领角标（待出库数量） + 申领入口：师傅手机申领→库管确认实领→自动核销 */}
+                        {(申领ByPart[activeBranch.id] || 0) > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200">
+                            已申领×{申领ByPart[activeBranch.id]}
+                          </span>
+                        )}
+                        {!isLocked && (
+                          <button
+                            type="button"
+                            onClick={() => set申领展开((v) => !v)}
+                            className="text-[10px] px-1.5 py-0.5 rounded border bg-white text-amber-700 border-amber-300 hover:bg-amber-50"
+                          >
+                            申领
+                          </button>
+                        )}
+                        {/* 空分支已到货 → 入库登记（跳转入库页自动带参，同桌面端） */}
+                        {activeBranch.is_arrived && !activeBranch.part_id && (
+                          <a
+                            href={`/inventory/in?auto_fill=1&branch_id=${encodeURIComponent(activeBranch.id)}&part_number=${encodeURIComponent(activeBranch.part_number || "")}&name=${encodeURIComponent(activeBranch.name || "")}&unit=${encodeURIComponent(activeBranch.unit || "")}&brand=${encodeURIComponent(activeBranch.brand || "")}&specification=${encodeURIComponent(activeBranch.specification || "")}&unit_cost=${activeBranch.unit_cost || ""}&supplier=${encodeURIComponent(activeBranch.supplier_name || "")}`}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 inline-block"
+                          >
+                            入库登记
+                          </a>
+                        )}
+                      </div>
+                      {/* 申领面板：数量 + 提交；待出库列表可取消 */}
+                      {申领展开 && !isLocked && (
+                        <div className="mt-2 border border-amber-200 rounded-lg p-2 bg-amber-50/50">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={1}
+                              value={申领数量}
+                              onChange={(e) => set申领数量(e.target.value)}
+                              aria-label="申领数量"
+                              className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-center"
+                            />
+                            <button
+                              type="button"
+                              onClick={提交申领}
+                              disabled={loading}
+                              className="px-2 py-1 text-xs text-white bg-amber-600 rounded disabled:opacity-50"
+                            >
+                              {loading ? "提交中..." : "提交申领"}
+                            </button>
+                            <span className="text-[10px] text-gray-400">申领后由库管确认出库</span>
+                          </div>
+                          {申领列表.length > 0 && (
+                            <div className="mt-2 space-y-1 border-t border-amber-100 pt-1.5">
+                              {申领列表.map((r) => (
+                                <div key={r.id} className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-600">
+                                    ×{r.quantity} · {new Date(r.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => 取消一条申领(r.id)}
+                                    disabled={loading}
+                                    className="text-red-500 disabled:opacity-50"
+                                  >
+                                    取消
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* 图片上传 */}
                 <div>
                   <p className="text-xs text-gray-500 mb-2">图片</p>
-                  {/* 已上传图片 */}
-                  {activeBranch.id && partImages && partImages[activeBranch.id] && partImages[activeBranch.id].length > 0 && (
+                  {/* 已上传图片（本地覆盖合并：上传/删除后立即显示；点开看大图；删除按钮手机上常显） */}
+                  {分支图片(activeBranch.id).length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">
-                      {partImages[activeBranch.id].map((img, idx) => (
-                        <div key={idx} className="relative w-16 h-16 rounded border border-gray-200 overflow-hidden group">
+                      {分支图片(activeBranch.id).map((img, idx) => (
+                        <div key={idx} className="relative w-16 h-16 rounded border border-gray-200 overflow-hidden">
                           <img
                             src={img.storage_path}
                             alt=""
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover cursor-pointer"
                             loading="lazy"
+                            onClick={() => set预览图片(img.storage_path || null)}
                           />
-                          {detailEditing && (
+                          {!isLocked && (
                             <button
                               type="button"
                               onClick={() => removePartImage(activeBranch.id, img.storage_path || "", idx)}
                               disabled={loading}
-                              className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                              className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center disabled:opacity-50"
                             >
                               ×
                             </button>
@@ -3032,8 +3613,8 @@ export default function MobileItemEditor({
                       ))}
                     </div>
                   )}
-                  {/* 上传按钮 */}
-                  {detailEditing && (
+                  {/* 上传按钮（无需进入编辑模式，未锁定即可直接上传） */}
+                  {!isLocked && (
                     <>
                       <button
                         type="button"
@@ -3133,24 +3714,6 @@ export default function MobileItemEditor({
                   )}
                 </div>
 
-                {/* 图片 */}
-                {activeBranch.id && partImages && partImages[activeBranch.id] && partImages[activeBranch.id].length > 0 && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-2">图片</p>
-                    <div className="flex flex-wrap gap-2">
-                      {partImages[activeBranch.id].map((img, idx) => (
-                        <img
-                          key={idx}
-                          src={img.storage_path}
-                          alt=""
-                          className="w-20 h-20 object-cover rounded border border-gray-200"
-                          loading="lazy"
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {/* 操作按钮 */}
                 {detailEditing && (
                   <div className="flex flex-wrap gap-2 pt-2">
@@ -3236,6 +3799,51 @@ export default function MobileItemEditor({
         onClose={() => setShowBarcodeScanner(false)}
         onScan={handleBarcodeScan}
       />
+
+      {/* 配件编辑态扫码弹窗：扫编码带回当前分支 */}
+      <BarcodeScanModal
+        open={detailScanOpen}
+        onClose={() => setDetailScanOpen(false)}
+        onScan={handleDetailScan}
+      />
+
+      {/* 配件编辑态"按名称搜配件"选择器（放大镜，同桌面端分支编辑） */}
+      {branchPickerOpen && selectedPartForDetail && (
+        <PartPickerModal
+          open={true}
+          onClose={() => setBranchPickerOpen(false)}
+          onConfirm={(picked) => {
+            setBranchPickerOpen(false);
+            const p = picked[0];
+            const branch = 当前详情分支();
+            if (!p || !branch) return;
+            const pb = p.part_brands;
+            void 应用命中配件到分支(branch.id, {
+              id: p.id,
+              part_number: p.part_number,
+              part_name_id: p.part_name_id,
+              name: p.name,
+              brand: (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "",
+              specification: p.specification_text || p.part_specifications?.name || "",
+              unit_cost: p.unit_cost,
+              unit_price: p.unit_price,
+              document_name: null,
+            });
+          }}
+          vehicleModelId={vehicleModelId}
+          defaultNameQuery={selectedPartForDetail.name}
+          compact
+        />
+      )}
+      {/* 图片大图预览（点任意处关闭；层级高于配件详情抽屉 z-[110]） */}
+      {预览图片 && (
+        <div
+          className="fixed inset-0 z-[130] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => set预览图片(null)}
+        >
+          <img src={预览图片} alt="" className="max-w-full max-h-full object-contain rounded" />
+        </div>
+      )}
       {确认弹窗}
     </>
   );

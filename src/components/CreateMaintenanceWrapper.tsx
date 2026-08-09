@@ -191,9 +191,22 @@ export function CreateMaintenanceWrapper({
           .order("created_at", { ascending: true });
 
         if (源配件列表 && 源配件列表.length > 0) {
+          /* 目录ID映射：源目录 → 新目录。
+           * 保养单是新工单，配件目录必须重新生成，不能沿用源工单的目录ID——
+           * 否则两单共用目录，切换选中分支/加减分支会跨单互串（已踩坑：BY-20260720-001 等 3 单）。
+           * 同组的多个分支仍映射到同一个新目录，保持组内关系。 */
+          const 目录映射 = new Map<string, string>();
           const 新配件列表 = 源配件列表
             .filter((源配件) => 项目ID映射[源配件.work_order_item_id])
-            .map((源配件) => ({
+            .map((源配件) => {
+              let 新目录id: string | null = null;
+              if (源配件.branch_group_id) {
+                if (!目录映射.has(源配件.branch_group_id)) {
+                  目录映射.set(源配件.branch_group_id, crypto.randomUUID());
+                }
+                新目录id = 目录映射.get(源配件.branch_group_id)!;
+              }
+              return {
               work_order_item_id: 项目ID映射[源配件.work_order_item_id],
               part_name_id: 源配件.part_name_id,
               part_id: 源配件.part_id,
@@ -218,8 +231,9 @@ export function CreateMaintenanceWrapper({
               is_selected: 源配件.is_selected,
               sort_order: 源配件.sort_order,
               revoke_reason: 源配件.revoke_reason,
-              branch_group_id: 源配件.branch_group_id,
-            }));
+              branch_group_id: 新目录id,
+            };
+            });
 
           for (let i = 0; i < 新配件列表.length; i += 50) {
             const 批次 = 新配件列表.slice(i, i + 50);

@@ -15,20 +15,22 @@ export type ProcurementTab =
   | "pending_return"
   | "completed_return"
   | "inbound_orders"
-  | "return_orders";
+  | "return_orders"
+  | "quote_sheets";
 
-const TABS: { key: ProcurementTab; label: string }[] = [
-  { key: "pending_inquiry", label: "待询价" },
-  { key: "pending_quote", label: "待报价" },
-  { key: "pending_confirm", label: "待确认" },
-  { key: "pending_purchase", label: "待采购" },
-  { key: "pending_receipt", label: "待收货" },
-  { key: "pending_storage", label: "待入库" },
-  { key: "completed_storage", label: "已入库" },
-  { key: "pending_return", label: "待退货" },
-  { key: "completed_return", label: "已退货" },
-  { key: "inbound_orders", label: "入库单" },
-  { key: "return_orders", label: "采退单" },
+const TABS: { key: ProcurementTab; label: string; color: string }[] = [
+  { key: "pending_inquiry", label: "待询价", color: "bg-gray-500" },
+  { key: "pending_quote", label: "待报价", color: "bg-yellow-500" },
+  { key: "pending_confirm", label: "待确认", color: "bg-blue-500" },
+  { key: "pending_purchase", label: "待采购", color: "bg-orange-500" },
+  { key: "pending_receipt", label: "待收货", color: "bg-indigo-500" },
+  { key: "pending_storage", label: "待入库", color: "bg-teal-500" },
+  { key: "completed_storage", label: "已入库", color: "bg-green-500" },
+  { key: "pending_return", label: "待退货", color: "bg-rose-500" },
+  { key: "completed_return", label: "已退货", color: "bg-gray-500" },
+  { key: "inbound_orders", label: "入库单", color: "bg-cyan-600" },
+  { key: "return_orders", label: "采退单", color: "bg-gray-500" },
+  { key: "quote_sheets", label: "询价单", color: "bg-purple-500" },
 ];
 
 interface Props {
@@ -84,6 +86,7 @@ export function ProcurementTabBar({ currentTab }: Props) {
     completed_return: 0,
     inbound_orders: 0,
     return_orders: 0,
+    quote_sheets: 0,
   });
 
   const loadCounts = useCallback(async () => {
@@ -113,6 +116,8 @@ export function ProcurementTabBar({ currentTab }: Props) {
       if (!wo) continue;
       if (wo.settled_at) continue;
       if (wo.order_type === "cancelled") continue;
+      /* 保养单不走采购流程，不计入各阶段角标 */
+      if (wo.order_type === "maintenance") continue;
       if (r.is_purchased || r.is_arrived) continue;
 
       const cost = Number(r.unit_cost || 0);
@@ -172,6 +177,13 @@ export function ProcurementTabBar({ currentTab }: Props) {
     const { data: returnOrderData } = await supabase.from("purchase_return_orders").select("id");
     const returnOrdersCount = returnOrderData?.length || 0;
 
+    /* 询价单角标：供应商已报价、等采购员采用的单数 */
+    const { data: quoteSheetData } = await supabase
+      .from("supplier_quote_sheets")
+      .select("id")
+      .eq("status", "submitted");
+    const quoteSheetsCount = quoteSheetData?.length || 0;
+
     setCounts({
       pending_inquiry: pendingInquiry,
       pending_quote: pendingQuote,
@@ -184,6 +196,7 @@ export function ProcurementTabBar({ currentTab }: Props) {
       completed_return: completedReturn,
       inbound_orders: inboundOrdersCount,
       return_orders: returnOrdersCount,
+      quote_sheets: quoteSheetsCount,
     });
   }, [supabase]);
 
@@ -226,15 +239,29 @@ export function ProcurementTabBar({ currentTab }: Props) {
       )
       .subscribe();
 
+    /* Realtime 订阅: supplier_quote_sheets 变化时刷新询价单角标（供应商一提交就亮） */
+    const quoteChannel = supabase
+      .channel("procurement_tab_quote_counts")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "supplier_quote_sheets" },
+        () => {
+          loadCounts();
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(partsChannel);
       supabase.removeChannel(poChannel);
       supabase.removeChannel(retChannel);
+      supabase.removeChannel(quoteChannel);
     };
   }, [supabase, loadCounts]);
 
   return (
-    <div className="flex flex-wrap gap-1 mb-6 border-b border-gray-200">
+    /* 胶囊标签（对齐工单列表页的阶段筛选样式）：圆角按钮 + 彩色数字角标，自动换行 */
+    <div className="flex flex-wrap gap-2 mb-4">
       {TABS.map((tab) => {
         const isActive = currentTab === tab.key;
         const count = counts[tab.key];
@@ -246,21 +273,21 @@ export function ProcurementTabBar({ currentTab }: Props) {
                 ? "/inbound-orders"
                 : tab.key === "return_orders"
                 ? "/return-orders"
+                : tab.key === "quote_sheets"
+                ? "/quote-sheets"
                 : `/procurement?tab=${tab.key}`
             }
-            className={`px-4 py-2.5 text-sm border-b-2 -mb-px transition-colors rounded-t-md flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               isActive
-                ? "border-blue-600 text-blue-700 font-semibold bg-blue-50"
-                : "border-transparent text-gray-600 font-medium hover:text-gray-900 hover:border-gray-300"
+                ? "bg-blue-600 text-white"
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
             }`}
           >
             {tab.label}
             {count > 0 && (
               <span
-                className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 text-xs rounded-full ${
-                  isActive
-                    ? "bg-blue-200 text-blue-800"
-                    : "bg-gray-200 text-gray-700"
+                className={`ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-[11px] font-bold text-white ${
+                  isActive ? "bg-white/25" : tab.color
                 }`}
               >
                 {count > 99 ? "99+" : count}

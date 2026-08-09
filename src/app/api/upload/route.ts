@@ -24,6 +24,25 @@ const MAX_STREAM_SIZE = 1080 * 1024 * 1024;
 /* Office 文件扩展名 */
 const officeExts = [".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"];
 
+/* 校验供应商询价 token（免登录上传用）：单存在、未作废、未采用、未过期 */
+async function 校验询价token(token: string): Promise<boolean> {
+  if (!token || token.length < 20) return false;
+  const admin = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+    process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+  const { data } = await admin
+    .from("supplier_quote_sheets")
+    .select("status, expires_at")
+    .eq("token", token)
+    .maybeSingle();
+  if (!data) return false;
+  const 单 = data as { status: string; expires_at: string };
+  if (单.status === "cancelled" || 单.status === "adopted") return false;
+  return new Date(单.expires_at).getTime() > Date.now();
+}
+
 /* 允许的文件扩展名白名单 */
 const 允许的扩展名 = new Set([
   ".jpg", ".jpeg", ".png", ".webp", ".gif",
@@ -63,8 +82,17 @@ export async function POST(request: Request) {
   try {
     /* ── 认证 ── */
     let userId = "";
+    /* 供应商报价通道优先：带 quote_token 且有效就走供应商通道（强制 quote/ 目录、仅限图片），
+     * 即使浏览器恰好有登录态也一样——否则图片存进私有目录，免登录的供应商打不开 */
+    const quoteToken = new URL(request.url).searchParams.get("quote_token") || "";
+    if (quoteToken) {
+      if (!(await 校验询价token(quoteToken))) {
+        return Response.json({ error: "链接无效或已过期" }, { status: 401 });
+      }
+      userId = "quote-supplier";
+    }
     const authHeader = request.headers.get("authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
+    if (!userId && authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
       if (token && token !== "undefined" && token !== "null") {
         const tempClient = createSupabaseClient(
@@ -117,9 +145,15 @@ export async function POST(request: Request) {
     if (!允许的扩展名.has(ext)) {
       return Response.json({ error: `不支持的文件类型: ${ext}` }, { status: 400 });
     }
+    /* 供应商报价通道额外限制：只能传图片 */
+    if (userId === "quote-supplier" && ![".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext)) {
+      return Response.json({ error: "只能上传图片" }, { status: 400 });
+    }
 
-    /* 清理 folder 参数 */
-    if (folder) {
+    /* 清理 folder 参数；供应商报价图片强制进 quote/ 目录（该目录公开可读，供应商免登录查看） */
+    if (userId === "quote-supplier") {
+      folder = "quote";
+    } else if (folder) {
       folder = folder.replace(/[/\\]|\.\./g, "").slice(0, 50);
       if (folder.length === 0) folder = "";
     }
@@ -129,7 +163,7 @@ export async function POST(request: Request) {
     /* 按日期分目录 */
     const now = new Date();
     const dateDir = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-    const subDir = folder === "training" ? `training/${dateDir}` : dateDir;
+    const subDir = folder === "training" ? `training/${dateDir}` : folder === "quote" ? `quote/${dateDir}` : dateDir;
     const dir = path.join(UPLOAD_DIR, subDir);
     await mkdir(dir, { recursive: true });
 

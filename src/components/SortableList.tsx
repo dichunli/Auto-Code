@@ -17,6 +17,9 @@ export default function SortableList({ ids, tableName, extraIdMap, children }: P
   const [orderedIds, setOrderedIds] = useState<string[]>(ids);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  /* 只有按住手柄才允许拖动：记录当前按住手柄的行 id。
+   * 之前整行 draggable，在备注/价格等输入框上按鼠标移动也会误拖整行 */
+  const [按住手柄的行id, set按住手柄的行id] = useState<string | null>(null);
 
   useEffect(() => {
     setOrderedIds(ids);
@@ -100,7 +103,7 @@ export default function SortableList({ ids, tableName, extraIdMap, children }: P
         return (
           <div
             key={id}
-            draggable
+            draggable={按住手柄的行id === id}
             onDragStart={(e) => {
               setDraggingId(id);
               e.dataTransfer.effectAllowed = "move";
@@ -110,6 +113,7 @@ export default function SortableList({ ids, tableName, extraIdMap, children }: P
             onDragEnd={() => {
               setDraggingId(null);
               setDragOverId(null);
+              set按住手柄的行id(null);
             }}
             onDragOver={(e) => {
               e.preventDefault();
@@ -128,7 +132,9 @@ export default function SortableList({ ids, tableName, extraIdMap, children }: P
             <div className="flex items-start gap-1.5">
               <div
                 className="hidden md:block mt-0.5 cursor-move text-gray-300 hover:text-gray-500 select-none shrink-0"
-                title="拖动排序"
+                title="按住拖动排序"
+                onMouseDown={() => set按住手柄的行id(id)}
+                onMouseUp={() => set按住手柄的行id(null)}
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                   <circle cx="9" cy="6" r="1.5" />

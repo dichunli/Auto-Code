@@ -53,3 +53,16 @@ export function 格式化时长(秒: number): string {
   if (小时 > 0) return 分 > 0 ? `${小时}小时${分}分` : `${小时}小时`;
   return `${分}分`;
 }
+
+/* 计时器样式：HH:MM:SS（如 "01:23:45"）；超过 1 天加天数前缀（如 "2天 03:04:05"）。
+ * 配合前端每秒跳动使用，位数固定，配合 tabular-nums 不抖动。 */
+export function 格式化计时器(秒: number): string {
+  const 总秒 = Math.max(0, Math.floor(秒));
+  const 天 = Math.floor(总秒 / 86400);
+  const 时 = Math.floor((总秒 % 86400) / 3600);
+  const 分 = Math.floor((总秒 % 3600) / 60);
+  const 余秒 = 总秒 % 60;
+  const 两位 = (n: number) => String(n).padStart(2, "0");
+  const 时分秒 = `${两位(时)}:${两位(分)}:${两位(余秒)}`;
+  return 天 > 0 ? `${天}天 ${时分秒}` : 时分秒;
+}

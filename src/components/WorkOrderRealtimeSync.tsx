@@ -95,6 +95,8 @@ export function WorkOrderRealtimeSync({ orderId, itemIds = [], partIds = [] }: P
         channel.on("postgres_changes", { event: "*", schema: "public", table: "part_picking_records", filter: partFilter }, onOtherChange);
         channel.on("postgres_changes", { event: "*", schema: "public", table: "part_return_records", filter: partFilter }, onOtherChange);
         channel.on("postgres_changes", { event: "*", schema: "public", table: "supplier_return_records", filter: partFilter }, onOtherChange);
+        /* 配件申领（手机端发起）→ 对端弹"点击刷新"提示条，库管及时看到申领角标 */
+        channel.on("postgres_changes", { event: "*", schema: "public", table: "part_pick_requests", filter: partFilter }, onOtherChange);
       }
       channel.subscribe();
     })();
@@ -103,7 +105,7 @@ export function WorkOrderRealtimeSync({ orderId, itemIds = [], partIds = [] }: P
       cancelled = true;
       if (channel) supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [supabase, router, orderId, itemIds.join(","), partIds.join(",")]);
 
   if (!有更新) return null;
