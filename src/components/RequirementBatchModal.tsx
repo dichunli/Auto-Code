@@ -8,8 +8,9 @@ import { useConfirm } from "./ConfirmDialog";
 
 interface MediaItem {
   id?: string;
-  media_type: "image" | "video" | "audio";
-  storage_path: string;
+  /* 放宽为 string：与数据源 MediaRecord 及 RequirementTitle 的定义对齐 */
+  media_type?: string;
+  storage_path?: string;
 }
 
 interface Profile {
@@ -108,8 +109,8 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
         setDescription(requirement.description || "");
         setDiagnosis(requirement.diagnosis || "");
         setRemarks(requirement.remarks || "");
-        setImages(initialMedia.filter((m) => m.media_type === "image").map((m) => m.storage_path));
-        setVideos(initialMedia.filter((m) => m.media_type === "video").map((m) => m.storage_path));
+        setImages(initialMedia.filter((m) => m.media_type === "image").map((m) => m.storage_path).filter((p): p is string => !!p));
+        setVideos(initialMedia.filter((m) => m.media_type === "video").map((m) => m.storage_path).filter((p): p is string => !!p));
         setDeletedMediaIds([]);
         setDeletedMediaPaths([]);
       } else {

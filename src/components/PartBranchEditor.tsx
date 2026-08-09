@@ -62,7 +62,7 @@ interface Props {
   canDelete: boolean;
   isLocked: boolean;
   siblingIds?: string[];
-  vehicleModelId?: number;
+  vehicleModelId?: number | null;
   children?: React.ReactNode;
 }
 
@@ -574,6 +574,29 @@ export default function PartBranchEditor({
     if (data.part_name_id && !part.part_name_id) 更新.part_name_id = data.part_name_id;
     const { error } = await supabase.from("work_order_item_parts").update(更新).eq("id", part.id);
     if (error) { alert("补齐配件失败: " + error.message); return; }
+
+    /* 分支图片同步到新配件的"配件信息图片"（用户拍板 2026-08-06：
+     * 通过分支信息新建配件时，分支里的图片就是这个配件信息中的图片）。按路径去重 */
+    const { data: 分支图片 } = await supabase
+      .from("work_order_item_part_media")
+      .select("storage_path")
+      .eq("work_order_item_part_id", part.id)
+      .eq("media_type", "image");
+    const 图片路径 = ((分支图片 || []) as { storage_path: string | null }[])
+      .map((r) => r.storage_path)
+      .filter((p): p is string => !!p);
+    if (图片路径.length > 0) {
+      const { data: 已有 } = await supabase.from("part_images").select("storage_path, sort_order").eq("part_id", partId);
+      const 已有路径 = new Set(((已有 || []) as { storage_path: string | null }[]).map((r) => r.storage_path));
+      const 新图 = 图片路径.filter((p) => !已有路径.has(p));
+      if (新图.length > 0) {
+        const 起始 = ((已有 || []) as { sort_order: number | null }[]).reduce((s, r) => Math.max(s, r.sort_order || 0), 0);
+        await supabase.from("part_images").insert(
+          新图.map((p, i) => ({ part_id: partId, storage_path: p, sort_order: 起始 + i + 1 }))
+        );
+      }
+    }
+
     if (销售价 != null) {
       window.dispatchEvent(new CustomEvent("wo-part-update", { detail: { itemId, partId: part.id, unit_price: 销售价 } }));
     }

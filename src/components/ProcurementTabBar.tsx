@@ -18,19 +18,19 @@ export type ProcurementTab =
   | "return_orders"
   | "quote_sheets";
 
-const TABS: { key: ProcurementTab; label: string }[] = [
-  { key: "pending_inquiry", label: "待询价" },
-  { key: "pending_quote", label: "待报价" },
-  { key: "pending_confirm", label: "待确认" },
-  { key: "pending_purchase", label: "待采购" },
-  { key: "pending_receipt", label: "待收货" },
-  { key: "pending_storage", label: "待入库" },
-  { key: "completed_storage", label: "已入库" },
-  { key: "pending_return", label: "待退货" },
-  { key: "completed_return", label: "已退货" },
-  { key: "inbound_orders", label: "入库单" },
-  { key: "return_orders", label: "采退单" },
-  { key: "quote_sheets", label: "询价单" },
+const TABS: { key: ProcurementTab; label: string; color: string }[] = [
+  { key: "pending_inquiry", label: "待询价", color: "bg-gray-500" },
+  { key: "pending_quote", label: "待报价", color: "bg-yellow-500" },
+  { key: "pending_confirm", label: "待确认", color: "bg-blue-500" },
+  { key: "pending_purchase", label: "待采购", color: "bg-orange-500" },
+  { key: "pending_receipt", label: "待收货", color: "bg-indigo-500" },
+  { key: "pending_storage", label: "待入库", color: "bg-teal-500" },
+  { key: "completed_storage", label: "已入库", color: "bg-green-500" },
+  { key: "pending_return", label: "待退货", color: "bg-rose-500" },
+  { key: "completed_return", label: "已退货", color: "bg-gray-500" },
+  { key: "inbound_orders", label: "入库单", color: "bg-cyan-600" },
+  { key: "return_orders", label: "采退单", color: "bg-gray-500" },
+  { key: "quote_sheets", label: "询价单", color: "bg-purple-500" },
 ];
 
 interface Props {
@@ -260,7 +260,8 @@ export function ProcurementTabBar({ currentTab }: Props) {
   }, [supabase, loadCounts]);
 
   return (
-    <div className="flex flex-wrap gap-1 mb-6 border-b border-gray-200">
+    /* 胶囊标签（对齐工单列表页的阶段筛选样式）：圆角按钮 + 彩色数字角标，自动换行 */
+    <div className="flex flex-wrap gap-2 mb-4">
       {TABS.map((tab) => {
         const isActive = currentTab === tab.key;
         const count = counts[tab.key];
@@ -276,19 +277,17 @@ export function ProcurementTabBar({ currentTab }: Props) {
                 ? "/quote-sheets"
                 : `/procurement?tab=${tab.key}`
             }
-            className={`px-4 py-2.5 text-sm border-b-2 -mb-px transition-colors rounded-t-md flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               isActive
-                ? "border-blue-600 text-blue-700 font-semibold bg-blue-50"
-                : "border-transparent text-gray-600 font-medium hover:text-gray-900 hover:border-gray-300"
+                ? "bg-blue-600 text-white"
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
             }`}
           >
             {tab.label}
             {count > 0 && (
               <span
-                className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 text-xs rounded-full ${
-                  isActive
-                    ? "bg-blue-200 text-blue-800"
-                    : "bg-gray-200 text-gray-700"
+                className={`ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-[11px] font-bold text-white ${
+                  isActive ? "bg-white/25" : tab.color
                 }`}
               >
                 {count > 99 ? "99+" : count}

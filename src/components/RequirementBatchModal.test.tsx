@@ -100,6 +100,8 @@ beforeEach(() => {
   模拟项目数 = 0;
   /* jsdom 未实现 alert，mock 掉避免噪音 */
   vi.spyOn(window, "alert").mockImplementation(() => {});
+  /* jsdom 未实现 scrollIntoView（组件聚焦时 300ms 后调用），补空实现防未捕获异常 */
+  Element.prototype.scrollIntoView = vi.fn();
 });
 
 describe("RequirementBatchModal - 保存逻辑", () => {

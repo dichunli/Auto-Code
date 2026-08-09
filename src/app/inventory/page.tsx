@@ -8,11 +8,32 @@ import InventoryTable from "./InventoryTable";
 export default async function InventoryPage() {
   const supabase = await createClient();
 
-  const { data: items } = await supabase
+  const 配件查询字段 = "*, part_names(name, unit, part_categories(name)), part_brands(name), suppliers(name), parts_specifications(specification_id, part_specifications(name))" as const;
+
+  /* 分批拉取全部配件，替代原 .limit(500) 硬截断——
+   * 超过 500 条的配件之前在库存页静默消失（不报错不提示）。
+   * 列表交互（即时搜索/跨页勾选/合并配件）依赖全量本地数据，故保持全量加载，
+   * 渲染层已有 20 条/页的客户端分页，几千条配件过滤耗时 <10ms 可接受 */
+  const 批大小 = 1000;
+  const { data: 第一批 } = await supabase
     .from("parts")
-    .select("*, part_names(name, unit, part_categories(name)), part_brands(name), suppliers(name), parts_specifications(specification_id, part_specifications(name))")
+    .select(配件查询字段)
     .order("created_at", { ascending: false })
-    .limit(500);
+    .range(0, 批大小 - 1);
+  const items = [...(第一批 || [])];
+  /* 第一批拉满说明可能还有存货，继续逐批拉取直到不足一批 */
+  if (第一批 && 第一批.length === 批大小) {
+    for (let from = 批大小; ; from += 批大小) {
+      const { data: batch } = await supabase
+        .from("parts")
+        .select(配件查询字段)
+        .order("created_at", { ascending: false })
+        .range(from, from + 批大小 - 1);
+      if (!batch || batch.length === 0) break;
+      items.push(...batch);
+      if (batch.length < 批大小) break;
+    }
+  }
 
   const { count: lowStock } = await supabase
     .from("parts")

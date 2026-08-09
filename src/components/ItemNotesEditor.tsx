@@ -5,7 +5,8 @@ import { useState } from "react";
 
 interface Props {
   itemId: string;
-  description: string | null;
+  /* 可选：新项目.description 可空（组件内部 || "" 兜底） */
+  description?: string | null;
   /* 只读（保养单未进编辑模式 / 工单已锁定）：备注仅展示，不可编辑 */
   disabled?: boolean;
 }

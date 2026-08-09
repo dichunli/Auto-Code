@@ -35,7 +35,8 @@ export function Barcode({
     import("jsbarcode")
       .then((mod) => {
         if (cancelled) return;
-        const JsBarcode = mod.default || mod;
+        /* strictNullChecks 放宽后 || 的联合类型含不可调用的 namespace 成员，断言为库本身类型（export = 结构无 default 成员） */
+        const JsBarcode = (mod.default || mod) as unknown as typeof import("jsbarcode");
         try {
           JsBarcode(svgRef.current, value, {
             format,

@@ -7,7 +7,7 @@ import { Navbar } from "./Navbar";
 import { PriceVisibilityProvider, usePriceVisibility } from "./PriceVisibilityContext";
 import { 确保会话就绪, 记录登录健康检查 } from "@/lib/supabase/client";
 
-function KeyboardHandler() {
+function KeyboardHandler(): null {
   const { togglePrices } = usePriceVisibility();
 
   useEffect(() => {
