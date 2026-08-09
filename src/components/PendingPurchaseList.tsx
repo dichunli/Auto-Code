@@ -9,6 +9,7 @@ import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { PURCHASE_REASON_LABELS } from "@/lib/purchaseFlowLabels";
+import { usePartLinking } from "./usePartLinking";
 
 interface PartBranchRow {
   id: string;
@@ -138,9 +139,7 @@ export function PendingPurchaseList() {
   const [revokeReason, setRevokeReason] = useState("");
   const [revokeCustomReason, setRevokeCustomReason] = useState("");
 
-  /* 编辑配件弹窗 */
-  const [editRow, setEditRow] = useState<PartBranchRow | null>(null);
-  const [newPartQuery, setNewPartQuery] = useState("");
+  /* 编辑配件弹窗：行内编辑逻辑由 usePartLinking 接管，仅保留忙态 id */
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const REVOKE_REASONS = [
@@ -218,138 +217,36 @@ export function PendingPurchaseList() {
   }
 
   /* ========== 配件编辑弹窗 ========== */
-  function openEditModal(row: PartBranchRow) {
-    setNewPartQuery("");
-    setEditRow(row);
-  }
-  function closeEditModal() {
-    setNewPartQuery("");
-    setEditRow(null);
-  }
+  /* 行内配件编辑逻辑已抽到 usePartLinking（对照表驱动的共享实现）；
+     忙态用适配器映射到本组件的 editingId（其他三组件是 submitting 前缀模式） */
+  const 配件联动 = usePartLinking<PartBranchRow>({
+    supabase,
+    主表: "work_order_item_parts",
+    双写WOI: false,
+    getRowId: (r) => r.id,
+    getWoiId: () => null,
+    getWoi当前值: (r) => r,
+    写WoiPartId: true,
+    行内unitCost来源: "unit_cost",
+    行内写售价: true,
+    弹窗写supplierPartName: false,
+    弹窗写WoiDocumentName: true,
+    弹窗规格来源: "join",
+    取弹前行: (r) => r,
+    setSubmitting: (key) => setEditingId(key ? key.replace(/^(edit|inline)-/, "") : null),
+    reload: loadData,
+  });
+  const {
+    editRow,
+    editId,
+    prefillData: 配件预填,
+    openEditModal,
+    closeEditModal,
+    handlePartSaved,
+    handleInlinePartSelect,
+    handleInlineClear,
+  } = 配件联动;
 
-  async function handlePartSaved(partId: string) {
-    if (!editRow) return;
-    setEditingId(editRow.id);
-    try {
-      const { data: part } = await supabase
-        .from("parts")
-        .select(
-          "part_number, name, unit, category_id, part_categories(name), brand_id, part_brands(name), specification_id, part_specifications(name), unit_cost, unit_price, purchase_price, notes, document_name"
-        )
-        .eq("id", partId)
-        .single();
-
-      const updates: Record<string, unknown> = { part_id: partId };
-      if (part) {
-        const p = part as Record<string, unknown>;
-        if (p.part_number != null) updates.part_number = p.part_number;
-        if (p.name != null) updates.name = p.name;
-        if (p.unit != null) updates.unit = p.unit;
-        const pb = p.part_brands as { name?: string }[] | { name?: string } | null | undefined;
-        const ps = p.part_specifications as { name?: string }[] | { name?: string } | null | undefined;
-        const brandName = Array.isArray(pb) ? pb[0]?.name : pb?.name;
-        const specName = Array.isArray(ps) ? ps[0]?.name : ps?.name;
-        if (brandName != null) updates.brand = brandName;
-        if (specName != null) updates.specification = specName;
-        if (p.purchase_price != null) updates.unit_cost = p.purchase_price;
-        if (p.notes != null) updates.notes = p.notes;
-        if (p.document_name != null) updates.document_name = p.document_name;
-      }
-
-      const { error } = await supabase
-        .from("work_order_item_parts")
-        .update(updates)
-        .eq("id", editRow.id);
-      if (error) throw error;
-
-      closeEditModal();
-      loadData();
-    } catch (err: unknown) {
-      const e = err as Error;
-      alert("同步配件信息失败: " + (e.message || String(err)));
-    } finally {
-      setEditingId(null);
-    }
-  }
-
-  /* 行内搜索选中配件（待采购阶段不更新售价） */
-  interface InlinePart {
-    id: string;
-    part_number?: string | null;
-    barcode?: string | null;
-    name?: string | null;
-    unit?: string | null;
-    unit_cost?: number | null;
-    unit_price?: number | null;
-    part_names?: { name?: string | null; unit?: string | null } | null;
-    part_brands?: { name?: string | null } | null;
-    part_specifications?: { name?: string | null } | null;
-  }
-
-  async function handleInlinePartSelect(row: PartBranchRow, part: InlinePart) {
-    setEditingId(row.id);
-    try {
-      const updates: Record<string, unknown> = { part_id: part.id };
-      if (part.part_number != null) updates.part_number = part.part_number;
-      if (part.barcode != null && !part.part_number) updates.part_number = part.barcode;
-
-      /* 已有内容保留，为空才按配件填充 */
-      if (!row.name) {
-        if (part.name != null) updates.name = part.name;
-        else if (part.part_names?.name != null) updates.name = part.part_names.name;
-      }
-      if (!row.unit) {
-        if (part.unit != null) updates.unit = part.unit;
-        else if (part.part_names?.unit != null) updates.unit = part.part_names.unit;
-      }
-      if (!row.brand && part.part_brands?.name != null) updates.brand = part.part_brands.name;
-      if (!row.specification && part.part_specifications?.name != null) updates.specification = part.part_specifications.name;
-
-      /* 采购价：为空才填充 */
-      if ((row.unit_cost == null || row.unit_cost === 0) && part.unit_cost != null) {
-        updates.unit_cost = part.unit_cost;
-      }
-
-      /* 售价：已报不覆盖，没有才按配件更新 */
-      if (row.unit_price == null && part.unit_price != null) {
-        updates.unit_price = part.unit_price;
-      }
-
-      const { error } = await supabase
-        .from("work_order_item_parts")
-        .update(updates)
-        .eq("id", row.id);
-      if (error) throw error;
-      loadData();
-    } catch (err: unknown) {
-      const e = err as Error;
-      alert("更新配件信息失败: " + (e.message || String(err)));
-    } finally {
-      setEditingId(null);
-    }
-  }
-
-  async function handleInlineClear(row: PartBranchRow) {
-    setEditingId(row.id);
-    try {
-      const { error } = await supabase
-        .from("work_order_item_parts")
-        .update({ part_id: null, part_number: null })
-        .eq("id", row.id);
-      if (error) throw error;
-      loadData();
-    } catch (err: unknown) {
-      const e = err as Error;
-      alert("清除配件关联失败: " + (e.message || String(err)));
-    } finally {
-      setEditingId(null);
-    }
-  }
-
-  function handleInlineCreateNew(row: PartBranchRow, query: string) {
-    setNewPartQuery(query);
-    setEditRow(row);
-  }
 
   function getRowSupplierId(row: PartBranchRow): string | null {
     if (supplierMap[row.id]) return supplierMap[row.id];
@@ -924,7 +821,7 @@ export function PendingPurchaseList() {
                             value={r.part_number || ""}
                             onChange={() => {}}
                             onSelect={(part) => handleInlinePartSelect(r, part)}
-                            onCreateNew={(query) => handleInlineCreateNew(r, query)}
+                            onCreateNew={(query) => 配件联动.openCreateNewModal(r, query)}
                             onClear={() => handleInlineClear(r)}
                             disabled={editingId === r.id}
                             placeholder="编码/条码"
@@ -1259,16 +1156,10 @@ export function PendingPurchaseList() {
             </div>
             <div className="p-6">
               <PartForm
-                editId={editRow.part_id || undefined}
+                editId={editId}
                 onSaved={handlePartSaved}
                 onCancel={closeEditModal}
-                prefillData={{
-                  part_number: newPartQuery || editRow.part_number || undefined,
-                  name: editRow.name || undefined,
-                  unit: editRow.unit || undefined,
-                  purchase_price: editRow.unit_cost != null ? String(editRow.unit_cost) : undefined,
-                  notes: editRow.notes || undefined,
-                }}
+                prefillData={配件预填}
               />
             </div>
           </div>
