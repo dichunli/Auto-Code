@@ -32,56 +32,66 @@ const REGION_STYLES: Record<string, string> = {
   outside: "bg-orange-50 text-orange-700 border-orange-200",
 };
 
-export default function SuppliersContent({ initialSuppliers }: { initialSuppliers: Supplier[] }) {
+export default function SuppliersContent({ initialSuppliers, initialCount }: { initialSuppliers: Supplier[]; initialCount: number }) {
   const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [regionFilter, setRegionFilter] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
+  /* 分页状态：首屏数据由服务端给（第 1 页），后续搜索/翻页走 loadSuppliers */
+  const [total, setTotal] = useState(initialCount);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const debouncedQuery = useDebounce(query, 300);
   const mounted = useRef(false);
   const { 请求确认, 确认弹窗 } = useConfirm();
 
-  async function loadSuppliers(search?: string, region?: string) {
+  async function loadSuppliers(search: string | undefined, region: string, 目标页: number) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     setLoading(true);
+    const from = (目标页 - 1) * pageSize;
     let q = supabase
       .from("suppliers")
-      .select("*, parts(count)")
-      .order("created_at", { ascending: false });
+      .select("*, parts(count)", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1);
     if (search?.trim()) {
       q = q.or(`name.ilike.%${search.trim()}%,contact.ilike.%${search.trim()}%,phone.ilike.%${search.trim()}%`);
     }
     if (region) {
       q = q.eq("region", region);
     }
-    const { data, error } = await q;
+    const { data, count, error } = await q;
     if (error) {
       console.error("供应商加载失败:", error);
       alert("加载失败: " + error.message);
+    } else {
+      setSuppliers((data as unknown as Supplier[]) || []);
+      setTotal(count || 0);
+      setPage(目标页);
     }
-    setSuppliers((data as unknown as Supplier[]) || []);
     setLoading(false);
   }
 
-  // 地域筛选变化时重新拉取（跳过首次挂载）
+  // 地域筛选变化时重新拉取（跳过首次挂载），回到第 1 页
   useEffect(() => {
     if (!mounted.current) {
       mounted.current = true;
       return;
     }
-    loadSuppliers(undefined, regionFilter);
+    loadSuppliers(undefined, regionFilter, 1);
   }, [regionFilter]);
 
-  // 搜索关键词变化时重新拉取（跳过首次挂载时 debouncedQuery 为空的情况）
+  // 搜索关键词变化时重新拉取（跳过首次挂载时 debouncedQuery 为空的情况），回到第 1 页
   const searchMounted = useRef(false);
   useEffect(() => {
     if (!searchMounted.current) {
       searchMounted.current = true;
       return;
     }
-    loadSuppliers(debouncedQuery, regionFilter);
+    loadSuppliers(debouncedQuery, regionFilter, 1);
   }, [debouncedQuery]);
 
   async function handleDelete(id: string, name: string, hasParts: boolean) {
@@ -97,7 +107,9 @@ export default function SuppliersContent({ initialSuppliers }: { initialSupplier
       return;
     }
     await 刷新基础数据缓存();
-    loadSuppliers(query, regionFilter);
+    /* 若删的是当前页最后一条且不在第 1 页，退到上一页，避免停在空页 */
+    const 目标页 = suppliers.length === 1 && page > 1 ? page - 1 : page;
+    loadSuppliers(query, regionFilter, 目标页);
   }
 
   return (
@@ -212,6 +224,31 @@ export default function SuppliersContent({ initialSuppliers }: { initialSupplier
           </table>
         </div>
       </div>
+
+      {/* 分页导航：客户端翻页，保留当前搜索/筛选条件 */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-gray-500">
+            共 {total} 条，第 {page}/{totalPages} 页
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => loadSuppliers(debouncedQuery, regionFilter, page - 1)}
+              disabled={page <= 1 || loading}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              上一页
+            </button>
+            <button
+              onClick={() => loadSuppliers(debouncedQuery, regionFilter, page + 1)}
+              disabled={page >= totalPages || loading}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+      )}
 
       {确认弹窗}
     </div>

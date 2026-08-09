@@ -2,9 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["192.168.1.75"],
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  /* 2026-08-06：移除 typescript.ignoreBuildErrors（原值为 true，类型错误全部放行）。
+   * 类型安检门已重新打开——构建时类型错误会直接失败，必须在提交前修掉 */
   serverExternalPackages: ["mammoth", "docx", "@xenova/transformers", "onnxruntime-node", "sharp", "ffmpeg-static"],
   experimental: {
     serverActions: {

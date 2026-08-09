@@ -163,7 +163,7 @@ describe("createClient - 环境分支", () => {
 
   it("服务端环境：不使用自定义 storage", async () => {
     const originalWindow = globalThis.window;
-    // @ts-expect-error 测试中临时移除 window 模拟服务端
+    /* 测试中临时移除 window 模拟服务端（strictNullChecks 放宽后 undefined 可直接赋值） */
     globalThis.window = undefined;
 
     try {
@@ -423,7 +423,7 @@ describe("获取当前环境", () => {
 
   it("服务端环境", async () => {
     const originalWindow = globalThis.window;
-    // @ts-expect-error 测试中临时移除 window 模拟服务端
+    /* 测试中临时移除 window 模拟服务端（strictNullChecks 放宽后 undefined 可直接赋值） */
     globalThis.window = undefined;
 
     try {

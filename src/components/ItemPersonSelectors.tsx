@@ -6,13 +6,15 @@ import { AssignInspectorModal } from "./AssignInspectorModal";
 
 interface Profile {
   id: string;
-  full_name: string;
+  /* 可空：数据源 员工档案.full_name 本身可选 */
+  full_name?: string | null;
 }
 
 interface MechanicGroup {
   id: string;
   name: string;
-  members: { mechanic_id: string; profiles?: { full_name: string } | null }[];
+  /* full_name 可空：数据源 技师组成员.profiles.full_name 本身可选 */
+  members: { mechanic_id: string; profiles?: { full_name?: string | null } | null }[];
 }
 
 interface ExistingMechanic {

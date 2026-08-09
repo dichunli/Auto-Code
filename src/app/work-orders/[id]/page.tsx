@@ -150,7 +150,7 @@ export default async function WorkOrderDetailPage({
             {是保养单
               ? 创建模式
                 ? "保养单（未保存）"
-                : `保养单 ${order.order_no.replace(/^WO-/, "BY-")}`
+                : `保养单 ${order.order_no!.replace(/^WO-/, "BY-")}`
               : `工单 ${order.order_no}`}
           </h1>
           {是保养单 && (
@@ -525,9 +525,9 @@ export default async function WorkOrderDetailPage({
                         <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />
                         <MaintenanceActionWrapper
                           vehicleId={order.vehicle_id}
-                          customerId={order.customer_id}
+                          customerId={order.customer_id!}
                           orderId={id}
-                          orderNo={order.order_no}
+                          orderNo={order.order_no!}
                           plateNumber={order.vehicles?.plate_number || ""}
                           modelInfo={[order.vehicles?.brand, order.vehicles?.model].filter(Boolean).join(" ")}
                           customerName={order.customers?.name || ""}
@@ -557,9 +557,9 @@ export default async function WorkOrderDetailPage({
                   <TemplateImportWrapper vehicleId={order.vehicle_id} orderId={id} />
                   <MaintenanceActionWrapper
                     vehicleId={order.vehicle_id}
-                    customerId={order.customer_id}
+                    customerId={order.customer_id!}
                     orderId={id}
-                    orderNo={order.order_no}
+                    orderNo={order.order_no!}
                     plateNumber={order.vehicles?.plate_number || ""}
                     modelInfo={[order.vehicles?.brand, order.vehicles?.model].filter(Boolean).join(" ")}
                     customerName={order.customers?.name || ""}
@@ -583,12 +583,12 @@ export default async function WorkOrderDetailPage({
               实际锁定={实际锁定}
               profiles={profiles || []}
               已有需求IDs={(requirements || []).map((r: { id: string }) => r.id)}
-              mechanicGroups={(mechanicGroups || []).map((g: { id: string; name: string; mechanic_group_members?: unknown[] }) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
+              mechanicGroups={(mechanicGroups || []).map((g: { id: string; name: string; mechanic_group_members?: { mechanic_id: string; profiles?: { full_name?: string | null } | null }[] }) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
               vehicleVin={vehicleVin}
               suppliers={suppliers || []}
               logisticsCompanies={logisticsCompanies || []}
             >
-              {requirements?.map((req: { id: string; seq: number; submitted_by?: string; assigned_to_profile?: { full_name?: string } | null; assignment_type?: string; notes?: string }, reqIdx: number) => {
+              {requirements?.map((req, reqIdx) => {
                 /* 显示用序号：按当前列表位置，删中间需求后自动重排（需求1/2/3…） */
                 const 显示序号 = reqIdx + 1;
                 return (
@@ -628,7 +628,7 @@ export default async function WorkOrderDetailPage({
                               groupKey={req.id}
                               tableName="work_order_items"
                             >
-                              {reqItems.map((item: ReqItem, itemIdx: number) => (
+                              {reqItems.map((item, itemIdx) => (
                                 <ItemRowWrapper key={item.id} itemId={item.id}>
                                 <div className={`rounded-lg px-4 py-3 text-sm mb-2 ${item.item_type === 'labor' ? 'bg-blue-50/60 border-l-4 border-blue-300' : 'bg-gray-50/60 border-l-4 border-gray-300'}`}>
                             {/* 移动端项目卡片 */}
@@ -934,7 +934,7 @@ export default async function WorkOrderDetailPage({
                           orderId={id}
                           实际锁定={实际锁定}
                           profiles={profiles || []}
-                          mechanicGroups={(mechanicGroups || []).map((g: { id: string; name: string; mechanic_group_members?: unknown[] }) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
+                          mechanicGroups={(mechanicGroups || []).map((g: { id: string; name: string; mechanic_group_members?: { mechanic_id: string; profiles?: { full_name?: string | null } | null }[] }) => ({ id: g.id, name: g.name, members: g.mechanic_group_members || [] }))}
                           vehicleModelId={vehicleModelId}
                           vehicleVin={vehicleVin}
                           suppliers={suppliers || []}

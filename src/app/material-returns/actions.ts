@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
 /* 退料明细输入（快照字段由前端从工单配件分支/领料记录带入） */
@@ -58,9 +58,9 @@ export async function 创建退料单(
   }
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
-    return { success: false, error: "登录已失效，请重新登录" };
+    return { success: false, error: 登录错误 || "登录已失效，请重新登录" };
   }
 
   const { data, error } = await supabase.rpc("create_material_return_order", {

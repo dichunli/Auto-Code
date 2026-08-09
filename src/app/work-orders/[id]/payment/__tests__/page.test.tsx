@@ -69,8 +69,8 @@ function createMockSupabase(dataOverrides: Record<string, unknown> = {}) {
   };
 
   const defaultItems = [
-    { id: "item-1", name: "更换机油", alias_name: null, item_type: "part" as const, quantity: 1, unit_price: 100, total_price: 100, business_type: "normal" },
-    { id: "item-2", name: "工时费", alias_name: null, item_type: "labor" as const, quantity: 1, unit_price: 150, total_price: 150, business_type: "normal" },
+    { id: "item-1", name: "更换机油", alias_name: null as string | null, item_type: "part" as const, quantity: 1, unit_price: 100, total_price: 100, business_type: "normal" },
+    { id: "item-2", name: "工时费", alias_name: null as string | null, item_type: "labor" as const, quantity: 1, unit_price: 150, total_price: 150, business_type: "normal" },
   ];
 
   const defaultAccounts = [{ id: "acc-1", name: "现金账户" }];

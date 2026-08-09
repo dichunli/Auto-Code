@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
 /* 领料明细输入（快照字段由前端从工单配件分支带入） */
@@ -54,9 +54,9 @@ export async function 创建领料单(
   }
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
-    return { success: false, error: "登录已失效，请重新登录" };
+    return { success: false, error: 登录错误 || "登录已失效，请重新登录" };
   }
 
   const { data, error } = await supabase.rpc("create_picking_order", {
@@ -125,9 +125,9 @@ export async function 申领配件(分支id: string, 数量: number, 备注: str
     return { success: false, error: "申领数量必须是大于 0 的整数" };
   }
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
-    return { success: false, error: "登录已失效，请重新登录" };
+    return { success: false, error: 登录错误 || "登录已失效，请重新登录" };
   }
   const { error } = await supabase.from("part_pick_requests").insert({
     work_order_item_part_id: 分支id,
@@ -144,9 +144,9 @@ export async function 申领配件(分支id: string, 数量: number, 备注: str
 /* 取消申领（仅待出库的可取消） */
 export async function 取消申领(申领id: string): Promise<申领结果> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
-    return { success: false, error: "登录已失效，请重新登录" };
+    return { success: false, error: 登录错误 || "登录已失效，请重新登录" };
   }
   const { error } = await supabase
     .from("part_pick_requests")

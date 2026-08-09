@@ -9,6 +9,10 @@
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
+    /* 暂时放宽空值检查：项目在 ignoreBuildErrors 下攒了 1300+ 处"可能为 null"，
+     * 逐个人工修不现实且易碰坏功能。其余严格检查（类型不匹配/未定义变量等）全部保留。
+     * 后续按模块分批恢复此开关，逐步消化存量（见 2026-08 架构体检报告） */
+    "strictNullChecks": false,
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",

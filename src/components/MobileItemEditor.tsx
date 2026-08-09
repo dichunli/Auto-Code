@@ -79,13 +79,14 @@ interface ItemData {
 interface ItemPart {
   id: string;
   name: string;
-  part_number: string;
+  /* 编码/品牌/规格在数据库中可空（未填即 null），原声明必填过严 */
+  part_number: string | null;
   quantity: number;
   unit_price: number;
   total_price: number;
   unit: string;
-  brand: string;
-  specification: string;
+  brand: string | null;
+  specification: string | null;
   unit_cost?: number | null;
   /* 以下 4 个字段由实时同步广播推送，本组件仅透传合并 */
   cost_price?: number | null;
@@ -1338,7 +1339,9 @@ export default function MobileItemEditor({
       alert("带回配件信息失败: " + error.message);
       return;
     }
-    setSelectedPartForDetail((prev) => (prev ? { ...prev, ...更新 } : prev));
+    /* 更新对象的 unit_cost/unit_price 可空（库存配件可能未设价），而 ItemPart 声明必填；
+     * 数据库已写成功，本地详情面板同步最新值，类型以 ItemPart 为准断言 */
+    setSelectedPartForDetail((prev) => (prev ? { ...prev, ...更新 } as ItemPart : prev));
     if (hit.unit_price != null) {
       window.dispatchEvent(
         new CustomEvent("wo-part-update", { detail: { itemId: item.id, partId: branchId, unit_price: hit.unit_price } })

@@ -27,6 +27,7 @@ export interface SortableRecord {
 }
 
 export interface MediaRecord {
+  id?: string;
   requirement_id?: string;
   work_order_item_id?: string;
   work_order_item_part_id?: string;
