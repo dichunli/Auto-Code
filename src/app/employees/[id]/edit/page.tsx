@@ -33,6 +33,8 @@ interface Employee {
   id_card: string | null;
   id_card_front_url: string | null;
   id_card_back_url: string | null;
+  base_salary: number | null;
+  dingtalk_userid: string | null;
 }
 
 interface Contact {
@@ -55,7 +57,7 @@ export default async function EditEmployeePage({ params }: { params: Promise<{ i
 
   const { data: employee } = await supabase
     .from("profiles")
-    .select("id, full_name, phone, group_id, mechanic_level_id, gender, entry_date, address, notes, is_active, id_card, id_card_front_url, id_card_back_url")
+    .select("id, full_name, phone, group_id, mechanic_level_id, gender, entry_date, address, notes, is_active, id_card, id_card_front_url, id_card_back_url, base_salary, dingtalk_userid")
     .eq("id", id)
     .single();
 

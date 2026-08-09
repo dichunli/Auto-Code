@@ -53,6 +53,8 @@ interface Employee {
   id_card: string | null;
   id_card_front_url: string | null;
   id_card_back_url: string | null;
+  base_salary: number | null;
+  dingtalk_userid: string | null;
 }
 
 interface Contact {
@@ -100,6 +102,12 @@ export function EmployeeEditForm({
   const [idCard, setIdCard] = useState(employee.id_card || "");
   const [idCardFrontUrl, setIdCardFrontUrl] = useState<string>(employee.id_card_front_url || "");
   const [idCardBackUrl, setIdCardBackUrl] = useState<string>(employee.id_card_back_url || "");
+  /* 底薪数字字段按规范用字符串存储，提交时转 number */
+  const [baseSalary, setBaseSalary] = useState(
+    employee.base_salary != null ? String(employee.base_salary) : ""
+  );
+  const [dingtalkUserid, setDingtalkUserid] = useState(employee.dingtalk_userid || "");
+  const [解绑中, set解绑中] = useState(false);
 
   const [contacts, setContacts] = useState<Contact[]>(initialContacts);
   const [originalContactIds] = useState<Set<string>>(
@@ -110,6 +118,25 @@ export function EmployeeEditForm({
     setRoleIds((prev) =>
       prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId]
     );
+  }
+
+  /* 解除钉钉绑定（解绑后该员工不再参与考勤同步） */
+  async function 解绑钉钉() {
+    if (!confirm("确定解除钉钉绑定吗？解绑后该员工不再参与考勤同步，可之后重新匹配。")) return;
+    set解绑中(true);
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ dingtalk_userid: null })
+        .eq("id", employeeId);
+      if (error) throw error;
+      setDingtalkUserid("");
+      alert("已解绑");
+    } catch (err: unknown) {
+      alert("解绑失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      set解绑中(false);
+    }
   }
 
   function addContact() {
@@ -158,6 +185,7 @@ export function EmployeeEditForm({
           id_card: idCard || null,
           id_card_front_url: idCardFrontUrl || null,
           id_card_back_url: idCardBackUrl || null,
+          base_salary: baseSalary.trim() ? Number(baseSalary) : null,
         })
         .eq("id", employeeId);
 
@@ -322,6 +350,47 @@ export function EmployeeEditForm({
                   <option key={l.id} value={l.id}>{l.level_code ? `${l.level_code} ` : ""}{l.name}</option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">月底薪标准（元）</label>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                value={baseSalary}
+                onChange={(e) => setBaseSalary(e.target.value)}
+                placeholder="生成工资单时按出勤折算"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">钉钉绑定（考勤同步用）</label>
+              {dingtalkUserid ? (
+                <div className="flex items-center gap-3 h-9">
+                  <span className="text-xs px-2 py-1 rounded bg-green-50 text-green-700 border border-green-200">
+                    已绑定
+                  </span>
+                  <span className="text-xs text-gray-400">编号 {dingtalkUserid}</span>
+                  <button
+                    type="button"
+                    onClick={解绑钉钉}
+                    disabled={解绑中}
+                    className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                  >
+                    {解绑中 ? "解绑中..." : "解绑"}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center h-9">
+                  <span className="text-xs px-2 py-1 rounded bg-gray-50 text-gray-500 border border-gray-200">
+                    未绑定
+                  </span>
+                  <span className="ml-2 text-xs text-gray-400">到「考勤月报」页点「匹配钉钉账号」自动绑定</span>
+                </div>
+              )}
             </div>
           </div>
 
