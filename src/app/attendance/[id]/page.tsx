@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { PrintButton } from "./PrintButton";
+import { PersonSwitcher } from "./PersonSwitcher";
 
 /* 个人逐日考勤明细（日报表）：每人每天一行，打卡时间+结果+出勤天数+合计 */
 
@@ -77,6 +78,15 @@ export default async function 个人考勤明细页({
     .single();
   if (!员工) notFound();
 
+  /* 人员切换列表：所有已绑定钉钉的在职员工（考勤对象） */
+  const { data: 绑定员工数据 } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .eq("is_active", true)
+    .not("dingtalk_userid", "is", null)
+    .order("full_name", { ascending: true });
+  const 绑定员工们 = (绑定员工数据 ?? []) as { id: string; full_name: string }[];
+
   const { data: 记录数据 } = await supabase
     .from("attendance_records")
     .select("work_date, has_schedule, check_in_at, check_in_result, check_out_at, check_out_result, day_result")
@@ -117,6 +127,7 @@ export default async function 个人考勤明细页({
         >
           ← 返回月报
         </Link>
+        <PersonSwitcher 员工们={绑定员工们} 当前id={id} month={month} />
         <Link
           href={`/attendance/${id}?month=${偏移(-1)}`}
           className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
