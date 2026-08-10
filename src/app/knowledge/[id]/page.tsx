@@ -9,6 +9,7 @@ import { BlockNoteTOC } from "@/components/BlockNoteTOC";
 import { PresentationView } from "@/components/PresentationView";
 import { KnowledgeDeleteButton } from "@/components/KnowledgeDeleteButton";
 import { 是抖音链接, 抖音视频简化卡片 } from "@/components/DouyinVideo";
+import { 消毒Html } from "@/lib/sanitizeHtml";
 
 interface 维修项目关联 {
   service_names: { name: string } | null;
@@ -230,7 +231,8 @@ export default async function KnowledgeDetailPage({
         ) : article.content ? (
           <div
             className="prose prose-sm max-w-none text-gray-700"
-            dangerouslySetInnerHTML={{ __html: article.content }}
+            /* 用户可编辑内容（含 Word 导入）渲染前必须消毒，防 XSS */
+            dangerouslySetInnerHTML={{ __html: 消毒Html(article.content) }}
           />
         ) : null}
 
