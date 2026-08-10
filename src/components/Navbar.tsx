@@ -345,7 +345,7 @@ export function Navbar() {
       {/* 侧边栏 */}
       <aside
         className={cn(
-          "fixed md:static top-14 md:top-auto bottom-0 left-0 z-30 w-56 bg-white border-r border-gray-200 flex flex-col transition-transform duration-200 ease-in-out",
+          "fixed md:static top-14 md:top-auto bottom-0 left-0 z-30 w-56 bg-white border-r border-gray-200 flex flex-col transition-transform duration-200 ease-in-out print:hidden",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
