@@ -67,13 +67,13 @@ function 格式化日期(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** 把毫秒时间戳格式化成 "2026-08-09 08:30:00"（本地时区） */
-function 格式化时间戳(ms: number): string {
-  const d = new Date(ms);
-  const h = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  const s = String(d.getSeconds()).padStart(2, "0");
-  return `${格式化日期(d)} ${h}:${min}:${s}`;
+/**
+ * 毫秒时间戳 → 存库字符串。
+ * 必须用 toISOString()（带 Z 的 UTC 完整格式）：TIMESTAMPTZ 列收到无时区后缀的
+ * 本地时间字符串会按 UTC 解析，导致时间整体偏 8 小时（2026-08-10 踩坑）。
+ */
+function 时间戳转存库格式(ms: number): string {
+  return new Date(ms).toISOString();
 }
 
 /**
@@ -167,9 +167,9 @@ export async function 同步考勤数据(from: Date, to: Date): Promise<同步�
         work_date: 日期串,
         has_schedule: has排班,
         shift_name: 排班?.shiftName || null,
-        check_in_at: 卡?.上班?.userCheckTime ? 格式化时间戳(卡.上班.userCheckTime) : null,
+        check_in_at: 卡?.上班?.userCheckTime ? 时间戳转存库格式(卡.上班.userCheckTime) : null,
         check_in_result: 卡?.上班?.timeResult || null,
-        check_out_at: 卡?.下班?.userCheckTime ? 格式化时间戳(卡.下班.userCheckTime) : null,
+        check_out_at: 卡?.下班?.userCheckTime ? 时间戳转存库格式(卡.下班.userCheckTime) : null,
         check_out_result: 卡?.下班?.timeResult || null,
         day_result: 判定当天结果(has排班, 卡),
         synced_at: 同步时刻,
