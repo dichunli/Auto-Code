@@ -1,26 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
-
-/* 工资记录（含关联的员工姓名与技师等级） */
-interface 工资记录 {
-  id: string;
-  status: string;
-  period_start: string;
-  period_end: string;
-  base_salary: number | null;
-  commission_diagnosis: number | null;
-  commission_repair: number | null;
-  commission_sales: number | null;
-  commission_total: number | null;
-  bonus: number | null;
-  deduction: number | null;
-  total_amount: number | null;
-  profiles: {
-    full_name: string | null;
-    mechanic_levels: { name: string | null } | null;
-  } | null;
-}
+import { PayrollClient, type 工资记录 } from "./PayrollClient";
 
 export default async function PayrollPage() {
   const supabase = await createClient();
@@ -28,21 +9,17 @@ export default async function PayrollPage() {
   const { data: records } = await supabase
     .from("payroll_records")
     .select("*, profiles(full_name, mechanic_levels(name))")
-    .order("period_start", { ascending: false });
+    .order("period_start", { ascending: false })
+    .limit(200);
 
-  const statusMap: Record<string, { label: string; class: string }> = {
-    draft: { label: "草稿", class: "bg-gray-50 text-gray-600" },
-    approved: { label: "已审批", class: "bg-blue-50 text-blue-700" },
-    paid: { label: "已发放", class: "bg-green-50 text-green-700" },
-  };
-
-  const totalBase = records?.reduce((sum, r) => sum + (r.base_salary || 0), 0) || 0;
-  const totalCommission = records?.reduce((sum, r) => sum + (r.commission_total || 0), 0) || 0;
-  const totalAmount = records?.reduce((sum, r) => sum + (r.total_amount || 0), 0) || 0;
+  const 列表 = (records ?? []) as unknown as 工资记录[];
+  const totalBase = 列表.reduce((sum, r) => sum + (r.base_salary || 0), 0);
+  const totalCommission = 列表.reduce((sum, r) => sum + (r.commission_total || 0), 0);
+  const totalAmount = 列表.reduce((sum, r) => sum + (r.total_amount || 0), 0);
 
   return (
     <div className="space-y-6">
-      <PageHeader title="工资提成" description="员工工资与提成记录" />
+      <PageHeader title="工资提成" description="生成工资单：底薪按考勤自动折算，提成人工核对填写" />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -59,61 +36,7 @@ export default async function PayrollPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">员工</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">核算周期</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">基本工资</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">诊断提成</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">维修提成</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">销售提成</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">提成合计</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">奖金/扣款</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">实发金额</th>
-                <th className="px-6 py-3 text-left font-medium text-gray-500">状态</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {records?.map((r: 工资记录) => {
-                const s = statusMap[r.status] || { label: r.status, class: "bg-gray-50 text-gray-600" };
-                return (
-                  <tr key={r.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-gray-900">{r.profiles?.full_name || "-"}</div>
-                      <div className="text-xs text-gray-500">{r.profiles?.mechanic_levels?.name || ""}</div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">
-                      {r.period_start} ~ {r.period_end}
-                    </td>
-                    <td className="px-6 py-4 text-gray-900">{formatCurrency(r.base_salary)}</td>
-                    <td className="px-6 py-4 text-gray-600">{formatCurrency(r.commission_diagnosis)}</td>
-                    <td className="px-6 py-4 text-gray-600">{formatCurrency(r.commission_repair)}</td>
-                    <td className="px-6 py-4 text-gray-600">{formatCurrency(r.commission_sales)}</td>
-                    <td className="px-6 py-4 font-medium text-blue-600">{formatCurrency(r.commission_total)}</td>
-                    <td className="px-6 py-4 text-gray-600">
-                      {(r.bonus ?? 0) > 0 && <span className="text-green-600">+{formatCurrency(r.bonus)}</span>}
-                      {(r.deduction ?? 0) > 0 && <span className="text-red-600">-{formatCurrency(r.deduction)}</span>}
-                      {r.bonus === 0 && r.deduction === 0 && "-"}
-                    </td>
-                    <td className="px-6 py-4 font-bold text-gray-900">{formatCurrency(r.total_amount)}</td>
-                    <td className="px-6 py-4">
-                      <span className={`text-xs px-2 py-0.5 rounded ${s.class}`}>{s.label}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {(!records || records.length === 0) && (
-                <tr>
-                  <td colSpan={10} className="px-6 py-12 text-center text-gray-400">暂无工资记录</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <PayrollClient 记录们={列表} />
     </div>
   );
 }

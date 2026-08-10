@@ -96,6 +96,7 @@ const navItems: NavItem[] = [
   },
   { href: "/tools/management", label: "工具管理" },
   { href: "/employees", label: "员工管理" },
+  { href: "/attendance", label: "考勤月报" },
   {
     href: "/finance",
     label: "财务管理",
@@ -106,6 +107,7 @@ const navItems: NavItem[] = [
       { href: "/finance/other-categories", label: "其它收支分类" },
       { href: "/finance/receivable", label: "应收账款" },
       { href: "/finance/payment-methods", label: "收款方式" },
+      { href: "/finance/payroll", label: "工资提成" },
     ],
   },
   {
