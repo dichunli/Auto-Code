@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { 手动同步考勤, 自动匹配钉钉账号, 保存考勤扣款设置 } from "./actions";
 
 // ============================================================
@@ -426,7 +427,11 @@ export function AttendanceClient({
                 <tbody className="divide-y divide-gray-100">
                   {汇总.map((员) => (
                     <tr key={员.profile_id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{员.姓名}</td>
+                      <td className="px-4 py-2.5 font-medium">
+                        <Link href={`/attendance/${员.profile_id}?month=${month}`} className="text-blue-600 hover:underline">
+                          {员.姓名}
+                        </Link>
+                      </td>
                       <td className="px-4 py-2.5 text-right text-gray-600">{员.应出勤} 天</td>
                       <td className="px-4 py-2.5 text-right text-gray-900">{员.实出勤} 天</td>
                       <td className={`px-4 py-2.5 text-right ${员.迟到 > 0 ? "text-amber-600 font-medium" : "text-gray-400"}`}>
@@ -471,8 +476,10 @@ export function AttendanceClient({
                 <tbody className="divide-y divide-gray-100">
                   {汇总.map((员) => (
                     <tr key={员.profile_id} className="hover:bg-gray-50">
-                      <td className="px-3 py-1.5 font-medium text-gray-900 whitespace-nowrap sticky left-0 bg-white">
-                        {员.姓名}
+                      <td className="px-3 py-1.5 font-medium whitespace-nowrap sticky left-0 bg-white">
+                        <Link href={`/attendance/${员.profile_id}?month=${month}`} className="text-blue-600 hover:underline">
+                          {员.姓名}
+                        </Link>
                       </td>
                       {日期们.map((d) => {
                         const r = 员.按天.get(`${month}-${d}`);
