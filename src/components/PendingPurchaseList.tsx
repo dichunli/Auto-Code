@@ -10,6 +10,7 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { PURCHASE_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
+import { 创建采购单 } from "@/app/procurement/actions";
 
 interface PartBranchRow {
   id: string;
@@ -380,30 +381,8 @@ export function PendingPurchaseList() {
     try {
       const sid = getRowSupplierId(selectedRows[0]);
       if (!sid) throw new Error("无法获取供应商ID");
-      const totalAmount = selectedRows.reduce(
-        (sum, it) => sum + Number(it.unit_cost || 0) * Number(it.quantity || 0),
-        0
-      );
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const randomStr = Math.floor(1000 + Math.random() * 9000);
-      const orderNo = `CG-${dateStr}-${randomStr}`;
 
-      const { data: order, error: orderErr } = await supabase
-        .from("purchase_orders")
-        .insert({
-          order_no: orderNo,
-          supplier_id: sid,
-          status: "submitted",
-          total_amount: totalAmount,
-          logistics_company_id: finalLogisticsId,
-          notes: `由「待采购」批量生成${logisticsName ? ` | 物流: ${logisticsName}` : ""}`,
-        })
-        .select("id")
-        .single();
-
-      if (orderErr || !order) throw orderErr || new Error("创建采购单失败");
-
-      /* 批量查询图片和分类 */
+      /* 批量查询图片和分类（只读查询，用于组装采购明细快照） */
       const workOrderItemIds = selectedRows.map((r) => r.work_order_item_id).filter((x): x is string => !!x);
       const partNameIds = selectedRows.map((r) => r.part_name_id).filter((x): x is string => !!x);
       const [{ data: mediaData }, { data: pnData }] = await Promise.all([
@@ -425,33 +404,33 @@ export function PendingPurchaseList() {
         categoryMap[p.id] = p.part_categories?.name || "";
       }
 
-      const itemInserts = selectedRows.map((it) => ({
-        order_id: order.id,
-        part_id: it.part_id,
-        part_number: it.part_number,
-        name: it.name,
-        supplier_part_name: it.alias_name,
-        brand: it.brand,
-        specification: it.specification,
-        quantity: it.quantity,
-        unit: it.unit,
-        unit_cost: it.unit_cost,
-        category: it.part_name_id ? categoryMap[it.part_name_id] || "" : "",
-        license_plate: it.work_order_items?.work_orders?.vehicles?.plate_number || "",
-        photos: mediaMap[it.work_order_item_id] || [],
-        notes: it.notes,
-        work_order_item_part_id: it.id,
-      }));
-
-      const { error: itemErr } = await supabase.from("purchase_order_items").insert(itemInserts);
-      if (itemErr) throw itemErr;
-
-      const branchIds = selectedRows.map((it) => it.id);
-      const { error: updErr } = await supabase
-        .from("work_order_item_parts")
-        .update({ is_purchased: true, supplier_name: suppliers.find((s) => s.id === sid)?.name || null })
-        .in("id", branchIds);
-      if (updErr) throw updErr;
+      /* 建单头+明细+回写工单配件行已收编进数据库事务函数 create_purchase_orders,
+         单号由服务端序列生成(CG-日期-序号) */
+      const res = await 创建采购单([
+        {
+          supplier_id: sid,
+          status: "submitted",
+          logistics_company_id: finalLogisticsId,
+          notes: `由「待采购」批量生成${logisticsName ? ` | 物流: ${logisticsName}` : ""}`,
+          items: selectedRows.map((it) => ({
+            part_id: it.part_id,
+            part_number: it.part_number,
+            name: it.name,
+            supplier_part_name: it.alias_name,
+            brand: it.brand,
+            specification: it.specification,
+            quantity: it.quantity,
+            unit: it.unit,
+            unit_cost: it.unit_cost,
+            category: it.part_name_id ? categoryMap[it.part_name_id] || "" : "",
+            license_plate: it.work_order_items?.work_orders?.vehicles?.plate_number || "",
+            photos: mediaMap[it.work_order_item_id] || [],
+            notes: it.notes,
+            work_order_item_part_id: it.id,
+          })),
+        },
+      ]);
+      if (!res.success) throw new Error(res.error || "创建采购单失败");
 
       alert("已生成 1 张采购单(已提交),请到「待收货」或「采购订单」中查看。");
       setShowLogisticsModal(false);
@@ -567,52 +546,28 @@ export function PendingPurchaseList() {
 
     setSubmitting(true);
     try {
-      const supplierIds = Object.keys(groups);
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      let createdCount = 0;
-
-      for (let idx = 0; idx < supplierIds.length; idx++) {
-        const sid = supplierIds[idx];
-        const items = groups[sid];
-        const totalAmount = items.reduce(
-          (sum, it) => sum + Number(it.unit_cost || 0) * (stockQtyMap[it.id] || 1),
-          0
-        );
-        const randomStr = Math.floor(1000 + Math.random() * 9000);
-        const orderNo = `CG-${dateStr}-${randomStr}`;
-
-        const { data: order, error: orderErr } = await supabase
-          .from("purchase_orders")
-          .insert({
-            order_no: orderNo,
-            supplier_id: sid,
-            status: "draft",
-            total_amount: totalAmount,
-            notes: "由「安全库存补货」批量生成",
-          })
-          .select("id")
-          .single();
-
-        if (orderErr || !order) throw orderErr || new Error("创建采购单失败");
-
-        const itemInserts = items.map((it) => ({
-          order_id: order.id,
+      /* 全部供应商分组的建单一次事务完成,不再逐供应商循环
+         (原先某一供应商失败会导致前面已生成、后面不再生成的半成品状态) */
+      const 分组 = Object.keys(groups).map((sid) => ({
+        supplier_id: sid,
+        status: "draft",
+        notes: "由「安全库存补货」批量生成",
+        items: groups[sid].map((it) => ({
           part_id: it.id,
           part_number: it.part_number,
           name: it.name,
           brand: it.brand,
           specification: it.specification,
           quantity: stockQtyMap[it.id] || 1,
+          unit: it.unit,
           unit_cost: it.unit_cost,
-        }));
+        })),
+      }));
 
-        const { error: itemErr } = await supabase.from("purchase_order_items").insert(itemInserts);
-        if (itemErr) throw itemErr;
+      const res = await 创建采购单(分组);
+      if (!res.success) throw new Error(res.error || "创建采购单失败");
 
-        createdCount++;
-      }
-
-      alert(`已生成 ${createdCount} 张采购单(草稿状态),请到「采购订单」中审批并发出。`);
+      alert(`已生成 ${res.orders?.length ?? 分组.length} 张采购单(草稿状态),请到「采购订单」中审批并发出。`);
       setShowStockModal(false);
     } catch (err: unknown) {
       const e = err as Error;

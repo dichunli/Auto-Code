@@ -4,6 +4,7 @@ import {useState, useEffect, useRef, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
+import { 保存供应商档案 } from "@/app/suppliers/actions";
 import { PageHeader } from "@/components/PageHeader";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -276,119 +277,45 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
     if (!form.name.trim()) { alert("请输入供应商名称"); return; }
     setSaving(true);
 
-    // 基础字段（ suppliers 表一定存在）
-    const basePayload: Record<string, string | null> = {
-      name: form.name.trim(),
-      contact: form.contact.trim() || null,
-      phone: form.phone.trim() || null,
-      address: form.address.trim() || null,
-      notes: form.notes.trim() || null,
-    };
-
-    // 扩展字段（迁移后才有，不存在的字段会单独尝试）
-    const extPayload: Record<string, string | null | number> = {
-      region: form.region || "harbin",
-      wechat_id: form.wechat_id.trim() || null,
-      wechat_group_qr: wechatGroupQr || null,
-      wrong_shipment_count: parseInt(form.wrong_shipment_count) || 0,
-      quality_return_count: parseInt(form.quality_return_count) || 0,
-      recommendation_level: parseInt(form.recommendation_level) || 0,
-    };
-
-    let sid = supplierId;
-
-    if (editMode && sid) {
-      // 先尝试完整更新
-      const { error } = await supabase.from("suppliers").update({ ...basePayload, ...extPayload }).eq("id", sid);
-      if (error) {
-        // 如果因为字段不存在报错，只更新基础字段
-        if (error.message?.includes("column") || error.code === "42703") {
-          const { error: baseError } = await supabase.from("suppliers").update(basePayload).eq("id", sid);
-          if (baseError) { alert("保存失败: " + baseError.message); setSaving(false); return; }
-        } else {
-          alert("保存失败: " + error.message); setSaving(false); return;
-        }
+    try {
+      /* 主表+5 张关联表已收编进数据库事务函数 save_supplier_full,
+         任一失败整体回滚,不再出现"主表存了但联系人被清空"的半成品状态。
+         注意:不再做"扩展列不存在则降级"的静默兼容——若报列不存在,
+         说明数据库迁移没跑全,请先在 Supabase 执行补齐迁移 */
+      const res = await 保存供应商档案(
+        {
+          id: editMode ? supplierId : null,
+          name: form.name,
+          contact: form.contact,
+          phone: form.phone,
+          address: form.address,
+          notes: form.notes,
+          region: form.region,
+          wechat_id: form.wechat_id,
+          wechat_group_qr: wechatGroupQr || null,
+          wrong_shipment_count: form.wrong_shipment_count,
+          quality_return_count: form.quality_return_count,
+          recommendation_level: form.recommendation_level,
+        },
+        contacts,
+        linkedCategories.map((c) => c.id),
+        linkedPartNames.map((p) => p.id),
+        linkedBrands.map((b) => b.id),
+        linkedVehicles.map((v) => v.id)
+      );
+      if (!res.success) {
+        alert("保存失败: " + (res.error || "未知错误"));
+        return;
       }
-    } else {
-      /* 扩展字段是迁移后加的，supabase 生成类型里没有，故对合并后的 payload 做一次边界断言 */
-      const { data: inserted, error } = await supabase.from("suppliers").insert(({ ...basePayload, ...extPayload }) as unknown as Record<string, never>).select("id").single();
-      if (error) {
-        if (error.message?.includes("column") || error.code === "42703") {
-          const { data: inserted2, error: baseError } = await supabase.from("suppliers").insert(basePayload).select("id").single();
-          if (baseError || !inserted2) { alert("保存失败: " + (baseError?.message || "未知错误")); setSaving(false); return; }
-          sid = inserted2.id;
-        } else {
-          alert("保存失败: " + error.message); setSaving(false); return;
-        }
-      } else {
-        sid = inserted?.id;
-      }
+
+      await 刷新基础数据缓存();
+      router.push("/suppliers");
+      router.refresh();
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSaving(false);
     }
-
-    if (!sid) { setSaving(false); return; }
-
-    // 以下关联表操作忽略错误（表可能不存在）
-    // 同步联系人
-    try {
-      await supabase.from("supplier_contacts").delete().eq("supplier_id", sid);
-      const validContacts = contacts.filter((c) => c.name.trim());
-      if (validContacts.length > 0) {
-        await supabase.from("supplier_contacts").insert(
-          validContacts.map((c) => ({
-            supplier_id: sid,
-            name: c.name.trim(),
-            phone: c.phone.trim() || null,
-            title: c.title.trim() || null,
-            is_primary: c.is_primary,
-            notes: c.notes.trim() || null,
-          }))
-        );
-      }
-    } catch { /* 忽略 */ }
-
-    // 同步关联分类
-    try {
-      await supabase.from("supplier_part_categories").delete().eq("supplier_id", sid);
-      if (linkedCategories.length > 0) {
-        await supabase.from("supplier_part_categories").insert(
-          linkedCategories.map((c) => ({ supplier_id: sid, part_category_id: c.id }))
-        );
-      }
-    } catch { /* 忽略 */ }
-
-    // 同步关联配件名称
-    try {
-      await supabase.from("supplier_part_names").delete().eq("supplier_id", sid);
-      if (linkedPartNames.length > 0) {
-        await supabase.from("supplier_part_names").insert(
-          linkedPartNames.map((p) => ({ supplier_id: sid, part_name_id: p.id }))
-        );
-      }
-    } catch { /* 忽略 */ }
-
-    // 同步关联品牌
-    try {
-      await supabase.from("supplier_part_brands").delete().eq("supplier_id", sid);
-      if (linkedBrands.length > 0) {
-        await supabase.from("supplier_part_brands").insert(
-          linkedBrands.map((b) => ({ supplier_id: sid, part_brand_id: b.id }))
-        );
-      }
-    } catch { /* 忽略 */ }
-
-    // 同步关联车型
-    try {
-      await supabase.from("supplier_vehicle_models").delete().eq("supplier_id", sid);
-      if (linkedVehicles.length > 0) {
-        await supabase.from("supplier_vehicle_models").insert(
-          linkedVehicles.map((v) => ({ supplier_id: sid, vehicle_model_id: v.id }))
-        );
-      }
-    } catch { /* 忽略 */ }
-
-    await 刷新基础数据缓存();
-    router.push("/suppliers");
-    router.refresh();
   }
 
   if (loading) {
