@@ -261,6 +261,8 @@ export interface 询价单公开信息 {
   items: {
     itemId: string;
     partName: string;
+    /* 单据名称（工单配件行的 document_name，供应商对照送货单用） */
+    documentName: string;
     quantity: number | null;
     unit: string;
     vehicleModel: string;
@@ -304,7 +306,7 @@ export async function 获取询价单公开信息(token: string): Promise<结果
 
   const { data: 明细 } = await admin
     .from("supplier_quote_items")
-    .select("id, part_name, quantity, unit, vehicle_model, quoted_part_number, quoted_brand, quoted_specification, quoted_price, quoted_notes, quoted_images, is_supplier_added, work_order_item_parts(work_order_items(work_orders(vehicles(vin, plate_number))))")
+    .select("id, part_name, quantity, unit, vehicle_model, quoted_part_number, quoted_brand, quoted_specification, quoted_price, quoted_notes, quoted_images, is_supplier_added, work_order_item_parts(document_name, work_order_items(work_orders(vehicles(vin, plate_number))))")
     .eq("sheet_id", 单.id)
     .order("created_at", { ascending: true });
 
@@ -322,6 +324,7 @@ export async function 获取询价单公开信息(token: string): Promise<结果
     quoted_images: string[] | null;
     is_supplier_added: boolean | null;
     work_order_item_parts: {
+      document_name: string | null;
       work_order_items: {
         work_orders: { vehicles: { vin: string | null; plate_number: string | null } | null } | null;
       } | null;
@@ -338,6 +341,7 @@ export async function 获取询价单公开信息(token: string): Promise<结果
       items: ((明细 || []) as unknown as 明细行[]).map((i) => ({
         itemId: i.id,
         partName: i.part_name || "配件",
+        documentName: i.work_order_item_parts?.document_name || "",
         quantity: i.quantity,
         unit: i.unit || "件",
         vehicleModel: i.vehicle_model || "",
@@ -384,12 +388,13 @@ export async function 添加供应商分支(token: string, 源itemId: string): P
 
   const { data: 源行 } = await admin
     .from("supplier_quote_items")
-    .select("part_name, quantity, unit, vehicle_model, work_order_item_part_id")
+    .select("part_name, quantity, unit, vehicle_model, work_order_item_part_id, work_order_item_parts(document_name)")
     .eq("id", 源itemId)
     .eq("sheet_id", 单.id)
     .maybeSingle();
   if (!源行) return { success: false, error: "源配件行不存在" };
-  const 源 = 源行 as { part_name: string | null; quantity: number | null; unit: string | null; vehicle_model: string | null; work_order_item_part_id: string };
+  /* 关联查询在类型推导里是数组，实际 work_order_item_part_id 是唯一外键返回单对象 */
+  const 源 = 源行 as unknown as { part_name: string | null; quantity: number | null; unit: string | null; vehicle_model: string | null; work_order_item_part_id: string; work_order_item_parts: { document_name: string | null } | null };
 
   const { data: 新行, error } = await admin
     .from("supplier_quote_items")
@@ -412,6 +417,7 @@ export async function 添加供应商分支(token: string, 源itemId: string): P
     item: {
       itemId: 新id,
       partName: 源.part_name || "配件",
+      documentName: 源.work_order_item_parts?.document_name || "",
       quantity: 源.quantity,
       unit: 源.unit || "件",
       vehicleModel: 源.vehicle_model || "",

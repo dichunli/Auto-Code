@@ -14,6 +14,8 @@ import { copyText } from "@/lib/copyText";
 interface 行状态 {
   itemId: string;
   partName: string;
+  /* 单据名称（供应商送货单上的名字，只读展示） */
+  documentName: string;
   quantity: number | null;
   unit: string;
   vehicleModel: string;
@@ -54,6 +56,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
     初始数据.items.map((i) => ({
       itemId: i.itemId,
       partName: i.partName,
+      documentName: i.documentName,
       quantity: i.quantity,
       unit: i.unit,
       vehicleModel: i.vehicleModel,
@@ -113,6 +116,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
     const 新行: 行状态 = {
       itemId: r.item.itemId,
       partName: r.item.partName,
+      documentName: r.item.documentName,
       quantity: r.item.quantity,
       unit: r.item.unit,
       vehicleModel: r.item.vehicleModel,
@@ -338,6 +342,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
               <tr>
                 <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50">编码</th>
                 <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50">配件</th>
+                <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50">单据名称</th>
                 <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50">品牌</th>
                 <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50">规格</th>
                 <th className="px-2 py-2 text-right font-bold text-gray-700 sticky top-0 bg-gray-50">数量</th>
@@ -355,7 +360,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
                 <Fragment key={`grp-${g.key}`}>
                   {/* 组头：隐藏车牌，VIN 放大加粗 + 复制按钮（无 VIN 时兜底显示车牌） */}
                   <tr key={`grp-${g.key}`} className="bg-gray-200">
-                    <td colSpan={9} className="px-3 py-2">
+                    <td colSpan={10} className="px-3 py-2">
                       {g.vin ? (
                         <span className="inline-flex items-center gap-1.5">
                           <span className="text-sm font-bold text-gray-900 font-mono">VIN:{g.vin}</span>
@@ -437,6 +442,8 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
                           <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-700">备选</span>
                         )}
                       </td>
+                      {/* 单据名称（只读，供应商对照送货单） */}
+                      <td className="px-2 py-2 text-gray-700">{r.documentName || "-"}</td>
                       {/* 品牌 */}
                       <td className="px-2 py-2">
                         <input
