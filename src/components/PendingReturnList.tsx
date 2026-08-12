@@ -23,6 +23,7 @@ interface WorkOrderItemPart {
   unit_cost: number | null;
   notes: string | null;
   supplier_id: string | null;
+  document_name: string | null;
 }
 
 interface ReturnRecord {
@@ -92,7 +93,7 @@ export function PendingReturnList() {
     const { data, error } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes), profiles(full_name)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
       )
       .eq("status", "pending")
       .order("created_at", { ascending: false });
@@ -459,6 +460,7 @@ export function PendingReturnList() {
                     />
                   </th>
                   <th className="px-6 py-3 text-left font-medium text-gray-500">配件信息</th>
+                  <th className="px-6 py-3 text-left font-medium text-gray-500">单据名称</th>
                   <th className="px-6 py-3 text-left font-medium text-gray-500">退货原因</th>
                   <th className="px-6 py-3 text-left font-medium text-gray-500">数量</th>
                   <th className="px-6 py-3 text-left font-medium text-gray-500">物流信息</th>
@@ -505,6 +507,7 @@ export function PendingReturnList() {
                         )}
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-gray-700">{r.work_order_item_parts?.document_name || "-"}</td>
                     <td className="px-6 py-4 text-gray-600">{returnReasonMap[r.return_reason] || r.return_reason}</td>
                     <td className="px-6 py-4 text-gray-600">{r.quantity}</td>
                     <td className="px-6 py-4 text-gray-500 text-xs">

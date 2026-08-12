@@ -28,7 +28,7 @@ interface ReturnRecord {
   photos: string[] | null;
   status: string;
   created_at: string;
-  work_order_item_parts: { name: string; part_number: string | null } | null;
+  work_order_item_parts: { name: string; part_number: string | null; document_name: string | null } | null;
   profiles: { full_name: string | null } | null;
   purchase_return_orders: ReturnOrderInfo | null;
 }
@@ -45,7 +45,7 @@ export function CompletedReturnList() {
     const { data, error } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, work_order_item_parts(name, part_number), profiles(full_name), purchase_return_orders(id, return_no)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, work_order_item_parts(name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no)"
       )
       .eq("status", "completed")
       .order("created_at", { ascending: false });
@@ -148,6 +148,7 @@ export function CompletedReturnList() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left font-medium text-gray-500">配件名称</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">单据名称</th>
               <th className="px-6 py-3 text-left font-medium text-gray-500">采退单号</th>
               <th className="px-6 py-3 text-left font-medium text-gray-500">退货原因</th>
               <th className="px-6 py-3 text-left font-medium text-gray-500">数量</th>
@@ -167,6 +168,7 @@ export function CompletedReturnList() {
                     <div className="text-xs text-gray-400">{r.work_order_item_parts.part_number}</div>
                   )}
                 </td>
+                <td className="px-6 py-4 text-gray-700">{r.work_order_item_parts?.document_name || "-"}</td>
                 <td className="px-6 py-4">
                   {r.purchase_return_orders ? (
                     <Link

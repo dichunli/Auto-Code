@@ -27,6 +27,7 @@ interface PartBranchRow {
   part_number: string | null;
   part_name_id: string | null;
   alias_name: string | null;
+  document_name: string | null;
   notes: string | null;
   purchase_reason: string | null;
   work_order_item_id: string;
@@ -68,6 +69,7 @@ interface LowStockPart {
   unit_cost: number | null;
   supplier_id: string | null;
   supplier_name: string | null;
+  document_name: string | null;
 }
 
 type GroupBy = "plate" | "category" | "name" | "supplier";
@@ -163,7 +165,7 @@ export function PendingPurchaseList() {
         .select(`
           id, name, brand, specification, unit, quantity, unit_cost, unit_price,
           customer_opinion, supplier_name, part_id, part_number, part_name_id,
-          alias_name, notes, purchase_reason, work_order_item_id,
+          alias_name, notes, purchase_reason, work_order_item_id, document_name,
           work_order_items(
             name,
             work_orders(
@@ -456,13 +458,14 @@ export function PendingPurchaseList() {
     unit_cost: number | null;
     supplier_id: string | null;
     suppliers?: { name?: string | null } | null;
+    document_name?: string | null;
   }
 
   async function loadLowStockParts() {
     setStockLoading(true);
     const { data } = await supabase
       .from("parts")
-      .select("id, part_number, name, part_brands(name), part_specifications(name), unit, quantity, min_stock, unit_cost, supplier_id, suppliers(name)")
+      .select("id, part_number, name, part_brands(name), part_specifications(name), unit, quantity, min_stock, unit_cost, supplier_id, suppliers(name), document_name")
       .order("name");
 
     const list: LowStockPart[] = ((data || []) as unknown as PartRow[])
@@ -479,6 +482,7 @@ export function PendingPurchaseList() {
         unit_cost: p.unit_cost,
         supplier_id: p.supplier_id,
         supplier_name: p.suppliers?.name || null,
+        document_name: p.document_name || null,
       }));
 
     setLowStockParts(list);
@@ -697,6 +701,7 @@ export function PendingPurchaseList() {
               <th className="px-3 py-3 text-left font-medium text-gray-500">客户/车牌</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">项目</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">配件</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500">单据名称</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">编码</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">数量</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">采购价</th>
@@ -771,6 +776,7 @@ export function PendingPurchaseList() {
                             </span>
                           )}
                         </td>
+                        <td className="px-3 py-3 text-gray-700">{r.document_name || "-"}</td>
                         <td className="px-3 py-3">
                           <PartSearchDropdown
                             value={r.part_number || ""}
@@ -952,6 +958,7 @@ export function PendingPurchaseList() {
                         />
                       </th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500">配件</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">单据名称</th>
                       <th className="px-3 py-2 text-right font-medium text-gray-500">当前库存</th>
                       <th className="px-3 py-2 text-right font-medium text-gray-500">安全线</th>
                       <th className="px-3 py-2 text-right font-medium text-gray-500">采购价</th>
@@ -974,6 +981,7 @@ export function PendingPurchaseList() {
                           <div className="text-base font-medium text-gray-900">{p.name}</div>
                           <div className="text-sm text-gray-400">{p.part_number || ""} {p.brand || ""} {p.specification || ""}</div>
                         </td>
+                        <td className="px-3 py-2 text-gray-700">{p.document_name || "-"}</td>
                         <td className="px-3 py-2 text-right text-red-600 font-medium">{p.quantity}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{p.min_stock}</td>
                         <td className="px-3 py-2 text-right text-gray-700"><PriceValue value={p.unit_cost} /></td>

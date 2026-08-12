@@ -48,6 +48,7 @@ interface PartBranchRow {
   part_id: string | null;
   part_number: string | null;
   notes: string | null;
+  document_name: string | null;
   part_names: {
     name: string | null;
     category_id: string | null;
@@ -61,6 +62,7 @@ interface PartBranchRow {
     unit_cost: number | null;
     unit_price: number | null;
     notes?: string | null;
+    document_name?: string | null;
     part_brands: { name: string | null } | null;
     part_specifications: { name: string | null } | null;
     part_images: { storage_path: string }[] | null;
@@ -220,10 +222,10 @@ export function PartBranchStatusList({ status }: Props) {
         .select(`
           id, name, brand, specification, unit, quantity, unit_cost, unit_price,
           customer_opinion, supplier_name, is_purchased, is_arrived,
-          work_order_item_id, part_name_id, branch_group_id, part_id, part_number, notes,
+          work_order_item_id, part_name_id, branch_group_id, part_id, part_number, notes, document_name,
           part_names(name, category_id, part_categories(name)),
           parts(
-            id, part_number, name, quantity, unit_cost, unit_price, notes,
+            id, part_number, name, quantity, unit_cost, unit_price, notes, document_name,
             part_brands(name),
             part_specifications(name),
             part_images(storage_path)
@@ -1134,6 +1136,8 @@ export function PartBranchStatusList({ status }: Props) {
           />
         </td>
         <td className={`px-2 py-2 text-gray-900 ${改了("name") ? "text-blue-700 font-medium" : ""}`}>{nameValue}</td>
+        {/* 单据名称(供应商送货单上的名字):分支自己的优先,兜底配件信息里的 */}
+        <td className="px-2 py-2 text-gray-700">{row.document_name || row.parts?.document_name || "-"}</td>
         <td className="px-2 py-2">
           <input
             type="text"
@@ -1575,6 +1579,7 @@ export function PartBranchStatusList({ status }: Props) {
               <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">工单号</th>
               <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">编码</th>
               <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">配件</th>
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">单据名称</th>
               <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">品牌</th>
               <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">规格</th>
               <th className="px-2 py-2 text-right font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">数量</th>
