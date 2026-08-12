@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
@@ -141,7 +141,36 @@ export default function TrainingContent({
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
 
+  /* 分类下拉展开状态 */
+  const [分类下拉展开, set分类下拉展开] = useState(false);
+  const 分类下拉Ref = useRef<HTMLDivElement>(null);
+
+  /* 点击下拉框外部时自动收起 */
+  useEffect(() => {
+    if (!分类下拉展开) return;
+    function 处理外部点击(e: MouseEvent) {
+      if (分类下拉Ref.current && !分类下拉Ref.current.contains(e.target as Node)) {
+        set分类下拉展开(false);
+      }
+    }
+    document.addEventListener("mousedown", 处理外部点击);
+    return () => document.removeEventListener("mousedown", 处理外部点击);
+  }, [分类下拉展开]);
+
   const 分类树 = useMemo(() => 构建分类树(categories), [categories]);
+
+  /* 当前选中分类的名称（用于按钮显示） */
+  const 选中分类名称 = useMemo(() => {
+    if (!selectedCategoryId) return "全部分类";
+    const 目标 = categories.find((c) => c.id === selectedCategoryId);
+    return 目标 ? 目标.name : "全部分类";
+  }, [selectedCategoryId, categories]);
+
+  /* 选中分类后收起下拉 */
+  function 选择分类(id: string | null) {
+    setSelectedCategoryId(id);
+    set分类下拉展开(false);
+  }
 
   /* 根据筛选条件过滤课程 */
   const 筛选后课程 = useMemo(() => {
@@ -282,65 +311,87 @@ export default function TrainingContent({
         </div>
       </div>
 
-      {/* 专题筛选标签栏 */}
-      {topics.length > 0 && (
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm text-gray-500 mr-1">专题:</span>
-          <button
-            onClick={() => setSelectedTopicId(null)}
-            className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-              !selectedTopicId
-                ? "bg-gray-700 text-white border-gray-700"
-                : "bg-white text-gray-500 border-gray-300 hover:border-gray-400"
-            }`}
-          >
-            全部
-          </button>
-          {topics.map((t) => (
+      {/* 筛选栏：分类下拉 + 专题标签 */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {/* 分类下拉 */}
+        {categories.length > 0 && (
+          <div ref={分类下拉Ref} className="relative">
+            <span className="text-sm text-gray-500 mr-1">分类:</span>
             <button
-              key={t.id}
-              onClick={() => setSelectedTopicId(selectedTopicId === t.id ? null : t.id)}
-              className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                selectedTopicId === t.id
+              onClick={() => set分类下拉展开(!分类下拉展开)}
+              className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-full border transition-colors ${
+                selectedCategoryId
                   ? "bg-blue-600 text-white border-blue-600"
                   : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"
               }`}
             >
-              {t.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="flex gap-6">
-        {/* 分类树侧栏 */}
-        {categories.length > 0 && (
-          <div className="w-48 flex-shrink-0">
-            <div className="bg-white rounded-xl border border-gray-200 p-3 sticky top-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">分类筛选</h3>
-              <button
-                onClick={() => setSelectedCategoryId(null)}
-                className={`w-full text-left px-2 py-1.5 text-sm rounded mb-1 transition-colors ${
-                  !selectedCategoryId ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-600 hover:bg-gray-50"
-                }`}
+              {选中分类名称}
+              <svg
+                className={`w-3 h-3 transition-transform ${分类下拉展开 ? "rotate-180" : ""}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
               >
-                全部
-              </button>
-              {分类树.map((node) => (
-                <CategoryTreeNode
-                  key={node.id}
-                  item={node}
-                  depth={0}
-                  selectedId={selectedCategoryId}
-                  onSelect={setSelectedCategoryId}
-                />
-              ))}
-            </div>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* 下拉面板 */}
+            {分类下拉展开 && (
+              <div className="absolute left-0 top-full mt-1 z-20 w-56 max-h-80 overflow-y-auto bg-white rounded-xl border border-gray-200 shadow-lg p-2">
+                <button
+                  onClick={() => 选择分类(null)}
+                  className={`w-full text-left px-2 py-1.5 text-sm rounded mb-1 transition-colors ${
+                    !selectedCategoryId ? "bg-blue-100 text-blue-700 font-medium" : "text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  全部分类
+                </button>
+                {分类树.map((node) => (
+                  <CategoryTreeNode
+                    key={node.id}
+                    item={node}
+                    depth={0}
+                    selectedId={selectedCategoryId}
+                    onSelect={选择分类}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* 课程卡片网格 */}
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {/* 专题筛选标签 */}
+        {topics.length > 0 && (
+          <>
+            <span className="text-sm text-gray-500 mr-1">专题:</span>
+            <button
+              onClick={() => setSelectedTopicId(null)}
+              className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                !selectedTopicId
+                  ? "bg-gray-700 text-white border-gray-700"
+                  : "bg-white text-gray-500 border-gray-300 hover:border-gray-400"
+              }`}
+            >
+              全部
+            </button>
+            {topics.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setSelectedTopicId(selectedTopicId === t.id ? null : t.id)}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  selectedTopicId === t.id
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"
+                }`}
+              >
+                {t.name}
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* 课程卡片网格 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {筛选后课程.map((course) => (
           <div
             key={course.id}
@@ -401,7 +452,6 @@ export default function TrainingContent({
             {selectedCategoryId || selectedTopicId ? "没有匹配的课程" : "暂无课程"}
           </div>
         )}
-        </div>
       </div>
     </div>
   );
