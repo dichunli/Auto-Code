@@ -90,6 +90,10 @@ scripts/*
 !scripts/smoke-test.mjs
 # 认证回归测试脚本同属长期设施
 !scripts/auth-test.mjs
+# 生产运维脚本同属长期设施（对账/备份/告警，生产机计划任务使用）
+!scripts/weekly-stock-check.js
+!scripts/backup-export.js
+!scripts/error-watch.js
 
 certificates
 # 构建产物副本
