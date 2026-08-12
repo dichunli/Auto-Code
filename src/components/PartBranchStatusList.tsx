@@ -754,8 +754,17 @@ export function PartBranchStatusList({ status }: Props) {
   }
 
   async function submitAll() {
-    const rowIds = Object.keys(edits);
-    if (rowIds.length === 0) return;
+    /* 只保留有真实改动的行(getDbUpdate 判定):填了又清空、改回原样的行不算改动,
+       既不参与校验拦截,也不计入提交条数 */
+    const rowIds = Object.keys(edits).filter((id) => {
+      const row = rows.find((r) => r.id === id);
+      return row ? getDbUpdate(row) !== null : false;
+    });
+    if (rowIds.length === 0) {
+      setEdits({});
+      setReplacePartIds({});
+      return;
+    }
 
     /* 提交校验：
      * 待询价页（用户定的规则）——供应商和采购价必须同时填写：
@@ -764,10 +773,12 @@ export function PartBranchStatusList({ status }: Props) {
     for (const id of rowIds) {
       const row = rows.find((r) => r.id === id);
       if (!row) continue;
-      const newCost = edits[id]?.cost !== undefined ? Number(edits[id].cost || 0) : Number(row.unit_cost || 0);
-      const newPrice = edits[id]?.price !== undefined ? Number(edits[id].price || 0) : Number(row.unit_price || 0);
-      const newOpinion = edits[id]?.customer_opinion !== undefined ? edits[id].customer_opinion : row.customer_opinion;
-      const newSupplier = edits[id]?.supplier !== undefined ? edits[id].supplier : row.supplier_name;
+      /* 只把"真实改动过的字段"叠到原值上;无效草稿(填了又清空)不覆盖原值 */
+      const 改动 = getDbUpdate(row)!;
+      const newCost = "unit_cost" in 改动 ? Number(改动.unit_cost || 0) : Number(row.unit_cost || 0);
+      const newPrice = "unit_price" in 改动 ? Number(改动.unit_price || 0) : Number(row.unit_price || 0);
+      const newOpinion = "customer_opinion" in 改动 ? 改动.customer_opinion : row.customer_opinion;
+      const newSupplier = ("supplier_name" in 改动 ? 改动.supplier_name : row.supplier_name) as string | null;
 
       if (status === "pending_inquiry") {
         const 有采购价 = newCost > 0;
@@ -855,7 +866,11 @@ export function PartBranchStatusList({ status }: Props) {
     }
   }
 
-  const changedCount = Object.keys(edits).length;
+  /* 提交条数只计有真实改动的行(填了又清空不计) */
+  const changedCount = Object.keys(edits).filter((id) => {
+    const row = rows.find((r) => r.id === id);
+    return row ? getDbUpdate(row) !== null : false;
+  }).length;
 
   /* 在当前配件上添加同项目分支 */
   async function handleAddSiblingBranch(row: PartBranchRow) {
@@ -1077,10 +1092,15 @@ export function PartBranchStatusList({ status }: Props) {
     const quantityValue = quantityDraft !== undefined ? quantityDraft : (row.quantity != null ? String(row.quantity) : "");
 
     const hasDraft = !!edits[row.id] && Object.keys(edits[row.id]!).length > 0;
-    const branchBg = hasDraft ? "" : BRANCH_BG_COLORS[branchColorIndex % BRANCH_BG_COLORS.length];
+    /* 真实改动集:getDbUpdate 已做 trim/null 归一 + 与原值逐字段比较。
+       填了又清空、改回原样,都不算改动——标黄/行底色/提交计数全部以此为准 */
+    const 真实改动 = hasDraft ? getDbUpdate(row) : null;
+    const 行有已填草稿 = 真实改动 !== null;
+    const 改了 = (列名: string) => 真实改动 !== null && 列名 in 真实改动;
+    const branchBg = 行有已填草稿 ? "" : BRANCH_BG_COLORS[branchColorIndex % BRANCH_BG_COLORS.length];
 
     return (
-      <tr key={row.id} className={`hover:bg-gray-50 ${hasDraft ? "bg-yellow-50/40" : branchBg} ${isNewBranch ? "border-t-2 border-gray-200" : ""}`}>
+      <tr key={row.id} className={`hover:bg-gray-50 ${行有已填草稿 ? "bg-yellow-50/40" : branchBg} ${isNewBranch ? "border-t-2 border-gray-200" : ""}`}>
         <td className="px-2 py-2">
           <input
             type="checkbox"
@@ -1110,10 +1130,10 @@ export function PartBranchStatusList({ status }: Props) {
             onClear={() => handleInlineClear(row)}
             disabled={isSaving}
             placeholder="编码/条码"
-            inputClassName={`w-28 bg-white placeholder:text-gray-400 ${hasDraft && partNumberDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
+            inputClassName={`w-28 bg-white placeholder:text-gray-400 ${改了("part_number") ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
         </td>
-        <td className={`px-2 py-2 text-gray-900 ${hasDraft && nameDraft !== undefined ? "text-blue-700 font-medium" : ""}`}>{nameValue}</td>
+        <td className={`px-2 py-2 text-gray-900 ${改了("name") ? "text-blue-700 font-medium" : ""}`}>{nameValue}</td>
         <td className="px-2 py-2">
           <input
             type="text"
@@ -1123,7 +1143,7 @@ export function PartBranchStatusList({ status }: Props) {
             onKeyDown={(e) => handleKeyDown(e, row, "brand")}
             placeholder="品牌（选填）"
             list="brand-suggestions"
-            className={`w-24 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && brandDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
+            className={`w-24 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${改了("brand") ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
         </td>
         <td className="px-2 py-2">
@@ -1135,7 +1155,7 @@ export function PartBranchStatusList({ status }: Props) {
             onKeyDown={(e) => handleKeyDown(e, row, "specification")}
             placeholder="规格（选填）"
             list="spec-suggestions"
-            className={`w-24 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && specDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
+            className={`w-24 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${改了("specification") ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
         </td>
         {/* 数量：可直接编辑，保存写回工单；留空保持红框提醒（用户要求：红框提醒保留 + 可输入联动工单） */}
@@ -1153,7 +1173,7 @@ export function PartBranchStatusList({ status }: Props) {
               className={`w-14 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
                 quantityValue.trim() === ""
                   ? "border-red-300 bg-red-50 text-red-600 placeholder-red-400"
-                  : hasDraft && quantityDraft !== undefined
+                  : 改了("quantity")
                     ? "border-yellow-400 bg-yellow-50"
                     : "border-gray-200"
               }`}
@@ -1184,7 +1204,7 @@ export function PartBranchStatusList({ status }: Props) {
                 placeholder="必填"
                 title="采购价（必填）"
                 className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
-                  hasDraft && costDraft !== undefined
+                  改了("unit_cost")
                     ? "border-yellow-400 bg-yellow-50"
                     : !costValue
                       ? "border-red-400 bg-red-50"
@@ -1211,7 +1231,7 @@ export function PartBranchStatusList({ status }: Props) {
                     onChange={(e) => setEditValue(row.id, "price", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, row, "price")}
                     placeholder="-"
-                    className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && priceDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+                    className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${改了("unit_price") ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
                   />
                 </div>
               ) : (
@@ -1223,7 +1243,7 @@ export function PartBranchStatusList({ status }: Props) {
                 disabled={isSaving}
                 value={edits[row.id]?.customer_opinion !== undefined ? edits[row.id]!.customer_opinion! : (row.customer_opinion || "pending")}
                 onChange={(e) => setEditValue(row.id, "customer_opinion", e.target.value)}
-                className={`px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && edits[row.id]?.customer_opinion !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+                className={`px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${改了("customer_opinion") ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
               >
                 <option value="pending">未确定</option>
                 <option value="agree">同意</option>
@@ -1243,7 +1263,7 @@ export function PartBranchStatusList({ status }: Props) {
               setOpenSupplierRowId(openSupplierRowId === row.id ? null : row.id);
             }}
             className={`w-28 px-2 py-1 text-xs rounded border text-left truncate hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
-              hasDraft && supplierDraft !== undefined
+              改了("supplier_name")
                 ? "border-yellow-400 bg-yellow-50"
                 : !supplierValue
                   ? "border-red-400 bg-red-50 text-red-600"
@@ -1297,7 +1317,7 @@ export function PartBranchStatusList({ status }: Props) {
             onChange={(e) => setEditValue(row.id, "notes", e.target.value)}
             onKeyDown={(e) => handleKeyDown(e, row, "notes")}
             placeholder="备注（选填）"
-            className={`w-44 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${hasDraft && notesDraft !== undefined ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
+            className={`w-44 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${改了("notes") ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
         </td>
         {/* 图片：可点开看大图、可添加。工单配件自己的图优先；没有则带入配件信息图片。
