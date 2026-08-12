@@ -553,6 +553,8 @@ export async function 提交报价(token: string, 报价列表: {
   spec: string;
   price: string;
   notes: string;
+  /* 单据名称：供应商可改成自己单据上的叫法，提交时回写工单配件行 */
+  documentName: string;
 }[]): Promise<结果> {
   const 结果0 = await 校验并取单(token);
   if ("错误" in 结果0) return { success: false, error: 结果0.错误 };
@@ -655,6 +657,8 @@ export async function 提交报价(token: string, 报价列表: {
     }
     if (b.brand.trim()) 回写.brand = b.brand.trim();
     if (b.spec.trim()) 回写.specification = b.spec.trim();
+    /* 单据名称:供应商填了就回写(与品牌/规格同规则,清空不覆盖已有值) */
+    if ((b.documentName || "").trim()) 回写.document_name = b.documentName.trim();
     const 供应商备注 = b.notes.trim();
 
     if (m.is_supplier_added) {

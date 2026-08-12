@@ -146,7 +146,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
     set行列表((prev) => prev.filter((x) => x.itemId !== itemId));
   }
 
-  function 改行(itemId: string, 字段: "partNumber" | "brand" | "spec" | "price" | "notes", 值: string) {
+  function 改行(itemId: string, 字段: "partNumber" | "brand" | "spec" | "price" | "notes" | "documentName", 值: string) {
     set行列表((prev) =>
       prev.map((r) => (r.itemId === itemId ? { ...r, [字段]: 值, ...(字段 === "partNumber" ? { matchHint: "" as const } : {}) } : r))
     );
@@ -270,6 +270,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
           spec: r.spec,
           price: r.price,
           notes: r.notes,
+          documentName: r.documentName,
         }))
       );
       set提交中(false);
@@ -442,8 +443,17 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
                           <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-700">备选</span>
                         )}
                       </td>
-                      {/* 单据名称（只读，供应商对照送货单） */}
-                      <td className="px-2 py-2 text-gray-700">{r.documentName || "-"}</td>
+                      {/* 单据名称（可编辑：供应商改成自己单据上的叫法，提交时回写） */}
+                      <td className="px-2 py-2">
+                        <input
+                          type="text"
+                          disabled={行只读}
+                          value={r.documentName}
+                          onChange={(e) => 改行(r.itemId, "documentName", e.target.value)}
+                          placeholder="单据名称（选填）"
+                          className="w-28 px-2 py-1 text-xs rounded border border-gray-300 bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:bg-transparent disabled:text-gray-700"
+                        />
+                      </td>
                       {/* 品牌 */}
                       <td className="px-2 py-2">
                         <input
