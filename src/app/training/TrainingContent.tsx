@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useDebounce } from "@/lib/useDebounce";
 import Link from "next/link";
 import DeleteCourseButton from "./DeleteCourseButton";
 
@@ -141,6 +142,10 @@ export default function TrainingContent({
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
 
+  /* 课程搜索（防抖 300ms） */
+  const [搜索词, set搜索词] = useState("");
+  const 防抖搜索词 = useDebounce(搜索词, 300);
+
   /* 分类下拉展开状态 */
   const [分类下拉展开, set分类下拉展开] = useState(false);
   const 分类下拉Ref = useRef<HTMLDivElement>(null);
@@ -204,8 +209,17 @@ export default function TrainingContent({
       result = result.filter((c) => c.topic_ids?.includes(selectedTopicId));
     }
 
+    /* 按搜索词筛选（标题或简介包含即可，不区分大小写） */
+    const 关键词 = 防抖搜索词.trim().toLowerCase();
+    if (关键词) {
+      result = result.filter((c) =>
+        c.title.toLowerCase().includes(关键词) ||
+        (c.description || "").toLowerCase().includes(关键词)
+      );
+    }
+
     return result;
-  }, [courses, selectedCategoryId, selectedTopicId, categories, 分类树]);
+  }, [courses, selectedCategoryId, selectedTopicId, 防抖搜索词, categories, 分类树]);
 
   async function saveSortOrder(updated: 课程[]) {
     const updates = updated.map((c, index) => ({
@@ -270,7 +284,8 @@ export default function TrainingContent({
 
       {/* 快捷入口 */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex flex-wrap gap-2">
+        {/* 管理入口：移动端隐藏，电脑端显示 */}
+        <div className="hidden md:flex flex-wrap gap-2">
           <span className="text-sm font-medium text-gray-700 mr-2">管理:</span>
           <Link href="/training/exam-manage" className="text-xs px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100">
             考题管理
@@ -300,7 +315,7 @@ export default function TrainingContent({
             晋级审核
           </Link>
         </div>
-        <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-gray-100">
+        <div className="flex flex-wrap gap-2 md:mt-2 md:pt-2 md:border-t md:border-gray-100">
           <span className="text-sm font-medium text-gray-700 mr-2">个人:</span>
           <Link href="/training/my-progress" className="text-xs px-3 py-1.5 rounded-lg bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100">
             我的学习
@@ -311,8 +326,17 @@ export default function TrainingContent({
         </div>
       </div>
 
-      {/* 筛选栏：分类下拉 + 专题标签 */}
+      {/* 筛选栏：搜索 + 分类下拉 + 专题标签 */}
       <div className="flex flex-wrap gap-2 items-center">
+        {/* 课程搜索框 */}
+        <input
+          type="text"
+          value={搜索词}
+          onChange={(e) => set搜索词(e.target.value)}
+          placeholder="搜索课程标题/简介"
+          className="px-3 py-1 text-xs rounded-full border border-gray-300 bg-white text-gray-700 placeholder-gray-400 focus:outline-none focus:border-blue-400 w-40"
+        />
+
         {/* 分类下拉 */}
         {categories.length > 0 && (
           <div ref={分类下拉Ref} className="relative">
@@ -449,7 +473,7 @@ export default function TrainingContent({
         ))}
         {筛选后课程.length === 0 && (
           <div className="col-span-full text-center text-gray-400 py-12">
-            {selectedCategoryId || selectedTopicId ? "没有匹配的课程" : "暂无课程"}
+            {selectedCategoryId || selectedTopicId || 防抖搜索词.trim() ? "没有匹配的课程" : "暂无课程"}
           </div>
         )}
       </div>
