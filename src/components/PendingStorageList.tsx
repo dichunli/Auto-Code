@@ -10,6 +10,7 @@ import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 确认采购入库, 退回待收货 } from "@/app/procurement/actions";
+import { DocumentNameInput } from "./DocumentNameInput";
 
 interface PurchaseOrderItem {
   id: string;
@@ -470,7 +471,7 @@ export function PendingStorageList() {
                                 inputClassName="w-20 border-gray-200 text-xs"
                               />
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 whitespace-nowrap">
                               <div className="text-gray-900 font-medium">{item.name}</div>
                               {item.brand || item.specification ? (
                                 <div className="text-xs text-gray-400">
@@ -478,7 +479,9 @@ export function PendingStorageList() {
                                 </div>
                               ) : null}
                             </td>
-                            <td className="px-3 py-2 text-gray-700">{item.supplier_part_name || "-"}</td>
+                            <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                              <DocumentNameInput 采购明细id={item.id} 初始值={item.supplier_part_name || ""} 保存后={loadData} />
+                            </td>
                             <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
                             <td className="px-3 py-2 text-gray-500">{item.unit || "-"}</td>
                             <td className="px-3 py-2 text-gray-500">{item.category || "-"}</td>

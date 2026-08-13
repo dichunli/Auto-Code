@@ -8,6 +8,7 @@ import PartForm from "@/app/parts/new/PartForm";
 import { RETURN_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 完成退货记录, 批量撤销退货, 生成采退单 } from "@/app/procurement/actions";
+import { DocumentNameInput } from "./DocumentNameInput";
 
 /* 退货原因中文化：保持原变量名，引用处零改动 */
 const returnReasonMap = RETURN_REASON_LABELS;
@@ -487,7 +488,7 @@ export function PendingReturnList() {
                         className="rounded"
                       />
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="space-y-1">
                         <PartSearchDropdown
                           value={r.work_order_item_parts?.part_number || ""}
@@ -507,7 +508,11 @@ export function PendingReturnList() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-gray-700">{r.work_order_item_parts?.document_name || "-"}</td>
+                    <td className="px-6 py-4 text-gray-700 whitespace-nowrap">
+                      {r.work_order_item_parts && (
+                        <DocumentNameInput 工单配件行id={r.work_order_item_parts.id} 初始值={r.work_order_item_parts.document_name || ""} 保存后={loadData} />
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-gray-600">{returnReasonMap[r.return_reason] || r.return_reason}</td>
                     <td className="px-6 py-4 text-gray-600">{r.quantity}</td>
                     <td className="px-6 py-4 text-gray-500 text-xs">
