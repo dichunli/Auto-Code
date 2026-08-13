@@ -39,13 +39,56 @@ const mimeTypes: Record<string, string> = {
 const 视频音频扩展名 = new Set([".mp4", ".webm", ".mov", ".3gp", ".mp3", ".wav"]);
 
 /**
- * 检查请求是否带有有效 session cookie（不调 Supabase，纯本地检查，避免网络延迟）
- * 媒体文件 URL 使用随机文件名，无法被猜测，安全性可接受
+ * 校验请求是否带有真实有效的 session（纯本地解析，不联网，性能无损）
+ * 历史教训：此前只检查 cookie「存在性」，任何人手工放个同名 cookie 就能看照片。
+ * 现在：解析 cookie 内容 → 校验双令牌结构 + JWT 过期时间（过期留 1 天续期宽限）。
+ * 支持分段 cookie（大 session 被切成 key.0/key.1… 的情况拼接还原）。
  */
-function 有SessionCookie(request: Request): boolean {
-  const cookies = request.headers.get("cookie") || "";
-  /* 检查是否包含 Supabase auth token cookie */
-  return cookies.includes("-auth-token");
+function 有有效会话(request: Request): boolean {
+  const cookieHeader = request.headers.get("cookie") || "";
+
+  /* 找 sb-*-auth-token 的基名 */
+  const 名匹配 = cookieHeader.match(/sb-[^=;\s]+-auth-token/);
+  if (!名匹配) return false;
+  const 基名 = 名匹配[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  /* 先尝试单条 cookie，没有再拼接分段 */
+  let 原始值: string | null = null;
+  const 单条 = cookieHeader.match(new RegExp(`(?:^|; )${基名}=([^;]*)`));
+  if (单条 && 单条[1]) {
+    原始值 = decodeURIComponent(单条[1]);
+  } else {
+    const 段们: string[] = [];
+    for (let i = 0; ; i++) {
+      const m = cookieHeader.match(new RegExp(`(?:^|; )${基名}\\.${i}=([^;]*)`));
+      if (!m) break;
+      段们.push(decodeURIComponent(m[1]));
+    }
+    if (段们.length > 0) 原始值 = 段们.join("");
+  }
+  if (!原始值) return false;
+
+  try {
+    /* base64- 前缀的 SSR 格式先解码 */
+    let 文本 = 原始值;
+    if (文本.startsWith("base64-")) {
+      文本 = Buffer.from(文本.slice("base64-".length), "base64url").toString("utf8");
+    }
+    const session = JSON.parse(文本);
+    /* 结构校验：双令牌必须在场 */
+    if (typeof session.access_token !== "string" || typeof session.refresh_token !== "string") return false;
+    if (!session.access_token || !session.refresh_token) return false;
+
+    /* 过期校验：解析 JWT payload 的 exp（不验签名，本地零成本防伪造空 cookie） */
+    const parts = session.access_token.split(".");
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    /* 过期超 1 天视为无效（客户端会自动续期，宽限覆盖续期窗口） */
+    if (payload.exp && Date.now() / 1000 > payload.exp + 86400) return false;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -81,10 +124,10 @@ export async function GET(
      *（供应商打开询价链接时没有登录态，看不到图就没法核对） */
     const 是公开报价图片 = pathSegments[0] === "quote";
 
-    /* ── 轻量级认证：只检查 cookie 存在性，不调 Supabase 远程验证 ── */
+    /* ── 认证：本地校验 session 真伪（不联网），伪造空 cookie 无法通过 ── */
     if (!是公开报价图片) {
       const userAgent = request.headers.get("user-agent") || "";
-      if (!是APP环境(userAgent) && !有SessionCookie(request)) {
+      if (!是APP环境(userAgent) && !有有效会话(request)) {
         return NextResponse.json({ error: "未登录" }, { status: 401 });
       }
     }
