@@ -19,7 +19,7 @@ const STATUS_TITLES: Record<string, string> = {
   pending_confirm: "待确认",
 };
 
-type EditableField = "part_number" | "brand" | "specification" | "cost" | "price" | "supplier" | "notes" | "customer_opinion" | "name" | "unit" | "quantity";
+type EditableField = "part_number" | "brand" | "specification" | "cost" | "price" | "supplier" | "notes" | "customer_opinion" | "name" | "unit" | "quantity" | "document_name";
 type GroupBy = "plate" | "category" | "name" | "supplier" | "none";
 
 const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
@@ -461,6 +461,9 @@ export function PartBranchStatusList({ status }: Props) {
       } else if (_field === "notes") {
         const val = trimmed === "" ? null : trimmed;
         if (val !== (row.notes || null)) update.notes = val;
+      } else if (_field === "document_name") {
+        const val = trimmed === "" ? null : trimmed;
+        if (val !== (row.document_name || null)) update.document_name = val;
       } else if (_field === "customer_opinion") {
         const val = trimmed === "" ? null : trimmed;
         if (val !== (row.customer_opinion || null)) update.customer_opinion = val;
@@ -874,6 +877,38 @@ export function PartBranchStatusList({ status }: Props) {
     return row ? getDbUpdate(row) !== null : false;
   }).length;
 
+  /* 待询价前置:所有改动行的「采购价+供应商」都齐全(草稿合并原值后)才出现提交按钮——
+     防止只填其一或只改备注的半成品提交(用户定的规则) */
+  const 待询价前置通过 = status !== "pending_inquiry" || Object.keys(edits).every((id) => {
+    const row = rows.find((r) => r.id === id);
+    if (!row) return true;
+    const 改动 = getDbUpdate(row);
+    if (!改动) return true;
+    const 采购价 = "unit_cost" in 改动 ? Number(改动.unit_cost || 0) : Number(row.unit_cost || 0);
+    const 供应商 = ("supplier_name" in 改动 ? 改动.supplier_name : row.supplier_name) as string | null;
+    return 采购价 > 0 && !!(供应商 && 供应商.trim());
+  });
+
+  /* 待报价前置:所有改动行都填了销售价才出现提交按钮 */
+  const 待报价前置通过 = status !== "pending_quote" || Object.keys(edits).every((id) => {
+    const row = rows.find((r) => r.id === id);
+    if (!row) return true;
+    const 改动 = getDbUpdate(row);
+    if (!改动) return true;
+    const 销售价 = "unit_price" in 改动 ? Number(改动.unit_price || 0) : Number(row.unit_price || 0);
+    return 销售价 > 0;
+  });
+
+  /* 待确认前置:所有改动行的客户意见都选了「同意/否决」才出现提交按钮(未确定不出按钮) */
+  const 待确认前置通过 = status !== "pending_confirm" || Object.keys(edits).every((id) => {
+    const row = rows.find((r) => r.id === id);
+    if (!row) return true;
+    const 改动 = getDbUpdate(row);
+    if (!改动) return true;
+    const 意见 = ("customer_opinion" in 改动 ? 改动.customer_opinion : row.customer_opinion) as string | null;
+    return 意见 === "agree" || 意见 === "reject";
+  });
+
   /* 在当前配件上添加同项目分支 */
   async function handleAddSiblingBranch(row: PartBranchRow) {
     if (!(await 请求确认("确定添加该配件的新分支吗？"))) return;
@@ -1080,6 +1115,7 @@ export function PartBranchStatusList({ status }: Props) {
     const supplierDraft = edits[row.id]?.supplier;
     const notesDraft = edits[row.id]?.notes;
     const quantityDraft = edits[row.id]?.quantity;
+    const docNameDraft = edits[row.id]?.document_name;
 
     const partNumberValue = partNumberDraft !== undefined ? partNumberDraft : (row.part_number || "");
     const nameValue = nameDraft !== undefined ? nameDraft : (row.name || "");
@@ -1092,6 +1128,8 @@ export function PartBranchStatusList({ status }: Props) {
     /* 备注：工单配件自己的备注优先；没填则带入配件信息里的备注（只读带入，编辑后保存到工单配件） */
     const notesValue = notesDraft !== undefined ? notesDraft : (row.notes || row.parts?.notes || "");
     const quantityValue = quantityDraft !== undefined ? quantityDraft : (row.quantity != null ? String(row.quantity) : "");
+    /* 单据名称:分支自己的优先,兜底配件信息里的;编辑保存到工单配件行 */
+    const docNameValue = docNameDraft !== undefined ? docNameDraft : (row.document_name || row.parts?.document_name || "");
 
     const hasDraft = !!edits[row.id] && Object.keys(edits[row.id]!).length > 0;
     /* 真实改动集:getDbUpdate 已做 trim/null 归一 + 与原值逐字段比较。
@@ -1100,6 +1138,9 @@ export function PartBranchStatusList({ status }: Props) {
     const 行有已填草稿 = 真实改动 !== null;
     const 改了 = (列名: string) => 真实改动 !== null && 列名 in 真实改动;
     const branchBg = 行有已填草稿 ? "" : BRANCH_BG_COLORS[branchColorIndex % BRANCH_BG_COLORS.length];
+    /* 只读矩阵(用户定的规则):
+       待报价=只有销售价可编辑; 待确认=只有销售价+客户意见可编辑 */
+    const 全只读 = status === "pending_quote" || status === "pending_confirm";
 
     return (
       <tr key={row.id} className={`hover:bg-gray-50 ${行有已填草稿 ? "bg-yellow-50/40" : branchBg} ${isNewBranch ? "border-t-2 border-gray-200" : ""}`}>
@@ -1122,6 +1163,9 @@ export function PartBranchStatusList({ status }: Props) {
         </td>
         {/* 编码 */}
         <td className="px-2 py-2">
+          {全只读 ? (
+            <span className="text-gray-700">{partNumberValue || "-"}</span>
+          ) : (
           <PartSearchDropdown
             value={partNumberValue}
             /* 输入时不转大写（保存时 getDbUpdate 会统一转）：中文输入法打字过程中
@@ -1134,11 +1178,29 @@ export function PartBranchStatusList({ status }: Props) {
             placeholder="编码/条码"
             inputClassName={`w-28 bg-white placeholder:text-gray-400 ${改了("part_number") ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
+          )}
         </td>
-        <td className={`px-2 py-2 text-gray-900 ${改了("name") ? "text-blue-700 font-medium" : ""}`}>{nameValue}</td>
-        {/* 单据名称(供应商送货单上的名字):分支自己的优先,兜底配件信息里的 */}
-        <td className="px-2 py-2 text-gray-700">{row.document_name || row.parts?.document_name || "-"}</td>
+        <td className={`px-2 py-2 text-gray-900 whitespace-nowrap ${改了("name") ? "text-blue-700 font-medium" : ""}`}>{nameValue}</td>
+        {/* 单据名称:可编辑(草稿机制,提交保存生效);分支值优先,兜底配件信息;待报价只读 */}
         <td className="px-2 py-2">
+          {全只读 ? (
+            <span className="text-gray-700">{docNameValue || "-"}</span>
+          ) : (
+          <input
+            type="text"
+            disabled={isSaving}
+            value={docNameValue}
+            onChange={(e) => setEditValue(row.id, "document_name", e.target.value)}
+            onKeyDown={(e) => handleKeyDown(e, row, "document_name")}
+            placeholder="单据名称（选填）"
+            className={`w-28 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 whitespace-nowrap ${改了("document_name") ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
+          />
+          )}
+        </td>
+        <td className="px-2 py-2">
+          {全只读 ? (
+            <span className="text-gray-700">{brandValue || "-"}</span>
+          ) : (
           <input
             type="text"
             disabled={isSaving}
@@ -1149,8 +1211,12 @@ export function PartBranchStatusList({ status }: Props) {
             list="brand-suggestions"
             className={`w-24 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${改了("brand") ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
+          )}
         </td>
         <td className="px-2 py-2">
+          {全只读 ? (
+            <span className="text-gray-700">{specValue || "-"}</span>
+          ) : (
           <input
             type="text"
             disabled={isSaving}
@@ -1161,9 +1227,13 @@ export function PartBranchStatusList({ status }: Props) {
             list="spec-suggestions"
             className={`w-24 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${改了("specification") ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
+          )}
         </td>
-        {/* 数量：可直接编辑，保存写回工单；留空保持红框提醒（用户要求：红框提醒保留 + 可输入联动工单） */}
+        {/* 数量：可直接编辑，保存写回工单；留空保持红框提醒（用户要求：红框提醒保留 + 可输入联动工单）；待报价只读 */}
         <td className="px-2 py-2 text-right">
+          {全只读 ? (
+            <span className="text-gray-700">{quantityValue || "-"} {unitValue || "件"}</span>
+          ) : (
           <div className="flex items-center justify-end gap-1">
             <input
               type="number"
@@ -1184,6 +1254,7 @@ export function PartBranchStatusList({ status }: Props) {
             />
             <span className="text-xs text-gray-500">{unitValue || "件"}</span>
           </div>
+          )}
         </td>
         {/* 库存 */}
         <td className="px-2 py-2 text-right text-gray-700">
@@ -1195,6 +1266,10 @@ export function PartBranchStatusList({ status }: Props) {
         </td>
         <td className="px-2 py-2 text-right">
           {showPrices ? (
+            status === "pending_quote" || status === "pending_confirm" ? (
+              /* 待报价/待确认:采购价已由询价确定,只读展示 */
+              <span className="text-gray-700">{costValue ? `¥${costValue}` : "-"}</span>
+            ) : (
             <div className="flex items-center justify-end gap-1">
               <span className="text-gray-400">¥</span>
               <input
@@ -1216,6 +1291,7 @@ export function PartBranchStatusList({ status }: Props) {
                 }`}
               />
             </div>
+            )
           ) : (
             <span className="text-gray-700">***</span>
           )}
@@ -1234,8 +1310,15 @@ export function PartBranchStatusList({ status }: Props) {
                     value={priceValue}
                     onChange={(e) => setEditValue(row.id, "price", e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, row, "price")}
-                    placeholder="-"
-                    className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${改了("unit_price") ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+                    placeholder={status === "pending_quote" ? "必填" : "-"}
+                    title={status === "pending_quote" ? "销售价（必填）" : "销售价"}
+                    className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
+                      改了("unit_price")
+                        ? "border-yellow-400 bg-yellow-50"
+                        : status === "pending_quote" && !priceValue
+                          ? "border-red-400 bg-red-50"
+                          : "border-gray-200"
+                    }`}
                   />
                 </div>
               ) : (
@@ -1243,20 +1326,35 @@ export function PartBranchStatusList({ status }: Props) {
               )}
             </td>
             <td className="px-2 py-2">
+              {status === "pending_quote" ? (
+                <span className="text-gray-700">{row.customer_opinion === "agree" ? "同意" : row.customer_opinion === "reject" ? "否决" : "未确定"}</span>
+              ) : (
               <select
                 disabled={isSaving}
                 value={edits[row.id]?.customer_opinion !== undefined ? edits[row.id]!.customer_opinion! : (row.customer_opinion || "pending")}
                 onChange={(e) => setEditValue(row.id, "customer_opinion", e.target.value)}
-                className={`px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${改了("customer_opinion") ? "border-yellow-400 bg-yellow-50" : "border-gray-200"}`}
+                className={`px-2 py-1 text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
+                  改了("customer_opinion")
+                    ? "border-yellow-400 bg-yellow-50"
+                    : status === "pending_confirm" && (edits[row.id]?.customer_opinion ?? row.customer_opinion ?? "pending") === "pending"
+                      ? "border-red-400 bg-red-50 text-red-600"
+                      : "border-gray-200"
+                }`}
               >
                 <option value="pending">未确定</option>
                 <option value="agree">同意</option>
                 <option value="reject">否决</option>
               </select>
+              )}
             </td>
           </>
         )}
         <td className="px-2 py-2">
+          {status === "pending_quote" || status === "pending_confirm" ? (
+            /* 待报价/待确认:供应商已由询价确定,只读展示 */
+            <span className="text-gray-700">{supplierValue || "-"}</span>
+          ) : (
+          <>
           <button
             type="button"
             disabled={isSaving}
@@ -1311,9 +1409,14 @@ export function PartBranchStatusList({ status }: Props) {
               })}
             </div>
           )}
+          </>
+          )}
         </td>
-        {/* 备注（没填时默认带入配件信息备注；框线加深 + 明确提示文字） */}
+        {/* 备注（没填时默认带入配件信息备注；框线加深 + 明确提示文字）；待报价只读 */}
         <td className="px-2 py-2">
+          {全只读 ? (
+            <span className="text-gray-700">{notesValue || "-"}</span>
+          ) : (
           <input
             type="text"
             disabled={isSaving}
@@ -1323,6 +1426,7 @@ export function PartBranchStatusList({ status }: Props) {
             placeholder="备注（选填）"
             className={`w-44 px-2 py-1 text-xs rounded border bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${改了("notes") ? "border-yellow-400 bg-yellow-50" : "border-gray-300"}`}
           />
+          )}
         </td>
         {/* 图片：可点开看大图、可添加。工单配件自己的图优先；没有则带入配件信息图片。
            添加去向：已关联库存配件→配件信息图片(part_images)；未关联→工单配件图片(分支媒体) */}
@@ -1539,7 +1643,7 @@ export function PartBranchStatusList({ status }: Props) {
             {submitting ? "撤销中..." : `撤销到${status === "pending_quote" ? "待询价" : "待报价"}`}
           </button>
         )}
-        {changedCount > 0 && (
+        {changedCount > 0 && 待询价前置通过 && 待报价前置通过 && 待确认前置通过 && (
           <button
             type="button"
             onClick={submitAll}
@@ -1578,8 +1682,8 @@ export function PartBranchStatusList({ status }: Props) {
               </th>
               <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">工单号</th>
               <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">编码</th>
-              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">配件</th>
-              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">单据名称</th>
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10 whitespace-nowrap">配件</th>
+              <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10 whitespace-nowrap">单据名称</th>
               <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">品牌</th>
               <th className="px-2 py-2 text-left font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">规格</th>
               <th className="px-2 py-2 text-right font-bold text-gray-700 sticky top-0 bg-gray-50 z-10">数量</th>
