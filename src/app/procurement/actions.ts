@@ -395,6 +395,104 @@ export async function 生成采退单(
   revalidatePath("/supplier-returns");
   return { success: true, orders: 结果.orders };
 }
+
+/* ─── 更新工单配件客户意见(待采购页可改:改"未确定"退回待确认,改"否决"不再推进) ─── */
+export async function 更新工单配件客户意见(行id: string, 意见: string): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!["pending", "agree", "reject"].includes(意见)) {
+    return { success: false, error: "非法的客户意见值" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_item_parts")
+    .update({ customer_opinion: 意见 })
+    .eq("id", 行id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
+
+/* ─── 更新单据名称(各 Tab 失焦即存) ───
+ * 单据名称有两个存放点:
+ *  - 工单配件行 work_order_item_parts.document_name(待询价/待报价/待确认/待采购/退货环节的展示来源)
+ *  - 采购明细快照 purchase_order_items.supplier_part_name(待收货/待入库/已入库的展示来源)
+ * 改动任一处时联动同步另一处,保证各 Tab 看到的单据名称一致。
+ * 联动范围:工单配件行改名 → 只同步「未完成采购单」的明细快照(已完成的是历史凭证不动)。 */
+export async function 更新配件单据名称(参数: {
+  工单配件行id?: string | null;
+  采购明细id?: string | null;
+  单据名称: string;
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const { 工单配件行id, 采购明细id } = 参数;
+  const 新名称 = 参数.单据名称.trim() || null;
+  if (!工单配件行id && !采购明细id) {
+    return { success: false, error: "缺少要更新的行信息" };
+  }
+
+  const supabase = await createClient();
+
+  if (工单配件行id) {
+    const { error } = await supabase
+      .from("work_order_item_parts")
+      .update({ document_name: 新名称 })
+      .eq("id", 工单配件行id);
+    if (error) return { success: false, error: error.message };
+
+    /* 联动同步:该配件行关联的、采购单未完成的明细快照(先查出目标明细 id 再更新) */
+    const { data: 待同步 } = await supabase
+      .from("purchase_order_items")
+      .select("id, purchase_orders!inner(status)")
+      .eq("work_order_item_part_id", 工单配件行id)
+      .not("purchase_orders.status", "in", "(completed,cancelled)");
+    const 待同步ids = (待同步 || []).map((r: { id: string }) => r.id);
+    if (待同步ids.length > 0) {
+      const { error: 联动错误 } = await supabase
+        .from("purchase_order_items")
+        .update({ supplier_part_name: 新名称 })
+        .in("id", 待同步ids);
+      if (联动错误) console.warn("联动同步采购明细单据名称失败:", 联动错误);
+    }
+  }
+
+  if (采购明细id) {
+    const { data: 明细, error: 读错误 } = await supabase
+      .from("purchase_order_items")
+      .select("work_order_item_part_id")
+      .eq("id", 采购明细id)
+      .single();
+    if (读错误) return { success: false, error: 读错误.message };
+
+    const { error } = await supabase
+      .from("purchase_order_items")
+      .update({ supplier_part_name: 新名称 })
+      .eq("id", 采购明细id);
+    if (error) return { success: false, error: error.message };
+
+    /* 联动回写工单配件行(源头一致) */
+    if (明细?.work_order_item_part_id) {
+      const { error: 联动错误 } = await supabase
+        .from("work_order_item_parts")
+        .update({ document_name: 新名称 })
+        .eq("id", 明细.work_order_item_part_id);
+      if (联动错误) console.warn("联动回写工单配件单据名称失败:", 联动错误);
+    }
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
 export async function 删除采购明细(采购单id: string, 明细id: string): Promise<操作结果> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {

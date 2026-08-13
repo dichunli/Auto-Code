@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
+import { DocumentNameInput } from "./DocumentNameInput";
 
 const returnReasonMap: Record<string, string> = {
   wrong_ship: "错发",
@@ -28,7 +29,7 @@ interface ReturnRecord {
   photos: string[] | null;
   status: string;
   created_at: string;
-  work_order_item_parts: { name: string; part_number: string | null; document_name: string | null } | null;
+  work_order_item_parts: { id: string; name: string; part_number: string | null; document_name: string | null } | null;
   profiles: { full_name: string | null } | null;
   purchase_return_orders: ReturnOrderInfo | null;
 }
@@ -45,7 +46,7 @@ export function CompletedReturnList() {
     const { data, error } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, work_order_item_parts(name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, work_order_item_parts(id, name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no)"
       )
       .eq("status", "completed")
       .order("created_at", { ascending: false });
@@ -162,13 +163,17 @@ export function CompletedReturnList() {
           <tbody className="divide-y divide-gray-100">
             {records.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4">
+                <td className="px-6 py-4 whitespace-nowrap">
                   <div className="font-medium text-gray-900">{r.work_order_item_parts?.name || "-"}</div>
                   {r.work_order_item_parts?.part_number && (
                     <div className="text-xs text-gray-400">{r.work_order_item_parts.part_number}</div>
                   )}
                 </td>
-                <td className="px-6 py-4 text-gray-700">{r.work_order_item_parts?.document_name || "-"}</td>
+                <td className="px-6 py-4 text-gray-700 whitespace-nowrap">
+                  {r.work_order_item_parts && (
+                    <DocumentNameInput 工单配件行id={r.work_order_item_parts.id} 初始值={r.work_order_item_parts.document_name || ""} 保存后={loadData} />
+                  )}
+                </td>
                 <td className="px-6 py-4">
                   {r.purchase_return_orders ? (
                     <Link

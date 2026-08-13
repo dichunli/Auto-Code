@@ -10,7 +10,8 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { PURCHASE_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
-import { 创建采购单 } from "@/app/procurement/actions";
+import { 创建采购单, 更新工单配件客户意见 } from "@/app/procurement/actions";
+import { DocumentNameInput } from "./DocumentNameInput";
 
 interface PartBranchRow {
   id: string;
@@ -581,6 +582,26 @@ export function PendingPurchaseList() {
     }
   }
 
+  /* 客户意见变更(待采购页):未确定→退回待确认;否决→不再显示和推进 */
+  async function handleOpinionChange(row: PartBranchRow, 意见: string) {
+    if (意见 === row.customer_opinion) return;
+    if (意见 === "pending") {
+      if (!(await 请求确认(`「${row.name}」改为未确定后将退回「待确认」重新等客户答复,是否继续?`))) return;
+    } else if (意见 === "reject") {
+      if (!(await 请求确认(`「${row.name}」改为否决后将不再显示和推进,是否继续?`))) return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await 更新工单配件客户意见(row.id, 意见);
+      if (!res.success) throw new Error(res.error || "更新失败");
+      loadData();
+    } catch (err: unknown) {
+      alert("修改客户意见失败: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   function openRevokeModal() {
     const selectedRows = rows.filter((r) => selected.has(r.id));
     if (selectedRows.length === 0) {
@@ -706,6 +727,7 @@ export function PendingPurchaseList() {
               <th className="px-3 py-3 text-right font-medium text-gray-500">数量</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">采购价</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">销售价</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500">客户意见</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">供应商 *</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">物流公司</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">操作</th>
@@ -758,7 +780,7 @@ export function PendingPurchaseList() {
                           <div className="text-xs text-gray-500">{wo?.vehicles?.plate_number || "-"}</div>
                         </td>
                         <td className="px-3 py-3 text-gray-700">{r.work_order_items?.name || "-"}</td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-3 whitespace-nowrap">
                           <div className="text-base font-medium text-gray-900">{r.name}</div>
                           <div className="text-sm text-gray-400">{r.brand || ""} {r.specification || ""}</div>
                           {r.purchase_reason && PURCHASE_REASON_LABELS[r.purchase_reason] && (
@@ -776,7 +798,9 @@ export function PendingPurchaseList() {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-3 text-gray-700">{r.document_name || "-"}</td>
+                        <td className="px-3 py-3 text-gray-700 whitespace-nowrap">
+                          <DocumentNameInput 工单配件行id={r.id} 初始值={r.document_name || ""} 保存后={loadData} />
+                        </td>
                         <td className="px-3 py-3">
                           <PartSearchDropdown
                             value={r.part_number || ""}
@@ -797,6 +821,19 @@ export function PendingPurchaseList() {
                         </td>
                         <td className="px-3 py-3 text-right text-gray-700">
                           <PriceValue value={r.unit_price} />
+                        </td>
+                        <td className="px-3 py-3">
+                          {/* 客户意见:改「未确定」退回待确认;改「否决」不再显示和推进(只改工单状态) */}
+                          <select
+                            value={r.customer_opinion || "agree"}
+                            disabled={submitting}
+                            onChange={(e) => handleOpinionChange(r, e.target.value)}
+                            className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+                          >
+                            <option value="agree">同意</option>
+                            <option value="pending">未确定</option>
+                            <option value="reject">否决</option>
+                          </select>
                         </td>
                         <td className="px-3 py-3">
                           <select

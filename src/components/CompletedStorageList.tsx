@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { useConfirm } from "./ConfirmDialog";
+import { DocumentNameInput } from "./DocumentNameInput";
 
 interface PurchaseOrderItem {
   id: string;
@@ -342,7 +343,7 @@ export function CompletedStorageList() {
                         <tr key={item.id} className="hover:bg-gray-50">
                           <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                           <td className="px-3 py-2 text-gray-700">{item.part_number || "-"}</td>
-                          <td className="px-3 py-2">
+                          <td className="px-3 py-2 whitespace-nowrap">
                             <div className="text-gray-900 font-medium">{item.name}</div>
                             {item.brand || item.specification ? (
                               <div className="text-xs text-gray-400">
@@ -350,7 +351,9 @@ export function CompletedStorageList() {
                               </div>
                             ) : null}
                           </td>
-                          <td className="px-3 py-2 text-gray-700">{item.supplier_part_name || "-"}</td>
+                          <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                            <DocumentNameInput 采购明细id={item.id} 初始值={item.supplier_part_name || ""} 保存后={loadData} />
+                          </td>
                           <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
                           <td className="px-3 py-2 text-gray-500">{item.unit || "-"}</td>
                           <td className="px-3 py-2 text-gray-500">{item.category || "-"}</td>
