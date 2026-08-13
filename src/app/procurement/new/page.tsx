@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 创建采购单 } from "@/app/procurement/actions";
 
 interface LineItem {
   id: string;
@@ -314,41 +315,28 @@ export default function NewPurchaseOrderPage() {
     setLoading(true);
 
     try {
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const randomStr = (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 10)).replace(/-/g, "").slice(0, 8).toUpperCase();
-      const orderNo = `CG-${dateStr}-${randomStr}`;
-
-      const { data: order, error: orderError } = await supabase
-        .from("purchase_orders")
-        .insert({
-          order_no: orderNo,
+      /* 建单头+明细已收编进数据库事务函数 create_purchase_orders,
+         单号由服务端序列生成,任一失败整体回滚不留孤儿单 */
+      const res = await 创建采购单([
+        {
           supplier_id: supplierId,
           status: "submitted",
-          total_amount: totalAmount,
           notes: notes || null,
-        })
-        .select("id")
-        .single();
-
-      if (orderError || !order) throw orderError || new Error("创建采购单失败");
-
-      const orderItems = items.map((item) => ({
-        order_id: order.id,
-        part_id: item.part_id || null,
-        part_name_id: item.part_name_id || null,
-        part_number: item.part_number || null,
-        name: item.name,
-        brand: item.brand || null,
-        specification: item.specification || null,
-        quantity: parseInt(item.quantity) || 1,
-        unit_cost: parseFloat(item.unit_cost) || 0,
-        received_qty: 0,
-        work_order_item_part_id: item.work_order_item_part_id || null,
-        notes: item.notes || null,
-      }));
-
-      const { error: itemsError } = await supabase.from("purchase_order_items").insert(orderItems);
-      if (itemsError) throw itemsError;
+          items: items.map((item) => ({
+            part_id: item.part_id || null,
+            part_name_id: item.part_name_id || null,
+            part_number: item.part_number || null,
+            name: item.name,
+            brand: item.brand || null,
+            specification: item.specification || null,
+            quantity: parseInt(item.quantity) || 1,
+            unit_cost: parseFloat(item.unit_cost) || 0,
+            work_order_item_part_id: item.work_order_item_part_id || null,
+            notes: item.notes || null,
+          })),
+        },
+      ]);
+      if (!res.success) throw new Error(res.error || "创建采购单失败");
 
       router.push("/procurement");
       router.refresh();
@@ -357,7 +345,7 @@ export default function NewPurchaseOrderPage() {
       alert("保存失败: " + msg);
       setLoading(false);
     }
-  }, [supplierId, items, totalAmount, notes, router]);
+  }, [supplierId, items, notes, router]);
 
   const selectedSupplier = suppliers.find((s) => s.id === supplierId);
 

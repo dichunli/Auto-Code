@@ -10,6 +10,7 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { PURCHASE_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
+import { 创建采购单 } from "@/app/procurement/actions";
 
 interface PartBranchRow {
   id: string;
@@ -26,6 +27,7 @@ interface PartBranchRow {
   part_number: string | null;
   part_name_id: string | null;
   alias_name: string | null;
+  document_name: string | null;
   notes: string | null;
   purchase_reason: string | null;
   work_order_item_id: string;
@@ -67,6 +69,7 @@ interface LowStockPart {
   unit_cost: number | null;
   supplier_id: string | null;
   supplier_name: string | null;
+  document_name: string | null;
 }
 
 type GroupBy = "plate" | "category" | "name" | "supplier";
@@ -162,7 +165,7 @@ export function PendingPurchaseList() {
         .select(`
           id, name, brand, specification, unit, quantity, unit_cost, unit_price,
           customer_opinion, supplier_name, part_id, part_number, part_name_id,
-          alias_name, notes, purchase_reason, work_order_item_id,
+          alias_name, notes, purchase_reason, work_order_item_id, document_name,
           work_order_items(
             name,
             work_orders(
@@ -380,30 +383,8 @@ export function PendingPurchaseList() {
     try {
       const sid = getRowSupplierId(selectedRows[0]);
       if (!sid) throw new Error("无法获取供应商ID");
-      const totalAmount = selectedRows.reduce(
-        (sum, it) => sum + Number(it.unit_cost || 0) * Number(it.quantity || 0),
-        0
-      );
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const randomStr = Math.floor(1000 + Math.random() * 9000);
-      const orderNo = `CG-${dateStr}-${randomStr}`;
 
-      const { data: order, error: orderErr } = await supabase
-        .from("purchase_orders")
-        .insert({
-          order_no: orderNo,
-          supplier_id: sid,
-          status: "submitted",
-          total_amount: totalAmount,
-          logistics_company_id: finalLogisticsId,
-          notes: `由「待采购」批量生成${logisticsName ? ` | 物流: ${logisticsName}` : ""}`,
-        })
-        .select("id")
-        .single();
-
-      if (orderErr || !order) throw orderErr || new Error("创建采购单失败");
-
-      /* 批量查询图片和分类 */
+      /* 批量查询图片和分类（只读查询，用于组装采购明细快照） */
       const workOrderItemIds = selectedRows.map((r) => r.work_order_item_id).filter((x): x is string => !!x);
       const partNameIds = selectedRows.map((r) => r.part_name_id).filter((x): x is string => !!x);
       const [{ data: mediaData }, { data: pnData }] = await Promise.all([
@@ -425,33 +406,33 @@ export function PendingPurchaseList() {
         categoryMap[p.id] = p.part_categories?.name || "";
       }
 
-      const itemInserts = selectedRows.map((it) => ({
-        order_id: order.id,
-        part_id: it.part_id,
-        part_number: it.part_number,
-        name: it.name,
-        supplier_part_name: it.alias_name,
-        brand: it.brand,
-        specification: it.specification,
-        quantity: it.quantity,
-        unit: it.unit,
-        unit_cost: it.unit_cost,
-        category: it.part_name_id ? categoryMap[it.part_name_id] || "" : "",
-        license_plate: it.work_order_items?.work_orders?.vehicles?.plate_number || "",
-        photos: mediaMap[it.work_order_item_id] || [],
-        notes: it.notes,
-        work_order_item_part_id: it.id,
-      }));
-
-      const { error: itemErr } = await supabase.from("purchase_order_items").insert(itemInserts);
-      if (itemErr) throw itemErr;
-
-      const branchIds = selectedRows.map((it) => it.id);
-      const { error: updErr } = await supabase
-        .from("work_order_item_parts")
-        .update({ is_purchased: true, supplier_name: suppliers.find((s) => s.id === sid)?.name || null })
-        .in("id", branchIds);
-      if (updErr) throw updErr;
+      /* 建单头+明细+回写工单配件行已收编进数据库事务函数 create_purchase_orders,
+         单号由服务端序列生成(CG-日期-序号) */
+      const res = await 创建采购单([
+        {
+          supplier_id: sid,
+          status: "submitted",
+          logistics_company_id: finalLogisticsId,
+          notes: `由「待采购」批量生成${logisticsName ? ` | 物流: ${logisticsName}` : ""}`,
+          items: selectedRows.map((it) => ({
+            part_id: it.part_id,
+            part_number: it.part_number,
+            name: it.name,
+            supplier_part_name: it.alias_name,
+            brand: it.brand,
+            specification: it.specification,
+            quantity: it.quantity,
+            unit: it.unit,
+            unit_cost: it.unit_cost,
+            category: it.part_name_id ? categoryMap[it.part_name_id] || "" : "",
+            license_plate: it.work_order_items?.work_orders?.vehicles?.plate_number || "",
+            photos: mediaMap[it.work_order_item_id] || [],
+            notes: it.notes,
+            work_order_item_part_id: it.id,
+          })),
+        },
+      ]);
+      if (!res.success) throw new Error(res.error || "创建采购单失败");
 
       alert("已生成 1 张采购单(已提交),请到「待收货」或「采购订单」中查看。");
       setShowLogisticsModal(false);
@@ -477,13 +458,14 @@ export function PendingPurchaseList() {
     unit_cost: number | null;
     supplier_id: string | null;
     suppliers?: { name?: string | null } | null;
+    document_name?: string | null;
   }
 
   async function loadLowStockParts() {
     setStockLoading(true);
     const { data } = await supabase
       .from("parts")
-      .select("id, part_number, name, part_brands(name), part_specifications(name), unit, quantity, min_stock, unit_cost, supplier_id, suppliers(name)")
+      .select("id, part_number, name, part_brands(name), part_specifications(name), unit, quantity, min_stock, unit_cost, supplier_id, suppliers(name), document_name")
       .order("name");
 
     const list: LowStockPart[] = ((data || []) as unknown as PartRow[])
@@ -500,6 +482,7 @@ export function PendingPurchaseList() {
         unit_cost: p.unit_cost,
         supplier_id: p.supplier_id,
         supplier_name: p.suppliers?.name || null,
+        document_name: p.document_name || null,
       }));
 
     setLowStockParts(list);
@@ -567,52 +550,28 @@ export function PendingPurchaseList() {
 
     setSubmitting(true);
     try {
-      const supplierIds = Object.keys(groups);
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      let createdCount = 0;
-
-      for (let idx = 0; idx < supplierIds.length; idx++) {
-        const sid = supplierIds[idx];
-        const items = groups[sid];
-        const totalAmount = items.reduce(
-          (sum, it) => sum + Number(it.unit_cost || 0) * (stockQtyMap[it.id] || 1),
-          0
-        );
-        const randomStr = Math.floor(1000 + Math.random() * 9000);
-        const orderNo = `CG-${dateStr}-${randomStr}`;
-
-        const { data: order, error: orderErr } = await supabase
-          .from("purchase_orders")
-          .insert({
-            order_no: orderNo,
-            supplier_id: sid,
-            status: "draft",
-            total_amount: totalAmount,
-            notes: "由「安全库存补货」批量生成",
-          })
-          .select("id")
-          .single();
-
-        if (orderErr || !order) throw orderErr || new Error("创建采购单失败");
-
-        const itemInserts = items.map((it) => ({
-          order_id: order.id,
+      /* 全部供应商分组的建单一次事务完成,不再逐供应商循环
+         (原先某一供应商失败会导致前面已生成、后面不再生成的半成品状态) */
+      const 分组 = Object.keys(groups).map((sid) => ({
+        supplier_id: sid,
+        status: "draft",
+        notes: "由「安全库存补货」批量生成",
+        items: groups[sid].map((it) => ({
           part_id: it.id,
           part_number: it.part_number,
           name: it.name,
           brand: it.brand,
           specification: it.specification,
           quantity: stockQtyMap[it.id] || 1,
+          unit: it.unit,
           unit_cost: it.unit_cost,
-        }));
+        })),
+      }));
 
-        const { error: itemErr } = await supabase.from("purchase_order_items").insert(itemInserts);
-        if (itemErr) throw itemErr;
+      const res = await 创建采购单(分组);
+      if (!res.success) throw new Error(res.error || "创建采购单失败");
 
-        createdCount++;
-      }
-
-      alert(`已生成 ${createdCount} 张采购单(草稿状态),请到「采购订单」中审批并发出。`);
+      alert(`已生成 ${res.orders?.length ?? 分组.length} 张采购单(草稿状态),请到「采购订单」中审批并发出。`);
       setShowStockModal(false);
     } catch (err: unknown) {
       const e = err as Error;
@@ -742,6 +701,7 @@ export function PendingPurchaseList() {
               <th className="px-3 py-3 text-left font-medium text-gray-500">客户/车牌</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">项目</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">配件</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500">单据名称</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">编码</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">数量</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">采购价</th>
@@ -816,6 +776,7 @@ export function PendingPurchaseList() {
                             </span>
                           )}
                         </td>
+                        <td className="px-3 py-3 text-gray-700">{r.document_name || "-"}</td>
                         <td className="px-3 py-3">
                           <PartSearchDropdown
                             value={r.part_number || ""}
@@ -997,6 +958,7 @@ export function PendingPurchaseList() {
                         />
                       </th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500">配件</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">单据名称</th>
                       <th className="px-3 py-2 text-right font-medium text-gray-500">当前库存</th>
                       <th className="px-3 py-2 text-right font-medium text-gray-500">安全线</th>
                       <th className="px-3 py-2 text-right font-medium text-gray-500">采购价</th>
@@ -1019,6 +981,7 @@ export function PendingPurchaseList() {
                           <div className="text-base font-medium text-gray-900">{p.name}</div>
                           <div className="text-sm text-gray-400">{p.part_number || ""} {p.brand || ""} {p.specification || ""}</div>
                         </td>
+                        <td className="px-3 py-2 text-gray-700">{p.document_name || "-"}</td>
                         <td className="px-3 py-2 text-right text-red-600 font-medium">{p.quantity}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{p.min_stock}</td>
                         <td className="px-3 py-2 text-right text-gray-700"><PriceValue value={p.unit_cost} /></td>

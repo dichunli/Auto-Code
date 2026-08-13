@@ -4,6 +4,7 @@ import {useState, useEffect, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { PriceValue } from "@/components/PriceVisibilityContext";
+import { 部分收货登记 } from "@/app/procurement/actions";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
@@ -11,6 +12,8 @@ const STATUS_LABELS: Record<string, string> = {
   approved: "已审批",
   partial_received: "部分收货",
   fully_received: "全部收货",
+  pending_storage: "待入库",
+  completed: "已完成",
   cancelled: "已取消",
 };
 
@@ -20,6 +23,8 @@ const STATUS_CLASS: Record<string, string> = {
   approved: "bg-purple-50 text-purple-700",
   partial_received: "bg-yellow-50 text-yellow-700",
   fully_received: "bg-green-50 text-green-700",
+  pending_storage: "bg-indigo-50 text-indigo-700",
+  completed: "bg-green-50 text-green-700",
   cancelled: "bg-red-50 text-red-600",
 };
 
@@ -59,10 +64,7 @@ interface PurchaseOrderItem {
   } | null;
 }
 
-interface ItemQtyCheck {
-  quantity: number;
-  received_qty?: number | null;
-}
+/* 收货后库存不再在此页直接增加:统一由「采购管理 → 待入库 → 确认入库」完成 */
 
 export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const supabase = useMemo(() => createClient(), []);
@@ -122,71 +124,11 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
     setLoading(true);
 
     try {
-      // 1. 更新采购订单项的 received_qty
-      const newReceivedQty = (item.received_qty || 0) + qty;
-      const { error: updateError } = await supabase
-        .from("purchase_order_items")
-        .update({ received_qty: newReceivedQty })
-        .eq("id", itemId);
-
-      if (updateError) throw updateError;
-
-      // 2. 入库处理
-      const partId = item.part_id;
-      const unitCost = item.unit_cost || 0;
-
-      if (partId) {
-        // 现有配件入库
-        const beforeQty = item.parts?.quantity || 0;
-        const afterQty = beforeQty + qty;
-
-        await supabase.from("parts").update({ quantity: afterQty }).eq("id", partId);
-
-        await supabase.from("part_batches").insert({
-          part_id: partId,
-          quantity: qty,
-          remaining: qty,
-          unit_cost: unitCost,
-          supplier_id: order.supplier_id,
-        });
-
-        await supabase.from("inventory_logs").insert({
-          part_id: partId,
-          type: "inbound",
-          change_qty: qty,
-          before_qty: beforeQty,
-          after_qty: afterQty,
-          notes: `采购入库: 订单 ${order.order_no || orderId.slice(0, 8)}`,
-        });
-      }
-
-      // 3. 如果有关联的工单配件分支，标记为已到货
-      if (item.work_order_item_part_id) {
-        await supabase
-          .from("work_order_item_parts")
-          .update({ is_arrived: true })
-          .eq("id", item.work_order_item_part_id);
-      }
-
-      // 4. 更新采购订单状态
-      const { data: updatedItems } = await supabase
-        .from("purchase_order_items")
-        .select("quantity, received_qty")
-        .eq("order_id", orderId);
-
-      const allDone = updatedItems?.every((i: ItemQtyCheck) => (i.received_qty || 0) >= i.quantity);
-      const anyReceived = updatedItems?.some((i: ItemQtyCheck) => (i.received_qty || 0) > 0);
-
-      let newStatus = order.status;
-      if (allDone) {
-        newStatus = "fully_received";
-      } else if (anyReceived) {
-        newStatus = "partial_received";
-      }
-
-      if (newStatus !== order.status) {
-        await supabase.from("purchase_orders").update({ status: newStatus }).eq("id", orderId);
-      }
+      /* 收货统一走待入库流程(B 路):这里只原子累加实收数量并推进状态,
+         不再直接加库存——库存、批次、流水、应付款由「待入库→确认入库」
+         (数据库事务函数 complete_purchase_inbound)一次性完成,保证账实一致 */
+      const res = await 部分收货登记(orderId, itemId, qty);
+      if (!res.success) throw new Error(res.error || "收货失败");
 
       setReceiveForm((prev) => ({ ...prev, [itemId]: "" }));
       fetchOrder();
@@ -253,7 +195,9 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900">采购项目</h3>
           {canReceive() && (
-            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">可收货</span>
+            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+              可收货 · 收满后请前往「采购管理 → 待入库」确认入库;破损/错发请在待收货列表处理
+            </span>
           )}
         </div>
         <div className="overflow-x-auto">

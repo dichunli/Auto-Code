@@ -8,8 +8,9 @@ import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { ImageUploader } from "@/components/ImageUploader";
 import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
-import { ACTION_LABELS, ACTION_TO_PURCHASE_REASON } from "@/lib/purchaseFlowLabels";
+import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
+import { 提交收货处理, 撤销收货处理, 删除采购明细 } from "@/app/procurement/actions";
 
 interface PurchaseOrderItem {
   id: string;
@@ -68,7 +69,9 @@ const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
   { key: "logistics", label: "按物流公司" },
 ];
 
-/* 处理动作标签与跨阶段约定已抽到 @/lib/purchaseFlowLabels（唯一来源） */
+/* 处理动作标签已抽到 @/lib/purchaseFlowLabels（唯一来源）;
+   补货动作映射已下沉到数据库函数 receive_purchase_item:
+   broken_exchange→broken_resupply / wrong_exchange→wrong_exchange / short_repurchase→short_resupply */
 
 function resolveImageUrl(path: string): string {
   if (!path) return "";
@@ -339,37 +342,9 @@ export function PendingReceiptList() {
           if (!(await 请求确认("确认删除该配件?这会同时清除采购流程和工单中的记录。"))) return;
           setSubmitting(`item-${receiveItem.id}`);
           try {
-            /* 删除采购单明细 */
-            const { error: delPoiErr } = await supabase
-              .from("purchase_order_items")
-              .delete()
-              .eq("id", receiveItem.id);
-            if (delPoiErr) throw delPoiErr;
-
-            /* 如果有工单配件关联,删除工单配件 */
-            if (receiveItem.work_order_item_part_id) {
-              const { error: delWoiErr } = await supabase
-                .from("work_order_item_parts")
-                .delete()
-                .eq("id", receiveItem.work_order_item_part_id);
-              if (delWoiErr) console.warn("删除工单配件失败:", delWoiErr);
-            }
-
-            /* 检查采购单剩余明细 */
-            const { data: remainingItems } = await supabase
-              .from("purchase_order_items")
-              .select("id, handle_action")
-              .eq("order_id", receiveOrder.id);
-            if (!remainingItems || remainingItems.length === 0) {
-              /* 没有明细了,删除采购单 */
-              await supabase.from("purchase_orders").delete().eq("id", receiveOrder.id);
-            } else {
-              /* 还有明细,重新判断状态 */
-              const anyUnhandled = remainingItems.some((it: { handle_action: string | null }) => !it.handle_action);
-              const anyHandled = remainingItems.some((it: { handle_action: string | null }) => !!it.handle_action);
-              const newStatus = anyHandled && anyUnhandled ? "partial_received" : anyHandled ? "pending_storage" : "submitted";
-              await supabase.from("purchase_orders").update({ status: newStatus }).eq("id", receiveOrder.id);
-            }
+            /* 删明细+删工单配件行+整单状态处理已收编进数据库事务函数 delete_purchase_item */
+            const res = await 删除采购明细(receiveOrder.id, receiveItem.id);
+            if (!res.success) throw new Error(res.error || "删除失败");
             loadData();
           } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -406,55 +381,16 @@ export function PendingReceiptList() {
   ) {
     setSubmitting(`item-${item.id}`);
     try {
-      const updates: Record<string, string | number | string[] | null> = {
-        handle_action: payload.handle_action,
-        received_qty: payload.received_qty,
-      };
-      if (payload.evidence_photos !== undefined) updates.evidence_photos = payload.evidence_photos;
-
-      const { error: updErr } = await supabase
-        .from("purchase_order_items")
-        .update(updates)
-        .eq("id", item.id);
-      if (updErr) throw updErr;
-
-      /* 需要生成新待采购的 action → 复制 work_order_item_parts 行 */
-      const purchaseReason = ACTION_TO_PURCHASE_REASON[payload.handle_action];
-      if (purchaseReason && item.work_order_item_part_id) {
-        await createPurchaseReasonBranch(item, purchaseReason, payload.handle_action, payload.received_qty);
-      }
-
-      /* 检查整单是否所有明细都已处理 */
-      const { data: freshItems, error: freshErr } = await supabase
-        .from("purchase_order_items")
-        .select("id, handle_action")
-        .eq("order_id", order.id);
-      if (freshErr) throw freshErr;
-      const allHandled = (freshItems || []).every((it: { handle_action: string | null }) => !!it.handle_action);
-
-      if (allHandled) {
-        const { error: statusErr } = await supabase
-          .from("purchase_orders")
-          .update({ status: "pending_storage" })
-          .eq("id", order.id);
-        if (statusErr) throw statusErr;
-        /* 运单标记为已签收 */
-        if (order.waybill_id) {
-          const { error: wbErr } = await supabase
-            .from("logistics_waybills")
-            .update({ status: "received", received_at: new Date().toISOString() })
-            .eq("id", order.waybill_id);
-          if (wbErr) console.warn("运单状态更新失败:", wbErr);
-        }
-      } else {
-        /* 部分处理状态 */
-        const { error: partialErr } = await supabase
-          .from("purchase_orders")
-          .update({ status: "partial_received" })
-          .eq("id", order.id);
-        if (partialErr) throw partialErr;
-      }
-
+      /* 明细更新+补货分支克隆+状态重算+运单联动已收编进数据库事务函数 receive_purchase_item */
+      const res = await 提交收货处理(
+        order.id,
+        item.id,
+        payload.handle_action,
+        payload.received_qty,
+        payload.evidence_photos ?? null,
+        payload.evidence_photos !== undefined
+      );
+      if (!res.success) throw new Error(res.error || "收货失败");
       loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -470,70 +406,9 @@ export function PendingReceiptList() {
     if (!(await 请求确认("确认撤销该配件的收货处理?"))) return;
     setSubmitting(`revoke-${item.id}`);
     try {
-      /* 1. 清空明细处理结果 */
-      const { error: clrErr } = await supabase
-        .from("purchase_order_items")
-        .update({
-          handle_action: null,
-          received_qty: null,
-          discount_amount: null,
-          evidence_photos: null,
-        })
-        .eq("id", item.id);
-      if (clrErr) throw clrErr;
-
-      /* 2. 如果之前有生成待采购分支,删除它 */
-      if (item.handle_action && item.work_order_item_part_id) {
-        const purchaseReason = ACTION_TO_PURCHASE_REASON[item.handle_action];
-        if (purchaseReason) {
-          const { data: original } = await supabase
-            .from("work_order_item_parts")
-            .select("work_order_item_id")
-            .eq("id", item.work_order_item_part_id)
-            .single();
-          if (original) {
-            const { error: delErr } = await supabase
-              .from("work_order_item_parts")
-              .delete()
-              .eq("work_order_item_id", original.work_order_item_id)
-              .eq("purchase_reason", purchaseReason)
-              .eq("is_purchased", false)
-              .eq("is_arrived", false);
-            if (delErr) console.warn("删除待采购分支失败:", delErr);
-          }
-        }
-      }
-
-      /* 3. 重算订单状态 */
-      const { data: freshItems } = await supabase
-        .from("purchase_order_items")
-        .select("handle_action")
-        .eq("order_id", order.id);
-      const anyHandled = (freshItems || []).some((it: { handle_action: string | null }) => !!it.handle_action);
-      const newStatus = anyHandled ? "partial_received" : "submitted";
-
-      const { error: stErr } = await supabase
-        .from("purchase_orders")
-        .update({ status: newStatus })
-        .eq("id", order.id);
-      if (stErr) throw stErr;
-
-      /* 4. 如果订单从 pending_storage 回退,且运单下没有其它 pending_storage 订单,回退运单 */
-      if (order.status === "pending_storage" && order.waybill_id) {
-        const { data: otherOrders } = await supabase
-          .from("purchase_orders")
-          .select("id")
-          .eq("waybill_id", order.waybill_id)
-          .eq("status", "pending_storage")
-          .neq("id", order.id);
-        if (!otherOrders || otherOrders.length === 0) {
-          await supabase
-            .from("logistics_waybills")
-            .update({ status: "pending", received_at: null })
-            .eq("id", order.waybill_id);
-        }
-      }
-
+      /* 清空处理结果+删补货分支+状态回退+运单回退已收编进数据库事务函数 revoke_purchase_receipt */
+      const res = await 撤销收货处理(order.id, item.id);
+      if (!res.success) throw new Error(res.error || "撤销失败");
       loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -584,55 +459,8 @@ export function PendingReceiptList() {
   } = 配件联动;
 
 
-  /* 创建一条新的 work_order_item_parts 行(复制原行,带 purchase_reason 标签) */
-  async function createPurchaseReasonBranch(
-    item: PurchaseOrderItem,
-    purchaseReason: string,
-    handleAction: string,
-    receivedQty: number
-  ) {
-    if (!item.work_order_item_part_id) return;
-    /* 查原 work_order_item_parts 行,克隆字段 */
-    const { data: original } = await supabase
-      .from("work_order_item_parts")
-      .select("*")
-      .eq("id", item.work_order_item_part_id)
-      .single();
-    if (!original) return;
-
-    /* 少发补货数量 = 订购数 - 实际到货数,其他场景沿用原数量 */
-    let qty = original.quantity;
-    if (handleAction === "short_repurchase") {
-      qty = item.quantity - receivedQty;
-      if (qty <= 0) return;
-    }
-
-    const newRow: Record<string, unknown> = {
-      work_order_item_id: original.work_order_item_id,
-      part_name_id: original.part_name_id,
-      // 补货行归回原配件的同一目录，避免自成一组；原行为选中默认分支，补货行不选中
-      branch_group_id: original.branch_group_id,
-      is_selected: false,
-      part_id: original.part_id,
-      part_number: original.part_number,
-      name: original.name,
-      alias_name: original.alias_name,
-      unit: original.unit,
-      brand: original.brand,
-      specification: original.specification,
-      unit_cost: original.unit_cost,
-      unit_price: original.unit_price,
-      quantity: qty,
-      customer_opinion: "agree",
-      is_purchased: false,
-      is_arrived: false,
-      supplier_name: original.supplier_name,
-      logistics_agreement: original.logistics_agreement,
-      notes: original.notes,
-      purchase_reason: purchaseReason,
-    };
-    await supabase.from("work_order_item_parts").insert(newRow);
-  }
+  /* 补货分支克隆已下沉到数据库函数 receive_purchase_item(收货时同事务完成),
+     映射关系: broken_exchange→broken_resupply / wrong_exchange→wrong_exchange / short_repurchase→short_resupply */
 
   /* ------------------ 供应商过滤 ------------------ */
 
