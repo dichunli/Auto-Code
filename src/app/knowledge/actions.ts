@@ -49,6 +49,10 @@ export async function loadKnowledgeArticles(params: {
   segments?: string[];
   error?: string;
 }> {
+  /* 登录校验（Server Action 也是公开端点，必须验证） */
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) return { success: false, error: 登录错误 || "请先登录" };
+
   const { keyword = "", category = "", page = 1, createdBy = "", searchMode = "keyword" } = params;
   const pageSize = 20;
   const fromIdx = (page - 1) * pageSize;
@@ -68,14 +72,10 @@ export async function loadKnowledgeArticles(params: {
       })()
     : [];
 
-  /* 并行：同时获取用户信息 + 分类列表（这两个和数据查询互不依赖） */
-  const [userResult, categoriesResult] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.from("knowledge_categories").select("*").order("sort_order", { ascending: true }).limit(100),
-  ]);
+  /* 分类列表查询（用户身份已在上方登录校验时获取，无需重复 getUser） */
+  const categoriesResult = await supabase.from("knowledge_categories").select("*").order("sort_order", { ascending: true }).limit(100);
 
-  const { data: { user } } = userResult;
-  const currentUserId = user?.id || "";
+  const currentUserId = user.id;
   let isAdmin = false;
   if (currentUserId) {
     const { data: roleData } = await supabase
@@ -604,6 +604,10 @@ export async function 解析Word文档(formData: FormData): Promise<{
   blocks?: BlockNoteBlock[];
   error?: string;
 }> {
+  /* 登录校验 */
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) return { success: false, error: 登录错误 || "请先登录" };
+
   try {
     const file = formData.get("file") as File;
     if (!file) {
@@ -653,6 +657,10 @@ export async function 生成Word文档(article: ExportArticle): Promise<{
   base64?: string;
   error?: string;
 }> {
+  /* 登录校验 */
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) return { success: false, error: 登录错误 || "请先登录" };
+
   try {
     const { Document, Packer, Paragraph, TextRun, Table, TableCell, TableRow, HeadingLevel, WidthType, BorderStyle, AlignmentType } = await import("docx");
 
@@ -907,6 +915,10 @@ export async function 批量生成全部文章向量(): Promise<{
   已跳过: number;
   error?: string;
 }> {
+  /* 登录校验（批量计算耗资源，防被薅接口） */
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) return { success: false, 已处理: 0, 已跳过: 0, error: 登录错误 || "请先登录" };
+
   const supabase = await createClient();
 
   const { data: articles, error: queryError } = await supabase
@@ -964,6 +976,10 @@ export async function 批量生成全部文章向量(): Promise<{
  */
 /* 为文章生成并保存语义向量（文章保存后异步调用，不阻塞保存） */
 export async function 生成文章向量(文章ID: string, 标题: string, 内容: string, 内容块?: unknown): Promise<void> {
+  /* 登录校验（调用方是保存文章后的异步任务，未登录静默跳过） */
+  const { user } = await 验证用户已登录();
+  if (!user) return;
+
   try {
     const supabase = await createClient();
     const 嵌入文本 = 生成嵌入文本(标题, 内容, 内容块);
@@ -1001,6 +1017,10 @@ export async function syncKnowledgeModelsFromVin(rawVin: string): Promise<{
   matchedModels?: 车型库行[];
   error?: string;
 }> {
+  /* 登录校验 */
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) return { success: false, error: 登录错误 || "请先登录" };
+
   const supabase = await createClient();
   const vin = 标准化VIN(rawVin);
 
