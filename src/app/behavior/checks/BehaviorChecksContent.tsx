@@ -43,8 +43,9 @@ export default function BehaviorChecksContent({ initialRecords }: { initialRecor
       return;
     }
 
-    const today = new Date().toISOString().split("T")[0];
+    /* 用本地日期而非 UTC：北京时间凌晨 0-8 点 UTC 还是昨天，会把"今天"算错 */
     const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const weekday = now.getDay();
     const dayOfMonth = now.getDate();
 
