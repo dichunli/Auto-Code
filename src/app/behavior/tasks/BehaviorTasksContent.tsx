@@ -10,6 +10,8 @@ interface 行为项目 {
   name: string;
   score_type: string;
   score_value: number;
+  responsible_id: string | null;
+  checker_id: string | null;
 }
 
 interface 员工 {
@@ -26,6 +28,7 @@ interface 考核任务 {
   item_score_type: string;
   frequency: string;
   execute_time: string;
+  end_time: string;
   execute_weekday: number;
   execute_day: number;
   employee_ids: string[];
@@ -59,6 +62,7 @@ export default function BehaviorTasksContent({
     item_id: "",
     frequency: "daily",
     execute_time: "09:00",
+    end_time: "23:59",
     execute_weekday: "1",
     execute_day: "1",
     employee_ids: [] as string[],
@@ -68,7 +72,7 @@ export default function BehaviorTasksContent({
   async function fetchData() {
     setLoading(true);
     const [{ data: itemData }, { data: empData }, { data: taskData }] = await Promise.all([
-      supabase.from("behavior_score_items").select("id, name, score_type, score_value").eq("is_active", true).order("name"),
+      supabase.from("behavior_score_items").select("id, name, score_type, score_value, responsible_id, checker_id").eq("is_active", true).order("name"),
       supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
       supabase.from("behavior_check_tasks").select("*").order("created_at", { ascending: false }),
     ]);
@@ -100,6 +104,7 @@ export default function BehaviorTasksContent({
       item_id: "",
       frequency: "daily",
       execute_time: "09:00",
+      end_time: "23:59",
       execute_weekday: "1",
       execute_day: "1",
       employee_ids: [],
@@ -115,6 +120,7 @@ export default function BehaviorTasksContent({
       item_id: task.item_id,
       frequency: task.frequency,
       execute_time: task.execute_time?.slice(0, 5) || "09:00",
+      end_time: task.end_time?.slice(0, 5) || "23:59",
       execute_weekday: String(task.execute_weekday || 1),
       execute_day: String(task.execute_day || 1),
       employee_ids: task.employee_ids || [],
@@ -142,6 +148,10 @@ export default function BehaviorTasksContent({
       alert("请选择关联的行为项目");
       return;
     }
+    if (form.end_time <= form.execute_time) {
+      alert("结束时间必须晚于开始时间");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -150,6 +160,7 @@ export default function BehaviorTasksContent({
         item_id: form.item_id,
         frequency: form.frequency,
         execute_time: form.execute_time + ":00",
+        end_time: form.end_time + ":00",
         execute_weekday: form.frequency === "weekly" ? parseInt(form.execute_weekday) : null,
         execute_day: form.frequency === "monthly" ? parseInt(form.execute_day) : null,
         employee_ids: form.employee_ids.length > 0 ? form.employee_ids : null,
@@ -191,11 +202,16 @@ export default function BehaviorTasksContent({
 
   const weekdayLabels = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
+  /* 员工 id → 姓名，用于"责任人制"提示行 */
+  const employeeMap = useMemo(() => new Map(employees.map((e) => [e.id, e.full_name])), [employees]);
+  /* 当前表单选中的项目 */
+  const selectedItem = useMemo(() => items.find((i) => i.id === form.item_id) || null, [items, form.item_id]);
+
   return (
     <div>
       <PageHeader
         title="行为考核任务"
-        description="配置定时行为考核任务，员工按时完成拍照上传即可自动加分"
+        description="配置定时行为考核任务，在检查时间段内完成检查，超时自动关闭"
         action={{ label: "+ 添加任务", onClick: openAdd }}
       />
 
@@ -213,7 +229,7 @@ export default function BehaviorTasksContent({
                 <th className="px-4 py-3 text-left font-medium text-gray-500">任务名称</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">关联项目</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">频率</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">执行时间</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">检查时间段</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">考核对象</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">状态</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">操作</th>
@@ -231,7 +247,7 @@ export default function BehaviorTasksContent({
                   </td>
                   <td className="px-4 py-3">{frequencyLabels[t.frequency]}</td>
                   <td className="px-4 py-3 text-gray-500">
-                    {t.execute_time?.slice(0, 5)}
+                    {t.execute_time?.slice(0, 5)} ~ {(t.end_time || "23:59").slice(0, 5)}
                     {t.frequency === "weekly" && `（${weekdayLabels[t.execute_weekday || 0]}）`}
                     {t.frequency === "monthly" && `（${t.execute_day}号）`}
                   </td>
@@ -302,6 +318,14 @@ export default function BehaviorTasksContent({
                     </option>
                   ))}
                 </select>
+                {/* 责任人制项目：考核对象由项目配置决定，下方多选不生效 */}
+                {selectedItem?.responsible_id && (
+                  <p className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mt-2">
+                    该项目为责任人制：被考核人={employeeMap.get(selectedItem.responsible_id) || "?"}，
+                    检查人={selectedItem.checker_id ? employeeMap.get(selectedItem.checker_id) || "?" : "责任人自检"}。
+                    下方"考核对象"设置对本任务不生效。
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -318,13 +342,25 @@ export default function BehaviorTasksContent({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">执行时间</label>
-                  <input
-                    type="time"
-                    value={form.execute_time}
-                    onChange={(e) => setForm({ ...form, execute_time: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">检查时间段</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="time"
+                      value={form.execute_time}
+                      onChange={(e) => setForm({ ...form, execute_time: e.target.value })}
+                      className="flex-1 px-2 py-2 border border-gray-300 rounded-lg text-sm"
+                      title="开始时间"
+                    />
+                    <span className="text-gray-400 text-sm">至</span>
+                    <input
+                      type="time"
+                      value={form.end_time}
+                      onChange={(e) => setForm({ ...form, end_time: e.target.value })}
+                      className="flex-1 px-2 py-2 border border-gray-300 rounded-lg text-sm"
+                      title="结束时间（超过则关闭检查）"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">超过结束时间自动关闭检查（漏检不扣分）</p>
                 </div>
               </div>
 
@@ -359,7 +395,7 @@ export default function BehaviorTasksContent({
 
               {/* 考核对象 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">考核对象（不选则全员，可拖动排序）</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">考核对象（仅对未设责任人的项目生效，不选=全员，可拖动排序）</label>
                 <div className="border border-gray-200 rounded-lg p-2 space-y-1">
                   {employees.map((e) => (
                     <label
