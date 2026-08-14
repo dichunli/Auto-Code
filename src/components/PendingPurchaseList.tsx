@@ -118,7 +118,8 @@ export function PendingPurchaseList() {
   const [logisticsCompanies, setLogisticsCompanies] = useState<LogisticsCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [supplierMap, setSupplierMap] = useState<Record<string, string>>({});
+  /* 供应商列已改只读（2026-08-14）：supplierMap/setRowSupplier 已删除，
+     供应商一律取行上的 supplier_name（询价阶段确定） */
   const [logisticsMap, setLogisticsMap] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>("supplier");
@@ -253,7 +254,6 @@ export function PendingPurchaseList() {
 
 
   function getRowSupplierId(row: PartBranchRow): string | null {
-    if (supplierMap[row.id]) return supplierMap[row.id];
     if (row.supplier_name) {
       const s = suppliers.find((sp) => sp.name === row.supplier_name);
       if (s) return s.id;
@@ -319,10 +319,6 @@ export function PendingPurchaseList() {
       .filter((r) => getRowSupplierId(r) === baseSupplier)
       .map((r) => r.id);
     setSelected(new Set(sameSupplierIds));
-  }
-
-  function setRowSupplier(rowId: string, supplierId: string) {
-    setSupplierMap((prev) => ({ ...prev, [rowId]: supplierId }));
   }
 
   function setRowLogistics(rowId: string, logisticsId: string) {
@@ -719,16 +715,16 @@ export function PendingPurchaseList() {
                 />
               </th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">工单号</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">客户/车牌</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">项目</th>
+              {/* 客户/车牌、项目两列已隐藏（用户要求 2026-08-14：采购员只关心配件和供应商） */}
               <th className="px-3 py-3 text-left font-medium text-gray-500">配件</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">单据名称</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">编码</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">数量</th>
+              <th className="px-3 py-3 text-right font-medium text-gray-500">库存</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">采购价</th>
               <th className="px-3 py-3 text-right font-medium text-gray-500">销售价</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">客户意见</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-500">供应商 *</th>
+              <th className="px-3 py-3 text-left font-medium text-gray-500">供应商</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">物流公司</th>
               <th className="px-3 py-3 text-left font-medium text-gray-500">操作</th>
             </tr>
@@ -737,7 +733,7 @@ export function PendingPurchaseList() {
             {groups.map((g, gIdx) => (
               <Fragment key={`grp-${gIdx}`}>
                 <tr className="bg-gray-200">
-                  <td colSpan={12} className="px-3 py-2 text-xs font-semibold text-gray-700">
+                  <td colSpan={13} className="px-3 py-2 text-xs font-semibold text-gray-700">
                     <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 mr-2">
                       {GROUP_OPTIONS.find((o) => o.key === groupBy)?.label.replace("按", "")}
                     </span>
@@ -775,11 +771,7 @@ export function PendingPurchaseList() {
                             "-"
                           )}
                         </td>
-                        <td className="px-3 py-3 text-gray-700">
-                          <div>{wo?.customers?.name || "-"}</div>
-                          <div className="text-xs text-gray-500">{wo?.vehicles?.plate_number || "-"}</div>
-                        </td>
-                        <td className="px-3 py-3 text-gray-700">{r.work_order_items?.name || "-"}</td>
+                        {/* 客户/车牌、项目两列已隐藏（2026-08-14 用户要求） */}
                         <td className="px-3 py-3 whitespace-nowrap">
                           <div className="text-base font-medium text-gray-900">{r.name}</div>
                           <div className="text-sm text-gray-400">{r.brand || ""} {r.specification || ""}</div>
@@ -816,6 +808,16 @@ export function PendingPurchaseList() {
                         <td className="px-3 py-3 text-right text-gray-700">
                           {r.quantity} {r.unit || "件"}
                         </td>
+                        {/* 库存：关联了库存配件才显示数字（<=0 标红），未关联显示 - */}
+                        <td className="px-3 py-3 text-right">
+                          {r.part_id ? (
+                            <span className={Number(r.parts?.quantity || 0) <= 0 ? "text-red-600 font-semibold" : "text-gray-700"}>
+                              {r.parts?.quantity ?? 0}
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
                         <td className="px-3 py-3 text-right text-gray-700">
                           <PriceValue value={r.unit_cost} />
                         </td>
@@ -836,16 +838,8 @@ export function PendingPurchaseList() {
                           </select>
                         </td>
                         <td className="px-3 py-3">
-                          <select
-                            value={supplierMap[r.id] || ""}
-                            onChange={(e) => setRowSupplier(r.id, e.target.value)}
-                            className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
-                          >
-                            <option value="">{r.supplier_name || "请选择"}</option>
-                            {suppliers.map((s) => (
-                              <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                          </select>
+                          {/* 供应商只读（2026-08-14 用户要求）：询价阶段已确定，这里不允许改 */}
+                          <span className="text-gray-700 text-xs">{r.supplier_name || "-"}</span>
                         </td>
                         <td className="px-3 py-3">
                           {(() => {
@@ -886,7 +880,7 @@ export function PendingPurchaseList() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={12} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={13} className="px-6 py-12 text-center text-gray-400">
                   暂无待采购的配件
                 </td>
               </tr>
@@ -1159,7 +1153,13 @@ export function PendingPurchaseList() {
                 editId={editId}
                 onSaved={handlePartSaved}
                 onCancel={closeEditModal}
-                prefillData={配件预填}
+                /* 预填在共享 Hook 基础上叠加本页要求（2026-08-14）：
+                   行内已填的单据名称、销售价也带进配件表单 */
+                prefillData={配件预填 && editRow ? {
+                  ...配件预填,
+                  document_name: editRow.document_name || "",
+                  unit_price: editRow.unit_price != null ? String(editRow.unit_price) : "",
+                } : 配件预填}
               />
             </div>
           </div>
