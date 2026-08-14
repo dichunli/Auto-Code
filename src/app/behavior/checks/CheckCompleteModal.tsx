@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
 import { 计算时段状态 } from "@/lib/behaviorCheck";
@@ -22,7 +22,7 @@ interface Props {
 /* 完成检查弹窗：逐条细节对照图文标准打分 + 拍照 + 首条评论。
  * 项目没设细节时回落为整体打分（旧模式兼容） */
 export default function CheckCompleteModal({ record, onClose, onCompleted }: Props) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const 有细节 = record.details.length > 0;
   const 是扣分 = record.item_score_type === "penalty";
 

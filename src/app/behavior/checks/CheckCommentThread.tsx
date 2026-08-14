@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface 评论 {
@@ -19,7 +19,7 @@ interface Props {
 
 /* 检查记录下的评论线程：默认收起只显示条数，展开时才加载明细 */
 export default function CheckCommentThread({ checkRecordId, initialCount, onPosted }: Props) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [expanded, setExpanded] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [comments, setComments] = useState<评论[]>([]);

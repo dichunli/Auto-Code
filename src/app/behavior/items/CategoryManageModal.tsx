@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -20,7 +20,7 @@ interface Props {
 
 /* 行为分类管理弹窗：新增/行内改名/排序/启停/删除 */
 export default function CategoryManageModal({ categories, onClose, onChanged }: Props) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { 请求确认, 确认弹窗 } = useConfirm();
   const [newName, setNewName] = useState("");
   const [saving, setSaving] = useState(false);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -26,15 +26,20 @@ interface Props {
 /* 检查细节管理弹窗：一个项目（场地）下的逐条检查点，每条有图文说明和分值。
  * 本地编辑后点"保存"统一提交（新增 insert / 修改 update / 删除 delete） */
 export default function DetailManageModal({ itemId, itemName, onClose, onSaved }: Props) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { 请求确认, 确认弹窗 } = useConfirm();
   const [details, setDetails] = useState<细节行[]>([]);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [newCounter, setNewCounter] = useState(0);
+  /* 新行计数用 ref：快速连点"添加细节"时 setState 闭包会拿到旧值，函数式更新才稳 */
+  const newCounterRef = useRef(0);
+  /* 请求序号：StrictMode 下 effect 会挂载两次发出两个请求，
+   * 只认最后一次的结果，防止慢的旧请求返回时覆盖用户刚加的本地行 */
+  const 请求序号Ref = useRef(0);
 
   const fetchDetails = useCallback(async () => {
+    const 序号 = ++请求序号Ref.current;
     setLoading(true);
     const { data } = await supabase
       .from("behavior_item_details")
@@ -42,6 +47,7 @@ export default function DetailManageModal({ itemId, itemName, onClose, onSaved }
       .eq("item_id", itemId)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
+    if (序号 !== 请求序号Ref.current) return; /* 已有更新的请求在跑，丢弃过期结果 */
     const rows: 细节行[] = (data || []).map((d: { id: string; name: string; description: string | null; score_value: number; guide_images: string[] | null }) => ({
       id: d.id,
       name: d.name,
@@ -59,21 +65,20 @@ export default function DetailManageModal({ itemId, itemName, onClose, onSaved }
   }, [fetchDetails]);
 
   function addRow() {
-    const id = `new-${newCounter}`;
-    setNewCounter(newCounter + 1);
-    setDetails([...details, { id, name: "", description: "", score_value: "1", guide_images: [], isNew: true }]);
+    const id = `new-${newCounterRef.current++}`;
+    setDetails((prev) => [...prev, { id, name: "", description: "", score_value: "1", guide_images: [], isNew: true }]);
   }
 
   function updateRow(id: string, patch: Partial<细节行>) {
-    setDetails(details.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+    setDetails((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   }
 
   function removeRow(id: string) {
-    const row = details.find((d) => d.id === id);
-    if (row && !row.isNew) {
-      setDeletedIds([...deletedIds, id]);
-    }
-    setDetails(details.filter((d) => d.id !== id));
+    setDeletedIds((prev) => {
+      const row = details.find((d) => d.id === id);
+      return row && !row.isNew ? [...prev, id] : prev;
+    });
+    setDetails((prev) => prev.filter((d) => d.id !== id));
   }
 
   async function handleSave() {
@@ -191,9 +196,11 @@ export default function DetailManageModal({ itemId, itemName, onClose, onSaved }
         </div>
 
         <div className="pt-3">
+          {/* 加载期间禁点：防止先加的本地行被随后返回的查询结果覆盖 */}
           <button
             onClick={addRow}
-            className="w-full py-2 text-sm text-blue-600 border border-dashed border-blue-300 rounded-lg hover:bg-blue-50"
+            disabled={loading}
+            className="w-full py-2 text-sm text-blue-600 border border-dashed border-blue-300 rounded-lg hover:bg-blue-50 disabled:opacity-50"
           >
             + 添加细节
           </button>
