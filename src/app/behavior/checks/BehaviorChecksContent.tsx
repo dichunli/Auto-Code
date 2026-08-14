@@ -11,6 +11,7 @@ import { useUpload } from "@/hooks/useUpload";
 interface 考核记录 {
   id: string;
   task_id: string;
+  item_id: string;
   task_name: string;
   item_name: string;
   item_score: number;
@@ -42,8 +43,9 @@ export default function BehaviorChecksContent({ initialRecords }: { initialRecor
       return;
     }
 
-    const today = new Date().toISOString().split("T")[0];
+    /* 用本地日期而非 UTC：北京时间凌晨 0-8 点 UTC 还是昨天，会把"今天"算错 */
     const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const weekday = now.getDay();
     const dayOfMonth = now.getDate();
 
@@ -112,6 +114,7 @@ export default function BehaviorChecksContent({ initialRecords }: { initialRecor
       return {
         id: rec.id,
         task_id: rec.task_id,
+        item_id: rec.behavior_check_tasks?.item_id || "",
         task_name: rec.behavior_check_tasks?.name || "",
         item_name: item?.name || "",
         item_score: item?.score_value || 0,
@@ -176,16 +179,18 @@ export default function BehaviorChecksContent({ initialRecords }: { initialRecor
       /* 上传照片 */
       const photoUrl = await uploadPhoto(file);
 
-      /* 创建行为打分记录 */
+      /* 创建行为打分记录（item_id 必须指向行为项目，误写 task_id 会触发外键冲突导致整个提交失败） */
       const finalScore = record.item_score_type === "penalty" ? -Math.abs(record.item_score) : Math.abs(record.item_score);
       const { data: scoreData, error: scoreError } = await supabase
         .from("behavior_score_records")
         .insert({
           employee_id: employeeId,
-          item_id: record.task_id,
+          item_id: record.item_id,
           score: finalScore,
           notes: `完成定时考核任务：${record.task_name}`,
           media_urls: [photoUrl],
+          scored_by: employeeId,
+          event_time: new Date().toISOString(),
         })
         .select("id")
         .single();

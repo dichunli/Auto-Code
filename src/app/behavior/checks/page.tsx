@@ -10,8 +10,9 @@ export default async function BehaviorChecksPage() {
     return <BehaviorChecksContent initialRecords={[]} />;
   }
 
-  const today = new Date().toISOString().split("T")[0];
+  /* 用本地日期而非 UTC：北京时间凌晨 0-8 点 UTC 还是昨天，会把"今天"算错 */
   const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const weekday = now.getDay();
   const dayOfMonth = now.getDate();
 
@@ -80,6 +81,7 @@ export default async function BehaviorChecksPage() {
     return {
       id: rec.id,
       task_id: rec.task_id,
+      item_id: rec.behavior_check_tasks?.item_id || "",
       task_name: rec.behavior_check_tasks?.name || "",
       item_name: item?.name || "",
       item_score: item?.score_value || 0,
