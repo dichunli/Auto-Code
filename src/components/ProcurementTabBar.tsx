@@ -259,6 +259,12 @@ export function ProcurementTabBar({ currentTab }: Props) {
     };
   }, [supabase, loadCounts]);
 
+  /* 切换 Tab 时也刷新角标：Realtime 事件可能因网络/订阅失败漏发，
+   * 而用户点 Tab 是强意图动作，此时必须给出最新数字（2026-08-14 角标不实时问题） */
+  useEffect(() => {
+    loadCounts();
+  }, [currentTab, loadCounts]);
+
   return (
     /* 胶囊标签（对齐工单列表页的阶段筛选样式）：圆角按钮 + 彩色数字角标，自动换行 */
     <div className="flex flex-wrap gap-2 mb-4">
