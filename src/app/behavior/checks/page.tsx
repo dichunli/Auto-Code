@@ -80,6 +80,7 @@ export default async function BehaviorChecksPage() {
     return {
       id: rec.id,
       task_id: rec.task_id,
+      item_id: rec.behavior_check_tasks?.item_id || "",
       task_name: rec.behavior_check_tasks?.name || "",
       item_name: item?.name || "",
       item_score: item?.score_value || 0,
