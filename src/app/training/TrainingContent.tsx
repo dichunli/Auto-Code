@@ -293,12 +293,6 @@ export default function TrainingContent({
           <Link href="/training/exam-grade" className="text-xs px-3 py-1.5 rounded-lg bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100">
             简答题判卷
           </Link>
-          <Link href="/training/behavior-items" className="text-xs px-3 py-1.5 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100">
-            行为项目
-          </Link>
-          <Link href="/training/behavior-score" className="text-xs px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100">
-            行为打分
-          </Link>
           <Link href="/training/rework-records" className="text-xs px-3 py-1.5 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100">
             返工记录
           </Link>
