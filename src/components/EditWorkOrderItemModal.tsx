@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface ServiceItem {
   id: string;
@@ -45,7 +46,7 @@ export function EditWorkOrderItemModal({
   const [selectedServiceItem, setSelectedServiceItem] = useState<ServiceItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedSearchKeyword = useDebounce(searchKeyword, 300);
 
   useEffect(() => {
     if (open) {
@@ -59,25 +60,33 @@ export function EditWorkOrderItemModal({
     }
   }, [open, currentAlias, currentQuantity, currentUnitPrice, currentRequireQc]);
 
-  async function doSearch(keyword: string) {
-    if (!keyword.trim()) {
+  /* 防抖搜索维修项目：输入停止 300ms 后才查库 */
+  useEffect(() => {
+    const keyword = debouncedSearchKeyword.trim();
+    if (!keyword) {
       setSearchResults([]);
+      setSearching(false);
       return;
     }
+    /* 刚选中某个项目后输入框会回填该项目名，这种情况不重新搜索（避免下拉又弹出来） */
+    if (selectedServiceItem && keyword === selectedServiceItem.name) return;
+    let cancelled = false;
     setSearching(true);
-    const { data } = await supabase
+    supabase
       .from("service_items")
       .select("id, name, code, default_price, standard_hours, require_qc")
-      .ilike("name", `%${keyword.trim()}%`)
-      .limit(20);
-    setSearchResults((data || []) as ServiceItem[]);
-    setSearching(false);
-  }
+      .ilike("name", `%${keyword}%`)
+      .limit(20)
+      .then(({ data }) => {
+        if (cancelled) return;
+        setSearchResults((data || []) as ServiceItem[]);
+        setSearching(false);
+      });
+    return () => { cancelled = true; };
+  }, [debouncedSearchKeyword, selectedServiceItem, supabase]);
 
   function handleSearchChange(val: string) {
     setSearchKeyword(val);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => doSearch(val), 300);
   }
 
   function handleSelectServiceItem(si: ServiceItem) {

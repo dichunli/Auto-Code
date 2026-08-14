@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
+import { useDebounce } from "@/lib/useDebounce";
 import BarcodeScanModal from "./BarcodeScanModal";
 
 interface Part {
@@ -72,21 +73,17 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
   // 编号智能提示：输入≥2字符防抖模糊查，出候选下拉
   const [pnSuggests, setPnSuggests] = useState<{ id: string; part_number: string; name: string }[]>([]);
   const [showPnSuggests, setShowPnSuggests] = useState(false);
-  const pnSuggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedPartNumber = useDebounce(partNumber, 250);
   useEffect(() => {
-    if (pnSuggestTimer.current) clearTimeout(pnSuggestTimer.current);
-    const kw = partNumber.trim();
+    const kw = debouncedPartNumber.trim();
     if (kw.length < 2) { setPnSuggests([]); return; }
-    pnSuggestTimer.current = setTimeout(async () => {
-      const { data } = await supabase
-        .from("parts")
-        .select("id, part_number, name")
-        .ilike("part_number", `%${kw}%`)
-        .limit(8);
-      setPnSuggests(data || []);
-    }, 250);
-    return () => { if (pnSuggestTimer.current) clearTimeout(pnSuggestTimer.current); };
-  }, [partNumber, supabase]);
+    supabase
+      .from("parts")
+      .select("id, part_number, name")
+      .ilike("part_number", `%${kw}%`)
+      .limit(8)
+      .then(({ data }) => setPnSuggests(data || []));
+  }, [debouncedPartNumber, supabase]);
 
   // 加载配件分类
   useEffect(() => {

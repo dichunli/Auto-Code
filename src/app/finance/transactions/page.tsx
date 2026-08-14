@@ -19,20 +19,36 @@ interface 交易记录 {
   profiles: { full_name: string } | null;
 }
 
-export default async function TransactionsPage({ searchParams }: { searchParams?: Promise<{ type?: string; account?: string }> }) {
+export default async function TransactionsPage({ searchParams }: { searchParams?: Promise<{ type?: string; account?: string; page?: string }> }) {
   const params = await searchParams;
   const supabase = await createClient();
 
+  /* 分页：流水会随时间不断增长，数据库层分页，每页 50 条 */
+  const page = Math.max(1, parseInt(params?.page || "1", 10) || 1);
+  const pageSize = 50;
+
   let query = supabase
     .from("finance_transactions")
-    .select("*, finance_accounts(name), finance_categories(name), profiles(full_name)")
+    .select("*, finance_accounts(name), finance_categories(name), profiles(full_name)", { count: "exact" })
     .order("transaction_date", { ascending: false });
 
   if (params?.type) query = query.eq("type", params.type);
   if (params?.account) query = query.eq("account_id", params.account);
 
-  const { data: transactions } = await query;
+  const from = (page - 1) * pageSize;
+  const { data: transactions, count } = await query.range(from, from + pageSize - 1);
   const { data: accounts } = await supabase.from("finance_accounts").select("id, name").eq("is_active", true);
+
+  const totalPages = Math.max(1, Math.ceil((count ?? 0) / pageSize));
+
+  /* 翻页链接保留当前筛选条件 */
+  function 翻页链接(目标页: number) {
+    const p = new URLSearchParams();
+    if (params?.type) p.set("type", params.type);
+    if (params?.account) p.set("account", params.account);
+    p.set("page", String(目标页));
+    return `/finance/transactions?${p.toString()}`;
+  }
 
   return (
     <div>
@@ -114,6 +130,25 @@ export default async function TransactionsPage({ searchParams }: { searchParams?
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* 分页 */}
+      <div className="flex items-center justify-center gap-2 mt-4">
+        <Link
+          href={翻页链接(Math.max(1, page - 1))}
+          className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page <= 1 ? "pointer-events-none opacity-50" : ""}`}
+        >
+          上一页
+        </Link>
+        <span className="text-sm text-gray-600 px-2">
+          {page} / {totalPages}（共 {count ?? 0} 条）
+        </span>
+        <Link
+          href={翻页链接(Math.min(totalPages, page + 1))}
+          className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page >= totalPages ? "pointer-events-none opacity-50" : ""}`}
+        >
+          下一页
+        </Link>
       </div>
     </div>
   );

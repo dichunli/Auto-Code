@@ -51,6 +51,8 @@ export default function SupplierTransactionsContent({
   const [query, setQuery] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<string>("");
+  /* 分页展示：记录超过 50 条时只渲染当前页，避免表格行数过多卡顿 */
+  const [page, setPage] = useState(1);
   const debouncedQuery = useDebounce(query, 300);
 
   const [showForm, setShowForm] = useState(false);
@@ -94,6 +96,7 @@ export default function SupplierTransactionsContent({
   function filterRecords(source: TransactionRecord[], search: string) {
     if (!search.trim()) {
       setRecords(source);
+      setPage(1);
       return;
     }
     const sq = search.trim().toLowerCase();
@@ -103,6 +106,7 @@ export default function SupplierTransactionsContent({
       return supplierName.toLowerCase().includes(sq) || desc.toLowerCase().includes(sq);
     });
     setRecords(filtered);
+    setPage(1);
   }
 
   // 筛选条件变化时重新拉取（跳过首次挂载）
@@ -157,6 +161,12 @@ export default function SupplierTransactionsContent({
   const totalIncome = records
     .filter((r) => r.transaction_type === "refund" || r.transaction_type === "credit")
     .reduce((sum, r) => sum + (r.amount || 0), 0);
+
+  /* 分页切片（page 状态见上方声明，筛选/搜索变化时在 filterRecords 里重置回第 1 页） */
+  const pageSize = 50;
+  const totalPages = Math.max(1, Math.ceil(records.length / pageSize));
+  const 当前页 = Math.min(page, totalPages);
+  const pagedRecords = records.slice((当前页 - 1) * pageSize, 当前页 * pageSize);
 
   return (
     <div className="space-y-6">
@@ -316,7 +326,7 @@ export default function SupplierTransactionsContent({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {records.map((t) => (
+              {pagedRecords.map((t) => (
                 <tr key={t.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-gray-500 text-xs">
                     {new Date(t.created_at).toLocaleString("zh-CN")}
@@ -356,6 +366,31 @@ export default function SupplierTransactionsContent({
           </table>
         </div>
       </div>
+
+      {/* 分页 */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={当前页 <= 1}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            上一页
+          </button>
+          <span className="text-sm text-gray-600 px-2">
+            {当前页} / {totalPages}（共 {records.length} 条）
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={当前页 >= totalPages}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            下一页
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface WorkOrderSearchProps {
   keyword: string;
@@ -11,31 +12,29 @@ export default function WorkOrderSearch({ keyword: initialKeyword }: WorkOrderSe
   const router = useRouter();
   const [keyword, setKeyword] = useState(initialKeyword);
   const isFirstRender = useRef(true);
+  const debouncedKeyword = useDebounce(keyword, 300);
 
   /* 同步 URL 参数变化 */
   useEffect(() => {
     setKeyword(initialKeyword);
   }, [initialKeyword]);
 
-  /* 防抖搜索：300ms 后自动提交 */
+  /* 防抖搜索：输入停止 300ms 后自动提交 */
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;
     }
-    const timer = setTimeout(() => {
-      const params = new URLSearchParams(window.location.search);
-      params.set("page", "1");
-      if (keyword.trim()) {
-        params.set("keyword", keyword.trim());
-      } else {
-        params.delete("keyword");
-      }
-      const qs = params.toString();
-      router.push(qs ? `/work-orders?${qs}` : "/work-orders");
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [keyword, router]);
+    const params = new URLSearchParams(window.location.search);
+    params.set("page", "1");
+    if (debouncedKeyword.trim()) {
+      params.set("keyword", debouncedKeyword.trim());
+    } else {
+      params.delete("keyword");
+    }
+    const qs = params.toString();
+    router.push(qs ? `/work-orders?${qs}` : "/work-orders");
+  }, [debouncedKeyword, router]);
 
   return (
     <div className="relative">

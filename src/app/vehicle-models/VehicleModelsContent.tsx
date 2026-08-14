@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import * as XLSX from "xlsx";
 
@@ -159,38 +160,51 @@ export default function VehicleModelsContent({ models, total, page, keyword, col
   const [importMsg, setImportMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  /* 搜索输入 — 本地状态 + 防抖 URL 更新 */
+  /* 搜索输入 — 本地状态 + useDebounce 防抖后更新 URL */
   const [search, setSearch] = useState(keyword);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedSearch = useDebounce(search, 400);
+  /* 记录上次已提交到 URL 的搜索词，避免挂载时/外部同步时重复 replace */
+  const lastSubmittedSearch = useRef(keyword);
 
   // 当外部 keyword 变化时同步本地状态（如清除筛选、URL 直接修改）
-  useEffect(() => { setSearch(keyword); }, [keyword]);
+  useEffect(() => {
+    setSearch(keyword);
+    lastSubmittedSearch.current = keyword;
+  }, [keyword]);
+
+  useEffect(() => {
+    if (debouncedSearch === lastSubmittedSearch.current) return;
+    lastSubmittedSearch.current = debouncedSearch;
+    const params = buildParams(debouncedSearch, columnFilters, 1);
+    router.replace(`/vehicle-models?${params}`);
+  }, [debouncedSearch, columnFilters, router]);
 
   function updateSearch(value: string) {
     setSearch(value);
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => {
-      const params = buildParams(value, columnFilters, 1);
-      router.replace(`/vehicle-models?${params}`);
-    }, 400);
   }
 
-  /* 列筛选 — 本地状态 + 防抖 URL 更新 */
+  /* 列筛选 — 本地状态 + useDebounce 防抖后更新 URL */
   const [localFilters, setLocalFilters] = useState<Record<string, string>>(columnFilters);
-  const filterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedFilters = useDebounce(localFilters, 500);
+  const lastSubmittedFilters = useRef(columnFilters);
 
   // 当外部 columnFilters 变化时同步本地状态
-  useEffect(() => { setLocalFilters(columnFilters); }, [columnFilters]);
+  useEffect(() => {
+    setLocalFilters(columnFilters);
+    lastSubmittedFilters.current = columnFilters;
+  }, [columnFilters]);
+
+  useEffect(() => {
+    if (debouncedFilters === lastSubmittedFilters.current) return;
+    lastSubmittedFilters.current = debouncedFilters;
+    const params = buildParams(search, debouncedFilters, 1);
+    router.replace(`/vehicle-models?${params}`);
+  }, [debouncedFilters, search, router]);
 
   function updateColumnFilter(col: string, value: string) {
     const next = { ...localFilters, [col]: value };
     if (!value.trim()) delete next[col];
     setLocalFilters(next);
-    if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
-    filterTimerRef.current = setTimeout(() => {
-      const params = buildParams(search, next, 1);
-      router.replace(`/vehicle-models?${params}`);
-    }, 500);
   }
 
   function clearAllFilters() {
