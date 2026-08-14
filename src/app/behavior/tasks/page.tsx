@@ -6,6 +6,8 @@ interface 行为项目 {
   name: string;
   score_type: string;
   score_value: number;
+  responsible_id: string | null;
+  checker_id: string | null;
 }
 
 interface 员工 {
@@ -22,6 +24,7 @@ interface 考核任务 {
   item_score_type: string;
   frequency: string;
   execute_time: string;
+  end_time: string;
   execute_weekday: number;
   execute_day: number;
   employee_ids: string[];
@@ -33,7 +36,7 @@ interface 考核任务 {
 export default async function BehaviorTasksPage() {
   const supabase = await createClient();
   const [{ data: itemData }, { data: empData }, { data: taskData }] = await Promise.all([
-    supabase.from("behavior_score_items").select("id, name, score_type, score_value").eq("is_active", true).order("name"),
+    supabase.from("behavior_score_items").select("id, name, score_type, score_value, responsible_id, checker_id").eq("is_active", true).order("name"),
     supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
     supabase.from("behavior_check_tasks").select("*").order("created_at", { ascending: false }),
   ]);
