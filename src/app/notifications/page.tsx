@@ -17,20 +17,33 @@ interface 通知 {
 export default async function NotificationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; status?: string }>;
+  searchParams: Promise<{ type?: string; status?: string; page?: string }>;
 }) {
   const supabase = await createClient();
-  const { type, status } = await searchParams;
+  const { type, status, page: pageParam } = await searchParams;
+  const page = Math.max(1, parseInt(pageParam || "1", 10) || 1);
+  const pageSize = 50;
 
   let query = supabase
     .from("notifications")
-    .select("*, customers(name, phone), members(card_no, name)")
+    .select("*, customers(name, phone), members(card_no, name)", { count: "exact" })
     .order("created_at", { ascending: false });
 
   if (type) query = query.eq("type", type);
   if (status) query = query.eq("status", status);
 
-  const { data: notifications } = await query;
+  const from = (page - 1) * pageSize;
+  const { data: notifications, count } = await query.range(from, from + pageSize - 1);
+  const totalPages = Math.max(1, Math.ceil((count ?? 0) / pageSize));
+
+  /* 翻页链接保留当前筛选条件 */
+  function 翻页链接(目标页: number) {
+    const p = new URLSearchParams();
+    if (type) p.set("type", type);
+    if (status) p.set("status", status);
+    p.set("page", String(目标页));
+    return `/notifications?${p.toString()}`;
+  }
 
   const typeFilters = [
     { value: "", label: "全部类型" },
@@ -143,6 +156,25 @@ export default async function NotificationsPage({
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* 分页 */}
+      <div className="flex items-center justify-center gap-2 mt-4">
+        <Link
+          href={翻页链接(Math.max(1, page - 1))}
+          className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page <= 1 ? "pointer-events-none opacity-50" : ""}`}
+        >
+          上一页
+        </Link>
+        <span className="text-sm text-gray-600 px-2">
+          {page} / {totalPages}（共 {count ?? 0} 条）
+        </span>
+        <Link
+          href={翻页链接(Math.min(totalPages, page + 1))}
+          className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page >= totalPages ? "pointer-events-none opacity-50" : ""}`}
+        >
+          下一页
+        </Link>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import Link from "next/link";
 
 /* 应付记录（含关联供应商与采购单） */
 interface 应付记录 {
@@ -14,13 +15,26 @@ interface 应付记录 {
   purchase_orders: { order_no: string | null; total_amount: number | null } | null;
 }
 
-export default async function PayablePage() {
+export default async function PayablePage({ searchParams }: { searchParams?: Promise<{ page?: string }> }) {
+  const params = await searchParams;
   const supabase = await createClient();
 
-  const { data: items } = await supabase
-    .from("accounts_payable")
-    .select("*, suppliers(name, contact), purchase_orders(order_no, total_amount)")
-    .order("created_at", { ascending: false });
+  /* 列表分页（每页 50 条，数据库层取数）；
+   * 汇总卡片需要全量总额——单独查一趟只取两个金额列（不带关联、不带其他字段），数据量很小 */
+  const page = Math.max(1, parseInt(params?.page || "1", 10) || 1);
+  const pageSize = 50;
+  const from = (page - 1) * pageSize;
+
+  const [{ data: items, count }, { data: 金额行 }] = await Promise.all([
+    supabase
+      .from("accounts_payable")
+      .select("*, suppliers(name, contact), purchase_orders(order_no, total_amount)", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1),
+    supabase.from("accounts_payable").select("amount, paid_amount"),
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil((count ?? 0) / pageSize));
 
   const statusMap: Record<string, { label: string; class: string }> = {
     pending: { label: "待付款", class: "bg-yellow-50 text-yellow-700" },
@@ -29,8 +43,8 @@ export default async function PayablePage() {
     cancelled: { label: "已取消", class: "bg-gray-50 text-gray-600" },
   };
 
-  const totalAmount = items?.reduce((sum, r) => sum + (r.amount || 0), 0) || 0;
-  const totalPaid = items?.reduce((sum, r) => sum + (r.paid_amount || 0), 0) || 0;
+  const totalAmount = 金额行?.reduce((sum, r) => sum + (r.amount || 0), 0) || 0;
+  const totalPaid = 金额行?.reduce((sum, r) => sum + (r.paid_amount || 0), 0) || 0;
   const totalPending = totalAmount - totalPaid;
 
   return (
@@ -96,6 +110,25 @@ export default async function PayablePage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* 分页 */}
+      <div className="flex items-center justify-center gap-2">
+        <Link
+          href={`/finance/payable?page=${Math.max(1, page - 1)}`}
+          className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page <= 1 ? "pointer-events-none opacity-50" : ""}`}
+        >
+          上一页
+        </Link>
+        <span className="text-sm text-gray-600 px-2">
+          {page} / {totalPages}（共 {count ?? 0} 条）
+        </span>
+        <Link
+          href={`/finance/payable?page=${Math.min(totalPages, page + 1)}`}
+          className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page >= totalPages ? "pointer-events-none opacity-50" : ""}`}
+        >
+          下一页
+        </Link>
       </div>
     </div>
   );
