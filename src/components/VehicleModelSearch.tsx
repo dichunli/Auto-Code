@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface VehicleModelOption {
   id: number;
@@ -104,28 +105,28 @@ export function VehicleModelSearch({ onSelect, placeholder = "搜索品牌、车
   const [detailModel, setDetailModel] = useState<VehicleModelDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  const debouncedQuery = useDebounce(query, 300);
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!query.trim()) {
-        setResults([]);
-        return;
-      }
-      const s = query.trim();
-      /* 搜索词太短不查，避免结果过多 */
-      if (s.length < 2) {
-        setResults([]);
-        return;
-      }
-      const { data } = await supabase
-        .from("vehicle_models")
-        .select("id,品牌,品牌别名,车系,车型,年款,排量,销售版本,底盘代号,发动机型号,变速箱类型,变速箱代号")
-        .ilike("搜索字段", `%${s}%`)
-        .limit(10);
-      setResults(((data as unknown) as VehicleModelOption[]) || []);
-      setOpen(true);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [query, supabase]);
+    const s = debouncedQuery.trim();
+    if (!s) {
+      setResults([]);
+      return;
+    }
+    /* 搜索词太短不查，避免结果过多 */
+    if (s.length < 2) {
+      setResults([]);
+      return;
+    }
+    supabase
+      .from("vehicle_models")
+      .select("id,品牌,品牌别名,车系,车型,年款,排量,销售版本,底盘代号,发动机型号,变速箱类型,变速箱代号")
+      .ilike("搜索字段", `%${s}%`)
+      .limit(10)
+      .then(({ data }) => {
+        setResults(((data as unknown) as VehicleModelOption[]) || []);
+        setOpen(true);
+      });
+  }, [debouncedQuery, supabase]);
 
   useEffect(() => {
     if (searchKeyword !== undefined && searchKeyword !== query) {
