@@ -1,18 +1,11 @@
-"use client";
+import { createClient } from "@/lib/supabase/server";
+import BehaviorTasksContent from "./BehaviorTasksContent";
 
-import {useState, useEffect, useCallback, useMemo} from "react";
-import { createClient } from "@/lib/supabase/client";
-import { PageHeader } from "@/components/PageHeader";
-
-interface 行为任务 {
+interface 行为项目 {
   id: string;
-  title: string;
-  description: string | null;
-  score_reward: number;
-  status: string;
-  created_at: string;
-  assignee: { full_name: string } | null;
-  assigned_by_profile: { full_name: string } | null;
+  name: string;
+  score_type: string;
+  score_value: number;
 }
 
 interface 员工 {
@@ -20,165 +13,49 @@ interface 员工 {
   full_name: string;
 }
 
-export default function BehaviorTasksPage() {
-  const supabase = useMemo(() => createClient(), []);
-  const [tasks, setTasks] = useState<行为任务[]>([]);
-  const [employees, setEmployees] = useState<员工[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    assignee_id: "",
-    score_reward: "5",
+interface 考核任务 {
+  id: string;
+  name: string;
+  item_id: string;
+  item_name: string;
+  item_score: number;
+  item_score_type: string;
+  frequency: string;
+  execute_time: string;
+  execute_weekday: number;
+  execute_day: number;
+  employee_ids: string[];
+  is_active: boolean;
+}
+
+/* 首屏数据在服务端查询（原客户端 useEffect 加载会闪空白），
+ * 增删改后的客户端重查逻辑在 BehaviorTasksContent 内保持不变 */
+export default async function BehaviorTasksPage() {
+  const supabase = await createClient();
+  const [{ data: itemData }, { data: empData }, { data: taskData }] = await Promise.all([
+    supabase.from("behavior_score_items").select("id, name, score_type, score_value").eq("is_active", true).order("name"),
+    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
+    supabase.from("behavior_check_tasks").select("*").order("created_at", { ascending: false }),
+  ]);
+
+  const itemMap = new Map((itemData as 行为项目[] | null)?.map((i) => [i.id, i]) || []);
+
+  const tasks = ((taskData || []) as 考核任务[]).map((t) => {
+    const item = itemMap.get(t.item_id);
+    return {
+      ...t,
+      item_name: item?.name || "",
+      item_score: item?.score_value || 0,
+      item_score_type: item?.score_type || "bonus",
+      employee_ids: t.employee_ids || [],
+    };
   });
 
-  const fetchTasks = useCallback(async () => {
-    const { data } = await supabase
-      .from("behavior_tasks")
-      .select("*, assignee:profiles!behavior_tasks_assignee_id_fkey(full_name), assigned_by_profile:profiles!behavior_tasks_assigned_by_fkey(full_name)")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    setTasks((data || []) as 行为任务[]);
-  }, [supabase]);
-
-  useEffect(() => {
-    fetchTasks();
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").limit(100).then(({ data }) => {
-      setEmployees(data || []);
-    });
-  }, [fetchTasks, supabase]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const { error } = await supabase.from("behavior_tasks").insert({
-        title: form.title,
-        description: form.description || null,
-        assignee_id: form.assignee_id,
-        score_reward: parseInt(form.score_reward) || 0,
-      });
-      if (error) throw error;
-      setShowForm(false);
-      setForm({ title: "", description: "", assignee_id: "", score_reward: "5" });
-      fetchTasks();
-    } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function completeTask(taskId: string) {
-    const { error } = await supabase
-      .from("behavior_tasks")
-      .update({ status: "completed", completed_at: new Date().toISOString() })
-      .eq("id", taskId);
-    if (error) {
-      alert("操作失败: " + error.message);
-      return;
-    }
-    fetchTasks();
-  }
-
   return (
-    <div>
-      <PageHeader title="行为任务分派" description="分派任务给员工，完成后加分" />
-
-      <div className="mb-4">
-        <button
-          type="button"
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-        >
-          {showForm ? "取消" : "+ 新建任务"}
-        </button>
-      </div>
-
-      {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-5 max-w-xl mb-6 space-y-3">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">任务标题 *</label>
-            <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">任务描述</label>
-            <textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">指派给 *</label>
-              <select required value={form.assignee_id} onChange={(e) => setForm({ ...form, assignee_id: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                <option value="">请选择</option>
-                {employees.map((e) => (
-                  <option key={e.id} value={e.id}>{e.full_name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">奖励分数</label>
-              <input type="number" value={form.score_reward} onChange={(e) => setForm({ ...form, score_reward: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-            </div>
-          </div>
-          <div className="flex gap-3 justify-end">
-            <button type="submit" disabled={loading} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              {loading ? "保存中..." : "保存"}
-            </button>
-          </div>
-        </form>
-      )}
-
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">任务</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">指派给</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">奖励</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">状态</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {tasks.map((t) => (
-                <tr key={t.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{t.title}</div>
-                    {t.description && <div className="text-xs text-gray-500">{t.description}</div>}
-                  </td>
-                  <td className="px-4 py-3">{t.assignee?.full_name}</td>
-                  <td className="px-4 py-3 text-green-600 font-medium">+{t.score_reward}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded ${
-                      t.status === "completed" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"
-                    }`}>
-                      {t.status === "completed" ? "已完成" : "待完成"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {t.status === "pending" && (
-                      <button
-                        type="button"
-                        onClick={() => completeTask(t.id)}
-                        className="text-xs px-2 py-1 rounded bg-green-50 text-green-600 hover:bg-green-100 border border-green-200"
-                      >
-                        确认完成
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {tasks.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400">暂无任务</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+    <BehaviorTasksContent
+      initialItems={(itemData as 行为项目[] | null) || []}
+      initialEmployees={(empData as 员工[] | null) || []}
+      initialTasks={tasks}
+    />
   );
 }

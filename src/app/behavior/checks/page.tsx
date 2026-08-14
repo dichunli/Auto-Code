@@ -1,166 +1,95 @@
-"use client";
+import { createClient } from "@/lib/supabase/server";
+import BehaviorChecksContent from "./BehaviorChecksContent";
 
-import {useState, useEffect, useCallback, useMemo} from "react";
-import { createClient } from "@/lib/supabase/client";
-import { PageHeader } from "@/components/PageHeader";
-import { formatDate } from "@/lib/utils";
+/* 首屏数据在服务端查询（原客户端 useEffect 加载会闪空白），
+ * 提交后的客户端重查逻辑在 BehaviorChecksContent 内保持不变 */
+export default async function BehaviorChecksPage() {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) {
+    return <BehaviorChecksContent initialRecords={[]} />;
+  }
 
-const CHECK_TYPES = [
-  { key: "appearance", label: "仪容仪表" },
-  { key: "venue", label: "场地规范" },
-  { key: "tools", label: "工具摆放" },
-  { key: "other", label: "其他" },
-];
+  const today = new Date().toISOString().split("T")[0];
+  const now = new Date();
+  const weekday = now.getDay();
+  const dayOfMonth = now.getDate();
 
-interface 检查记录 {
-  id: string;
-  check_type: string;
-  score: number;
-  notes: string | null;
-  checked_at: string;
-  employee: { full_name: string } | null;
-  checker: { full_name: string } | null;
-}
+  /* 1. 获取所有启用的考核任务 */
+  const { data: taskData } = await supabase
+    .from("behavior_check_tasks")
+    .select("*")
+    .eq("is_active", true);
 
-interface 员工 {
-  id: string;
-  full_name: string;
-}
-
-export default function BehaviorChecksPage() {
-  const supabase = useMemo(() => createClient(), []);
-  const [checks, setChecks] = useState<检查记录[]>([]);
-  const [employees, setEmployees] = useState<员工[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
-    check_type: "appearance",
-    employee_id: "",
-    score: "0",
-    notes: "",
+  /* 2. 筛选今天应该执行的任务 */
+  const todayTasks = (taskData || []).filter((t: { frequency: string; execute_weekday: number | null; execute_day: number | null; employee_ids: string[] | null }) => {
+    if (t.frequency === "daily") return true;
+    if (t.frequency === "weekly" && t.execute_weekday === weekday) return true;
+    if (t.frequency === "monthly" && t.execute_day === dayOfMonth) return true;
+    return false;
+  }).filter((t: { employee_ids: string[] | null }) => {
+    /* 检查当前用户是否在考核范围内 */
+    if (!t.employee_ids || t.employee_ids.length === 0) return true;
+    return t.employee_ids.includes(userData.user.id);
   });
 
-  const fetchChecks = useCallback(async () => {
-    const { data } = await supabase
-      .from("behavior_checks")
-      .select("*, employee:profiles!behavior_checks_employee_id_fkey(full_name), checker:profiles!behavior_checks_checker_id_fkey(full_name)")
-      .order("checked_at", { ascending: false })
-      .limit(100);
-    setChecks((data || []) as 检查记录[]);
-  }, [supabase]);
+  /* 3. 为今天应该执行但还没有记录的任务创建记录 */
+  for (const task of todayTasks) {
+    const { data: existing } = await supabase
+      .from("behavior_check_records")
+      .select("id")
+      .eq("task_id", (task as { id: string }).id)
+      .eq("employee_id", userData.user.id)
+      .eq("check_date", today)
+      .single();
 
-  useEffect(() => {
-    fetchChecks();
-    supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name").limit(100).then(({ data }) => {
-      setEmployees(data || []);
-    });
-  }, [fetchChecks, supabase]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const { error } = await supabase.from("behavior_checks").insert({
-        check_type: form.check_type,
-        employee_id: form.employee_id,
-        score: parseInt(form.score) || 0,
-        notes: form.notes || null,
+    if (!existing) {
+      await supabase.from("behavior_check_records").insert({
+        task_id: (task as { id: string }).id,
+        employee_id: userData.user.id,
+        check_date: today,
+        status: "pending",
       });
-      if (error) throw error;
-      setShowForm(false);
-      setForm({ check_type: "appearance", employee_id: "", score: "0", notes: "" });
-      fetchChecks();
-    } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setLoading(false);
     }
   }
 
-  return (
-    <div>
-      <PageHeader title="行为检查记录" description="员工日常行为规范检查与扣分" />
+  /* 4. 获取今天的考核记录 */
+  const { data } = await supabase
+    .from("behavior_check_records")
+    .select("*, behavior_check_tasks(name, item_id, behavior_score_items(name, score_value, score_type))")
+    .eq("employee_id", userData.user.id)
+    .eq("check_date", today)
+    .order("created_at", { ascending: true });
 
-      <div className="mb-4">
-        <button
-          type="button"
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-        >
-          {showForm ? "取消" : "+ 新建检查记录"}
-        </button>
-      </div>
+  const mapped = (data || []).map((r: unknown) => {
+    const rec = r as {
+      id: string;
+      task_id: string;
+      check_date: string;
+      status: string;
+      score_record_id: string | null;
+      behavior_check_tasks: {
+        name: string;
+        item_id: string;
+        behavior_score_items: { name: string; score_value: number; score_type: string }[] | { name: string; score_value: number; score_type: string } | null;
+      } | null;
+    };
+    const item = Array.isArray(rec.behavior_check_tasks?.behavior_score_items)
+      ? rec.behavior_check_tasks?.behavior_score_items[0]
+      : rec.behavior_check_tasks?.behavior_score_items;
+    return {
+      id: rec.id,
+      task_id: rec.task_id,
+      task_name: rec.behavior_check_tasks?.name || "",
+      item_name: item?.name || "",
+      item_score: item?.score_value || 0,
+      item_score_type: item?.score_type || "bonus",
+      check_date: rec.check_date,
+      status: rec.status,
+      score_record_id: rec.score_record_id,
+      media_urls: [] as string[],
+    };
+  });
 
-      {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-5 max-w-xl mb-6 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">检查类型</label>
-              <select value={form.check_type} onChange={(e) => setForm({ ...form, check_type: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                {CHECK_TYPES.map((t) => (
-                  <option key={t.key} value={t.key}>{t.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">员工</label>
-              <select required value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                <option value="">请选择</option>
-                {employees.map((e) => (
-                  <option key={e.id} value={e.id}>{e.full_name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">得分（负数为扣分）</label>
-            <input type="number" value={form.score} onChange={(e) => setForm({ ...form, score: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">备注</label>
-            <textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-          </div>
-          <div className="flex gap-3 justify-end">
-            <button type="submit" disabled={loading} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              {loading ? "保存中..." : "保存"}
-            </button>
-          </div>
-        </form>
-      )}
-
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">类型</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">员工</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">得分</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">备注</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">检查人</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">时间</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {checks.map((c) => (
-                <tr key={c.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">{CHECK_TYPES.find((t) => t.key === c.check_type)?.label || c.check_type}</td>
-                  <td className="px-4 py-3">{c.employee?.full_name}</td>
-                  <td className={`px-4 py-3 font-medium ${c.score >= 0 ? "text-green-600" : "text-red-600"}`}>{c.score > 0 ? `+${c.score}` : c.score}</td>
-                  <td className="px-4 py-3 text-gray-500">{c.notes || "-"}</td>
-                  <td className="px-4 py-3 text-gray-500">{c.checker?.full_name || "-"}</td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(c.checked_at)}</td>
-                </tr>
-              ))}
-              {checks.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">暂无记录</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+  return <BehaviorChecksContent initialRecords={mapped} />;
 }
