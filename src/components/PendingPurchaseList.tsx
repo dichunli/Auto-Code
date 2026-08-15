@@ -12,6 +12,7 @@ import { PURCHASE_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 创建采购单, 更新工单配件客户意见 } from "@/app/procurement/actions";
 import { DocumentNameInput } from "./DocumentNameInput";
+import CustomPurchaseModal from "./CustomPurchaseModal";
 
 interface PartBranchRow {
   id: string;
@@ -135,8 +136,18 @@ export function PendingPurchaseList() {
   const [showStockModal, setShowStockModal] = useState(false);
   const [lowStockParts, setLowStockParts] = useState<LowStockPart[]>([]);
   const [stockSelected, setStockSelected] = useState<Set<string>>(new Set());
-  const [stockQtyMap, setStockQtyMap] = useState<Record<string, number>>({});
+  const [stockQtyMap, setStockQtyMap] = useState<Record<string, string>>({});
+  /* 弹窗内供应商可改选（2026-08-14 用户要求）：partId → 供应商id，未改选的取配件自带供应商 */
+  const [stockSupplierMap, setStockSupplierMap] = useState<Record<string, string>>({});
+  /* 弹窗内搜索过滤（2026-08-14）：按名称/编码/品牌/规格/单据名称过滤后再批量操作 */
+  const [库存搜索词, set库存搜索词] = useState("");
   const [stockLoading, setStockLoading] = useState(false);
+
+  /* 自定义采购弹窗（2026-08-14）：采购与工单无关的配件 */
+  const [showCustomModal, setShowCustomModal] = useState(false);
+
+  /* 操作结果内联提示条（替代系统 alert 弹窗，2026-08-14 用户要求） */
+  const [结果提示, set结果提示] = useState<{ 类型: "成功" | "失败"; 文字: string } | null>(null);
 
   /* 撤销弹窗 */
   const [showRevokeModal, setShowRevokeModal] = useState(false);
@@ -482,9 +493,37 @@ export function PendingPurchaseList() {
         document_name: p.document_name || null,
       }));
 
+    /* 配件档案没登记默认供应商时，取该配件"最近一次采购"的供应商当默认（2026-08-14 用户要求） */
+    const 缺供应商ids = list.filter((p) => !p.supplier_id).map((p) => p.id);
+    if (缺供应商ids.length > 0) {
+      const { data: 历史采购 } = await supabase
+        .from("purchase_order_items")
+        .select("part_id, purchase_orders(supplier_id, created_at)")
+        .in("part_id", 缺供应商ids);
+      /* 按采购单创建时间倒序，每个配件取最近一次 */
+      interface 历史行 { part_id: string | null; purchase_orders: { supplier_id: string | null; created_at: string | null } | null }
+      const 最近供应商 = new Map<string, string>();
+      const 排序后 = ((历史采购 || []) as unknown as 历史行[])
+        .filter((h) => h.part_id && h.purchase_orders?.supplier_id)
+        .sort((a, b) => (b.purchase_orders!.created_at || "").localeCompare(a.purchase_orders!.created_at || ""));
+      for (const h of 排序后) {
+        if (!最近供应商.has(h.part_id!)) 最近供应商.set(h.part_id!, h.purchase_orders!.supplier_id!);
+      }
+      for (const p of list) {
+        if (p.supplier_id) continue;
+        const sid = 最近供应商.get(p.id);
+        if (sid) {
+          p.supplier_id = sid;
+          p.supplier_name = suppliers.find((s) => s.id === sid)?.name || p.supplier_name;
+        }
+      }
+    }
+
     setLowStockParts(list);
     setStockSelected(new Set());
     setStockQtyMap({});
+    setStockSupplierMap({});
+    set库存搜索词("");
     setStockLoading(false);
   }
 
@@ -492,6 +531,55 @@ export function PendingPurchaseList() {
     loadLowStockParts();
     setShowStockModal(true);
   }
+
+  /* 弹窗行的有效供应商：改选过的优先，否则取配件自带（2026-08-14 供应商可改选） */
+  function 有效供应商id(p: LowStockPart): string {
+    return stockSupplierMap[p.id] || p.supplier_id || "";
+  }
+
+  /* 弹窗列表按有效供应商分别排序：有（之前）供应商的在前、按供应商名排，没有的沉底 */
+  const 排序后库存配件 = useMemo(() => {
+    const 供应商名 = (p: LowStockPart) => {
+      const sid = 有效供应商id(p);
+      return suppliers.find((s) => s.id === sid)?.name || p.supplier_name || "";
+    };
+    return [...lowStockParts].sort((a, b) => {
+      const 名a = 供应商名(a);
+      const 名b = 供应商名(b);
+      if (!名a && 名b) return 1;
+      if (名a && !名b) return -1;
+      return 名a.localeCompare(名b, "zh-CN") || (a.name || "").localeCompare(b.name || "", "zh-CN");
+    });
+
+  }, [lowStockParts, stockSupplierMap, suppliers]);
+
+  /* 弹窗内搜索过滤（本地过滤，数据量小不需要防抖） */
+  const 过滤后库存配件 = useMemo(() => {
+    const kw = 库存搜索词.trim().toUpperCase();
+    if (!kw) return 排序后库存配件;
+    return 排序后库存配件.filter((p) =>
+      [p.name, p.part_number, p.brand, p.specification, p.document_name]
+        .filter(Boolean)
+        .join(" ")
+        .toUpperCase()
+        .includes(kw)
+    );
+  }, [排序后库存配件, 库存搜索词]);
+
+  /* 数量有效性（字符串原样存储：留空=未填，红色提醒） */
+  function 库存数量有效(id: string): boolean {
+    const q = stockQtyMap[id];
+    if (q === undefined || q.trim() === "") return false;
+    const n = Number(q);
+    return Number.isInteger(n) && n > 0;
+  }
+
+  /* 可提交 = 有选中行 + 每行都有供应商和有效数量；不满足按钮置灰，不用系统弹窗拦截 */
+  const 库存弹窗可提交 =
+    stockSelected.size > 0 &&
+    lowStockParts
+      .filter((p) => stockSelected.has(p.id))
+      .every((p) => 有效供应商id(p) !== "" && 库存数量有效(p.id));
 
   function toggleStockSelect(id: string) {
     setStockSelected((prev) => {
@@ -504,42 +592,29 @@ export function PendingPurchaseList() {
         const part = lowStockParts.find((p) => p.id === id);
         if (part) {
           const suggestQty = Math.max(part.min_stock - part.quantity, 1);
-          setStockQtyMap((q) => ({ ...q, [id]: suggestQty }));
+          setStockQtyMap((q) => ({ ...q, [id]: String(suggestQty) }));
         }
       }
       return next;
     });
   }
 
-  function setStockQty(id: string, qty: number) {
-    setStockQtyMap((prev) => ({ ...prev, [id]: Math.max(1, qty) }));
+  function setStockQty(id: string, qty: string) {
+    setStockQtyMap((prev) => ({ ...prev, [id]: qty }));
   }
 
   async function handleCreateStockPurchases() {
-    if (stockSelected.size === 0) {
-      alert("请先选择要采购的配件");
-      return;
-    }
+    /* 供应商/数量校验由"生成采购单"按钮置灰前置拦截（红/黄高亮提示），此处不再弹系统窗 */
+    if (!库存弹窗可提交) return;
     const selectedParts = lowStockParts.filter((p) => stockSelected.has(p.id));
-    const missingQty = selectedParts.find((p) => !stockQtyMap[p.id] || stockQtyMap[p.id] <= 0);
-    if (missingQty) {
-      alert(`请为 ${missingQty.name} 填写采购数量`);
-      return;
-    }
 
     const groups: Record<string, LowStockPart[]> = {};
     selectedParts.forEach((p) => {
-      const sid = p.supplier_id;
+      const sid = 有效供应商id(p);
       if (!sid) return;
       if (!groups[sid]) groups[sid] = [];
       groups[sid].push(p);
     });
-
-    const noSupplierParts = selectedParts.filter((p) => !p.supplier_id);
-    if (noSupplierParts.length > 0) {
-      alert(`以下配件未设置供应商，无法创建采购单：${noSupplierParts.map((p) => p.name).join("、")}`);
-      return;
-    }
 
     if (!(await 请求确认(`将为 ${selectedParts.length} 条安全库存配件按供应商分组生成采购单,是否继续?`))) {
       return;
@@ -559,7 +634,7 @@ export function PendingPurchaseList() {
           name: it.name,
           brand: it.brand,
           specification: it.specification,
-          quantity: stockQtyMap[it.id] || 1,
+          quantity: Number(stockQtyMap[it.id]) || 1,
           unit: it.unit,
           unit_cost: it.unit_cost,
         })),
@@ -568,11 +643,11 @@ export function PendingPurchaseList() {
       const res = await 创建采购单(分组);
       if (!res.success) throw new Error(res.error || "创建采购单失败");
 
-      alert(`已生成 ${res.orders?.length ?? 分组.length} 张采购单(草稿状态),请到「采购订单」中审批并发出。`);
+      set结果提示({ 类型: "成功", 文字: `已生成 ${res.orders?.length ?? 分组.length} 张采购单(草稿状态),请到「采购订单」中审批并发出。` });
       setShowStockModal(false);
     } catch (err: unknown) {
       const e = err as Error;
-      alert("发起采购失败: " + (e.message || String(err)));
+      set结果提示({ 类型: "失败", 文字: "发起采购失败: " + (e.message || String(err)) });
     } finally {
       setSubmitting(false);
     }
@@ -649,6 +724,13 @@ export function PendingPurchaseList() {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {/* 操作结果内联提示（替代系统 alert） */}
+      {结果提示 && (
+        <div className={`px-6 py-2 text-xs flex items-center justify-between ${结果提示.类型 === "成功" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+          <span>{结果提示.文字}</span>
+          <button type="button" onClick={() => set结果提示(null)} className="text-gray-400 hover:text-gray-600">×</button>
+        </div>
+      )}
       <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
           <h3 className="text-sm font-semibold text-gray-900">
@@ -683,6 +765,13 @@ export function PendingPurchaseList() {
             className="px-3 py-1.5 bg-orange-50 text-orange-700 border border-orange-200 text-sm font-medium rounded-lg hover:bg-orange-100 transition-colors"
           >
             添加安全库存配件
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowCustomModal(true)}
+            className="px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 text-sm font-medium rounded-lg hover:bg-purple-100 transition-colors"
+          >
+            自定义采购
           </button>
           <button
             type="button"
@@ -958,14 +1047,46 @@ export function PendingPurchaseList() {
       {/* 安全库存配件弹窗 */}
       {showStockModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-3xl max-h-[80vh] flex flex-col">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-6xl max-h-[85vh] flex flex-col">
             <h3 className="text-base font-semibold text-gray-900 mb-4">添加安全库存配件</h3>
             <p className="text-xs text-gray-400 mb-3">以下配件库存低于安全线，勾选后可直接生成采购单</p>
+            {/* 搜索过滤：先搜出目标配件再批量勾选/改供应商（2026-08-14 用户要求） */}
+            <input
+              type="text"
+              value={库存搜索词}
+              onChange={(e) => set库存搜索词(e.target.value)}
+              placeholder="搜索配件名称 / 编码 / 品牌 / 规格 / 单据名称..."
+              className="w-full px-3 py-2 mb-3 text-sm rounded-lg border border-gray-300 focus:border-blue-500 focus:outline-none"
+            />
+            {/* 批量设置供应商（2026-08-14 用户要求）：勾多行后一键指定同一供应商 */}
+            {stockSelected.size > 0 && (
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs text-blue-600">已选 {stockSelected.size} 条</span>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const sid = e.target.value;
+                    if (!sid) return;
+                    setStockSupplierMap((prev) => {
+                      const next = { ...prev };
+                      for (const id of stockSelected) next[id] = sid;
+                      return next;
+                    });
+                  }}
+                  className="rounded border border-gray-300 px-2 py-1 text-xs"
+                >
+                  <option value="">批量设置供应商...</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg mb-4">
               {stockLoading ? (
                 <div className="text-center text-gray-400 py-8">加载中...</div>
-              ) : lowStockParts.length === 0 ? (
-                <div className="text-center text-gray-400 py-8">暂无库存不足的配件</div>
+              ) : 过滤后库存配件.length === 0 ? (
+                <div className="text-center text-gray-400 py-8">{库存搜索词.trim() ? "没有匹配的配件" : "暂无库存不足的配件"}</div>
               ) : (
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 sticky top-0">
@@ -973,16 +1094,25 @@ export function PendingPurchaseList() {
                       <th className="px-3 py-2 text-left font-medium text-gray-500 w-10">
                         <input
                           type="checkbox"
-                          checked={lowStockParts.length > 0 && stockSelected.size === lowStockParts.length}
+                          checked={过滤后库存配件.length > 0 && 过滤后库存配件.every((p) => stockSelected.has(p.id))}
                           onChange={() => {
-                            if (stockSelected.size === lowStockParts.length) {
-                              setStockSelected(new Set());
-                              setStockQtyMap({});
+                            /* 全选/全不选只作用于当前过滤出的行（配合搜索批量操作） */
+                            const 全选 = !过滤后库存配件.every((p) => stockSelected.has(p.id));
+                            if (全选) {
+                              const map: Record<string, string> = {};
+                              const ids: string[] = [];
+                              for (const p of 过滤后库存配件) {
+                                ids.push(p.id);
+                                map[p.id] = String(Math.max(p.min_stock - p.quantity, 1));
+                              }
+                              setStockSelected((prev) => new Set([...prev, ...ids]));
+                              setStockQtyMap((q) => ({ ...q, ...map }));
                             } else {
-                              setStockSelected(new Set(lowStockParts.map((p) => p.id)));
-                              const map: Record<string, number> = {};
-                              lowStockParts.forEach((p) => { map[p.id] = Math.max(p.min_stock - p.quantity, 1); });
-                              setStockQtyMap(map);
+                              setStockSelected((prev) => {
+                                const next = new Set(prev);
+                                for (const p of 过滤后库存配件) next.delete(p.id);
+                                return next;
+                              });
                             }
                           }}
                           className="rounded"
@@ -998,12 +1128,16 @@ export function PendingPurchaseList() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {lowStockParts.map((p) => (
-                      <tr key={p.id} className={stockSelected.has(p.id) ? "bg-blue-50" : "hover:bg-gray-50"}>
+                    {过滤后库存配件.map((p) => {
+                      const 已选 = stockSelected.has(p.id);
+                      const sid = 有效供应商id(p);
+                      const 数量有效 = 库存数量有效(p.id);
+                      return (
+                      <tr key={p.id} className={已选 ? "bg-blue-50" : "hover:bg-gray-50"}>
                         <td className="px-3 py-2">
                           <input
                             type="checkbox"
-                            checked={stockSelected.has(p.id)}
+                            checked={已选}
                             onChange={() => toggleStockSelect(p.id)}
                             className="rounded"
                           />
@@ -1016,20 +1150,41 @@ export function PendingPurchaseList() {
                         <td className="px-3 py-2 text-right text-red-600 font-medium">{p.quantity}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{p.min_stock}</td>
                         <td className="px-3 py-2 text-right text-gray-700"><PriceValue value={p.unit_cost} /></td>
-                        <td className="px-3 py-2 text-gray-700">{p.supplier_name || "-"}</td>
+                        {/* 供应商可改选：默认配件自带/最近采购供应商；选中行未选红框、已填黄框 */}
+                        <td className="px-3 py-2">
+                          <select
+                            value={sid}
+                            onChange={(e) => setStockSupplierMap((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                            className={`rounded border px-1.5 py-1 text-xs max-w-[10rem] ${
+                              已选
+                                ? sid
+                                  ? "border-yellow-400 bg-yellow-50"
+                                  : "border-red-300 bg-red-50 text-red-600"
+                                : "border-gray-300"
+                            }`}
+                          >
+                            <option value="">{p.supplier_name || "请选择"}</option>
+                            {suppliers.map((s) => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                        </td>
                         <td className="px-3 py-2 text-right">
-                          {stockSelected.has(p.id) && (
+                          {已选 && (
                             <input
                               type="number"
                               min={1}
-                              value={stockQtyMap[p.id] || ""}
-                              onChange={(e) => setStockQty(p.id, parseInt(e.target.value) || 1)}
-                              className="w-16 px-2 py-1 text-xs text-right border border-gray-300 rounded"
+                              value={stockQtyMap[p.id] ?? ""}
+                              onChange={(e) => setStockQty(p.id, e.target.value)}
+                              className={`w-16 px-2 py-1 text-xs text-right border rounded ${
+                                数量有效 ? "border-yellow-400 bg-yellow-50" : "border-red-300 bg-red-50 text-red-600"
+                              }`}
                             />
                           )}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
@@ -1045,8 +1200,9 @@ export function PendingPurchaseList() {
               <button
                 type="button"
                 onClick={handleCreateStockPurchases}
-                disabled={stockSelected.size === 0 || submitting}
-                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                disabled={!库存弹窗可提交 || submitting}
+                title={库存弹窗可提交 ? "" : "选中行都要选供应商、填数量才能生成"}
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? "生成中..." : `生成采购单 (${stockSelected.size})`}
               </button>
@@ -1167,6 +1323,14 @@ export function PendingPurchaseList() {
       )}
 
       {确认弹窗}
+
+      {/* 自定义采购弹窗：采购与工单无关的配件 */}
+      <CustomPurchaseModal
+        open={showCustomModal}
+        onClose={() => setShowCustomModal(false)}
+        suppliers={suppliers}
+        on成功={(文字) => set结果提示({ 类型: "成功", 文字 })}
+      />
     </div>
   );
 }
