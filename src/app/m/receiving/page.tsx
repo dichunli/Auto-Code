@@ -9,13 +9,23 @@ interface 采购单 {
   created_at: string;
 }
 
+/* 采购单状态中文标签（仅本页用到的待收货相关三态） */
+const 状态标签: Record<string, string> = {
+  submitted: "待收货",
+  approved: "待收货",
+  partial_received: "部分收货",
+};
+
 export default async function MobileReceivingListPage() {
   const supabase = await createClient();
 
+  /* 2026-08-16 修复：原误用配件级状态 pending_receipt/partial_receipt（采购单无此状态，
+     永远查不到数据）；采购单待收货的合法状态是 submitted/approved/partial_received，
+     与电脑端「待收货」页签口径一致 */
   const { data: orders } = await supabase
     .from("purchase_orders")
     .select("id, order_no, status, suppliers(name), created_at")
-    .in("status", ["pending_receipt", "partial_receipt"])
+    .in("status", ["submitted", "approved", "partial_received"])
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -44,7 +54,7 @@ export default async function MobileReceivingListPage() {
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-gray-900">{order.order_no}</span>
                 <span className="text-xs px-2 py-0.5 rounded bg-purple-50 text-purple-700">
-                  {order.status === "pending_receipt" ? "待收货" : "部分收货"}
+                  {状态标签[order.status] || order.status}
                 </span>
               </div>
               <div className="text-sm text-gray-600">
