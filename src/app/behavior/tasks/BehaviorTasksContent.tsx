@@ -323,7 +323,7 @@ export default function BehaviorTasksContent({
                   <p className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mt-2">
                     该项目为责任人制：被考核人={employeeMap.get(selectedItem.responsible_id) || "?"}，
                     检查人={selectedItem.checker_id ? employeeMap.get(selectedItem.checker_id) || "?" : "责任人自检"}。
-                    下方"考核对象"设置对本任务不生效。
+                    下方&ldquo;考核对象&rdquo;设置对本任务不生效。
                   </p>
                 )}
               </div>
