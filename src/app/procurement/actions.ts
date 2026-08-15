@@ -102,6 +102,34 @@ export async function 退回待收货(采购单id: string): Promise<操作结果
   return { success: true };
 }
 
+/* ─── 退回已入库(2026-08-16 批次1 错账收口):整单回滚入库,一个事务 ───
+ * 替代原 CompletedStorageList 客户端 10 步连环写(无事务、库存先读再写、
+ * 非 admin 删单被 RLS 静默拦→错账)。库存净额回滚+退库回补+到货标记回退。 */
+export async function 退回已入库(采购单id: string): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("revoke_completed_inbound", {
+    p_purchase_order_id: 采购单id,
+    p_operator_id: user.id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "退回失败" };
+  }
+
+  revalidatePath("/procurement");
+  revalidatePath("/inbound-orders");
+  return { success: true };
+}
+
 /* ═══ 采购建单 ═══ */
 
 export interface 采购明细输入 {

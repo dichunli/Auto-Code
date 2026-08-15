@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { 退回已入库 } from "@/app/procurement/actions";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { useConfirm } from "./ConfirmDialog";
 import { DocumentNameInput } from "./DocumentNameInput";
@@ -88,22 +89,19 @@ export function CompletedStorageList() {
      
   }, []);
 
+  /* 已入库退回待收货（2026-08-16 批次1 错账收口）：
+     原为客户端 10 步连环写（无事务、库存先读再写、非 admin 删单被 RLS 静默拦→错账），
+     现收编为 RPC 整单回滚；此处只保留只读预查用于组装确认文案。 */
   async function handleRevokeCompleted(orderId: string) {
     setSubmitting(`revoke-${orderId}`);
     try {
-      /* 1. 查询关联的入库单 */
+      /* 1. 查询关联的入库单（只读：入库单表登录即可读） */
       const { data: inboundOrderList } = await supabase
         .from("inbound_orders")
         .select("id, inbound_no")
         .eq("purchase_order_id", orderId);
-      const inboundIds = inboundOrderList?.map((o) => o.id) || [];
 
-      const { data: inboundItemList } = await supabase
-        .from("inbound_order_items")
-        .select("id, part_id, quantity, warehouse_id, location")
-        .in("inbound_order_id", inboundIds);
-
-      /* 2. 查询关联的待退货记录 */
+      /* 2. 查询关联的待退货记录（只读，用于提示将被一并删除的条数） */
       const { data: poiList } = await supabase
         .from("purchase_order_items")
         .select("work_order_item_part_id")
@@ -112,135 +110,37 @@ export function CompletedStorageList() {
         .map((p: { work_order_item_part_id: string | null }) => p.work_order_item_part_id)
         .filter(Boolean);
 
-      interface ReturnRecord {
-        id: string;
-        return_reason: string;
-        quantity: number;
-      }
-      let returnRecords: ReturnRecord[] = [];
+      let returnCount = 0;
       if (workOrderItemPartIds.length > 0) {
-        const { data: retList } = await supabase
+        const { count } = await supabase
           .from("supplier_return_records")
-          .select("id, return_reason, quantity")
+          .select("id", { count: "exact", head: true })
           .in("work_order_item_part_id", workOrderItemPartIds)
           .eq("status", "pending");
-        returnRecords = retList || [];
+        returnCount = count || 0;
       }
 
-      /* 3. 组装提示信息 */
-      const inboundCount = inboundOrderList?.length || 0;
-      const returnCount = returnRecords.length;
+      /* 3. 组装确认文案 */
       const parts: string[] = [];
-      if (inboundCount > 0) {
-        parts.push(`入库单 ${inboundOrderList!.map((o) => o.inbound_no).join("、")}`);
+      if (inboundOrderList && inboundOrderList.length > 0) {
+        parts.push(`入库单 ${inboundOrderList.map((o) => o.inbound_no).join("、")}`);
       }
       if (returnCount > 0) {
         parts.push(`${returnCount} 条待退货记录`);
       }
       const msg =
         parts.length > 0
-          ? `该采购单已生成 ${parts.join(" 和 ")}，撤销将同时删除这些数据并回退库存，是否继续？`
+          ? `该采购单已生成 ${parts.join(" 和 ")}，退回将同时删除这些数据并回退库存，是否继续？`
           : "确认退回待收货？这将清空所有处理结果。";
       if (!(await 请求确认(msg))) {
         setSubmitting(null);
         return;
       }
 
-      /* 4. 扣减总库存 */
-      for (const it of inboundItemList || []) {
-        if (!it.part_id || !it.quantity) continue;
-        const { data: part } = await supabase
-          .from("parts")
-          .select("quantity")
-          .eq("id", it.part_id)
-          .single();
-        if (part) {
-          const newQty = Math.max(0, (part.quantity || 0) - it.quantity);
-          const { error: stockErr } = await supabase
-            .from("parts")
-            .update({ quantity: newQty })
-            .eq("id", it.part_id);
-          if (stockErr) console.error(`回退库存失败(${it.part_id}):`, stockErr);
-        }
-      }
-
-      /* 5. 扣减仓位库存 */
-      for (const it of inboundItemList || []) {
-        if (!it.part_id || !it.quantity || !it.warehouse_id) continue;
-        const { data: loc } = await supabase
-          .from("part_stock_locations")
-          .select("id, quantity")
-          .eq("part_id", it.part_id)
-          .eq("warehouse_id", it.warehouse_id)
-          .eq("location", it.location || "")
-          .single();
-        if (loc) {
-          const newQty = Math.max(0, loc.quantity - it.quantity);
-          const { error: locErr } = await supabase
-            .from("part_stock_locations")
-            .update({ quantity: newQty })
-            .eq("id", loc.id);
-          if (locErr) console.error(`回退仓位库存失败(${it.part_id}):`, locErr);
-        }
-      }
-
-      /* 6. 删除入库单明细和入库单 */
-      if (inboundIds.length > 0) {
-        await supabase.from("inbound_order_items").delete().in("inbound_order_id", inboundIds);
-        await supabase.from("inbound_orders").delete().in("id", inboundIds);
-      }
-
-      /* 7. 删除待退货记录 */
-      if (returnRecords.length > 0) {
-        await supabase
-          .from("supplier_return_records")
-          .delete()
-          .in(
-            "id",
-            returnRecords.map((r) => r.id)
-          );
-      }
-
-      /* 8. 删除批次记录和库存日志 */
-      await supabase
-        .from("part_batches")
-        .delete()
-        .eq("reference_id", orderId)
-        .eq("inbound_type", "purchase");
-      if (inboundIds.length > 0) {
-        await supabase
-          .from("inventory_logs")
-          .delete()
-          .eq("reference_type", "inbound_order")
-          .in("reference_id", inboundIds);
-      }
-
-      /* 9. 删除关联的应付账款记录 */
-      if (inboundIds.length > 0) {
-        await supabase
-          .from("supplier_transactions")
-          .delete()
-          .eq("reference_type", "inbound_order")
-          .in("reference_id", inboundIds);
-      }
-
-      /* 10. 清空采购明细处理结果 */
-      await supabase
-        .from("purchase_order_items")
-        .update({
-          handle_action: null,
-          received_qty: null,
-          discount_amount: null,
-          evidence_photos: null,
-        })
-        .eq("order_id", orderId);
-
-      /* 10. 订单状态改回 submitted（待收货） */
-      const { error: stErr } = await supabase
-        .from("purchase_orders")
-        .update({ status: "submitted" })
-        .eq("id", orderId);
-      if (stErr) throw stErr;
+      /* 4. 整单回滚由数据库事务完成：扣回库存/仓位+回补退库、删入库单/批次/流水/应付款/
+         待退货记录、清空处理结果、状态回 submitted、回退到货标记；任一失败整体回滚 */
+      const res = await 退回已入库(orderId);
+      if (!res.success) throw new Error(res.error || "退回失败");
 
       loadData();
     } catch (err: unknown) {
