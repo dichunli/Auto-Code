@@ -183,6 +183,74 @@ export async function 创建采购单(
   return { success: true, orders: 结果.orders };
 }
 
+/* ═══ 自定义采购暂存（2026-08-15） ═══
+ * 安全库存补货/自定义采购弹窗不直接建采购单，先暂存，
+ * 在「待采购」页与工单配件一起勾选后统一发起采购。 */
+
+export interface 采购暂存输入 {
+  part_id: string | null;
+  part_number: string | null;
+  name: string;
+  brand: string | null;
+  specification: string | null;
+  document_name: string | null;
+  unit: string | null;
+  unit_cost: number | null;
+  quantity: number;
+  supplier_id: string;
+  source: "safety_stock" | "custom";
+}
+
+export async function 添加采购暂存(行列表: 采购暂存输入[]): Promise<操作结果 & { count?: number }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  if (!行列表 || 行列表.length === 0) {
+    return { success: false, error: "没有要添加的配件" };
+  }
+  for (const r of 行列表) {
+    if (!r.name || !r.name.trim()) return { success: false, error: "配件名称不能为空" };
+    if (!r.supplier_id) return { success: false, error: `「${r.name}」还没选供应商` };
+    if (!Number.isInteger(r.quantity) || r.quantity <= 0) {
+      return { success: false, error: `「${r.name}」的采购数量必须是大于 0 的整数` };
+    }
+  }
+
+  const supabase = await createClient();
+
+  /* 供应商名称以服务端为准，不信客户端传的文字 */
+  const 供应商ids = [...new Set(行列表.map((r) => r.supplier_id))];
+  const { data: 供应商列表 } = await supabase.from("suppliers").select("id, name").in("id", 供应商ids);
+  const 供应商名Map = new Map(((供应商列表 || []) as { id: string; name: string }[]).map((s) => [s.id, s.name]));
+  for (const r of 行列表) {
+    if (!供应商名Map.has(r.supplier_id)) return { success: false, error: "供应商不存在，请刷新后重试" };
+  }
+
+  const { error } = await supabase.from("custom_purchase_staging").insert(
+    行列表.map((r) => ({
+      part_id: r.part_id || null,
+      part_number: r.part_number?.trim() || null,
+      name: r.name.trim(),
+      brand: r.brand?.trim() || null,
+      specification: r.specification?.trim() || null,
+      document_name: r.document_name?.trim() || null,
+      unit: r.unit?.trim() || null,
+      unit_cost: r.unit_cost ?? null,
+      quantity: r.quantity,
+      supplier_id: r.supplier_id,
+      supplier_name: 供应商名Map.get(r.supplier_id),
+      source: r.source,
+      created_by: user.id,
+    }))
+  );
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/procurement");
+  return { success: true, count: 行列表.length };
+}
+
 /* ═══ 收货处理 ═══ */
 
 /* ─── 收货登记:更新明细+克隆补货分支+服务端重算状态+运单联动,一个事务 ─── */

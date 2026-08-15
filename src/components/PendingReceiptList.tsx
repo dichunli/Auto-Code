@@ -882,11 +882,15 @@ export function PendingReceiptList() {
         )}
       </div>
       {displayGroups.map((g) => (
-        <div key={g.key} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        /* 分组卡片：与待采购页统一风格（2026-08-15）——左侧蓝竖条+蓝色标签+加粗组名 */
+        <div key={g.key} className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-blue-500 overflow-hidden">
           <div className="px-6 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">
-                {groupBy === "supplier" ? `供应商: ${g.key}` : `物流: ${g.key}`}
+              <h3 className="text-sm font-semibold text-gray-900 flex items-center">
+                <span className="inline-block px-2 py-0.5 rounded bg-blue-600 text-white mr-2 text-[10px] font-bold">
+                  {groupBy === "supplier" ? "供应商" : "物流"}
+                </span>
+                <span className="font-bold text-gray-900">{g.key}</span>
               </h3>
               <span className="text-xs text-gray-500">共 {g.orders.length} 张采购单</span>
             </div>

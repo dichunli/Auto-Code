@@ -1719,17 +1719,13 @@ export function PartBranchStatusList({ status }: Props) {
             {!loading && groups.map((g, idx) => (
               <Fragment key={`grp-${idx}`}>
                 {groupBy !== "none" && (
-                  <tr className="bg-gray-200">
-                    <td colSpan={totalCols} className="px-3 py-2 text-xs font-semibold text-gray-700">
-                      <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 mr-2">
+                  /* 分组标题行：与待采购页统一风格（2026-08-15）——左侧蓝竖条+蓝色标签+加粗组名 */
+                  <tr className="bg-slate-200 border-l-4 border-blue-500">
+                    <td colSpan={totalCols} className="px-3 py-2.5 text-xs font-semibold text-gray-700">
+                      <span className="inline-block px-2 py-0.5 rounded bg-blue-600 text-white mr-2 text-[10px] font-bold align-middle">
                         {GROUP_OPTIONS.find((o) => o.key === groupBy)?.label.replace("按", "")}
                       </span>
-                      {/* 车牌分组时车牌号放大加粗（采购员按车找配件，车牌是主线索） */}
-                      {groupBy === "plate" ? (
-                        <span className="text-sm font-bold text-gray-900">{g.key}</span>
-                      ) : (
-                        g.key
-                      )}
+                      <span className="text-sm font-bold text-gray-900 align-middle">{g.key}</span>
                       {(() => {
                         const wo = g.rows[0]?.work_order_items?.work_orders;
                         const vin = wo?.vehicles?.vin;
