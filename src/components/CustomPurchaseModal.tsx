@@ -13,7 +13,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
-import { 创建采购单 } from "@/app/procurement/actions";
+import { 添加采购暂存 } from "@/app/procurement/actions";
 
 interface 搜索结果 {
   id: string;
@@ -25,6 +25,7 @@ interface 搜索结果 {
   unit_cost: number | null;
   purchase_price: number | null;
   supplier_id: string | null;
+  document_name: string | null;
   part_brands: { name: string | null } | null;
   part_specifications: { name: string | null } | null;
 }
@@ -36,6 +37,7 @@ interface 清单行 {
   brand: string;
   spec: string;
   unit: string;
+  documentName: string;
   unitCost: string;
   quantity: string;
   supplierId: string;
@@ -90,7 +92,7 @@ export default function CustomPurchaseModal({ open, onClose, suppliers, on成功
     let 已取消 = false;
     (async () => {
       set搜索中(true);
-      const 字段 = `id, part_number, barcode, oe_number, name, unit, unit_cost, purchase_price, supplier_id,
+      const 字段 = `id, part_number, barcode, oe_number, name, unit, unit_cost, purchase_price, supplier_id, document_name,
         part_brands(name), part_specifications(name)`;
       const [{ data: 直查 }, { data: 品牌命中 }] = await Promise.all([
         supabase
@@ -135,6 +137,7 @@ export default function CustomPurchaseModal({ open, onClose, suppliers, on成功
         brand: p.part_brands?.name || "",
         spec: p.part_specifications?.name || "",
         unit: p.unit || "件",
+        documentName: p.document_name || "",
         unitCost: p.purchase_price != null ? String(p.purchase_price) : p.unit_cost != null ? String(p.unit_cost) : "",
         quantity: "1",
         supplierId: p.supplier_id || "",
@@ -154,7 +157,7 @@ export default function CustomPurchaseModal({ open, onClose, suppliers, on成功
   async function 新建保存后(partId: string) {
     const { data } = await supabase
       .from("parts")
-      .select(`id, part_number, barcode, oe_number, name, unit, unit_cost, purchase_price, supplier_id,
+      .select(`id, part_number, barcode, oe_number, name, unit, unit_cost, purchase_price, supplier_id, document_name,
         part_brands(name), part_specifications(name)`)
       .eq("id", partId)
       .single();
@@ -174,41 +177,33 @@ export default function CustomPurchaseModal({ open, onClose, suppliers, on成功
   /* 可提交 = 清单非空 + 每行都选了供应商 + 每行数量有效；不满足时按钮置灰（不用弹窗拦截） */
   const 可提交 = 清单.length > 0 && 缺供应商行.length === 0 && 清单.every((r) => 数量有效(r.quantity));
 
-  async function 生成采购单() {
+  async function 添加到待采购() {
     if (!可提交) return;
     set错误提示("");
-    if (!(await 请求确认(`将为 ${清单.length} 条配件按供应商分组生成采购单（草稿），是否继续？`))) return;
+    if (!(await 请求确认(`将把 ${清单.length} 条配件添加到「待采购」列表，之后与工单配件一起统一发起采购，是否继续？`))) return;
 
     set提交中(true);
     try {
-      const 分组Map = new Map<string, 清单行[]>();
-      for (const r of 清单) {
-        const arr = 分组Map.get(r.supplierId) || [];
-        arr.push(r);
-        分组Map.set(r.supplierId, arr);
-      }
-      const res = await 创建采购单(
-        Array.from(分组Map.entries()).map(([supplierId, rows]) => ({
-          supplier_id: supplierId,
-          status: "draft",
-          notes: "由「自定义采购」生成",
-          items: rows.map((r) => ({
-            part_id: r.partId,
-            part_number: r.partNumber || null,
-            name: r.name,
-            brand: r.brand || null,
-            specification: r.spec || null,
-            quantity: Number(r.quantity),
-            unit: r.unit || null,
-            unit_cost: r.unitCost.trim() === "" ? null : Number(r.unitCost),
-          })),
+      const res = await 添加采购暂存(
+        清单.map((r) => ({
+          part_id: r.partId,
+          part_number: r.partNumber || null,
+          name: r.name,
+          brand: r.brand || null,
+          specification: r.spec || null,
+          document_name: r.documentName || null,
+          unit: r.unit || null,
+          unit_cost: r.unitCost.trim() === "" ? null : Number(r.unitCost),
+          quantity: Number(r.quantity),
+          supplier_id: r.supplierId,
+          source: "custom" as const,
         }))
       );
-      if (!res.success) throw new Error(res.error || "创建采购单失败");
-      on成功?.(`已生成 ${res.orders?.length ?? 分组Map.size} 张采购单（草稿状态），请到「采购订单」中审批并发出。`);
+      if (!res.success) throw new Error(res.error || "添加失败");
+      on成功?.(`已添加 ${res.count ?? 清单.length} 条配件到「待采购」列表，勾选后可统一发起采购。`);
       onClose();
     } catch (err: unknown) {
-      set错误提示("生成采购单失败: " + (err instanceof Error ? err.message : String(err)));
+      set错误提示("添加失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       set提交中(false);
     }
@@ -297,7 +292,7 @@ export default function CustomPurchaseModal({ open, onClose, suppliers, on成功
                       <div className="font-medium text-gray-900">{r.name}</div>
                       <div className="text-gray-400">{[r.partNumber, r.brand, r.spec].filter(Boolean).join(" ")}</div>
                     </td>
-                    <td className="px-3 py-2 text-gray-500">{r.unit}</td>
+                    <td className="px-3 py-2 text-gray-500">{r.documentName || "-"}</td>
                     <td className="px-3 py-2 text-right">
                       <input
                         type="number"
@@ -363,12 +358,12 @@ export default function CustomPurchaseModal({ open, onClose, suppliers, on成功
           </button>
           <button
             type="button"
-            onClick={生成采购单}
+            onClick={添加到待采购}
             disabled={!可提交 || 提交中}
-            title={可提交 ? "" : "每行都要选供应商、填数量才能生成"}
+            title={可提交 ? "" : "每行都要选供应商、填数量才能添加"}
             className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {提交中 ? "生成中..." : `生成采购单 (${清单.length})`}
+            {提交中 ? "添加中..." : `添加到待采购 (${清单.length})`}
           </button>
         </div>
       </div>

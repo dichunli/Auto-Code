@@ -140,6 +140,12 @@ export function ProcurementTabBar({ currentTab }: Props) {
       }
     }
 
+    /* 自定义采购暂存（安全库存补货/自定义采购添加的）也计入待采购角标 */
+    const { data: stagingCount } = await supabase
+      .from("custom_purchase_staging")
+      .select("id");
+    pendingPurchase += stagingCount?.length || 0;
+
     const { data: poData } = await supabase
       .from("purchase_orders")
       .select("id, status, purchase_order_items(quantity, handle_action)")
