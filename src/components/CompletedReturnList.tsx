@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { 撤销已退货记录 } from "@/app/procurement/actions";
 import { useConfirm } from "./ConfirmDialog";
 import { DocumentNameInput } from "./DocumentNameInput";
 
@@ -66,57 +67,29 @@ export function CompletedReturnList() {
      
   }, []);
 
+  /* 撤销已退货（2026-08-16 批次2）：原为客户端 5 步连环删（无事务留半成品），
+     现收编为 RPC 一个事务；此处只保留只读预查用于确认文案。 */
   async function handleRevoke(id: string) {
     if (!(await 请求确认("确认将该退货记录退回待退货状态?"))) return;
     setSubmitting(`revoke-${id}`);
     try {
-      /* 1. 查询关联的采退单 */
+      /* 只读预查：是否关联采退单（决定二次确认文案） */
       const { data: record } = await supabase
         .from("supplier_return_records")
         .select("return_order_id")
         .eq("id", id)
         .single();
 
-      const returnOrderId = record?.return_order_id;
-
-      if (returnOrderId) {
+      if (record?.return_order_id) {
         if (!(await 请求确认("该退货记录已关联采退单，撤销将同时删除采退单及关联财务记录，是否继续？"))) {
           setSubmitting(null);
           return;
         }
-
-        /* 2. 删除采退单明细 */
-        await supabase
-          .from("purchase_return_order_items")
-          .delete()
-          .eq("return_order_id", returnOrderId);
-
-        /* 3. 删除关联财务记录 */
-        await supabase
-          .from("supplier_transactions")
-          .delete()
-          .eq("reference_type", "purchase_return_order")
-          .eq("reference_id", returnOrderId);
-
-        /* 4. 删除采退单 */
-        await supabase
-          .from("purchase_return_orders")
-          .delete()
-          .eq("id", returnOrderId);
-
-        /* 5. 把同一张采退单下的所有退货记录改回 pending，并清除 return_order_id */
-        await supabase
-          .from("supplier_return_records")
-          .update({ status: "pending", return_order_id: null })
-          .eq("return_order_id", returnOrderId);
-      } else {
-        /* 没有采退单，直接改状态 */
-        const { error } = await supabase
-          .from("supplier_return_records")
-          .update({ status: "pending" })
-          .eq("id", id);
-        if (error) throw error;
       }
+
+      /* 删采退单明细/财务记录/采退单、同单退货记录回 pending，由 RPC 一个事务完成 */
+      const res = await 撤销已退货记录(id);
+      if (!res.success) throw new Error(res.error || "退回失败");
 
       loadData();
     } catch (err: unknown) {
