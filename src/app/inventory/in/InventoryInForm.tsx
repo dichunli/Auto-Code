@@ -52,6 +52,7 @@ interface AutoFillForm {
   specification_text: string;
   part_name_id?: string;
   brand_id?: string;
+  quantity?: string;
 }
 
 export default function InventoryInForm() {
@@ -105,23 +106,31 @@ export default function InventoryInForm() {
     supabase.from("logistics_waybills").select("*, logistics_companies(name)").eq("status", "pending").order("created_at", { ascending: false }).limit(100).then(({ data }) => setPendingWaybills(data || []));
   }, [supabase]);
 
-  // 自动填写：来自工单空分支的入库登记
+  // 自动填写：来自工单空分支 / 待入库页新配件的入库登记
+  // （2026-08-16 修复：原要求必须带 branch_id 才预填，待入库页链接没传 → 跳过来不预填）
   useEffect(() => {
     const autoFill = searchParams.get("auto_fill");
-    const branch_id = searchParams.get("branch_id");
-    if (autoFill !== "1" || !branch_id) return;
+    if (autoFill !== "1") return;
 
-    setBranchId(branch_id);
-    setNewPartMode(true);
+    const branch_id = searchParams.get("branch_id");
+    if (branch_id) setBranchId(branch_id);
+
+    /* 带名称/编码等参数的视为全新配件建档入库 */
+    const name = searchParams.get("name");
+    const partNumber = searchParams.get("part_number");
+    if (branch_id || name || partNumber) setNewPartMode(true);
 
     const next: AutoFillForm = {
-      part_number: searchParams.get("part_number") || "",
+      part_number: partNumber || "",
       supplier: searchParams.get("supplier") || "",
       unit_cost: searchParams.get("unit_cost") || "",
       specification_text: searchParams.get("specification") || "",
     };
 
-    const name = searchParams.get("name");
+    /* 数量预填（待入库页链接会带）；unit 单位参数在表单中无对应字段，忽略 */
+    const qty = searchParams.get("quantity");
+    if (qty) next.quantity = qty;
+
     if (name && partNames.length > 0) {
       const matched = partNames.find((n) => n.name === name);
       if (matched) {
@@ -185,21 +194,41 @@ export default function InventoryInForm() {
 
     /* 入库走 Server Action：服务端读最新库存再更新，
      * 不能用客户端列表里的旧数量（可能已被别人改过） */
-    let result;
-    try {
-      result = await 配件入库({
+    const 调用入库 = async (force: boolean) =>
+      配件入库({
         newPartMode,
         selectedPartId,
         branchId,
+        force,
         waybillMode,
         selectedWaybillId,
         newWaybill,
         form,
       });
+
+    let result;
+    try {
+      result = await 调用入库(false);
     } catch (err: unknown) {
       alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
       return;
+    }
+
+    /* 软拦截（2026-08-16 双入库防重）：配件在未完成采购单上，
+       用户确认"这是另一批货"后带 force 重发 */
+    if (!result.success && result.code === "PO_IN_FLIGHT") {
+      if (!confirm(result.error || "该配件有在途采购单，仍要入库吗？")) {
+        setLoading(false);
+        return;
+      }
+      try {
+        result = await 调用入库(true);
+      } catch (err: unknown) {
+        alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+        setLoading(false);
+        return;
+      }
     }
 
     if (!result.success) {

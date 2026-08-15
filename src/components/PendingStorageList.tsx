@@ -528,13 +528,11 @@ export function PendingStorageList() {
                                 {skipStorage ? (
                                   <span className="text-xs text-gray-400">无需入库</span>
                                 ) : item.part_id ? (
-                                  <Link
-                                    href={`/inventory/in?auto_fill=1&part_id=${encodeURIComponent(item.part_id)}&quantity=${encodeURIComponent(storageQty)}`}
-                                    className="text-xs px-2 py-1 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 inline-block"
-                                  >
-                                    入库登记
-                                  </Link>
+                                  /* 已有库存档案的配件统一走「确认入库」加库存+记账（2026-08-16 双入库防重），
+                                     不再提供手工入库登记入口（会与确认入库重复加库存） */
+                                  <span className="text-xs text-gray-400">走确认入库</span>
                                 ) : (
+                                  /* 全新配件（无库存档案）唯一入库通道：手工建档入库 */
                                   <Link
                                     href={`/inventory/in?auto_fill=1&name=${encodeURIComponent(item.name)}&part_number=${encodeURIComponent(item.part_number || "")}&brand=${encodeURIComponent(item.brand || "")}&specification=${encodeURIComponent(item.specification || "")}&unit=${encodeURIComponent(item.unit || "")}&quantity=${encodeURIComponent(storageQty)}`}
                                     className="text-xs px-2 py-1 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 inline-block"
