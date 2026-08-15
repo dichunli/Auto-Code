@@ -10,8 +10,8 @@ interface 行为项目 {
   name: string;
   score_type: string;
   score_value: number;
-  responsible_id: string | null;
-  checker_id: string | null;
+  responsible_ids: string[];
+  checker_ids: string[];
 }
 
 interface 员工 {
@@ -72,7 +72,7 @@ export default function BehaviorTasksContent({
   async function fetchData() {
     setLoading(true);
     const [{ data: itemData }, { data: empData }, { data: taskData }] = await Promise.all([
-      supabase.from("behavior_score_items").select("id, name, score_type, score_value, responsible_id, checker_id").eq("is_active", true).order("name"),
+      supabase.from("behavior_score_items").select("id, name, score_type, score_value, responsible_ids, checker_ids").eq("is_active", true).order("name"),
       supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
       supabase.from("behavior_check_tasks").select("*").order("created_at", { ascending: false }),
     ]);
@@ -206,6 +206,11 @@ export default function BehaviorTasksContent({
   const employeeMap = useMemo(() => new Map(employees.map((e) => [e.id, e.full_name])), [employees]);
   /* 当前表单选中的项目 */
   const selectedItem = useMemo(() => items.find((i) => i.id === form.item_id) || null, [items, form.item_id]);
+  /* id 列表 → 姓名顿号拼接 */
+  function 姓名拼接(ids: string[]): string {
+    if (!ids || ids.length === 0) return "";
+    return ids.map((id) => employeeMap.get(id) || "?").join("、");
+  }
 
   return (
     <div>
@@ -319,10 +324,10 @@ export default function BehaviorTasksContent({
                   ))}
                 </select>
                 {/* 责任人制项目：考核对象由项目配置决定，下方多选不生效 */}
-                {selectedItem?.responsible_id && (
+                {selectedItem && selectedItem.responsible_ids && selectedItem.responsible_ids.length > 0 && (
                   <p className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mt-2">
-                    该项目为责任人制：被考核人={employeeMap.get(selectedItem.responsible_id) || "?"}，
-                    检查人={selectedItem.checker_id ? employeeMap.get(selectedItem.checker_id) || "?" : "责任人自检"}。
+                    该项目为责任人制：被考核人={姓名拼接(selectedItem.responsible_ids)}，
+                    检查人={selectedItem.checker_ids && selectedItem.checker_ids.length > 0 ? 姓名拼接(selectedItem.checker_ids) : "责任人自检"}。
                     下方&ldquo;考核对象&rdquo;设置对本任务不生效。
                   </p>
                 )}
