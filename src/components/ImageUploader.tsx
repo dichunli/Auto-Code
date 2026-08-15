@@ -75,9 +75,10 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
     e.target.value = "";
   }
 
-  /* ========== 粘贴上传 ========== */
+  /* ========== 粘贴上传（cameraOnly 模式下禁用，防止桌面端绕过"仅手机拍照"） ========== */
 
   useEffect(() => {
+    if (cameraOnly) return;
     const handler = (e: ClipboardEvent) => {
       const active = document.activeElement;
       if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
@@ -89,7 +90,7 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
     };
     window.addEventListener("paste", handler);
     return () => window.removeEventListener("paste", handler);
-  }, [handleFiles]);
+  }, [handleFiles, cameraOnly]);
 
   /* ========== 删除图片 ========== */
 
@@ -229,6 +230,12 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
                   />
                 </label>
                 )}
+                {/* cameraOnly：桌面端不显示任何上传入口，只给提示 */}
+                {cameraOnly && (
+                  <div className="hidden md:flex h-14 items-center px-3 rounded-lg border border-dashed border-gray-200 text-xs text-gray-400 select-none">
+                    仅支持手机现场拍照上传
+                  </div>
+                )}
                 {!cameraOnly && (
                   <>
                   {/* 移动端相册 */}
@@ -286,7 +293,9 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
         <p className="text-xs text-red-500 bg-red-50 rounded px-2 py-1">{uploadError}</p>
       )}
 
-      <p className="text-[10px] text-gray-400">支持拍照、相册选择、Ctrl+V 粘贴。单张自动压缩至 300KB 以内。</p>
+      <p className="text-[10px] text-gray-400">
+        {cameraOnly ? "仅支持手机现场拍照。单张自动压缩至 300KB 以内。" : "支持拍照、相册选择、Ctrl+V 粘贴。单张自动压缩至 300KB 以内。"}
+      </p>
 
       {/* 图片预览 */}
       {previewIndex !== null && images[previewIndex] && (

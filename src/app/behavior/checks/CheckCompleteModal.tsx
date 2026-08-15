@@ -235,11 +235,12 @@ export default function CheckCompleteModal({ record, onClose, onCompleted, 未�
                     </div>
                   )}
                   <div>
-                    <p className="text-xs text-gray-400 mb-1">现场照片（可选）</p>
+                    <p className="text-xs text-gray-400 mb-1">现场照片（可选，可多张，仅手机拍照）</p>
                     <ImageUploader
                       existingImages={a.photos}
-                      maxImages={3}
+                      maxImages={5}
                       folder="behavior"
+                      cameraOnly
                       onUpload={(paths) => 更新作答(d.id, { photos: paths })}
                     />
                   </div>
@@ -270,11 +271,12 @@ export default function CheckCompleteModal({ record, onClose, onCompleted, 未�
                 <span className="text-xs text-gray-400">默认 {record.item_score} 分</span>
               </div>
               <div>
-                <p className="text-xs text-gray-400 mb-1">现场照片</p>
+                <p className="text-xs text-gray-400 mb-1">现场照片（可多张，仅手机拍照）</p>
                 <ImageUploader
                   existingImages={整体照片}
                   maxImages={5}
                   folder="behavior"
+                  cameraOnly
                   onUpload={set整体照片}
                 />
               </div>
