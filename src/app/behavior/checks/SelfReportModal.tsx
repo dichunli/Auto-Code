@@ -116,11 +116,12 @@ export default function SelfReportModal({ record, onClose, onReported }: Props) 
           )}
 
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-1">现场照片 *</p>
+            <p className="text-sm font-medium text-gray-700 mb-1">现场照片 *（仅手机拍照）</p>
             <ImageUploader
               existingImages={photos}
               maxImages={5}
               folder="behavior"
+              cameraOnly
               onUpload={setPhotos}
             />
           </div>
