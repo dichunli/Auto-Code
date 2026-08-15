@@ -10,6 +10,9 @@ import { revalidatePath } from "next/cache";
 interface 入库结果 {
   success: boolean;
   error?: string;
+  /* 软拦截标记（2026-08-16 双入库防重）：配件在未完成采购单上，
+     前端收到后弹确认，用户确认后带 force=true 重发 */
+  code?: "PO_IN_FLIGHT";
 }
 
 /* ─── 入库登记（现有配件补货 / 新增配件入库，含运单、批次、库存日志） ─── */
@@ -17,6 +20,8 @@ export async function 配件入库(参数: {
   newPartMode: boolean;
   selectedPartId: string;
   branchId: string;
+  /* 软拦截确认后强制入库（2026-08-16 双入库防重） */
+  force?: boolean;
   waybillMode: "none" | "existing" | "new";
   selectedWaybillId: string;
   newWaybill: {
@@ -144,6 +149,48 @@ export async function 配件入库(参数: {
     /* ── 现有配件补货：服务端读最新库存，不用客户端列表的旧数量 ── */
     if (!selectedPartId) {
       return { success: false, error: "请选择配件" };
+    }
+
+    /* 双入库防重（2026-08-16 批次1）：在途采购单上的配件走手工入库，
+       之后采购「确认入库」会再加一次库存 → 重复。
+       待入库(pending_storage/fully_received)硬拦截：货已到店，必须走确认入库；
+       其他未完成状态软拦截：前端确认后带 force 重发（急件另购等正当场景）。 */
+    if (!参数.force) {
+      const { data: 在途明细 } = await supabase
+        .from("purchase_order_items")
+        .select("id, purchase_orders!inner(order_no, status)")
+        .eq("part_id", selectedPartId)
+        .in("purchase_orders.status", [
+          "draft",
+          "submitted",
+          "approved",
+          "partial_received",
+          "fully_received",
+          "pending_storage",
+        ])
+        .limit(20);
+      interface 在途行 {
+        id: string;
+        purchase_orders: { order_no: string | null; status: string | null };
+      }
+      const 在途 = (在途明细 || []) as unknown as 在途行[];
+      if (在途.length > 0) {
+        const 待入库单 = 在途.find((r) =>
+          ["pending_storage", "fully_received"].includes(r.purchase_orders.status || "")
+        );
+        if (待入库单) {
+          return {
+            success: false,
+            error: `该配件在采购单「${待入库单.purchase_orders.order_no || "未知单号"}」中等待入库，请到采购管理「待入库」页走确认入库，避免库存重复`,
+          };
+        }
+        const 单号列表 = 在途.map((r) => r.purchase_orders.order_no || "未知单号").join("、");
+        return {
+          success: false,
+          code: "PO_IN_FLIGHT",
+          error: `该配件在未完成采购单（${单号列表}）上。如果这是另一批货需要单独入库，请确认后继续。`,
+        };
+      }
     }
 
     const { data: 当前配件, error: 查询错误 } = await supabase
