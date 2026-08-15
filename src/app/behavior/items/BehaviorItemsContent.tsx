@@ -15,8 +15,8 @@ interface 行为项目 {
   description: string | null;
   is_active: boolean;
   category_id: string | null;
-  responsible_id: string | null;
-  checker_id: string | null;
+  responsible_ids: string[];
+  checker_ids: string[];
 }
 
 interface 员工 {
@@ -57,8 +57,8 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
     score_value: "",
     description: "",
     category_id: "",
-    responsible_id: "",
-    checker_id: "",
+    responsible_ids: [] as string[],
+    checker_ids: [] as string[],
     is_active: true,
   });
 
@@ -98,7 +98,7 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
 
   function openAdd() {
     setEditingItem(null);
-    setForm({ name: "", score_type: "bonus", score_value: "", description: "", category_id: "", responsible_id: "", checker_id: "", is_active: true });
+    setForm({ name: "", score_type: "bonus", score_value: "", description: "", category_id: "", responsible_ids: [], checker_ids: [], is_active: true });
     setModalOpen(true);
   }
 
@@ -110,11 +110,25 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
       score_value: String(item.score_value),
       description: item.description || "",
       category_id: item.category_id || "",
-      responsible_id: item.responsible_id || "",
-      checker_id: item.checker_id || "",
+      responsible_ids: item.responsible_ids || [],
+      checker_ids: item.checker_ids || [],
       is_active: item.is_active,
     });
     setModalOpen(true);
+  }
+
+  /* 多选切换 */
+  function toggleId(field: "responsible_ids" | "checker_ids", id: string) {
+    setForm((prev) => {
+      const list = prev[field];
+      return { ...prev, [field]: list.includes(id) ? list.filter((x) => x !== id) : [...list, id] };
+    });
+  }
+
+  /* id 列表 → 姓名顿号拼接 */
+  function 姓名拼接(ids: string[]): string {
+    if (!ids || ids.length === 0) return "";
+    return ids.map((id) => employeeMap.get(id) || "?").join("、");
   }
 
   async function handleSave() {
@@ -135,8 +149,8 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
         score_value: parseInt(form.score_value),
         description: form.description.trim() || null,
         category_id: form.category_id || null,
-        responsible_id: form.responsible_id || null,
-        checker_id: form.checker_id || null,
+        responsible_ids: form.responsible_ids,
+        checker_ids: form.checker_ids,
         is_active: form.is_active,
       };
 
@@ -179,7 +193,7 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
     <div>
       <PageHeader
         title="行为规范项目"
-        description="配置日常行为加减分项目，按分类组织；设了责任人的项目由检查人逐条细节打分"
+        description="配置日常行为加减分项目，按分类组织；设了责任人的项目由责任人先自检、检查人再核查打分"
         action={{ label: "+ 添加项目", onClick: openAdd }}
       />
 
@@ -257,9 +271,9 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
                       {item.score_value}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">
-                    {item.responsible_id
-                      ? `${employeeMap.get(item.responsible_id) || "?"}（${item.checker_id ? employeeMap.get(item.checker_id) || "?" : "自检"}）`
+                  <td className="px-4 py-3 text-gray-500 max-w-36 truncate" title={姓名拼接(item.responsible_ids)}>
+                    {item.responsible_ids && item.responsible_ids.length > 0
+                      ? `${姓名拼接(item.responsible_ids)}（${item.checker_ids && item.checker_ids.length > 0 ? 姓名拼接(item.checker_ids) : "自检"}）`
                       : "-"}
                   </td>
                   <td className="px-4 py-3 text-gray-500 max-w-40 truncate">{item.description || "-"}</td>
@@ -367,36 +381,49 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
                   placeholder="简要说明此项目的检查范围..."
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">责任人</label>
-                  <select
-                    value={form.responsible_id}
-                    onChange={(e) => setForm({ ...form, responsible_id: e.target.value, checker_id: e.target.value ? form.checker_id : "" })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-                  >
-                    <option value="">不指定（旧模式）</option>
-                    {initialEmployees.map((e) => (
-                      <option key={e.id} value={e.id}>{e.full_name}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-400 mt-1">被考核人，分数记在他头上</p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  责任人（可多选，每人各自被考核打分）
+                </label>
+                <div className="border border-gray-200 rounded-lg p-2 max-h-32 overflow-y-auto grid grid-cols-2 gap-1">
+                  {initialEmployees.map((e) => (
+                    <label key={e.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.responsible_ids.includes(e.id)}
+                        onChange={() => toggleId("responsible_ids", e.id)}
+                        className="rounded"
+                      />
+                      <span className="text-sm text-gray-700">{e.full_name}</span>
+                    </label>
+                  ))}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">检查人</label>
-                  <select
-                    value={form.checker_id}
-                    onChange={(e) => setForm({ ...form, checker_id: e.target.value })}
-                    disabled={!form.responsible_id}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white disabled:opacity-50"
-                  >
-                    <option value="">责任人自检</option>
+                <p className="text-xs text-gray-400 mt-1">不选 = 旧模式（按任务的考核对象走）</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  检查人（可多选，谁有空谁检查）
+                </label>
+                {form.responsible_ids.length === 0 ? (
+                  <p className="text-xs text-gray-400 border border-gray-100 rounded-lg p-3 bg-gray-50">
+                    先选责任人，检查人才生效
+                  </p>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg p-2 max-h-32 overflow-y-auto grid grid-cols-2 gap-1">
                     {initialEmployees.map((e) => (
-                      <option key={e.id} value={e.id}>{e.full_name}</option>
+                      <label key={e.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={form.checker_ids.includes(e.id)}
+                          onChange={() => toggleId("checker_ids", e.id)}
+                          className="rounded"
+                        />
+                        <span className="text-sm text-gray-700">{e.full_name}</span>
+                      </label>
                     ))}
-                  </select>
-                  <p className="text-xs text-gray-400 mt-1">不选则责任人自己检查拍照</p>
-                </div>
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 mt-1">不选 = 责任人自检（自己拍照打分）；选了 = 责任人先拍照自检上报，检查人再核查打分</p>
               </div>
               <div className="flex items-center gap-2">
                 <input

@@ -17,11 +17,13 @@ interface Props {
   record: 考核记录视图;
   onClose: () => void;
   onCompleted: () => void;
+  /* 责任人还没自检上报（两阶段流程中检查人直接检查）时显示提示 */
+  未自检提示?: boolean;
 }
 
 /* 完成检查弹窗：逐条细节对照图文标准打分 + 拍照 + 首条评论。
  * 项目没设细节时回落为整体打分（旧模式兼容） */
-export default function CheckCompleteModal({ record, onClose, onCompleted }: Props) {
+export default function CheckCompleteModal({ record, onClose, onCompleted, 未自检提示 = false }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const 有细节 = record.details.length > 0;
   const 是扣分 = record.item_score_type === "penalty";
@@ -163,8 +165,39 @@ export default function CheckCompleteModal({ record, onClose, onCompleted }: Pro
       <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-2xl max-h-[85vh] flex flex-col">
         <h3 className="text-base font-semibold text-gray-900">完成检查：{record.item_name}</h3>
         <p className="text-xs text-gray-500 mt-1 mb-4">
-          {record.task_name} · 被考核人：{record.responsible_name || record.employee_name} · 时段 {record.execute_time.slice(0, 5)} ~ {record.end_time.slice(0, 5)}
+          {record.task_name} · 被考核人：{record.employee_name} · 时段 {record.execute_time.slice(0, 5)} ~ {record.end_time.slice(0, 5)}
         </p>
+
+        {/* 责任人自检上报内容（已自检待核查） */}
+        {record.self_reported_at && (
+          <div className="mb-4 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
+            <p className="text-xs text-cyan-700 font-medium mb-1">
+              责任人已自检上报（{new Date(record.self_reported_at).toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" })}）
+            </p>
+            {record.self_report_note && <p className="text-xs text-gray-600 whitespace-pre-wrap mb-1">{record.self_report_note}</p>}
+            {record.self_report_photos.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {record.self_report_photos.map((src, j) => (
+                  <img
+                    key={j}
+                    src={src}
+                    alt="自检照片"
+                    loading="lazy"
+                    className="w-14 h-14 object-cover rounded border border-cyan-200 cursor-pointer"
+                    onClick={() => set放大图(src)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 责任人未自检提示（检查人直接检查） */}
+        {未自检提示 && !record.self_reported_at && (
+          <p className="mb-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            责任人还没有自检上报。你可以直接检查打分，结果照常记录。
+          </p>
+        )}
 
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
           {有细节 ? (

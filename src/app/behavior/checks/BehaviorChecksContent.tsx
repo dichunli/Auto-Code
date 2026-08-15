@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 本地今日字符串, 过滤今日任务, 计算时段状态, 时段状态展示 } from "@/lib/behaviorCheck";
 import CheckCompleteModal from "./CheckCompleteModal";
+import SelfReportModal from "./SelfReportModal";
 import CheckCommentThread from "./CheckCommentThread";
 
 export interface 细节视图 {
@@ -29,12 +30,15 @@ export interface 考核记录视图 {
   id: string;
   task_id: string;
   item_id: string;
-  checker_id: string | null;
+  checker_ids: string[];
   employee_id: string;
   check_date: string;
   status: string;
   score_record_id: string | null;
   detail_results: 细节结果[];
+  self_report_photos: string[];
+  self_report_note: string | null;
+  self_reported_at: string | null;
   task_name: string;
   execute_time: string;
   end_time: string;
@@ -42,8 +46,7 @@ export interface 考核记录视图 {
   item_score: number;
   item_score_type: string;
   item_description: string | null;
-  responsible_name: string;
-  checker_name: string;
+  checker_names: string;
   employee_name: string;
   details: 细节视图[];
   comment_count: number;
@@ -55,10 +58,8 @@ interface 嵌套项目 {
   score_type: string;
   score_value: number;
   description: string | null;
-  responsible_id: string | null;
-  checker_id: string | null;
-  responsible: { full_name: string }[] | { full_name: string } | null;
-  checker: { full_name: string }[] | { full_name: string } | null;
+  responsible_ids: string[] | null;
+  checker_ids: string[] | null;
 }
 
 interface 嵌套任务 {
@@ -84,6 +85,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
   const [records, setRecords] = useState<考核记录视图[]>(initialRecords);
   const [loading, setLoading] = useState(false);
   const [completingRecord, setCompletingRecord] = useState<考核记录视图 | null>(null);
+  const [自检记录, set自检记录] = useState<考核记录视图 | null>(null);
   /* 展开"检查标准"明细的记录 id 集合 */
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -100,63 +102,80 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
 
     const { data: taskData } = await supabase
       .from("behavior_check_tasks")
-      .select("*, behavior_score_items(id, name, score_type, score_value, description, responsible_id, checker_id, responsible:profiles!behavior_score_items_responsible_id_fkey(full_name), checker:profiles!behavior_score_items_checker_id_fkey(full_name))")
+      .select("*, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids)")
       .eq("is_active", true);
 
     const todayTasks = 过滤今日任务((taskData || []) as 嵌套任务[]);
 
     for (const task of todayTasks) {
       const item = 取单(task.behavior_score_items);
-      let 被考核人: string;
-      let 应检查人: string;
-      if (item?.responsible_id) {
-        被考核人 = item.responsible_id;
-        应检查人 = item.checker_id || item.responsible_id;
-        if (uid !== 应检查人) continue;
+      if (item?.responsible_ids && item.responsible_ids.length > 0) {
+        for (const 责任人 of item.responsible_ids) {
+          const 应检查人集合 = item.checker_ids && item.checker_ids.length > 0 ? item.checker_ids : [责任人];
+          if (uid !== 责任人 && !应检查人集合.includes(uid)) continue;
+          const { data: existing } = await supabase
+            .from("behavior_check_records")
+            .select("id")
+            .eq("task_id", task.id)
+            .eq("employee_id", 责任人)
+            .eq("check_date", today)
+            .maybeSingle();
+          if (!existing) {
+            const { error } = await supabase.from("behavior_check_records").insert({
+              task_id: task.id,
+              employee_id: 责任人,
+              checker_ids: 应检查人集合,
+              check_date: today,
+              status: "pending",
+            });
+            if (error && error.code !== "23505") {
+              console.error("生成今日考核记录失败:", error.message);
+            }
+          }
+        }
       } else {
         if (task.employee_ids && task.employee_ids.length > 0 && !task.employee_ids.includes(uid)) continue;
-        被考核人 = uid;
-        应检查人 = uid;
-      }
-      const { data: existing } = await supabase
-        .from("behavior_check_records")
-        .select("id")
-        .eq("task_id", task.id)
-        .eq("employee_id", 被考核人)
-        .eq("check_date", today)
-        .maybeSingle();
-      if (!existing) {
-        const { error } = await supabase.from("behavior_check_records").insert({
-          task_id: task.id,
-          employee_id: 被考核人,
-          checker_id: 应检查人,
-          check_date: today,
-          status: "pending",
-        });
-        if (error && error.code !== "23505") {
-          console.error("生成今日考核记录失败:", error.message);
+        const { data: existing } = await supabase
+          .from("behavior_check_records")
+          .select("id")
+          .eq("task_id", task.id)
+          .eq("employee_id", uid)
+          .eq("check_date", today)
+          .maybeSingle();
+        if (!existing) {
+          const { error } = await supabase.from("behavior_check_records").insert({
+            task_id: task.id,
+            employee_id: uid,
+            checker_ids: [uid],
+            check_date: today,
+            status: "pending",
+          });
+          if (error && error.code !== "23505") {
+            console.error("生成今日考核记录失败:", error.message);
+          }
         }
       }
     }
 
     const { data } = await supabase
       .from("behavior_check_records")
-      .select("*, employee:profiles!behavior_check_records_employee_id_fkey(full_name), behavior_check_tasks(name, execute_time, end_time, item_id, behavior_score_items(id, name, score_type, score_value, description, responsible_id, checker_id, responsible:profiles!behavior_score_items_responsible_id_fkey(full_name), checker:profiles!behavior_score_items_checker_id_fkey(full_name)))")
+      .select("*, employee:profiles!behavior_check_records_employee_id_fkey(full_name), behavior_check_tasks(name, execute_time, end_time, item_id, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids))")
       .eq("check_date", today)
-      .or(`checker_id.eq.${uid},employee_id.eq.${uid}`)
+      .or(`checker_ids.cs.["${uid}"],employee_id.eq.${uid}`)
       .order("created_at", { ascending: true });
 
     const 记录列表 = data || [];
     const itemIds = [...new Set(记录列表.map((r) => 取单((r as { behavior_check_tasks: 嵌套任务 | null }).behavior_check_tasks)?.item_id).filter(Boolean))] as string[];
     const recordIds = 记录列表.map((r) => r.id);
 
-    const [细节结果, 评论结果] = await Promise.all([
+    const [细节结果, 评论结果, 员工结果] = await Promise.all([
       itemIds.length > 0
         ? supabase.from("behavior_item_details").select("*").in("item_id", itemIds).order("sort_order", { ascending: true }).order("created_at", { ascending: true })
         : Promise.resolve({ data: [] }),
       recordIds.length > 0
         ? supabase.from("behavior_check_comments").select("check_record_id").in("check_record_id", recordIds)
         : Promise.resolve({ data: [] }),
+      supabase.from("profiles").select("id, full_name"),
     ]);
 
     const 细节按项目 = new Map<string, 细节视图[]>();
@@ -169,23 +188,26 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
     for (const c of 评论结果.data || []) {
       评论数.set(c.check_record_id, (评论数.get(c.check_record_id) || 0) + 1);
     }
+    const 姓名表 = new Map((员工结果.data || []).map((e: { id: string; full_name: string }) => [e.id, e.full_name]));
 
     const mapped: 考核记录视图[] = 记录列表.map((r) => {
       const task = 取单((r as { behavior_check_tasks: 嵌套任务 | null }).behavior_check_tasks);
       const item = 取单(task?.behavior_score_items);
-      const responsible = 取单(item?.responsible);
-      const checker = 取单(item?.checker);
       const employee = 取单((r as { employee: { full_name: string }[] | { full_name: string } | null }).employee);
+      const checker_ids = (r.checker_ids as string[] | null) || [];
       return {
         id: r.id,
         task_id: r.task_id,
         item_id: task?.item_id || "",
-        checker_id: r.checker_id,
+        checker_ids,
         employee_id: r.employee_id,
         check_date: r.check_date,
         status: r.status,
         score_record_id: r.score_record_id,
         detail_results: (r.detail_results as 细节结果[]) || [],
+        self_report_photos: (r.self_report_photos as string[] | null) || [],
+        self_report_note: r.self_report_note,
+        self_reported_at: r.self_reported_at,
         task_name: task?.name || "",
         execute_time: task?.execute_time || "00:00",
         end_time: task?.end_time || "23:59",
@@ -193,8 +215,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
         item_score: item?.score_value || 0,
         item_score_type: item?.score_type || "bonus",
         item_description: item?.description || null,
-        responsible_name: responsible?.full_name || employee?.full_name || "",
-        checker_name: checker?.full_name || "",
+        checker_names: checker_ids.map((id) => 姓名表.get(id) || "?").join("、"),
         employee_name: employee?.full_name || "",
         details: 细节按项目.get(task?.item_id || "") || [],
         comment_count: 评论数.get(r.id) || 0,
@@ -205,9 +226,19 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
     setLoading(false);
   }, [supabase]);
 
-  /* 分两组：待我检查（我是检查人）/ 考核我的（我是被考核人但不由我检查） */
-  const 待我检查 = records.filter((r) => r.checker_id === currentUserId || (!r.checker_id && r.employee_id === currentUserId));
-  const 考核我的 = records.filter((r) => r.employee_id === currentUserId && r.checker_id && r.checker_id !== currentUserId);
+  /* 三个分组：
+   * 待我自检 —— 我是责任人，由别人检查我，还没自检上报（两阶段流程第一步）
+   * 待我检查 —— 我是检查人（含自检模式的自己）；已完成的也留在这里展示
+   * 考核我的 —— 我是责任人的其余记录（待核查/已完成），只读+评论 */
+  const 待我自检 = records.filter(
+    (r) => r.employee_id === currentUserId && r.status === "pending" && r.checker_ids.length > 0 && !r.checker_ids.includes(currentUserId)
+  );
+  const 待我检查 = records.filter(
+    (r) => r.checker_ids.includes(currentUserId) || (r.checker_ids.length === 0 && r.employee_id === currentUserId)
+  );
+  const 待我自检id集 = new Set(待我自检.map((r) => r.id));
+  const 待我检查id集 = new Set(待我检查.map((r) => r.id));
+  const 考核我的 = records.filter((r) => r.employee_id === currentUserId && !待我自检id集.has(r.id) && !待我检查id集.has(r.id));
 
   function toggleExpanded(id: string) {
     setExpandedIds((prev) => {
@@ -218,14 +249,31 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
     });
   }
 
-  function renderCard(r: 考核记录视图, 可操作: boolean) {
-    const 状态 = 计算时段状态(r.execute_time, r.end_time, r.status);
+  /* 阶段徽章：两阶段流程里的自检/核查状态 */
+  function 阶段徽章(r: 考核记录视图) {
+    if (r.checker_ids.length === 0) return null; /* 旧数据自检语义，不显示 */
+    if (r.status === "self_reported") {
+      return <span className="text-xs px-2 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200">已自检待核查</span>;
+    }
+    if (r.status === "pending") {
+      if (r.checker_ids.includes(currentUserId) && r.employee_id !== currentUserId) {
+        return <span className="text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">责任人未自检</span>;
+      }
+      if (r.employee_id === currentUserId && !r.checker_ids.includes(currentUserId)) {
+        return <span className="text-xs px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">待自检上报</span>;
+      }
+    }
+    return null;
+  }
+
+  function renderCard(r: 考核记录视图, 分组: "自检" | "检查" | "被考核") {
+    const 状态 = 计算时段状态(r.execute_time, r.end_time, r.status === "completed" ? "completed" : "pending");
     const 展示 = 时段状态展示[状态];
     const 展开 = expandedIds.has(r.id);
     const 完成合计 = r.detail_results.reduce((s, d) => s + d.given, 0);
 
     return (
-      <div key={r.id} className={`bg-white rounded-xl border p-5 ${状态 === "completed" ? "border-green-300" : 状态 === "closed" ? "border-red-200" : "border-gray-200"}`}>
+      <div key={r.id} className={`bg-white rounded-xl border p-5 ${r.status === "completed" ? "border-green-300" : 状态 === "closed" ? "border-red-200" : "border-gray-200"}`}>
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-900">{r.item_name || r.task_name}</span>
@@ -238,6 +286,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
                 {r.details.length} 条检查细节
               </span>
             )}
+            {阶段徽章(r)}
           </div>
           <span className={`text-xs px-2 py-0.5 rounded ${展示.样式}`}>
             {展示.文案(r.execute_time.slice(0, 5), r.end_time.slice(0, 5))}
@@ -246,8 +295,8 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
 
         <p className="text-xs text-gray-500 mb-2">
           {r.task_name} · 时段 {r.execute_time.slice(0, 5)} ~ {r.end_time.slice(0, 5)}
-          {" · 责任人："}{r.responsible_name || r.employee_name}
-          {" · 检查人："}{r.checker_name || "自检"}
+          {" · 责任人："}{r.employee_name}
+          {" · 检查人："}{r.checker_names || "自检"}
         </p>
 
         {/* 检查标准（细节图文说明，可展开） */}
@@ -282,6 +331,25 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
           <p className="text-xs text-gray-500 mb-2 whitespace-pre-wrap">{r.item_description}</p>
         )}
 
+        {/* 自检上报内容（已自检的记录展示出来） */}
+        {r.self_reported_at && (
+          <div className="mb-2 bg-cyan-50 rounded-lg p-3">
+            <p className="text-xs text-cyan-700 font-medium mb-1">
+              责任人自检已于 {new Date(r.self_reported_at).toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 上报
+            </p>
+            {r.self_report_note && <p className="text-xs text-gray-600 whitespace-pre-wrap">{r.self_report_note}</p>}
+            {r.self_report_photos.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-1">
+                {r.self_report_photos.map((src, j) => (
+                  <a key={j} href={src} target="_blank" rel="noopener noreferrer">
+                    <img src={src} alt="自检照片" loading="lazy" className="w-14 h-14 object-cover rounded border border-cyan-200" />
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 已完成：展示逐条打分结果 */}
         {r.status === "completed" && r.detail_results.length > 0 && (
           <div className="mb-2 bg-green-50 rounded-lg p-3 space-y-1">
@@ -302,7 +370,21 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
         )}
 
         {/* 操作区 */}
-        {可操作 && r.status === "pending" && (
+        {分组 === "自检" && r.status === "pending" && (
+          <div className="mt-2">
+            {状态 === "closed" ? (
+              <span className="text-xs text-gray-400">已超过检查时间段，无法上报</span>
+            ) : (
+              <button
+                onClick={() => set自检记录(r)}
+                className="px-4 py-2 text-sm text-white bg-cyan-600 rounded-lg hover:bg-cyan-700"
+              >
+                拍照自检上报
+              </button>
+            )}
+          </div>
+        )}
+        {分组 === "检查" && r.status !== "completed" && (
           <div className="mt-2">
             {状态 === "closed" ? (
               <span className="text-xs text-gray-400">已超过检查时间段，无法提交</span>
@@ -312,6 +394,9 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
                 className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
                 去检查
+                {r.status === "pending" && r.checker_ids.length > 0 && r.employee_id !== currentUserId && (
+                  <span className="ml-1 text-xs opacity-75">（责任人未自检）</span>
+                )}
                 {状态 === "not_started" && <span className="ml-1 text-xs opacity-75">（未到时间可提前）</span>}
               </button>
             )}
@@ -326,7 +411,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
   if (loading) {
     return (
       <div>
-        <PageHeader title="今日考核" description="在检查时间段内完成检查，超时自动关闭" />
+        <PageHeader title="今日考核" description="责任人先拍照自检上报，检查人再核查打分；超过时间段自动关闭" />
         <div className="p-8 text-center text-gray-400">加载中...</div>
       </div>
     );
@@ -334,7 +419,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
 
   return (
     <div className="space-y-6">
-      <PageHeader title="今日考核" description="在检查时间段内完成检查，超时自动关闭（漏检不扣分）" />
+      <PageHeader title="今日考核" description="责任人先拍照自检上报，检查人再核查打分；超过时间段自动关闭（漏检不扣分）" />
 
       {records.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
@@ -342,24 +427,38 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
         </div>
       ) : (
         <>
+          {待我自检.length > 0 && (
+            <div className="space-y-4">
+              <h2 className="text-sm font-semibold text-gray-700">待我自检（{待我自检.length}）</h2>
+              {待我自检.map((r) => renderCard(r, "自检"))}
+            </div>
+          )}
           {待我检查.length > 0 && (
             <div className="space-y-4">
               <h2 className="text-sm font-semibold text-gray-700">待我检查（{待我检查.length}）</h2>
-              {待我检查.map((r) => renderCard(r, true))}
+              {待我检查.map((r) => renderCard(r, "检查"))}
             </div>
           )}
           {考核我的.length > 0 && (
             <div className="space-y-4">
               <h2 className="text-sm font-semibold text-gray-700">考核我的（{考核我的.length}）</h2>
-              {考核我的.map((r) => renderCard(r, false))}
+              {考核我的.map((r) => renderCard(r, "被考核"))}
             </div>
           )}
         </>
       )}
 
+      {自检记录 && (
+        <SelfReportModal
+          record={自检记录}
+          onClose={() => set自检记录(null)}
+          onReported={fetchRecords}
+        />
+      )}
       {completingRecord && (
         <CheckCompleteModal
           record={completingRecord}
+          未自检提示={completingRecord.status === "pending" && completingRecord.employee_id !== currentUserId && completingRecord.checker_ids.length > 0}
           onClose={() => setCompletingRecord(null)}
           onCompleted={fetchRecords}
         />
