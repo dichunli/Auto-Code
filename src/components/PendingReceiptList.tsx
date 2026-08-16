@@ -10,7 +10,7 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
-import { 提交收货处理, 撤销收货处理, 删除采购明细 } from "@/app/procurement/actions";
+import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单 } from "@/app/procurement/actions";
 import { DocumentNameInput } from "./DocumentNameInput";
 
 interface PurchaseOrderItem {
@@ -414,6 +414,28 @@ export function PendingReceiptList() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert("撤销失败: " + msg);
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  /* ------------------ 撤销/作废整单（2026-08-17） ------------------
+     仅未收货(submitted)的单显示按钮；配件去留由模式决定，
+     单据统一标 cancelled 留档（采购单只废不删） */
+
+  async function handleCancelOrder(orderId: string, mode: "revoke" | "void") {
+    const 文案 = mode === "revoke"
+      ? "撤销整单：该采购单将作废留档，明细配件【退回】待采购列表，是否继续？"
+      : "作废整单：该采购单将作废留档，明细配件【不】退回待采购，是否继续？";
+    if (!(await 请求确认(文案))) return;
+    setSubmitting(`cancel-${orderId}`);
+    try {
+      const res = await 撤销作废采购单(orderId, mode);
+      if (!res.success) throw new Error(res.error || "操作失败");
+      loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert((mode === "revoke" ? "撤销失败: " : "作废失败: ") + msg);
     } finally {
       setSubmitting(null);
     }
@@ -974,6 +996,30 @@ export function PendingReceiptList() {
                       <span className="px-2 py-0.5 rounded bg-gray-50 text-gray-500 text-xs">
                         本地供货 · 无需运单
                       </span>
+                    )}
+
+                    {/* 整单撤销/作废（2026-08-17）：仅未收货(submitted)的单可操作；
+                        撤销=配件回待采购，作废=配件不回，单据都留档(cancelled)。
+                        命名避开行级"撤销"收货按钮和待采购页批量"撤销"配件 */}
+                    {order.status === "submitted" && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={submitting === `cancel-${order.id}`}
+                          onClick={() => handleCancelOrder(order.id, "revoke")}
+                          className="text-xs text-amber-600 hover:text-amber-700 hover:underline disabled:opacity-50"
+                        >
+                          撤销整单
+                        </button>
+                        <button
+                          type="button"
+                          disabled={submitting === `cancel-${order.id}`}
+                          onClick={() => handleCancelOrder(order.id, "void")}
+                          className="text-xs text-red-400 hover:text-red-600 hover:underline disabled:opacity-50"
+                        >
+                          作废整单
+                        </button>
+                      </>
                     )}
                   </div>
 

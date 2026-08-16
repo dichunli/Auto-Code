@@ -8,6 +8,8 @@ const STATUS_LABELS: Record<string, string> = {
   approved: "已审批",
   partial_received: "部分收货",
   fully_received: "全部收货",
+  pending_storage: "待入库",
+  completed: "已完成",
   cancelled: "已取消",
 };
 
@@ -17,6 +19,8 @@ const STATUS_CLASS: Record<string, string> = {
   approved: "bg-purple-50 text-purple-700",
   partial_received: "bg-yellow-50 text-yellow-700",
   fully_received: "bg-green-50 text-green-700",
+  pending_storage: "bg-indigo-50 text-indigo-700",
+  completed: "bg-green-50 text-green-700",
   cancelled: "bg-red-50 text-red-600",
 };
 
@@ -32,7 +36,7 @@ export default async function ProcurementOrdersPage() {
       <PageHeader
         title="采购订单"
         description="管理配件采购、收货与入库"
-        action={{ href: "/procurement/new", label: "新建采购单" }}
+        action={{ href: "/procurement/new", label: "新建采购" }}
       />
 
       <div className="flex flex-wrap gap-2 mb-6">

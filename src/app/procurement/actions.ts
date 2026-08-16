@@ -130,6 +130,38 @@ export async function 退回已入库(采购单id: string): Promise<操作结果
   return { success: true };
 }
 
+/* ─── 撤销/作废采购单(2026-08-17):仅未收货可操作,单据只废不删 ───
+ * revoke 撤销:配件回待采购(工单行 is_purchased 回 false、暂存件回暂存表);
+ * void 作废:配件不回,单据留档。两种模式单据都标 cancelled 留档。 */
+export async function 撤销作废采购单(
+  采购单id: string,
+  模式: "revoke" | "void"
+): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("cancel_purchase_order", {
+    p_purchase_order_id: 采购单id,
+    p_mode: 模式,
+    p_operator_id: user.id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "操作失败" };
+  }
+
+  revalidatePath("/procurement");
+  revalidatePath("/procurement/orders");
+  return { success: true };
+}
+
 /* ═══ 采购建单 ═══ */
 
 export interface 采购明细输入 {
