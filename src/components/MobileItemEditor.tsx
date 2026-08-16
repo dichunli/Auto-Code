@@ -16,6 +16,7 @@ import ItemQcActions from "./ItemQcActions";
 import { PartWorkflowActions } from "./PartWorkflowActions";
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import { 申领配件, 取消申领 } from "@/app/picking-orders/actions";
+import { 重置外包财务记录 } from "@/app/outsource-orders/actions";
 import { ShowCommission } from "./WorkOrderToggleContext";
 import { calculateItemCommission, type CommissionSource } from "@/lib/commission";
 import { useConfirm } from "./ConfirmDialog";
@@ -1761,9 +1762,17 @@ export default function MobileItemEditor({
 
     setLoading(true);
     try {
-      // 清理旧财务记录
-      await supabase.from("supplier_transactions").delete().ilike("description", `%${existingOrder.order_no}%`);
-      await supabase.from("accounts_payable").delete().ilike("notes", `%${existingOrder.order_no}%`);
+      /* 财务记录重置（2026-08-16 批次3 破口修复）：原直写两张财务表已被 RLS 拦截，
+         现由 RPC 一个事务"清旧+建新"；整单删除时金额 0 只清不建 */
+      if (willDeleteOrder) {
+        const finRes = await 重置外包财务记录({
+          单号: existingOrder.order_no,
+          供应商id: null,
+          金额: 0,
+          已付: false,
+        });
+        if (!finRes.success) throw new Error("财务记录清理失败: " + (finRes.error || "未知错误"));
+      }
 
       // 删除明细
       const { error: delErr } = await supabase.from("outsource_order_items").delete().eq("id", existingItem.id);
@@ -1785,24 +1794,13 @@ export default function MobileItemEditor({
           (sum, it) => sum + (parseFloat(String(it.amount)) || 0), 0
         );
         await supabase.from("outsource_orders").update({ total_amount: newTotal }).eq("id", existingOrder.id);
-        if (newTotal > 0) {
-          if (existingOrder.is_paid) {
-            await supabase.from("supplier_transactions").insert({
-              supplier_id: existingOrder.supplier_id,
-              transaction_type: "payment",
-              amount: newTotal,
-              description: `外包服务单 ${existingOrder.order_no}`,
-            });
-          } else {
-            await supabase.from("accounts_payable").insert({
-              supplier_id: existingOrder.supplier_id,
-              amount: newTotal,
-              paid_amount: 0,
-              status: "pending",
-              notes: `外包服务单 ${existingOrder.order_no}`,
-            });
-          }
-        }
+        const finRes = await 重置外包财务记录({
+          单号: existingOrder.order_no,
+          供应商id: existingOrder.supplier_id,
+          金额: newTotal,
+          已付: existingOrder.is_paid,
+        });
+        if (!finRes.success) throw new Error("财务记录更新失败: " + (finRes.error || "未知错误"));
       }
 
       refresh();
