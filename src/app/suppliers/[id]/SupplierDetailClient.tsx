@@ -233,6 +233,8 @@ export default function SupplierDetailClient({
     approved: "已审批",
     partial_received: "部分收货",
     fully_received: "全部收货",
+    pending_storage: "待入库",
+    completed: "已完成",
     cancelled: "已取消",
   };
 
