@@ -36,7 +36,7 @@ export default async function ProcurementOrdersPage() {
       <PageHeader
         title="采购订单"
         description="管理配件采购、收货与入库"
-        action={{ href: "/procurement/new", label: "新建采购单" }}
+        action={{ href: "/procurement/new", label: "新建采购" }}
       />
 
       <div className="flex flex-wrap gap-2 mb-6">
