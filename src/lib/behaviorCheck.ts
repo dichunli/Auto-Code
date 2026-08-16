@@ -2,7 +2,7 @@
    行为考核共享纯函数
    - 本地今日字符串（替代 UTC 日期，凌晨 0-8 点不再算成昨天）
    - 过滤今日任务（daily/weekly/monthly 匹配）
-   - 计算时段状态（未开始/检查中/已关闭/已完成）
+   - 计算时段状态（未开始/检查中/已关闭/已自检待核查/已完成）
    服务端 page.tsx 与客户端 Content 组件共用，不依赖 supabase
    ============================================================ */
 
@@ -37,8 +37,9 @@ export function 过滤今日任务<T extends 可过滤任务>(tasks: T[], now: D
 
 /** 时段状态：
  * not_started 未开始（允许提前完成，只提示） / in_window 检查中 /
- * closed 已关闭漏检（禁止提交） / completed 已完成 */
-export type 时段状态 = "not_started" | "in_window" | "closed" | "completed";
+ * closed 已关闭漏检（禁止提交） / completed 已完成 /
+ * reported 已自检待核查（自检合格已计分，超时也不算漏检，检查人仍可改判） */
+export type 时段状态 = "not_started" | "in_window" | "closed" | "completed" | "reported";
 
 export function 计算时段状态(
   execute_time: string,
@@ -47,6 +48,8 @@ export function 计算时段状态(
   now: Date = new Date()
 ): 时段状态 {
   if (recordStatus === "completed") return "completed";
+  /* 已自检上报：无论是否超时都不算漏检，恒为待核查（检查人超时仍可改判） */
+  if (recordStatus === "self_reported") return "reported";
   const 当前分钟 = now.getHours() * 60 + now.getMinutes();
   if (当前分钟 < 时间转分钟(execute_time)) return "not_started";
   if (当前分钟 > 时间转分钟(end_time)) return "closed";
@@ -66,6 +69,10 @@ export const 时段状态展示: Record<时段状态, { 文案: (start: string, 
   closed: {
     文案: () => "已关闭（漏检）",
     样式: "bg-red-50 text-red-700 border border-red-200",
+  },
+  reported: {
+    文案: () => "已自检待核查",
+    样式: "bg-cyan-50 text-cyan-700 border border-cyan-200",
   },
   completed: {
     文案: () => "已完成",

@@ -35,6 +35,7 @@ export interface 考核记录视图 {
   check_date: string;
   status: string;
   score_record_id: string | null;
+  review_score_record_id: string | null;
   detail_results: 细节结果[];
   self_report_photos: string[];
   self_report_note: string | null;
@@ -46,6 +47,7 @@ export interface 考核记录视图 {
   item_score: number;
   item_score_type: string;
   item_description: string | null;
+  item_guide_images: string[];
   checker_names: string;
   employee_name: string;
   details: 细节视图[];
@@ -60,6 +62,7 @@ interface 嵌套项目 {
   description: string | null;
   responsible_ids: string[] | null;
   checker_ids: string[] | null;
+  guide_images: string[] | null;
 }
 
 interface 嵌套任务 {
@@ -102,7 +105,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
 
     const { data: taskData } = await supabase
       .from("behavior_check_tasks")
-      .select("*, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids)")
+      .select("*, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids, guide_images)")
       .eq("is_active", true);
 
     const todayTasks = 过滤今日任务((taskData || []) as 嵌套任务[]);
@@ -159,7 +162,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
 
     const { data } = await supabase
       .from("behavior_check_records")
-      .select("*, employee:profiles!behavior_check_records_employee_id_fkey(full_name), behavior_check_tasks(name, execute_time, end_time, item_id, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids))")
+      .select("*, employee:profiles!behavior_check_records_employee_id_fkey(full_name), behavior_check_tasks(name, execute_time, end_time, item_id, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids, guide_images))")
       .eq("check_date", today)
       .or(`checker_ids.cs.["${uid}"],employee_id.eq.${uid}`)
       .order("created_at", { ascending: true });
@@ -204,6 +207,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
         check_date: r.check_date,
         status: r.status,
         score_record_id: r.score_record_id,
+        review_score_record_id: r.review_score_record_id,
         detail_results: (r.detail_results as 细节结果[]) || [],
         self_report_photos: (r.self_report_photos as string[] | null) || [],
         self_report_note: r.self_report_note,
@@ -215,6 +219,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
         item_score: item?.score_value || 0,
         item_score_type: item?.score_type || "bonus",
         item_description: item?.description || null,
+        item_guide_images: (item?.guide_images as string[] | null) || [],
         checker_names: checker_ids.map((id) => 姓名表.get(id) || "?").join("、"),
         employee_name: employee?.full_name || "",
         details: 细节按项目.get(task?.item_id || "") || [],
@@ -253,7 +258,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
   function 阶段徽章(r: 考核记录视图) {
     if (r.checker_ids.length === 0) return null; /* 旧数据自检语义，不显示 */
     if (r.status === "self_reported") {
-      return <span className="text-xs px-2 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200">已自检待核查</span>;
+      return <span className="text-xs px-2 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200">已自检·分已计待核查</span>;
     }
     if (r.status === "pending") {
       if (r.checker_ids.includes(currentUserId) && r.employee_id !== currentUserId) {
@@ -267,7 +272,8 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
   }
 
   function renderCard(r: 考核记录视图, 分组: "自检" | "检查" | "被考核") {
-    const 状态 = 计算时段状态(r.execute_time, r.end_time, r.status === "completed" ? "completed" : "pending");
+    /* 传真实状态：self_reported 恒为"已自检待核查"，超时也不算漏检 */
+    const 状态 = 计算时段状态(r.execute_time, r.end_time, r.status);
     const 展示 = 时段状态展示[状态];
     const 展开 = expandedIds.has(r.id);
     const 完成合计 = r.detail_results.reduce((s, d) => s + d.given, 0);
@@ -299,14 +305,26 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
           {" · 检查人："}{r.checker_names || "自检"}
         </p>
 
-        {/* 检查标准（细节图文说明，可展开） */}
-        {r.details.length > 0 && (
+        {/* 检查标准（项目级标准照片 + 细节图文说明，可展开） */}
+        {(r.details.length > 0 || r.item_guide_images.length > 0) && (
           <div className="mb-2">
             <button onClick={() => toggleExpanded(r.id)} className="text-xs text-blue-600 hover:text-blue-700">
               {展开 ? "收起检查标准 ▲" : "查看检查标准 ▼"}
             </button>
             {展开 && (
               <div className="mt-2 space-y-2 bg-gray-50 rounded-lg p-3">
+                {r.item_guide_images.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 mb-1">标准照片：</p>
+                    <div className="flex flex-wrap gap-2">
+                      {r.item_guide_images.map((src, j) => (
+                        <a key={j} href={src} target="_blank" rel="noopener noreferrer">
+                          <img src={src} alt="标准照片" loading="lazy" className="w-16 h-16 object-cover rounded border border-gray-200" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {r.details.map((d, i) => (
                   <div key={d.id} className="text-sm">
                     <span className="text-gray-700 font-medium">#{i + 1} {d.name}</span>
@@ -335,7 +353,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
         {r.self_reported_at && (
           <div className="mb-2 bg-cyan-50 rounded-lg p-3">
             <p className="text-xs text-cyan-700 font-medium mb-1">
-              责任人自检已于 {new Date(r.self_reported_at).toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 上报
+              责任人自检已于 {new Date(r.self_reported_at).toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 上报，合格分已计入
             </p>
             {r.self_report_note && <p className="text-xs text-gray-600 whitespace-pre-wrap">{r.self_report_note}</p>}
             {r.self_report_photos.length > 0 && (
@@ -353,6 +371,9 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
         {/* 已完成：展示逐条打分结果 */}
         {r.status === "completed" && r.detail_results.length > 0 && (
           <div className="mb-2 bg-green-50 rounded-lg p-3 space-y-1">
+            {r.review_score_record_id && (
+              <p className="text-xs text-amber-700 font-medium">检查人核查改判，差额已自动扣回</p>
+            )}
             {r.detail_results.map((d) => (
               <div key={d.detail_id} className="text-xs text-gray-700 flex items-center gap-2 flex-wrap">
                 <span>{d.name}</span>
@@ -386,6 +407,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
         )}
         {分组 === "检查" && r.status !== "completed" && (
           <div className="mt-2">
+            {/* 已自检的（reported）：超时仍可核查改判；未自检的：超时关闭 */}
             {状态 === "closed" ? (
               <span className="text-xs text-gray-400">已超过检查时间段，无法提交</span>
             ) : (
@@ -393,7 +415,10 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
                 onClick={() => setCompletingRecord(r)}
                 className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
-                去检查
+                {r.status === "self_reported" ? "去核查" : "去检查"}
+                {r.status === "self_reported" && (
+                  <span className="ml-1 text-xs opacity-75">（合格分已计，不符可改判）</span>
+                )}
                 {r.status === "pending" && r.checker_ids.length > 0 && r.employee_id !== currentUserId && (
                   <span className="ml-1 text-xs opacity-75">（责任人未自检）</span>
                 )}
@@ -411,7 +436,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
   if (loading) {
     return (
       <div>
-        <PageHeader title="今日考核" description="责任人先拍照自检上报，检查人再核查打分；超过时间段自动关闭" />
+        <PageHeader title="今日考核" description="责任人拍照自检即合格计分，检查人事后核查可改判；未自检且超过时间段自动关闭" />
         <div className="p-8 text-center text-gray-400">加载中...</div>
       </div>
     );
@@ -419,7 +444,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
 
   return (
     <div className="space-y-6">
-      <PageHeader title="今日考核" description="责任人先拍照自检上报，检查人再核查打分；超过时间段自动关闭（漏检不扣分）" />
+      <PageHeader title="今日考核" description="责任人拍照自检即合格计分，检查人事后核查可改判；未自检且超过时间段自动关闭（漏检不扣分）" />
 
       {records.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">

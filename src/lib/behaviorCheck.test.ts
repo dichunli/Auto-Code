@@ -72,6 +72,11 @@ describe("计算时段状态", () => {
     expect(计算时段状态(start, end, "pending", new Date(2026, 7, 14, 9, 1))).toBe("closed");
   });
 
+  it("已自检的记录恒为 reported（超时也不算漏检，检查人仍可改判）", () => {
+    expect(计算时段状态(start, end, "self_reported", new Date(2026, 7, 14, 8, 45))).toBe("reported");
+    expect(计算时段状态(start, end, "self_reported", new Date(2026, 7, 14, 23, 59))).toBe("reported");
+  });
+
   it("兼容带秒的时间格式", () => {
     expect(计算时段状态("08:30:00", "09:00:00", "pending", new Date(2026, 7, 14, 8, 45))).toBe("in_window");
   });
