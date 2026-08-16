@@ -4,7 +4,7 @@ import {useState, useEffect, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { PriceValue } from "@/components/PriceVisibilityContext";
-import { 部分收货登记 } from "@/app/procurement/actions";
+import { 部分收货登记, 撤销作废采购单 } from "@/app/procurement/actions";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
@@ -73,6 +73,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const [items, setItems] = useState<PurchaseOrderItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [receiveForm, setReceiveForm] = useState<Record<string, string>>({});
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     params.then((p) => setOrderId(p.id));
@@ -102,6 +103,26 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
   function canReceive() {
     return order && ["submitted", "approved", "partial_received"].includes(order.status);
+  }
+
+  /* 撤销/作废整单（2026-08-17）：仅未收货(submitted)可操作；
+     撤销=配件回待采购，作废=配件不回，单据都留档(cancelled) */
+  async function handleCancelOrder(mode: "revoke" | "void") {
+    if (!order) return;
+    const 文案 = mode === "revoke"
+      ? "撤销整单：该采购单将作废留档，明细配件【退回】待采购列表，是否继续？"
+      : "作废整单：该采购单将作废留档，明细配件【不】退回待采购，是否继续？";
+    if (!confirm(文案)) return;
+    setCancelling(true);
+    try {
+      const res = await 撤销作废采购单(order.id, mode);
+      if (!res.success) throw new Error(res.error || "操作失败");
+      fetchOrder();
+    } catch (err: unknown) {
+      alert((mode === "revoke" ? "撤销失败: " : "作废失败: ") + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setCancelling(false);
+    }
   }
 
   async function handleReceiveItem(itemId: string) {
@@ -194,11 +215,33 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-900">采购项目</h3>
-          {canReceive() && (
-            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-              可收货 · 收满后请前往「采购管理 → 待入库」确认入库;破损/错发请在待收货列表处理
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {canReceive() && (
+              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                可收货 · 收满后请前往「采购管理 → 待入库」确认入库;破损/错发请在待收货列表处理
+              </span>
+            )}
+            {order.status === "submitted" && (
+              <>
+                <button
+                  type="button"
+                  disabled={cancelling}
+                  onClick={() => handleCancelOrder("revoke")}
+                  className="text-xs text-amber-600 hover:text-amber-700 hover:underline disabled:opacity-50"
+                >
+                  撤销整单
+                </button>
+                <button
+                  type="button"
+                  disabled={cancelling}
+                  onClick={() => handleCancelOrder("void")}
+                  className="text-xs text-red-400 hover:text-red-600 hover:underline disabled:opacity-50"
+                >
+                  作废整单
+                </button>
+              </>
+            )}
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
