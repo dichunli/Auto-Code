@@ -1,4 +1,4 @@
-/* 采购相关表 RLS 收紧（2026-08-16 批次3 安全收口）
+/* 采购相关表 RLS 收紧（2026-08-16 批次3 安全收口）【v3 全量幂等版——每条策略先 DROP 再 CREATE，可重复执行】
  *
  * 背景（采购流程梳理 2026-08 问题清单 高危4）：
  *   采购写操作已事务化（12 个 SECURITY DEFINER RPC 带 has_role 角色门禁），
@@ -38,8 +38,14 @@
 
 /* ============================================================
    一、suppliers + 5 张关联表
+   （CREATE POLICY 不支持 OR REPLACE，先 DROP IF EXISTS 新名策略，
+     保证本脚本可重复执行——上次执行中断后直接重跑即可）
    ============================================================ */
 DROP POLICY IF EXISTS auth_full_access ON public.suppliers;
+DROP POLICY IF EXISTS suppliers_select ON public.suppliers;
+DROP POLICY IF EXISTS suppliers_insert ON public.suppliers;
+DROP POLICY IF EXISTS suppliers_update ON public.suppliers;
+DROP POLICY IF EXISTS suppliers_delete ON public.suppliers;
 CREATE POLICY suppliers_select ON public.suppliers FOR SELECT TO authenticated USING (true);
 CREATE POLICY suppliers_insert ON public.suppliers FOR INSERT TO authenticated
   WITH CHECK ((select public.has_role('admin','boss','warehouse')));
@@ -79,6 +85,7 @@ END $$;
 
 /* ============================================================
    二、purchase_orders / purchase_order_items / custom_purchase_staging
+   （同样先 DROP 新名策略再 CREATE，保证可重复执行）
    ============================================================ */
 DO $$
 DECLARE
@@ -87,6 +94,10 @@ DECLARE
 BEGIN
   FOREACH t IN ARRAY 采购表 LOOP
     EXECUTE format('DROP POLICY IF EXISTS auth_full_access ON public.%I', t);
+    EXECUTE format('DROP POLICY IF EXISTS %I_select ON public.%I', t, t);
+    EXECUTE format('DROP POLICY IF EXISTS %I_insert ON public.%I', t, t);
+    EXECUTE format('DROP POLICY IF EXISTS %I_update ON public.%I', t, t);
+    EXECUTE format('DROP POLICY IF EXISTS %I_delete ON public.%I', t, t);
     EXECUTE format('CREATE POLICY %I_select ON public.%I FOR SELECT TO authenticated USING (true)', t, t);
     EXECUTE format('CREATE POLICY %I_insert ON public.%I FOR INSERT TO authenticated
                       WITH CHECK ((select public.has_role(''admin'',''boss'',''warehouse'')))', t, t);
@@ -103,6 +114,10 @@ END $$;
    UPDATE/DELETE 收紧三角色（审批/记账类操作）
    ============================================================ */
 DROP POLICY IF EXISTS auth_full_access ON public.supplier_return_records;
+DROP POLICY IF EXISTS supplier_return_records_select ON public.supplier_return_records;
+DROP POLICY IF EXISTS supplier_return_records_insert ON public.supplier_return_records;
+DROP POLICY IF EXISTS supplier_return_records_update ON public.supplier_return_records;
+DROP POLICY IF EXISTS supplier_return_records_delete ON public.supplier_return_records;
 CREATE POLICY supplier_return_records_select ON public.supplier_return_records
   FOR SELECT TO authenticated USING (true);
 CREATE POLICY supplier_return_records_insert ON public.supplier_return_records
