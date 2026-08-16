@@ -4,6 +4,7 @@ import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { ImageUploader } from "@/components/ImageUploader";
 import CategoryManageModal, { 行为分类 } from "./CategoryManageModal";
 import DetailManageModal from "./DetailManageModal";
 
@@ -17,6 +18,7 @@ interface 行为项目 {
   category_id: string | null;
   responsible_ids: string[];
   checker_ids: string[];
+  guide_images: string[];
 }
 
 interface 员工 {
@@ -59,6 +61,7 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
     category_id: "",
     responsible_ids: [] as string[],
     checker_ids: [] as string[],
+    guide_images: [] as string[],
     is_active: true,
   });
 
@@ -98,7 +101,7 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
 
   function openAdd() {
     setEditingItem(null);
-    setForm({ name: "", score_type: "bonus", score_value: "", description: "", category_id: "", responsible_ids: [], checker_ids: [], is_active: true });
+    setForm({ name: "", score_type: "bonus", score_value: "", description: "", category_id: "", responsible_ids: [], checker_ids: [], guide_images: [], is_active: true });
     setModalOpen(true);
   }
 
@@ -112,6 +115,7 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
       category_id: item.category_id || "",
       responsible_ids: item.responsible_ids || [],
       checker_ids: item.checker_ids || [],
+      guide_images: item.guide_images || [],
       is_active: item.is_active,
     });
     setModalOpen(true);
@@ -151,6 +155,7 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
         category_id: form.category_id || null,
         responsible_ids: form.responsible_ids,
         checker_ids: form.checker_ids,
+        guide_images: form.guide_images,
         is_active: form.is_active,
       };
 
@@ -276,7 +281,12 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
                       ? `${姓名拼接(item.responsible_ids)}（${item.checker_ids && item.checker_ids.length > 0 ? 姓名拼接(item.checker_ids) : "自检"}）`
                       : "-"}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 max-w-40 truncate">{item.description || "-"}</td>
+                  <td className="px-4 py-3 text-gray-500 max-w-40 truncate">
+                    {item.guide_images && item.guide_images.length > 0 && (
+                      <span className="text-xs text-teal-600 mr-1" title={`${item.guide_images.length} 张标准照片`}>📷{item.guide_images.length}</span>
+                    )}
+                    {item.description || "-"}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`text-xs px-2 py-0.5 rounded ${
@@ -380,6 +390,16 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   placeholder="简要说明此项目的检查范围..."
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">标准照片（可多张）</label>
+                <ImageUploader
+                  existingImages={form.guide_images}
+                  maxImages={5}
+                  folder="behavior"
+                  onUpload={(paths) => setForm({ ...form, guide_images: paths })}
+                />
+                <p className="text-xs text-gray-400 mt-1">拍照留存合格样子的基准，员工自检和检查人核查时都会对照这些照片</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

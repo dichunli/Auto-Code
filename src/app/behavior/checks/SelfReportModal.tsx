@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useState } from "react";
 import { ImageUploader } from "@/components/ImageUploader";
-import { 计算时段状态 } from "@/lib/behaviorCheck";
+import { 自检上报计分 } from "./actions";
 import type { 考核记录视图 } from "./BehaviorChecksContent";
 
 interface Props {
@@ -12,9 +11,9 @@ interface Props {
   onReported: () => void;
 }
 
-/* 责任人自检上报弹窗：对照检查标准拍照上报，检查人随后核查打分 */
+/* 责任人自检上报弹窗：对照标准照片拍照上报。
+ * 上报即视为自检合格，系统立即按满分计分；检查人事后核查发现不符可改判扣回。 */
 export default function SelfReportModal({ record, onClose, onReported }: Props) {
-  const supabase = useMemo(() => createClient(), []);
   const [photos, setPhotos] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -27,45 +26,16 @@ export default function SelfReportModal({ record, onClose, onReported }: Props) 
     }
     setSaving(true);
     try {
-      /* 提交前重查：防止页面挂着过期状态提交 */
-      const { data: 最新记录 } = await supabase
-        .from("behavior_check_records")
-        .select("status, behavior_check_tasks(execute_time, end_time)")
-        .eq("id", record.id)
-        .single();
-      if (!最新记录) throw new Error("记录不存在，请刷新页面");
-      if (最新记录.status === "completed") {
-        alert("该记录已完成，无需上报");
-        onClose();
-        onReported();
+      const 结果 = await 自检上报计分({ recordId: record.id, photos, note });
+      if (!结果.success) {
+        alert("上报失败: " + 结果.error);
+        /* 状态类错误说明页面数据已过期，关掉弹窗刷新列表 */
+        if (结果.error?.includes("刷新") || 结果.error?.includes("已完成") || 结果.error?.includes("已上报")) {
+          onReported();
+          onClose();
+        }
         return;
       }
-      if (最新记录.status === "self_reported") {
-        alert("已上报过了，请勿重复提交");
-        onClose();
-        onReported();
-        return;
-      }
-      const 任务 = 最新记录.behavior_check_tasks as { execute_time: string; end_time: string }[] | { execute_time: string; end_time: string } | null;
-      const t = Array.isArray(任务) ? 任务[0] : 任务;
-      if (t && 计算时段状态(t.execute_time, t.end_time, "pending") === "closed") {
-        alert(`已超过检查时间段（${t.end_time.slice(0, 5)} 截止），本次检查已关闭`);
-        onClose();
-        onReported();
-        return;
-      }
-
-      const { error } = await supabase
-        .from("behavior_check_records")
-        .update({
-          status: "self_reported",
-          self_report_photos: photos,
-          self_report_note: note.trim() || null,
-          self_reported_at: new Date().toISOString(),
-        })
-        .eq("id", record.id);
-      if (error) throw error;
-
       onReported();
       onClose();
     } catch (err: unknown) {
@@ -80,11 +50,30 @@ export default function SelfReportModal({ record, onClose, onReported }: Props) 
       <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-lg max-h-[85vh] flex flex-col">
         <h3 className="text-base font-semibold text-gray-900">拍照自检上报：{record.item_name}</h3>
         <p className="text-xs text-gray-500 mt-1 mb-4">
-          {record.task_name} · 时段 {record.execute_time.slice(0, 5)} ~ {record.end_time.slice(0, 5)} · 上报后由 {record.checker_names || "检查人"} 核查打分
+          {record.task_name} · 时段 {record.execute_time.slice(0, 5)} ~ {record.end_time.slice(0, 5)} · 上报即视为合格并计分，{record.checker_names || "检查人"} 事后核查
         </p>
 
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-          {/* 检查标准回顾 */}
+          {/* 项目级标准照片 */}
+          {record.item_guide_images.length > 0 && (
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-xs font-medium text-gray-600 mb-1">标准照片（对照此标准自查）：</p>
+              <div className="flex flex-wrap gap-2">
+                {record.item_guide_images.map((src, j) => (
+                  <img
+                    key={j}
+                    src={src}
+                    alt="标准照片"
+                    loading="lazy"
+                    className="w-16 h-16 object-cover rounded border border-gray-200 cursor-pointer"
+                    onClick={() => set放大图(src)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 检查标准回顾（细节级图文） */}
           {record.details.length > 0 && (
             <div className="bg-gray-50 rounded-lg p-3 space-y-2">
               <p className="text-xs font-medium text-gray-600">对照检查标准自查：</p>
@@ -111,7 +100,7 @@ export default function SelfReportModal({ record, onClose, onReported }: Props) 
               ))}
             </div>
           )}
-          {record.details.length === 0 && record.item_description && (
+          {record.details.length === 0 && record.item_guide_images.length === 0 && record.item_description && (
             <p className="text-sm text-gray-500 whitespace-pre-wrap">{record.item_description}</p>
           )}
 
@@ -150,7 +139,7 @@ export default function SelfReportModal({ record, onClose, onReported }: Props) 
             disabled={saving}
             className="px-4 py-2 text-sm text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 disabled:opacity-50"
           >
-            {saving ? "上报中..." : "确认上报"}
+            {saving ? "上报中..." : "确认合格并上报"}
           </button>
         </div>
       </div>
@@ -158,7 +147,7 @@ export default function SelfReportModal({ record, onClose, onReported }: Props) 
       {/* 标准图放大查看 */}
       {放大图 && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={() => set放大图(null)}>
-          <img src={放大图} alt="检查标准" className="max-w-full max-h-full rounded-lg" />
+          <img src={放大图} alt="标准照片" className="max-w-full max-h-full rounded-lg" />
         </div>
       )}
     </div>

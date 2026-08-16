@@ -11,6 +11,7 @@ interface 嵌套项目 {
   description: string | null;
   responsible_ids: string[] | null;
   checker_ids: string[] | null;
+  guide_images: string[] | null;
 }
 
 interface 嵌套任务 {
@@ -38,7 +39,7 @@ async function 懒生成今日记录(
 ): Promise<void> {
   const { data: taskData } = await supabase
     .from("behavior_check_tasks")
-    .select("*, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids)")
+    .select("*, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids, guide_images)")
     .eq("is_active", true);
 
   const todayTasks = 过滤今日任务((taskData || []) as 嵌套任务[]);
@@ -120,7 +121,7 @@ export default async function BehaviorChecksPage() {
    * checker_ids 为空数组的旧记录走 employee_id=我 命中（自检语义） */
   const { data } = await supabase
     .from("behavior_check_records")
-    .select("*, employee:profiles!behavior_check_records_employee_id_fkey(full_name), behavior_check_tasks(name, execute_time, end_time, item_id, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids))")
+    .select("*, employee:profiles!behavior_check_records_employee_id_fkey(full_name), behavior_check_tasks(name, execute_time, end_time, item_id, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids, guide_images))")
     .eq("check_date", today)
     .or(`checker_ids.cs.["${uid}"],employee_id.eq.${uid}`)
     .order("created_at", { ascending: true });
@@ -178,6 +179,7 @@ export default async function BehaviorChecksPage() {
       check_date: r.check_date,
       status: r.status,
       score_record_id: r.score_record_id,
+      review_score_record_id: r.review_score_record_id,
       detail_results: (r.detail_results as 考核记录视图["detail_results"]) || [],
       self_report_photos: (r.self_report_photos as string[] | null) || [],
       self_report_note: r.self_report_note,
@@ -189,6 +191,7 @@ export default async function BehaviorChecksPage() {
       item_score: item?.score_value || 0,
       item_score_type: item?.score_type || "bonus",
       item_description: item?.description || null,
+      item_guide_images: (item?.guide_images as string[] | null) || [],
       checker_names: 姓名拼接(checker_ids),
       employee_name: employee?.full_name || "",
       details: 细节按项目.get(task?.item_id || "") || [],
