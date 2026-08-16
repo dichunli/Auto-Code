@@ -90,3 +90,31 @@ export async function 保存供应商档案(
   revalidatePath("/suppliers");
   return { success: true, supplier_id: 结果.supplier_id };
 }
+
+/* ─── 更新供应商电话(2026-08-16 RLS 收紧收编):物流页"补充电话"小入口 ───
+ * suppliers 表写已收紧到 admin/boss/warehouse,物流页操作者可能是其他角色,
+ * 此 action 服务端校验登录后写入;仅限电话字段,避免成为供应商信息通用后门。 */
+export async function 更新供应商电话(
+  供应商id: string,
+  电话: string
+): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!供应商id) {
+    return { success: false, error: "供应商选择无效" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("suppliers")
+    .update({ phone: 电话.trim() || null })
+    .eq("id", 供应商id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/suppliers");
+  return { success: true };
+}

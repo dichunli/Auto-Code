@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 重置外包财务记录 } from "@/app/outsource-orders/actions";
 import { useConfirm } from "./ConfirmDialog";
 
 interface Supplier {
@@ -128,43 +129,12 @@ export function OutsourceModal({
     }, 300);
   }
 
-  // 清除旧的财务记录（按订单号匹配）
-  async function clearFinanceRecords(orderNo: string) {
-    await supabase
-      .from("supplier_transactions")
-      .delete()
-      .ilike("description", `%${orderNo}%`);
-    await supabase
-      .from("accounts_payable")
-      .delete()
-      .ilike("notes", `%${orderNo}%`);
-  }
-
-  // 生成新的财务记录
-  async function createFinanceRecords(
-    orderNo: string,
-    supplierId: string,
-    totalAmount: number,
-    paid: boolean
-  ) {
-    if (paid) {
-      const { error } = await supabase.from("supplier_transactions").insert({
-        supplier_id: supplierId,
-        transaction_type: "payment",
-        amount: totalAmount,
-        description: `外包服务单 ${orderNo}`,
-      });
-      if (error) throw new Error("生成付款记录失败: " + error.message);
-    } else {
-      const { error } = await supabase.from("accounts_payable").insert({
-        supplier_id: supplierId,
-        amount: totalAmount,
-        paid_amount: 0,
-        status: "pending",
-        notes: `外包服务单 ${orderNo}`,
-      });
-      if (error) throw new Error("生成应付账款失败: " + error.message);
-    }
+  /* 财务记录重置（2026-08-16 批次3 破口修复）：原客户端直写 supplier_transactions /
+     accounts_payable 已被 RLS 角色化拦截，且按单号 ILIKE 模糊删有误删风险；
+     现统一走 RPC 一个事务"清旧+建新"（精确匹配）。 */
+  async function resetFinance(orderNo: string, supplierId: string | null, amount: number, paid: boolean) {
+    const res = await 重置外包财务记录({ 单号: orderNo, 供应商id: supplierId, 金额: amount, 已付: paid });
+    if (!res.success) throw new Error("财务记录更新失败: " + (res.error || "未知错误"));
   }
 
   async function handleSubmit() {
@@ -323,9 +293,8 @@ export function OutsourceModal({
         }
       }
 
-      // 重建财务记录（先删后建，金额取最新合计）
-      await clearFinanceRecords(orderNo);
-      await createFinanceRecords(orderNo, selectedSupplier.id, newTotal, isPaid);
+      // 重建财务记录（先删后建一个事务，金额取最新合计）
+      await resetFinance(orderNo, selectedSupplier.id, newTotal, isPaid);
 
       setLoading(false);
       onSuccess();
@@ -366,10 +335,10 @@ export function OutsourceModal({
         .eq("id", workOrderItemId);
       if (woErr) throw new Error("更新工单项目失败: " + woErr.message);
 
-      // 3. 清理旧财务记录
-      await clearFinanceRecords(existingOrder.order_no);
-
       if (willDeleteOrder) {
+        /* 整单删除：财务记录清掉不重建（金额 0） */
+        await resetFinance(existingOrder.order_no, null, 0, false);
+
         // 删除整个外包单
         const { error: orderErr } = await supabase
           .from("outsource_orders")
@@ -377,7 +346,7 @@ export function OutsourceModal({
           .eq("id", existingOrder.id);
         if (orderErr) throw new Error("删除外包单失败: " + orderErr.message);
       } else {
-        // 重新计算总额并重建财务记录
+        // 重新计算总额并重建财务记录（清旧+建新一个事务）
         const { data: remaining } = await supabase
           .from("outsource_order_items")
           .select("amount")
@@ -390,14 +359,12 @@ export function OutsourceModal({
           .from("outsource_orders")
           .update({ total_amount: newTotal })
           .eq("id", existingOrder.id);
-        if (newTotal > 0) {
-          await createFinanceRecords(
-            existingOrder.order_no,
-            existingOrder.supplier_id,
-            newTotal,
-            existingOrder.is_paid
-          );
-        }
+        await resetFinance(
+          existingOrder.order_no,
+          existingOrder.supplier_id,
+          newTotal,
+          existingOrder.is_paid
+        );
       }
 
       setCancelLoading(false);

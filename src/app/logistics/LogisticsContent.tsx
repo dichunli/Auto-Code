@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 更新供应商电话 } from "@/app/suppliers/actions";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
@@ -365,12 +366,10 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
       alert("供应商选择无效");
       return;
     }
-    const { error } = await supabase
-      .from("suppliers")
-      .update({ phone: singlePhone.trim() })
-      .eq("id", attachSupplierId);
-    if (error) {
-      alert("补充电话失败: " + error.message);
+    /* 2026-08-16 RLS 收紧收编：suppliers 写已限 admin/boss/warehouse，改走 Server Action */
+    const res = await 更新供应商电话(attachSupplierId, singlePhone);
+    if (!res.success) {
+      alert("补充电话失败: " + (res.error || "未知错误"));
       return;
     }
     setSingleSupplierName(supplier.name);

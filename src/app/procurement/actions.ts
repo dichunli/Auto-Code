@@ -433,6 +433,35 @@ export async function 批量撤销退货(记录ids: string[]): Promise<操作结
   return { success: true };
 }
 
+/* ─── 撤销已退货(2026-08-16 批次2):删采退单+应收冲减+记录回 pending,一个事务 ───
+ * 替代原 CompletedReturnList 客户端 5 步连环删(无事务,中途失败留半成品)。
+ * 注意:撤销的是整张采退单(同单全部退货记录回 pending),不是只撤一条。 */
+export async function 撤销已退货记录(记录id: string): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("revoke_purchase_return_order", {
+    p_record_id: 记录id,
+    p_operator_id: user.id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "撤销失败" };
+  }
+
+  revalidatePath("/procurement");
+  revalidatePath("/supplier-returns");
+  revalidatePath("/return-orders");
+  return { success: true };
+}
+
 /* ─── 采退单分组(按供应商) ─── */
 export interface 采退单分组输入 {
   supplier_id: string | null;
