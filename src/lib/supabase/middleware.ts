@@ -56,11 +56,16 @@ export async function updateSession(request: NextRequest) {
    * 公开路径白名单：/login 自不必说；/quote/ 是供应商报价页（token 即凭证，免登录）。
    * 注意必须用 "/quote/"（带斜杠）：/quote-sheets 是内部管理页，仍要求登录。
    * /api/cron/ 是 Windows 计划任务调用的定时同步接口（无登录态，接口内部自带 CRON_SECRET 校验）。
+   * /api/upload、/api/media/（2026-08-19 批次5A）：供应商报价页传图/看图要走这两个接口——
+   * 路由内部已有把关（/api/upload 校验 quote_token 才免登录，/api/media 仅放行 quote/ 目录），
+   * 此处放行只是让请求能到达路由，此前供应商在 iOS 微信/桌面浏览器传图必被 307 跳登录。
    */
   const 是公开路径 =
     request.nextUrl.pathname.startsWith("/login") ||
     request.nextUrl.pathname.startsWith("/quote/") ||
-    request.nextUrl.pathname.startsWith("/api/cron/");
+    request.nextUrl.pathname.startsWith("/api/cron/") ||
+    request.nextUrl.pathname.startsWith("/api/upload") ||
+    request.nextUrl.pathname.startsWith("/api/media/");
 
   if (!user && !是公开路径) {
     if (getUser失败于网络 && 请求中有SessionCookie) {

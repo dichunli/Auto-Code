@@ -359,7 +359,8 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
                 let 色序 = -1;
                 return (
                 <Fragment key={`grp-${g.key}`}>
-                  {/* 组头：隐藏车牌，VIN 放大加粗 + 复制按钮（无 VIN 时兜底显示车牌） */}
+                  {/* 组头：VIN 放大加粗 + 复制按钮；无 VIN 显示占位（2026-08-19 用户拍板：
+                      只用 VIN 查件，不显示车牌；无 VIN 的工单在生成询价单时已拦截，正常到不了这里） */}
                   <tr key={`grp-${g.key}`} className="bg-gray-200">
                     <td colSpan={10} className="px-3 py-2">
                       {g.vin ? (
@@ -374,7 +375,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
                           </button>
                         </span>
                       ) : (
-                        <span className="text-sm font-bold text-gray-900">{g.plate || "未识别车辆"}</span>
+                        <span className="text-sm font-bold text-gray-500">VIN 未提供</span>
                       )}
                     </td>
                   </tr>

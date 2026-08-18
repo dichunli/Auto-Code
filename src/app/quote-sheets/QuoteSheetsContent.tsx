@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { 作废询价单, 采用询价单, type 询价单列表项 } from "../quote/actions";
 import { copyText } from "@/lib/copyText";
+import { 是内网地址 } from "@/lib/isInternalHost";
 
 /* 询价单列表（客户端交互部分）：复制链接 / 采用锁死 / 作废 */
 
@@ -35,6 +36,10 @@ export default function QuoteSheetsContent({ 初始列表, 当前时间戳 }: { 
 
   async function 复制链接(s: 询价单列表项) {
     const 链接 = `${window.location.origin}/quote/${s.token}`;
+    /* 公网提示（2026-08-19）：内网地址拼出的链接供应商手机打不开，提示但不阻断 */
+    if (是内网地址(window.location.hostname)) {
+      alert("提醒：当前是内网/本机地址，这样复制出的链接供应商打不开！\n请改用公网域名（www.atsg.cn）打开系统后重新复制。");
+    }
     /* copyText 内部已带 execCommand 老式兜底，http 页面也能复制成功 */
     if (await copyText(链接)) {
       set复制的id(s.id);
