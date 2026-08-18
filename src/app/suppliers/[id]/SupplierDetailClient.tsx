@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { QRCodeSVG } from "qrcode.react";
 import { formatCurrency } from "@/lib/utils";
+import { 记供应商往来账 } from "@/app/supplier-transactions/actions";
 
 interface TransactionForm {
   transaction_type: "payment" | "refund" | "credit" | "debit";
@@ -135,15 +136,16 @@ export default function SupplierDetailClient({
       return;
     }
     setSavingTransaction(true);
-    const { error } = await supabase.from("supplier_transactions").insert({
+    /* 2026-08-19 收编 Server Action（表写已角色化，客户端直插会被 RLS 拦） */
+    const res = await 记供应商往来账({
       supplier_id: supplierId,
       transaction_type: transactionForm.transaction_type,
       amount,
-      description: transactionForm.description.trim() || null,
+      description: transactionForm.description,
     });
     setSavingTransaction(false);
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!res.success) {
+      alert("保存失败: " + (res.error || "未知错误"));
       return;
     }
     setTransactionForm({ transaction_type: "payment", amount: "", description: "" });
@@ -157,7 +159,10 @@ export default function SupplierDetailClient({
     setTransactions((data as Transaction[]) || []);
   }
 
-  /* 财务统计 */
+  /* 财务统计（2026-08-19 修正口径，用户确认）：
+     欠款余额 = 入库欠的(debit) − 已付的(payment) − 退货冲掉的(credit) + 供应商退回的(refund)
+     （refund 是"付款的回撤"：付了又被退回，相当于没付那么多，欠款加回）
+     原公式 debit+payment-credit-refund 方向反了：付款越多欠款越大。 */
   const payableBalance = useMemo(() => {
     let debit = 0;
     let payment = 0;
@@ -169,7 +174,7 @@ export default function SupplierDetailClient({
       if (t.transaction_type === "credit") credit += t.amount || 0;
       if (t.transaction_type === "refund") refund += t.amount || 0;
     }
-    return { debit, payment, credit, refund, net: debit + payment - credit - refund };
+    return { debit, payment, credit, refund, net: debit - payment - credit + refund };
   }, [transactions]);
 
   const thisMonth = new Date().toISOString().slice(0, 7);

@@ -196,9 +196,12 @@ interface 建单RPC返回 {
   orders?: { id: string; order_no: string }[];
 }
 
-/* ─── 创建采购单:建头+明细+回写工单配件行,一个事务;支持一次多张(按供应商分组) ─── */
+/* ─── 创建采购单:建头+明细+回写工单配件行+清理暂存行,一个事务;支持一次多张(按供应商分组) ───
+ * 暂存ids（2026-08-19 收编）：发起采购涉及的 custom_purchase_staging 行 id，
+ * 由 RPC 在同一事务内删除（原为客户端补删，失败残留会导致暂存件重复显示） */
 export async function 创建采购单(
-  分组: 采购单分组输入[]
+  分组: 采购单分组输入[],
+  暂存ids: string[] = []
 ): Promise<操作结果 & { orders?: { id: string; order_no: string }[] }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
@@ -228,6 +231,7 @@ export async function 创建采购单(
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("create_purchase_orders", {
     p_orders: 分组,
+    p_staging_ids: 暂存ids,
     p_operator_id: user.id,
   });
   if (error) {
@@ -416,24 +420,32 @@ export async function 部分收货登记(
 
 /* ═══ 退货 / 采退单 ═══ */
 
-/* ─── 标记退货记录已完成(单表更新) ─── */
-export async function 完成退货记录(记录id: string): Promise<操作结果> {
+/* ─── 标记退货记录已完成(2026-08-19 起记账) ───
+ * 与"生成采退单"口径统一：标记完成时按 数量×采购价 记应收冲减(credit)，
+ * 供应商按名称文本匹配；匹配不到供应商/无采购价则只改状态不记账(accounted=false)。 */
+export async function 完成退货记录(记录id: string): Promise<操作结果 & { accounted?: boolean }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
     return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("supplier_return_records")
-    .update({ status: "completed" })
-    .eq("id", 记录id);
+  const { data, error } = await supabase.rpc("complete_return_record", {
+    p_record_id: 记录id,
+    p_operator_id: user.id,
+  });
   if (error) {
     return { success: false, error: error.message };
   }
 
+  const 结果 = data as unknown as { success: boolean; error?: string; accounted?: boolean };
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "操作失败" };
+  }
+
   revalidatePath("/procurement");
-  return { success: true };
+  revalidatePath("/supplier-returns");
+  return { success: true, accounted: 结果.accounted };
 }
 
 /* ─── 批量撤销退货:含入库单整单回滚/弃货加回库存,一个事务 ─── */

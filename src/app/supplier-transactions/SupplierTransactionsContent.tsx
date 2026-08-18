@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
+import { 记供应商往来账 } from "./actions";
 
 const transactionTypeMap: Record<string, string> = {
   payment: "付款",
@@ -137,16 +138,17 @@ export default function SupplierTransactionsContent({
     }
 
     setSaving(true);
-    const { error } = await supabase.from("supplier_transactions").insert({
+    /* 2026-08-19 收编 Server Action（表写已角色化，客户端直插会被 RLS 拦） */
+    const res = await 记供应商往来账({
       supplier_id: form.supplier_id,
       transaction_type: form.transaction_type,
       amount,
-      description: form.description.trim() || null,
+      description: form.description,
     });
     setSaving(false);
 
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!res.success) {
+      alert("保存失败: " + (res.error || "未知错误"));
       return;
     }
 
@@ -155,12 +157,22 @@ export default function SupplierTransactionsContent({
     loadRecords();
   }
 
-  const totalPayment = records
-    .filter((r) => r.transaction_type === "payment" || r.transaction_type === "debit")
-    .reduce((sum, r) => sum + (r.amount || 0), 0);
-  const totalIncome = records
-    .filter((r) => r.transaction_type === "refund" || r.transaction_type === "credit")
-    .reduce((sum, r) => sum + (r.amount || 0), 0);
+  /* 统计口径（2026-08-19 修正，用户确认）：
+     欠款余额 = 应付(debit) − 已付(payment) − 退货冲减(credit) + 退款(refund 加回)。
+     原卡片把 debit(欠款) 算进"支出"、credit(冲减) 算进"收入"，口径混乱。 */
+  const 合计 = (() => {
+    let debit = 0;
+    let payment = 0;
+    let credit = 0;
+    let refund = 0;
+    for (const r of records) {
+      if (r.transaction_type === "debit") debit += r.amount || 0;
+      else if (r.transaction_type === "payment") payment += r.amount || 0;
+      else if (r.transaction_type === "credit") credit += r.amount || 0;
+      else if (r.transaction_type === "refund") refund += r.amount || 0;
+    }
+    return { debit, payment, credit, refund, 余额: debit - payment - credit + refund };
+  })();
 
   /* 分页切片（page 状态见上方声明，筛选/搜索变化时在 filterRecords 里重置回第 1 页） */
   const pageSize = 50;
@@ -179,16 +191,18 @@ export default function SupplierTransactionsContent({
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500">支出总额（付款+应付）</div>
-          <div className="text-xl font-bold text-red-600 mt-1">{formatCurrency(totalPayment)}</div>
+          <div className="text-sm text-gray-500">累计应付（采购入库）</div>
+          <div className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(合计.debit)}</div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500">收入总额（退款+应收）</div>
-          <div className="text-xl font-bold text-green-600 mt-1">{formatCurrency(totalIncome)}</div>
+          <div className="text-sm text-gray-500">累计已付</div>
+          <div className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(合计.payment)}</div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500">记录数</div>
-          <div className="text-xl font-bold text-gray-900 mt-1">{records.length}</div>
+          <div className="text-sm text-gray-500">当前欠款余额</div>
+          <div className={`text-xl font-bold mt-1 ${合计.余额 > 0 ? "text-red-600" : 合计.余额 < 0 ? "text-green-600" : "text-gray-900"}`}>
+            {formatCurrency(Math.abs(合计.余额))}{合计.余额 > 0 ? "（欠供应商）" : 合计.余额 < 0 ? "（多付/供应商欠）" : ""}
+          </div>
         </div>
       </div>
 
