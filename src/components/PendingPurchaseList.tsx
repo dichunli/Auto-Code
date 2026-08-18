@@ -546,8 +546,8 @@ export function PendingPurchaseList() {
         categoryMap[p.id] = p.part_categories?.name || "";
       }
 
-      /* 建单头+明细+回写工单配件行已收编进数据库事务函数 create_purchase_orders,
-         单号由服务端序列生成(CG-日期-序号) */
+      /* 建单头+明细+回写工单配件行+清理暂存行已收编进数据库事务函数 create_purchase_orders,
+         单号由服务端序列生成(CG-日期-序号);暂存行 id 一并传入,同一事务内删除 */
       const res = await 创建采购单([
         {
           supplier_id: sid,
@@ -588,17 +588,8 @@ export function PendingPurchaseList() {
             })),
           ],
         },
-      ]);
+      ], 暂存行.map((r) => r.staging!.id));
       if (!res.success) throw new Error(res.error || "创建采购单失败");
-
-      /* 发起成功：清掉已进采购单的暂存行（辅助表清理，失败不影响主流程） */
-      if (暂存行.length > 0) {
-        const { error: 删暂存错误 } = await supabase
-          .from("custom_purchase_staging")
-          .delete()
-          .in("id", 暂存行.map((r) => r.staging!.id));
-        if (删暂存错误) console.warn("清理采购暂存行失败:", 删暂存错误);
-      }
 
       set结果提示({ 类型: "成功", 文字: "已生成 1 张采购单(已提交),请到「待收货」或「采购订单」中查看。" });
       setShowLogisticsModal(false);
