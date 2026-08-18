@@ -115,11 +115,14 @@ export function PendingReturnList() {
   }, []);
 
   async function handleComplete(id: string) {
-    if (!(await 请求确认("确认标记为已完成？"))) return;
+    if (!(await 请求确认("确认标记为已完成？（将按 数量×采购价 记一条退货冲减往来账）"))) return;
     const res = await 完成退货记录(id);
     if (!res.success) {
       alert("更新失败: " + (res.error || "未知错误"));
       return;
+    }
+    if (res.accounted === false) {
+      alert("已标记完成，但未记往来账（未匹配到供应商或配件无采购价），请到「往来款项」手工补记");
     }
     loadData();
   }

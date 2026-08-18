@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 完成退货记录 } from "@/app/procurement/actions";
 import Link from "next/link";
 
 const returnReasonMap: Record<string, string> = {
@@ -106,14 +107,16 @@ export default function SupplierReturnsContent({ initialRecords }: { initialReco
     filterRecords(allRecords, debouncedQuery);
   }, [debouncedQuery, allRecords]);
 
-  async function handleUpdateStatus(id: string, newStatus: string) {
-    const { error } = await supabase
-      .from("supplier_return_records")
-      .update({ status: newStatus })
-      .eq("id", id);
-    if (error) {
-      alert("更新失败: " + error.message);
+  /* 标记完成（2026-08-19 收编）：统一走 Server Action → RPC，
+     与待退货页签同口径——标记完成时记应收冲减往来账 */
+  async function handleComplete(id: string) {
+    const res = await 完成退货记录(id);
+    if (!res.success) {
+      alert("更新失败: " + (res.error || "未知错误"));
       return;
+    }
+    if (res.accounted === false) {
+      alert("已标记完成，但未记往来账（未匹配到供应商或配件无采购价），请到「往来款项」手工补记");
     }
     loadRecords();
   }
@@ -249,8 +252,8 @@ export default function SupplierReturnsContent({ initialRecords }: { initialReco
                       {r.status === "pending" && !r.purchase_return_orders && (
                         <button
                           onClick={async () => {
-                            if (await 请求确认("确认标记为已完成？")) {
-                              handleUpdateStatus(r.id, "completed");
+                            if (await 请求确认("确认标记为已完成？（将按 数量×采购价 记一条退货冲减往来账）")) {
+                              handleComplete(r.id);
                             }
                           }}
                           className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
