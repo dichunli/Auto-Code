@@ -9,6 +9,7 @@ import { ImageViewer } from "./ImageViewer";
 import { useUpload } from "@/hooks/useUpload";
 import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localEditSignal";
 import { useConfirm } from "./ConfirmDialog";
+import { 添加配件分支, 删除配件目录 } from "@/app/work-orders/parts-actions";
 
 interface PartBranch {
   id: string;
@@ -206,20 +207,21 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     // （只有"新建目录"——走"添加配件"那条路——的首个/唯一分支才默认选中。）
     /* 数量跟随目录：目录数量为 NULL 就留空（红底留白提醒补填），不兜底成 1 */
     const 新配件数量 = parts[0].quantity ?? null;
-    const { data: inserted, error } = await supabase.from("work_order_item_parts").insert({
-      work_order_item_id: itemId,
-      branch_group_id: parts[0].branch_group_id || null,
-      part_name_id: parts[0].part_name_id || null,
-      name: parts[0].name || null,
-      unit: parts[0].unit || parts[0].part_names?.unit || parts[0].parts?.unit || "件",
-      quantity: 新配件数量,
-      customer_opinion: "pending",
-      is_selected: false,
-    }).select(`
+    // 写库收编为 Server Action（RPC add_part_branch）：服务端克隆源行目录归属
+    // （branch_group_id 沿用源行），新分支固定不选中
+    const 结果 = await 添加配件分支(parts[0].id);
+    if (!结果.success || !结果.id) {
+      setSaving(false);
+      alert("添加失败: " + (结果.error || "未知错误"));
+      return;
+    }
+    // RPC 只返回新行 id，按原 insert 后的 select 语句只读补查新行完整数据
+    // （onBranchAdded 需要整行用于本地即时追加）
+    const { data: inserted, error } = await supabase.from("work_order_item_parts").select(`
         *,
         part_names(name, unit, category_id, part_categories(name), sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value),
         parts(*, part_categories(name), part_brands(name))
-      `).single();
+      `).eq("id", 结果.id).single();
     setSaving(false);
     if (error || !inserted) {
       alert("添加失败: " + (error?.message || "未知错误"));
@@ -250,12 +252,16 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
 
   async function handleDeleteGroup() {
     if (!(await 请求确认(`确定删除配件「${name}」及其所有分支吗？`))) return;
+    if (!parts[0]) return;
     setSaving(true);
+    // 先算好整组分支 id（删除成功后的逐分支广播仍用这份本地数组）
     const ids = parts.map((p) => p.id).filter(Boolean);
-    const { error } = await supabase.from("work_order_item_parts").delete().in("id", ids);
+    // 写库收编为 Server Action（RPC delete_part_group）：给组内任一分支 id，
+    // 函数内部自己算目录键整组事务删除（组内有已采购/已到货分支则整组拒删）
+    const 结果 = await 删除配件目录(parts[0].id);
     setSaving(false);
-    if (error) {
-      alert("删除失败: " + error.message);
+    if (!结果.success) {
+      alert("删除失败: " + (结果.error || "未知错误"));
       return;
     }
     标记本地结构编辑(itemId || "");

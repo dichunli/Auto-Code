@@ -17,6 +17,14 @@ import { PartWorkflowActions } from "./PartWorkflowActions";
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import { 申领配件, 取消申领 } from "@/app/picking-orders/actions";
 import { 重置外包财务记录 } from "@/app/outsource-orders/actions";
+import {
+  删除配件分支,
+  删除配件目录,
+  添加配件分支,
+  选中配件分支,
+  标记采购到货,
+  添加工单配件,
+} from "@/app/work-orders/parts-actions";
 import { ShowCommission } from "./WorkOrderToggleContext";
 import { calculateItemCommission, type CommissionSource } from "@/lib/commission";
 import { useConfirm } from "./ConfirmDialog";
@@ -1181,26 +1189,44 @@ export default function MobileItemEditor({
     if (!(await 请求确认(`确定删除配件「${partName}」？`))) return;
     const target = parts.find((p) => p.id === partId);
     setLoading(true);
-    const { error } = await supabase.from("work_order_item_parts").delete().eq("id", partId);
-    /* 删的若是选中分支，则把同目录剩余分支的第一条设为选中，保证始终有一条被选中 */
-    if (!error && target?.is_selected && target.branch_group_id) {
-      const remaining = parts.filter(
-        (p) => p.branch_group_id === target.branch_group_id && p.id !== partId
-      );
-      if (remaining.length > 0) {
-        await supabase
-          .from("work_order_item_parts")
-          .update({ is_selected: true })
-          .eq("id", remaining[0].id);
+    try {
+      /* 写库收编为 Server Action（RPC delete_part_branch/delete_part_group）。
+         目录键口径与页面分组一致：branch_group_id 空则回退 part_name_id。
+         目录内只剩这一条时，删本条=删整个目录（同桌面端组头删除），走整组删除函数——
+         delete_part_branch 有"同目录至少保留一个"守卫，直接调会被拒 */
+      const 目录键 = target ? target.branch_group_id || target.part_name_id || null : null;
+      const 同目录剩余 = 目录键
+        ? parts.filter((p) => (p.branch_group_id || p.part_name_id) === 目录键 && p.id !== partId)
+        : [];
+      if (同目录剩余.length === 0) {
+        const 整组结果 = await 删除配件目录(partId);
+        if (!整组结果.success) {
+          alert("删除失败: " + (整组结果.error || "未知错误"));
+          return;
+        }
+        setSelectedPartForDetail(null);
+        refresh();
+        return;
       }
+      /* 多分支目录：删除+递补选中一次完成（服务端事务）。已采购/已到货拒删；
+         删的若是选中分支，服务端自动把同目录下一条设为选中并返回 new_selected_id */
+      const 结果 = await 删除配件分支(partId);
+      if (!结果.success) {
+        alert("删除失败: " + (结果.error || "未知错误"));
+        return;
+      }
+      /* 服务端递补的新选中分支同步进本地覆盖，避免整页刷新前界面短暂显示无人选中 */
+      if (结果.new_selected_id) {
+        const 新选中id = 结果.new_selected_id;
+        set实时覆盖((prev) => ({ ...prev, [新选中id]: { ...prev[新选中id], is_selected: true } }));
+      }
+      setSelectedPartForDetail(null);
+      refresh();
+    } catch (err: unknown) {
+      alert("删除失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    if (error) {
-      alert("删除失败: " + error.message);
-      return;
-    }
-    setSelectedPartForDetail(null);
-    refresh();
   }
 
   /* 删除整个配件名称目录（该 branch_group_id 下所有分支） */
@@ -1211,14 +1237,21 @@ export default function MobileItemEditor({
     if (ids.length === 0) return;
     if (!(await 请求确认(`确定删除配件「${target.name}」及其全部 ${ids.length} 个分支？`))) return;
     setLoading(true);
-    const { error } = await supabase.from("work_order_item_parts").delete().in("id", ids);
-    setLoading(false);
-    if (error) {
-      alert("删除失败: " + error.message);
-      return;
+    try {
+      /* 写库收编为 Server Action（RPC delete_part_group）：给组内任一分支 id，
+         函数内部自己算目录键整组事务删除；组内有已采购/已到货分支则整组拒删 */
+      const 结果 = await 删除配件目录(target.id);
+      if (!结果.success) {
+        alert("删除失败: " + (结果.error || "未知错误"));
+        return;
+      }
+      setSelectedPartForDetail(null);
+      refresh();
+    } catch (err: unknown) {
+      alert("删除失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
     }
-    setSelectedPartForDetail(null);
-    refresh();
   }
 
   /* 保存配件数量 */
@@ -1388,14 +1421,21 @@ export default function MobileItemEditor({
     }
     const next = !part.is_purchased;
     setLoading(true);
-    const { error } = await supabase.from("work_order_item_parts").update({ is_purchased: next }).eq("id", part.id);
-    setLoading(false);
-    if (error) {
-      alert("操作失败: " + error.message);
-      return;
+    try {
+      /* 写库收编为 Server Action（RPC set_part_purchase_flag）：守卫内置在函数里，
+         前端守卫保留做提前提示；失败时不改本地态（维持原值即回滚） */
+      const 结果 = await 标记采购到货(part.id, "is_purchased", next);
+      if (!结果.success) {
+        alert("操作失败: " + (结果.error || "未知错误"));
+        return;
+      }
+      setSelectedPartForDetail((prev) => (prev ? { ...prev, is_purchased: next } : prev));
+      refresh();
+    } catch (err: unknown) {
+      alert("操作失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
     }
-    setSelectedPartForDetail((prev) => (prev ? { ...prev, is_purchased: next } : prev));
-    refresh();
   }
 
   async function 切换到货(part: ItemPart) {
@@ -1405,14 +1445,21 @@ export default function MobileItemEditor({
     }
     const next = !part.is_arrived;
     setLoading(true);
-    const { error } = await supabase.from("work_order_item_parts").update({ is_arrived: next }).eq("id", part.id);
-    setLoading(false);
-    if (error) {
-      alert("操作失败: " + error.message);
-      return;
+    try {
+      /* 写库收编为 Server Action（RPC set_part_purchase_flag）：未采购拒标到货的守卫函数内置，
+         前端守卫保留做提前提示；失败时不改本地态（维持原值即回滚） */
+      const 结果 = await 标记采购到货(part.id, "is_arrived", next);
+      if (!结果.success) {
+        alert("操作失败: " + (结果.error || "未知错误"));
+        return;
+      }
+      setSelectedPartForDetail((prev) => (prev ? { ...prev, is_arrived: next } : prev));
+      refresh();
+    } catch (err: unknown) {
+      alert("操作失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
     }
-    setSelectedPartForDetail((prev) => (prev ? { ...prev, is_arrived: next } : prev));
-    refresh();
   }
 
   /* 申领面板展开时拉取该分支的待出库申领列表 */
@@ -1512,40 +1559,46 @@ export default function MobileItemEditor({
   async function handleAddBranches(target: ItemPart, newParts: PickerPart[]) {
     if (newParts.length === 0) return;
     setLoading(true);
-    /* 同目录已有选中分支则新加的都设 false；若该目录还没有选中（遗留），把第一条设为选中 */
-    let 组已有选中 = parts.some((p) => p.branch_group_id === target.branch_group_id && p.is_selected);
-    const inserts = newParts.map((np) => {
-      const pb = np.part_brands;
-      const brandName = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
-      const 设为选中 = !组已有选中;
-      if (设为选中) 组已有选中 = true;
-      return {
-        work_order_item_id: item.id,
-        part_id: np.id,
-        /* 沿用目标的目录与配件名称，归到同一目录成为分支 */
-        branch_group_id: target.branch_group_id,
-        part_name_id: target.part_name_id,
-        name: target.name,
-        part_number: np.part_number || "",
-        unit: np.unit || target.unit || "件",
-        brand: brandName,
-        specification: np.specification_text || np.part_specifications?.name || "",
-        unit_cost: np.unit_cost,
-        unit_price: np.unit_price,
-        /* 数量为目录级，继承目标目录当前数量 */
-        quantity: target.quantity ?? 1,
-        customer_opinion: "pending",
-        is_selected: 设为选中,
-      };
-    });
-    const { error } = await supabase.from("work_order_item_parts").insert(inserts);
-    setLoading(false);
-    setAddBranchTarget(null);
-    if (error) {
-      alert("添加分支失败: " + error.message);
-      return;
+    try {
+      /* 同目录已有选中分支则新加的都设 false；若该目录还没有选中（遗留），把第一条设为选中 */
+      let 组已有选中 = parts.some((p) => p.branch_group_id === target.branch_group_id && p.is_selected);
+      const 配件列表: Record<string, unknown>[] = newParts.map((np) => {
+        const pb = np.part_brands;
+        const brandName = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
+        const 设为选中 = !组已有选中;
+        if (设为选中) 组已有选中 = true;
+        return {
+          part_id: np.id,
+          /* 沿用目标的目录与配件名称，归到同一目录成为分支（显式传 branch_group_id，
+             不传会自成新目录——此处语义是"同目录新增分支"而非"全新目录首个配件"） */
+          branch_group_id: target.branch_group_id,
+          part_name_id: target.part_name_id,
+          name: target.name,
+          part_number: np.part_number || "",
+          unit: np.unit || target.unit || "件",
+          brand: brandName,
+          specification: np.specification_text || np.part_specifications?.name || "",
+          unit_cost: np.unit_cost,
+          unit_price: np.unit_price,
+          /* 数量为目录级，继承目标目录当前数量 */
+          quantity: target.quantity ?? 1,
+          customer_opinion: "pending",
+          is_selected: 设为选中,
+        };
+      });
+      /* 写库收编为 Server Action（RPC add_work_order_item_parts）：批量事务插入 */
+      const 结果 = await 添加工单配件(item.id, 配件列表);
+      setAddBranchTarget(null);
+      if (!结果.success) {
+        alert("添加分支失败: " + (结果.error || "未知错误"));
+        return;
+      }
+      refresh();
+    } catch (err: unknown) {
+      alert("添加分支失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
     }
-    refresh();
   }
 
   /* 添加空分支：归入当前目录，其余信息后续手动填写 */
@@ -1555,45 +1608,39 @@ export default function MobileItemEditor({
       return;
     }
     setLoading(true);
-    /* 该目录还没有选中分支（遗留）时，把这条空分支设为选中，避免合计漏算 */
-    const 组已有选中 = parts.some((p) => p.branch_group_id === target.branch_group_id && p.is_selected);
-    const { error } = await supabase.from("work_order_item_parts").insert({
-      work_order_item_id: item.id,
-      branch_group_id: target.branch_group_id,
-      part_name_id: target.part_name_id,
-      name: target.name,
-      /* 数量为目录级，继承目标目录当前数量 */
-      quantity: target.quantity ?? 1,
-      customer_opinion: "pending",
-      is_selected: !组已有选中,
-    });
-    setLoading(false);
-    if (error) {
-      alert("添加空分支失败: " + error.message);
-      return;
+    try {
+      /* 写库收编为 Server Action（RPC add_part_branch）：服务端克隆源行目录归属
+         （branch_group_id/名称/单位/数量沿用源行），新分支固定不选中（业务铁律：
+         给已有目录加分支时目录必然已有选中分支）；数量为 NULL 时留空不兜底成 1 */
+      const 结果 = await 添加配件分支(target.id);
+      if (!结果.success) {
+        alert("添加空分支失败: " + (结果.error || "未知错误"));
+        return;
+      }
+      refresh();
+    } catch (err: unknown) {
+      alert("添加空分支失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
     }
-    refresh();
   }
 
-  /* 设为默认分支：同组内只能有一条被选中，其它同组分支自动取消 */
-  async function handleSetDefaultBranch(branchId: string, siblingIds: string[]) {
+  /* 设为默认分支：组内原子切换选中（服务端事务：同目录其它行取消选中+本行选中），
+     替代旧"本行 true + 兄弟 false"两步写，杜绝 0 选中中间态 */
+  async function handleSetDefaultBranch(branchId: string) {
     setLoading(true);
-    const { error } = await supabase
-      .from("work_order_item_parts")
-      .update({ is_selected: true })
-      .eq("id", branchId);
-    if (!error && siblingIds.length > 0) {
-      await supabase
-        .from("work_order_item_parts")
-        .update({ is_selected: false })
-        .in("id", siblingIds);
+    try {
+      const 结果 = await 选中配件分支(branchId);
+      if (!结果.success) {
+        alert("设置默认分支失败: " + (结果.error || "未知错误"));
+        return;
+      }
+      refresh();
+    } catch (err: unknown) {
+      alert("设置默认分支失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    if (error) {
-      alert("设置默认分支失败: " + error.message);
-      return;
-    }
-    refresh();
   }
 
   /* APP环境：调用原生相机拍照 */
@@ -1688,12 +1735,18 @@ export default function MobileItemEditor({
     }
     setLoading(true);
 
-    /* 每个新增配件都各自成为一个独立目录（branch_group_id 由数据库默认生成），
-       是该目录唯一分支，即为选中分支 is_selected=true。同名也是独立目录。 */
+    /* 每个新增配件都各自成为一个独立目录（是该目录唯一分支，即为选中分支 is_selected=true）。
+       同名也是独立目录。
+       注意：RPC 里 branch_group_id 不传会写入显式 NULL（不会触发表默认值 gen_random_uuid()），
+       同名配件就会被并入同目录，所以这里前端为每个配件生成新 uuid 传入，保持独立目录语义 */
+    const 新目录id = () =>
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
     const inserts: Record<string, unknown>[] = [];
     for (const sp of selectedPartNames) {
       inserts.push({
-        work_order_item_id: item.id,
+        branch_group_id: 新目录id(),
         part_name_id: sp.part_name_id,
         name: sp.name,
         unit: sp.unit,
@@ -1705,7 +1758,7 @@ export default function MobileItemEditor({
     }
     for (const sp of selectedRealParts) {
       inserts.push({
-        work_order_item_id: item.id,
+        branch_group_id: 新目录id(),
         part_id: sp.part_id,
         part_name_id: sp.part_name_id,
         part_number: sp.part_number,
@@ -1722,16 +1775,21 @@ export default function MobileItemEditor({
       });
     }
 
-    const { error } = await supabase.from("work_order_item_parts").insert(inserts);
-    setLoading(false);
+    /* 写库收编为 Server Action（RPC add_work_order_item_parts）：批量事务插入 */
+    try {
+      const 结果 = await 添加工单配件(item.id, inserts);
+      if (!结果.success) {
+        alert("添加失败: " + (结果.error || "未知错误"));
+        return;
+      }
 
-    if (error) {
-      alert("添加失败: " + error.message);
-      return;
+      setShowPartModal(false);
+      refresh();
+    } catch (err: unknown) {
+      alert("添加失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
     }
-
-    setShowPartModal(false);
-    refresh();
   }
 
   /* 删除维修项目 */
@@ -3120,14 +3178,12 @@ export default function MobileItemEditor({
                                   tabIndex={0}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const siblings = branchParts.filter((p) => p.id !== bp.id).map((p) => p.id);
-                                    handleSetDefaultBranch(bp.id, siblings);
+                                    handleSetDefaultBranch(bp.id);
                                   }}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter" || e.key === " ") {
                                       e.stopPropagation();
-                                      const siblings = branchParts.filter((p) => p.id !== bp.id).map((p) => p.id);
-                                      handleSetDefaultBranch(bp.id, siblings);
+                                      handleSetDefaultBranch(bp.id);
                                     }
                                   }}
                                   className="text-[10px] px-1.5 py-0.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50"

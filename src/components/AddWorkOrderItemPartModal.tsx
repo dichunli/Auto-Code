@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { PartPickerModal } from "./PartPickerModal";
 import { 标记本地结构编辑 } from "@/lib/localEditSignal";
+import { 添加工单配件 } from "@/app/work-orders/parts-actions";
 
 interface PartName {
   id: string;
@@ -362,16 +363,33 @@ export function AddWorkOrderItemPartModal({
     // 标记本项目为"自己刚结构改动"，避免实时同步把自己的新增当成别人的改动弹提示条。
     标记本地结构编辑(itemId);
 
-    const { data: 新配件们, error } = await supabase
-      .from("work_order_item_parts")
-      .insert(inserts)
-      .select("id, quantity, unit_price, is_selected");
-
-    setSaving(false);
-    if (error) {
-      alert("添加失败: " + error.message);
+    // 写库收编为 Server Action（RPC 事务函数，配件行归属按 p_item_id=itemId，与行内 work_order_item_id 一致）
+    let 新id列表: string[] = [];
+    try {
+      const 结果 = await 添加工单配件(itemId, inserts as unknown as Record<string, unknown>[]);
+      if (!结果.success) {
+        alert("添加失败: " + (结果.error || "未知错误"));
+        setSaving(false);
+        return;
+      }
+      新id列表 = 结果.ids || [];
+    } catch (err: unknown) {
+      alert("添加失败: " + (err instanceof Error ? err.message : String(err)));
+      setSaving(false);
       return;
     }
+
+    // 按返回 ids 只读补查新行（广播小计/合计需要数量/单价/选中态）
+    let 新配件们: { id: string; quantity: number | null; unit_price: number | null; is_selected: boolean | null }[] = [];
+    if (新id列表.length > 0) {
+      const { data } = await supabase
+        .from("work_order_item_parts")
+        .select("id, quantity, unit_price, is_selected")
+        .in("id", 新id列表);
+      新配件们 = data || [];
+    }
+
+    setSaving(false);
 
     // 广播配件新增事件：项目小计/页底合计监听后自动加上新配件金额（不整页刷新）
     for (const 新配件 of 新配件们 || []) {

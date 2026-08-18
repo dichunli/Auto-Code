@@ -7,6 +7,7 @@ import { PartPickerModal } from "./PartPickerModal";
 import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localEditSignal";
 import PartForm, { PartFormDraft } from "@/app/parts/new/PartForm";
 import { useConfirm } from "./ConfirmDialog";
+import { 选中配件分支, 标记采购到货 } from "@/app/work-orders/parts-actions";
 
 function toFixed2(val: string | number | null | undefined): string {
   if (val === "" || val === null || val === undefined) return "";
@@ -176,23 +177,28 @@ export default function PartBranchEditor({
     return () => window.removeEventListener("wo-part-update", handleSelectSync as EventListener);
   }, [part.id]);
 
-  // 只有一个分支时默认选中
+  // 只有一个分支时默认选中（写库收编为 Server Action，RPC 组内原子切换）
   useEffect(() => {
     if (!canDelete && part.is_selected !== true) {
       setLocalSelected(true);
-      supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", part.id).then(({ error }) => {
-        if (error) {
+      选中配件分支(part.id)
+        .then((结果) => {
+          if (!结果.success) {
+            setLocalSelected(false);
+            return;
+          }
+          // 广播给组头/小计/费用合计，避免它们的 liveParts 仍以为本条未选中
+          // （否则加分支时读到过期状态，会把新分支也误设为选中，导致同组两个选中）
+          window.dispatchEvent(
+            new CustomEvent("wo-part-update", {
+              detail: { itemId, partId: part.id, is_selected: true, siblingResetIds: [] },
+            })
+          );
+        })
+        .catch(() => {
+          // 网络异常等兜底：回滚本地选中态
           setLocalSelected(false);
-          return;
-        }
-        // 广播给组头/小计/费用合计，避免它们的 liveParts 仍以为本条未选中
-        // （否则加分支时读到过期状态，会把新分支也误设为选中，导致同组两个选中）
-        window.dispatchEvent(
-          new CustomEvent("wo-part-update", {
-            detail: { itemId, partId: part.id, is_selected: true, siblingResetIds: [] },
-          })
-        );
-      });
+        });
     }
   }, [canDelete, part.is_selected, part.id, supabase, itemId]);
 
@@ -720,7 +726,11 @@ export default function PartBranchEditor({
         .order("sort_order", { ascending: true }).limit(1);
       if (兄弟 && 兄弟[0]) {
         标记本地编辑配件(兄弟[0].id);
-        await supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", 兄弟[0].id);
+        // 语义=组内切换选中：RPC 一个事务完成"兄弟 true + 其余 false"，避免中间态
+        const 结果 = await 选中配件分支(兄弟[0].id);
+        if (!结果.success) {
+          alert("切换原组选中分支失败: " + (结果.error || "未知错误"));
+        }
       }
     }
     await 应用命中配件(q.hit, {
@@ -824,15 +834,20 @@ export default function PartBranchEditor({
     setLocalPurchased(next);
     setSaving(true);
     标记本地编辑配件(part.id);
-    const { error } = await supabase
-      .from("work_order_item_parts")
-      .update({ is_purchased: next })
-      .eq("id", part.id);
-    setSaving(false);
-    if (error) {
-      alert("操作失败: " + error.message);
+    try {
+      // 写库收编为 Server Action（守卫内置在 RPC 函数里，前端守卫保留做提示）
+      const 结果 = await 标记采购到货(part.id, "is_purchased", next);
+      if (!结果.success) {
+        alert("操作失败: " + (结果.error || "未知错误"));
+        setLocalPurchased(!next);
+        return;
+      }
+    } catch (err: unknown) {
+      alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
       setLocalPurchased(!next);
       return;
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -845,15 +860,20 @@ export default function PartBranchEditor({
     setLocalArrived(next);
     setSaving(true);
     标记本地编辑配件(part.id);
-    const { error } = await supabase
-      .from("work_order_item_parts")
-      .update({ is_arrived: next })
-      .eq("id", part.id);
-    setSaving(false);
-    if (error) {
-      alert("操作失败: " + error.message);
+    try {
+      // 写库收编为 Server Action（守卫内置在 RPC 函数里，前端守卫保留做提示）
+      const 结果 = await 标记采购到货(part.id, "is_arrived", next);
+      if (!结果.success) {
+        alert("操作失败: " + (结果.error || "未知错误"));
+        setLocalArrived(!next);
+        return;
+      }
+    } catch (err: unknown) {
+      alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
       setLocalArrived(!next);
       return;
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -997,21 +1017,21 @@ export default function PartBranchEditor({
             onChange={async () => {
               // 已选中的分支不允许取消（避免出现 0 选中）；要换默认分支就点其它分支
               if (localSelected) return;
-              const next = true;
-              setLocalSelected(next);
+              setLocalSelected(true);
               // 标记这些分支是"自己刚改的"，避免实时同步把整页刷掉（自己/别人改动区分）
               标记本地编辑配件(part.id);
               siblingIds.forEach((id) => 标记本地编辑配件(id));
               // 选中态已立即生效，写库放后台并行执行（不再整行变灰，性能优化）
-              const writes = [];
-              if (siblingIds.length > 0) {
-                writes.push(supabase.from("work_order_item_parts").update({ is_selected: false }).in("id", siblingIds));
-              }
-              writes.push(supabase.from("work_order_item_parts").update({ is_selected: true }).eq("id", part.id));
-              const results = await Promise.all(writes);
-              const error = results.find((r) => r.error)?.error;
-              if (error) {
-                alert("操作失败: " + error.message);
+              // 写库收编为 Server Action：RPC 一个事务完成"兄弟 false + 本行 true"，防 0 选中中间态
+              try {
+                const 结果 = await 选中配件分支(part.id);
+                if (!结果.success) {
+                  alert("操作失败: " + (结果.error || "未知错误"));
+                  setLocalSelected(false);
+                  return;
+                }
+              } catch (err: unknown) {
+                alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
                 setLocalSelected(false);
                 return;
               }

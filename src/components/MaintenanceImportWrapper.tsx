@@ -6,6 +6,7 @@ import { createClient, 确保有session } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { 标记本机操作 } from "@/lib/localEditSignal";
 import { 保养单草稿前缀, 找重复项目名, 计算需求顺延 } from "@/lib/maintenance";
+import { 添加工单配件 } from "@/app/work-orders/parts-actions";
 
 interface Props {
   vehicleId: string;
@@ -368,8 +369,9 @@ function MaintenanceImportModal({ vehicleId, orderId, onClose }: Props & { onClo
         )
       );
 
-      /* 汇总全部项目的勾选配件，合并为一次批量插入（原来每个项目一次请求） */
-      const 全部新配件: Record<string, unknown>[] = [];
+      /* 汇总各项目的勾选配件，按新项目分组（写库已收编为 Server Action，RPC 按 p_item_id 归属），
+       * 各项目并行调用——原来全部合并成一次 insert，收编后按项目分调用仍保持并行不串行 */
+      const 按项目配件 = new Map<string, Record<string, unknown>[]>();
       待导入项目.forEach((项目, idx) => {
         const 新项目 = 新项目结果[idx]?.data;
         if (!新项目) return;
@@ -379,8 +381,8 @@ function MaintenanceImportModal({ vehicleId, orderId, onClose }: Props & { onClo
         配件列表
           .filter((配件) => 勾选配件.has(配件.id))
           .forEach((配件) => {
-            全部新配件.push({
-              work_order_item_id: 新项目.id,
+            const 清单 = 按项目配件.get(新项目.id) || [];
+            清单.push({
               part_name_id: 配件.part_name_id,
               part_id: 配件.part_id,
               name: 配件.name,
@@ -395,11 +397,16 @@ function MaintenanceImportModal({ vehicleId, orderId, onClose }: Props & { onClo
               customer_opinion: "agree",
               is_selected: true,
             });
+            按项目配件.set(新项目.id, 清单);
           });
       });
 
-      if (全部新配件.length > 0) {
-        await supabase.from("work_order_item_parts").insert(全部新配件);
+      if (按项目配件.size > 0) {
+        const 配件结果列表 = await Promise.all(
+          [...按项目配件.entries()].map(([新项目id, 清单]) => 添加工单配件(新项目id, 清单))
+        );
+        const 失败 = 配件结果列表.find((r) => !r.success);
+        if (失败) throw new Error(失败.error || "导入配件失败");
       }
 
       if (处理模式 === "跳过" && 跳过数量 > 0) {
