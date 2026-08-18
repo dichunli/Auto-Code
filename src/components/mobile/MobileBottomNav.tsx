@@ -9,7 +9,8 @@ import { createClient } from "@/lib/supabase/client";
 interface NavItem {
   label: string;
   href: string;
-  permission: Permission;
+  /* 不配权限 = 全员可见（如行为考核：每个员工都可能被考核/要自检） */
+  permission?: Permission;
   icon: React.ReactNode;
 }
 
@@ -84,6 +85,15 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "考核",
+    href: "/m/checks",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+      </svg>
+    ),
+  },
 ];
 
 export function MobileBottomNav() {
@@ -110,7 +120,8 @@ export function MobileBottomNav() {
     loadRoles();
   }, []);
 
-  const visibleItems = NAV_ITEMS.filter((item) => hasPermission(roles, item.permission));
+  /* 无权限要求的全员项 + 有权限项按角色过滤 */
+  const visibleItems = NAV_ITEMS.filter((item) => !item.permission || hasPermission(roles, item.permission));
 
   if (visibleItems.length === 0) return null;
 
