@@ -70,9 +70,11 @@ export default async function SupplierDetailPage({
       .select("*, purchase_order_items(*)")
       .eq("supplier_id", id)
       .order("created_at", { ascending: false }),
+    /* 退货记录：join 工单配件行按供应商过滤（2026-08-19 改：原为全表拉取后前端过滤） */
     supabase
       .from("supplier_return_records")
-      .select("*, work_order_item_parts(supplier_id)")
+      .select("*, work_order_item_parts!inner(supplier_id)")
+      .eq("work_order_item_parts.supplier_id", id)
       .order("created_at", { ascending: false }),
     supabase
       .from("inbound_orders")
@@ -129,10 +131,8 @@ export default async function SupplierDetailPage({
 
   const purchaseOrders = (采购结果.data as PurchaseOrder[] | null) || [];
 
-  /* 退货记录：通过 work_order_item_parts 过滤出该供应商的记录 */
-  const returnRecords = ((退货结果.data as ReturnRecord[] | null) || []).filter(
-    (r) => r.work_order_item_parts?.supplier_id === id
-  );
+  /* 退货记录已在查询时按供应商过滤（inner join），直接使用 */
+  const returnRecords = (退货结果.data as ReturnRecord[] | null) || [];
 
   const inboundOrders = (入库结果.data as InboundOrder[] | null) || [];
   const returnOrders = (采退结果.data as ReturnOrder[] | null) || [];
