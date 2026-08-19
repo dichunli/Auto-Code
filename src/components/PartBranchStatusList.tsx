@@ -12,6 +12,7 @@ import QuoteSheetModal from "./QuoteSheetModal";
 import { resolvePartSellingPrice } from "@/lib/partPriceResolver";
 import PartForm from "@/app/parts/new/PartForm";
 import { useConfirm } from "./ConfirmDialog";
+import { 添加配件分支, 删除配件分支 } from "@/app/work-orders/parts-actions";
 
 const STATUS_TITLES: Record<string, string> = {
   pending_inquiry: "待询价",
@@ -913,22 +914,13 @@ export function PartBranchStatusList({ status }: Props) {
   async function handleAddSiblingBranch(row: PartBranchRow) {
     if (!(await 请求确认("确定添加该配件的新分支吗？"))) return;
     setSavingId(row.id);
-    const { error } = await supabase.from("work_order_item_parts").insert({
-      work_order_item_id: row.work_order_item_id,
-      part_name_id: row.part_name_id,
-      // 归回原配件的同一目录，避免新分支自成一组；不显式设 branch_group_id
-      // 会被数据库默认值生成新目录ID(自成一组的病根)
-      branch_group_id: row.branch_group_id,
-      name: row.name,
-      /* 数量留空（NULL）：未填数量的配件红底留白提醒补填，不兜底成 1 */
-      quantity: row.quantity ?? null,
-      unit: row.unit,
-      customer_opinion: "pending",
-      // 原行为该目录默认(选中)分支，新增分支默认不选中，维持"每目录仅一个选中"
-      is_selected: false,
-    });
+    // 写库收编为 Server Action（RPC add_part_branch）：服务端克隆源行目录归属
+    // （branch_group_id 沿用源行，避免新分支自成一组）、名称、单位、数量
+    // （数量为 NULL 则留空红底提醒补填，不兜底成 1）；新分支固定不选中，
+    // 维持"每目录仅一个选中"
+    const 结果 = await 添加配件分支(row.id);
     setSavingId(null);
-    if (error) { alert("添加失败: " + error.message); return; }
+    if (!结果.success) { alert("添加失败: " + (结果.error || "未知错误")); return; }
     lastSelfUpdate.current = Date.now();
     loadData();
   }
@@ -941,9 +933,10 @@ export function PartBranchStatusList({ status }: Props) {
     }
     if (!(await 请求确认("确定删除该配件分支吗？"))) return;
     setSavingId(row.id);
-    const { error } = await supabase.from("work_order_item_parts").delete().eq("id", row.id);
+    // 写库收编为 Server Action（RPC delete_part_branch）：上面的守卫在函数里有同款双保险
+    const 结果 = await 删除配件分支(row.id);
     setSavingId(null);
-    if (error) { alert("删除失败: " + error.message); return; }
+    if (!结果.success) { alert("删除失败: " + (结果.error || "未知错误")); return; }
     lastSelfUpdate.current = Date.now();
     loadData();
   }

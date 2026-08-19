@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
+import { 添加工单配件 } from "@/app/work-orders/parts-actions";
 
 interface Props {
   vehicleId: string;
@@ -118,11 +119,10 @@ export function TemplateImportModal({ vehicleId, orderId, onClose, onSuccess }: 
         if (itemErr || !createdItem) throw itemErr || new Error("导入项目失败");
 
         // 3. 导入配件（按模板顺序写入 sort_order，保证显示顺序与模板一致）
+        // 写库收编为 Server Action（RPC 事务函数），每个项目一次批量调用
         const 配件列表 = item.vehicle_maintenance_template_parts || [];
-        for (let 序 = 0; 序 < 配件列表.length; 序++) {
-          const part = 配件列表[序];
-          const { error: partErr } = await supabase.from("work_order_item_parts").insert({
-            work_order_item_id: createdItem.id,
+        if (配件列表.length > 0) {
+          const 提交列表: Record<string, unknown>[] = 配件列表.map((part, 序) => ({
             part_name_id: part.part_name_id,
             part_id: part.part_id,
             quantity: part.quantity || 1,
@@ -134,8 +134,9 @@ export function TemplateImportModal({ vehicleId, orderId, onClose, onSuccess }: 
             customer_opinion: "agree",
             sort_order: 序,
             is_selected: true,
-          });
-          if (partErr) throw partErr;
+          }));
+          const 结果 = await 添加工单配件(createdItem.id, 提交列表);
+          if (!结果.success) throw new Error(结果.error || "导入配件失败");
         }
       }
 

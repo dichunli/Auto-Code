@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { 生成询价单 } from "@/app/quote/actions";
 import { copyText } from "@/lib/copyText";
+import { 是内网地址 } from "@/lib/isInternalHost";
 
 /* 生成询价链接弹窗：待询价页勾选行后，选供应商 → 生成 3 小时有效的链接发给供应商 */
 
@@ -85,6 +86,10 @@ export default function QuoteSheetModal({ open, rows, suppliers, onClose }: Prop
   }
 
   async function 复制链接() {
+    /* 公网提示（2026-08-19）：内网地址拼出的链接供应商手机打不开，提示但不阻断 */
+    if (是内网地址(window.location.hostname)) {
+      alert("提醒：当前是内网/本机地址，这样复制出的链接供应商打不开！\n请改用公网域名（www.atsg.cn）打开系统后重新复制。");
+    }
     /* copyText 内部已带 execCommand 老式兜底，http 页面也能复制成功 */
     if (await copyText(链接)) {
       set复制成功(true);

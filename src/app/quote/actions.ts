@@ -62,7 +62,7 @@ export async function 生成询价单(参数: {
 
   const supabase = await createClient();
 
-  /* 查配件行（带工单和车型），已结算/已取消工单、已采购/已到货的行不能发询价 */
+  /* 查配件行（带工单和车型、车辆 VIN），已结算/已取消工单、已采购/已到货的行不能发询价 */
   const { data: 行列表, error: 查询错误 } = await supabase
     .from("work_order_item_parts")
     .select(`
@@ -71,7 +71,7 @@ export async function 生成询价单(参数: {
       work_order_items(
         work_orders(
           settled_at, order_type,
-          vehicles(vehicle_model_id)
+          vehicles(vehicle_model_id, vin, plate_number)
         )
       )
     `)
@@ -90,7 +90,7 @@ export async function 生成询价单(参数: {
       work_orders: {
         settled_at: string | null;
         order_type: string | null;
-        vehicles: { vehicle_model_id: string | null } | null;
+        vehicles: { vehicle_model_id: string | null; vin: string | null; plate_number: string | null } | null;
       } | null;
     } | null;
   }
@@ -103,6 +103,16 @@ export async function 生成询价单(参数: {
   });
 
   if (有效行.length === 0) return { success: false, error: "选中行都不可询价（已采购/已到货/工单已结算）" };
+
+  /* VIN 门槛（2026-08-19 用户拍板）：供应商只用 VIN 查件，车辆缺 VIN 不允许发起询价。
+     提示带车牌（内部员工可看，便于定位是哪台车） */
+  const 缺VIN行 = 有效行.filter((r) => !r.work_order_items?.work_orders?.vehicles?.vin?.trim());
+  if (缺VIN行.length > 0) {
+    const 车牌列表 = [...new Set(
+      缺VIN行.map((r) => r.work_order_items?.work_orders?.vehicles?.plate_number || "未知车牌")
+    )].join("、");
+    return { success: false, error: `车辆（${车牌列表}）未登记 VIN 码。供应商只按 VIN 查件，请先在车辆档案补齐 VIN 再发起询价。` };
+  }
 
   /* 车型显示文本 */
   const 车型id列表 = [...new Set(有效行.map((r) => r.work_order_items?.work_orders?.vehicles?.vehicle_model_id).filter(Boolean))] as string[];
