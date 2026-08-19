@@ -19,7 +19,7 @@ export interface 采购通知明细 {
   quantity: number | null;
   unit: string | null;
   unit_cost: number | null;
-  license_plate: string | null;   /* 车牌（采购按车找件主线索；无工单的暂存件为空） */
+  vin: string | null;             /* VIN 码（供应商按 VIN 查件；无工单的暂存件为空） */
 }
 
 export interface 采购通知数据 {
@@ -45,7 +45,7 @@ function 生成通知文本(d: 采购通知数据): string {
     if (it.specification) 细节.push(`规格:${it.specification}`);
     细节.push(`数量:${it.quantity ?? "-"}${it.unit || ""}`);
     if (it.unit_cost != null) 细节.push(`单价:¥${it.unit_cost.toFixed(2)}`);
-    if (it.license_plate) 细节.push(`车牌:${it.license_plate}`);
+    if (it.vin) 细节.push(`VIN:${it.vin}`);
     return 细节.length > 0 ? `${名称行}\n   ${细节.join("  ")}` : 名称行;
   });
   const 合计 = d.items.reduce((s, it) => s + (it.quantity ?? 0) * (it.unit_cost ?? 0), 0);

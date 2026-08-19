@@ -613,7 +613,7 @@ export function PendingPurchaseList() {
               quantity: it.quantity,
               unit: it.unit,
               unit_cost: it.unit_cost,
-              license_plate: it.work_order_items?.work_orders?.vehicles?.plate_number || null,
+              vin: it.work_order_items?.work_orders?.vehicles?.vin || null,
             })),
             ...暂存行.map((it): 采购通知明细 => ({
               name: it.name,
@@ -624,7 +624,7 @@ export function PendingPurchaseList() {
               quantity: it.quantity,
               unit: it.unit,
               unit_cost: it.unit_cost,
-              license_plate: null,
+              vin: null,
             })),
           ],
         });
