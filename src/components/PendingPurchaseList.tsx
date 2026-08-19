@@ -14,6 +14,7 @@ import { 创建采购单, 更新工单配件客户意见, 添加采购暂存 } f
 import type { 采购明细输入 } from "@/app/procurement/actions";
 import { DocumentNameInput } from "./DocumentNameInput";
 import CustomPurchaseModal from "./CustomPurchaseModal";
+import PurchaseOrderNotifyModal, { type 采购通知数据, type 采购通知明细 } from "./PurchaseOrderNotifyModal";
 
 interface PartBranchRow {
   id: string;
@@ -154,6 +155,9 @@ export function PendingPurchaseList() {
 
   /* 操作结果内联提示条（替代系统 alert 弹窗，2026-08-14 用户要求） */
   const [结果提示, set结果提示] = useState<{ 类型: "成功" | "失败"; 文字: string } | null>(null);
+
+  /* 发起采购成功后的「通知供应商」弹窗（2026-08-20）：采购单文本一键复制发微信 */
+  const [notifyData, setNotifyData] = useState<采购通知数据 | null>(null);
 
   /* 数量行内编辑草稿（2026-08-15 用户要求：本页可再次修改采购数量） */
   const [数量草稿, set数量草稿] = useState<Record<string, string>>({});
@@ -590,6 +594,41 @@ export function PendingPurchaseList() {
         },
       ], 暂存行.map((r) => r.staging!.id));
       if (!res.success) throw new Error(res.error || "创建采购单失败");
+
+      /* 发起成功：弹出「通知供应商」弹窗（2026-08-20），采购单文本一键复制发微信 */
+      const 首单 = res.orders?.[0];
+      if (首单) {
+        setNotifyData({
+          orderId: 首单.id,
+          order_no: 首单.order_no,
+          supplierName: suppliers.find((s) => s.id === sid)?.name || "",
+          logisticsName: logisticsName || null,
+          items: [
+            ...工单行.map((it): 采购通知明细 => ({
+              name: it.name,
+              alias_name: it.alias_name,
+              part_number: it.part_number,
+              brand: it.brand,
+              specification: it.specification,
+              quantity: it.quantity,
+              unit: it.unit,
+              unit_cost: it.unit_cost,
+              license_plate: it.work_order_items?.work_orders?.vehicles?.plate_number || null,
+            })),
+            ...暂存行.map((it): 采购通知明细 => ({
+              name: it.name,
+              alias_name: it.document_name,
+              part_number: it.part_number,
+              brand: it.brand,
+              specification: it.specification,
+              quantity: it.quantity,
+              unit: it.unit,
+              unit_cost: it.unit_cost,
+              license_plate: null,
+            })),
+          ],
+        });
+      }
 
       set结果提示({ 类型: "成功", 文字: "已生成 1 张采购单(已提交),请到「待收货」或「采购订单」中查看。" });
       setShowLogisticsModal(false);
@@ -1578,6 +1617,9 @@ export function PendingPurchaseList() {
         suppliers={suppliers}
         on成功={(文字) => set结果提示({ 类型: "成功", 文字 })}
       />
+
+      {/* 通知供应商弹窗：发起采购成功后弹出，采购单文本一键复制发微信 */}
+      <PurchaseOrderNotifyModal data={notifyData} onClose={() => setNotifyData(null)} />
     </div>
   );
 }
