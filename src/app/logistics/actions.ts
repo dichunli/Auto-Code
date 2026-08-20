@@ -136,7 +136,7 @@ export async function 批量创建运单(
   return { success: true, 结果 };
 }
 
-/* ─── 结清运费（三期：运费单独和物流公司结算，和供应商无关） ─── */
+/* ─── 结清运费（三期：记物流公司已付运费+运单打标，数据库一个事务） ─── */
 export async function 结清运费(运单id: string): Promise<操作结果> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
@@ -147,12 +147,15 @@ export async function 结清运费(运单id: string): Promise<操作结果> {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("logistics_waybills")
-    .update({ freight_settled: true, freight_settled_at: new Date().toISOString() })
-    .eq("id", 运单id);
+  const { data, error } = await supabase.rpc("settle_waybill_freight", {
+    p_waybill_id: 运单id,
+  });
   if (error) {
     return { success: false, error: error.message };
+  }
+  const 结果 = data as unknown as { success: boolean; error?: string };
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "结清运费失败" };
   }
 
   revalidatePath("/logistics");
