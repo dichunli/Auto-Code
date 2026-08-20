@@ -25,6 +25,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "android/app/build/**",
     "android/app/src/main/assets/**",
+    // 多会话并行开发的 worktree 目录（含各自的 .next 构建产物），不参与 lint（2026-08-21）
+    ".claude/**",
     // Node.js 脚本使用 require() 是标准做法
     "**/*.js",
   ]),
