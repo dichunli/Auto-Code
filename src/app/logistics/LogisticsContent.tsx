@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 更新供应商电话 } from "@/app/suppliers/actions";
 import { 结清运费 } from "@/app/logistics/actions";
+import { useToast } from "@/components/Toast";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
@@ -130,6 +131,7 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
   const phoneLookupLock = useRef(false);
   const 首次挂载 = useRef(true);
   const { 请求确认, 确认弹窗 } = useConfirm();
+  const { showToast } = useToast();
 
   /* Tab切换和筛选变化时重新加载（跳过首次挂载，数据已从服务端预加载） */
   useEffect(() => {
@@ -329,7 +331,7 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
       loadWaybills();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("结清运费失败: " + msg);
+      showToast("结清运费失败: " + msg, "error");
     } finally {
       setSettlingId(null);
     }

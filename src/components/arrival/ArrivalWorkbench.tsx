@@ -7,6 +7,7 @@ import { ImageUploader } from "@/components/ImageUploader";
 import BarcodeScanModal from "@/components/BarcodeScanModal";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useToast } from "@/components/Toast";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { 处理到货明细, 确认到货单, 补录到货单信息, 添加采购外货品, 删除采购外货品 } from "@/app/arrivals/actions";
 import { 撤销收货处理 } from "@/app/procurement/actions";
@@ -74,6 +75,8 @@ function ArrivalHandleModal({
   }) => void;
 }) {
   const supabase = createClient();
+  const { showToast } = useToast();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [数量, set数量] = useState(明细.expected_qty === 1 ? "1" : (明细.received_qty?.toString() ?? ""));
   const [问题, set问题] = useState<"" | "broken" | "wrong">("");
   const [破损选项, set破损选项] = useState<"" | "exchange" | "discard">("");
@@ -122,15 +125,15 @@ function ArrivalHandleModal({
     }
   }
 
-  function 提交() {
+  async function 提交() {
     const qtyRaw = 数量.trim();
     if (!qtyRaw) {
-      alert("请填写实际到货数量(没到货请填 0)");
+      showToast("请填写实际到货数量(没到货请填 0)", "warning");
       return;
     }
     const qty = parseInt(qtyRaw, 10);
     if (isNaN(qty) || qty < 0) {
-      alert("到货数量必须 ≥ 0");
+      showToast("到货数量必须 ≥ 0", "warning");
       return;
     }
     const ordered = 明细.expected_qty;
@@ -139,14 +142,14 @@ function ArrivalHandleModal({
 
     if (qty === ordered) {
       if (问题 === "broken") {
-        if (!破损选项) { alert("请选择破损处理方式"); return; }
+        if (!破损选项) { showToast("请选择破损处理方式", "warning"); return; }
         onSubmit({
           动作: 破损选项 === "exchange" ? "broken_exchange" : "broken_discard",
           数量: qty, 仓库id: 仓库参数, 仓位: 仓位参数,
           照片: 照片.length > 0 ? 照片 : null, 更新照片: true,
         });
       } else if (问题 === "wrong") {
-        if (!错发选项) { alert("请选择错发处理方式"); return; }
+        if (!错发选项) { showToast("请选择错发处理方式", "warning"); return; }
         onSubmit({
           动作: 错发选项 === "exchange" ? "wrong_exchange" : "wrong_discard",
           数量: 错发选项 === "exchange" ? qty : 0, 仓库id: 仓库参数, 仓位: 仓位参数,
@@ -156,14 +159,14 @@ function ArrivalHandleModal({
         onSubmit({ 动作: "normal", 数量: qty, 仓库id: 仓库参数, 仓位: 仓位参数, 照片: null, 更新照片: false });
       }
     } else if (qty > ordered) {
-      if (!多发选项) { alert("请选择多发处理方式"); return; }
-      if (多发选项 === "keep" && !多发付款) { alert("请选择是否对供应商付款"); return; }
+      if (!多发选项) { showToast("请选择多发处理方式", "warning"); return; }
+      if (多发选项 === "keep" && !多发付款) { showToast("请选择是否对供应商付款", "warning"); return; }
       const 动作 = 多发选项 === "return" ? "excess_return" : 多发付款 === "paid" ? "excess_paid" : "excess_free";
       onSubmit({ 动作, 数量: qty, 仓库id: 仓库参数, 仓位: 仓位参数, 照片: null, 更新照片: false });
     } else {
-      if (!少发选项) { alert("请选择少发处理方式"); return; }
+      if (!少发选项) { showToast("请选择少发处理方式", "warning"); return; }
       if (少发选项 === "discard" && 照片.length === 0) {
-        if (!window.confirm("少发弃货建议上传聊天截图作为凭证,确定不上传吗?")) return;
+        if (!(await 请求确认("少发弃货建议上传聊天截图作为凭证,确定不上传吗?"))) return;
       }
       onSubmit({
         动作: 少发选项 === "repurchase" ? "short_repurchase" : "short_discard",
@@ -411,6 +414,7 @@ function ArrivalHandleModal({
       </div>
 
       <BarcodeScanModal open={扫码开} onClose={() => set扫码开(false)} onScan={扫码结果} />
+      {确认弹窗}
     </div>
   );
 }
@@ -450,25 +454,26 @@ function ExtraItemModal({
   const [仓库id, set仓库id] = useState("");
   const [仓位, set仓位] = useState("");
   const [照片, set照片] = useState<string[]>([]);
+  const { showToast } = useToast();
 
   const 是留下 = 处理方式 === "excess_paid" || 处理方式 === "excess_free";
 
   function 提交() {
     if (!名称.trim()) {
-      alert("请填写货品名称");
+      showToast("请填写货品名称", "warning");
       return;
     }
     const qty = parseInt(数量, 10);
     if (!数量.trim() || isNaN(qty) || qty <= 0) {
-      alert("数量必须是大于 0 的整数");
+      showToast("数量必须是大于 0 的整数", "warning");
       return;
     }
     if (!处理方式) {
-      alert("请选择处理方式");
+      showToast("请选择处理方式", "warning");
       return;
     }
     if (是留下 && !配件id) {
-      alert("留下的货品要入库，必须关联配件档案（编码搜索选择）");
+      showToast("留下的货品要入库，必须关联配件档案（编码搜索选择）", "warning");
       return;
     }
     onSubmit({
@@ -502,7 +507,7 @@ function ExtraItemModal({
                 set配件编码(part.part_number || "");
                 set名称(part.part_names?.name || part.name || "");
               }}
-              onCreateNew={() => alert("请先到「配件库存」新建配件档案，再回来选择")}
+              onCreateNew={() => showToast("请先到「配件库存」新建配件档案，再回来选择", "warning")}
               onClear={() => { set配件id(null); set配件编码(""); }}
               placeholder="编码/条码搜索"
             />
@@ -623,6 +628,7 @@ export function ArrivalWorkbench({
 }) {
   const router = useRouter();
   const { 请求确认, 确认弹窗 } = useConfirm();
+  const { showToast } = useToast();
   const [提交中, set提交中] = useState<string | null>(null);
   const [处理中明细, set处理中明细] = useState<到货明细 | null>(null);
   const [补录开, set补录开] = useState(false);
@@ -648,7 +654,7 @@ export function ArrivalWorkbench({
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("收货失败: " + msg);
+      showToast("收货失败: " + msg, "error");
     } finally {
       set提交中(null);
     }
@@ -664,7 +670,7 @@ export function ArrivalWorkbench({
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("撤销失败: " + msg);
+      showToast("撤销失败: " + msg, "error");
     } finally {
       set提交中(null);
     }
@@ -681,7 +687,7 @@ export function ArrivalWorkbench({
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("补录失败: " + msg);
+      showToast("补录失败: " + msg, "error");
     } finally {
       set提交中(null);
     }
@@ -696,7 +702,7 @@ export function ArrivalWorkbench({
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("删除失败: " + msg);
+      showToast("删除失败: " + msg, "error");
     } finally {
       set提交中(null);
     }
@@ -712,11 +718,11 @@ export function ArrivalWorkbench({
     try {
       const res = await 确认到货单(到货单.id);
       if (!res.success) throw new Error(res.error || "确认到货失败");
-      alert(`到货单 ${res.receipt_no} 已确认，库存已上架`);
+      showToast(`到货单 ${res.receipt_no} 已确认，库存已上架`);
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("确认到货失败: " + msg);
+      showToast("确认到货失败: " + msg, "error");
     } finally {
       set提交中(null);
     }
@@ -731,7 +737,7 @@ export function ArrivalWorkbench({
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("保存失败: " + msg);
+      showToast("保存失败: " + msg, "error");
     } finally {
       set提交中(null);
     }
