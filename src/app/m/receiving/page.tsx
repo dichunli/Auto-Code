@@ -35,6 +35,12 @@ export default async function MobileReceivingListPage() {
         <h1 className="text-base font-semibold text-gray-900">手机收货</h1>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500">待收货 {(orders?.length ?? 0)} 单</span>
+          <Link
+            href="/m/receiving/waybills"
+            className="px-2.5 py-1 text-xs rounded-lg bg-blue-600 text-white font-medium active:bg-blue-700"
+          >
+            批量建运单
+          </Link>
           <Link href="/m/" className="flex items-center justify-center w-8 h-8 text-gray-500 hover:text-blue-600 transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />

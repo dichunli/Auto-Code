@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { PriceValue } from "@/components/PriceVisibilityContext";
+import { PriceValue, usePriceVisibility } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { ImageUploader } from "@/components/ImageUploader";
 import { useConfirm } from "./ConfirmDialog";
@@ -11,6 +11,7 @@ import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单 } from "@/app/procurement/actions";
+import { 关联运单到供应商待收货单 } from "@/app/logistics/actions";
 import { DocumentNameInput } from "./DocumentNameInput";
 
 interface PurchaseOrderItem {
@@ -85,6 +86,8 @@ function resolveImageUrl(path: string): string {
 export function PendingReceiptList() {
   const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
+  /* 价格显示开关：仅 admin/boss/warehouse 可见可用（其余角色 Context 层面已强制隐藏价格） */
+  const { showPrices, canTogglePrices, togglePrices } = usePriceVisibility();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -401,6 +404,18 @@ export function PendingReceiptList() {
     }
   }
 
+  /* ------------------ 一键待退货（2026-08-20 一期⑤） ------------------
+     货不对时不用进收货弹窗点三步，一键打「错发退货」标签：
+     不入库、直接生成待退货记录（同收货弹窗里"错发→不需要了"分支） */
+
+  async function handleQuickReturn(order: PurchaseOrder, item: PurchaseOrderItem) {
+    if (!(await 请求确认(`确认把「${item.name}」标记为错发待退货？不会入库，直接生成待退货记录。`))) return;
+    await applyAction(order, item, {
+      handle_action: "wrong_discard",
+      received_qty: 0,
+    });
+  }
+
   /* ------------------ 撤销收货 ------------------ */
 
   async function handleRevokeItem(order: PurchaseOrder, item: PurchaseOrderItem) {
@@ -619,6 +634,7 @@ export function PendingReceiptList() {
           logistics_company_id: wbCompanyId || null,
           logistics_company_name: company?.name || null,
           phone: wbPhone.trim() || null,
+          supplier_name: wbSupplierName.trim() || null,
           package_count: parseInt(wbPackageCount) || 1,
           freight_amount: parseFloat(wbFreight) || 0,
           cod_amount: parseFloat(wbCod) || 0,
@@ -641,7 +657,39 @@ export function PendingReceiptList() {
         setSelectedOrderIds(new Set());
         setBatchWaybillMode(false);
       } else if (isStandalone) {
-        alert("运单创建成功,请用「批量关联运单」或各单「选择已有运单」进行关联");
+        /* 需求2（2026-08-20）：运单电话命中供应商时，弹问是否关联其待收货采购单 */
+        let 已提示 = false;
+        if (wbPhone.trim()) {
+          const { data: 命中 } = await supabase
+            .from("suppliers")
+            .select("id, name")
+            .ilike("phone", `%${wbPhone.trim()}%`)
+            .limit(1);
+          if (命中 && 命中.length > 0) {
+            const { count } = await supabase
+              .from("purchase_orders")
+              .select("id", { count: "exact", head: true })
+              .eq("supplier_id", 命中[0].id)
+              .in("status", ["submitted", "approved", "partial_received"])
+              .is("waybill_id", null);
+            if ((count || 0) > 0) {
+              已提示 = true;
+              const 同意 = await 请求确认(
+                `运单电话命中供应商「${命中[0].name}」，该供应商有 ${count} 张待收货采购单，是否关联到这张运单？`
+              );
+              if (同意) {
+                const res = await 关联运单到供应商待收货单(waybill.id, 命中[0].id);
+                if (!res.success) throw new Error(res.error || "关联采购单失败");
+                alert(`运单创建成功，已关联 ${res.count} 张待收货采购单`);
+              } else {
+                alert("运单创建成功");
+              }
+            }
+          }
+        }
+        if (!已提示) {
+          alert("运单创建成功,请用「批量关联运单」或各单「选择已有运单」进行关联");
+        }
       } else {
         await supabase
           .from("purchase_orders")
@@ -868,6 +916,26 @@ export function PendingReceiptList() {
           </div>
         )}
         <div className="flex-1" />
+        {canTogglePrices && (
+          <button
+            type="button"
+            onClick={togglePrices}
+            title={showPrices ? "点击隐藏价格" : "点击显示价格"}
+            className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 flex items-center gap-1"
+          >
+            {showPrices ? (
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+              </svg>
+            )}
+            {showPrices ? "隐藏价格" : "显示价格"}
+          </button>
+        )}
         {selectedOrderIds.size > 0 && (
           <span className="text-xs text-blue-600">已选 {selectedOrderIds.size} 张</span>
         )}
@@ -1126,15 +1194,27 @@ export function PendingReceiptList() {
                                       {submitting === `revoke-${item.id}` ? "撤销中..." : "撤销"}
                                     </button>
                                   ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => openReceiveModal(order, item)}
-                                      disabled={!canConfirm || submitting === `item-${item.id}`}
-                                      title={!canConfirm ? "外阜供货商需先关联运单" : undefined}
-                                      className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
-                                    >
-                                      收货
-                                    </button>
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => openReceiveModal(order, item)}
+                                        disabled={!canConfirm || submitting === `item-${item.id}`}
+                                        title={!canConfirm ? "外阜供货商需先关联运单" : undefined}
+                                        className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+                                      >
+                                        收货
+                                      </button>
+                                      {/* 一键待退货：货不对时直接打错发退货标签，不用进弹窗点三步 */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleQuickReturn(order, item)}
+                                        disabled={!canConfirm || submitting === `item-${item.id}`}
+                                        title="货不对，直接标记错发退货（不入库）"
+                                        className="px-2 py-1 text-xs rounded border border-orange-300 text-orange-600 bg-orange-50 hover:bg-orange-100 disabled:opacity-50 whitespace-nowrap"
+                                      >
+                                        待退货
+                                      </button>
+                                    </>
                                   )}
                                   <button
                                     type="button"
