@@ -962,7 +962,7 @@ export async function 批量生成全部文章向量(): Promise<{
         已处理++;
         console.log(`[knowledge] 批量向量化 [${已处理}/${articles.length}]: ${标题.slice(0, 30)}`);
       }
-    } catch (err: unknown) {
+    } catch {
       已跳过++;
     }
   }

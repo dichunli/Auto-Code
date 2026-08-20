@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect, useId } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { base64转Blob } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
@@ -21,7 +21,6 @@ interface Props {
 
 export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImages = 5, folder, disabled = false, disableCamera = false, cameraOnly = false }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const fileId = `img-upload-${useId()}`;
   const [images, setImages] = useState<string[]>(existingImages);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 

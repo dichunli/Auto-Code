@@ -195,7 +195,6 @@ export default function PromotionRulesContent({
     fetchData();
   }
 
-  const courseMap = new Map(courses.map((c) => [c.id, c.title]));
 
   return (
     <div>

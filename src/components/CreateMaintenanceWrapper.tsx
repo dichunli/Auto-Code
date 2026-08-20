@@ -19,7 +19,6 @@ export function CreateMaintenanceWrapper({
   vehicleId,
   customerId,
   orderId,
-  orderNo,
   plateNumber,
   modelInfo,
   customerName,

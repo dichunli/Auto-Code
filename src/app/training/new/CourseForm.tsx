@@ -28,30 +28,16 @@ interface 专题 {
   name: string;
 }
 
-/* 递归渲染分类选项 */
-function 分类选项列表({ categories, depth = 0 }: { categories: 课程分类[]; depth?: number }) {
-  return (
-    <>
-      {categories.map((c) => (
-        <option key={c.id} value={c.id}>
-          {" ".repeat(depth * 2)}{depth > 0 ? "└ " : ""}{c.name}
-        </option>
-      ))}
-    </>
-  );
-}
 
 /* 构建分类树 */
 function 构建分类树(flatList: 课程分类[]): 课程分类[] {
   const map = new Map<string, 课程分类>();
-  const roots: 课程分类[] = [];
   for (const item of flatList) {
     map.set(item.id, item);
   }
   for (const item of flatList) {
     if (item.parent_id && map.has(item.parent_id)) {
       /* 将子分类追加到父分类后面 */
-      const parentIdx = flatList.indexOf(map.get(item.parent_id)!);
       /* 简单方案：按层级排序 */
     }
   }

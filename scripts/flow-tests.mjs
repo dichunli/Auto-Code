@@ -236,7 +236,7 @@ try {
   /* ── B5 配件入库 ── */
   const [分类行] = await api("POST", "part_categories", { name: `自动化测试分类${随机尾}` });
   const [配件名称行] = await api("POST", "part_names", { name: `自动化测试配件名称${随机尾}`, unit: "件", category_id: 分类行.id });
-  const [配件] = await api("POST", "parts", { part_number: 配件编号, name: "自动化测试配件", quantity: 0, part_name_id: 配件名称行.id });
+  await api("POST", "parts", { part_number: 配件编号, name: "自动化测试配件", quantity: 0, part_name_id: 配件名称行.id });
   await page.goto(`${BASE}/inventory/in`, { waitUntil: "domcontentloaded" });
   await page.getByPlaceholder(/搜索配件编号/).fill(配件编号);
   await page.waitForTimeout(1500);

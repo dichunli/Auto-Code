@@ -23,14 +23,6 @@ interface 知识文章 {
   created_at: string;
 }
 
-interface BlockNoteBlock {
-  id: string;
-  type: string;
-  props?: Record<string, unknown>;
-  content?: unknown[];
-  children?: BlockNoteBlock[];
-}
-
 /* ========== 组件 Props ========== */
 
 interface Props {

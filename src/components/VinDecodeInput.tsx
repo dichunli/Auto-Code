@@ -52,7 +52,6 @@ export default function VinDecodeInput({
   inputClassName,
   buttonClassName,
 }: Props) {
-  const [decoding, setDecoding] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -74,61 +73,6 @@ export default function VinDecodeInput({
   }, []);
 
 
-  async function handleDecode() {
-    const vin = value.trim().toUpperCase();
-    if (vin.length !== 17) {
-      alert(`VIN 码必须为 17 位，当前 ${vin.length} 位，请检查是否多输入或少输入字符`);
-      return;
-    }
-    setDecoding(true);
-    try {
-      const res = (await vin17DecodeVin(vin)) as {
-        code: number;
-        data?: {
-          model_list?: Array<{
-            Brand?: string; brand?: string;
-            Series?: string; series?: string;
-            Model?: string; model?: string;
-            Model_year?: string; model_year?: string;
-            Engine_no?: string; engine_no?: string;
-            Cc?: string; cc?: string;
-            Transmission_type?: string; transmission_type?: string;
-            Trans_code?: string; trans_code?: string;
-            Chassis_code?: string; chassis_code?: string;
-            Driving_mode?: string; driving_mode?: string;
-            Factory?: string; factory?: string;
-            Id?: number; id?: number;
-          }>;
-          model_year_from_vin?: string;
-        };
-      };
-      if (res.code !== 1 || !res.data?.model_list?.[0]) {
-        alert("未找到该 VIN 码对应的车型信息");
-        onDecode(null);
-        return;
-      }
-      const m = res.data.model_list[0];
-      onDecode({
-        brand: m.Brand || m.brand || "",
-        series: m.Series || m.series || "",
-        model: m.Model || m.model || "",
-        year: res.data.model_year_from_vin || m.Model_year || m.model_year || "",
-        engineNo: m.Engine_no || m.engine_no || "",
-        cc: m.Cc || m.cc || "",
-        transmissionType: m.Transmission_type || m.transmission_type || "",
-        transmissionCode: m.Trans_code || m.trans_code || "",
-        chassisCode: m.Chassis_code || m.chassis_code || "",
-        drivingMode: m.Driving_mode || m.driving_mode || "",
-        factory: m.Factory || m.factory || "",
-        modelId: m.Id || m.id || undefined,
-      });
-    } catch (err: unknown) {
-      alert("解析失败: " + (err instanceof Error ? err.message : String(err)));
-      onDecode(null);
-    } finally {
-      setDecoding(false);
-    }
-  }
 
   /* 调用 API 路由进行 OCR 识别 */
   async function callOcrApi(base64: string): Promise<{
@@ -385,8 +329,11 @@ export default function VinDecodeInput({
     }
   }
 
+  /* buttonClassName 生效修复（2026-08-21）：调用方传入时覆盖默认绿色样式，未传保持原样 */
   const photoClass =
-    "px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 whitespace-nowrap shrink-0 inline-block cursor-pointer select-none" +
+    (buttonClassName ||
+      "px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 whitespace-nowrap shrink-0") +
+    " inline-block cursor-pointer select-none" +
     (ocrLoading ? " opacity-50 pointer-events-none" : "");
 
   return (

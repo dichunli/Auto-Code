@@ -131,7 +131,7 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
   const [batchType, setBatchType] = useState<"brand" | "specification" | null>(null);
   const [showBatchMerge, setShowBatchMerge] = useState(false);
 
-  const [categories, setCategories] = useState<PartCategory[]>(initialCategories as PartCategory[]);
+  const [categories] = useState<PartCategory[]>(initialCategories as PartCategory[]);
   const [form, setForm] = useState({
     name: "",
     category_id: "",

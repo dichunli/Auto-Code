@@ -5,9 +5,7 @@ import { revalidatePath } from "next/cache";
 import { vin17DecodeVin, vin17GetModelListFromPartNumber, vin17GetModelListFromPartNumberForAftermarket, vin17SearchFiltersByVin, vin17SearchAftermarketParts } from "@/lib/17vin/client";
 import { 判断三滤类型, 精准三滤类型 } from "@/lib/filterType";
 import { 车型库匹配字段, type 车型库行 } from "@/lib/vehicleModelFields";
-import { 标准化字符串, 标准化大写 } from "@/lib/stringNormalize";
 import { 标准化VIN } from "@/lib/vinValidator";
-import { 生成完整系统码, 配件系统码前缀, 提取系统码序号 } from "@/lib/systemCode";
 import submitPart, { type SubmitPartParams, type SubmitPartResult } from "./new/submitPart";
 
 /* ═══ 保存配件（新建/编辑）═══

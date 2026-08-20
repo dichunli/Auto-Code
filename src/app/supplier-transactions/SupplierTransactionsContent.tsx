@@ -47,7 +47,7 @@ export default function SupplierTransactionsContent({
   const supabase = useMemo(() => createClient(), []);
   const [records, setRecords] = useState<TransactionRecord[]>(initialTransactions);
   const [allRecords, setAllRecords] = useState<TransactionRecord[]>(initialTransactions);
-  const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
+  const [suppliers] = useState<Supplier[]>(initialSuppliers);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>("");
