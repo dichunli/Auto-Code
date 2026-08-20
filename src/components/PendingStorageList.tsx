@@ -10,6 +10,7 @@ import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 确认采购入库, 退回待收货 } from "@/app/procurement/actions";
+import { 确认到货入库 } from "@/app/arrivals/actions";
 import { DocumentNameInput } from "./DocumentNameInput";
 
 interface PurchaseOrderItem {
@@ -33,6 +34,16 @@ interface PurchaseOrderItem {
   discount_amount: number | null;
   evidence_photos: string[] | null;
   return_reason: string | null;
+  arrival_item_id: string | null;
+}
+
+/* 已确认到货的到货确认单（2026-08-20 二期：待入库的新来源） */
+interface 到货单 {
+  id: string;
+  receipt_no: string;
+  suppliers: { name: string } | null;
+  logistics_waybills: { tracking_no: string; freight_amount: number | null } | null;
+  arrival_receipt_items: { count: number }[];
 }
 
 interface PurchaseOrder {
@@ -96,6 +107,11 @@ export function PendingStorageList() {
   const [freightAmount, setFreightAmount] = useState("");
   const [waybillInfo, setWaybillInfo] = useState<{ logistics_company_name: string | null; tracking_no: string | null; freight_amount: number | null } | null>(null);
 
+  /* 到货确认单（二期新流程）：已确认到货、待账务入库 */
+  const [到货单列表, set到货单列表] = useState<到货单[]>([]);
+  const [到货入库弹窗, set到货入库弹窗] = useState<到货单 | null>(null);
+  const [到货运费, set到货运费] = useState("");
+
   async function loadData() {
     setLoading(true);
     const { data, error } = await supabase
@@ -108,7 +124,7 @@ export function PendingStorageList() {
           id, name, brand, specification, quantity, unit_cost, received_qty,
           part_id, work_order_item_part_id, part_number, supplier_part_name,
           unit, category, license_plate, photos, notes,
-          handle_action, discount_amount, evidence_photos, return_reason
+          handle_action, discount_amount, evidence_photos, return_reason, arrival_item_id
         )
       `
       )
@@ -121,8 +137,44 @@ export function PendingStorageList() {
       return;
     }
 
-    setOrders((data || []) as unknown as PurchaseOrder[]);
+    /* 走过到货确认单的采购单不进老入库列表（老入库函数也会拒绝，这里直接不显示） */
+    const 老流程单 = ((data || []) as unknown as PurchaseOrder[]).filter(
+      (o) => !(o.purchase_order_items || []).some((it) => it.arrival_item_id)
+    );
+    setOrders(老流程单);
+
+    /* 新流程：已确认到货、待账务入库的到货单 */
+    const { data: 到货单 } = await supabase
+      .from("arrival_receipts")
+      .select("id, receipt_no, suppliers(name), logistics_waybills(tracking_no, freight_amount), arrival_receipt_items(count)")
+      .eq("status", "confirmed")
+      .order("confirmed_at", { ascending: false });
+    set到货单列表(((到货单 || []) as unknown) as 到货单[]);
     setLoading(false);
+  }
+
+  /* 到货单确认入库：纯账务收尾（库存已在确认到货时上好） */
+  async function 提交到货入库() {
+    if (!到货入库弹窗) return;
+    const 运费 = 到货运费.trim() === "" ? 0 : parseFloat(到货运费);
+    if (isNaN(运费) || 运费 < 0) {
+      alert("运费金额无效");
+      return;
+    }
+    setSubmitting(`arrival-${到货入库弹窗.id}`);
+    try {
+      const res = await 确认到货入库(到货入库弹窗.id, 运费);
+      if (!res.success) throw new Error(res.error || "确认入库失败");
+      alert(`入库完成，入库单号 ${res.inbound_no}`);
+      set到货入库弹窗(null);
+      set到货运费("");
+      loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("确认入库失败: " + msg);
+    } finally {
+      setSubmitting(null);
+    }
   }
 
   useEffect(() => {
@@ -361,7 +413,7 @@ export function PendingStorageList() {
     );
   }
 
-  if (orders.length === 0) {
+  if (orders.length === 0 && 到货单列表.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
         暂无待入库的采购单
@@ -371,6 +423,46 @@ export function PendingStorageList() {
 
   return (
     <div className="space-y-4">
+      {/* 到货确认单（二期新流程）：已确认到货，库存已上架，这里只做账务入库 */}
+      {到货单列表.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-green-500 overflow-hidden">
+          <div className="px-6 py-3 border-b border-gray-100 bg-gray-50">
+            <h3 className="text-sm font-semibold text-gray-900 flex items-center">
+              <span className="inline-block px-2 py-0.5 rounded bg-green-600 text-white mr-2 text-[10px] font-bold">
+                到货单
+              </span>
+              <span className="font-bold text-gray-900">已确认到货 · 待账务入库</span>
+            </h3>
+            <span className="text-xs text-gray-500">库存已在确认到货时上架，这里只做入库单/应付款账务收尾</span>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {到货单列表.map((单) => (
+              <div key={单.id} className="px-6 py-3 flex items-center gap-3 flex-wrap">
+                <Link href={`/procurement/arrivals/${单.id}`} className="text-sm text-blue-600 hover:underline font-medium">
+                  {单.receipt_no}
+                </Link>
+                <span className="text-sm text-gray-600">{单.suppliers?.name || "-"}</span>
+                <span className="text-xs text-gray-500">
+                  {单.arrival_receipt_items?.[0]?.count ?? 0} 件
+                  {单.logistics_waybills?.tracking_no ? ` · 运单 ${单.logistics_waybills.tracking_no}` : ""}
+                </span>
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    set到货入库弹窗(单);
+                    set到货运费(单.logistics_waybills?.freight_amount?.toString() || "");
+                  }}
+                  className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                >
+                  确认入库
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {supplierOptions.length > 0 && (
         <div className="flex items-center gap-1 flex-wrap">
           <span className="text-xs text-gray-500">供应商:</span>
@@ -865,6 +957,58 @@ export function PendingStorageList() {
                 onCancel={closeEditModal}
                 prefillData={配件预填}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 到货单确认入库弹窗（纯账务：运费+应付款，库存已上架） */}
+      {到货入库弹窗 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-sm">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">确认入库 — {到货入库弹窗.receipt_no}</h3>
+              <button
+                type="button"
+                onClick={() => set到货入库弹窗(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6 space-y-3">
+              <p className="text-xs text-gray-500">
+                库存已在确认到货时上架，本步只生成入库单、记应付款和运费分摊。
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">运费金额(¥)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  value={到货运费}
+                  onChange={(e) => set到货运费(e.target.value)}
+                  placeholder="0"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => set到货入库弹窗(null)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={提交到货入库}
+                disabled={submitting === `arrival-${到货入库弹窗.id}`}
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {submitting === `arrival-${到货入库弹窗.id}` ? "处理中..." : "确认入库"}
+              </button>
             </div>
           </div>
         </div>

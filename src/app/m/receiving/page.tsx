@@ -36,6 +36,12 @@ export default async function MobileReceivingListPage() {
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500">待收货 {(orders?.length ?? 0)} 单</span>
           <Link
+            href="/m/receiving/arrivals"
+            className="px-2.5 py-1 text-xs rounded-lg bg-green-600 text-white font-medium active:bg-green-700"
+          >
+            到货单
+          </Link>
+          <Link
             href="/m/receiving/waybills"
             className="px-2.5 py-1 text-xs rounded-lg bg-blue-600 text-white font-medium active:bg-blue-700"
           >
