@@ -10,9 +10,11 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
-import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单 } from "@/app/procurement/actions";
+import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单, 撤销采购明细退回待采购 } from "@/app/procurement/actions";
 import { 关联运单到供应商待收货单 } from "@/app/logistics/actions";
 import { WaybillBatchForm } from "@/components/WaybillBatchForm";
+import { SupplierPhoneInput } from "@/components/SupplierPhoneInput";
+import { useDebounce } from "@/lib/useDebounce";
 import { DocumentNameInput } from "./DocumentNameInput";
 
 interface PurchaseOrderItem {
@@ -120,24 +122,25 @@ export function PendingReceiptList() {
   /* 批量创建运单弹窗（分步流程组件 WaybillBatchForm，2026-08-20 起与手机端共用） */
   const [batchModalOpen, setBatchModalOpen] = useState(false);
 
-  /* 运单电话变更时实时检索供应商 */
+  /* 运单电话变更时实时检索供应商（300ms 防抖，逐字输入不逐键查询） */
+  const debouncedWbPhone = useDebounce(wbPhone, 300);
   useEffect(() => {
     async function lookup() {
-      if (!wbPhone.trim()) {
+      if (!debouncedWbPhone.trim()) {
         setWbSupplierName("");
         return;
       }
       const { data } = await supabase
         .from("suppliers")
         .select("name")
-        .ilike("phone", `%${wbPhone.trim()}%`)
+        .ilike("phone", `%${debouncedWbPhone.trim()}%`)
         .limit(1);
       if (data && data.length > 0) {
         setWbSupplierName(data[0].name);
       }
     }
     lookup();
-  }, [wbPhone, supabase]);
+  }, [debouncedWbPhone, supabase]);
 
   /* 收货主弹窗 */
   const [receiveItem, setReceiveItem] = useState<PurchaseOrderItem | null>(null);
@@ -151,6 +154,8 @@ export function PendingReceiptList() {
 
   /* 错发处理选项 */
   const [wrongChoice, setWrongChoice] = useState<"" | "exchange" | "discard">("");
+  /* 错发拍照取证（2026-08-20 需求2） */
+  const [wrongEvidence, setWrongEvidence] = useState<string[]>([]);
 
   /* 多发处理选项 */
   const [excessChoice, setExcessChoice] = useState<"" | "return" | "keep">("");
@@ -228,11 +233,13 @@ export function PendingReceiptList() {
     }
     setReceiveOrder(order);
     setReceiveItem(item);
-    setReceiveQty(item.quantity === 1 ? "1" : "");
+    /* 数量不预填（2026-08-20 需求）：收货必须按实际点数手动填写，防止图省事直接确认 */
+    setReceiveQty("");
     setReceiveProblem("");
     setBrokenChoice("");
     setBrokenEvidence([]);
     setWrongChoice("");
+    setWrongEvidence([]);
     setExcessChoice("");
     setExcessKeepPaid("");
     setShortChoice("");
@@ -247,10 +254,21 @@ export function PendingReceiptList() {
     setBrokenChoice("");
     setBrokenEvidence([]);
     setWrongChoice("");
+    setWrongEvidence([]);
     setExcessChoice("");
     setExcessKeepPaid("");
     setShortChoice("");
     setShortEvidence([]);
+  }
+
+  /* 清空问题选择（2026-08-20 需求3）：误点破损/错发后再次点击取消，
+     同时清掉子选项和证据照片，恢复可正常收货 */
+  function 清空问题选择() {
+    setReceiveProblem("");
+    setBrokenChoice("");
+    setBrokenEvidence([]);
+    setWrongChoice("");
+    setWrongEvidence([]);
   }
 
   async function handleReceiveSubmit() {
@@ -291,6 +309,7 @@ export function PendingReceiptList() {
         await applyAction(receiveOrder, receiveItem, {
           handle_action: action,
           received_qty: recvQty,
+          evidence_photos: wrongEvidence.length > 0 ? wrongEvidence : null,
         });
       } else {
         /* 正常 */
@@ -397,18 +416,6 @@ export function PendingReceiptList() {
     }
   }
 
-  /* ------------------ 一键待退货（2026-08-20 一期⑤） ------------------
-     货不对时不用进收货弹窗点三步，一键打「错发退货」标签：
-     不入库、直接生成待退货记录（同收货弹窗里"错发→不需要了"分支） */
-
-  async function handleQuickReturn(order: PurchaseOrder, item: PurchaseOrderItem) {
-    if (!(await 请求确认(`确认把「${item.name}」标记为错发待退货？不会入库，直接生成待退货记录。`))) return;
-    await applyAction(order, item, {
-      handle_action: "wrong_discard",
-      received_qty: 0,
-    });
-  }
-
   /* ------------------ 撤销收货 ------------------ */
 
   async function handleRevokeItem(order: PurchaseOrder, item: PurchaseOrderItem) {
@@ -444,6 +451,40 @@ export function PendingReceiptList() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert((mode === "revoke" ? "撤销失败: " : "作废失败: ") + msg);
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  /* ------------------ 单个配件 撤销/作废（2026-08-20 需求5） ------------------
+     撤销：配件退回待采购列表，下次可重新组单采购（revoke_purchase_item_to_pending 事务）
+     作废：彻底删除该配件（采购明细+工单配件行都清除，delete_purchase_item 事务） */
+
+  async function handleRevokeItemToPending(order: PurchaseOrder, item: PurchaseOrderItem) {
+    if (!(await 请求确认(`确认把「${item.name}」退回待采购？该配件将从本采购单移除，回到待采购列表。`))) return;
+    setSubmitting(`item-${item.id}`);
+    try {
+      const res = await 撤销采购明细退回待采购(order.id, item.id);
+      if (!res.success) throw new Error(res.error || "撤销失败");
+      loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("撤销失败: " + msg);
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  async function handleDiscardItem(order: PurchaseOrder, item: PurchaseOrderItem) {
+    if (!(await 请求确认(`确认作废「${item.name}」？该配件的采购记录和工单记录都会彻底删除，不可恢复！`))) return;
+    setSubmitting(`item-${item.id}`);
+    try {
+      const res = await 删除采购明细(order.id, item.id);
+      if (!res.success) throw new Error(res.error || "作废失败");
+      loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("作废失败: " + msg);
     } finally {
       setSubmitting(null);
     }
@@ -811,7 +852,8 @@ export function PendingReceiptList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* 分组/筛选/操作按钮区：手机端隐藏（2026-08-20 需求8），手机只做收货，列表直接展示 */}
+      <div className="hidden md:flex items-center gap-2 flex-wrap">
         <span className="text-xs text-gray-500">分组:</span>
         {GROUP_OPTIONS.map((opt) => (
           <button
@@ -1151,15 +1193,24 @@ export function PendingReceiptList() {
                                       >
                                         收货
                                       </button>
-                                      {/* 一键待退货：货不对时直接打错发退货标签，不用进弹窗点三步 */}
+                                      {/* 配件级撤销/作废（2026-08-20 需求5）：撤销=退回待采购可重新组单；作废=彻底删除 */}
                                       <button
                                         type="button"
-                                        onClick={() => handleQuickReturn(order, item)}
-                                        disabled={!canConfirm || submitting === `item-${item.id}`}
-                                        title="货不对，直接标记错发退货（不入库）"
-                                        className="px-2 py-1 text-xs rounded border border-orange-300 text-orange-600 bg-orange-50 hover:bg-orange-100 disabled:opacity-50 whitespace-nowrap"
+                                        onClick={() => handleRevokeItemToPending(order, item)}
+                                        disabled={submitting === `item-${item.id}`}
+                                        title="退回待采购列表，下次可重新组单采购"
+                                        className="text-xs text-amber-600 hover:text-amber-700 hover:underline disabled:opacity-50 whitespace-nowrap"
                                       >
-                                        待退货
+                                        撤销
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDiscardItem(order, item)}
+                                        disabled={submitting === `item-${item.id}`}
+                                        title="彻底删除该配件（采购记录和工单记录都会清除）"
+                                        className="text-xs text-red-400 hover:text-red-600 hover:underline disabled:opacity-50 whitespace-nowrap"
+                                      >
+                                        作废
                                       </button>
                                     </>
                                   )}
@@ -1342,12 +1393,14 @@ export function PendingReceiptList() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">运单电话</label>
-                  <input
-                    type="text"
+                  {/* 逐字联想（2026-08-20 需求6/7）：点选候选后电话+供应商名一起回填 */}
+                  <SupplierPhoneInput
                     value={wbPhone}
-                    onChange={(e) => setWbPhone(e.target.value)}
-                    placeholder="输入电话自动检索供应商"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    onChange={setWbPhone}
+                    onSelect={(供应商) => {
+                      setWbPhone(供应商.phone || "");
+                      setWbSupplierName(供应商.name);
+                    }}
                   />
                 </div>
                 <div>
@@ -1478,6 +1531,7 @@ export function PendingReceiptList() {
                 <input
                   type="number"
                   min={0}
+                  autoFocus
                   value={receiveQty}
                   onChange={(e) => setReceiveQty(e.target.value)}
                   placeholder="没到货请填 0"
@@ -1506,14 +1560,23 @@ export function PendingReceiptList() {
                 if (qty === ordered) {
                   return (
                     <div className="border-t border-gray-100 pt-3">
-                      <div className="text-xs text-gray-500 mb-2">反馈问题(可选,二选一)</div>
+                      <div className="text-xs text-gray-500 mb-2">反馈问题(可选,二选一,再次点击可取消)</div>
                       <div className="flex gap-3">
                         <label className="flex items-center gap-2 cursor-pointer flex-1 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50">
                           <input
                             type="radio"
                             name="receiveProblem"
                             checked={receiveProblem === "broken"}
-                            onChange={() => setReceiveProblem(receiveProblem === "broken" ? "" : "broken")}
+                            onChange={() => {
+                              setReceiveProblem("broken");
+                              /* 切换问题时清掉另一边的子选项，避免脏数据 */
+                              setWrongChoice("");
+                              setWrongEvidence([]);
+                            }}
+                            onClick={() => {
+                              /* radio 已选中时再点不会触发 onChange，用 onClick 实现再点取消 */
+                              if (receiveProblem === "broken") 清空问题选择();
+                            }}
                           />
                           <span className="text-sm text-gray-900">配件破损</span>
                         </label>
@@ -1522,7 +1585,14 @@ export function PendingReceiptList() {
                             type="radio"
                             name="receiveProblem"
                             checked={receiveProblem === "wrong"}
-                            onChange={() => setReceiveProblem(receiveProblem === "wrong" ? "" : "wrong")}
+                            onChange={() => {
+                              setReceiveProblem("wrong");
+                              setBrokenChoice("");
+                              setBrokenEvidence([]);
+                            }}
+                            onClick={() => {
+                              if (receiveProblem === "wrong") 清空问题选择();
+                            }}
                           />
                           <span className="text-sm text-gray-900">配件错发</span>
                         </label>
@@ -1530,12 +1600,7 @@ export function PendingReceiptList() {
                       {receiveProblem && (
                         <button
                           type="button"
-                          onClick={() => {
-                            setReceiveProblem("");
-                            setBrokenChoice("");
-                            setBrokenEvidence([]);
-                            setWrongChoice("");
-                          }}
+                          onClick={清空问题选择}
                           className="mt-2 text-xs text-gray-500 hover:text-blue-600"
                         >
                           取消选择
@@ -1574,6 +1639,17 @@ export function PendingReceiptList() {
                               <div className="text-gray-500 text-xs mt-0.5">先入库 + 生成「破损退货」(不补货)</div>
                             </div>
                           </label>
+                          {/* 破损拍照取证（2026-08-20 需求2）：作为与供应商交涉的凭证 */}
+                          <div className="pt-1">
+                            <label className="block text-xs text-gray-600 mb-1">破损照片（拍照取证）</label>
+                            <ImageUploader
+                              onUpload={(paths) => setBrokenEvidence(paths)}
+                              existingImages={brokenEvidence}
+                              maxImages={5}
+                              bucket="work-order-media"
+                              folder="purchase-evidence"
+                            />
+                          </div>
                         </div>
                       )}
 
@@ -1609,6 +1685,17 @@ export function PendingReceiptList() {
                               <div className="text-gray-500 text-xs mt-0.5">直接生成「错发退货」,不入库</div>
                             </div>
                           </label>
+                          {/* 错发拍照取证（2026-08-20 需求2）：作为与供应商交涉的凭证 */}
+                          <div className="pt-1">
+                            <label className="block text-xs text-gray-600 mb-1">错发照片（拍照取证）</label>
+                            <ImageUploader
+                              onUpload={(paths) => setWrongEvidence(paths)}
+                              existingImages={wrongEvidence}
+                              maxImages={5}
+                              bucket="work-order-media"
+                              folder="purchase-evidence"
+                            />
+                          </div>
                         </div>
                       )}
                     </div>

@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 interface PageHeaderProps {
   title: string;
   description?: string;
+  /* 副标题附加样式（如 "hidden md:block" 手机端隐藏，2026-08-20 需求8） */
+  descriptionClassName?: string;
   action?: {
     href?: string;
     label: string;
@@ -14,13 +16,13 @@ interface PageHeaderProps {
   className?: string;
 }
 
-export function PageHeader({ title, description, action, className }: PageHeaderProps) {
+export function PageHeader({ title, description, descriptionClassName, action, className }: PageHeaderProps) {
   return (
     <div className={cn("flex items-center justify-between mb-6", className)}>
       <div>
         <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
         {description && (
-          <p className="mt-1 text-sm text-gray-500">{description}</p>
+          <p className={cn("mt-1 text-sm text-gray-500", descriptionClassName)}>{description}</p>
         )}
       </div>
       {action && (
