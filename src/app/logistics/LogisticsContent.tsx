@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 更新供应商电话 } from "@/app/suppliers/actions";
+import { 结清运费 } from "@/app/logistics/actions";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
@@ -36,6 +37,7 @@ interface Waybill {
   cod_amount: number | null;
   photos: string[] | null;
   status: string;
+  freight_settled: boolean | null;
   created_at: string;
   notes: string | null;
   logistics_companies: { name: string; scopes: string[] | null } | null;
@@ -106,6 +108,8 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
   const [inlineEditing, setInlineEditing] = useState<Record<string, Record<string, string>>>({});
   /* 行内编辑电话时的实时供应商提示 */
   const [inlinePhoneHints, setInlinePhoneHints] = useState<Record<string, string>>({});
+  /* 运费结清中（三期：运费单独和物流公司结算） */
+  const [settlingId, setSettlingId] = useState<string | null>(null);
 
   /* 单个创建运单弹窗 */
   const [singleModalOpen, setSingleModalOpen] = useState(false);
@@ -300,6 +304,22 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
       return;
     }
     loadWaybills();
+  }
+
+  /* 结清运费（三期）：运费是付给物流公司的，和供应商应付款无关，在这里单独结算 */
+  async function handleSettleFreight(w: Waybill) {
+    if (!(await 请求确认(`确认运单「${w.tracking_no}」的运费 ${formatCurrency(w.freight_amount)} 已和物流公司结清？`))) return;
+    setSettlingId(w.id);
+    try {
+      const res = await 结清运费(w.id);
+      if (!res.success) throw new Error(res.error || "结清失败");
+      loadWaybills();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("结清运费失败: " + msg);
+    } finally {
+      setSettlingId(null);
+    }
   }
 
 
@@ -903,6 +923,21 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
                       <td className="px-4 py-3 text-gray-500">{formatDate(w.created_at)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
+                          {/* 运费结算（三期）：有运费且未结清的给结清入口，已结的打标 */}
+                          {Number(w.freight_amount || 0) > 0 && (
+                            w.freight_settled ? (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-600">运费已结</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleSettleFreight(w)}
+                                disabled={settlingId === w.id}
+                                className="text-xs text-orange-600 hover:text-orange-800 hover:underline disabled:opacity-50"
+                              >
+                                {settlingId === w.id ? "结清中..." : "结清运费"}
+                              </button>
+                            )
+                          )}
                           <button
                             type="button"
                             onClick={() => openEditWaybillModal(w)}
