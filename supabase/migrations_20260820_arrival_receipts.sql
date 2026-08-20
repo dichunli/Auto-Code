@@ -824,7 +824,8 @@ $$ LANGUAGE plpgsql;
    ============================================================ */
 CREATE OR REPLACE FUNCTION public.revoke_purchase_receipt(
   p_order_id UUID,
-  p_item_id UUID
+  p_item_id UUID,
+  p_operator_id UUID
 )
 RETURNS JSONB
 SECURITY DEFINER
