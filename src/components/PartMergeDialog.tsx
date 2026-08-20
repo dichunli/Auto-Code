@@ -125,7 +125,6 @@ export default function PartMergeDialog({ open, selectedItems, onClose, onSucces
 
     /* 2. 逐个处理被合并配件 */
     for (const source of otherItems) {
-      const sourceIds = [source.id];
 
       /* 2a. 迁移车型关联（跳过冲突） */
       const { data: sourceVehicles } = await supabase

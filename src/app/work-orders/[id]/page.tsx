@@ -9,8 +9,6 @@ import { notFound } from "next/navigation";
 import { WorkOrderTabBar } from "@/components/WorkOrderTabBar";
 import { ReceptionInfoEditor } from "@/components/ReceptionInfoEditor";
 import { BatchEditWrapper } from "@/components/BatchEditWrapper";
-import { CreateMaintenanceWrapper } from "@/components/CreateMaintenanceWrapper";
-import { MaintenanceImportWrapper } from "@/components/MaintenanceImportWrapper";
 import { MaintenanceActionWrapper } from "@/components/MaintenanceActionWrapper";
 import { SaveMaintenanceButton } from "@/components/SaveMaintenanceButton";
 import { CancelCreateMaintenanceButton } from "@/components/CancelCreateMaintenanceButton";
@@ -130,13 +128,6 @@ export default async function WorkOrderDetailPage({
     const fromWo = typeof sp.from_work_order === "string" ? sp.from_work_order : "";
     if (fromWo) p.set("from_work_order", fromWo);
     p.set("edit", "1");
-    return `/work-orders/${id}?${p.toString()}`;
-  })();
-  // 保存链接：返回只读模式
-  const 保存链接 = (() => {
-    const p = new URLSearchParams();
-    const fromWo = typeof sp.from_work_order === "string" ? sp.from_work_order : "";
-    if (fromWo) p.set("from_work_order", fromWo);
     return `/work-orders/${id}?${p.toString()}`;
   })();
 
@@ -895,7 +886,7 @@ export default async function WorkOrderDetailPage({
                                       tableName="work_order_item_parts"
                                       extraIdMap={extraIdMap}
                                     >
-                                      {groups.map((group, groupIdx) => (
+                                      {groups.map((group) => (
                                         <ItemPartGroup
                                           key={group.repId}
                                           group={group}

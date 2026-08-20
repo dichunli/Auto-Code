@@ -92,7 +92,7 @@ export function 消毒Html(html: string): string {
   结果 = 结果.replace(/<(?:script|iframe|object|embed|link|meta|base|input|button|textarea|select)\b[^>]*\/?>/gi, "");
 
   /* 3. 逐标签处理：白名单清理属性，非白名单剥壳留文本 */
-  结果 = 结果.replace(/<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:\s[^<>]*)?)\/?>/g, (整串, 斜杠, 标签名, 属性段) => {
+  结果 = 结果.replace(/<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:\s[^<>]*)?)\/?>/g, (整串, 斜杠, 标签名) => {
     const 名 = (标签名 as string).toLowerCase();
     if (!白名单标签.has(名)) return ""; /* 非白名单剥壳：标签删除，文本内容保留 */
     if (斜杠 === "/") return `</${名}>`; /* 闭标签只留名字 */

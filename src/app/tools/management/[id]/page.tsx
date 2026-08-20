@@ -108,7 +108,7 @@ export default function ToolDetailPage() {
               .order("created_at", { ascending: false });
             set归还照片列表((photos || []) as { id: string; photo_url: string }[]);
           }
-        } catch (e) {
+        } catch {
           /* 忽略借用人查询错误 */
         }
 

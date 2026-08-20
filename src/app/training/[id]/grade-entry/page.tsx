@@ -210,7 +210,6 @@ export default function GradeEntryPage() {
 
     try {
       /* 逐题构建答题记录 */
-      let hasEssay = false;
       const answerRecords = [];
 
       for (const q of questions) {
@@ -219,7 +218,6 @@ export default function GradeEntryPage() {
         let isCorrect: boolean | null = ans.is_correct;
 
         if (q.question_type === "essay") {
-          hasEssay = true;
           isCorrect = score >= q.score ? true : score > 0 ? true : false; /* 简答题有分就算对 */
         } else if (q.question_type === "scoring") {
           isCorrect = score > 0 ? true : null; /* 评分项不判断对错 */

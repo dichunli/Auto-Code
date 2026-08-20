@@ -1,4 +1,4 @@
-import { writeFile, access } from "fs/promises";
+import { access } from "fs/promises";
 import { createWriteStream } from "fs";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";

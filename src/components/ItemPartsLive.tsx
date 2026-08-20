@@ -61,7 +61,6 @@ interface Props {
  * 不整页刷新。领料/库存/退货等关联数据复用服务端传入的（新配件默认空，正确）。 */
 export default function ItemPartsLive({
   itemId,
-  orderId,
   seqPrefix,
   isLocked,
   vehicleModelId,

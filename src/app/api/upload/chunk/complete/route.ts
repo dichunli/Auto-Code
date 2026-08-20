@@ -1,4 +1,4 @@
-import { mkdir, writeFile, access } from "fs/promises";
+import { mkdir, access } from "fs/promises";
 import { createWriteStream, createReadStream } from "fs";
 import { pipeline } from "stream/promises";
 import path from "path";

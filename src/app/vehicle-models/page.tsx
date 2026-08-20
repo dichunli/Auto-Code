@@ -53,7 +53,6 @@ export default async function VehicleModelsPage({
   const { data, count, error } = await query.order("id").range(from, to);
 
   const total = count || 0;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const models = ((data as unknown as Record<string, unknown>[]) || []);
 
   return (

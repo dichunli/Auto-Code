@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import Link from "next/link";
 import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
-import DeleteButton from "./DeleteButton";
 
 interface 课程分类 {
   id: string;
@@ -41,13 +39,11 @@ function CategoryRow({
   depth,
   onEdit,
   onDelete,
-  dragHandlers,
 }: {
   item: 课程分类;
   depth: number;
   onEdit: (id: string) => void;
   onDelete: (id: string, name: string) => void;
-  dragHandlers?: Record<string, unknown>;
 }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = item.children && item.children.length > 0;

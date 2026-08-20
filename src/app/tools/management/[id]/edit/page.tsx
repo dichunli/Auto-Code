@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { ImageUploader } from "@/components/ImageUploader";
 import { useRouter, useParams } from "next/navigation";

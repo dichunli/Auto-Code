@@ -9,7 +9,6 @@ const 账号 = process.env.TEST_USER || "19900001111";
 const 密码 = process.env.TEST_PASS || "test123456";
 const 截图目录 = "scripts/screenshots";
 const 工单ID = "ef4c1ff7-0d6c-46d8-b88e-c89772c5b612";
-const 测试项目名 = "保养前轮轴承-右";
 
 /* 从 .env.local 读 Supabase 配置（测试前清理数据用） */
 const env = fs.readFileSync(".env.local", "utf-8");

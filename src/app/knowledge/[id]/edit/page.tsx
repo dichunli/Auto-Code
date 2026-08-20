@@ -8,7 +8,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelector";
 import { 处理外部图片 } from "@/lib/processExternalImages";
-import { syncKnowledgeModelsFromVin, 生成文章向量 } from "../../actions";
+import { syncKnowledgeModelsFromVin } from "../../actions";
 import { 生成知识库搜索文本 } from "@/lib/knowledgeSearch";
 
 const BlockNoteEditor = dynamic(

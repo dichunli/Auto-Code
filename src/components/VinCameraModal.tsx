@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { vin17DecodeVin } from "@/lib/17vin/client";
 import { 获取访问令牌 } from "@/lib/supabase/client";
 import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
@@ -25,7 +24,6 @@ const VIN裁剪框 = { x: 0.05, y: 0.3, w: 0.9, h: 0.4 };
 export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const 文件输入Ref = useRef<HTMLInputElement>(null);
   const 已取消Ref = useRef(false);
 
   const [模式, set模式] = useState<"实时" | "拍照" | "预览">("实时");
@@ -217,32 +215,6 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
     }
   }, []);
 
-  /* ========== APP端：文件选择后识别（同样进预览对比） ========== */
-  const 处理App文件选择 = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) {
-        onClose();
-        return;
-      }
-      try {
-        const base64 =
-          file.size > 512 * 1024
-            ? await 压缩图片为Base64(file, { 最大宽度: 1024, 质量: 0.75 })
-            : await 文件转Base64(file);
-        /* 进预览模式：显示照片（自动裁切放大VIN部位），识别结果出来后可对比确认 */
-        设置预览图(base64);
-        await doOcr(base64);
-      } catch (err: unknown) {
-        setErrorMsg(err instanceof Error ? err.message : "识别失败");
-      }
-      /* 清空input，允许重复选择同一文件 */
-      if (文件输入Ref.current) {
-        文件输入Ref.current.value = "";
-      }
-    },
-    [doOcr, onClose, 设置预览图]
-  );
 
   /* ========== 浏览器环境：启动实时摄像头 ========== */
   const 启动实时摄像头 = useCallback(async () => {

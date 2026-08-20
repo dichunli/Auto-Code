@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { 生成配件系统码, 配件系统码前缀, 生成完整系统码, 提取系统码序号 } from "./systemCode";
+import { 生成配件系统码, 生成完整系统码, 提取系统码序号 } from "./systemCode";
 
 describe("系统码生成", () => {
   it("生成配件系统码包含PJ前缀和日期", () => {
