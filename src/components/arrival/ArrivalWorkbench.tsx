@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
 import BarcodeScanModal from "@/components/BarcodeScanModal";
+import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
-import { 处理到货明细, 确认到货单, 补录到货单信息 } from "@/app/arrivals/actions";
+import { 处理到货明细, 确认到货单, 补录到货单信息, 添加采购外货品, 删除采购外货品 } from "@/app/arrivals/actions";
 import { 撤销收货处理 } from "@/app/procurement/actions";
 
 /* 2026-08-20 待收货改造二期：到货验货工作台（手机/电脑共用，响应式）
@@ -414,6 +415,194 @@ function ArrivalHandleModal({
   );
 }
 
+/* ─── 补录采购单外货品弹窗（错发/多发了采购单上没有的货） ─── */
+const 外货品处理方式 = [
+  { code: "wrong_discard", 名称: "错发退回", 说明: "发错的货，现场退回供应商，不入库" },
+  { code: "excess_return", 名称: "多发退回", 说明: "多给的货，退回供应商，不入库" },
+  { code: "excess_paid", 名称: "折价留下", 说明: "留下入库，按配件最近采购价计入应付款" },
+  { code: "excess_free", 名称: "免费留下", 说明: "留下入库，零价作赠品" },
+];
+
+function ExtraItemModal({
+  仓库列表,
+  提交中,
+  onClose,
+  onSubmit,
+}: {
+  仓库列表: 仓库[];
+  提交中: boolean;
+  onClose: () => void;
+  onSubmit: (参数: {
+    名称: string;
+    配件id: string | null;
+    数量: number;
+    处理方式: string;
+    仓库id: string | null;
+    仓位: string | null;
+    照片: string[] | null;
+  }) => void;
+}) {
+  const [名称, set名称] = useState("");
+  const [配件id, set配件id] = useState<string | null>(null);
+  const [配件编码, set配件编码] = useState("");
+  const [数量, set数量] = useState("");
+  const [处理方式, set处理方式] = useState("");
+  const [仓库id, set仓库id] = useState("");
+  const [仓位, set仓位] = useState("");
+  const [照片, set照片] = useState<string[]>([]);
+
+  const 是留下 = 处理方式 === "excess_paid" || 处理方式 === "excess_free";
+
+  function 提交() {
+    if (!名称.trim()) {
+      alert("请填写货品名称");
+      return;
+    }
+    const qty = parseInt(数量, 10);
+    if (!数量.trim() || isNaN(qty) || qty <= 0) {
+      alert("数量必须是大于 0 的整数");
+      return;
+    }
+    if (!处理方式) {
+      alert("请选择处理方式");
+      return;
+    }
+    if (是留下 && !配件id) {
+      alert("留下的货品要入库，必须关联配件档案（编码搜索选择）");
+      return;
+    }
+    onSubmit({
+      名称: 名称.trim(),
+      配件id,
+      数量: qty,
+      处理方式,
+      仓库id: 仓库id || null,
+      仓位: 仓位.trim() || null,
+      照片: 照片.length > 0 ? 照片 : null,
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-xl border border-gray-200 w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
+          <h3 className="text-base font-semibold text-gray-900">补录采购单外货品</h3>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-xs text-gray-500">供应商错发/多发了采购单上没有的货，在这里补一条记录。</p>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">关联配件档案（留下入库时必选）</label>
+            <PartSearchDropdown
+              value={配件编码}
+              onChange={set配件编码}
+              onSelect={(part) => {
+                set配件id(part.id);
+                set配件编码(part.part_number || "");
+                set名称(part.part_names?.name || part.name || "");
+              }}
+              onCreateNew={() => alert("请先到「配件库存」新建配件档案，再回来选择")}
+              onClear={() => { set配件id(null); set配件编码(""); }}
+              placeholder="编码/条码搜索"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">货品名称 *</label>
+            <input
+              type="text"
+              value={名称}
+              onChange={(e) => set名称(e.target.value)}
+              placeholder="选了配件会自动带入，也可手填"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">数量 *</label>
+              <input
+                type="number"
+                min={1}
+                value={数量}
+                onChange={(e) => set数量(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">仓库</label>
+              <select
+                value={仓库id}
+                onChange={(e) => set仓库id(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+              >
+                <option value="">暂不指定</option>
+                {仓库列表.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">仓位</label>
+              <input
+                type="text"
+                value={仓位}
+                onChange={(e) => set仓位(e.target.value)}
+                placeholder="手填"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">处理方式 *</label>
+            <div className="space-y-2">
+              {外货品处理方式.map((opt) => (
+                <label key={opt.code} className="flex items-start gap-2 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="extraHandling"
+                    checked={处理方式 === opt.code}
+                    onChange={() => set处理方式(opt.code)}
+                    className="mt-0.5"
+                  />
+                  <div className="text-sm">
+                    <div className="font-medium text-gray-900">{opt.名称}</div>
+                    <div className="text-gray-500 text-xs mt-0.5">{opt.说明}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">货物照片</label>
+            <ImageUploader
+              onUpload={set照片}
+              existingImages={照片}
+              maxImages={5}
+              bucket="work-order-media"
+              folder="arrival-items"
+            />
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 sticky bottom-0 bg-white">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+          <button
+            type="button"
+            onClick={提交}
+            disabled={提交中}
+            className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {提交中 ? "保存中..." : "补录"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── 工作台主组件 ─── */
 const 状态徽章: Record<string, { 文字: string; 样式: string }> = {
   receiving: { 文字: "验货中", 样式: "bg-orange-100 text-orange-700" },
@@ -436,6 +625,7 @@ export function ArrivalWorkbench({
   const { 请求确认, 确认弹窗 } = useConfirm();
   const [提交中, set提交中] = useState<string | null>(null);
   const [处理中明细, set处理中明细] = useState<到货明细 | null>(null);
+  const [补录开, set补录开] = useState(false);
 
   /* 供应商销售单号/截图后补（规划决策1） */
   const [补录模式, set补录模式] = useState(false);
@@ -475,6 +665,38 @@ export function ArrivalWorkbench({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert("撤销失败: " + msg);
+    } finally {
+      set提交中(null);
+    }
+  }
+
+  async function 提交补录(参数: { 名称: string; 配件id: string | null; 数量: number; 处理方式: string; 仓库id: string | null; 仓位: string | null; 照片: string[] | null }) {
+    set提交中("extra");
+    try {
+      const res = await 添加采购外货品(
+        到货单.id, 参数.名称, 参数.配件id, 参数.数量, 参数.处理方式, 参数.仓库id, 参数.仓位, 参数.照片
+      );
+      if (!res.success) throw new Error(res.error || "补录失败");
+      set补录开(false);
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("补录失败: " + msg);
+    } finally {
+      set提交中(null);
+    }
+  }
+
+  async function 删除外行(明细: 到货明细) {
+    if (!(await 请求确认(`确认删除补录的「${明细.part_name_snapshot}」？`))) return;
+    set提交中(`del-${明细.id}`);
+    try {
+      const res = await 删除采购外货品(明细.id);
+      if (!res.success) throw new Error(res.error || "删除失败");
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("删除失败: " + msg);
     } finally {
       set提交中(null);
     }
@@ -608,8 +830,9 @@ export function ArrivalWorkbench({
               <div className="flex gap-2 mt-3">
                 {动作 ? (
                   /* 已处理的行不给"修改"：直接调收货函数会重复克隆补货分支，
-                     必须先撤销（复位到货明细+删补货分支）再重新验货 */
-                  明细.purchase_order_item_id && (
+                     必须先撤销（复位到货明细+删补货分支）再重新验货；
+                     采购单外货品没有采购行，走删除而非撤销 */
+                  明细.purchase_order_item_id ? (
                     <button
                       type="button"
                       onClick={() => 撤销(明细)}
@@ -617,6 +840,15 @@ export function ArrivalWorkbench({
                       className="px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-50"
                     >
                       {提交中 === `revoke-${明细.id}` ? "撤销中..." : "撤销"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => 删除外行(明细)}
+                      disabled={提交中 === `del-${明细.id}`}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      {提交中 === `del-${明细.id}` ? "删除中..." : "删除"}
                     </button>
                   )
                 ) : (
@@ -636,7 +868,14 @@ export function ArrivalWorkbench({
 
       {/* 底部操作 */}
       {验货中 && (
-        <div className="sticky bottom-0 py-3 bg-gray-50">
+        <div className="sticky bottom-0 py-3 bg-gray-50 space-y-2">
+          <button
+            type="button"
+            onClick={() => set补录开(true)}
+            className="w-full py-2.5 rounded-xl border border-dashed border-orange-300 text-orange-600 text-sm hover:bg-orange-50"
+          >
+            + 补录采购单外货品（错发/多发的货）
+          </button>
           <button
             type="button"
             onClick={确认到货}
@@ -664,6 +903,14 @@ export function ArrivalWorkbench({
           提交中={提交中 === `item-${处理中明细.id}`}
           onClose={() => set处理中明细(null)}
           onSubmit={提交处理}
+        />
+      )}
+      {补录开 && (
+        <ExtraItemModal
+          仓库列表={仓库列表}
+          提交中={提交中 === "extra"}
+          onClose={() => set补录开(false)}
+          onSubmit={提交补录}
         />
       )}
       {确认弹窗}
