@@ -136,6 +136,29 @@ export async function 批量创建运单(
   return { success: true, 结果 };
 }
 
+/* ─── 结清运费（三期：运费单独和物流公司结算，和供应商无关） ─── */
+export async function 结清运费(运单id: string): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!运单id) {
+    return { success: false, error: "缺少运单信息" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("logistics_waybills")
+    .update({ freight_settled: true, freight_settled_at: new Date().toISOString() })
+    .eq("id", 运单id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/logistics");
+  return { success: true };
+}
+
 /* ─── 电话命中弹问确认后：把该供应商所有未关联运单的待收货采购单挂到这张运单 ─── */
 export async function 关联运单到供应商待收货单(
   运单id: string,
