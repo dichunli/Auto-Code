@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { ImageUploader } from "@/components/ImageUploader";
+import { SupplierPhoneInput } from "@/components/SupplierPhoneInput";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { 批量创建运单, 关联运单到供应商待收货单 } from "@/app/logistics/actions";
@@ -121,12 +122,11 @@ function WaybillCard({
 
       <div>
         <label className="block text-xs text-gray-500 mb-1">发货人电话</label>
-        <input
-          type="tel"
+        {/* 逐字联想（2026-08-20 需求6/7）：输入即筛选，点选候选后电话+供应商名一起回填 */}
+        <SupplierPhoneInput
           value={行.phone}
-          onChange={(e) => onChange({ phone: e.target.value })}
-          placeholder="输入电话自动检索供应商"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          onChange={(电话) => onChange({ phone: 电话 })}
+          onSelect={(供应商) => onChange({ phone: 供应商.phone || "", supplier_name: 供应商.name })}
         />
         {行.supplier_name && (
           <p className="text-xs text-blue-600 mt-1">命中供应商：{行.supplier_name}</p>

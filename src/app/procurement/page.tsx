@@ -48,12 +48,13 @@ export default async function ProcurementPage({
 
   return (
     <div>
-      {/* 冻结页头：标题 + 按钮区 + Tab 行，滚动时固定不动 */}
+      {/* 冻结页头：标题 + 按钮区 + Tab 行，滚动时固定不动。
+          2026-08-20 需求8：手机端只做收货，副标题/导航按钮/Tab 卡片全部隐藏（md 起恢复显示） */}
       <StickyPageHeader>
-      <PageHeader title="采购管理" description="按阶段集中处理工单配件的采购流转" />
+      <PageHeader title="采购管理" description="按阶段集中处理工单配件的采购流转" descriptionClassName="hidden md:block" />
 
-      {/* 顶部按钮区 */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      {/* 顶部按钮区：手机端隐藏 */}
+      <div className="hidden md:flex flex-wrap items-center gap-2 mb-4">
         <div className="flex flex-wrap gap-2 flex-1">
         <Link
           href="/procurement/orders"
@@ -95,8 +96,10 @@ export default async function ProcurementPage({
         <BrowserNotificationToggle />
       </div>
 
-      {/* Tab 行 */}
-      <ProcurementTabBar currentTab={currentTab} />
+      {/* Tab 行：手机端隐藏，手机打开本页固定显示 URL tab 参数对应的内容 */}
+      <div className="hidden md:block">
+        <ProcurementTabBar currentTab={currentTab} />
+      </div>
       </StickyPageHeader>
 
       {/* 内容区 */}
