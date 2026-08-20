@@ -12,6 +12,7 @@ import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单 } from "@/app/procurement/actions";
 import { 关联运单到供应商待收货单 } from "@/app/logistics/actions";
+import { WaybillBatchForm } from "@/components/WaybillBatchForm";
 import { DocumentNameInput } from "./DocumentNameInput";
 
 interface PurchaseOrderItem {
@@ -116,16 +117,8 @@ export function PendingReceiptList() {
   const [wbPhotos, setWbPhotos] = useState<string[]>([]);
   const [wbCompanies, setWbCompanies] = useState<{ id: string; name: string; scopes?: string[] | null }[]>([]);
 
-  /* 批量创建运单弹窗（同物流页） */
+  /* 批量创建运单弹窗（分步流程组件 WaybillBatchForm，2026-08-20 起与手机端共用） */
   const [batchModalOpen, setBatchModalOpen] = useState(false);
-  const [batchCompanyId, setBatchCompanyId] = useState("");
-  const [batchTrackingNos, setBatchTrackingNos] = useState("");
-  const [batchCount, setBatchCount] = useState("");
-  const [batchSaving, setBatchSaving] = useState(false);
-
-  /* 批量创建结果弹窗 */
-  const [batchResultOpen, setBatchResultOpen] = useState(false);
-  const [batchCreatedList, setBatchCreatedList] = useState<string[]>([]);
 
   /* 运单电话变更时实时检索供应商 */
   useEffect(() => {
@@ -774,9 +767,6 @@ export function PendingReceiptList() {
 
   function openBatchCreateWaybillModal() {
     setBatchModalOpen(true);
-    setBatchTrackingNos("");
-    setBatchCount("");
-    setBatchCompanyId("");
     if (wbCompanies.length === 0) {
       supabase
         .from("logistics_companies")
@@ -785,55 +775,6 @@ export function PendingReceiptList() {
         .order("name", { ascending: true })
         .then(({ data }) => setWbCompanies(data || []));
     }
-  }
-
-  async function handleBatchCreate() {
-    if (!batchCompanyId) {
-      alert("请选择物流公司");
-      return;
-    }
-
-    const lines = batchTrackingNos
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-
-    let trackingNos: string[] = [];
-
-    if (lines.length > 0) {
-      trackingNos = lines;
-    } else {
-      const count = parseInt(batchCount, 10);
-      if (isNaN(count) || count <= 0) {
-        alert("请至少输入一个物流单号，或填写创建数量");
-        return;
-      }
-      for (let i = 0; i < count; i++) {
-        trackingNos.push(generateTrackingNo() + `-${i + 1}`);
-      }
-    }
-
-    setBatchSaving(true);
-    const company = wbCompanies.find((c) => c.id === batchCompanyId);
-    const records = trackingNos.map((trackingNo) => ({
-      tracking_no: trackingNo,
-      logistics_company_id: batchCompanyId || null,
-      logistics_company_name: company?.name || null,
-      status: "pending" as const,
-    }));
-
-    const { error } = await supabase.from("logistics_waybills").insert(records);
-    setBatchSaving(false);
-    if (error) {
-      alert("批量创建失败: " + error.message);
-      return;
-    }
-    setBatchModalOpen(false);
-    setBatchTrackingNos("");
-    setBatchCount("");
-    setBatchCompanyId("");
-    setBatchCreatedList(trackingNos);
-    setBatchResultOpen(true);
   }
 
   /*  standalone 创建运单(不关联任何采购单,创建后手动关联) */
@@ -1486,147 +1427,28 @@ export function PendingReceiptList() {
         </div>
       )}
 
-      {/* 批量创建运单弹窗 */}
+      {/* 批量创建运单弹窗（2026-08-20 改分步流程：选公司→数量→逐卡片填写，与手机端共用组件） */}
       {batchModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl border border-gray-200 p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">批量创建运单</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  物流公司 <span className="text-red-500">*</span>
-                </label>
-                <select
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={batchCompanyId}
-                  onChange={(e) => setBatchCompanyId(e.target.value)}
-                >
-                  <option value="">请选择</option>
-                  {wbCompanies.filter((c) => !c.scopes || c.scopes.length === 0 || c.scopes.includes("harbin")).length > 0 && (
-                    <optgroup label="哈市物流（哈市供应商）">
-                      {wbCompanies.filter((c) => !c.scopes || c.scopes.length === 0 || c.scopes.includes("harbin")).map((c) => (
-                        <option key={`harbin-${c.id}`} value={c.id}>{c.name}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {wbCompanies.filter((c) => c.scopes?.includes("outside")).length > 0 && (
-                    <optgroup label="外阜快递（外阜供应商）">
-                      {wbCompanies.filter((c) => c.scopes?.includes("outside")).map((c) => (
-                        <option key={`outside-${c.id}`} value={c.id}>{c.name}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  创建数量
-                  <span className="ml-2 text-xs text-gray-400">（不知道单号时填写，自动生成）</span>
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={batchCount}
-                  onChange={(e) => setBatchCount(e.target.value)}
-                  placeholder="例如：5"
-                />
-              </div>
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200" />
-                </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="px-2 bg-white text-gray-400">或者填写具体单号</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  物流单号
-                  <span className="ml-2 text-xs text-gray-400">（每行一个，优先使用）</span>
-                </label>
-                <textarea
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={6}
-                  value={batchTrackingNos}
-                  onChange={(e) => setBatchTrackingNos(e.target.value)}
-                  placeholder={`请输入物流单号，每行一个，例如：\nSF1234567890\nSF1234567891\nSF1234567892`}
-                />
-                {batchTrackingNos && (
-                  <div className="mt-1 text-xs text-gray-500">
-                    共 {batchTrackingNos.split("\n").filter((l) => l.trim().length > 0).length} 个单号
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 mt-6">
-              <button
-                type="button"
-                onClick={() => {
-                  setBatchModalOpen(false);
-                  setBatchTrackingNos("");
-                  setBatchCount("");
-                  setBatchCompanyId("");
-                }}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleBatchCreate}
-                disabled={batchSaving}
-                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-              >
-                {batchSaving ? "创建中..." : "确定创建"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 批量创建结果弹窗 */}
-      {batchResultOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-md max-h-[80vh] flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">批量创建成功</h3>
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
+              <h2 className="text-base font-semibold text-gray-900">批量创建运单</h2>
               <button
                 type="button"
-                onClick={() => setBatchResultOpen(false)}
+                onClick={() => setBatchModalOpen(false)}
                 className="text-gray-400 hover:text-gray-600 text-xl leading-none"
               >
                 ×
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-6">
-              <p className="text-sm text-gray-600 mb-3">共创建 {batchCreatedList.length} 个运单，请去物流页面补充电话、供货商等信息：</p>
-              <div className="space-y-2">
-                {batchCreatedList.map((no) => (
-                  <div
-                    key={no}
-                    className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-sm"
-                  >
-                    <span className="font-medium text-gray-900">{no}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setBatchResultOpen(false)}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                关闭
-              </button>
-              <Link
-                href="/logistics"
-                onClick={() => setBatchResultOpen(false)}
-                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-              >
-                去物流页面完善
-              </Link>
+            <div className="p-4 bg-gray-50">
+              <WaybillBatchForm
+                公司列表={wbCompanies}
+                提交完成后={() => {
+                  setBatchModalOpen(false);
+                  loadData();
+                }}
+              />
             </div>
           </div>
         </div>

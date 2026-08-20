@@ -156,6 +156,74 @@ export async function 确认到货入库(
   return { success: true, inbound_no: 结果.inbound_no };
 }
 
+/* ─── 补录采购单外货品（错发/多发了采购单上没有的货，现场手工补一条） ─── */
+export async function 添加采购外货品(
+  到货单id: string,
+  名称: string,
+  配件id: string | null,
+  数量: number,
+  处理方式: string,
+  仓库id: string | null,
+  仓位: string | null,
+  照片: string[] | null
+): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!名称.trim()) {
+    return { success: false, error: "请填写货品名称" };
+  }
+  if (!Number.isInteger(数量) || 数量 <= 0) {
+    return { success: false, error: "数量必须是大于 0 的整数" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("add_arrival_extra_item", {
+    p_arrival_id: 到货单id,
+    p_part_name: 名称.trim(),
+    p_part_id: 配件id || null,
+    p_received_qty: 数量,
+    p_handling: 处理方式,
+    p_warehouse_id: 仓库id || null,
+    p_location: 仓位?.trim() || null,
+    p_photos: 照片 && 照片.length > 0 ? 照片 : null,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "补录失败" };
+  }
+
+  刷新相关路径();
+  return { success: true };
+}
+
+/* ─── 删除补录错的采购单外货品行（仅验货中） ─── */
+export async function 删除采购外货品(到货明细id: string): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("delete_arrival_extra_item", {
+    p_arrival_item_id: 到货明细id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "删除失败" };
+  }
+
+  刷新相关路径();
+  return { success: true };
+}
+
 /* ─── 供应商销售单号/截图后补（规划决策1：单号选填、照片可后补） ─── */
 export async function 补录到货单信息(
   到货单id: string,

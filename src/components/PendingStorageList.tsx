@@ -11,6 +11,7 @@ import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 确认采购入库, 退回待收货 } from "@/app/procurement/actions";
 import { 确认到货入库 } from "@/app/arrivals/actions";
+import { useToast } from "@/components/Toast";
 import { DocumentNameInput } from "./DocumentNameInput";
 
 interface PurchaseOrderItem {
@@ -94,6 +95,7 @@ interface InboundItemForm {
 export function PendingStorageList() {
   const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
+  const { showToast } = useToast();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -158,20 +160,20 @@ export function PendingStorageList() {
     if (!到货入库弹窗) return;
     const 运费 = 到货运费.trim() === "" ? 0 : parseFloat(到货运费);
     if (isNaN(运费) || 运费 < 0) {
-      alert("运费金额无效");
+      showToast("运费金额无效", "warning");
       return;
     }
     setSubmitting(`arrival-${到货入库弹窗.id}`);
     try {
       const res = await 确认到货入库(到货入库弹窗.id, 运费);
       if (!res.success) throw new Error(res.error || "确认入库失败");
-      alert(`入库完成，入库单号 ${res.inbound_no}`);
+      showToast(`入库完成，入库单号 ${res.inbound_no}`);
       set到货入库弹窗(null);
       set到货运费("");
       loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("确认入库失败: " + msg);
+      showToast("确认入库失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }

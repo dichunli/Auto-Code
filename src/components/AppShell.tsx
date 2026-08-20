@@ -5,6 +5,7 @@ import { useEffect, useState, Suspense } from "react";
 import { cn } from "@/lib/utils";
 import { Navbar } from "./Navbar";
 import { PriceVisibilityProvider, usePriceVisibility } from "./PriceVisibilityContext";
+import { ToastProvider } from "./Toast";
 import { 确保会话就绪, 记录登录健康检查 } from "@/lib/supabase/client";
 
 function KeyboardHandler(): null {
@@ -61,24 +62,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <PriceVisibilityProvider>
-      <KeyboardHandler />
-      <Suspense fallback={null}>
-        {!isLogin && <Navbar />}
-      </Suspense>
-      <main
-        className={cn(
-          "flex-1 overflow-auto px-4 pb-6 sm:px-6 lg:px-8",
-          isLogin ? "pt-0" : "pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-6"
-        )}
-      >
-        {会话就绪 ? (
-          children
-        ) : (
-          <div className="flex items-center justify-center py-20 text-sm text-gray-400">
-            正在加载...
-          </div>
-        )}
-      </main>
+      <ToastProvider>
+        <KeyboardHandler />
+        <Suspense fallback={null}>
+          {!isLogin && <Navbar />}
+        </Suspense>
+        <main
+          className={cn(
+            "flex-1 overflow-auto px-4 pb-6 sm:px-6 lg:px-8",
+            isLogin ? "pt-0" : "pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-6"
+          )}
+        >
+          {会话就绪 ? (
+            children
+          ) : (
+            <div className="flex items-center justify-center py-20 text-sm text-gray-400">
+              正在加载...
+            </div>
+          )}
+        </main>
+      </ToastProvider>
     </PriceVisibilityProvider>
   );
 }

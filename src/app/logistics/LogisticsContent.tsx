@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 更新供应商电话 } from "@/app/suppliers/actions";
 import { 结清运费 } from "@/app/logistics/actions";
+import { useToast } from "@/components/Toast";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
@@ -110,6 +111,8 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
   const [inlinePhoneHints, setInlinePhoneHints] = useState<Record<string, string>>({});
   /* 运费结清中（三期：运费单独和物流公司结算） */
   const [settlingId, setSettlingId] = useState<string | null>(null);
+  /* 各物流公司未结运费余额（debit 应付 − payment 已付） */
+  const [运费余额, set运费余额] = useState<Record<string, number>>({});
 
   /* 单个创建运单弹窗 */
   const [singleModalOpen, setSingleModalOpen] = useState(false);
@@ -128,6 +131,7 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
   const phoneLookupLock = useRef(false);
   const 首次挂载 = useRef(true);
   const { 请求确认, 确认弹窗 } = useConfirm();
+  const { showToast } = useToast();
 
   /* Tab切换和筛选变化时重新加载（跳过首次挂载，数据已从服务端预加载） */
   useEffect(() => {
@@ -258,6 +262,17 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
       alert("加载失败: " + error.message);
     }
     setCompanies((data as LogisticsCompany[]) || []);
+
+    /* 未结运费余额：应付(debit) − 已付(payment)，按物流公司汇总 */
+    const { data: txs } = await supabase
+      .from("logistics_transactions")
+      .select("logistics_company_id, transaction_type, amount");
+    const 余额: Record<string, number> = {};
+    for (const t of (txs || []) as { logistics_company_id: string; transaction_type: string; amount: number }[]) {
+      const 符号 = t.transaction_type === "debit" ? 1 : -1;
+      余额[t.logistics_company_id] = (余额[t.logistics_company_id] || 0) + 符号 * Number(t.amount || 0);
+    }
+    set运费余额(余额);
     setCompanyLoading(false);
   }
 
@@ -316,7 +331,7 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
       loadWaybills();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("结清运费失败: " + msg);
+      showToast("结清运费失败: " + msg, "error");
     } finally {
       setSettlingId(null);
     }
@@ -995,6 +1010,7 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
                   <th className="px-4 py-3 text-left font-medium text-gray-500">电话</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">查询链接</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">备注</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-500">未结运费</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">创建时间</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500">操作</th>
                 </tr>
@@ -1034,6 +1050,16 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-500 max-w-xs truncate">{c.notes || "-"}</td>
+                    <td className="px-4 py-3 text-right">
+                      {(() => {
+                        const 余额 = 运费余额[c.id] || 0;
+                        return (
+                          <span className={余额 > 0 ? "text-red-600 font-medium" : "text-gray-400"}>
+                            {formatCurrency(余额)}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="px-4 py-3 text-gray-500">{formatDate(c.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">

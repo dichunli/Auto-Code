@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { ImageUploader } from "@/components/ImageUploader";
 import { 建到货确认单 } from "@/app/arrivals/actions";
+import { useToast } from "@/components/Toast";
 
 /* 2026-08-20 待收货改造二期：建到货确认单表单（手机/电脑共用）
    选供应商（可挂运单）→ 数据库自动拉入该供应商所有在途采购行 */
@@ -38,6 +39,7 @@ export function ArrivalCreateForm({ 工作台前缀 }: { 工作台前缀: string
   const [供应商单号, set供应商单号] = useState("");
   const [照片, set照片] = useState<string[]>([]);
   const [提交中, set提交中] = useState(false);
+  const { showToast } = useToast();
 
   /* 供应商列表（带搜索） */
   useEffect(() => {
@@ -82,7 +84,7 @@ export function ArrivalCreateForm({ 工作台前缀 }: { 工作台前缀: string
 
   async function 提交() {
     if (!供应商id) {
-      alert("请选择供应商");
+      showToast("请选择供应商", "warning");
       return;
     }
     set提交中(true);
@@ -94,12 +96,12 @@ export function ArrivalCreateForm({ 工作台前缀 }: { 工作台前缀: string
         照片.length > 0 ? 照片 : null
       );
       if (!res.success) throw new Error(res.error || "创建到货单失败");
-      alert(`到货单 ${res.receipt_no} 创建成功，已拉入 ${res.item_count} 条在途采购行，请逐件验货`);
+      showToast(`到货单 ${res.receipt_no} 创建成功，已拉入 ${res.item_count} 条在途采购行，请逐件验货`);
       router.push(工作台前缀 + res.arrival_id);
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("创建到货单失败: " + msg);
+      showToast("创建到货单失败: " + msg, "error");
     } finally {
       set提交中(false);
     }
