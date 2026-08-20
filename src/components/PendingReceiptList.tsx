@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { PriceValue } from "@/components/PriceVisibilityContext";
+import { PriceValue, usePriceVisibility } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { ImageUploader } from "@/components/ImageUploader";
 import { useConfirm } from "./ConfirmDialog";
@@ -85,6 +85,8 @@ function resolveImageUrl(path: string): string {
 export function PendingReceiptList() {
   const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
+  /* 价格显示开关：仅 admin/boss/warehouse 可见可用（其余角色 Context 层面已强制隐藏价格） */
+  const { showPrices, canTogglePrices, togglePrices } = usePriceVisibility();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -868,6 +870,26 @@ export function PendingReceiptList() {
           </div>
         )}
         <div className="flex-1" />
+        {canTogglePrices && (
+          <button
+            type="button"
+            onClick={togglePrices}
+            title={showPrices ? "点击隐藏价格" : "点击显示价格"}
+            className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 flex items-center gap-1"
+          >
+            {showPrices ? (
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+              </svg>
+            )}
+            {showPrices ? "隐藏价格" : "显示价格"}
+          </button>
+        )}
         {selectedOrderIds.size > 0 && (
           <span className="text-xs text-blue-600">已选 {selectedOrderIds.size} 张</span>
         )}
