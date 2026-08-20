@@ -686,3 +686,32 @@ export async function 删除采购明细(采购单id: string, 明细id: string):
   revalidatePath("/procurement");
   return { success: true };
 }
+
+/* ─── 单个配件撤销退回待采购(2026-08-20):配件级版"撤销整单" ───
+ * 收货前发现某个配件这次不需要买了：工单行 is_purchased 回 false(回待采购列表)、
+ * 暂存件回暂存表、删采购明细；明细删空时整单标 cancelled 留档(只废不删)。
+ * 与"作废"(删除采购明细,上面)的区别：撤销=配件回待采购可重新组单，作废=彻底删除。 */
+export async function 撤销采购明细退回待采购(采购单id: string, 明细id: string): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("revoke_purchase_item_to_pending", {
+    p_order_id: 采购单id,
+    p_item_id: 明细id,
+    p_operator_id: user.id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "撤销失败" };
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
