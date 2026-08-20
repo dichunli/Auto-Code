@@ -403,6 +403,18 @@ export function PendingReceiptList() {
     }
   }
 
+  /* ------------------ 一键待退货（2026-08-20 一期⑤） ------------------
+     货不对时不用进收货弹窗点三步，一键打「错发退货」标签：
+     不入库、直接生成待退货记录（同收货弹窗里"错发→不需要了"分支） */
+
+  async function handleQuickReturn(order: PurchaseOrder, item: PurchaseOrderItem) {
+    if (!(await 请求确认(`确认把「${item.name}」标记为错发待退货？不会入库，直接生成待退货记录。`))) return;
+    await applyAction(order, item, {
+      handle_action: "wrong_discard",
+      received_qty: 0,
+    });
+  }
+
   /* ------------------ 撤销收货 ------------------ */
 
   async function handleRevokeItem(order: PurchaseOrder, item: PurchaseOrderItem) {
@@ -1148,15 +1160,27 @@ export function PendingReceiptList() {
                                       {submitting === `revoke-${item.id}` ? "撤销中..." : "撤销"}
                                     </button>
                                   ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => openReceiveModal(order, item)}
-                                      disabled={!canConfirm || submitting === `item-${item.id}`}
-                                      title={!canConfirm ? "外阜供货商需先关联运单" : undefined}
-                                      className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
-                                    >
-                                      收货
-                                    </button>
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => openReceiveModal(order, item)}
+                                        disabled={!canConfirm || submitting === `item-${item.id}`}
+                                        title={!canConfirm ? "外阜供货商需先关联运单" : undefined}
+                                        className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+                                      >
+                                        收货
+                                      </button>
+                                      {/* 一键待退货：货不对时直接打错发退货标签，不用进弹窗点三步 */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleQuickReturn(order, item)}
+                                        disabled={!canConfirm || submitting === `item-${item.id}`}
+                                        title="货不对，直接标记错发退货（不入库）"
+                                        className="px-2 py-1 text-xs rounded border border-orange-300 text-orange-600 bg-orange-50 hover:bg-orange-100 disabled:opacity-50 whitespace-nowrap"
+                                      >
+                                        待退货
+                                      </button>
+                                    </>
                                   )}
                                   <button
                                     type="button"
