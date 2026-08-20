@@ -916,6 +916,12 @@ export function PendingReceiptList() {
           </div>
         )}
         <div className="flex-1" />
+        <Link
+          href="/procurement/arrivals"
+          className="px-3 py-1 text-xs rounded border border-green-300 text-green-700 bg-green-50 hover:bg-green-100"
+        >
+          到货确认单（新流程）
+        </Link>
         {canTogglePrices && (
           <button
             type="button"
