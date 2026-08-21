@@ -31,13 +31,19 @@ export interface 入库明细输入 {
   location: string;
   notes: string;
   is_excess: boolean;
+  /* 销售单口径（2026-08-21）：自定义入库价（可空=采购明细价）、手动运费（可空=自动分摊） */
+  unit_cost?: number | null;
+  freight_alloc?: number | null;
 }
 
 /* ─── 确认入库:一个事务写 8 张表,失败整体回滚 ─── */
 export async function 确认采购入库(
   采购单id: string,
   明细: 入库明细输入[],
-  运费: number
+  运费: number,
+  抹零: number | null = null,
+  销售单单号: string | null = null,
+  销售单金额: number | null = null
 ): Promise<操作结果 & { inbound_no?: string }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
@@ -62,6 +68,9 @@ export async function 确认采购入库(
     p_items: 明细,
     p_freight_amount: 运费 || 0,
     p_operator_id: user.id,
+    p_discount_amount: 抹零,
+    p_supplier_order_no: 销售单单号,
+    p_supplier_order_amount: 销售单金额,
   });
   if (error) {
     return { success: false, error: error.message };

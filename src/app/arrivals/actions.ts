@@ -128,7 +128,8 @@ export async function 确认到货单(到货单id: string): Promise<操作结果
 /* ─── 确认入库：纯账务收尾（入库单+应付款+运费分摊），不再动库存 ─── */
 export async function 确认到货入库(
   到货单id: string,
-  运费: number
+  运费: number,
+  抹零: number | null = null
 ): Promise<操作结果 & { inbound_no?: string }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
@@ -143,6 +144,7 @@ export async function 确认到货入库(
     p_arrival_id: 到货单id,
     p_freight_amount: 运费 || 0,
     p_operator_id: user.id,
+    p_discount_amount: 抹零,
   });
   if (error) {
     return { success: false, error: error.message };

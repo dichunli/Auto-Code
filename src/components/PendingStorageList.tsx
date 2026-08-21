@@ -12,6 +12,7 @@ import { usePartLinking } from "./usePartLinking";
 import { 确认采购入库, 退回待收货 } from "@/app/procurement/actions";
 import { 确认到货入库 } from "@/app/arrivals/actions";
 import { useToast } from "@/components/Toast";
+import { ImageUploader } from "@/components/ImageUploader";
 import { DocumentNameInput } from "./DocumentNameInput";
 
 interface PurchaseOrderItem {
@@ -42,6 +43,9 @@ interface PurchaseOrderItem {
 interface 到货单 {
   id: string;
   receipt_no: string;
+  /* 供应商销售单（2026-08-21）：建单/验货时已录的带过来 */
+  supplier_order_no: string | null;
+  supplier_order_amount: number | null;
   suppliers: { name: string } | null;
   logistics_waybills: { tracking_no: string; freight_amount: number | null } | null;
   arrival_receipt_items: { count: number }[];
@@ -56,6 +60,10 @@ interface PurchaseOrder {
   notes: string | null;
   created_at: string;
   waybill_id: string | null;
+  /* 供应商销售单（2026-08-21） */
+  supplier_order_no: string | null;
+  supplier_order_amount: number | null;
+  supplier_slip_photos: string[] | null;
   suppliers: { id: string; name: string } | null;
   purchase_order_items: PurchaseOrderItem[];
 }
@@ -90,6 +98,10 @@ interface InboundItemForm {
   warehouseId: string;
   location: string;
   isExcess: boolean;
+  /* 入库价（2026-08-21 销售单口径）：字符串存储提交时转 number，默认采购价可对销售单改 */
+  unitCost: string;
+  /* 手动指定该行运费（大件低值商品）；空字符串=参与按金额占比自动分摊 */
+  freightManual: string;
 }
 
 export function PendingStorageList() {
@@ -109,10 +121,18 @@ export function PendingStorageList() {
   const [freightAmount, setFreightAmount] = useState("");
   const [waybillInfo, setWaybillInfo] = useState<{ logistics_company_name: string | null; tracking_no: string | null; freight_amount: number | null } | null>(null);
 
+  /* 供应商销售单（2026-08-21）：入库时对单——单号/总金额/照片/优惠抹零 */
+  const [slipNo, setSlipNo] = useState("");
+  const [slipAmount, setSlipAmount] = useState("");
+  const [slipPhotos, setSlipPhotos] = useState<string[]>([]);
+  const [discountAmount, setDiscountAmount] = useState("");
+
   /* 到货确认单（二期新流程）：已确认到货、待账务入库 */
   const [到货单列表, set到货单列表] = useState<到货单[]>([]);
   const [到货入库弹窗, set到货入库弹窗] = useState<到货单 | null>(null);
   const [到货运费, set到货运费] = useState("");
+  /* 到货入库抹零（2026-08-21 销售单口径） */
+  const [到货抹零, set到货抹零] = useState("");
 
   async function loadData() {
     setLoading(true);
@@ -121,6 +141,7 @@ export function PendingStorageList() {
       .select(
         `
         id, order_no, supplier_id, status, total_amount, notes, created_at,
+        supplier_order_no, supplier_order_amount, supplier_slip_photos,
         suppliers(id, name),
         purchase_order_items(
           id, name, brand, specification, quantity, unit_cost, received_qty,
@@ -148,7 +169,7 @@ export function PendingStorageList() {
     /* 新流程：已确认到货、待账务入库的到货单 */
     const { data: 到货单 } = await supabase
       .from("arrival_receipts")
-      .select("id, receipt_no, suppliers(name), logistics_waybills(tracking_no, freight_amount), arrival_receipt_items(count)")
+      .select("id, receipt_no, supplier_order_no, supplier_order_amount, suppliers(name), logistics_waybills(tracking_no, freight_amount), arrival_receipt_items(count)")
       .eq("status", "confirmed")
       .order("confirmed_at", { ascending: false });
     set到货单列表(((到货单 || []) as unknown) as 到货单[]);
@@ -163,13 +184,19 @@ export function PendingStorageList() {
       showToast("运费金额无效", "warning");
       return;
     }
+    const 抹零 = 到货抹零.trim() === "" ? null : parseFloat(到货抹零);
+    if (抹零 !== null && (isNaN(抹零) || 抹零 < 0)) {
+      showToast("优惠抹零必须是非负数字", "warning");
+      return;
+    }
     setSubmitting(`arrival-${到货入库弹窗.id}`);
     try {
-      const res = await 确认到货入库(到货入库弹窗.id, 运费);
+      const res = await 确认到货入库(到货入库弹窗.id, 运费, 抹零);
       if (!res.success) throw new Error(res.error || "确认入库失败");
       showToast(`入库完成，入库单号 ${res.inbound_no}`);
       set到货入库弹窗(null);
       set到货运费("");
+      set到货抹零("");
       loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -203,6 +230,8 @@ export function PendingStorageList() {
               warehouseId: "",
               location: "",
               isExcess: false,
+              unitCost: it.unit_cost != null ? String(it.unit_cost) : "",
+              freightManual: "",
             },
             {
               id: `form-${formIdCounter++}`,
@@ -213,6 +242,8 @@ export function PendingStorageList() {
               warehouseId: "",
               location: "",
               isExcess: true,
+              unitCost: it.unit_cost != null ? String(it.unit_cost) : "",
+              freightManual: "",
             },
           ];
         }
@@ -226,6 +257,8 @@ export function PendingStorageList() {
             warehouseId: "",
             location: "",
             isExcess: false,
+            unitCost: it.unit_cost != null ? String(it.unit_cost) : "",
+            freightManual: "",
           },
         ];
       });
@@ -254,6 +287,11 @@ export function PendingStorageList() {
     }
 
     setInboundModalOrder(order);
+    /* 销售单信息从采购单带出（收货时已录的显示，可补可改） */
+    setSlipNo(order.supplier_order_no || "");
+    setSlipAmount(order.supplier_order_amount != null ? String(order.supplier_order_amount) : "");
+    setSlipPhotos(order.supplier_slip_photos || []);
+    setDiscountAmount("");
     setInboundItems(forms);
     setInboundModalOpen(true);
   }
@@ -264,28 +302,62 @@ export function PendingStorageList() {
     setInboundItems([]);
     setWaybillInfo(null);
     setFreightAmount("");
+    setSlipNo("");
+    setSlipAmount("");
+    setSlipPhotos([]);
+    setDiscountAmount("");
   }
 
-  /* 计算分摊后的成本价（多发退货部分不参与分摊） */
+  /* 计算分摊后的成本（2026-08-21 新口径）：
+     手动行（freightManual 非空）用指定金额锁定；
+     剩余运费 = 总运费 − 手动合计，由其余非赠品行按 行金额(数量×入库价) 占比分摊 */
   const allocatedCosts = useMemo(() => {
     const totalFreight = parseFloat(freightAmount) || 0;
-    const totalQty = inboundItems
-      .filter((f) => !f.isExcess)
-      .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0), 0);
-    if (totalFreight <= 0 || totalQty <= 0) {
-      return inboundItems.map(() => 0);
-    }
-    const perUnit = totalFreight / totalQty;
+    const 有效行 = inboundItems.filter((f) => !f.isExcess);
+    const 手动合计 = 有效行.reduce(
+      (sum, f) => sum + (f.freightManual.trim() === "" ? 0 : parseFloat(f.freightManual) || 0),
+      0
+    );
+    const 剩余 = Math.max(0, totalFreight - 手动合计);
+    const 自动行金额合计 = 有效行
+      .filter((f) => f.freightManual.trim() === "")
+      .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0), 0);
+
     return inboundItems.map((f) => {
       if (f.isExcess) return 0;
-      const q = parseInt(f.quantity, 10) || 0;
-      return Math.round(perUnit * q * 100) / 100;
+      if (f.freightManual.trim() !== "") return parseFloat(f.freightManual) || 0;
+      if (自动行金额合计 <= 0) return 0;
+      const 行金额 = (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0);
+      return Math.round((剩余 * 行金额 / 自动行金额合计) * 100) / 100;
     });
   }, [inboundItems, freightAmount]);
 
   async function handleConfirmInbound() {
     if (!inboundModalOrder) return;
     const orderId = inboundModalOrder.id;
+
+    /* 销售单口径（2026-08-21）：填了总金额时前端先自检，不平给出明确提示（服务端还会再拦一次） */
+    const 销售单金额 = slipAmount.trim() === "" ? null : parseFloat(slipAmount);
+    const 抹零 = discountAmount.trim() === "" ? 0 : parseFloat(discountAmount);
+    if (销售单金额 !== null && (isNaN(销售单金额) || 销售单金额 < 0)) {
+      alert("销售单总金额无效");
+      return;
+    }
+    if (discountAmount.trim() !== "" && (isNaN(抹零) || 抹零 < 0)) {
+      alert("优惠抹零必须是非负数字");
+      return;
+    }
+    const 货款合计 = inboundItems
+      .filter((f) => !f.isExcess)
+      .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0), 0);
+    if (销售单金额 !== null && Math.abs(货款合计 - 抹零 - 销售单金额) > 0.01) {
+      alert(
+        `入库货款合计 ¥${货款合计.toFixed(2)} − 抹零 ¥${抹零.toFixed(2)} ≠ 销售单总金额 ¥${销售单金额.toFixed(2)}，` +
+        `差 ¥${(货款合计 - 抹零 - 销售单金额).toFixed(2)}。\n请逐行核对入库单价，或在「优惠抹零」填入差额。`
+      );
+      return;
+    }
+
     setSubmitting(`complete-${orderId}`);
     try {
       /* 多表写入已收编进数据库事务函数 complete_purchase_inbound:
@@ -298,8 +370,18 @@ export function PendingStorageList() {
         location: f.location,
         notes: f.notes,
         is_excess: f.isExcess,
+        /* 销售单口径：入库价 + 手动运费（空=自动分摊） */
+        unit_cost: f.unitCost.trim() === "" ? null : parseFloat(f.unitCost),
+        freight_alloc: f.freightManual.trim() === "" ? null : parseFloat(f.freightManual),
       }));
-      const res = await 确认采购入库(orderId, 明细, parseFloat(freightAmount) || 0);
+      const res = await 确认采购入库(
+        orderId,
+        明细,
+        parseFloat(freightAmount) || 0,
+        抹零 || null,
+        slipNo.trim() || null,
+        销售单金额
+      );
       if (!res.success) {
         alert("入库失败: " + (res.error || "未知错误"));
         return;
@@ -695,6 +777,74 @@ export function PendingStorageList() {
               </button>
             </div>
             <div className="p-6 space-y-4">
+              {/* 供应商销售单对照区（2026-08-21 按销售单执行入库）：
+                  填了总金额后，货款合计−抹零≠总金额 会被前后端双重拦截 */}
+              <div className="bg-blue-50/60 border border-blue-100 rounded-lg p-3 space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium text-blue-800">供应商销售单</span>
+                  <input
+                    type="text"
+                    value={slipNo}
+                    onChange={(e) => setSlipNo(e.target.value)}
+                    placeholder="销售单号"
+                    className="w-36 px-2 py-1 text-xs rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
+                  />
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-gray-600">总金额(¥):</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={slipAmount}
+                      onChange={(e) => setSlipAmount(e.target.value)}
+                      placeholder="不填不校验"
+                      className="w-24 px-2 py-1 text-xs text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-gray-600">优惠抹零(¥):</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={discountAmount}
+                      onChange={(e) => setDiscountAmount(e.target.value)}
+                      placeholder="0.00"
+                      title="供应商少收的钱（减项）：明细合计−抹零=销售单总金额"
+                      className="w-20 px-2 py-1 text-xs text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
+                    />
+                  </div>
+                </div>
+                <ImageUploader
+                  onUpload={setSlipPhotos}
+                  existingImages={slipPhotos}
+                  maxImages={3}
+                  bucket="work-order-media"
+                  folder="supplier-slips"
+                />
+                {/* 金额校验条：实时显示 货款合计−抹零 与 销售单总金额 是否对平 */}
+                {slipAmount.trim() !== "" && (
+                  (() => {
+                    const 货款 = inboundItems
+                      .filter((f) => !f.isExcess)
+                      .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0), 0);
+                    const 抹零数 = parseFloat(discountAmount) || 0;
+                    const 单额 = parseFloat(slipAmount) || 0;
+                    const 差 = Math.round((货款 - 抹零数 - 单额) * 100) / 100;
+                    return Math.abs(差) <= 0.01 ? (
+                      <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1">
+                        ✓ 对平：货款 ¥{货款.toFixed(2)} − 抹零 ¥{抹零数.toFixed(2)} = 销售单 ¥{单额.toFixed(2)}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">
+                        ✗ 不平：货款 ¥{货款.toFixed(2)} − 抹零 ¥{抹零数.toFixed(2)} = ¥{(货款 - 抹零数).toFixed(2)}，
+                        与销售单 ¥{单额.toFixed(2)} 差 ¥{差.toFixed(2)}（{差 > 0 ? "货款多" : "货款少"}）——请改入库单价或填抹零
+                      </p>
+                    );
+                  })()
+                )}
+              </div>
+
               {/* 运费信息 */}
               <div className="bg-gray-50 rounded-lg p-3 flex items-center gap-4 flex-wrap">
                 {waybillInfo ? (
@@ -726,8 +876,8 @@ export function PendingStorageList() {
                       <th className="px-3 py-2 text-left font-medium text-gray-500">商品名称</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">编码</th>
                       <th className="px-3 py-2 text-right font-medium text-gray-500 w-16">数量</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">单价</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">分摊运费</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">入库价</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-24">分摊运费</th>
                       <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">成本价</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">批次号</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">仓库</th>
@@ -738,7 +888,9 @@ export function PendingStorageList() {
                   <tbody className="divide-y divide-gray-100">
                     {inboundItems.map((f, idx) => {
                       const qty = parseInt(f.quantity, 10) || 0;
-                      const baseCost = qty * (f.item.unit_cost || 0);
+                      /* 销售单口径（2026-08-21）：入库价可改；成本价=数量×入库价+分摊运费 */
+                      const 入库单价 = parseFloat(f.unitCost) || 0;
+                      const baseCost = qty * 入库单价;
                       const alloc = allocatedCosts[idx] || 0;
                       const totalCost = baseCost + alloc;
                       return (
@@ -772,11 +924,58 @@ export function PendingStorageList() {
                               />
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right text-gray-600">
-                            {f.item.unit_cost != null ? `¥${f.item.unit_cost}` : "-"}
+                          {/* 入库价（可对着销售单改）；默认采购价 */}
+                          <td className="px-3 py-2">
+                            {f.isExcess ? (
+                              <span className="block text-right text-gray-500 text-sm">-</span>
+                            ) : (
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={f.unitCost}
+                                onChange={(e) => {
+                                  setInboundItems((prev) =>
+                                    prev.map((p) =>
+                                      p.id === f.id ? { ...p, unitCost: e.target.value } : p
+                                    )
+                                  );
+                                }}
+                                title="默认采购价；供应商销售单价格不同时改这里"
+                                className={`w-full px-2 py-1 text-xs text-right rounded border focus:outline-none focus:border-blue-400 ${
+                                  f.unitCost !== (f.item.unit_cost != null ? String(f.item.unit_cost) : "")
+                                    ? "border-amber-400 bg-amber-50"
+                                    : "border-gray-200"
+                                }`}
+                              />
+                            )}
                           </td>
-                          <td className="px-3 py-2 text-right text-gray-600">
-                            {alloc > 0 ? `¥${alloc.toFixed(2)}` : "-"}
+                          {/* 分摊运费：默认按金额占比自动分摊（灰字）；手动输入则锁定该行（大件低值商品） */}
+                          <td className="px-3 py-2">
+                            {f.isExcess ? (
+                              <span className="block text-right text-gray-400 text-xs">-</span>
+                            ) : (
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={f.freightManual}
+                                onChange={(e) => {
+                                  setInboundItems((prev) =>
+                                    prev.map((p) =>
+                                      p.id === f.id ? { ...p, freightManual: e.target.value } : p
+                                    )
+                                  );
+                                }}
+                                placeholder={alloc > 0 ? alloc.toFixed(2) : "0"}
+                                title="默认按金额占比自动分摊；手动输入金额可锁定该行运费，其余行分摊剩余"
+                                className={`w-full px-2 py-1 text-xs text-right rounded border focus:outline-none focus:border-blue-400 ${
+                                  f.freightManual.trim() !== ""
+                                    ? "border-amber-400 bg-amber-50 text-gray-900"
+                                    : "border-gray-200 text-gray-500"
+                                }`}
+                              />
+                            )}
                           </td>
                           <td className="px-3 py-2 text-right text-gray-900 font-medium">
                             {totalCost > 0 ? `¥${totalCost.toFixed(2)}` : "-"}
@@ -880,7 +1079,7 @@ export function PendingStorageList() {
                           .filter((f) => !f.isExcess)
                           .reduce(
                             (sum, f) =>
-                              sum + (parseInt(f.quantity, 10) || 0) * (f.item.unit_cost || 0),
+                              sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0),
                             0
                           )
                           .toFixed(2)}
@@ -895,7 +1094,7 @@ export function PendingStorageList() {
                             .filter((f) => !f.isExcess)
                             .reduce(
                               (sum, f) =>
-                                sum + (parseInt(f.quantity, 10) || 0) * (f.item.unit_cost || 0),
+                                sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0),
                               0
                             ) + allocatedCosts.reduce((sum, a) => sum + a, 0)
                         ).toFixed(2)}
@@ -982,6 +1181,13 @@ export function PendingStorageList() {
               <p className="text-xs text-gray-500">
                 库存已在确认到货时上架，本步只生成入库单、记应付款和运费分摊。
               </p>
+              {/* 销售单信息（2026-08-21）：验货时已录的显示出来；填了总金额则货款−抹零须对平 */}
+              {到货入库弹窗.supplier_order_no && (
+                <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded px-2 py-1.5">
+                  供应商销售单：{到货入库弹窗.supplier_order_no}
+                  {到货入库弹窗.supplier_order_amount != null && ` · 总金额 ¥${到货入库弹窗.supplier_order_amount}`}
+                </p>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">运费金额(¥)</label>
                 <input
@@ -993,6 +1199,23 @@ export function PendingStorageList() {
                   placeholder="0"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">优惠抹零(¥，可选)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  value={到货抹零}
+                  onChange={(e) => set到货抹零(e.target.value)}
+                  placeholder="供应商少收的零头"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+                {到货入库弹窗.supplier_order_amount != null && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    已录销售单总金额 ¥{到货入库弹窗.supplier_order_amount}：货款合计 − 抹零 须等于它，否则入库会被拦截
+                  </p>
+                )}
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
