@@ -11,12 +11,12 @@ export default async function MobileReceivingOrdersPage() {
     supabase
       .from("purchase_orders")
       .select(`
-        id, order_no, status, created_at, waybill_id,
+        id, order_no, status, created_at, waybill_id, waybill_exempt,
         suppliers(name, region),
         logistics_waybills:waybill_id(id, tracking_no, logistics_company_name, logistics_companies(name)),
         purchase_order_items(
           id, name, brand, specification, quantity, unit, notes, photos,
-          part_id, part_number, supplier_part_name, handle_action
+          part_id, part_number, supplier_part_name, handle_action, waybill_id, waybill_exempt
         )
       `)
       .in("status", ["submitted", "approved", "partial_received"])
