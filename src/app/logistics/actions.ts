@@ -162,6 +162,34 @@ export async function 结清运费(运单id: string): Promise<操作结果> {
   return { success: true };
 }
 
+/* ─── 把运单关联到指定采购单（手机待收货管理页用：单张或批量） ─── */
+export async function 关联运单到采购单(
+  运单id: string,
+  采购单ids: string[]
+): Promise<操作结果 & { count?: number }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!运单id || !采购单ids || 采购单ids.length === 0) {
+    return { success: false, error: "缺少运单或采购单信息" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("purchase_orders")
+    .update({ waybill_id: 运单id })
+    .in("id", 采购单ids)
+    .select("id");
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/procurement");
+  revalidatePath("/m/receiving");
+  return { success: true, count: (data || []).length };
+}
+
 /* ─── 电话命中弹问确认后：把该供应商所有未关联运单的待收货采购单挂到这张运单 ─── */
 export async function 关联运单到供应商待收货单(
   运单id: string,

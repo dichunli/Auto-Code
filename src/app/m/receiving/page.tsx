@@ -139,16 +139,23 @@ export default async function MobileReceivingListPage() {
 
         {/* 老流程待收货采购单（收底） */}
         <div>
-          <h2 className="text-sm font-semibold text-gray-900 mb-2">
-            待收货采购单
-            <span className="ml-2 text-xs font-normal text-gray-400">老流程 · 共 {单列表.length} 单</span>
-          </h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-gray-900">
+              待收货采购单
+              <span className="ml-2 text-xs font-normal text-gray-400">老流程 · 共 {单列表.length} 单</span>
+            </h2>
+            {单列表.length > 0 && (
+              <Link href="/m/receiving/orders" className="text-xs text-blue-600">
+                待收货管理 →
+              </Link>
+            )}
+          </div>
           {单列表.length > 0 ? (
             <div className="space-y-2">
               {单列表.map((order) => (
                 <Link
                   key={order.id}
-                  href={`/procurement/${order.id}`}
+                  href="/m/receiving/orders"
                   className="block bg-white rounded-xl border border-gray-200 p-3 space-y-1 active:scale-[0.98] transition-transform"
                 >
                   <div className="flex items-center justify-between">
