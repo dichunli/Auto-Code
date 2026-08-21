@@ -72,10 +72,11 @@ export async function 批量创建运单(
   );
   const 电话供应商 = new Map<string, { id: string; name: string }>();
   for (const 电话 of 电话去重) {
+    /* 完全匹配才认定命中（2026-08-21 用户口径）：防止电话片段误关联到别家供应商 */
     const { data } = await supabase
       .from("suppliers")
       .select("id, name")
-      .ilike("phone", `%${电话}%`)
+      .eq("phone", 电话)
       .limit(1);
     if (data && data.length > 0) {
       电话供应商.set(电话, data[0] as { id: string; name: string });

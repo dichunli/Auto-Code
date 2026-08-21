@@ -122,7 +122,8 @@ export function PendingReceiptList() {
   /* 批量创建运单弹窗（分步流程组件 WaybillBatchForm，2026-08-20 起与手机端共用） */
   const [batchModalOpen, setBatchModalOpen] = useState(false);
 
-  /* 运单电话变更时实时检索供应商（300ms 防抖，逐字输入不逐键查询） */
+  /* 运单电话完全匹配才带入供应商名（2026-08-21 用户口径）：
+     输入过程由 SupplierPhoneInput 联想下拉供选择；未点选时完全匹配才带出，不匹配清空防残留 */
   const debouncedWbPhone = useDebounce(wbPhone, 300);
   useEffect(() => {
     async function lookup() {
@@ -133,11 +134,9 @@ export function PendingReceiptList() {
       const { data } = await supabase
         .from("suppliers")
         .select("name")
-        .ilike("phone", `%${debouncedWbPhone.trim()}%`)
+        .eq("phone", debouncedWbPhone.trim())
         .limit(1);
-      if (data && data.length > 0) {
-        setWbSupplierName(data[0].name);
-      }
+      setWbSupplierName(data && data.length > 0 ? data[0].name : "");
     }
     lookup();
   }, [debouncedWbPhone, supabase]);
@@ -691,13 +690,14 @@ export function PendingReceiptList() {
         setSelectedOrderIds(new Set());
         setBatchWaybillMode(false);
       } else if (isStandalone) {
-        /* 需求2（2026-08-20）：运单电话命中供应商时，弹问是否关联其待收货采购单 */
+        /* 需求2（2026-08-20）：运单电话命中供应商时，弹问是否关联其待收货采购单；
+           2026-08-21 改完全匹配：防止电话片段误关联到别家供应商 */
         let 已提示 = false;
         if (wbPhone.trim()) {
           const { data: 命中 } = await supabase
             .from("suppliers")
             .select("id, name")
-            .ilike("phone", `%${wbPhone.trim()}%`)
+            .eq("phone", wbPhone.trim())
             .limit(1);
           if (命中 && 命中.length > 0) {
             const { count } = await supabase

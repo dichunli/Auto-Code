@@ -72,7 +72,9 @@ function WaybillCard({
   const supabase = createClient();
   const debouncedPhone = useDebounce(行.phone, 300);
 
-  /* 电话变化实时检索供应商（带出发货供应商名） */
+  /* 电话完全匹配才带入供应商名（2026-08-21 用户口径）：
+     输入过程中由 SupplierPhoneInput 联想下拉供选择；未点选时，
+     只有手输到与某供应商电话完全一致才自动带出，不再模糊命中第一家 */
   useEffect(() => {
     async function 检索() {
       const 电话 = debouncedPhone.trim();
@@ -83,7 +85,7 @@ function WaybillCard({
       const { data } = await supabase
         .from("suppliers")
         .select("name")
-        .ilike("phone", `%${电话}%`)
+        .eq("phone", 电话)
         .limit(1);
       onChange({ supplier_name: data && data.length > 0 ? data[0].name : "" });
     }
