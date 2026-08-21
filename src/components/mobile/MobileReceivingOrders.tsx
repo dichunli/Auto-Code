@@ -10,7 +10,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单 } from "@/app/procurement/actions";
-import { 关联运单到采购单 } from "@/app/logistics/actions";
+import { 关联运单到采购单, 关联运单到采购单或配件, 设置运单豁免 } from "@/app/logistics/actions";
 
 /* 2026-08-21 手机端待收货管理（老流程采购单）：
    商品上下排列、收货按钮不用滑屏直接可见；
@@ -30,6 +30,9 @@ export interface 待收明细 {
   part_number: string | null;
   supplier_part_name: string | null;
   handle_action: string | null;
+  /* 配件级运单关联/豁免（2026-08-21） */
+  waybill_id: string | null;
+  waybill_exempt: boolean | null;
 }
 
 export interface 待收订单 {
@@ -38,6 +41,8 @@ export interface 待收订单 {
   status: string;
   created_at: string;
   waybill_id: string | null;
+  /* 整单运单豁免（2026-08-21） */
+  waybill_exempt: boolean | null;
   suppliers: { name: string; region?: string | null } | null;
   logistics_waybills: { id: string; tracking_no: string; logistics_company_name: string | null; logistics_companies: { name: string } | null } | null;
   purchase_order_items: 待收明细[];
@@ -64,6 +69,13 @@ function 需要运单(单: 待收订单): boolean {
   return !!region && region !== "local";
 }
 
+/* 行级可收货口径（2026-08-21，与桌面端一致）：本地供应商直接可收；
+   外阜单需 单头已关联运单/已豁免，或该配件行自己已关联/已豁免 */
+function 行可收货(单: 待收订单, 明细: 待收明细): boolean {
+  if (!需要运单(单)) return true;
+  return !!(单.waybill_id || 单.waybill_exempt || 明细.waybill_id || 明细.waybill_exempt);
+}
+
 /* ─── 收货弹窗（竖排，十种差异处理与电脑端一致） ─── */
 function ReceiveModal({
   明细,
@@ -84,7 +96,9 @@ function ReceiveModal({
 }) {
   const { showToast } = useToast();
   const { 请求确认, 确认弹窗 } = useConfirm();
-  const [数量, set数量] = useState(明细.quantity === 1 ? "1" : "");
+  const supabase = createClient();
+  /* 数量不预填（对齐桌面端 2026-08-20 口径）：按实际点数手动填；扫码场景由外部数量覆盖 */
+  const [数量, set数量] = useState("");
   const [问题, set问题] = useState<"" | "broken" | "wrong">("");
   const [破损选项, set破损选项] = useState<"" | "exchange" | "discard">("");
   const [错发选项, set错发选项] = useState<"" | "exchange" | "discard">("");
@@ -92,6 +106,8 @@ function ReceiveModal({
   const [多发付款, set多发付款] = useState<"" | "paid" | "free">("");
   const [少发选项, set少发选项] = useState<"" | "repurchase" | "discard">("");
   const [凭证, set凭证] = useState<string[]>([]);
+  /* 配件图片（2026-08-21 需求5）：收货时可补拍实物图，追加到采购明细 photos，上传即落库 */
+  const [配件图, set配件图] = useState<string[]>(明细.photos || []);
 
   /* 扫码连续加一：外部数量变化时同步进输入框 */
   useEffect(() => {
@@ -102,6 +118,16 @@ function ReceiveModal({
 
   const 订购 = 明细.quantity;
   const 数量数 = 数量.trim() === "" ? null : parseInt(数量.trim(), 10);
+
+  /* 配件图片上传即落库（追加到采购明细 photos，入库后工单/库存也能看到实物图） */
+  async function 保存配件图片(paths: string[]) {
+    set配件图(paths);
+    const { error } = await supabase
+      .from("purchase_order_items")
+      .update({ photos: paths })
+      .eq("id", 明细.id);
+    if (error) showToast("图片保存失败: " + error.message, "error");
+  }
 
   async function 提交() {
     if (数量.trim() === "") {
@@ -125,7 +151,7 @@ function ReceiveModal({
         if (!错发选项) { showToast("请选择错发处理方式", "warning"); return; }
         onSubmit({
           动作: 错发选项 === "exchange" ? "wrong_exchange" : "wrong_discard",
-          数量: 错发选项 === "exchange" ? qty : 0, 凭证: null, 更新凭证: false,
+          数量: 错发选项 === "exchange" ? qty : 0, 凭证: 凭证.length > 0 ? 凭证 : null, 更新凭证: 凭证.length > 0,
         });
       } else {
         onSubmit({ 动作: "normal", 数量: qty, 凭证: null, 更新凭证: false });
@@ -162,6 +188,13 @@ function ReceiveModal({
         </div>
         <div className="p-4 space-y-4">
           <div className="text-xs text-gray-500">订购 {订购} {明细.unit || ""}</div>
+
+          {/* 配件图片（2026-08-21 需求5）：收货时补拍实物图，随采购明细存档 */}
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">配件图片（可拍照补充实物图）</label>
+            <ImageUploader onUpload={保存配件图片} existingImages={配件图} maxImages={5} bucket="work-order-media" folder="purchase-item-photos" />
+          </div>
+
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-sm font-medium text-gray-700">实际到货数量</label>
@@ -236,6 +269,11 @@ function ReceiveModal({
                       </div>
                     </label>
                   ))}
+                  {/* 错发拍照留存（2026-08-21 需求6）：发给供货商作凭证 */}
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">错发照片（拍照留存，供供货商核对）</label>
+                    <ImageUploader onUpload={set凭证} existingImages={凭证} maxImages={5} bucket="work-order-media" folder="purchase-evidence" />
+                  </div>
                 </div>
               )}
             </div>
@@ -328,17 +366,43 @@ export function MobileReceivingOrders({
   const [勾选, set勾选] = useState<Set<string>>(new Set());
   const [运单弹窗目标, set运单弹窗目标] = useState<string | "batch" | null>(null);
   const [收货目标, set收货目标] = useState<{ 订单: 待收订单; 明细: 待收明细 } | null>(null);
+  /* 供应商筛选（2026-08-21 需求3） */
+  const [供应商筛选, set供应商筛选] = useState<string | null>(null);
+
+  /* 运单处理弹窗（2026-08-21 需求7）：未关联运单点收货时弹出，功能与桌面端一致 */
+  const [gate目标, setGate目标] = useState<{ 订单: 待收订单; 明细: 待收明细 } | null>(null);
+  const [gateTab, setGateTab] = useState<"link" | "exempt">("link");
+  const [gateScope, setGateScope] = useState<"order" | "item">("order");
+  const [gate运单id, setGate运单id] = useState("");
+  const [gate运费, setGate运费] = useState("");
+  const [gate说明, setGate说明] = useState("");
 
   /* 扫码收货：扫码开 + 各商品已扫次数（连续扫码加一） + 传给弹窗的数量 */
   const [扫码开, set扫码开] = useState(false);
   const [扫码数量, set扫码数量] = useState<number | null>(null);
   const 扫码计数Ref = useRef<Record<string, number>>({});
 
-  /* 只显示还有未处理明细的订单 */
+  /* 只显示还有未处理明细的订单 + 供应商筛选（需求3） */
   const 显示订单 = useMemo(
-    () => 订单列表.filter((o) => (o.purchase_order_items || []).some((it) => !it.handle_action)),
-    [订单列表]
+    () =>
+      订单列表.filter(
+        (o) =>
+          (o.purchase_order_items || []).some((it) => !it.handle_action) &&
+          (!供应商筛选 || (o.suppliers?.name || "未指定供应商") === 供应商筛选)
+      ),
+    [订单列表, 供应商筛选]
   );
+
+  /* 供应商筛选 chips 选项（按待收货数排序，多的在前） */
+  const 供应商选项 = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const o of 订单列表) {
+      if (!(o.purchase_order_items || []).some((it) => !it.handle_action)) continue;
+      const 名 = o.suppliers?.name || "未指定供应商";
+      map.set(名, (map.get(名) || 0) + 1);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [订单列表]);
 
   const 分组 = useMemo(() => {
     const map = new Map<string, 待收订单[]>();
@@ -378,21 +442,6 @@ export function MobileReceivingOrders({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("收货失败: " + msg, "error");
-    } finally {
-      set提交中(null);
-    }
-  }
-
-  async function 一键待退货(订单: 待收订单, 明细: 待收明细) {
-    if (!(await 请求确认(`确认把「${明细.name}」标记为错发待退货？不会入库，直接生成待退货记录。`))) return;
-    set提交中(`item-${明细.id}`);
-    try {
-      const res = await 提交收货处理(订单.id, 明细.id, "wrong_discard", 0, null, false);
-      if (!res.success) throw new Error(res.error || "操作失败");
-      router.refresh();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      showToast("操作失败: " + msg, "error");
     } finally {
       set提交中(null);
     }
@@ -445,6 +494,55 @@ export function MobileReceivingOrders({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("关联运单失败: " + msg, "error");
+    } finally {
+      set提交中(null);
+    }
+  }
+
+  /* 运单处理弹窗（需求7）：未关联运单点收货时弹出 */
+  function 打开gate(订单: 待收订单, 明细: 待收明细) {
+    setGate目标({ 订单, 明细 });
+    setGateTab("link");
+    setGateScope("order");
+    setGate运单id("");
+    setGate运费("");
+    setGate说明("");
+  }
+
+  async function gate确认() {
+    if (!gate目标) return;
+    const 明细id = gateScope === "item" ? gate目标.明细.id : null;
+    if (gateTab === "link" && !gate运单id) {
+      showToast("请选择运单", "warning");
+      return;
+    }
+    set提交中("gate");
+    try {
+      /* 先打本地补丁，确认后直接进收货弹窗（同桌面端动线） */
+      const 单 = { ...gate目标.订单 };
+      const 明细 = { ...gate目标.明细 };
+      if (gateTab === "link") {
+        const res = await 关联运单到采购单或配件(gate目标.订单.id, 明细id, gate运单id);
+        if (!res.success) throw new Error(res.error || "关联失败");
+        if (gateScope === "order") 单.waybill_id = gate运单id;
+        else 明细.waybill_id = gate运单id;
+      } else {
+        const 运费 = gate运费.trim() === "" ? null : parseFloat(gate运费);
+        if (运费 !== null && (isNaN(运费) || 运费 < 0)) {
+          showToast("运费必须是非负数字", "warning");
+          return;
+        }
+        const res = await 设置运单豁免(gate目标.订单.id, 明细id, 运费, gate说明);
+        if (!res.success) throw new Error(res.error || "保存失败");
+        if (gateScope === "order") 单.waybill_exempt = true;
+        else 明细.waybill_exempt = true;
+      }
+      setGate目标(null);
+      router.refresh();
+      set收货目标({ 订单: 单, 明细 });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast("操作失败: " + msg, "error");
     } finally {
       set提交中(null);
     }
@@ -509,8 +607,10 @@ export function MobileReceivingOrders({
       showToast(`「${命中明细.name}」已收货处理过了`, "warning");
       return;
     }
-    if (需要运单(命中订单) && !命中订单.waybill_id) {
-      showToast("外阜供货商需先关联运单后才能收货", "warning");
+    if (!行可收货(命中订单, 命中明细)) {
+      /* 需求7：扫码命中未关联运单的商品也弹运单处理窗（与桌面端一致） */
+      set扫码开(false);
+      打开gate(命中订单, 命中明细);
       return;
     }
 
@@ -568,6 +668,37 @@ export function MobileReceivingOrders({
         </div>
       )}
 
+      {/* 供应商筛选（2026-08-21 需求3）：单多供应商时快速聚焦 */}
+      {供应商选项.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+          <button
+            type="button"
+            onClick={() => set供应商筛选(null)}
+            className={`shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors ${
+              供应商筛选 === null
+                ? "bg-blue-600 border-blue-600 text-white"
+                : "bg-white border-gray-200 text-gray-600"
+            }`}
+          >
+            全部
+          </button>
+          {供应商选项.map(([名, 数]) => (
+            <button
+              key={名}
+              type="button"
+              onClick={() => set供应商筛选(供应商筛选 === 名 ? null : 名)}
+              className={`shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                供应商筛选 === 名
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "bg-white border-gray-200 text-gray-600"
+              }`}
+            >
+              {名}（{数}）
+            </button>
+          ))}
+        </div>
+      )}
+
       {分组.map(([供应商, 订单组]) => (
         <div key={供应商} className="space-y-2">
           <div className="flex items-center gap-2">
@@ -578,7 +709,6 @@ export function MobileReceivingOrders({
 
           {订单组.map((单) => {
             const 需运单 = 需要运单(单);
-            const 可收货 = !需运单 || !!单.waybill_id;
             const 未处理数 = 单.purchase_order_items.filter((it) => !it.handle_action).length;
             return (
               <div key={单.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -685,36 +815,25 @@ export function MobileReceivingOrders({
                                 </button>
                               </>
                             ) : (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!可收货) {
-                                      showToast("外阜供货商需先关联运单后才能收货", "warning");
-                                      return;
-                                    }
-                                    set收货目标({ 订单: 单, 明细 });
-                                  }}
-                                  disabled={提交中 === `item-${明细.id}`}
-                                  className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-50"
-                                >
-                                  收货
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!可收货) {
-                                      showToast("外阜供货商需先关联运单", "warning");
-                                      return;
-                                    }
-                                    一键待退货(单, 明细);
-                                  }}
-                                  disabled={提交中 === `item-${明细.id}`}
-                                  className="px-2.5 py-1 text-xs rounded border border-orange-300 text-orange-600 bg-orange-50"
-                                >
-                                  待退货
-                                </button>
-                              </>
+                              /* 行级运单门禁（需求7）：未关联也未豁免时半透明但可点，点击弹运单处理窗；
+                                 行内不再直显待退货（2026-08-20 需求4，退货在收货弹窗问题分支里选） */
+                              (() => {
+                                const 可收 = 行可收货(单, 明细);
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => (可收 ? set收货目标({ 订单: 单, 明细 }) : 打开gate(单, 明细))}
+                                    disabled={提交中 === `item-${明细.id}`}
+                                    className={`px-4 py-1.5 text-sm rounded-lg disabled:opacity-50 ${
+                                      可收
+                                        ? "bg-blue-600 text-white active:bg-blue-700"
+                                        : "bg-blue-600/40 text-white active:bg-blue-600/60"
+                                    }`}
+                                  >
+                                    收货
+                                  </button>
+                                );
+                              })()
                             )}
                           </div>
                         </div>
@@ -759,6 +878,147 @@ export function MobileReceivingOrders({
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 运单处理弹窗（2026-08-21 需求7）：未关联运单点收货弹出，功能与桌面端一致 */}
+      {gate目标 && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50">
+          <div className="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl max-h-[85vh] flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">需要先处理运单</h3>
+              <button type="button" onClick={() => setGate目标(null)} className="text-gray-400 text-xl leading-none">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <p className="text-xs text-gray-500">
+                <span className="font-medium text-gray-900">{gate目标.订单.suppliers?.name}</span>{" "}
+                是外阜供应商，货一般走物流。请关联运单；没有运单的（自行采购/捎带等）选「不关联运单」并写明情况。
+              </p>
+
+              {/* 模式选择 */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setGateTab("link")}
+                  className={`py-2.5 text-sm rounded-lg border ${gateTab === "link" ? "border-blue-500 bg-blue-50 text-blue-700 font-medium" : "border-gray-200 text-gray-600"}`}
+                >
+                  关联运单
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGateTab("exempt")}
+                  className={`py-2.5 text-sm rounded-lg border ${gateTab === "exempt" ? "border-amber-500 bg-amber-50 text-amber-700 font-medium" : "border-gray-200 text-gray-600"}`}
+                >
+                  不关联运单
+                </button>
+              </div>
+
+              {/* 作用范围 */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 shrink-0">作用于:</span>
+                <button
+                  type="button"
+                  onClick={() => setGateScope("order")}
+                  className={`flex-1 py-1.5 text-xs rounded-full border ${gateScope === "order" ? "border-blue-600 bg-blue-600 text-white" : "border-gray-200 text-gray-600"}`}
+                >
+                  整张采购单
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGateScope("item")}
+                  className={`flex-1 py-1.5 text-xs rounded-full border ${gateScope === "item" ? "border-blue-600 bg-blue-600 text-white" : "border-gray-200 text-gray-600"}`}
+                >
+                  仅「{gate目标.明细.name}」
+                </button>
+              </div>
+
+              {gateTab === "link" ? (
+                待签收运单.length === 0 ? (
+                  <div className="text-center text-gray-400 py-6 text-sm">
+                    暂无待签收运单，先点顶部「新建运单」创建
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {[...待签收运单]
+                      .sort((a, b) => {
+                        const 目标名 = gate目标.订单.suppliers?.name;
+                        return (b.supplier_name === 目标名 ? 1 : 0) - (a.supplier_name === 目标名 ? 1 : 0);
+                      })
+                      .map((w) => (
+                        <button
+                          key={w.id}
+                          type="button"
+                          onClick={() => setGate运单id(w.id)}
+                          className={`w-full text-left px-3 py-2.5 rounded-lg border ${
+                            gate运单id === w.id ? "border-blue-500 bg-blue-50" : "border-gray-200 active:bg-gray-50"
+                          }`}
+                        >
+                          <div className="font-medium text-gray-900 text-sm">{w.tracking_no}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {w.logistics_companies?.name || w.logistics_company_name || "-"}
+                            {w.supplier_name ? ` · ${w.supplier_name}` : ""}
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                )
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">运费（可选，元）</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={gate运费}
+                      onChange={(e) => setGate运费(e.target.value)}
+                      placeholder="没产生运费可不填"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">说明 *</label>
+                    <input
+                      type="text"
+                      value={gate说明}
+                      onChange={(e) => setGate说明(e.target.value)}
+                      placeholder="如：自行采购、其它方式带回"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
+                    />
+                    <div className="flex gap-1.5 mt-2 flex-wrap">
+                      {["自行采购", "司机捎带", "其它方式带回"].map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setGate说明(t)}
+                          className={`px-2.5 py-1 text-xs rounded-full border ${gate说明 === t ? "border-amber-500 bg-amber-50 text-amber-700" : "border-gray-200 text-gray-600"}`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-gray-100 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setGate目标(null)}
+                className="flex-1 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={gate确认}
+                disabled={提交中 === "gate"}
+                className="flex-1 py-2.5 text-sm text-white bg-blue-600 rounded-lg disabled:opacity-50"
+              >
+                {提交中 === "gate" ? "处理中..." : "确认并收货"}
+              </button>
             </div>
           </div>
         </div>

@@ -37,6 +37,90 @@ export interface 运单创建结果 {
 /* 采购单"待收货"口径：与待收货页一致 */
 const 待收货状态 = ["submitted", "approved", "partial_received"];
 
+/* ─── 收货前运单处理（2026-08-21）─────────────────────────────
+ * 外阜采购单未关联运单时点收货，弹窗提供两条出路：
+ *   关联：把已有运单挂到整张采购单（明细id=null）或单个配件（明细id 非空）
+ *   豁免：司机捎带/自行采购等无运单场景，记录运费(可选)+说明后放行收货 */
+
+export async function 关联运单到采购单或配件(
+  采购单id: string,
+  明细id: string | null,
+  运单id: string
+): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!运单id) return { success: false, error: "请选择运单" };
+
+  const supabase = await createClient();
+  /* 运单必须存在且处于待签收（已签收/已作废的运单不能再关联） */
+  const { data: 运单 } = await supabase
+    .from("logistics_waybills")
+    .select("id, status")
+    .eq("id", 运单id)
+    .single();
+  if (!运单) return { success: false, error: "运单不存在" };
+  if (运单.status !== "pending") return { success: false, error: "该运单已签收，不能关联" };
+
+  if (明细id) {
+    const { error } = await supabase
+      .from("purchase_order_items")
+      .update({ waybill_id: 运单id })
+      .eq("id", 明细id)
+      .eq("order_id", 采购单id);
+    if (error) return { success: false, error: error.message };
+  } else {
+    const { error } = await supabase
+      .from("purchase_orders")
+      .update({ waybill_id: 运单id })
+      .eq("id", 采购单id);
+    if (error) return { success: false, error: error.message };
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
+
+export async function 设置运单豁免(
+  采购单id: string,
+  明细id: string | null,
+  运费: number | null,
+  说明: string
+): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const 说明文本 = 说明.trim();
+  if (!说明文本) return { success: false, error: "请填写说明（如：自行采购、其它方式带回）" };
+  if (运费 !== null && (isNaN(运费) || 运费 < 0)) {
+    return { success: false, error: "运费必须是非负数字" };
+  }
+
+  const supabase = await createClient();
+  const 补丁 = { waybill_exempt: true, exempt_freight: 运费, exempt_note: 说明文本 };
+  if (明细id) {
+    const { error } = await supabase
+      .from("purchase_order_items")
+      .update(补丁)
+      .eq("id", 明细id)
+      .eq("order_id", 采购单id);
+    if (error) return { success: false, error: error.message };
+  } else {
+    const { error } = await supabase
+      .from("purchase_orders")
+      .update(补丁)
+      .eq("id", 采购单id);
+    if (error) return { success: false, error: error.message };
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
+
+
 /* ─── 批量创建运单：逐行电话匹配供应商名，返回命中结果供前端弹问关联 ─── */
 export async function 批量创建运单(
   行列表: 运单行输入[]
@@ -72,10 +156,11 @@ export async function 批量创建运单(
   );
   const 电话供应商 = new Map<string, { id: string; name: string }>();
   for (const 电话 of 电话去重) {
+    /* 完全匹配才认定命中（2026-08-21 用户口径）：防止电话片段误关联到别家供应商 */
     const { data } = await supabase
       .from("suppliers")
       .select("id, name")
-      .ilike("phone", `%${电话}%`)
+      .eq("phone", 电话)
       .limit(1);
     if (data && data.length > 0) {
       电话供应商.set(电话, data[0] as { id: string; name: string });
