@@ -1,0 +1,671 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { ImageUploader } from "@/components/ImageUploader";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { useToast } from "@/components/Toast";
+import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
+import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单 } from "@/app/procurement/actions";
+import { 关联运单到采购单 } from "@/app/logistics/actions";
+
+/* 2026-08-21 手机端待收货管理（老流程采购单）：
+   商品上下排列、收货按钮不用滑屏直接可见；
+   顶部新建批量运单入口 + 选择/批量关联运单；
+   手机端不显示价格（规划决策3） */
+
+export interface 待收明细 {
+  id: string;
+  name: string;
+  brand: string | null;
+  specification: string | null;
+  quantity: number;
+  unit: string | null;
+  notes: string | null;
+  photos: string[] | null;
+  part_number: string | null;
+  supplier_part_name: string | null;
+  handle_action: string | null;
+}
+
+export interface 待收订单 {
+  id: string;
+  order_no: string | null;
+  status: string;
+  created_at: string;
+  waybill_id: string | null;
+  suppliers: { name: string; region?: string | null } | null;
+  logistics_waybills: { id: string; tracking_no: string; logistics_company_name: string | null; logistics_companies: { name: string } | null } | null;
+  purchase_order_items: 待收明细[];
+}
+
+export interface 待签收运单 {
+  id: string;
+  tracking_no: string;
+  supplier_name: string | null;
+  logistics_company_name: string | null;
+  logistics_companies: { name: string } | null;
+}
+
+function 解决图片地址(path: string): string {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) return path;
+  return `${base}/storage/v1/object/public/work-order-media/${path}`;
+}
+
+function 需要运单(单: 待收订单): boolean {
+  const region = 单.suppliers?.region;
+  return !!region && region !== "local";
+}
+
+/* ─── 收货弹窗（竖排，十种差异处理与电脑端一致） ─── */
+function ReceiveModal({
+  明细,
+  提交中,
+  onClose,
+  onSubmit,
+}: {
+  明细: 待收明细;
+  提交中: boolean;
+  onClose: () => void;
+  onSubmit: (参数: { 动作: string; 数量: number; 凭证: string[] | null; 更新凭证: boolean; 弃货删行?: boolean }) => void;
+}) {
+  const { showToast } = useToast();
+  const { 请求确认, 确认弹窗 } = useConfirm();
+  const [数量, set数量] = useState(明细.quantity === 1 ? "1" : "");
+  const [问题, set问题] = useState<"" | "broken" | "wrong">("");
+  const [破损选项, set破损选项] = useState<"" | "exchange" | "discard">("");
+  const [错发选项, set错发选项] = useState<"" | "exchange" | "discard">("");
+  const [多发选项, set多发选项] = useState<"" | "return" | "keep">("");
+  const [多发付款, set多发付款] = useState<"" | "paid" | "free">("");
+  const [少发选项, set少发选项] = useState<"" | "repurchase" | "discard">("");
+  const [凭证, set凭证] = useState<string[]>([]);
+
+  const 订购 = 明细.quantity;
+  const 数量数 = 数量.trim() === "" ? null : parseInt(数量.trim(), 10);
+
+  async function 提交() {
+    if (数量.trim() === "") {
+      showToast("请填写实际到货数量(没到货请填 0)", "warning");
+      return;
+    }
+    const qty = parseInt(数量.trim(), 10);
+    if (isNaN(qty) || qty < 0) {
+      showToast("到货数量必须 ≥ 0", "warning");
+      return;
+    }
+
+    if (qty === 订购) {
+      if (问题 === "broken") {
+        if (!破损选项) { showToast("请选择破损处理方式", "warning"); return; }
+        onSubmit({
+          动作: 破损选项 === "exchange" ? "broken_exchange" : "broken_discard",
+          数量: qty, 凭证: 凭证.length > 0 ? 凭证 : null, 更新凭证: true,
+        });
+      } else if (问题 === "wrong") {
+        if (!错发选项) { showToast("请选择错发处理方式", "warning"); return; }
+        onSubmit({
+          动作: 错发选项 === "exchange" ? "wrong_exchange" : "wrong_discard",
+          数量: 错发选项 === "exchange" ? qty : 0, 凭证: null, 更新凭证: false,
+        });
+      } else {
+        onSubmit({ 动作: "normal", 数量: qty, 凭证: null, 更新凭证: false });
+      }
+    } else if (qty > 订购) {
+      if (!多发选项) { showToast("请选择多发处理方式", "warning"); return; }
+      if (多发选项 === "keep" && !多发付款) { showToast("请选择是否对供应商付款", "warning"); return; }
+      const 动作 = 多发选项 === "return" ? "excess_return" : 多发付款 === "paid" ? "excess_paid" : "excess_free";
+      onSubmit({ 动作, 数量: qty, 凭证: null, 更新凭证: false });
+    } else {
+      if (!少发选项) { showToast("请选择少发处理方式", "warning"); return; }
+      if (少发选项 === "repurchase") {
+        onSubmit({ 动作: "short_repurchase", 数量: qty, 凭证: null, 更新凭证: false });
+      } else {
+        if (凭证.length === 0) {
+          if (!(await 请求确认("少发弃货建议上传聊天截图作为凭证,确定不上传吗?"))) return;
+        }
+        if (qty === 0) {
+          if (!(await 请求确认("确认删除该配件?这会同时清除采购流程和工单中的记录。"))) return;
+          onSubmit({ 动作: "short_discard", 数量: 0, 凭证: null, 更新凭证: false, 弃货删行: true });
+        } else {
+          onSubmit({ 动作: "short_discard", 数量: qty, 凭证, 更新凭证: true });
+        }
+      }
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50">
+      <div className="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl max-h-[92vh] overflow-y-auto">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
+          <h3 className="text-base font-semibold text-gray-900">收货 — {明细.name}</h3>
+          <button type="button" onClick={onClose} className="text-gray-400 text-xl leading-none">×</button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="text-xs text-gray-500">订购 {订购} {明细.unit || ""}</div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">实际到货数量</label>
+            <input
+              type="number"
+              min={0}
+              value={数量}
+              onChange={(e) => set数量(e.target.value)}
+              placeholder="没到货请填 0"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base"
+            />
+            {数量数 !== null && !isNaN(数量数) && (
+              <p className={`text-xs mt-1 ${数量数 === 订购 ? "text-green-600" : 数量数 > 订购 ? "text-blue-600" : "text-red-600"}`}>
+                {数量数 === 订购 ? "数量正常,可直接确认" : 数量数 > 订购 ? `多发 ${数量数 - 订购} 件,请选择处理方式` : `少发 ${订购 - 数量数} 件,请选择处理方式`}
+              </p>
+            )}
+          </div>
+
+          {数量数 === 订购 && 数量数 !== null && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2">反馈问题(可选,二选一)</div>
+              <div className="flex gap-2">
+                {([["broken", "配件破损"], ["wrong", "配件错发"]] as const).map(([值, 名]) => (
+                  <button
+                    key={值}
+                    type="button"
+                    onClick={() => set问题(问题 === 值 ? "" : 值)}
+                    className={`flex-1 py-2 rounded-lg border text-sm ${问题 === 值 ? "border-red-400 bg-red-50 text-red-700" : "border-gray-200 text-gray-600"}`}
+                  >
+                    {名}
+                  </button>
+                ))}
+              </div>
+              {问题 === "broken" && (
+                <div className="mt-2 space-y-2">
+                  {([["exchange", "换货(破损补发)", "正常入库 + 生成破损退货 + 自动补发"], ["discard", "不需要了", "先入库 + 生成破损退货"]] as const).map(([值, 名, 说]) => (
+                    <label key={值} className={`flex items-start gap-2 p-3 border rounded-lg ${破损选项 === 值 ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}>
+                      <input type="radio" name="mBroken" checked={破损选项 === 值} onChange={() => set破损选项(值)} className="mt-0.5" />
+                      <div className="text-sm">
+                        <div className="font-medium text-gray-900">{名}</div>
+                        <div className="text-gray-500 text-xs mt-0.5">{说}</div>
+                      </div>
+                    </label>
+                  ))}
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">破损照片</label>
+                    <ImageUploader onUpload={set凭证} existingImages={凭证} maxImages={5} bucket="work-order-media" folder="purchase-evidence" />
+                  </div>
+                </div>
+              )}
+              {问题 === "wrong" && (
+                <div className="mt-2 space-y-2">
+                  {([["exchange", "换货", "先入库 + 生成错发退货 + 自动补发"], ["discard", "不需要了", "直接生成错发退货,不入库"]] as const).map(([值, 名, 说]) => (
+                    <label key={值} className={`flex items-start gap-2 p-3 border rounded-lg ${错发选项 === 值 ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}>
+                      <input type="radio" name="mWrong" checked={错发选项 === 值} onChange={() => set错发选项(值)} className="mt-0.5" />
+                      <div className="text-sm">
+                        <div className="font-medium text-gray-900">{名}</div>
+                        <div className="text-gray-500 text-xs mt-0.5">{说}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {数量数 !== null && !isNaN(数量数) && 数量数 > 订购 && (
+            <div className="space-y-2">
+              {([["return", "多出退货", "按订购数入库,多出部分生成多发退货"], ["keep", "入库留作备用", "多出部分一并入库"]] as const).map(([值, 名, 说]) => (
+                <label key={值} className={`flex items-start gap-2 p-3 border rounded-lg ${多发选项 === 值 ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}>
+                  <input type="radio" name="mExcess" checked={多发选项 === 值} onChange={() => set多发选项(值)} className="mt-0.5" />
+                  <div className="text-sm flex-1">
+                    <div className="font-medium text-gray-900">{名}</div>
+                    <div className="text-gray-500 text-xs mt-0.5">{说}</div>
+                    {值 === "keep" && 多发选项 === "keep" && (
+                      <div className="mt-2 space-y-1.5">
+                        <label className="flex items-center gap-2 text-xs">
+                          <input type="radio" name="mExcessPaid" checked={多发付款 === "paid"} onChange={() => set多发付款("paid")} />
+                          对供应商付款
+                        </label>
+                        <label className="flex items-center gap-2 text-xs">
+                          <input type="radio" name="mExcessPaid" checked={多发付款 === "free"} onChange={() => set多发付款("free")} />
+                          不付款(零价入库,作赠品)
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {数量数 !== null && !isNaN(数量数) && 数量数 < 订购 && (
+            <div className="space-y-2">
+              <label className={`flex items-start gap-2 p-3 border rounded-lg ${少发选项 === "repurchase" ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}>
+                <input type="radio" name="mShort" checked={少发选项 === "repurchase"} onChange={() => set少发选项("repurchase")} className="mt-0.5" />
+                <div className="text-sm">
+                  <div className="font-medium text-gray-900">{数量数 === 0 ? "重新采购" : "少发补货"}</div>
+                  <div className="text-gray-500 text-xs mt-0.5">
+                    {数量数 === 0 ? "未入库,按原订购数自动生成少发补货待采购" : "按实际到货数入库,差额自动生成少发补货待采购"}
+                  </div>
+                </div>
+              </label>
+              <label className={`flex items-start gap-2 p-3 border rounded-lg ${少发选项 === "discard" ? "border-blue-400 bg-blue-50" : "border-gray-200"}`}>
+                <input type="radio" name="mShort" checked={少发选项 === "discard"} onChange={() => set少发选项("discard")} className="mt-0.5" />
+                <div className="text-sm flex-1">
+                  <div className="font-medium text-gray-900">不需要了</div>
+                  <div className="text-gray-500 text-xs mt-0.5">
+                    {数量数 === 0 ? "清除该配件的采购记录和工单记录" : "按实际数量入库,建议附聊天截图凭证"}
+                  </div>
+                  {少发选项 === "discard" && 数量数 > 0 && (
+                    <div className="mt-2">
+                      <ImageUploader onUpload={set凭证} existingImages={凭证} maxImages={5} bucket="work-order-media" folder="purchase-evidence" />
+                    </div>
+                  )}
+                </div>
+              </label>
+            </div>
+          )}
+        </div>
+        <div className="px-4 py-3 border-t border-gray-100 flex gap-3 sticky bottom-0 bg-white">
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg">取消</button>
+          <button
+            type="button"
+            onClick={提交}
+            disabled={提交中}
+            className="flex-1 py-2.5 text-sm text-white bg-blue-600 rounded-lg disabled:opacity-50"
+          >
+            {提交中 ? "处理中..." : "确认收货"}
+          </button>
+        </div>
+      </div>
+      {确认弹窗}
+    </div>
+  );
+}
+
+/* ─── 主组件 ─── */
+export function MobileReceivingOrders({
+  订单列表,
+  待签收运单,
+}: {
+  订单列表: 待收订单[];
+  待签收运单: 待签收运单[];
+}) {
+  const router = useRouter();
+  const { 请求确认, 确认弹窗 } = useConfirm();
+  const { showToast } = useToast();
+  const [提交中, set提交中] = useState<string | null>(null);
+  const [勾选, set勾选] = useState<Set<string>>(new Set());
+  const [运单弹窗目标, set运单弹窗目标] = useState<string | "batch" | null>(null);
+  const [收货目标, set收货目标] = useState<{ 订单: 待收订单; 明细: 待收明细 } | null>(null);
+
+  /* 只显示还有未处理明细的订单 */
+  const 显示订单 = useMemo(
+    () => 订单列表.filter((o) => (o.purchase_order_items || []).some((it) => !it.handle_action)),
+    [订单列表]
+  );
+
+  const 分组 = useMemo(() => {
+    const map = new Map<string, 待收订单[]>();
+    for (const o of 显示订单) {
+      const key = o.suppliers?.name || "未指定供应商";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(o);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b, "zh"));
+  }, [显示订单]);
+
+  function 切换勾选(id: string) {
+    set勾选((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function 提交收货(参数: { 动作: string; 数量: number; 凭证: string[] | null; 更新凭证: boolean; 弃货删行?: boolean }) {
+    if (!收货目标) return;
+    const { 订单, 明细 } = 收货目标;
+    set提交中(`item-${明细.id}`);
+    try {
+      if (参数.弃货删行) {
+        const res = await 删除采购明细(订单.id, 明细.id);
+        if (!res.success) throw new Error(res.error || "删除失败");
+      } else {
+        const res = await 提交收货处理(订单.id, 明细.id, 参数.动作, 参数.数量, 参数.凭证, 参数.更新凭证);
+        if (!res.success) throw new Error(res.error || "收货失败");
+      }
+      set收货目标(null);
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast("收货失败: " + msg, "error");
+    } finally {
+      set提交中(null);
+    }
+  }
+
+  async function 一键待退货(订单: 待收订单, 明细: 待收明细) {
+    if (!(await 请求确认(`确认把「${明细.name}」标记为错发待退货？不会入库，直接生成待退货记录。`))) return;
+    set提交中(`item-${明细.id}`);
+    try {
+      const res = await 提交收货处理(订单.id, 明细.id, "wrong_discard", 0, null, false);
+      if (!res.success) throw new Error(res.error || "操作失败");
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast("操作失败: " + msg, "error");
+    } finally {
+      set提交中(null);
+    }
+  }
+
+  async function 撤销(订单: 待收订单, 明细: 待收明细) {
+    if (!(await 请求确认(`确认撤销「${明细.name}」的收货处理?`))) return;
+    set提交中(`revoke-${明细.id}`);
+    try {
+      const res = await 撤销收货处理(订单.id, 明细.id);
+      if (!res.success) throw new Error(res.error || "撤销失败");
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast("撤销失败: " + msg, "error");
+    } finally {
+      set提交中(null);
+    }
+  }
+
+  async function 整单撤销作废(订单id: string, 模式: "revoke" | "void") {
+    const 文案 = 模式 === "revoke"
+      ? "撤销整单：该采购单将作废留档，明细配件【退回】待采购列表，是否继续？"
+      : "作废整单：该采购单将作废留档，明细配件【不】退回待采购，是否继续？";
+    if (!(await 请求确认(文案))) return;
+    set提交中(`cancel-${订单id}`);
+    try {
+      const res = await 撤销作废采购单(订单id, 模式);
+      if (!res.success) throw new Error(res.error || "操作失败");
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast("操作失败: " + msg, "error");
+    } finally {
+      set提交中(null);
+    }
+  }
+
+  async function 关联运单(运单id: string) {
+    const 目标ids = 运单弹窗目标 === "batch" ? Array.from(勾选) : 运单弹窗目标 ? [运单弹窗目标] : [];
+    if (目标ids.length === 0) return;
+    set提交中("assign");
+    try {
+      const res = await 关联运单到采购单(运单id, 目标ids);
+      if (!res.success) throw new Error(res.error || "关联失败");
+      showToast(`已关联 ${res.count} 张采购单`);
+      set勾选(new Set());
+      set运单弹窗目标(null);
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast("关联运单失败: " + msg, "error");
+    } finally {
+      set提交中(null);
+    }
+  }
+
+  /* 运单弹窗里与目标供应商匹配的排前面 */
+  const 排序运单 = useMemo(() => {
+    const 目标供应商 = new Set<string>();
+    if (运单弹窗目标 === "batch") {
+      for (const o of 显示订单) {
+        if (勾选.has(o.id) && o.suppliers?.name) 目标供应商.add(o.suppliers.name);
+      }
+    } else if (运单弹窗目标) {
+      const o = 显示订单.find((x) => x.id === 运单弹窗目标);
+      if (o?.suppliers?.name) 目标供应商.add(o.suppliers.name);
+    }
+    return [...待签收运单].sort((a, b) => {
+      const a中 = 目标供应商.has(a.supplier_name || "") ? 1 : 0;
+      const b中 = 目标供应商.has(b.supplier_name || "") ? 1 : 0;
+      return b中 - a中;
+    });
+  }, [待签收运单, 运单弹窗目标, 勾选, 显示订单]);
+
+  return (
+    <div className="space-y-3">
+      {/* 顶部操作 */}
+      <div className="flex gap-2">
+        <Link
+          href="/m/receiving/waybills"
+          className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium text-center active:bg-blue-700"
+        >
+          + 新建运单（批量）
+        </Link>
+        <button
+          type="button"
+          onClick={() => {
+            if (勾选.size === 0) {
+              showToast("先勾选要关联的采购单", "warning");
+              return;
+            }
+            set运单弹窗目标("batch");
+          }}
+          className="flex-1 py-2.5 rounded-xl border border-blue-300 text-blue-700 bg-blue-50 text-sm font-medium"
+        >
+          关联运单{勾选.size > 0 ? `（已选${勾选.size}）` : ""}
+        </button>
+      </div>
+
+      {显示订单.length === 0 && (
+        <div className="bg-white rounded-xl border border-dashed border-gray-200 p-8 text-center text-gray-400 text-sm">
+          暂无待收货的采购单
+        </div>
+      )}
+
+      {分组.map(([供应商, 订单组]) => (
+        <div key={供应商} className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-1 h-4 bg-blue-500 rounded" />
+            <span className="text-sm font-bold text-gray-900">{供应商}</span>
+            <span className="text-xs text-gray-400">共 {订单组.length} 张</span>
+          </div>
+
+          {订单组.map((单) => {
+            const 需运单 = 需要运单(单);
+            const 可收货 = !需运单 || !!单.waybill_id;
+            const 未处理数 = 单.purchase_order_items.filter((it) => !it.handle_action).length;
+            return (
+              <div key={单.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                {/* 订单头 */}
+                <div className="px-3 py-2.5 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+                  {需运单 && (
+                    <input type="checkbox" checked={勾选.has(单.id)} onChange={() => 切换勾选(单.id)} className="rounded" />
+                  )}
+                  <span className="font-semibold text-gray-900 text-sm">{单.order_no || 单.id.slice(0, 8)}</span>
+                  <span className="text-xs text-gray-400">{new Date(单.created_at).toLocaleDateString("zh-CN")}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${未处理数 === 0 ? "bg-green-50 text-green-700" : "bg-orange-50 text-orange-700"}`}>
+                    {未处理数 === 0 ? "全部已处理" : `待收 ${未处理数} 项`}
+                  </span>
+                  {单.status === "submitted" && (
+                    <span className="ml-auto flex gap-2">
+                      <button
+                        type="button"
+                        disabled={提交中 === `cancel-${单.id}`}
+                        onClick={() => 整单撤销作废(单.id, "revoke")}
+                        className="text-xs text-amber-600 disabled:opacity-50"
+                      >
+                        撤销整单
+                      </button>
+                      <button
+                        type="button"
+                        disabled={提交中 === `cancel-${单.id}`}
+                        onClick={() => 整单撤销作废(单.id, "void")}
+                        className="text-xs text-red-400 disabled:opacity-50"
+                      >
+                        作废整单
+                      </button>
+                    </span>
+                  )}
+                </div>
+
+                {/* 运单行 */}
+                <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 flex-wrap text-xs">
+                  {单.logistics_waybills ? (
+                    <>
+                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700">
+                        运单 {单.logistics_waybills.tracking_no}
+                      </span>
+                      <span className="text-gray-500">
+                        {单.logistics_waybills.logistics_companies?.name || 单.logistics_waybills.logistics_company_name || "-"}
+                      </span>
+                      <button type="button" onClick={() => set运单弹窗目标(单.id)} className="text-blue-600">
+                        更换
+                      </button>
+                    </>
+                  ) : 需运单 ? (
+                    <>
+                      <span className="px-2 py-0.5 rounded bg-yellow-50 text-yellow-700">未关联运单</span>
+                      <button
+                        type="button"
+                        onClick={() => set运单弹窗目标(单.id)}
+                        className="px-2 py-0.5 rounded border border-gray-200 text-gray-600"
+                      >
+                        选择运单
+                      </button>
+                    </>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded bg-gray-50 text-gray-500">本地供货 · 无需运单</span>
+                  )}
+                </div>
+
+                {/* 商品列表（上下排列） */}
+                <div className="divide-y divide-gray-100">
+                  {单.purchase_order_items.map((明细) => {
+                    const 动作 = 明细.handle_action ? ACTION_LABELS[明细.handle_action] : null;
+                    return (
+                      <div key={明细.id} className="px-3 py-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium text-gray-900 text-sm">{明细.name}</div>
+                            {(明细.brand || 明细.specification) && (
+                              <div className="text-xs text-gray-400 mt-0.5">{明细.brand || ""} {明细.specification || ""}</div>
+                            )}
+                            <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                              {明细.part_number && <div>编码：{明细.part_number}</div>}
+                              {明细.supplier_part_name && <div>单据名称：{明细.supplier_part_name}</div>}
+                              <div>订购：{明细.quantity} {明细.unit || ""}</div>
+                              {明细.notes && <div>备注：{明细.notes}</div>}
+                            </div>
+                            {明细.photos && 明细.photos.length > 0 && (
+                              <div className="flex gap-1 mt-1.5">
+                                {明细.photos.slice(0, 4).map((p, i) => (
+                                  <img key={i} src={解决图片地址(p)} alt="" loading="lazy" className="w-10 h-10 object-cover rounded border border-gray-100" />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {/* 操作区：不滑屏直接可见 */}
+                          <div className="shrink-0 flex flex-col items-end gap-1.5">
+                            {动作 ? (
+                              <>
+                                <span className={`text-xs px-2 py-0.5 rounded whitespace-nowrap ${动作.color}`}>{动作.text}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => 撤销(单, 明细)}
+                                  disabled={提交中 === `revoke-${明细.id}`}
+                                  className="px-2.5 py-1 text-xs rounded border border-red-200 text-red-600 bg-red-50 disabled:opacity-50"
+                                >
+                                  {提交中 === `revoke-${明细.id}` ? "撤销中..." : "撤销"}
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!可收货) {
+                                      showToast("外阜供货商需先关联运单后才能收货", "warning");
+                                      return;
+                                    }
+                                    set收货目标({ 订单: 单, 明细 });
+                                  }}
+                                  disabled={提交中 === `item-${明细.id}`}
+                                  className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-50"
+                                >
+                                  收货
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!可收货) {
+                                      showToast("外阜供货商需先关联运单", "warning");
+                                      return;
+                                    }
+                                    一键待退货(单, 明细);
+                                  }}
+                                  disabled={提交中 === `item-${明细.id}`}
+                                  className="px-2.5 py-1 text-xs rounded border border-orange-300 text-orange-600 bg-orange-50"
+                                >
+                                  待退货
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* 运单选择弹窗 */}
+      {运单弹窗目标 && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50">
+          <div className="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl max-h-[80vh] flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">
+                {运单弹窗目标 === "batch" ? `批量关联运单（${勾选.size} 张）` : "选择运单"}
+              </h3>
+              <button type="button" onClick={() => set运单弹窗目标(null)} className="text-gray-400 text-xl leading-none">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {排序运单.length === 0 && (
+                <div className="text-center text-gray-400 py-8 text-sm">
+                  暂无待签收的运单，点上方「新建运单（批量）」创建
+                </div>
+              )}
+              {排序运单.map((w) => (
+                <button
+                  key={w.id}
+                  type="button"
+                  onClick={() => 关联运单(w.id)}
+                  disabled={提交中 === "assign"}
+                  className="w-full text-left px-3 py-2.5 rounded-lg border border-gray-200 active:bg-blue-50 disabled:opacity-50"
+                >
+                  <div className="font-medium text-gray-900 text-sm">{w.tracking_no}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {w.logistics_companies?.name || w.logistics_company_name || "-"}
+                    {w.supplier_name ? ` · ${w.supplier_name}` : ""}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {收货目标 && (
+        <ReceiveModal
+          明细={收货目标.明细}
+          提交中={提交中 === `item-${收货目标.明细.id}`}
+          onClose={() => set收货目标(null)}
+          onSubmit={提交收货}
+        />
+      )}
+      {确认弹窗}
+    </div>
+  );
+}
