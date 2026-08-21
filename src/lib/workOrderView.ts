@@ -326,7 +326,8 @@ export function buildWorkOrderView(input: WorkOrderViewInput) {
     /* 只对被选中的默认分支计提成（未选中的备选分支不卖给客户、不计提成） */
     if (!p.is_selected) continue;
     const revenue = (p.quantity || 0) * (p.unit_price || 0);
-    const cost = (p.quantity || 0) * (p.unit_cost || 0);
+    /* 成本口径（2026-08-21 拍板）：用成本价（采购价+分摊运费），老数据无成本价时回退采购价 */
+    const cost = (p.quantity || 0) * (p.cost_price ?? p.unit_cost ?? 0);
     const comm = calculatePartCommission(
       p.parts as unknown as CommissionSource | null,
       p.part_names as unknown as CommissionSource | null,
