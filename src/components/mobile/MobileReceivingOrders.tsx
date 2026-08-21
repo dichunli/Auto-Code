@@ -43,6 +43,10 @@ export interface 待收订单 {
   waybill_id: string | null;
   /* 整单运单豁免（2026-08-21） */
   waybill_exempt: boolean | null;
+  /* 供应商销售单（2026-08-21） */
+  supplier_order_no: string | null;
+  supplier_order_amount: number | null;
+  supplier_slip_photos: string[] | null;
   suppliers: { name: string; region?: string | null } | null;
   logistics_waybills: { id: string; tracking_no: string; logistics_company_name: string | null; logistics_companies: { name: string } | null } | null;
   purchase_order_items: 待收明细[];
@@ -79,6 +83,7 @@ function 行可收货(单: 待收订单, 明细: 待收明细): boolean {
 /* ─── 收货弹窗（竖排，十种差异处理与电脑端一致） ─── */
 function ReceiveModal({
   明细,
+  订单,
   提交中,
   外部数量,
   on请求扫码,
@@ -86,6 +91,8 @@ function ReceiveModal({
   onSubmit,
 }: {
   明细: 待收明细;
+  /* 订单（2026-08-21）：销售单录入读写采购单字段 */
+  订单: 待收订单;
   提交中: boolean;
   /* 扫码收货：连续扫码时父组件传入递增的数量，弹窗跟着变 */
   外部数量?: number | null;
@@ -108,6 +115,10 @@ function ReceiveModal({
   const [凭证, set凭证] = useState<string[]>([]);
   /* 配件图片（2026-08-21 需求5）：收货时可补拍实物图，追加到采购明细 photos，上传即落库 */
   const [配件图, set配件图] = useState<string[]>(明细.photos || []);
+  /* 供应商销售单（2026-08-21）：选填，随采购单保存 */
+  const [slipNo, setSlipNo] = useState(订单.supplier_order_no || "");
+  const [slipAmount, setSlipAmount] = useState(订单.supplier_order_amount != null ? String(订单.supplier_order_amount) : "");
+  const [slipPhotos, setSlipPhotos] = useState<string[]>(订单.supplier_slip_photos || []);
 
   /* 扫码连续加一：外部数量变化时同步进输入框 */
   useEffect(() => {
@@ -138,6 +149,23 @@ function ReceiveModal({
     if (isNaN(qty) || qty < 0) {
       showToast("到货数量必须 ≥ 0", "warning");
       return;
+    }
+
+    /* 销售单顺带保存（2026-08-21，选填不阻塞收货） */
+    const 新金额 = slipAmount.trim() === "" ? null : parseFloat(slipAmount);
+    if (slipAmount.trim() !== "" && (isNaN(新金额 as number) || (新金额 as number) < 0)) {
+      showToast("销售单总金额无效", "warning");
+      return;
+    }
+    if (slipNo.trim() || 新金额 !== null || slipPhotos.length > 0) {
+      await supabase
+        .from("purchase_orders")
+        .update({
+          supplier_order_no: slipNo.trim() || null,
+          supplier_order_amount: 新金额,
+          supplier_slip_photos: slipPhotos.length > 0 ? slipPhotos : null,
+        })
+        .eq("id", 订单.id);
     }
 
     if (qty === 订购) {
@@ -193,6 +221,30 @@ function ReceiveModal({
           <div>
             <label className="block text-xs text-gray-600 mb-1">配件图片（可拍照补充实物图）</label>
             <ImageUploader onUpload={保存配件图片} existingImages={配件图} maxImages={5} bucket="work-order-media" folder="purchase-item-photos" />
+          </div>
+
+          {/* 供应商销售单（2026-08-21）：选填，作用于本采购单；入库按单执行对账 */}
+          <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-3 space-y-2">
+            <div className="text-xs font-medium text-blue-800">供应商销售单（选填）</div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={slipNo}
+                onChange={(e) => setSlipNo(e.target.value)}
+                placeholder="销售单号"
+                className="flex-1 px-2.5 py-2 text-sm rounded-lg border border-blue-200 bg-white"
+              />
+              <input
+                type="number"
+                step="0.01"
+                min={0}
+                value={slipAmount}
+                onChange={(e) => setSlipAmount(e.target.value)}
+                placeholder="总金额¥"
+                className="w-28 px-2.5 py-2 text-sm text-right rounded-lg border border-blue-200 bg-white"
+              />
+            </div>
+            <ImageUploader onUpload={setSlipPhotos} existingImages={slipPhotos} maxImages={3} bucket="work-order-media" folder="supplier-slips" />
           </div>
 
           <div>
@@ -1027,6 +1079,7 @@ export function MobileReceivingOrders({
       {收货目标 && (
         <ReceiveModal
           明细={收货目标.明细}
+          订单={收货目标.订单}
           提交中={提交中 === `item-${收货目标.明细.id}`}
           外部数量={扫码数量}
           on请求扫码={() => set扫码开(true)}

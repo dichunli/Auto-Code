@@ -117,6 +117,8 @@ export interface 配件分支 {
   quantity?: number | null;
   unit_price?: number | null;
   unit_cost?: number | null;
+  /* 成本价（采购价+分摊运费，2026-08-21 启用）：毛利计算基准，空时回退 unit_cost */
+  cost_price?: number | null;
   total_price?: number | null;
   amount?: number | null;
   method?: string | null;
@@ -357,7 +359,7 @@ interface WorkOrderDataResult {
 
 /* 保留此导出仅为兼容历史调用（actions.ts 等）。请求级缓存无需手动清除，
  * 这里实现为安全的空操作，避免调用方报错。 */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 export function clearWorkOrderDataCache(_id?: string) {
   /* no-op：React cache() 在请求结束后自动失效，无需手动清理 */
 }

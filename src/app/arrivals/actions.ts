@@ -33,7 +33,8 @@ export async function 建到货确认单(
   运单id: string | null,
   供应商id: string,
   供应商单号: string | null,
-  照片: string[] | null
+  照片: string[] | null,
+  销售单金额: number | null = null
 ): Promise<操作结果 & { arrival_id?: string; receipt_no?: string; item_count?: number }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
@@ -49,6 +50,7 @@ export async function 建到货确认单(
     p_supplier_id: 供应商id,
     p_supplier_order_no: 供应商单号?.trim() || null,
     p_photos: 照片 && 照片.length > 0 ? 照片 : null,
+    p_supplier_order_amount: 销售单金额,
   });
   if (error) {
     return { success: false, error: error.message };
@@ -128,7 +130,8 @@ export async function 确认到货单(到货单id: string): Promise<操作结果
 /* ─── 确认入库：纯账务收尾（入库单+应付款+运费分摊），不再动库存 ─── */
 export async function 确认到货入库(
   到货单id: string,
-  运费: number
+  运费: number,
+  抹零: number | null = null
 ): Promise<操作结果 & { inbound_no?: string }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
@@ -143,6 +146,7 @@ export async function 确认到货入库(
     p_arrival_id: 到货单id,
     p_freight_amount: 运费 || 0,
     p_operator_id: user.id,
+    p_discount_amount: 抹零,
   });
   if (error) {
     return { success: false, error: error.message };
@@ -228,7 +232,8 @@ export async function 删除采购外货品(到货明细id: string): Promise<操
 export async function 补录到货单信息(
   到货单id: string,
   供应商单号: string | null,
-  照片: string[] | null
+  照片: string[] | null,
+  销售单金额: number | null = null
 ): Promise<操作结果> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
@@ -241,6 +246,7 @@ export async function 补录到货单信息(
     .update({
       supplier_order_no: 供应商单号?.trim() || null,
       photos: 照片 && 照片.length > 0 ? 照片 : null,
+      supplier_order_amount: 销售单金额,
     })
     .eq("id", 到货单id);
   if (error) {

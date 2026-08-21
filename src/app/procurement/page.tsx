@@ -58,7 +58,7 @@ export default async function ProcurementPage({
       supabase
         .from("purchase_orders")
         .select(`
-          id, order_no, status, created_at, waybill_id, waybill_exempt,
+          id, order_no, status, created_at, waybill_id, waybill_exempt, supplier_order_no, supplier_order_amount, supplier_slip_photos,
           suppliers(name, region),
           logistics_waybills:waybill_id(id, tracking_no, logistics_company_name, logistics_companies(name)),
           purchase_order_items(

@@ -171,7 +171,8 @@ export default function ItemPartGroup({
                 <ShowCommission>
                   {(() => {
                     const revenue = ((p.quantity as number) || 0) * ((p.unit_price as number) || 0);
-                    const cost = ((p.quantity as number) || 0) * ((p.unit_cost as number) || 0);
+                    /* 成本口径（2026-08-21 拍板）：成本价优先（含分摊运费），老数据回退采购价 */
+                    const cost = ((p.quantity as number) || 0) * (((p.cost_price as number) ?? (p.unit_cost as number)) || 0);
                     const comm = calculatePartCommission(p.parts, p.part_names, revenue, cost);
                     if (comm.sales === 0 && comm.repair === 0 && comm.picking === 0 && comm.diagnosis === 0 && comm.qc === 0) return null;
                     return (

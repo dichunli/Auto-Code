@@ -29,7 +29,7 @@ export default async function ArrivalWorkbenchPage({
   const [{ data: 单 }, { data: 明细 }, { data: 仓库 }] = await Promise.all([
     supabase
       .from("arrival_receipts")
-      .select("id, receipt_no, status, supplier_order_no, photos, suppliers(name), logistics_waybills(tracking_no)")
+      .select("id, receipt_no, status, supplier_order_no, supplier_order_amount, photos, suppliers(name), logistics_waybills(tracking_no)")
       .eq("id", id)
       .single(),
     supabase

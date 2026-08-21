@@ -21,6 +21,8 @@ export interface 到货单 {
   receipt_no: string;
   status: string;
   supplier_order_no: string | null;
+  /* 销售单总金额（2026-08-21）：入库时按它校验货款对平 */
+  supplier_order_amount: number | null;
   photos: string[] | null;
   suppliers: { name: string } | null;
   logistics_waybills: { tracking_no: string } | null;
@@ -636,6 +638,7 @@ export function ArrivalWorkbench({
   /* 供应商销售单号/截图后补（规划决策1） */
   const [补录模式, set补录模式] = useState(false);
   const [补录单号, set补录单号] = useState(到货单.supplier_order_no || "");
+  const [补录金额, set补录金额] = useState(到货单.supplier_order_amount != null ? String(到货单.supplier_order_amount) : "");
   const [补录照片, set补录照片] = useState<string[]>(到货单.photos || []);
 
   const 验货中 = 到货单.status === "receiving";
@@ -729,9 +732,14 @@ export function ArrivalWorkbench({
   }
 
   async function 保存补录() {
+    const 金额 = 补录金额.trim() === "" ? null : parseFloat(补录金额);
+    if (金额 !== null && (isNaN(金额) || 金额 < 0)) {
+      showToast("销售单总金额无效", "warning");
+      return;
+    }
     set提交中("patch");
     try {
-      const res = await 补录到货单信息(到货单.id, 补录单号.trim() || null, 补录照片.length > 0 ? 补录照片 : null);
+      const res = await 补录到货单信息(到货单.id, 补录单号.trim() || null, 补录照片.length > 0 ? 补录照片 : null, 金额);
       if (!res.success) throw new Error(res.error || "保存失败");
       set补录模式(false);
       router.refresh();
@@ -758,7 +766,12 @@ export function ArrivalWorkbench({
           <div className="text-sm text-gray-600">运单：{到货单.logistics_waybills.tracking_no}</div>
         )}
         <div className="text-sm text-gray-600 flex items-center gap-2 flex-wrap">
-          <span>供应商销售单：{到货单.supplier_order_no || <span className="text-gray-400">未填</span>}</span>
+          <span>
+            供应商销售单：{到货单.supplier_order_no || <span className="text-gray-400">未填</span>}
+            {到货单.supplier_order_amount != null && (
+              <span className="ml-1 text-gray-500">（¥{到货单.supplier_order_amount}）</span>
+            )}
+          </span>
           {到货单.status !== "inbounded" && !补录模式 && (
             <button type="button" onClick={() => set补录模式(true)} className="text-xs text-blue-600 hover:underline">
               {到货单.supplier_order_no ? "修改" : "补录单号/截图"}
@@ -781,6 +794,15 @@ export function ArrivalWorkbench({
               value={补录单号}
               onChange={(e) => set补录单号(e.target.value)}
               placeholder="供应商销售单号"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+            <input
+              type="number"
+              step="0.01"
+              min={0}
+              value={补录金额}
+              onChange={(e) => set补录金额(e.target.value)}
+              placeholder="销售单总金额（选填，入库时校验对平）"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             />
             <ImageUploader onUpload={set补录照片} existingImages={补录照片} maxImages={5} bucket="work-order-media" folder="arrival-receipts" />
