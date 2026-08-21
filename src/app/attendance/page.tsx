@@ -23,7 +23,7 @@ export default async function AttendancePage({
     supabase
       .from("attendance_records")
       .select(
-        "profile_id, work_date, has_schedule, shift_name, check_in_at, check_in_result, check_out_at, check_out_result, day_result, profiles(full_name)"
+        "profile_id, work_date, has_schedule, shift_name, check_in_at, check_in_result, check_out_at, check_out_result, day_result, manual_days, profiles(full_name)"
       )
       .gte("work_date", 开始)
       .lte("work_date", 结束)

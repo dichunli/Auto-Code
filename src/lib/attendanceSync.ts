@@ -77,6 +77,17 @@ function 时间戳转存库格式(ms: number): string {
 }
 
 /**
+ * 取实际打卡时间（存库格式）。
+ * 钉钉对「未打卡」记录返回的 userCheckTime 是计划打卡时间（baseCheckTime），
+ * 不是真实打卡时间（2026-08-21 发现：未打卡的行在报表里显示 07:50/18:00 计划时间），
+ * 所以 NotSigned 一律存 null。
+ */
+function 实际打卡时间(卡: 钉钉打卡项 | undefined): string | null {
+  if (!卡 || 卡.timeResult === "NotSigned" || !卡.userCheckTime) return null;
+  return 时间戳转存库格式(卡.userCheckTime);
+}
+
+/**
  * 当天汇总判定：
  *   无排班 → rest 休息
  *   上下班都缺卡 → absent 缺勤
@@ -167,9 +178,9 @@ export async function 同步考勤数据(from: Date, to: Date): Promise<同步�
         work_date: 日期串,
         has_schedule: has排班,
         shift_name: 排班?.shiftName || null,
-        check_in_at: 卡?.上班?.userCheckTime ? 时间戳转存库格式(卡.上班.userCheckTime) : null,
+        check_in_at: 实际打卡时间(卡?.上班),
         check_in_result: 卡?.上班?.timeResult || null,
-        check_out_at: 卡?.下班?.userCheckTime ? 时间戳转存库格式(卡.下班.userCheckTime) : null,
+        check_out_at: 实际打卡时间(卡?.下班),
         check_out_result: 卡?.下班?.timeResult || null,
         day_result: 判定当天结果(has排班, 卡),
         synced_at: 同步时刻,
