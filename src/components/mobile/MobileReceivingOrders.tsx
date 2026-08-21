@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
+import BarcodeScanModal from "@/components/BarcodeScanModal";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
@@ -17,6 +19,7 @@ import { 关联运单到采购单 } from "@/app/logistics/actions";
 
 export interface 待收明细 {
   id: string;
+  part_id: string | null;
   name: string;
   brand: string | null;
   specification: string | null;
@@ -65,11 +68,17 @@ function 需要运单(单: 待收订单): boolean {
 function ReceiveModal({
   明细,
   提交中,
+  外部数量,
+  on请求扫码,
   onClose,
   onSubmit,
 }: {
   明细: 待收明细;
   提交中: boolean;
+  /* 扫码收货：连续扫码时父组件传入递增的数量，弹窗跟着变 */
+  外部数量?: number | null;
+  /* 扫码收货：弹窗里点「继续扫码」重新打开扫码 */
+  on请求扫码?: () => void;
   onClose: () => void;
   onSubmit: (参数: { 动作: string; 数量: number; 凭证: string[] | null; 更新凭证: boolean; 弃货删行?: boolean }) => void;
 }) {
@@ -83,6 +92,13 @@ function ReceiveModal({
   const [多发付款, set多发付款] = useState<"" | "paid" | "free">("");
   const [少发选项, set少发选项] = useState<"" | "repurchase" | "discard">("");
   const [凭证, set凭证] = useState<string[]>([]);
+
+  /* 扫码连续加一：外部数量变化时同步进输入框 */
+  useEffect(() => {
+    if (外部数量 != null) {
+      set数量(String(外部数量));
+    }
+  }, [外部数量]);
 
   const 订购 = 明细.quantity;
   const 数量数 = 数量.trim() === "" ? null : parseInt(数量.trim(), 10);
@@ -147,7 +163,21 @@ function ReceiveModal({
         <div className="p-4 space-y-4">
           <div className="text-xs text-gray-500">订购 {订购} {明细.unit || ""}</div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">实际到货数量</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">实际到货数量</label>
+              {on请求扫码 && (
+                <button
+                  type="button"
+                  onClick={on请求扫码}
+                  className="text-xs px-2.5 py-1 rounded-lg bg-green-600 text-white active:bg-green-700 flex items-center gap-1"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2m4-9h2m4 0h2m-8 4h2m4 0h2m-8 4h8" />
+                  </svg>
+                  继续扫码
+                </button>
+              )}
+            </div>
             <input
               type="number"
               min={0}
@@ -291,12 +321,18 @@ export function MobileReceivingOrders({
   待签收运单: 待签收运单[];
 }) {
   const router = useRouter();
+  const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
   const { showToast } = useToast();
   const [提交中, set提交中] = useState<string | null>(null);
   const [勾选, set勾选] = useState<Set<string>>(new Set());
   const [运单弹窗目标, set运单弹窗目标] = useState<string | "batch" | null>(null);
   const [收货目标, set收货目标] = useState<{ 订单: 待收订单; 明细: 待收明细 } | null>(null);
+
+  /* 扫码收货：扫码开 + 各商品已扫次数（连续扫码加一） + 传给弹窗的数量 */
+  const [扫码开, set扫码开] = useState(false);
+  const [扫码数量, set扫码数量] = useState<number | null>(null);
+  const 扫码计数Ref = useRef<Record<string, number>>({});
 
   /* 只显示还有未处理明细的订单 */
   const 显示订单 = useMemo(
@@ -336,6 +372,8 @@ export function MobileReceivingOrders({
         if (!res.success) throw new Error(res.error || "收货失败");
       }
       set收货目标(null);
+      set扫码数量(null);
+      delete 扫码计数Ref.current[明细.id];
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -430,6 +468,68 @@ export function MobileReceivingOrders({
     });
   }, [待签收运单, 运单弹窗目标, 勾选, 显示订单]);
 
+  /* 扫码收货（2026-08-21）：条码/编码命中未处理商品 → 自动弹出该商品；
+     连续扫同一商品数量自动+1，也可在弹窗里手改数量 */
+  async function 扫码收货处理(码文本: string) {
+    const code = 码文本.trim();
+    if (!code) return;
+
+    /* 先按零件编码直接匹配 */
+    let 命中订单: 待收订单 | null = null;
+    let 命中明细: 待收明细 | null = null;
+    for (const o of 显示订单) {
+      const it = o.purchase_order_items.find((x) => x.part_number === code);
+      if (it) {
+        命中订单 = o;
+        命中明细 = it;
+        break;
+      }
+    }
+    /* 编码没中 → 按配件条码反查 part_id 再匹配 */
+    if (!命中明细) {
+      const { data } = await supabase.from("parts").select("id").eq("barcode", code).limit(1);
+      const pid = data && data.length > 0 ? (data[0] as { id: string }).id : null;
+      if (pid) {
+        for (const o of 显示订单) {
+          const it = o.purchase_order_items.find((x) => x.part_id === pid);
+          if (it) {
+            命中订单 = o;
+            命中明细 = it;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!命中明细 || !命中订单) {
+      showToast(`待收货里没有「${code}」这个商品`, "warning");
+      return;
+    }
+    if (命中明细.handle_action) {
+      showToast(`「${命中明细.name}」已收货处理过了`, "warning");
+      return;
+    }
+    if (需要运单(命中订单) && !命中订单.waybill_id) {
+      showToast("外阜供货商需先关联运单后才能收货", "warning");
+      return;
+    }
+
+    const n = (扫码计数Ref.current[命中明细.id] || 0) + 1;
+    扫码计数Ref.current[命中明细.id] = n;
+    /* 命中就关扫描弹窗，让收货弹窗露出；要再扫点弹窗里的「继续扫码」 */
+    set扫码开(false);
+    set收货目标({ 订单: 命中订单, 明细: 命中明细 });
+    set扫码数量(n);
+  }
+
+  function 关闭收货弹窗() {
+    if (收货目标) {
+      delete 扫码计数Ref.current[收货目标.明细.id];
+    }
+    set收货目标(null);
+    set扫码数量(null);
+  }
+
   return (
     <div className="space-y-3">
       {/* 顶部操作 */}
@@ -452,6 +552,13 @@ export function MobileReceivingOrders({
           className="flex-1 py-2.5 rounded-xl border border-blue-300 text-blue-700 bg-blue-50 text-sm font-medium"
         >
           关联运单{勾选.size > 0 ? `（已选${勾选.size}）` : ""}
+        </button>
+        <button
+          type="button"
+          onClick={() => set扫码开(true)}
+          className="flex-1 py-2.5 rounded-xl bg-green-600 text-white text-sm font-medium active:bg-green-700"
+        >
+          扫码收货
         </button>
       </div>
 
@@ -661,10 +768,20 @@ export function MobileReceivingOrders({
         <ReceiveModal
           明细={收货目标.明细}
           提交中={提交中 === `item-${收货目标.明细.id}`}
-          onClose={() => set收货目标(null)}
+          外部数量={扫码数量}
+          on请求扫码={() => set扫码开(true)}
+          onClose={关闭收货弹窗}
           onSubmit={提交收货}
         />
       )}
+      {/* 扫码收货：连续模式，扫一个弹一个/加一 */}
+      <BarcodeScanModal
+        open={扫码开}
+        onClose={() => set扫码开(false)}
+        onScan={扫码收货处理}
+        连续模式
+        标题="扫码收货"
+      />
       {确认弹窗}
     </div>
   );

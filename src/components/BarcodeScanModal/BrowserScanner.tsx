@@ -20,6 +20,8 @@ const 浏览器条码格式 = [
 interface Props {
   onScan: (code: string) => void;
   onError: (message: string) => void;
+  /* 连续模式：扫到码不自动停止，继续扫下一个 */
+  连续模式?: boolean;
 }
 
 /**
@@ -27,18 +29,30 @@ interface Props {
  * 使用 html5-qrcode 库实现摄像头实时扫描
  * 组件挂载时自动启动，卸载时自动停止
  */
-export default function BrowserScanner({ onScan, onError }: Props) {
+export default function BrowserScanner({ onScan, onError, 连续模式 = false }: Props) {
   const 容器Ref = useRef<HTMLDivElement>(null);
   const 扫描器Ref = useRef<Html5Qrcode | null>(null);
   const 已取消Ref = useRef(false);
   const onScanRef = useRef(onScan);
   const onErrorRef = useRef(onError);
+  const 连续模式Ref = useRef(连续模式);
 
   /* 同步最新回调引用，避免放入 useEffect 依赖数组 */
   useEffect(() => {
     onScanRef.current = onScan;
     onErrorRef.current = onError;
+    连续模式Ref.current = 连续模式;
   });
+
+  /* html5-qrcode 的 stop() 在未启动时会【同步】抛错（不是 Promise  rejection），
+     .catch 接不住，必须 try/catch（2026-08-21 扫码收货实测抓到） */
+  function 安全停止() {
+    try {
+      扫描器Ref.current?.stop().catch(() => {});
+    } catch {
+      /* 没启动过，忽略 */
+    }
+  }
 
   useEffect(() => {
     已取消Ref.current = false;
@@ -75,8 +89,10 @@ export default function BrowserScanner({ onScan, onError }: Props) {
           (解码文本) => {
             if (已取消Ref.current) return;
             onScanRef.current(解码文本);
-            /* 自动停止 */
-            扫描器.stop().catch(() => {});
+            /* 连续模式不停，继续扫下一个；单次模式自动停止 */
+            if (!连续模式Ref.current) {
+              安全停止();
+            }
           },
           () => { /* 持续扫描中，忽略帧解码错误 */ }
         );
@@ -100,9 +116,13 @@ export default function BrowserScanner({ onScan, onError }: Props) {
     return () => {
       已取消Ref.current = true;
       if (扫描器Ref.current) {
-        扫描器Ref.current.stop().catch(() => {});
+        安全停止();
         /* clear() 返回 void（同步），不能接 .catch */
-        扫描器Ref.current.clear();
+        try {
+          扫描器Ref.current.clear();
+        } catch {
+          /* 已清理过，忽略 */
+        }
         扫描器Ref.current = null;
       }
     };

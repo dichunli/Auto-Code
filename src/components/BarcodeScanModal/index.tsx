@@ -27,13 +27,18 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onScan: (barcode: string) => void;
+  /* 连续模式（2026-08-21 扫码收货）：扫到一个就回调一个，不关弹窗继续扫；
+     浏览器端 2 秒内同码去重；APP 端扫完自动重启原生扫描 */
+  连续模式?: boolean;
+  /* 顶部标题（默认"扫码添加配件"） */
+  标题?: string;
 }
 
 /**
  * 扫码弹窗主组件
  * 根据环境自动选择浏览器扫描（html5-qrcode）或 APP 原生扫描（Android 原生 Activity）
  */
-export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
+export default function BarcodeScanModal({ open, onClose, onScan, 连续模式 = false, 标题 = "扫码添加配件" }: Props) {
   const [模式, set模式] = useState<"扫描中" | "识别成功" | "不支持" | "错误" | "启动中">("扫描中");
   const [识别码, set识别码] = useState<string | null>(null);
   const [错误信息, set错误信息] = useState<string | null>(null);
@@ -44,6 +49,9 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
   const 已处理Ref = useRef(false);
   const onScanRef = useRef(onScan);
   const onCloseRef = useRef(onClose);
+  /* 连续模式：同码去重（2 秒内同一条码不重复回调） */
+  const 上次码Ref = useRef<{ 码: string; 时间: number } | null>(null);
+  const 连续模式Ref = useRef(连续模式);
 
   const 是App = 是Capacitor环境();
 
@@ -51,7 +59,22 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
   useEffect(() => {
     onScanRef.current = onScan;
     onCloseRef.current = onClose;
+    连续模式Ref.current = 连续模式;
   });
+
+  /* 连续模式统一入口：去重后回调 + 短暂显示刚扫到的码 */
+  const 连续回调 = useCallback((码: string) => {
+    const 现在 = Date.now();
+    if (上次码Ref.current && 上次码Ref.current.码 === 码 && 现在 - 上次码Ref.current.时间 < 2000) {
+      return;
+    }
+    上次码Ref.current = { 码, 时间: 现在 };
+    set识别码(码);
+    onScanRef.current(码);
+  }, []);
+
+  /* 连续模式：重启原生扫描用（避免 useCallback 自引用） */
+  const 重启APP扫码Ref = useRef<() => void>(() => {});
 
   /* ========== APP 环境：启动原生 Android 条码扫描 Activity ========== */
   const 启动APP扫码 = useCallback(async () => {
@@ -67,6 +90,16 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
 
       if (结果.barcode) {
         已处理Ref.current = true;
+        if (连续模式Ref.current) {
+          /* 连续模式：回调后自动重启原生扫描，直到用户关闭 */
+          连续回调(结果.barcode);
+          扫描中Ref.current = false;
+          if (!已取消Ref.current) {
+            set模式("扫描中");
+            重启APP扫码Ref.current();
+          }
+          return;
+        }
         set识别码(结果.barcode);
         set模式("识别成功");
         onScanRef.current(结果.barcode);
@@ -84,7 +117,12 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
     } finally {
       扫描中Ref.current = false;
     }
-  }, []);
+  }, [连续回调]);
+
+  /* 供连续模式重启调用（始终保持最新函数引用） */
+  useEffect(() => {
+    重启APP扫码Ref.current = 启动APP扫码;
+  }, [启动APP扫码]);
 
   /* ========== APP 环境：拍照后识别条码（fallback） ========== */
   const 拍照识别条码 = useCallback(async () => {
@@ -128,9 +166,14 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
 
   /* ========== 浏览器扫描回调 ========== */
   const handleBrowserScan = useCallback((code: string) => {
+    if (连续模式Ref.current) {
+      /* 连续模式：不中断扫描，去重回调 */
+      连续回调(code);
+      return;
+    }
     set识别码(code);
     set模式("识别成功");
-  }, []);
+  }, [连续回调]);
 
   const handleBrowserError = useCallback((message: string) => {
     set错误信息(message);
@@ -196,11 +239,15 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
 
   /* ========== 手动输入确认 ========== */
   const handleManualInput = useCallback((value: string) => {
-    if (value) {
-      onScanRef.current(value);
-      onCloseRef.current();
+    if (!value) return;
+    if (连续模式Ref.current) {
+      /* 连续模式：手动输入等同扫到一个码，不关弹窗 */
+      连续回调(value);
+      return;
     }
-  }, []);
+    onScanRef.current(value);
+    onCloseRef.current();
+  }, [连续回调]);
 
   if (!open) return null;
 
@@ -234,7 +281,7 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
 
       {/* ========== 顶部栏 ========== */}
       <div className="flex items-center justify-between px-4 h-12 bg-black/80 text-white shrink-0">
-        <span className="text-sm font-medium">扫码添加配件</span>
+        <span className="text-sm font-medium">{标题}</span>
         <button
           type="button"
           onClick={onClose}
@@ -248,9 +295,16 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
 
       {/* ========== 内容区域 ========== */}
       <div className="flex-1 relative overflow-hidden">
-        {/* 浏览器扫描：通过 key 控制重新挂载 */}
-        {!是App && 模式 !== "不支持" && !识别码 && 模式 !== "错误" && (
-          <BrowserScanner key={浏览器扫描Key} onScan={handleBrowserScan} onError={handleBrowserError} />
+        {/* 浏览器扫描：通过 key 控制重新挂载；连续模式扫到码也继续挂着 */}
+        {!是App && 模式 !== "不支持" && (连续模式 || (!识别码 && 模式 !== "错误")) && (
+          <BrowserScanner key={浏览器扫描Key} onScan={handleBrowserScan} onError={handleBrowserError} 连续模式={连续模式} />
+        )}
+
+        {/* 连续模式：右上角浮动显示刚扫到的码 */}
+        {连续模式 && 识别码 && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-green-600 text-white text-xs shadow-lg">
+            已扫：{识别码}
+          </div>
         )}
 
         {/* APP 启动中 loading */}
@@ -275,14 +329,16 @@ export default function BarcodeScanModal({ open, onClose, onScan }: Props) {
           <ScanError message={错误信息 || "扫描失败"} onConfirm={handleManualInput} />
         )}
 
-        {/* 识别结果 */}
-        {识别码 && <ScanResult code={识别码} />}
+        {/* 识别结果（连续模式不遮罩，用浮动小条提示） */}
+        {识别码 && !连续模式 && <ScanResult code={识别码} />}
       </div>
 
       {/* ========== 底部控制栏 ========== */}
       <div className="shrink-0 bg-black/90 pb-safe">
         <div className="flex items-center justify-center gap-6 px-4 py-4">
-          {!识别码 ? (
+          {连续模式 ? (
+            <span className="text-sm text-white/70">连续扫码中…扫完点右上角 × 结束</span>
+          ) : !识别码 ? (
             <>
               {是App ? (
                 <>
