@@ -26,8 +26,23 @@ interface TransactionRecord {
   amount: number;
   description: string | null;
   created_at: string;
+  /* 关联来源（2026-08-21 对账增强）：入库应付款指向入库单 */
+  reference_id?: string | null;
+  reference_type?: string | null;
+  /* 二次查询补充：供应商销售单号 + 销售单照片 */
+  slipNo?: string | null;
+  slipPhotos?: string[] | null;
   suppliers: { name: string } | null;
   profiles: { full_name: string } | null;
+}
+
+/* 销售单照片地址解析（与验货台同一存储桶口径） */
+function 解决图片地址(path: string): string {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) return path;
+  return `${base}/storage/v1/object/public/work-order-media/${path}`;
 }
 
 interface TransactionForm {
@@ -47,6 +62,59 @@ export default function SupplierTransactionsContent({
   const supabase = useMemo(() => createClient(), []);
   const [records, setRecords] = useState<TransactionRecord[]>(initialTransactions);
   const [allRecords, setAllRecords] = useState<TransactionRecord[]>(initialTransactions);
+
+  /* 销售单信息补充（2026-08-21 对账增强）：入库应付款记录 → 入库单 → 采购单/到货单，
+     带出供应商单号和销售单照片，对账时可直接点开照片核对 */
+  async function 补充销售单信息(list: TransactionRecord[]): Promise<TransactionRecord[]> {
+    const 入库单ids = list
+      .filter((r) => r.transaction_type === "debit" && r.reference_type === "inbound_order" && r.reference_id)
+      .map((r) => r.reference_id as string);
+    if (入库单ids.length === 0) return list;
+
+    const { data: 入库单们 } = await supabase
+      .from("inbound_orders")
+      .select("id, supplier_order_no, purchase_order_id, arrival_id")
+      .in("id", 入库单ids);
+    if (!入库单们 || 入库单们.length === 0) return list;
+
+    const 采购单ids = 入库单们.map((o) => o.purchase_order_id).filter(Boolean) as string[];
+    const 到货单ids = 入库单们.map((o) => o.arrival_id).filter(Boolean) as string[];
+    const [采购单照, 到货单照] = await Promise.all([
+      采购单ids.length > 0
+        ? supabase.from("purchase_orders").select("id, supplier_slip_photos").in("id", 采购单ids)
+        : Promise.resolve({ data: [] as { id: string; supplier_slip_photos: string[] | null }[] }),
+      到货单ids.length > 0
+        ? supabase.from("arrival_receipts").select("id, photos").in("id", 到货单ids)
+        : Promise.resolve({ data: [] as { id: string; photos: string[] | null }[] }),
+    ]);
+    const 采购照片Map = new Map(((采购单照.data || []) as { id: string; supplier_slip_photos: string[] | null }[]).map((o) => [o.id, o.supplier_slip_photos]));
+    const 到货照片Map = new Map(((到货单照.data || []) as { id: string; photos: string[] | null }[]).map((o) => [o.id, o.photos]));
+    const 入库Map = new Map(入库单们.map((o) => [o.id, o]));
+
+    return list.map((r) => {
+      if (r.transaction_type !== "debit" || r.reference_type !== "inbound_order" || !r.reference_id) return r;
+      const io = 入库Map.get(r.reference_id);
+      if (!io) return r;
+      const 照片 = io.purchase_order_id
+        ? 采购照片Map.get(io.purchase_order_id)
+        : io.arrival_id
+          ? 到货照片Map.get(io.arrival_id)
+          : null;
+      return { ...r, slipNo: io.supplier_order_no, slipPhotos: 照片 || null };
+    });
+  }
+
+  /* 首屏：对服务端传入的初始记录补充销售单信息（挂载一次） */
+  useEffect(() => {
+    let 有效 = true;
+    补充销售单信息(initialTransactions).then((结果) => {
+      if (!有效) return;
+      setAllRecords(结果);
+      setRecords(结果);
+    });
+    return () => { 有效 = false; };
+    /* 仅挂载时跑一次（exhaustive-deps 项目已关闭，无需 disable 注释） */
+  }, []);
   const [suppliers] = useState<Supplier[]>(initialSuppliers);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
@@ -89,8 +157,9 @@ export default function SupplierTransactionsContent({
     }
 
     const result = (data || []) as TransactionRecord[];
-    setAllRecords(result);
-    filterRecords(result, query);
+    const 补充后 = await 补充销售单信息(result);
+    setAllRecords(补充后);
+    filterRecords(补充后, query);
     setLoading(false);
   }
 
@@ -104,7 +173,9 @@ export default function SupplierTransactionsContent({
     const filtered = source.filter((r) => {
       const supplierName = r.suppliers?.name || "";
       const desc = r.description || "";
-      return supplierName.toLowerCase().includes(sq) || desc.toLowerCase().includes(sq);
+      const slip = r.slipNo || "";
+      /* 2026-08-21：销售单号纳入搜索（对账按单号查） */
+      return supplierName.toLowerCase().includes(sq) || desc.toLowerCase().includes(sq) || slip.toLowerCase().includes(sq);
     });
     setRecords(filtered);
     setPage(1);
@@ -365,7 +436,27 @@ export default function SupplierTransactionsContent({
                     {t.transaction_type === "payment" || t.transaction_type === "debit" ? "-" : "+"}
                     {formatCurrency(t.amount)}
                   </td>
-                  <td className="px-6 py-4 text-gray-500">{t.description || "-"}</td>
+                  <td className="px-6 py-4 text-gray-500">
+                    {t.description || "-"}
+                    {/* 销售单号+照片（2026-08-21）：入库应付款可点开照片对账 */}
+                    {t.slipNo && (
+                      <span className="block text-xs text-blue-600 mt-0.5">销售单 {t.slipNo}</span>
+                    )}
+                    {t.slipPhotos && t.slipPhotos.length > 0 && (
+                      <span className="flex gap-1 mt-1">
+                        {t.slipPhotos.slice(0, 3).map((p, i) => (
+                          <a key={i} href={解决图片地址(p)} target="_blank" rel="noreferrer" title="点击查看销售单照片">
+                            <img
+                              src={解决图片地址(p)}
+                              alt="销售单"
+                              loading="lazy"
+                              className="w-8 h-8 object-cover rounded border border-gray-200 hover:border-blue-400"
+                            />
+                          </a>
+                        ))}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-gray-500 text-xs">{t.profiles?.full_name || "-"}</td>
                 </tr>
               ))}

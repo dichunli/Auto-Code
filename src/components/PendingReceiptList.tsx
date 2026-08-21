@@ -64,6 +64,10 @@ interface PurchaseOrder {
   waybill_id: string | null;
   /* 整单运单豁免（2026-08-21） */
   waybill_exempt: boolean | null;
+  /* 供应商销售单（2026-08-21） */
+  supplier_order_no: string | null;
+  supplier_order_amount: number | null;
+  supplier_slip_photos: string[] | null;
   logistics_company_id: string | null;
   created_at: string;
   suppliers: { id: string; name: string; region?: string | null; phone?: string | null } | null;
@@ -169,6 +173,11 @@ export function PendingReceiptList() {
   const [shortChoice, setShortChoice] = useState<"" | "repurchase" | "discard">("");
   const [shortEvidence, setShortEvidence] = useState<string[]>([]);
 
+  /* 供应商销售单（2026-08-21）：收货时可录/可补（选填），随采购单保存，入库按单执行 */
+  const [rcvSlipNo, setRcvSlipNo] = useState("");
+  const [rcvSlipAmount, setRcvSlipAmount] = useState("");
+  const [rcvSlipPhotos, setRcvSlipPhotos] = useState<string[]>([]);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -179,6 +188,7 @@ export function PendingReceiptList() {
       .from("purchase_orders")
       .select(`
         id, order_no, supplier_id, status, total_amount, notes, waybill_id, waybill_exempt, created_at, logistics_company_id,
+        supplier_order_no, supplier_order_amount, supplier_slip_photos,
         suppliers(id, name, region, phone),
         logistics_companies:logistics_company_id(name),
         purchase_order_items(
@@ -255,6 +265,10 @@ export function PendingReceiptList() {
     setExcessKeepPaid("");
     setShortChoice("");
     setShortEvidence([]);
+    /* 销售单信息从采购单带出（已录的显示，可补可改） */
+    setRcvSlipNo(order.supplier_order_no || "");
+    setRcvSlipAmount(order.supplier_order_amount != null ? String(order.supplier_order_amount) : "");
+    setRcvSlipPhotos(order.supplier_slip_photos || []);
   }
 
   function closeReceiveModal() {
@@ -270,6 +284,9 @@ export function PendingReceiptList() {
     setExcessKeepPaid("");
     setShortChoice("");
     setShortEvidence([]);
+    setRcvSlipNo("");
+    setRcvSlipAmount("");
+    setRcvSlipPhotos([]);
   }
 
   /* 清空问题选择（2026-08-20 需求3）：误点破损/错发后再次点击取消，
@@ -296,6 +313,23 @@ export function PendingReceiptList() {
       return;
     }
     const ordered = receiveItem.quantity;
+
+    /* 销售单信息顺带保存（2026-08-21）：有填写就更新采购单，对账参考字段不阻塞收货 */
+    const 新金额 = rcvSlipAmount.trim() === "" ? null : parseFloat(rcvSlipAmount);
+    if (rcvSlipAmount.trim() !== "" && (isNaN(新金额 as number) || (新金额 as number) < 0)) {
+      alert("销售单总金额无效");
+      return;
+    }
+    if (rcvSlipNo.trim() || 新金额 !== null || rcvSlipPhotos.length > 0) {
+      await supabase
+        .from("purchase_orders")
+        .update({
+          supplier_order_no: rcvSlipNo.trim() || null,
+          supplier_order_amount: 新金额,
+          supplier_slip_photos: rcvSlipPhotos.length > 0 ? rcvSlipPhotos : null,
+        })
+        .eq("id", receiveOrder.id);
+    }
 
     if (qty === ordered) {
       /* 数量正常 → 看是否有问题反馈 */
@@ -1798,6 +1832,36 @@ export function PendingReceiptList() {
               <div className="text-sm text-gray-700">
                 配件:<span className="font-medium ml-1">{receiveItem.name}</span>
                 <span className="text-xs text-gray-500 ml-2">订购 {receiveItem.quantity} {receiveItem.unit || ""}</span>
+              </div>
+
+              {/* 供应商销售单（2026-08-21）：收货时录入/补录，选填；入库按销售单执行对账 */}
+              <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-3 space-y-2">
+                <div className="text-xs font-medium text-blue-800">供应商销售单（选填，作用于本采购单）</div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={rcvSlipNo}
+                    onChange={(e) => setRcvSlipNo(e.target.value)}
+                    placeholder="销售单号"
+                    className="flex-1 px-2 py-1.5 text-xs rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={rcvSlipAmount}
+                    onChange={(e) => setRcvSlipAmount(e.target.value)}
+                    placeholder="总金额¥"
+                    className="w-28 px-2 py-1.5 text-xs text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+                <ImageUploader
+                  onUpload={setRcvSlipPhotos}
+                  existingImages={rcvSlipPhotos}
+                  maxImages={3}
+                  bucket="work-order-media"
+                  folder="supplier-slips"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">实际到货数量</label>

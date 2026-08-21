@@ -37,6 +37,8 @@ export function ArrivalCreateForm({ 工作台前缀 }: { 工作台前缀: string
   const [运单列表, set运单列表] = useState<运单[]>([]);
   const [运单id, set运单id] = useState("");
   const [供应商单号, set供应商单号] = useState("");
+  /* 销售单总金额（2026-08-21，非必填）：入库时按它校验货款对平 */
+  const [单上金额, set单上金额] = useState("");
   const [照片, set照片] = useState<string[]>([]);
   const [提交中, set提交中] = useState(false);
   const { showToast } = useToast();
@@ -89,11 +91,18 @@ export function ArrivalCreateForm({ 工作台前缀 }: { 工作台前缀: string
     }
     set提交中(true);
     try {
+      const 金额 = 单上金额.trim() === "" ? null : parseFloat(单上金额);
+      if (金额 !== null && (isNaN(金额) || 金额 < 0)) {
+        showToast("销售单总金额无效", "warning");
+        set提交中(false);
+        return;
+      }
       const res = await 建到货确认单(
         运单id || null,
         供应商id,
         供应商单号.trim() || null,
-        照片.length > 0 ? 照片 : null
+        照片.length > 0 ? 照片 : null,
+        金额
       );
       if (!res.success) throw new Error(res.error || "创建到货单失败");
       showToast(`到货单 ${res.receipt_no} 创建成功，已拉入 ${res.item_count} 条在途采购行，请逐件验货`);
@@ -164,6 +173,22 @@ export function ArrivalCreateForm({ 工作台前缀 }: { 工作台前缀: string
           value={供应商单号}
           onChange={(e) => set供应商单号(e.target.value)}
           placeholder="对方实发那张单的单号"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          销售单总金额
+          <span className="ml-2 text-xs text-gray-400">（选填；填了入库时会校验货款对平）</span>
+        </label>
+        <input
+          type="number"
+          step="0.01"
+          min={0}
+          value={单上金额}
+          onChange={(e) => set单上金额(e.target.value)}
+          placeholder="销售单上的合计金额"
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
       </div>
