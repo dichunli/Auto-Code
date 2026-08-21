@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 手动同步考勤, 自动匹配钉钉账号, 保存考勤扣款设置 } from "./actions";
+import { 有效出勤天数, 是有效打卡 } from "@/lib/attendanceDays";
 
 // ============================================================
 // 类型定义
@@ -26,6 +27,8 @@ export interface 考勤记录行 {
   check_out_at: string | null;
   check_out_result: string | null;
   day_result: string;
+  /** 手动调整后的出勤天数（null=按自动规则） */
+  manual_days: number | null;
   profiles: { full_name: string | null } | null;
 }
 
@@ -308,7 +311,8 @@ export function AttendanceClient({
       员.按天.set(r.work_date, r);
       if (r.has_schedule) {
         员.应出勤 += 1;
-        if (r.day_result !== "absent") 员.实出勤 += 1;
+        /* 实出勤 = Σ有效出勤天数（手动调整优先；缺卡 0.5 天），与每日统计页、工资折算同口径 */
+        员.实出勤 += 有效出勤天数(r) ?? 0;
         if (r.day_result === "late") 员.迟到 += 1;
         if (r.day_result === "miss_card") 员.缺卡 += 1;
         if (r.day_result === "absent") 员.缺勤 += 1;
@@ -487,8 +491,11 @@ export function AttendanceClient({
                           return <td key={d} className="px-1 py-1.5 text-center text-gray-200">·</td>;
                         }
                         const 样式 = 结果样式[r.day_result] ?? 结果样式.rest;
+                        /* 打卡时间只显示真实打卡：未打卡（NotSigned/无记录）显示 --:-- */
+                        const 上班时间 = 是有效打卡(r.check_in_result, r.check_in_at) ? 格式化时分(r.check_in_at) : "--:--";
+                        const 下班时间 = 是有效打卡(r.check_out_result, r.check_out_at) ? 格式化时分(r.check_out_at) : "--:--";
                         const 提示 = r.has_schedule
-                          ? `${r.work_date}${r.shift_name ? " " + r.shift_name : ""}\n上班 ${格式化时分(r.check_in_at)}（${钉钉结果中文[r.check_in_result || ""] || "未打卡"}）\n下班 ${格式化时分(r.check_out_at)}（${钉钉结果中文[r.check_out_result || ""] || "未打卡"}）`
+                          ? `${r.work_date}${r.shift_name ? " " + r.shift_name : ""}\n上班 ${上班时间}（${钉钉结果中文[r.check_in_result || ""] || "未打卡"}）\n下班 ${下班时间}（${钉钉结果中文[r.check_out_result || ""] || "未打卡"}）`
                           : `${r.work_date} 休息`;
                         return (
                           <td key={d} className="px-1 py-1.5 text-center">

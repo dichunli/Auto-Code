@@ -12,9 +12,11 @@ import { createClient, 验证用户已登录, 包装ServerAction错误 } from "@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { 按手机号查用户id } from "@/lib/dingtalk";
 import { 同步考勤数据, type 同步结果 } from "@/lib/attendanceSync";
+import { 考勤管理角色名单, 是异常行 } from "@/lib/attendanceDays";
+import { revalidatePath } from "next/cache";
 
-/* 允许操作考勤/工资的角色 */
-const 管理角色名单 = ["admin", "boss", "accountant"];
+/* 允许操作考勤/工资的角色（名单统一在 src/lib/attendanceDays.ts） */
+const 管理角色名单 = 考勤管理角色名单;
 
 /** 检查指定用户是否是管理角色 */
 async function 是管理角色(userId: string): Promise<boolean> {
@@ -160,6 +162,73 @@ export async function 保存考勤扣款设置(
       : await admin.from("attendance_settings").insert(新值);
     if (写错) return { success: false, error: "保存失败: " + 写错.message };
 
+    return { success: true };
+  });
+}
+
+// ============================================================
+// 手动调整出勤天数（每日统计页，仅异常行可改）
+// ============================================================
+
+/**
+ * 手动调整某员工某天的出勤天数。
+ * @param 天数 0 / 0.5 / 1；传 null 表示撤销手动调整、恢复自动计算
+ *
+ * 规则（2026-08-21 与用户确认）：
+ *   - 只有异常行（迟到/早退/缺卡/缺勤）可改，正常出勤行固定 1 天不让改
+ *   - 展示、月报汇总、工资折算统一用 有效出勤天数 = 手动值优先
+ */
+export async function 修改出勤天数(
+  profileId: string,
+  workDate: string,
+  天数: number | null,
+  说明?: string
+): Promise<{ success: boolean; error?: string }> {
+  return 包装ServerAction错误(async () => {
+    const { user, error } = await 验证用户已登录();
+    if (!user) return { success: false, error: error || "未登录" };
+    if (!(await 是管理角色(user.id))) {
+      return { success: false, error: "只有管理员、老板或财务能调整出勤天数" };
+    }
+
+    if (!profileId || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
+      return { success: false, error: "参数不对" };
+    }
+    if (天数 != null) {
+      if (typeof 天数 !== "number" || isNaN(天数) || 天数 < 0 || 天数 > 1 || (天数 * 2) % 1 !== 0) {
+        return { success: false, error: "出勤天数只能填 0、0.5 或 1" };
+      }
+    }
+
+    const admin = createAdminClient();
+    /* 服务端双保险：只有异常行允许调整（前端入口同样做了限制） */
+    const { data: 记录数据, error: 查错 } = await admin
+      .from("attendance_records")
+      .select("has_schedule, day_result")
+      .eq("profile_id", profileId)
+      .eq("work_date", workDate)
+      .maybeSingle();
+    if (查错) return { success: false, error: "查询考勤记录失败: " + 查错.message };
+    const 记录 = 记录数据 as { has_schedule: boolean; day_result: string } | null;
+    if (!记录) return { success: false, error: "当天没有考勤记录，请先同步" };
+    if (!是异常行(记录)) {
+      return { success: false, error: "只有迟到、早退、缺卡、缺勤的日期才能调整出勤天数" };
+    }
+
+    const { error: 写错 } = await admin
+      .from("attendance_records")
+      .update({
+        manual_days: 天数,
+        manual_note: 天数 != null ? (说明?.trim() || null) : null,
+        manual_updated_by: 天数 != null ? user.id : null,
+        manual_updated_at: 天数 != null ? new Date().toISOString() : null,
+      })
+      .eq("profile_id", profileId)
+      .eq("work_date", workDate);
+    if (写错) return { success: false, error: "保存失败: " + 写错.message };
+
+    revalidatePath(`/attendance/${profileId}`);
+    revalidatePath("/attendance");
     return { success: true };
   });
 }

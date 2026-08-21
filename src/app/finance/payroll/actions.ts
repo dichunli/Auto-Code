@@ -11,9 +11,10 @@
 import { createClient, 验证用户已登录, 包装ServerAction错误 } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { 考勤管理角色名单, 有效出勤天数 } from "@/lib/attendanceDays";
 
-/* 允许操作工资的角色 */
-const 管理角色名单 = ["admin", "boss", "accountant"];
+/* 允许操作工资的角色（名单统一在 src/lib/attendanceDays.ts） */
+const 管理角色名单 = 考勤管理角色名单;
 
 /** 统一的身份校验：返回 null 表示通过，否则返回错误响应 */
 async function 校验管理权限(): Promise<{ success: false; error: string } | null> {
@@ -99,16 +100,17 @@ export async function 生成工资单(月份: string): Promise<{
     // 4. 当月考勤记录，按员工聚合
     const { data: 考勤数据 } = await admin
       .from("attendance_records")
-      .select("profile_id, has_schedule, day_result")
+      .select("profile_id, has_schedule, day_result, manual_days")
       .gte("work_date", period_start)
       .lte("work_date", period_end);
     interface 考勤聚合 { 应出勤: number; 实出勤: number; 迟到: number; 缺卡: number; 缺勤: number }
     const 考勤按人 = new Map<string, 考勤聚合>();
-    for (const r of (考勤数据 ?? []) as { profile_id: string; has_schedule: boolean; day_result: string }[]) {
+    for (const r of (考勤数据 ?? []) as { profile_id: string; has_schedule: boolean; day_result: string; manual_days: number | null }[]) {
       if (!r.has_schedule) continue;
       const 聚 = 考勤按人.get(r.profile_id) ?? { 应出勤: 0, 实出勤: 0, 迟到: 0, 缺卡: 0, 缺勤: 0 };
       聚.应出勤 += 1;
-      if (r.day_result !== "absent") 聚.实出勤 += 1;
+      /* 实出勤 = Σ有效出勤天数（手动调整优先；缺卡 0.5 天），与考勤月报同口径（2026-08-21 定） */
+      聚.实出勤 += 有效出勤天数(r) ?? 0;
       if (r.day_result === "late") 聚.迟到 += 1;
       if (r.day_result === "miss_card") 聚.缺卡 += 1;
       if (r.day_result === "absent") 聚.缺勤 += 1;
