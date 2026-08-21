@@ -16,7 +16,7 @@ export default async function MobileReceivingOrdersPage() {
         logistics_waybills:waybill_id(id, tracking_no, logistics_company_name, logistics_companies(name)),
         purchase_order_items(
           id, name, brand, specification, quantity, unit, notes, photos,
-          part_number, supplier_part_name, handle_action
+          part_id, part_number, supplier_part_name, handle_action
         )
       `)
       .in("status", ["submitted", "approved", "partial_received"])
