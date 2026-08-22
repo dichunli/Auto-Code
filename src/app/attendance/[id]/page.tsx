@@ -47,7 +47,7 @@ function 打卡结果格(结果: string | null, has排班: boolean) {
 }
 
 /* 表格单元格基础样式（照钉钉导出报表：黑色实线网格、居中、行高加大） */
-const 格 = "border border-black px-2 py-2.5 text-center";
+const 格 = "border border-black px-2 py-0 text-center";
 
 export default async function 个人考勤明细页({
   params,
@@ -132,26 +132,26 @@ export default async function 个人考勤明细页({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
+    <div className="max-w-4xl mx-auto space-y-1">
       {/* 操作条（打印时隐藏） */}
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         <Link
           href={`/attendance?month=${month}`}
-          className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
+          className="px-2 py-1 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
         >
           ← 返回月报
         </Link>
         <PersonSwitcher 员工们={绑定员工们} 当前id={id} month={month} />
         <Link
           href={`/attendance/${id}?month=${偏移(-1)}`}
-          className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
+          className="px-2 py-1 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
         >
           ← 上月
         </Link>
         <span className="text-sm text-gray-700 font-medium">{month}</span>
         <Link
           href={`/attendance/${id}?month=${偏移(1)}`}
-          className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
+          className="px-2 py-1 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
         >
           下月 →
         </Link>
@@ -162,21 +162,21 @@ export default async function 个人考勤明细页({
 
       {/* 每日统计表（照钉钉导出报表样式：标题青底、表头黄底、黑色网格线、缺卡红底/迟到绿底/早退黄底） */}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm bg-white border-collapse">
+        <table className="w-auto mx-auto text-sm bg-white border-collapse">
           <thead>
             <tr>
-              <th colSpan={7} className={`${格} bg-cyan-100 py-3 text-lg font-bold text-black`}>
+              <th colSpan={7} className={`${格} bg-cyan-100 text-base font-bold text-black`}>
                 每日统计　统计日期：{开始} 至 {结束}
               </th>
             </tr>
             <tr>
               <th className={`${格} bg-yellow-100 font-bold text-black`}>姓名</th>
               <th className={`${格} bg-yellow-100 font-bold text-black`}>日期</th>
-              <th className={`${格} bg-yellow-100 font-bold text-black`}>上班打卡时间</th>
-              <th className={`${格} bg-yellow-100 font-bold text-black`}>上班打卡结果</th>
-              <th className={`${格} bg-yellow-100 font-bold text-black`}>下班打卡时间</th>
-              <th className={`${格} bg-yellow-100 font-bold text-black`}>下班打卡结果</th>
-              <th className={`${格} bg-yellow-100 font-bold text-black`}>出勤天数</th>
+              <th className={`${格} bg-yellow-100 font-bold text-black`}>上班时间</th>
+              <th className={`${格} bg-yellow-100 font-bold text-black`}>上班结果</th>
+              <th className={`${格} bg-yellow-100 font-bold text-black`}>下班时间</th>
+              <th className={`${格} bg-yellow-100 font-bold text-black`}>下班结果</th>
+              <th className={`${格} bg-yellow-100 font-bold text-black`}>天数</th>
             </tr>
           </thead>
           <tbody>
@@ -185,7 +185,7 @@ export default async function 个人考勤明细页({
               const 日期对象 = new Date(日期串 + "T00:00:00");
               const 星期几 = 日期对象.getDay();
               const 是周末 = 星期几 === 0 || 星期几 === 6;
-              const 日期显示 = `${日期串.slice(2)} 星期${星期名[星期几]}`;
+              const 日期显示 = `${日期串.slice(5)} 周${星期名[星期几]}`;
               const 上班 = r ? 打卡结果格(r.check_in_result, r.has_schedule) : null;
               const 下班 = r ? 打卡结果格(r.check_out_result, r.has_schedule) : null;
               /* 打卡时间只显示真实打卡：未打卡（NotSigned/无记录）时库里可能是计划时间，不显示 */
@@ -194,7 +194,7 @@ export default async function 个人考勤明细页({
               return (
                 <tr key={日期串}>
                   <td className={`${格} text-black whitespace-nowrap`}>{员工姓名}</td>
-                  <td className={`${格} w-20 ${是周末 ? "text-red-600 font-bold" : "text-black"}`}>
+                  <td className={`${格} w-24 whitespace-nowrap ${是周末 ? "text-red-600 font-bold" : "text-black"}`}>
                     {日期显示}
                   </td>
                   {r && r.has_schedule ? (
@@ -237,8 +237,7 @@ export default async function 个人考勤明细页({
       </div>
 
       <p className="text-xs text-gray-400 print:hidden">
-        出勤天数规则：上下班都打卡 = 1 天；只打了一次卡（缺卡）= 0.5 天；完全没打卡 = 0 天；休息日不计。
-        {是管理 && " 迟到/早退/缺卡/缺勤的日期可点出勤天数手动调整（加粗数字为已调整）。"}
+        打卡规则：全打=1天，缺卡=0.5天，未打=0天，休息不计；异常日期可点天数手动调。
       </p>
     </div>
   );
