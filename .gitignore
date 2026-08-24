@@ -55,6 +55,13 @@ build2.log
 build3.log
 server.log
 logs/
+/*.log
+
+# 二进制工具与一次性调试产物
+/ngrok.exe
+/unused_vars.json
+/check-build.js
+/generate-icons.js
 
 # Android 构建产物和签名密钥
 android/app/build/
