@@ -305,3 +305,49 @@ export async function 更新客户(参数: {
   revalidatePath(`/customers/${id}`);
   return { success: true, id };
 }
+
+/* ═══ 客户删除 Server Action ═══
+ * 删除操作从客户端直写收口到服务端，删除前检查关联数据防止误删。 */
+export async function 删除客户(id: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 删除前检查：关联车辆 */
+  const { count: vehicleCount } = await supabase
+    .from("vehicles")
+    .select("*", { count: "exact", head: true })
+    .eq("customer_id", id);
+  if (vehicleCount && vehicleCount > 0) {
+    return { success: false, error: `无法删除：该客户下还有 ${vehicleCount} 辆车辆，请先处理。` };
+  }
+
+  /* 删除前检查：关联工单 */
+  const { count: orderCount } = await supabase
+    .from("work_orders")
+    .select("*", { count: "exact", head: true })
+    .eq("customer_id", id);
+  if (orderCount && orderCount > 0) {
+    return { success: false, error: `无法删除：该客户还有 ${orderCount} 条工单记录。` };
+  }
+
+  /* 删除前检查：关联会员 */
+  const { count: memberCount } = await supabase
+    .from("members")
+    .select("*", { count: "exact", head: true })
+    .eq("customer_id", id);
+  if (memberCount && memberCount > 0) {
+    return { success: false, error: "无法删除：该客户已办理会员，请先处理。" };
+  }
+
+  const { error } = await supabase.from("customers").delete().eq("id", id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/customers");
+  return { success: true };
+}

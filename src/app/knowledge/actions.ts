@@ -1253,3 +1253,27 @@ export async function 删除分词(词: string): Promise<{ success: boolean; err
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
+
+/* ═══ 删除知识文章 Server Action ═══
+ * 删除操作从客户端直写收口到服务端。删除前先清理关联数据（服务链接/车型链接），再删文章。
+ * 删除权限由数据库 RLS 兜底（仅管理员或文章作者可删）。 */
+export async function 删除知识文章(articleId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 先删除关联数据 */
+  await supabase.from("knowledge_service_links").delete().eq("article_id", articleId);
+  await supabase.from("knowledge_vehicle_links").delete().eq("article_id", articleId);
+
+  /* 再删除文章 */
+  const { error } = await supabase.from("knowledge_articles").delete().eq("id", articleId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}

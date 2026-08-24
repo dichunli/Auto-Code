@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 删除同义词 } from "./actions";
 
 interface 同义词记录 {
   id: string;
@@ -154,11 +155,11 @@ export default function SynonymsPage() {
     if (!(await 请求确认(`确定要删除「${term}」的同义词映射吗？`))) return;
 
     setSaving(true);
-    const { error } = await supabase.from("synonym_mapping").delete().eq("id", id);
+    const result = await 删除同义词(id);
     setSaving(false);
 
-    if (error) {
-      alert("删除失败: " + error.message);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
 

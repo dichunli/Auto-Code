@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 更新供应商电话 } from "@/app/suppliers/actions";
-import { 结清运费 } from "@/app/logistics/actions";
+import { 结清运费, 删除物流公司, 删除运单 } from "@/app/logistics/actions";
 import { useToast } from "@/components/Toast";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import Link from "next/link";
@@ -287,24 +287,11 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
   }
 
   async function handleDelete(company: LogisticsCompany) {
-    const { count, error: countError } = await supabase
-      .from("logistics_waybills")
-      .select("id", { count: "exact", head: true })
-      .eq("logistics_company_id", company.id);
-
-    if (countError) {
-      alert("检查引用失败: " + countError.message);
-      return;
-    }
-    if (count && count > 0) {
-      alert(`该物流公司已被 ${count} 个运单引用，无法删除。`);
-      return;
-    }
     if (!(await 请求确认(`确定删除物流公司「${company.name}」吗？`))) return;
 
-    const { error } = await supabase.from("logistics_companies").delete().eq("id", company.id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除物流公司(company.id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     await 刷新基础数据缓存();
@@ -313,9 +300,9 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
 
   async function handleDeleteWaybill(w: Waybill) {
     if (!(await 请求确认(`确定删除运单「${w.tracking_no}」吗？`))) return;
-    const { error } = await supabase.from("logistics_waybills").delete().eq("id", w.id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除运单(w.id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     loadWaybills();

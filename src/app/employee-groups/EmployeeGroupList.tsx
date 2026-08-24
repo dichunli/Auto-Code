@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
+import { 删除员工分组 } from "./actions";
 import { useRouter } from "next/navigation";
 import {useState, useMemo} from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -35,9 +36,9 @@ export function EmployeeGroupList({ groups }: Props) {
       return;
     }
 
-    const { error } = await supabase.from("employee_groups").delete().eq("id", id);
-    if (error) {
-      alert("删除失败：" + error.message);
+    const result = await 删除员工分组(id);
+    if (!result.success) {
+      alert("删除失败：" + (result.error || "未知错误"));
       return;
     }
 

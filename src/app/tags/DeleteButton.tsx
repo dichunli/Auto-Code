@@ -1,19 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 删除标签 } from "./actions";
 
 export function DeleteButton({ id, name }: { id: string; name: string }) {
   const router = useRouter();
-  const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete() {
     if (!(await 请求确认(`确定要删除标签「${name}」吗？`))) return;
-    const { error } = await supabase.from("tags").delete().eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除标签(id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     router.refresh();

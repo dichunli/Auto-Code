@@ -8,7 +8,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import * as XLSX from "xlsx";
-import { DeleteButton } from "./DeleteButton";
 import ServiceItemMergeDialog from "@/components/ServiceItemMergeDialog";
 
 interface ServiceItem {
@@ -431,7 +430,6 @@ export default function ServiceItemsContent({ items, categories }: Props) {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <Link href={`/service-items/${item.id}/edit`} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">编辑</Link>
-                      <DeleteButton id={item.id} name={item.name} />
                     </div>
                   </td>
                 </tr>

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
+import { 删除报销项 } from "@/app/work-orders/actions";
 
 export default function ReimbursementPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -192,7 +193,8 @@ export default function ReimbursementPage({ params }: { params: Promise<{ id: st
         if (updErr) throw updErr;
 
         // 删除旧项目重新插入（简单实现）
-        await supabase.from("work_order_reimbursement_items").delete().eq("reimbursement_id", rid);
+        const delResult = await 删除报销项(rid);
+        if (!delResult.success) throw new Error(delResult.error || "删除旧报销项失败");
       }
 
       const rows = validItems.map((it, idx) => ({

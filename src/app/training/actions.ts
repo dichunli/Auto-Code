@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
 
 interface 新建课程数据 {
   title: string;
@@ -230,4 +231,36 @@ export async function 删除课程(id: string): Promise<{ success: boolean; erro
     console.error("[删除课程] 异常:", msg);
     return { success: false, error: "删除异常: " + msg };
   }
+}
+
+/* ═══ 培训分类删除 Server Action ═══
+ * 删除操作从客户端直写收口到服务端，删除前检查分类下是否有课程。 */
+export async function 删除培训分类(id: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 删除前检查：该分类下是否还有课程 */
+  const { data: courses, error: countError } = await supabase
+    .from("training_courses")
+    .select("id")
+    .eq("category_id", id)
+    .limit(1);
+  if (countError) {
+    return { success: false, error: "检查关联课程失败: " + countError.message };
+  }
+  if (courses && courses.length > 0) {
+    return { success: false, error: "该分类下已有课程，无法删除。请先将课程移动到其他分类。" };
+  }
+
+  const { error } = await supabase.from("training_categories").delete().eq("id", id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/training/categories");
+  return { success: true };
 }

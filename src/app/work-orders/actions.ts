@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { clearWorkOrderDataCache, 清基础数据缓存 } from "@/lib/workOrderData";
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
+import { logAction } from "@/lib/operationLog";
 
 /**
  * 清除指定工单的详情页缓存。
@@ -558,5 +559,109 @@ export async function 解锁工单(工单id: string): Promise<{ success: boolean
 
   clearWorkOrderDataCache(工单id);
   revalidatePath(`/work-orders/${工单id}`);
+  return { success: true };
+}
+
+/* ═══ 删除工单 Server Action ═══
+ * 删除操作从客户端直写收口到服务端。
+ * 数据库层已有删除权限门禁（仅 admin 且工单已取消才可删），此处由 RLS 兜底。 */
+export async function 删除工单(工单id: string, 工单号: string, 删除原因: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!删除原因 || !删除原因.trim()) {
+    return { success: false, error: "请填写删除原因" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("work_orders").delete().eq("id", 工单id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  /* 记录操作日志（含删除原因，便于审计） */
+  await logAction({
+    actionType: "work_order_delete",
+    targetTable: "work_orders",
+    targetId: 工单id,
+    targetName: 工单号,
+    description: `删除工单 ${工单号}，原因: ${删除原因.trim()}`,
+  });
+
+  revalidatePath("/work-orders");
+  return { success: true };
+}
+
+/* ═══ 删除工单项目行（维修项目） ═══ */
+export async function 删除工单项目(itemId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("work_order_items").delete().eq("id", itemId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 删除工单项目分配的施工人 ═══ */
+export async function 删除项目施工人(itemId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_item_mechanics")
+    .delete()
+    .eq("work_order_item_id", itemId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 删除报销项（保存报销单时先删旧） ═══ */
+export async function 删除报销项(reimbursementId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_reimbursement_items")
+    .delete()
+    .eq("reimbursement_id", reimbursementId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 删除检查媒体（保存检查单时先删旧） ═══ */
+export async function 删除检查媒体(inspectionId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_inspection_media")
+    .delete()
+    .eq("inspection_id", inspectionId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
   return { success: true };
 }

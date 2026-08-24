@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 删除行为分类 } from "./actions";
 
 export interface 行为分类 {
   id: string;
@@ -96,9 +97,9 @@ export default function CategoryManageModal({ categories, onClose, onChanged }: 
       return;
     }
     if (!(await 请求确认(`确定删除分类「${c.name}」吗？`))) return;
-    const { error } = await supabase.from("behavior_categories").delete().eq("id", c.id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除行为分类(c.id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     onChanged();

@@ -7,6 +7,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { ImageUploader } from "@/components/ImageUploader";
 import CategoryManageModal, { 行为分类 } from "./CategoryManageModal";
 import DetailManageModal from "./DetailManageModal";
+import { 删除行为项目 } from "./actions";
 
 interface 行为项目 {
   id: string;
@@ -186,9 +187,9 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
       ? `\n注意：有 ${count} 个考核任务关联此项目，删除后这些任务及其检查记录、评论将被一并删除！`
       : "";
     if (!(await 请求确认(`确定删除项目「${item.name}」吗？已有的打分流水保留，但无法再使用此项目。${cascadeTip}`))) return;
-    const { error } = await supabase.from("behavior_score_items").delete().eq("id", item.id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除行为项目(item.id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     fetchItems();

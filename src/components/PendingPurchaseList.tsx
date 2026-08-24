@@ -7,6 +7,7 @@ import { filterLogisticsByRegion, REGION_LABELS } from "@/lib/logisticsFilter";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { useConfirm } from "./ConfirmDialog";
+import { 移除采购暂存行 } from "@/app/procurement/actions";
 import PartForm from "@/app/parts/new/PartForm";
 import { PURCHASE_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
@@ -485,8 +486,8 @@ export function PendingPurchaseList() {
     if (!(await 请求确认(`确定把「${row.name}」从待采购列表移除吗？（不会生成采购单）`))) return;
     setSubmitting(true);
     try {
-      const { error } = await supabase.from("custom_purchase_staging").delete().eq("id", row.staging.id);
-      if (error) throw error;
+      const result = await 移除采购暂存行(row.staging.id);
+      if (!result.success) throw new Error(result.error || "移除失败");
       loadData();
     } catch (err: unknown) {
       set结果提示({ 类型: "失败", 文字: "移除失败: " + (err instanceof Error ? err.message : String(err)) });

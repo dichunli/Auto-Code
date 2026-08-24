@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 删除其它收支 } from "@/app/finance/other/actions";
 
 interface 记录 {
   id: string;
@@ -77,10 +78,9 @@ export default function MobileOtherPage() {
 
   async function handleDelete(id: string) {
     if (!(await 请求确认("确定删除这条记录？"))) return;
-    const supabase = createClient();
-    const { error } = await supabase.from("other_transactions").delete().eq("id", id);
-    if (error) {
-      alert("删除失败：" + error.message);
+    const result = await 删除其它收支(id);
+    if (!result.success) {
+      alert("删除失败：" + (result.error || "未知错误"));
       return;
     }
     loadRecords();
