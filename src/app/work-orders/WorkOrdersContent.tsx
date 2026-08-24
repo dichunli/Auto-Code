@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import WorkOrderActionButtons from "@/components/WorkOrderActionButtons";
 import { PermissionGate } from "@/components/PermissionGate";
-import { logAction } from "@/lib/operationLog";
+import { 删除工单 } from "./actions";
 import { 阶段文案, type 阶段key } from "@/lib/orderStage";
 import { 读本地工单标签 } from "@/lib/orderTabs";
 import StageOrderCard from "@/components/StageOrderCard";
@@ -63,7 +62,6 @@ export default function WorkOrdersContent({
   mechanicGroups = [],
 }: WorkOrdersContentProps) {
   const router = useRouter();
-  const supabase = createClient();
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; orderNo: string } | null>(null);
@@ -87,27 +85,14 @@ export default function WorkOrdersContent({
 
   async function handleDeleteConfirm() {
     if (!deleteTarget) return;
-    if (!deleteReason.trim()) {
-      alert("请填写删除原因");
-      return;
-    }
     setDeleteLoading(true);
-    const { error } = await supabase.from("work_orders").delete().eq("id", deleteTarget.id);
-    if (error) {
-      setDeleteLoading(false);
-      alert("删除失败: " + error.message);
+    const result = await 删除工单(deleteTarget.id, deleteTarget.orderNo, deleteReason);
+    setDeleteLoading(false);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
 
-    await logAction({
-      actionType: "work_order_delete",
-      targetTable: "work_orders",
-      targetId: deleteTarget.id,
-      targetName: deleteTarget.orderNo,
-      description: `删除工单 ${deleteTarget.orderNo}，原因: ${deleteReason.trim()}`,
-    });
-
-    setDeleteLoading(false);
     setDeleteModalOpen(false);
     setDeleteTarget(null);
     setDeleteReason("");

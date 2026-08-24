@@ -1,46 +1,24 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient, 确保有session } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 删除培训分类 } from "@/app/training/actions";
 
 export default function DeleteButton({ id, name }: { id: string; name: string }) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [deleting, setDeleting] = useState(false);
   const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete() {
     if (!(await 请求确认(`确定要删除分类「${name}」吗？`))) return;
     setDeleting(true);
-    await 确保有session();
-
-    const { data: courses, error: countError } = await supabase
-      .from("training_courses")
-      .select("id")
-      .eq("category_id", id)
-      .limit(1);
-
-    if (countError) {
-      alert("检查关联课程失败: " + countError.message);
-      setDeleting(false);
+    const result = await 删除培训分类(id);
+    setDeleting(false);
+    if (!result.success) {
+      alert(result.error || "删除失败");
       return;
     }
-
-    if (courses && courses.length > 0) {
-      alert("该分类下已有课程，无法删除。请先将课程移动到其他分类。");
-      setDeleting(false);
-      return;
-    }
-
-    const { error } = await supabase.from("training_categories").delete().eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
-      setDeleting(false);
-      return;
-    }
-
     router.refresh();
   }
 

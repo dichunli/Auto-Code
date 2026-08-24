@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
+import { 删除知识文章 } from "@/app/knowledge/actions";
 
 interface Props {
   articleId: string;
@@ -55,13 +56,8 @@ export function KnowledgeDeleteButton({ articleId, canDelete: serverCanDelete }:
     setDeleting(true);
 
     try {
-      /* 先删除关联数据 */
-      await supabase.from("knowledge_service_links").delete().eq("article_id", articleId);
-      await supabase.from("knowledge_vehicle_links").delete().eq("article_id", articleId);
-
-      /* 再删除文章 */
-      const { error } = await supabase.from("knowledge_articles").delete().eq("id", articleId);
-      if (error) throw error;
+      const result = await 删除知识文章(articleId);
+      if (!result.success) throw new Error(result.error || "删除失败");
 
       router.push("/knowledge");
       router.refresh();

@@ -1,30 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 删除配件规格 } from "./actions";
 
 export function DeleteButton({ id, name }: { id: string; name: string }) {
   const router = useRouter();
-  const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete() {
     if (!(await 请求确认(`确定要删除规格「${name}」吗？`))) return;
-
-    const [{ count: linkCount }, { count: partCount }] = await Promise.all([
-      supabase.from("part_name_specifications").select("id", { count: "exact", head: true }).eq("specification_id", id),
-      supabase.from("parts").select("id", { count: "exact", head: true }).eq("specification_id", id),
-    ]);
-
-    if ((linkCount ?? 0) > 0 || (partCount ?? 0) > 0) {
-      alert("该规格已被使用（存在关联配件名称或库存配件），不允许删除");
-      return;
-    }
-
-    const { error } = await supabase.from("part_specifications").delete().eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除配件规格(id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     router.refresh();

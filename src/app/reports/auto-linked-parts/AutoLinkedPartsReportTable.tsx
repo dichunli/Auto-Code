@@ -4,6 +4,7 @@ import {useState, useMemo} from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 删除自动关联 } from "./actions";
 
 interface AutoLinkedRow {
   id: string;
@@ -84,10 +85,10 @@ export default function AutoLinkedPartsReportTable({ rows: initialRows }: { rows
       return;
     }
     setDeletingId(id);
-    const { error } = await supabase.from("part_vehicle_models").delete().eq("id", id);
+    const result = await 删除自动关联(id);
     setDeletingId(null);
-    if (error) {
-      alert("删除失败：" + error.message);
+    if (!result.success) {
+      alert("删除失败：" + (result.error || "未知错误"));
       return;
     }
     setRows((current) => current.filter((row) => row.id !== id));

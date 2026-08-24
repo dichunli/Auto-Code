@@ -118,3 +118,31 @@ export async function 更新供应商电话(
   revalidatePath("/suppliers");
   return { success: true };
 }
+
+/* ─── 删除供应商 ───
+ * 删除操作从客户端直写收口到服务端，删除前服务端重新检查配件关联，防止误删。 */
+export async function 删除供应商(id: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 服务端重新检查：该供应商下是否还有关联配件 */
+  const { count: partCount } = await supabase
+    .from("parts")
+    .select("id", { count: "exact", head: true })
+    .eq("supplier_id", id);
+  if (partCount && partCount > 0) {
+    return { success: false, error: "该供应商有关联的配件信息，无法删除" };
+  }
+
+  const { error } = await supabase.from("suppliers").delete().eq("id", id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/suppliers");
+  return { success: true };
+}

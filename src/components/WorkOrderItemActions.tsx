@@ -1,9 +1,9 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { EditWorkOrderItemModal } from "./EditWorkOrderItemModal";
 import { useConfirm } from "./ConfirmDialog";
+import { 删除工单项目 } from "@/app/work-orders/actions";
 
 interface Props {
   itemId: string;
@@ -17,7 +17,6 @@ interface Props {
 }
 
 export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, unitPrice, requireQc }: Props) {
-  const supabase = createClient();
   const [deleting, setDeleting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const { 请求确认, 确认弹窗 } = useConfirm();
@@ -25,10 +24,10 @@ export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, un
   async function handleDelete() {
     if (!(await 请求确认("确定删除此维修项目吗？"))) return;
     setDeleting(true);
-    const { error } = await supabase.from("work_order_items").delete().eq("id", itemId);
+    const result = await 删除工单项目(itemId);
     setDeleting(false);
-    if (error) {
-      alert("删除失败: " + error.message);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     /* 局部更新：广播删除事件，项目行（ItemRowWrapper）立即隐藏、

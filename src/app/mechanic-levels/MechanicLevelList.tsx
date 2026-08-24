@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 删除技师等级 } from "./actions";
 import { useConfirm } from "@/components/ConfirmDialog";
 
 interface Level {
@@ -28,9 +29,9 @@ export function MechanicLevelList({ levels }: Props) {
       return;
     }
 
-    const { error } = await supabase.from("mechanic_levels").delete().eq("id", id);
-    if (error) {
-      alert("删除失败：" + error.message);
+    const result = await 删除技师等级(id);
+    if (!result.success) {
+      alert("删除失败：" + (result.error || "未知错误"));
       return;
     }
 

@@ -4,6 +4,7 @@ import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
+import { 删除供应商 } from "./actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import Link from "next/link";
@@ -101,9 +102,9 @@ export default function SuppliersContent({ initialSuppliers, initialCount }: { i
     }
     if (!(await 请求确认(`确定删除供应商「${name}」吗？`))) return;
 
-    const { error } = await supabase.from("suppliers").delete().eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除供应商(id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     await 刷新基础数据缓存();

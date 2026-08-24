@@ -17,6 +17,7 @@ import { PartWorkflowActions } from "./PartWorkflowActions";
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import { 申领配件, 取消申领 } from "@/app/picking-orders/actions";
 import { 重置外包财务记录 } from "@/app/outsource-orders/actions";
+import { 删除工单项目 } from "@/app/work-orders/actions";
 import {
   删除配件分支,
   删除配件目录,
@@ -1799,10 +1800,10 @@ export default function MobileItemEditor({
       if (!(await 请求确认("该项目下还有配件，确定一并删除吗？"))) return;
     }
     setLoading(true);
-    const { error } = await supabase.from("work_order_items").delete().eq("id", item.id);
+    const result = await 删除工单项目(item.id);
     setLoading(false);
-    if (error) {
-      alert("删除失败: " + error.message);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     refresh();

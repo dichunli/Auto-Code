@@ -1,40 +1,29 @@
 "use client";
 
-import {useState, useMemo} from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 删除车辆 } from "./actions";
 
 interface Props {
   id: string;
 }
 
 export function DeleteButton({ id }: Props) {
-  const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete() {
     if (!(await 请求确认("确定要删除该车辆吗？删除前会检查关联数据。"))) return;
     setDeleting(true);
-
-    // 检查关联工单
-    const { count: orderCount } = await supabase
-      .from("work_orders")
-      .select("*", { count: "exact", head: true })
-      .eq("vehicle_id", id);
-    if (orderCount && orderCount > 0) {
-      alert(`无法删除：该车辆还有 ${orderCount} 条工单记录。`);
-      setDeleting(false);
+    const result = await 删除车辆(id);
+    setDeleting(false);
+    if (!result.success) {
+      alert(result.error || "删除失败");
       return;
     }
-
-    const { error } = await supabase.from("vehicles").delete().eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
-    } else {
-      window.location.reload();
-    }
-    setDeleting(false);
+    router.refresh();
   }
 
   return (

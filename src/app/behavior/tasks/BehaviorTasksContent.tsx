@@ -4,6 +4,7 @@ import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 删除考核任务 } from "./actions";
 
 interface 行为项目 {
   id: string;
@@ -186,9 +187,9 @@ export default function BehaviorTasksContent({
 
   async function handleDelete(id: string) {
     if (!(await 请求确认("确定删除这条考核任务吗？"))) return;
-    const { error } = await supabase.from("behavior_check_tasks").delete().eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除考核任务(id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     fetchData();

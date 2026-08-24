@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 批量删除行为明细 } from "./actions";
 
 /* 检查细节编辑行：真实行用数据库 id，新增行用 new-序号 临时 id */
 interface 细节行 {
@@ -98,8 +99,8 @@ export default function DetailManageModal({ itemId, itemName, onClose, onSaved }
     try {
       /* 1. 删除 */
       if (deletedIds.length > 0) {
-        const { error } = await supabase.from("behavior_item_details").delete().in("id", deletedIds);
-        if (error) throw error;
+        const delResult = await 批量删除行为明细(deletedIds);
+        if (!delResult.success) throw new Error(delResult.error || "删除失败");
       }
 
       /* 2. 新增与修改（sort_order 按当前排列顺序落库） */

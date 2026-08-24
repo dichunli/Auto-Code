@@ -724,3 +724,20 @@ export async function 撤销采购明细退回待采购(采购单id: string, 明
   revalidatePath("/procurement");
   return { success: true };
 }
+
+/* ─── 移除采购暂存行（从待采购列表移除，不生成采购单） ─── */
+export async function 移除采购暂存行(stagingId: string): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("custom_purchase_staging").delete().eq("id", stagingId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}

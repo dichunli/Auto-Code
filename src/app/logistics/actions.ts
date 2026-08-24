@@ -305,3 +305,50 @@ export async function 关联运单到供应商待收货单(
   revalidatePath("/m/receiving");
   return { success: true, count: (data || []).length };
 }
+
+/* ─── 删除物流公司（删除前服务端检查运单引用） ─── */
+export async function 删除物流公司(id: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 服务端重新检查：该物流公司下是否还有运单 */
+  const { count, error: countError } = await supabase
+    .from("logistics_waybills")
+    .select("id", { count: "exact", head: true })
+    .eq("logistics_company_id", id);
+  if (countError) {
+    return { success: false, error: "检查引用失败: " + countError.message };
+  }
+  if (count && count > 0) {
+    return { success: false, error: `该物流公司已被 ${count} 个运单引用，无法删除。` };
+  }
+
+  const { error } = await supabase.from("logistics_companies").delete().eq("id", id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/logistics");
+  return { success: true };
+}
+
+/* ─── 删除运单 ─── */
+export async function 删除运单(id: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("logistics_waybills").delete().eq("id", id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/logistics");
+  return { success: true };
+}

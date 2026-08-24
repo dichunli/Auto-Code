@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 删除检查媒体 } from "@/app/work-orders/actions";
 import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
 import { ImageAnnotator } from "@/components/ImageAnnotator";
@@ -47,7 +48,7 @@ interface InspectionRecord {
   work_order_inspection_media: InspectionMedia[] | null;
 }
 
-/* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+ 
 type _InspectionRecord = InspectionRecord;
 
 const LIGHT_ITEMS = [
@@ -345,7 +346,8 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
         if (updateError) throw updateError;
 
         /* 删除旧 media */
-        await supabase.from("work_order_inspection_media").delete().eq("inspection_id", existingId);
+        const delResult = await 删除检查媒体(existingId);
+        if (!delResult.success) throw new Error(delResult.error || "删除旧媒体失败");
       } else {
         /* 新建记录 */
         const { data: inspection, error: inspectionError } = await supabase

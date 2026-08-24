@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 删除工具 as 删除工具Action } from "./actions";
 import ToolQrCode from "./components/ToolQrCode";
 import ToolScanButton from "./components/ToolScanButton";
 import ToolBorrowReturnModal from "./components/ToolBorrowReturnModal";
@@ -181,8 +182,8 @@ export default function ToolManagementPage() {
     if (!(await 请求确认(`确定删除工具「${name}」吗？删除后不可恢复。`))) return;
     set删除中(id);
     try {
-      const { error } = await supabase.from("tools").delete().eq("id", id);
-      if (error) throw error;
+      const result = await 删除工具Action(id);
+      if (!result.success) throw new Error(result.error || "删除失败");
       set工具列表((prev) => prev.filter((t) => t.id !== id));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
