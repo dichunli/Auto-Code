@@ -35,10 +35,11 @@ interface 考核任务 {
  * 增删改后的客户端重查逻辑在 BehaviorTasksContent 内保持不变 */
 export default async function BehaviorTasksPage() {
   const supabase = await createClient();
-  const [{ data: itemData }, { data: empData }, { data: taskData }] = await Promise.all([
+  /* 首屏任务只取第一页（20 条）+ 总数，防止任务增多后全量拉取拖慢页面 */
+  const [{ data: itemData }, { data: empData }, { data: taskData, count: taskCount }] = await Promise.all([
     supabase.from("behavior_score_items").select("id, name, score_type, score_value, responsible_ids, checker_ids").eq("is_active", true).order("name"),
     supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
-    supabase.from("behavior_check_tasks").select("*").order("created_at", { ascending: false }),
+    supabase.from("behavior_check_tasks").select("*", { count: "exact" }).order("created_at", { ascending: false }).range(0, 19),
   ]);
 
   const itemMap = new Map((itemData as 行为项目[] | null)?.map((i) => [i.id, i]) || []);
@@ -59,6 +60,7 @@ export default async function BehaviorTasksPage() {
       initialItems={(itemData as 行为项目[] | null) || []}
       initialEmployees={(empData as 员工[] | null) || []}
       initialTasks={tasks}
+      initialCount={taskCount || 0}
     />
   );
 }

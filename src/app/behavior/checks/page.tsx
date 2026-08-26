@@ -110,7 +110,7 @@ export default async function BehaviorChecksPage() {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) {
-    return <BehaviorChecksContent initialRecords={[]} currentUserId="" />;
+    return <BehaviorChecksContent initialRecords={[]} initialCount={0} currentUserId="" />;
   }
   const uid = userData.user.id;
   const today = 本地今日字符串();
@@ -118,13 +118,15 @@ export default async function BehaviorChecksPage() {
   await 懒生成今日记录(supabase, uid, today);
 
   /* 查今天"待我检查"（checker_ids 含我）或"考核我的"（employee_id=我）的记录；
-   * checker_ids 为空数组的旧记录走 employee_id=我 命中（自检语义） */
-  const { data } = await supabase
+   * checker_ids 为空数组的旧记录走 employee_id=我 命中（自检语义）；
+   * 首屏只取第一页（20 条）+ 总数 */
+  const { data, count } = await supabase
     .from("behavior_check_records")
-    .select("*, employee:profiles!behavior_check_records_employee_id_fkey(full_name), behavior_check_tasks(name, execute_time, end_time, item_id, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids, guide_images))")
+    .select("*, employee:profiles!behavior_check_records_employee_id_fkey(full_name), behavior_check_tasks(name, execute_time, end_time, item_id, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids, guide_images))", { count: "exact" })
     .eq("check_date", today)
     .or(`checker_ids.cs.["${uid}"],employee_id.eq.${uid}`)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .range(0, 19);
 
   const 记录列表 = data || [];
 
@@ -199,5 +201,5 @@ export default async function BehaviorChecksPage() {
     };
   });
 
-  return <BehaviorChecksContent initialRecords={mapped} currentUserId={uid} />;
+  return <BehaviorChecksContent initialRecords={mapped} initialCount={count || 0} currentUserId={uid} />;
 }

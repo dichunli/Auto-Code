@@ -22,11 +22,12 @@ export default async function BehaviorScorePage() {
     supabase.from("behavior_score_items").select("id, name, score_type, score_value").eq("is_active", true).order("name"),
   ]);
 
-  const { data: recordData } = await supabase
+  /* 首屏只取第一页（20 条）+ 总数，原 .limit(30) 硬截断改为真分页 */
+  const { data: recordData, count } = await supabase
     .from("behavior_score_records")
-    .select("id, score, notes, scored_at, event_time, media_urls, profiles!behavior_score_records_employee_id_fkey(full_name), behavior_score_items(name, score_type)")
+    .select("id, score, notes, scored_at, event_time, media_urls, profiles!behavior_score_records_employee_id_fkey(full_name), behavior_score_items(name, score_type)", { count: "exact" })
     .order("scored_at", { ascending: false })
-    .limit(30);
+    .range(0, 19);
 
   const records = (recordData || []).map((r: unknown) => {
     const rec = r as {
@@ -59,6 +60,7 @@ export default async function BehaviorScorePage() {
       initialEmployees={(empData as 员工[] | null) || []}
       initialItems={(itemData as 行为项目[] | null) || []}
       initialRecords={records}
+      initialCount={count || 0}
     />
   );
 }

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 
@@ -39,42 +41,71 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   bank_transfer: "银行转账",
 };
 
-export default function OutsourceOrdersContent({ initialOrders }: { initialOrders: OutsourceOrder[] }) {
-  const [allOrders] = useState<OutsourceOrder[]>(initialOrders);
+export default function OutsourceOrdersContent({ initialOrders, initialCount }: { initialOrders: OutsourceOrder[]; initialCount: number }) {
+  const supabase = useMemo(() => createClient(), []);
+  const [orders, setOrders] = useState<OutsourceOrder[]>(initialOrders);
   const [query, setQuery] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
+  /* 分页状态：首屏数据由服务端给（第 1 页），后续搜索/筛选/翻页走 loadOrders */
+  const [total, setTotal] = useState(initialCount);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const debouncedQuery = useDebounce(query, 300);
+  const mounted = useRef(false);
 
-  const filteredOrders = useMemo(() => {
-    let list = allOrders;
+  async function loadOrders(search: string, status: string, 目标页: number) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    setLoading(true);
+    const from = (目标页 - 1) * pageSize;
+    const 关键词 = search.trim();
+    /* 有搜索词时关联表用 !inner 才能按工单号/供应商/项目名过滤主表；
+       work_order_id、supplier_id 必填，inner 不丢单；仅「无项目的外包单」在搜索时查不到 */
+    const select串 = 关键词
+      ? "*, work_orders!inner(order_no), suppliers!inner(name), outsource_order_items!inner(id, service_name, amount)"
+      : "*, work_orders(order_no), suppliers(name), outsource_order_items(id, service_name, amount)";
+    let q = supabase
+      .from("outsource_orders")
+      .select(select串, { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1);
 
-    // 按支付状态筛选（客户端）
-    if (paymentStatus === "unpaid") {
-      list = list.filter((o) => !o.is_paid);
-    } else if (paymentStatus === "paid") {
-      list = list.filter((o) => o.is_paid);
+    if (status === "unpaid") {
+      q = q.eq("is_paid", false);
+    } else if (status === "paid") {
+      q = q.eq("is_paid", true);
+    }
+    if (关键词) {
+      q = q.or(`order_no.ilike.%${关键词}%,work_orders.order_no.ilike.%${关键词}%,suppliers.name.ilike.%${关键词}%,outsource_order_items.service_name.ilike.%${关键词}%`);
     }
 
-    // 按搜索关键词筛选
-    if (!query.trim()) return list;
-    const kw = query.trim().toLowerCase();
-    return list.filter((o) => {
-      const itemHits = (o.outsource_order_items || []).some((it) =>
-        (it.service_name || "").toLowerCase().includes(kw)
-      );
-      return (
-        (o.order_no || "").toLowerCase().includes(kw) ||
-        (o.work_orders?.order_no || "").toLowerCase().includes(kw) ||
-        (o.suppliers?.name || "").toLowerCase().includes(kw) ||
-        itemHits
-      );
-    });
-  }, [allOrders, query, paymentStatus]);
+    const { data, count, error } = await q;
+    if (error) {
+      alert("加载失败: " + error.message);
+      setLoading(false);
+      return;
+    }
+    setOrders((data as unknown as OutsourceOrder[]) || []);
+    setTotal(count || 0);
+    setPage(目标页);
+    setLoading(false);
+  }
 
+  // 支付状态/搜索词变化时重新拉取（跳过首次挂载），回到第 1 页
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    loadOrders(debouncedQuery, paymentStatus, 1);
+  }, [debouncedQuery, paymentStatus]);
+
+  /* 分页后拿不到全量数据，合计口径为当前页 */
   const totalAmount = useMemo(() => {
-    return filteredOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
-  }, [filteredOrders]);
-
-  const loading = false;
+    return orders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+  }, [orders]);
 
   return (
     <div>
@@ -118,10 +149,10 @@ export default function OutsourceOrdersContent({ initialOrders }: { initialOrder
 
       {/* 统计 */}
       <div className="mb-4 text-sm text-gray-600">
-        共 <span className="font-medium text-gray-900">{filteredOrders.length}</span> 张外包单
-        {filteredOrders.length > 0 && (
+        共 <span className="font-medium text-gray-900">{total}</span> 张外包单
+        {orders.length > 0 && (
           <span className="ml-4">
-            合计金额：<span className="font-medium text-gray-900">¥{totalAmount.toFixed(2)}</span>
+            本页合计：<span className="font-medium text-gray-900">¥{totalAmount.toFixed(2)}</span>
           </span>
         )}
       </div>
@@ -143,7 +174,7 @@ export default function OutsourceOrdersContent({ initialOrders }: { initialOrder
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredOrders?.map((o: OutsourceOrder) => {
+              {orders?.map((o: OutsourceOrder) => {
                 const items = o.outsource_order_items || [];
                 return (
                   <tr key={o.id} className="hover:bg-gray-50">
@@ -205,7 +236,7 @@ export default function OutsourceOrdersContent({ initialOrders }: { initialOrder
                   </tr>
                 );
               })}
-              {(!filteredOrders || filteredOrders.length === 0) && (
+              {(!orders || orders.length === 0) && (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
                     {loading ? "加载中..." : "暂无外包单数据"}
@@ -216,6 +247,31 @@ export default function OutsourceOrdersContent({ initialOrders }: { initialOrder
           </table>
         </div>
       </div>
+
+      {/* 分页导航：客户端翻页，保留当前搜索/筛选条件 */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-gray-500">
+            共 {total} 条，第 {page}/{totalPages} 页
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => loadOrders(debouncedQuery, paymentStatus, page - 1)}
+              disabled={page <= 1 || loading}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              上一页
+            </button>
+            <button
+              onClick={() => loadOrders(debouncedQuery, paymentStatus, page + 1)}
+              disabled={page >= totalPages || loading}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

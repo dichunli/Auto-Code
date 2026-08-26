@@ -5,22 +5,31 @@ import Link from "next/link";
 export default async function RemindersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; page?: string }>;
 }) {
   const supabase = await createClient();
-  const { status } = await searchParams;
+  const { status, page: pageParam } = await searchParams;
   const today = new Date().toISOString().split("T")[0];
+
+  /* 分页：URL 参数驱动（?page=N），与服务端筛选（?status=）保持一致风格 */
+  const pageSize = 20;
+  const page = Math.max(1, parseInt(pageParam || "1", 10) || 1);
+  const from = (page - 1) * pageSize;
 
   let query = supabase
     .from("maintenance_reminders")
-    .select("*, vehicles(plate_number, brand, model, mileage), customers(name, phone)")
+    .select("*, vehicles(plate_number, brand, model, mileage), customers(name, phone)", { count: "exact" })
     .order("due_date", { ascending: true });
 
   if (status) {
     query = query.eq("status", status);
   }
 
-  const { data: reminders } = await query;
+  const { data: reminders, count } = await query.range(from, from + pageSize - 1);
+  const total = count || 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  /* 翻页链接保留当前状态筛选 */
+  const 翻页链接 = (p: number) => (status ? `?status=${status}&page=${p}` : `?page=${p}`);
 
   const statusFilters = [
     { value: "", label: "全部" },
@@ -135,6 +144,41 @@ export default async function RemindersPage({
           </table>
         </div>
       </div>
+
+      {/* 分页导航：URL 驱动，翻页保留状态筛选 */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-gray-500">
+            共 {total} 条，第 {page}/{totalPages} 页
+          </div>
+          <div className="flex items-center gap-2">
+            {page > 1 ? (
+              <Link
+                href={翻页链接(page - 1)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+              >
+                上一页
+              </Link>
+            ) : (
+              <span className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-400 opacity-40 cursor-not-allowed">
+                上一页
+              </span>
+            )}
+            {page < totalPages ? (
+              <Link
+                href={翻页链接(page + 1)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+              >
+                下一页
+              </Link>
+            ) : (
+              <span className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-400 opacity-40 cursor-not-allowed">
+                下一页
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
