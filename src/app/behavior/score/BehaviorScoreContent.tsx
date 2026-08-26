@@ -36,16 +36,23 @@ export default function BehaviorScoreContent({
   initialEmployees,
   initialItems,
   initialRecords,
+  initialCount,
 }: {
   initialEmployees: 员工[];
   initialItems: 行为项目[];
   initialRecords: 打分记录[];
+  initialCount: number;
 }) {
   const supabase = useMemo(() => createClient(), []);
-  /* 首屏数据由服务端传入；loading 仅用于打分后的客户端重查 */
+  /* 首屏数据由服务端传入；loading 用于打分后重查和翻页 */
   const [employees, setEmployees] = useState<员工[]>(initialEmployees);
   const [items, setItems] = useState<行为项目[]>(initialItems);
   const [records, setRecords] = useState<打分记录[]>(initialRecords);
+  /* 分页状态：首屏数据由服务端给（第 1 页），打分后重查/翻页走 fetchData */
+  const [total, setTotal] = useState(initialCount);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -65,7 +72,7 @@ export default function BehaviorScoreContent({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  async function fetchData() {
+  async function fetchData(目标页: number) {
     setLoading(true);
     const [{ data: empData }, { data: itemData }] = await Promise.all([
       supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
@@ -74,11 +81,12 @@ export default function BehaviorScoreContent({
     setEmployees((empData as 员工[] | null) || []);
     setItems((itemData as 行为项目[] | null) || []);
 
-    const { data: recordData } = await supabase
+    const from = (目标页 - 1) * pageSize;
+    const { data: recordData, count } = await supabase
       .from("behavior_score_records")
-      .select("id, score, notes, scored_at, event_time, media_urls, profiles!behavior_score_records_employee_id_fkey(full_name), behavior_score_items(name, score_type)")
+      .select("id, score, notes, scored_at, event_time, media_urls, profiles!behavior_score_records_employee_id_fkey(full_name), behavior_score_items(name, score_type)", { count: "exact" })
       .order("scored_at", { ascending: false })
-      .limit(30);
+      .range(from, from + pageSize - 1);
 
     setRecords(
       (recordData || []).map((r: unknown) => {
@@ -107,6 +115,8 @@ export default function BehaviorScoreContent({
         };
       })
     );
+    setTotal(count || 0);
+    setPage(目标页);
 
     setLoading(false);
   }
@@ -277,7 +287,8 @@ export default function BehaviorScoreContent({
       setEventTime("");
       setMediaFiles([]);
 
-      fetchData();
+      /* 新记录按打分时间倒序在第 1 页，重查回第 1 页 */
+      fetchData(1);
       alert("打分成功");
     } catch (err: unknown) {
       alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
@@ -495,6 +506,31 @@ export default function BehaviorScoreContent({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* 分页导航：客户端翻页，只重查打分记录，不影响上方表单 */}
+        {totalPages > 1 && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-gray-500">
+              共 {total} 条，第 {page}/{totalPages} 页
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => fetchData(page - 1)}
+                disabled={page <= 1 || loading}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                上一页
+              </button>
+              <button
+                onClick={() => fetchData(page + 1)}
+                disabled={page >= totalPages || loading}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                下一页
+              </button>
+            </div>
           </div>
         )}
       </div>

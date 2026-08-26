@@ -73,11 +73,12 @@ function ScopesBadges({ scopes }: { scopes: string[] | null | undefined }) {
 
 interface Props {
   initialWaybills: unknown[];
+  initialWaybillCount: number;
   initialCompanies: unknown[];
   initialSuppliers: unknown[];
 }
 
-export default function LogisticsContent({ initialWaybills, initialCompanies, initialSuppliers }: Props) {
+export default function LogisticsContent({ initialWaybills, initialWaybillCount, initialCompanies, initialSuppliers }: Props) {
   const supabase = createClient();
   const [activeTab, setActiveTab] = useState<Tab>("waybills");
 
@@ -85,6 +86,11 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
   const [waybills, setWaybills] = useState<Waybill[]>(initialWaybills as Waybill[]);
   const [waybillLoading, setWaybillLoading] = useState(false);
   const [filter, setFilter] = useState("pending");
+  /* 运单分页状态：首屏数据由服务端给（第 1 页），后续翻页走 loadWaybills */
+  const [waybillTotal, setWaybillTotal] = useState(initialWaybillCount);
+  const [waybillPage, setWaybillPage] = useState(1);
+  const waybillPageSize = 20;
+  const waybillTotalPages = Math.max(1, Math.ceil(waybillTotal / waybillPageSize));
 
   /* 物流公司数据 */
   const [companies, setCompanies] = useState<LogisticsCompany[]>(initialCompanies as LogisticsCompany[]);
@@ -92,7 +98,8 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
   const [scopeFilter, setScopeFilter] = useState("all");
 
   /* 供应商数据(用于弹窗补充电话) */
-  const [suppliersList, setSuppliersList] = useState<{ id: string; name: string }[]>(initialSuppliers as { id: string; name: string }[]);
+  /* 供应商下拉数据：首屏服务端给，运行期不变，直接取用（无需 state） */
+  const suppliersList = initialSuppliers as { id: string; name: string }[];
 
   /* 编辑弹窗 */
   const [editing, setEditing] = useState<LogisticsCompany | null>(null);
@@ -133,10 +140,10 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
   const { 请求确认, 确认弹窗 } = useConfirm();
   const { showToast } = useToast();
 
-  /* Tab切换和筛选变化时重新加载（跳过首次挂载，数据已从服务端预加载） */
+  /* Tab切换和筛选变化时重新加载（跳过首次挂载，数据已从服务端预加载），回到第 1 页 */
   useEffect(() => {
     if (首次挂载.current) return;
-    if (activeTab === "waybills") loadWaybills();
+    if (activeTab === "waybills") loadWaybills(1);
   }, [filter, activeTab]);
 
   useEffect(() => {
@@ -196,25 +203,29 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
     lookup();
   }, [singlePhone, supabase]);
 
-  async function loadWaybills() {
+  async function loadWaybills(目标页: number) {
     /* 客户端 session 丢失时不查询，避免空结果覆盖服务端数据 */
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
     setWaybillLoading(true);
+    const from = (目标页 - 1) * waybillPageSize;
     let query = supabase
       .from("logistics_waybills")
-      .select("*, logistics_companies(name, scopes)")
-      .order("created_at", { ascending: false });
+      .select("*, logistics_companies(name, scopes)", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(from, from + waybillPageSize - 1);
 
     if (filter !== "all") {
       query = query.eq("status", filter);
     }
 
-    const { data: waybillData } = await query;
+    const { data: waybillData, count } = await query;
     const waybillsData = (waybillData || []) as Waybill[];
+    setWaybillTotal(count || 0);
+    setWaybillPage(目标页);
 
-    /* 批量查询关联的采购单 */
+    /* 批量查询关联的采购单（保持基于当前页 ids） */
     if (waybillsData.length > 0) {
       const waybillIds = waybillsData.map((w) => w.id);
       const { data: poData } = await supabase
@@ -305,7 +316,9 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
       alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
-    loadWaybills();
+    /* 若删的是当前页最后一条且不在第 1 页，退到上一页，避免停在空页 */
+    const 目标页 = waybills.length === 1 && waybillPage > 1 ? waybillPage - 1 : waybillPage;
+    loadWaybills(目标页);
   }
 
   /* 结清运费（三期）：运费是付给物流公司的，和供应商应付款无关，在这里单独结算 */
@@ -315,7 +328,7 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
     try {
       const res = await 结清运费(w.id);
       if (!res.success) throw new Error(res.error || "结清失败");
-      loadWaybills();
+      loadWaybills(waybillPage);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("结清运费失败: " + msg, "error");
@@ -451,8 +464,10 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
         });
         if (error) throw error;
       }
+      /* 编辑后留在当前页，新建回第 1 页（新运单按创建时间倒序在最前） */
+      const 是编辑 = !!editingWaybill;
       closeSingleCreateModal();
-      loadWaybills();
+      loadWaybills(是编辑 ? waybillPage : 1);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       alert((editingWaybill ? "保存" : "创建") + "运单失败: " + message);
@@ -506,7 +521,8 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
     setBatchTrackingNos("");
     setBatchCount("");
     setBatchCompanyId("");
-    loadWaybills();
+    /* 批量新建回第 1 页（新运单在最前） */
+    loadWaybills(1);
   }
 
   /* 行内保存某个字段 */
@@ -525,7 +541,8 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
     const { error } = await supabase.from("logistics_waybills").update(payload).eq("id", waybillId);
     if (error) {
       alert("保存失败: " + error.message);
-      loadWaybills();
+      /* 保存失败刷新当前页，回滚本地编辑状态 */
+      loadWaybills(waybillPage);
       return;
     }
 
@@ -547,7 +564,8 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
       }
     }
 
-    loadWaybills();
+    /* 行内字段保存完成，刷新当前页 */
+    loadWaybills(waybillPage);
   }
 
   function startInlineEdit(waybillId: string, field: keyof Waybill, currentValue: string | number | null) {
@@ -969,6 +987,31 @@ export default function LogisticsContent({ initialWaybills, initialCompanies, in
               </tbody>
             </table>
           </div>
+
+          {/* 分页导航：运单列表翻页，保留当前状态筛选 */}
+          {waybillTotalPages > 1 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm text-gray-500">
+                共 {waybillTotal} 条，第 {waybillPage}/{waybillTotalPages} 页
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => loadWaybills(waybillPage - 1)}
+                  disabled={waybillPage <= 1 || waybillLoading}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  上一页
+                </button>
+                <button
+                  onClick={() => loadWaybills(waybillPage + 1)}
+                  disabled={waybillPage >= waybillTotalPages || waybillLoading}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 

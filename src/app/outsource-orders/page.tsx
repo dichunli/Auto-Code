@@ -23,14 +23,17 @@ interface OutsourceOrder {
   outsource_order_items: OutsourceOrderItem[] | null;
 }
 
+/* 首屏只取第 1 页（20 条）+ 总数，防止外包单增长后全量拉取拖慢页面 */
 export default async function OutsourceOrdersPage() {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, count } = await supabase
     .from("outsource_orders")
     .select(
-      "*, work_orders(order_no), suppliers(name), outsource_order_items(id, service_name, amount)"
+      "*, work_orders(order_no), suppliers(name), outsource_order_items(id, service_name, amount)",
+      { count: "exact" }
     )
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .range(0, 19);
 
-  return <OutsourceOrdersContent initialOrders={(data as OutsourceOrder[]) || []} />;
+  return <OutsourceOrdersContent initialOrders={(data as OutsourceOrder[]) || []} initialCount={count || 0} />;
 }

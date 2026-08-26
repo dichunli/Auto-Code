@@ -82,18 +82,23 @@ function 取单<T>(v: T[] | T | null | undefined): T | null {
   return Array.isArray(v) ? v[0] ?? null : v ?? null;
 }
 
-export default function BehaviorChecksContent({ initialRecords, currentUserId }: { initialRecords: 考核记录视图[]; currentUserId: string }) {
+export default function BehaviorChecksContent({ initialRecords, initialCount, currentUserId }: { initialRecords: 考核记录视图[]; initialCount: number; currentUserId: string }) {
   const supabase = useMemo(() => createClient(), []);
-  /* 首屏数据由服务端传入；loading 仅用于提交后的客户端重查 */
+  /* 首屏数据由服务端传入；loading 用于提交后重查和翻页 */
   const [records, setRecords] = useState<考核记录视图[]>(initialRecords);
+  /* 分页状态：首屏数据由服务端给（第 1 页），提交后重查/翻页走 fetchRecords */
+  const [total, setTotal] = useState(initialCount);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const [loading, setLoading] = useState(false);
   const [completingRecord, setCompletingRecord] = useState<考核记录视图 | null>(null);
   const [自检记录, set自检记录] = useState<考核记录视图 | null>(null);
   /* 展开"检查标准"明细的记录 id 集合 */
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
-  /* 提交后重查：与服务端 page.tsx 同一套懒生成 + 可见性逻辑（纯函数共用） */
-  const fetchRecords = useCallback(async () => {
+  /* 提交后重查/翻页：与服务端 page.tsx 同一套懒生成 + 可见性逻辑（纯函数共用） */
+  const fetchRecords = useCallback(async (目标页: number) => {
     setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
@@ -160,12 +165,14 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
       }
     }
 
-    const { data } = await supabase
+    const from = (目标页 - 1) * pageSize;
+    const { data, count } = await supabase
       .from("behavior_check_records")
-      .select("*, employee:profiles!behavior_check_records_employee_id_fkey(full_name), behavior_check_tasks(name, execute_time, end_time, item_id, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids, guide_images))")
+      .select("*, employee:profiles!behavior_check_records_employee_id_fkey(full_name), behavior_check_tasks(name, execute_time, end_time, item_id, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids, guide_images))", { count: "exact" })
       .eq("check_date", today)
       .or(`checker_ids.cs.["${uid}"],employee_id.eq.${uid}`)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .range(from, from + pageSize - 1);
 
     const 记录列表 = data || [];
     const itemIds = [...new Set(记录列表.map((r) => 取单((r as { behavior_check_tasks: 嵌套任务 | null }).behavior_check_tasks)?.item_id).filter(Boolean))] as string[];
@@ -228,8 +235,10 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
     });
 
     setRecords(mapped);
+    setTotal(count || 0);
+    setPage(目标页);
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, pageSize]);
 
   /* 三个分组：
    * 待我自检 —— 我是责任人，由别人检查我，还没自检上报（两阶段流程第一步）
@@ -473,11 +482,36 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
         </>
       )}
 
+      {/* 分页导航：考核记录按月/筛选分页，翻页保留当前筛选 */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-gray-500">
+            共 {total} 条，第 {page}/{totalPages} 页
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fetchRecords(page - 1)}
+              disabled={page <= 1 || loading}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              上一页
+            </button>
+            <button
+              onClick={() => fetchRecords(page + 1)}
+              disabled={page >= totalPages || loading}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+      )}
+
       {自检记录 && (
         <SelfReportModal
           record={自检记录}
           onClose={() => set自检记录(null)}
-          onReported={fetchRecords}
+          onReported={() => fetchRecords(page)}
         />
       )}
       {completingRecord && (
@@ -485,7 +519,7 @@ export default function BehaviorChecksContent({ initialRecords, currentUserId }:
           record={completingRecord}
           未自检提示={completingRecord.status === "pending" && completingRecord.employee_id !== currentUserId && completingRecord.checker_ids.length > 0}
           onClose={() => setCompletingRecord(null)}
-          onCompleted={fetchRecords}
+          onCompleted={() => fetchRecords(page)}
         />
       )}
     </div>

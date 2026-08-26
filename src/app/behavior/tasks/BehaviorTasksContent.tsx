@@ -40,16 +40,23 @@ export default function BehaviorTasksContent({
   initialItems,
   initialEmployees,
   initialTasks,
+  initialCount,
 }: {
   initialItems: 行为项目[];
   initialEmployees: 员工[];
   initialTasks: 考核任务[];
+  initialCount: number;
 }) {
   const supabase = useMemo(() => createClient(), []);
-  /* 首屏数据由服务端传入；loading 仅用于增删改后的客户端重查 */
+  /* 首屏数据由服务端传入；loading 用于增删改后重查和翻页 */
   const [items, setItems] = useState<行为项目[]>(initialItems);
   const [employees, setEmployees] = useState<员工[]>(initialEmployees);
   const [tasks, setTasks] = useState<考核任务[]>(initialTasks);
+  /* 分页状态：首屏数据由服务端给（第 1 页），增删改后重查/翻页走 fetchData */
+  const [total, setTotal] = useState(initialCount);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -70,12 +77,13 @@ export default function BehaviorTasksContent({
     is_active: true,
   });
 
-  async function fetchData() {
+  async function fetchData(目标页: number) {
     setLoading(true);
-    const [{ data: itemData }, { data: empData }, { data: taskData }] = await Promise.all([
+    const from = (目标页 - 1) * pageSize;
+    const [{ data: itemData }, { data: empData }, { data: taskData, count }] = await Promise.all([
       supabase.from("behavior_score_items").select("id, name, score_type, score_value, responsible_ids, checker_ids").eq("is_active", true).order("name"),
       supabase.from("profiles").select("id, full_name").eq("is_active", true).order("full_name"),
-      supabase.from("behavior_check_tasks").select("*").order("created_at", { ascending: false }),
+      supabase.from("behavior_check_tasks").select("*", { count: "exact" }).order("created_at", { ascending: false }).range(from, from + pageSize - 1),
     ]);
 
     setItems((itemData as 行为项目[] | null) || []);
@@ -95,6 +103,8 @@ export default function BehaviorTasksContent({
         };
       })
     );
+    setTotal(count || 0);
+    setPage(目标页);
     setLoading(false);
   }
 
@@ -177,7 +187,8 @@ export default function BehaviorTasksContent({
       }
 
       setModalOpen(false);
-      fetchData();
+      /* 新增任务按创建时间倒序在第 1 页；编辑停留在当前页 */
+      fetchData(editingTask ? page : 1);
     } catch (err: unknown) {
       alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -192,7 +203,9 @@ export default function BehaviorTasksContent({
       alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
-    fetchData();
+    /* 若删的是当前页最后一条且不在第 1 页，退到上一页，避免停在空页 */
+    const 目标页 = tasks.length === 1 && page > 1 ? page - 1 : page;
+    fetchData(目标页);
   }
 
   const frequencyLabels: Record<string, string> = {
@@ -289,6 +302,31 @@ export default function BehaviorTasksContent({
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* 分页导航：客户端翻页 */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-gray-500">
+            共 {total} 条，第 {page}/{totalPages} 页
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fetchData(page - 1)}
+              disabled={page <= 1 || loading}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              上一页
+            </button>
+            <button
+              onClick={() => fetchData(page + 1)}
+              disabled={page >= totalPages || loading}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              下一页
+            </button>
+          </div>
         </div>
       )}
 
