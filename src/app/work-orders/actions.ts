@@ -1287,6 +1287,74 @@ export async function 同步分支图片到配件(参数: {
   return { success: true };
 }
 
+/* ═══ 保存工单项目字段（手机端编辑：客户意见/自带件/描述/数量/单价） ═══ */
+export async function 保存工单项目字段(参数: {
+  itemId: string;
+  updates: {
+    customer_opinion?: string | null;
+    is_customer_part?: boolean;
+    description?: string | null;
+    unit_price?: number;
+    quantity?: number;
+  };
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_items")
+    .update(参数.updates)
+    .eq("id", 参数.itemId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 放弃领单（删掉自己 + 剩余施工人重摊为均分） ═══
+ * 剩余名单在服务端读最新值，避免用客户端旧名单重摊。 */
+export async function 放弃领单(itemId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error: delErr } = await supabase
+    .from("work_order_item_mechanics")
+    .delete()
+    .eq("work_order_item_id", itemId)
+    .eq("mechanic_id", user.id);
+  if (delErr) {
+    return { success: false, error: delErr.message };
+  }
+
+  const { data: remaining } = await supabase
+    .from("work_order_item_mechanics")
+    .select("mechanic_id")
+    .eq("work_order_item_id", itemId);
+
+  if (remaining && remaining.length > 0) {
+    const ratio = Math.round((100 / remaining.length) * 100) / 100;
+    for (const r of remaining as { mechanic_id: string }[]) {
+      const { error } = await supabase
+        .from("work_order_item_mechanics")
+        .update({ share_pct: ratio })
+        .eq("work_order_item_id", itemId)
+        .eq("mechanic_id", r.mechanic_id);
+      if (error) {
+        return { success: false, error: error.message };
+      }
+    }
+  }
+
+  return { success: true };
+}
+
 /* ═══ 转换工单类型（正常/预约/报价/作废/保养） ═══ */
 export async function 转换工单类型(参数: {
   workOrderId: string;
