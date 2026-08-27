@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "./ConfirmDialog";
+import { 预收款退款 } from "@/app/work-orders/actions";
 
 interface AdvancePaymentRecord {
   id: string;
@@ -33,10 +33,8 @@ const METHOD_LABEL: Record<string, string> = {
 export default function AdvancePaymentList({
   records,
   orderId,
-  currentAdvancePayment,
 }: Props) {
   const router = useRouter();
-  const supabase = createClient();
   const [refundingId, setRefundingId] = useState<string | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundMethod, setRefundMethod] = useState("cash");
@@ -70,32 +68,22 @@ export default function AdvancePaymentList({
 
     setLoading(true);
 
-    // 1. 更新记录退款金额和退款方式
-    const { error: updateErr } = await supabase
-      .from("advance_payment_records")
-      .update({
-        refunded_amount: (record.refunded_amount || 0) + val,
-        refunded_at: new Date().toISOString(),
-        refund_method: refundMethod,
-      })
-      .eq("id", record.id);
-
-    if (updateErr) {
+    /* 涉钱写操作走 Server Action + RPC 事务，不再客户端两步直写 */
+    try {
+      const result = await 预收款退款({
+        orderId,
+        recordId: record.id,
+        amount: val,
+        refundMethod,
+      });
       setLoading(false);
-      alert("退款失败：" + updateErr.message);
-      return;
-    }
-
-    // 2. 同步减少工单预收款总额
-    const newAdvance = Math.max(0, currentAdvancePayment - val);
-    const { error: orderErr } = await supabase
-      .from("work_orders")
-      .update({ advance_payment: newAdvance })
-      .eq("id", orderId);
-
-    setLoading(false);
-    if (orderErr) {
-      alert("更新工单预收款失败：" + orderErr.message);
+      if (!result.success) {
+        alert("退款失败：" + (result.error || "未知错误"));
+        return;
+      }
+    } catch {
+      setLoading(false);
+      alert("退款失败：网络异常，请重试");
       return;
     }
 

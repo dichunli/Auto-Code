@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 新建收款方式, 更新收款方式, 删除收款方式, 保存收款方式排序 } from "./actions";
 
 interface 操作员 {
   id: string;
@@ -76,16 +77,20 @@ export default function OtherPaymentMethodsPage() {
     }
 
     setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("other_payment_methods").insert({
-      name: newName.trim(),
-      operator_id: newOperatorId || null,
-      sort_order: methods.length + 1,
-    });
-    setSaving(false);
-
-    if (error) {
-      alert("保存失败：" + error.message);
+    try {
+      const result = await 新建收款方式({
+        name: newName,
+        operatorId: newOperatorId,
+        sortOrder: methods.length + 1,
+      });
+      setSaving(false);
+      if (!result.success) {
+        alert("保存失败：" + (result.error || "未知错误"));
+        return;
+      }
+    } catch {
+      setSaving(false);
+      alert("保存失败：网络异常，请重试");
       return;
     }
 
@@ -103,19 +108,21 @@ export default function OtherPaymentMethodsPage() {
     }
 
     setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("other_payment_methods")
-      .update({
-        name: editName.trim(),
-        operator_id: editOperatorId || null,
-        is_active: editActive,
-      })
-      .eq("id", editingId);
-    setSaving(false);
-
-    if (error) {
-      alert("保存失败：" + error.message);
+    try {
+      const result = await 更新收款方式({
+        id: editingId,
+        name: editName,
+        operatorId: editOperatorId,
+        isActive: editActive,
+      });
+      setSaving(false);
+      if (!result.success) {
+        alert("保存失败：" + (result.error || "未知错误"));
+        return;
+      }
+    } catch {
+      setSaving(false);
+      alert("保存失败：网络异常，请重试");
       return;
     }
 
@@ -126,20 +133,15 @@ export default function OtherPaymentMethodsPage() {
   async function handleDelete(id: string, name: string) {
     if (!(await 请求确认(`确定删除「${name}」吗？`))) return;
 
-    const supabase = createClient();
-    const { count } = await supabase
-      .from("other_transactions")
-      .select("id", { count: "exact", head: true })
-      .eq("account_id", id);
-
-    if ((count || 0) > 0) {
-      alert("该收款方式已被使用，不能删除");
-      return;
-    }
-
-    const { error } = await supabase.from("other_payment_methods").delete().eq("id", id);
-    if (error) {
-      alert("删除失败：" + error.message);
+    /* 被使用检查在服务端做，防并发误删 */
+    try {
+      const result = await 删除收款方式(id);
+      if (!result.success) {
+        alert("删除失败：" + (result.error || "未知错误"));
+        return;
+      }
+    } catch {
+      alert("删除失败：网络异常，请重试");
       return;
     }
     loadData();
@@ -177,14 +179,17 @@ export default function OtherPaymentMethodsPage() {
     setDragIndex(null);
     setDragOverIndex(null);
 
-    /* 批量更新数据库 */
+    /* 批量更新走 Server Action */
     setSaving(true);
-    const supabase = createClient();
-    for (const item of reordered) {
-      await supabase
-        .from("other_payment_methods")
-        .update({ sort_order: item.sort_order })
-        .eq("id", item.id);
+    try {
+      const result = await 保存收款方式排序({
+        items: reordered.map((item) => ({ id: item.id, sort_order: item.sort_order })),
+      });
+      if (!result.success) {
+        alert("排序保存失败：" + (result.error || "未知错误"));
+      }
+    } catch {
+      alert("排序保存失败：网络异常，请重试");
     }
     setSaving(false);
   }

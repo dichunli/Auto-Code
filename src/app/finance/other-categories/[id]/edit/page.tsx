@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 更新收支分类 } from "../../actions";
 
 export default function EditOtherCategoryPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -44,34 +45,17 @@ export default function EditOtherCategoryPage({ params }: { params: Promise<{ id
 
     setLoading(true);
 
-    /* 检查重名（排除自己） */
-    const { data: existing } = await supabase
-      .from("other_transaction_categories")
-      .select("id")
-      .eq("name", name.trim())
-      .eq("type", type)
-      .neq("id", id)
-      .single();
-
-    if (existing) {
+    /* 重名检查和写库走 Server Action */
+    try {
+      const result = await 更新收支分类({ id, name, type, isActive });
       setLoading(false);
-      alert("该分类名称已存在");
-      return;
-    }
-
-    const { error } = await supabase
-      .from("other_transaction_categories")
-      .update({
-        name: name.trim(),
-        type,
-        is_active: isActive,
-      })
-      .eq("id", id);
-
-    setLoading(false);
-
-    if (error) {
-      alert("保存失败：" + error.message);
+      if (!result.success) {
+        alert("保存失败：" + (result.error || "未知错误"));
+        return;
+      }
+    } catch {
+      setLoading(false);
+      alert("保存失败：网络异常，请重试");
       return;
     }
 

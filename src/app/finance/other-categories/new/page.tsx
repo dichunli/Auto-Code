@@ -1,13 +1,12 @@
 "use client";
 
-import {useState, useMemo} from "react";
+import {useState} from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新建收支分类 } from "../actions";
 
 export default function NewOtherCategoryPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
 
   const [name, setName] = useState("");
   const [type, setType] = useState<"income" | "expense">("expense");
@@ -22,41 +21,17 @@ export default function NewOtherCategoryPage() {
 
     setLoading(true);
 
-    /* 检查重名 */
-    const { data: existing } = await supabase
-      .from("other_transaction_categories")
-      .select("id")
-      .eq("name", name.trim())
-      .eq("type", type)
-      .single();
-
-    if (existing) {
+    /* 重名检查和排序号都在服务端做（走 Server Action） */
+    try {
+      const result = await 新建收支分类({ name, type });
       setLoading(false);
-      alert("该分类名称已存在");
-      return;
-    }
-
-    /* 获取当前最大排序号 */
-    const { data: maxRow } = await supabase
-      .from("other_transaction_categories")
-      .select("sort_order")
-      .eq("type", type)
-      .order("sort_order", { ascending: false })
-      .limit(1)
-      .single();
-
-    const nextSort = (maxRow?.sort_order || 0) + 10;
-
-    const { error } = await supabase.from("other_transaction_categories").insert({
-      name: name.trim(),
-      type,
-      sort_order: nextSort,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      alert("保存失败：" + error.message);
+      if (!result.success) {
+        alert("保存失败：" + (result.error || "未知错误"));
+        return;
+      }
+    } catch {
+      setLoading(false);
+      alert("保存失败：网络异常，请重试");
       return;
     }
 
