@@ -647,6 +647,85 @@ export async function 删除报销项(reimbursementId: string): Promise<{ succes
   return { success: true };
 }
 
+/* ═══ 保存报销单（建/改头 + 删旧明细 + 插新明细，服务端一次完成） ═══
+ * 原来是客户端三步连写，收编到服务端避免 session 异常中途断档。
+ * 报销单只用于打印，不影响利润/绩效/库存（页面原有口径）。 */
+export async function 保存报销单(参数: {
+  orderId: string;
+  reimbursementId: string | null;
+  title: string;
+  companyName: string;
+  notes: string;
+  items: { name: string; spec: string; quantity: number; unit_price: number; total_price: number }[];
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const validItems = 参数.items.filter((it) => it.name.trim() !== "");
+  if (validItems.length === 0) {
+    return { success: false, error: "请至少填写一条项目" };
+  }
+
+  const supabase = await createClient();
+  let rid = 参数.reimbursementId;
+
+  if (!rid) {
+    const { data: created, error: createErr } = await supabase
+      .from("work_order_reimbursements")
+      .insert({
+        work_order_id: 参数.orderId,
+        title: 参数.title || "维修费用报销单",
+        company_name: 参数.companyName.trim() || null,
+        notes: 参数.notes.trim() || null,
+      })
+      .select("id")
+      .single();
+    if (createErr || !created) {
+      return { success: false, error: createErr?.message || "创建报销单失败" };
+    }
+    rid = created.id;
+  } else {
+    const { error: updErr } = await supabase
+      .from("work_order_reimbursements")
+      .update({
+        title: 参数.title || "维修费用报销单",
+        company_name: 参数.companyName.trim() || null,
+        notes: 参数.notes.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", rid);
+    if (updErr) {
+      return { success: false, error: updErr.message };
+    }
+
+    const { error: delErr } = await supabase
+      .from("work_order_reimbursement_items")
+      .delete()
+      .eq("reimbursement_id", rid);
+    if (delErr) {
+      return { success: false, error: delErr.message };
+    }
+  }
+
+  const rows = validItems.map((it, idx) => ({
+    reimbursement_id: rid,
+    name: it.name.trim(),
+    spec: it.spec.trim() || null,
+    quantity: it.quantity,
+    unit_price: it.unit_price,
+    total_price: it.total_price,
+    sort_order: idx,
+  }));
+  const { error: itemErr } = await supabase.from("work_order_reimbursement_items").insert(rows);
+  if (itemErr) {
+    return { success: false, error: itemErr.message };
+  }
+
+  return { success: true };
+}
+
 /* ═══ 删除检查媒体（保存检查单时先删旧） ═══ */
 export async function 删除检查媒体(inspectionId: string): Promise<{ success: boolean; error?: string }> {
   const { user, error: 登录错误 } = await 验证用户已登录();

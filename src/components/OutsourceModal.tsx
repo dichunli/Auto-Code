@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { 重置外包财务记录 } from "@/app/outsource-orders/actions";
+import { 保存外包单, 移除外包明细 } from "@/app/outsource-orders/actions";
 import { useConfirm } from "./ConfirmDialog";
 
 interface Supplier {
@@ -129,14 +129,6 @@ export function OutsourceModal({
     }, 300);
   }
 
-  /* 财务记录重置（2026-08-16 批次3 破口修复）：原客户端直写 supplier_transactions /
-     accounts_payable 已被 RLS 角色化拦截，且按单号 ILIKE 模糊删有误删风险；
-     现统一走 RPC 一个事务"清旧+建新"（精确匹配）。 */
-  async function resetFinance(orderNo: string, supplierId: string | null, amount: number, paid: boolean) {
-    const res = await 重置外包财务记录({ 单号: orderNo, 供应商id: supplierId, 金额: amount, 已付: paid });
-    if (!res.success) throw new Error("财务记录更新失败: " + (res.error || "未知错误"));
-  }
-
   async function handleSubmit() {
     // 校验
     if (!serviceItemId) {
@@ -176,125 +168,21 @@ export function OutsourceModal({
 
     setLoading(true);
     try {
-      let orderId: string;
-      let orderNo: string;
-
-      if (hasExistingOrder && existingOrder) {
-        orderId = existingOrder.id;
-        orderNo = existingOrder.order_no;
-
-        // 更新订单级字段
-        const { error: orderErr } = await supabase
-          .from("outsource_orders")
-          .update({
-            supplier_id: selectedSupplier.id,
-            is_paid: isPaid,
-            payment_method: isPaid ? paymentMethod : null,
-            paid_at: isPaid ? new Date().toISOString() : null,
-            status: isPaid ? "settled" : "pending",
-            notes: notes.trim() || null,
-          })
-          .eq("id", orderId);
-        if (orderErr) throw new Error("更新外包单失败: " + orderErr.message);
-      } else {
-        // 创建新订单
-        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-        const randomStr = Math.floor(1000 + Math.random() * 9000).toString();
-        orderNo = `WB-${dateStr}-${randomStr}`;
-
-        const { data: newOrder, error: orderErr } = await supabase
-          .from("outsource_orders")
-          .insert({
-            order_no: orderNo,
-            work_order_id: workOrderId,
-            supplier_id: selectedSupplier.id,
-            total_amount: 0,
-            is_paid: isPaid,
-            payment_method: isPaid ? paymentMethod : null,
-            paid_at: isPaid ? new Date().toISOString() : null,
-            status: isPaid ? "settled" : "pending",
-            notes: notes.trim() || null,
-          })
-          .select("id")
-          .single();
-        if (orderErr || !newOrder) throw new Error("创建外包单失败: " + (orderErr?.message || ""));
-        orderId = newOrder.id;
-      }
-
-      // 写入/更新明细
-      if (isEditItem && existingItem) {
-        const { error: itemErr } = await supabase
-          .from("outsource_order_items")
-          .update({
-            service_item_id: serviceItemId,
-            service_name: currentItemName,
-            amount: numAmount,
-          })
-          .eq("id", existingItem.id);
-        if (itemErr) throw new Error("更新外包项目失败: " + itemErr.message);
-      } else {
-        const { error: itemErr } = await supabase
-          .from("outsource_order_items")
-          .insert({
-            outsource_order_id: orderId,
-            work_order_item_id: workOrderItemId,
-            service_item_id: serviceItemId,
-            service_name: currentItemName,
-            amount: numAmount,
-          });
-        if (itemErr) throw new Error("添加外包项目失败: " + itemErr.message);
-      }
-
-      // 更新工单项目标记
-      const { error: woErr } = await supabase
-        .from("work_order_items")
-        .update({
-          is_outsourced: true,
-          outsourced_supplier_id: selectedSupplier.id,
-        })
-        .eq("id", workOrderItemId);
-      if (woErr) throw new Error("更新工单项目失败: " + woErr.message);
-
-    interface OutsourceOrderItemRow {
-  amount: number | string;
-  work_order_item_id: string;
-}
-
-  // 重新计算订单总额
-      const { data: allItems } = await supabase
-        .from("outsource_order_items")
-        .select("amount, work_order_item_id")
-        .eq("outsource_order_id", orderId);
-
-      const newTotal = (allItems as OutsourceOrderItemRow[] | null || []).reduce(
-        (sum, it) => sum + (parseFloat(String(it.amount)) || 0),
-        0
-      );
-
-      await supabase
-        .from("outsource_orders")
-        .update({ total_amount: newTotal })
-        .eq("id", orderId);
-
-      // 若供应商变了，需要把同订单其他项目的 outsourced_supplier_id 一起更新
-      if (
-        hasExistingOrder &&
-        existingOrder &&
-        selectedSupplier.id !== existingOrder.supplier_id
-      ) {
-        const otherItemIds = (allItems as OutsourceOrderItemRow[] | null || [])
-          .map((it) => it.work_order_item_id)
-          .filter((wid) => wid !== workOrderItemId);
-        if (otherItemIds.length > 0) {
-          await supabase
-            .from("work_order_items")
-            .update({ outsourced_supplier_id: selectedSupplier.id })
-            .in("id", otherItemIds);
-        }
-      }
-
-      // 重建财务记录（先删后建一个事务，金额取最新合计）
-      await resetFinance(orderNo, selectedSupplier.id, newTotal, isPaid);
+      /* 涉钱多步写走 Server Action + RPC 一个事务（含财务记录重建、单号生成） */
+      const result = await 保存外包单({
+        workOrderId,
+        workOrderItemId,
+        serviceItemId,
+        serviceName: currentItemName,
+        amount: numAmount,
+        supplierId: selectedSupplier.id,
+        isPaid,
+        paymentMethod,
+        notes,
+        existingOrderId: existingOrder?.id || null,
+        existingItemId: existingItem?.id || null,
+      });
+      if (!result.success) throw new Error(result.error || "操作失败");
 
       setLoading(false);
       onSuccess();
@@ -318,54 +206,14 @@ export function OutsourceModal({
 
     setCancelLoading(true);
     try {
-      // 1. 删明细
-      const { error: delErr } = await supabase
-        .from("outsource_order_items")
-        .delete()
-        .eq("id", existingItem.id);
-      if (delErr) throw new Error("移除外包项目失败: " + delErr.message);
-
-      // 2. 清理工单项目标记
-      const { error: woErr } = await supabase
-        .from("work_order_items")
-        .update({
-          is_outsourced: false,
-          outsourced_supplier_id: null,
-        })
-        .eq("id", workOrderItemId);
-      if (woErr) throw new Error("更新工单项目失败: " + woErr.message);
-
-      if (willDeleteOrder) {
-        /* 整单删除：财务记录清掉不重建（金额 0） */
-        await resetFinance(existingOrder.order_no, null, 0, false);
-
-        // 删除整个外包单
-        const { error: orderErr } = await supabase
-          .from("outsource_orders")
-          .delete()
-          .eq("id", existingOrder.id);
-        if (orderErr) throw new Error("删除外包单失败: " + orderErr.message);
-      } else {
-        // 重新计算总额并重建财务记录（清旧+建新一个事务）
-        const { data: remaining } = await supabase
-          .from("outsource_order_items")
-          .select("amount")
-          .eq("outsource_order_id", existingOrder.id);
-        const newTotal = (remaining as Array<{ amount: number | string }> | null || []).reduce(
-          (sum, it) => sum + (parseFloat(String(it.amount)) || 0),
-          0
-        );
-        await supabase
-          .from("outsource_orders")
-          .update({ total_amount: newTotal })
-          .eq("id", existingOrder.id);
-        await resetFinance(
-          existingOrder.order_no,
-          existingOrder.supplier_id,
-          newTotal,
-          existingOrder.is_paid
-        );
-      }
+      /* 移除明细（末项时整单删除 + 财务清理）走 Server Action + RPC 一个事务 */
+      const result = await 移除外包明细({
+        workOrderId,
+        orderId: existingOrder.id,
+        itemId: existingItem.id,
+        workOrderItemId,
+      });
+      if (!result.success) throw new Error(result.error || "操作失败");
 
       setCancelLoading(false);
       onSuccess();
