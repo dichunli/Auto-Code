@@ -11,6 +11,88 @@ interface 收支分类 {
   is_active: boolean;
 }
 
+/* 新建收支分类（重名检查 + 排序号都在服务端做，避免并发重名/重号） */
+export async function 新建收支分类(参数: {
+  name: string;
+  type: string;
+}): Promise<{ success: boolean; error?: string }> {
+  return 包装ServerAction错误(async () => {
+    const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
+
+    const name = 参数.name.trim();
+    if (!name) return { success: false, error: "请填写分类名称" };
+
+    const { data: existing } = await supabase
+      .from("other_transaction_categories")
+      .select("id")
+      .eq("name", name)
+      .eq("type", 参数.type)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      return { success: false, error: "该分类名称已存在" };
+    }
+
+    const { data: maxRow } = await supabase
+      .from("other_transaction_categories")
+      .select("sort_order")
+      .eq("type", 参数.type)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { error } = await supabase.from("other_transaction_categories").insert({
+      name,
+      type: 参数.type,
+      sort_order: (maxRow?.sort_order || 0) + 10,
+    });
+
+    if (error) {
+      return { success: false, error: "保存失败：" + error.message };
+    }
+    return { success: true };
+  }) as Promise<{ success: boolean; error?: string }>;
+}
+
+/* 更新收支分类（重名检查排除自己） */
+export async function 更新收支分类(参数: {
+  id: string;
+  name: string;
+  type: string;
+  isActive: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  return 包装ServerAction错误(async () => {
+    const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
+
+    const name = 参数.name.trim();
+    if (!name) return { success: false, error: "请填写分类名称" };
+
+    const { data: existing } = await supabase
+      .from("other_transaction_categories")
+      .select("id")
+      .eq("name", name)
+      .eq("type", 参数.type)
+      .neq("id", 参数.id)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      return { success: false, error: "该分类名称已存在" };
+    }
+
+    const { error } = await supabase
+      .from("other_transaction_categories")
+      .update({ name, type: 参数.type, is_active: 参数.isActive })
+      .eq("id", 参数.id);
+
+    if (error) {
+      return { success: false, error: "保存失败：" + error.message };
+    }
+    return { success: true };
+  }) as Promise<{ success: boolean; error?: string }>;
+}
+
 /* 获取其它收支分类列表 */
 export async function 获取收支分类列表(): Promise<{
   success: boolean;

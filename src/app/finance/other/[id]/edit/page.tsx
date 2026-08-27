@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
+import { 更新其它收支 } from "../../actions";
 
 interface 账户 {
   id: string;
@@ -128,24 +129,26 @@ export default function EditOtherTransactionPage() {
     }
 
     setLoading(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("other_transactions")
-      .update({
+    /* 涉钱写操作走 Server Action */
+    try {
+      const result = await 更新其它收支(id, {
         type,
         amount: Number(amount),
-        counterparty: counterparty.trim() || null,
-        account_id: accountId,
-        category_id: categoryId,
-        transaction_date: transactionDate,
-        notes: notes.trim() || null,
-        images: images.length > 0 ? images : null,
-      })
-      .eq("id", id);
-    setLoading(false);
-
-    if (error) {
-      alert("保存失败：" + error.message);
+        counterparty,
+        accountId,
+        categoryId,
+        transactionDate,
+        notes,
+        images,
+      });
+      setLoading(false);
+      if (!result.success) {
+        alert("保存失败：" + (result.error || "未知错误"));
+        return;
+      }
+    } catch {
+      setLoading(false);
+      alert("保存失败：网络异常，请重试");
       return;
     }
 
