@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
+import { 记一笔 } from "../actions";
 
 interface 账户 {
   id: string;
@@ -48,18 +49,24 @@ export default function NewTransactionPage() {
     if (!accountId || !amount || Number(amount) <= 0) return;
 
     setLoading(true);
-    const { error } = await supabase.from("finance_transactions").insert({
-      account_id: accountId,
-      category_id: categoryId || null,
-      type,
-      amount: Number(amount),
-      description: description || null,
-      transaction_date: transactionDate,
-    });
-    setLoading(false);
-
-    if (error) {
-      alert("保存失败：" + error.message);
+    /* 涉钱写操作走 Server Action，不再客户端直插 */
+    try {
+      const result = await 记一笔({
+        accountId,
+        categoryId,
+        type,
+        amount: Number(amount),
+        description,
+        transactionDate,
+      });
+      setLoading(false);
+      if (!result.success) {
+        alert("保存失败：" + (result.error || "未知错误"));
+        return;
+      }
+    } catch {
+      setLoading(false);
+      alert("保存失败：网络异常，请重试");
       return;
     }
 
