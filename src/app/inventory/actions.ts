@@ -335,3 +335,37 @@ export async function 新建配件规格(name: string): Promise<{ success: boole
   }
   return { success: true, id: data.id };
 }
+
+/* ═══ 采购退库（涉库存，走原子事务 RPC） ═══
+ * 原来是客户端"扣批次→扣总库存→建退货单→记日志"四步连写，
+ * 中途失败库存就乱。收编为 create_purchase_return RPC 一个事务，
+ * 批次/库存在服务端加锁读最新值再原子扣减。 */
+export async function 新建采购退货(参数: {
+  partId: string;
+  batchId: string;
+  quantity: number;
+  reason: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data: result, error: rpcError } = await supabase.rpc("create_purchase_return", {
+    p_part_id: 参数.partId,
+    p_batch_id: 参数.batchId,
+    p_quantity: 参数.quantity,
+    p_reason: 参数.reason,
+  });
+
+  if (rpcError) return { success: false, error: rpcError.message };
+  const rpcResult = result as { success: boolean; error?: string };
+  if (!rpcResult?.success) {
+    return { success: false, error: rpcResult?.error || "保存失败" };
+  }
+
+  revalidatePath("/inventory/returns");
+  revalidatePath("/inventory");
+  return { success: true };
+}

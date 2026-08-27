@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
+import { 登记预收款, 预收款退款 } from "@/app/work-orders/actions";
 
 interface PaymentMethod {
   code: string;
@@ -102,30 +103,22 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
 
     setLoading(true);
 
-    const { error: updateErr } = await supabase
-      .from("advance_payment_records")
-      .update({
-        refunded_amount: (record.refunded_amount || 0) + val,
-        refunded_at: new Date().toISOString(),
-        refund_method: refundMethod,
-      })
-      .eq("id", record.id);
-
-    if (updateErr) {
+    /* 涉钱写操作走 Server Action + RPC 事务，不再客户端两步直写 */
+    try {
+      const result = await 预收款退款({
+        orderId,
+        recordId: record.id,
+        amount: val,
+        refundMethod,
+      });
       setLoading(false);
-      alert("退款失败：" + updateErr.message);
-      return;
-    }
-
-    const newAdvance = Math.max(0, advancePayment - val);
-    const { error: orderErr } = await supabase
-      .from("work_orders")
-      .update({ advance_payment: newAdvance })
-      .eq("id", orderId);
-
-    setLoading(false);
-    if (orderErr) {
-      alert("更新工单预收款失败：" + orderErr.message);
+      if (!result.success) {
+        alert("退款失败：" + (result.error || "未知错误"));
+        return;
+      }
+    } catch {
+      setLoading(false);
+      alert("退款失败：网络异常，请重试");
       return;
     }
 
@@ -147,32 +140,22 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
     }
     setLoading(true);
 
-    const { data: userData } = await supabase.auth.getUser();
-    const collectorId = userData?.user?.id || null;
-
-    const { error: insertErr } = await supabase.from("advance_payment_records").insert({
-      work_order_id: orderId,
-      amount: val,
-      method,
-      collector_id: collectorId,
-      collector_name: collectorName.trim() || null,
-      paid_at: new Date().toISOString(),
-    });
-
-    if (insertErr) {
+    /* 涉钱写操作走 Server Action + RPC 事务；收款人 id 由服务端取登录用户 */
+    try {
+      const result = await 登记预收款({
+        orderId,
+        amount: val,
+        method,
+        collectorName: collectorName.trim(),
+      });
       setLoading(false);
-      alert("保存失败：" + insertErr.message);
-      return;
-    }
-
-    const { error: updateErr } = await supabase
-      .from("work_orders")
-      .update({ advance_payment: (advancePayment || 0) + val })
-      .eq("id", orderId);
-
-    setLoading(false);
-    if (updateErr) {
-      alert("更新工单预收款失败：" + updateErr.message);
+      if (!result.success) {
+        alert("保存失败：" + (result.error || "未知错误"));
+        return;
+      }
+    } catch {
+      setLoading(false);
+      alert("保存失败：网络异常，请重试");
       return;
     }
 

@@ -665,3 +665,69 @@ export async function 删除检查媒体(inspectionId: string): Promise<{ succes
 
   return { success: true };
 }
+
+/* ═══ 登记预收款（涉钱，走原子事务 RPC） ═══
+ * 原来是客户端"插记录 + 改工单预收额"两步直写，网络闪断会钱对不上。
+ * 收编为 register_advance_payment RPC 一个事务；收款人 id 取服务端 user.id。 */
+export async function 登记预收款(参数: {
+  orderId: string;
+  amount: number;
+  method: string;
+  collectorName: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data: result, error: rpcError } = await supabase.rpc("register_advance_payment", {
+    p_work_order_id: 参数.orderId,
+    p_amount: 参数.amount,
+    p_method: 参数.method,
+    p_collector_name: 参数.collectorName,
+  });
+
+  if (rpcError) return { success: false, error: rpcError.message };
+  const rpcResult = result as { success: boolean; error?: string };
+  if (!rpcResult?.success) {
+    return { success: false, error: rpcResult?.error || "保存失败" };
+  }
+
+  /* 清工单缓存，让详情页立即显示最新预收额 */
+  clearWorkOrderDataCache(参数.orderId);
+  revalidatePath(`/work-orders/${参数.orderId}`);
+  return { success: true };
+}
+
+/* ═══ 预收款退款（涉钱，走原子事务 RPC） ═══
+ * 原来是客户端"改记录已退额 + 改工单预收额"两步直写。
+ * 收编为 refund_advance_payment RPC 一个事务，行锁防并发超退。 */
+export async function 预收款退款(参数: {
+  orderId: string;
+  recordId: string;
+  amount: number;
+  refundMethod: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data: result, error: rpcError } = await supabase.rpc("refund_advance_payment", {
+    p_record_id: 参数.recordId,
+    p_amount: 参数.amount,
+    p_refund_method: 参数.refundMethod,
+  });
+
+  if (rpcError) return { success: false, error: rpcError.message };
+  const rpcResult = result as { success: boolean; error?: string };
+  if (!rpcResult?.success) {
+    return { success: false, error: rpcResult?.error || "退款失败" };
+  }
+
+  clearWorkOrderDataCache(参数.orderId);
+  revalidatePath(`/work-orders/${参数.orderId}`);
+  return { success: true };
+}

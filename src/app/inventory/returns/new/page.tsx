@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { usePriceVisibility } from "@/components/PriceVisibilityContext";
+import { 新建采购退货 } from "../../actions";
 
 export default function NewPurchaseReturnPage() {
   const router = useRouter();
@@ -76,46 +77,15 @@ export default function NewPurchaseReturnPage() {
 
       const batch = batches.find((b) => b.id === form.batch_id);
       if (!batch) throw new Error("批次不存在");
-      if (batch.remaining < qty) throw new Error(`该批次剩余仅 ${batch.remaining}，不足退货`);
 
-      // 扣减批次库存
-      const { error: batchError } = await supabase
-        .from("part_batches")
-        .update({ remaining: batch.remaining - qty })
-        .eq("id", form.batch_id);
-
-      if (batchError) throw batchError;
-
-      // 扣减总库存
-      const selectedPart = parts.find((p) => p.id === form.part_id);
-      const beforeQty = selectedPart?.quantity || 0;
-      const { error: partError } = await supabase
-        .from("parts")
-        .update({ quantity: beforeQty - qty })
-        .eq("id", form.part_id);
-
-      if (partError) throw partError;
-
-      // 创建退货单
-      const { error: returnError } = await supabase.from("purchase_returns").insert({
-        part_id: form.part_id,
-        batch_id: form.batch_id,
+      /* 涉库存多步写走 Server Action + RPC 事务，服务端加锁读最新数量再扣减 */
+      const result = await 新建采购退货({
+        partId: form.part_id,
+        batchId: form.batch_id,
         quantity: qty,
-        reason: form.reason || null,
-        status: "completed",
+        reason: form.reason,
       });
-
-      if (returnError) throw returnError;
-
-      // 记录库存日志
-      await supabase.from("inventory_logs").insert({
-        part_id: form.part_id,
-        type: "return_out",
-        change_qty: -qty,
-        before_qty: beforeQty,
-        after_qty: beforeQty - qty,
-        notes: `供应商退货: ${form.reason || "无原因"}`,
-      });
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       router.push("/inventory/returns");
       router.refresh();
