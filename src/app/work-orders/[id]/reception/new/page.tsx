@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
+import { 保存检查单 } from "@/app/work-orders/actions";
 
 export default function NewReceptionPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -71,55 +72,25 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
     }, 15000);
 
     try {
-      /* 统一更新工单里程和照片 */
-      const orderUpdate: Record<string, string | number | string[] | null> = {};
-      if (mileage) orderUpdate.mileage_in = parseFloat(mileage);
-      orderUpdate.dashboard_photos = dashboardPaths.length > 0 ? dashboardPaths : null;
-      const { error: orderError } = await supabase
-        .from("work_orders")
-        .update(orderUpdate)
-        .eq("id", orderId);
-      if (orderError) throw orderError;
+      /* 组装媒体清单（仪表照片存在工单表，此处只收集检查记录专属媒体） */
+      const mediaRecords: { media_type: string; storage_path: string }[] = [];
+      videoPaths.forEach((path) => mediaRecords.push({ media_type: "reception_video", storage_path: path }));
+      exteriorPaths.forEach((path) => mediaRecords.push({ media_type: "exterior", storage_path: path }));
 
-      const { data: inspection, error: inspectionError } = await supabase
-        .from("work_order_inspections")
-        .insert({
-          work_order_id: orderId,
-          inspection_type: "reception",
+      /* 写库走 Server Action（建记录 + 工单里程照片 + 媒体，服务端一次完成） */
+      const result = await 保存检查单({
+        orderId,
+        inspectionType: "reception",
+        inspectionId: null,
+        data: {
           notes: notes || null,
           inspection_mileage: mileage ? parseFloat(mileage) : null,
-        })
-        .select("id")
-        .single();
-
-      if (inspectionError || !inspection) throw inspectionError || new Error("创建接车检查失败");
-
-      interface MediaRecord {
-        inspection_id: string;
-        media_type: string;
-        storage_path: string;
-      }
-      const mediaRecords: MediaRecord[] = [];
-      videoPaths.forEach((path) => {
-        mediaRecords.push({
-          inspection_id: inspection.id,
-          media_type: "reception_video",
-          storage_path: path,
-        });
+        },
+        mileage: mileage ? parseFloat(mileage) : null,
+        dashboardPaths,
+        media: mediaRecords,
       });
-      exteriorPaths.forEach((path) => {
-        mediaRecords.push({
-          inspection_id: inspection.id,
-          media_type: "exterior",
-          storage_path: path,
-        });
-      });
-      /* 仪表照片已保存到工单表，此处只保存检查记录专属媒体 */
-
-      if (mediaRecords.length > 0) {
-        const { error: mediaError } = await supabase.from("work_order_inspection_media").insert(mediaRecords);
-        if (mediaError) throw mediaError;
-      }
+      if (!result.success) throw new Error(result.error || "创建接车检查失败");
 
       clearTimeout(timeoutId);
       router.push(`/work-orders/${orderId}`);

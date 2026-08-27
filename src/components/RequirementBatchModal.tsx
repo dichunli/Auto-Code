@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
 import { useConfirm } from "./ConfirmDialog";
+import { 保存需求, 指派需求, 领取需求, 取消需求指派, 删除需求 } from "@/app/work-orders/actions";
 
 interface MediaItem {
   id?: string;
@@ -177,105 +178,68 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
           }
         }
 
-        // 编辑模式：更新需求
-        const updateData: Record<string, unknown> = {};
+        // 编辑模式：更新需求（写库走 Server Action，提交人由服务端记）
+        const 保存参数: {
+          orderId: string;
+          requirementId: string | null;
+          description?: string;
+          diagnosis?: string | null;
+          remarks?: string | null;
+          deletedMediaIds: string[];
+          newMedia: { media_type: "image" | "video"; storage_path: string }[];
+        } = {
+          orderId,
+          requirementId: requirement.id,
+          deletedMediaIds: canEditMedia ? deletedMediaIds : [],
+          newMedia: [],
+        };
         if (canEditDescription) {
-          updateData.description = description.trim();
+          保存参数.description = description.trim();
         }
         if (canEditDiagnosis) {
           const newDiagnosis = diagnosis.trim();
           if (newDiagnosis !== (requirement.diagnosis || "").trim()) {
-            updateData.diagnosis = newDiagnosis || null;
-            updateData.diagnosis_submitter_id = newDiagnosis ? userId : null;
+            保存参数.diagnosis = newDiagnosis || null;
           }
         }
         if (canEditRemarks) {
           const newRemarks = remarks.trim();
           if (newRemarks !== (requirement.remarks || "").trim()) {
-            updateData.remarks = newRemarks || null;
-            updateData.remarks_submitter_id = newRemarks ? userId : null;
+            保存参数.remarks = newRemarks || null;
           }
         }
-
-        if (Object.keys(updateData).length > 0) {
-          const { error: updateError } = await 带超时(
-            supabase.from("work_order_requirements").update(updateData).eq("id", requirement.id),
-            "保存需求"
-          );
-          if (updateError) throw updateError;
+        if (canEditMedia) {
+          保存参数.newMedia = [
+            ...images
+              .filter((path) => !initialMedia.some((m) => m.media_type === "image" && m.storage_path === path))
+              .map((path) => ({ media_type: "image" as const, storage_path: path })),
+            ...videos
+              .filter((path) => !initialMedia.some((m) => m.media_type === "video" && m.storage_path === path))
+              .map((path) => ({ media_type: "video" as const, storage_path: path })),
+          ];
         }
 
-        // 删除被标记删除的媒体记录（仅当有权限时）
-        if (canEditMedia && deletedMediaIds.length > 0) {
-          const { error: delError } = await 带超时(
-            supabase.from("work_order_requirement_media").delete().in("id", deletedMediaIds),
-            "删除媒体记录"
-          );
-          if (delError) throw delError;
-        }
+        const 编辑结果 = await 带超时(保存需求(保存参数), "保存需求");
+        if (!编辑结果.success) throw new Error(编辑结果.error || "保存失败");
       } else {
-        // 新增模式
-        const { data: existing } = await 带超时(
-          supabase
-            .from("work_order_requirements")
-            .select("seq")
-            .eq("work_order_id", orderId)
-            .order("seq", { ascending: false })
-            .limit(1),
-          "读取需求序号"
-        );
-        const nextSeq = (existing && existing[0]?.seq ? existing[0].seq : 0) + 1;
-
+        // 新增模式：序号在服务端取，写库走 Server Action
         const newDiagnosis = diagnosis.trim();
         const newRemarks = remarks.trim();
-        const { data: req, error: reqError } = await 带超时(
-          supabase
-            .from("work_order_requirements")
-            .insert({
-              work_order_id: orderId,
-              seq: nextSeq,
-              description: description.trim(),
-              submitted_by: userId,
-              diagnosis: newDiagnosis || null,
-              remarks: newRemarks || null,
-              diagnosis_submitter_id: newDiagnosis ? userId : null,
-              remarks_submitter_id: newRemarks ? userId : null,
-            })
-            .select("id")
-            .single(),
-          "创建需求"
-        );
-
-        if (reqError || !req) throw reqError || new Error("创建需求失败");
-        当前需求ID = req.id;
-        新建需求 = { id: req.id, seq: nextSeq, description: description.trim(), submitted_by: userId || null };
-      }
-
-      // 插入新媒体（仅当有权限时）
-      if (canEditMedia && 当前需求ID) {
-        const mediaRecords = [
-          ...images
-            .filter((path) => !initialMedia.some((m) => m.media_type === "image" && m.storage_path === path))
-            .map((path) => ({
-              requirement_id: 当前需求ID,
-              media_type: "image" as const,
-              storage_path: path,
-            })),
-          ...videos
-            .filter((path) => !initialMedia.some((m) => m.media_type === "video" && m.storage_path === path))
-            .map((path) => ({
-              requirement_id: 当前需求ID,
-              media_type: "video" as const,
-              storage_path: path,
-            })),
-        ];
-        if (mediaRecords.length > 0) {
-          const { error: mediaError } = await 带超时(
-            supabase.from("work_order_requirement_media").insert(mediaRecords),
-            "保存媒体记录"
-          );
-          if (mediaError) throw mediaError;
-        }
+        const 新增结果 = await 带超时(保存需求({
+          orderId,
+          requirementId: null,
+          description: description.trim(),
+          diagnosis: newDiagnosis || null,
+          remarks: newRemarks || null,
+          deletedMediaIds: [],
+          newMedia: [
+            ...images.map((path) => ({ media_type: "image" as const, storage_path: path })),
+            ...videos.map((path) => ({ media_type: "video" as const, storage_path: path })),
+          ],
+        }), "创建需求");
+        if (!新增结果.success || !新增结果.id) throw new Error(新增结果.error || "创建需求失败");
+        当前需求ID = 新增结果.id;
+        新建需求 = { id: 新增结果.id, seq: 新增结果.seq || 1, description: description.trim(), submitted_by: userId || null };
       }
 
       // 删除被移除的媒体文件（包括已保存的和新上传后取消的）——并行发送，
@@ -485,17 +449,10 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                         e.target.value = "";
                         return;
                       }
-                      const { data: authData } = await supabase.auth.getUser();
-                      const { error } = await supabase
-                        .from("work_order_requirements")
-                        .update({
-                          assigned_to: val,
-                          assignment_type: "assigned",
-                          dispatcher_id: authData.user?.id || null,
-                        })
-                        .eq("id", requirement.id);
-                      if (error) {
-                        alert("指派失败: " + error.message);
+                      /* 写库走 Server Action，指派人取服务端登录用户 */
+                      const result = await 指派需求({ requirementId: requirement.id, assigneeId: val });
+                      if (!result.success) {
+                        alert("指派失败: " + (result.error || "未知错误"));
                         e.target.value = "";
                       } else {
                         设置当前指派({ id: val, type: "assigned", name });
@@ -515,27 +472,20 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                   <button
                     type="button"
                     onClick={async () => {
-                      const { data: authData } = await supabase.auth.getUser();
-                      if (!authData.user) {
+                      if (!currentUserId) {
                         alert("未登录，无法领单");
                         return;
                       }
-                      const { error } = await supabase
-                        .from("work_order_requirements")
-                        .update({
-                          assigned_to: authData.user.id,
-                          assignment_type: "claimed",
-                          dispatcher_id: null,
-                        })
-                        .eq("id", requirement.id);
-                      if (error) {
-                        alert("领单失败: " + error.message);
+                      /* 写库走 Server Action，领单人取服务端登录用户 */
+                      const result = await 领取需求(requirement.id);
+                      if (!result.success) {
+                        alert("领单失败: " + (result.error || "未知错误"));
                       } else {
-                        const 我的姓名 = profiles.find((p) => p.id === authData.user.id)?.full_name || "";
-                        设置当前指派({ id: authData.user.id, type: "claimed", name: 我的姓名 });
+                        const 我的姓名 = profiles.find((p) => p.id === currentUserId)?.full_name || "";
+                        设置当前指派({ id: currentUserId, type: "claimed", name: 我的姓名 });
                         window.dispatchEvent(
                           new CustomEvent("wo-requirement-assigned", {
-                            detail: { requirementId: requirement.id, assignedTo: authData.user.id, assignmentType: "claimed", fullName: 我的姓名 },
+                            detail: { requirementId: requirement.id, assignedTo: currentUserId, assignmentType: "claimed", fullName: 我的姓名 },
                           })
                         );
                       }
@@ -556,16 +506,9 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                     type="button"
                     onClick={async () => {
                       if (!(await 请求确认("确定取消指派吗？"))) return;
-                      const { error } = await supabase
-                        .from("work_order_requirements")
-                        .update({
-                          assigned_to: null,
-                          assignment_type: null,
-                          dispatcher_id: null,
-                        })
-                        .eq("id", requirement.id);
-                      if (error) {
-                        alert("取消失败: " + error.message);
+                      const result = await 取消需求指派(requirement.id);
+                      if (!result.success) {
+                        alert("取消失败: " + (result.error || "未知错误"));
                       } else {
                         设置当前指派(null);
                         window.dispatchEvent(
@@ -591,34 +534,15 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                 disabled={saving}
                 title={项目数 > 0 ? "该需求下有维修项目，请先删除项目再删需求" : undefined}
                 onClick={async () => {
-                  /* 防误删：需求下挂有维修项目时不允许删除（删除会使项目变成无主项目）。
-                   * 注意：props 传入的 项目数 是页面加载时的快照，局部增删项目后不会更新，
-                   * 所以删除前必须实时查库确认，避免"项目已删却仍被拦"或"项目还在却被放过"。 */
-                  setSaving(true);
-                  const { count, error: 查询错误 } = await supabase
-                    .from("work_order_items")
-                    .select("id", { count: "exact", head: true })
-                    .eq("requirement_id", requirement!.id);
-                  if (查询错误) {
-                    alert("检查项目失败: " + 查询错误.message);
-                    setSaving(false);
-                    return;
-                  }
-                  if ((count ?? 0) > 0) {
-                    alert(`该需求下有 ${count} 个维修项目，无法删除。\n请先删除这些维修项目，再删除需求。`);
-                    setSaving(false);
-                    return;
-                  }
+                  /* 防误删：需求下挂有维修项目时不允许删除。项目数检查挪到服务端实时查，
+                   * 避免"项目已删却仍被拦"或"项目还在却被放过"。 */
                   if (!(await 请求确认("确定要删除这条需求吗？关联的媒体文件也会被删除。"))) {
-                    setSaving(false);
                     return;
                   }
-                  const { error } = await supabase
-                    .from("work_order_requirements")
-                    .delete()
-                    .eq("id", requirement!.id);
-                  if (error) {
-                    alert("删除失败: " + error.message);
+                  setSaving(true);
+                  const result = await 删除需求(requirement!.id);
+                  if (!result.success) {
+                    alert(result.error || "删除失败");
                     setSaving(false);
                   } else {
                     /* 删除需求：局部更新，卡片立即消失，不整页刷新。

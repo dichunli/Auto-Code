@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
+import { 领取质检, 保存质检人 } from "@/app/work-orders/actions";
 
 interface Profile {
   id: string;
@@ -75,13 +76,10 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
       setLoading(false);
       return;
     }
-    const { error } = await supabase
-      .from("work_order_items")
-      .update({ inspector_id: selected || null })
-      .eq("id", itemId);
+    const result = await 保存质检人({ itemId, inspectorId: selected || null });
     setLoading(false);
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       return;
     }
     // 写库成功后才通知父组件更新显示，保证数据正确性
@@ -102,13 +100,11 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
       setLoading(false);
       return;
     }
-    const { error } = await supabase
-      .from("work_order_items")
-      .update({ inspector_id: user.id })
-      .eq("id", itemId);
+    /* 写库走 Server Action，质检人取服务端登录用户 */
+    const result = await 领取质检(itemId);
     setLoading(false);
-    if (error) {
-      alert("领单失败: " + error.message);
+    if (!result.success) {
+      alert("领单失败: " + (result.error || "未知错误"));
       return;
     }
     onSaved?.(user.id);
@@ -123,13 +119,10 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
       setLoading(false);
       return;
     }
-    const { error } = await supabase
-      .from("work_order_items")
-      .update({ inspector_id: null })
-      .eq("id", itemId);
+    const result = await 保存质检人({ itemId, inspectorId: null });
     setLoading(false);
-    if (error) {
-      alert("取消失败: " + error.message);
+    if (!result.success) {
+      alert("取消失败: " + (result.error || "未知错误"));
       return;
     }
     onSaved?.(null);

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { OutsourceModal } from "./OutsourceModal";
+import { 切换项目标记 } from "@/app/work-orders/actions";
 
 interface ExistingOrder {
   id: string;
@@ -59,13 +60,13 @@ export function ItemFlagsToggle({
   const [updating, setUpdating] = useState(false);
   const [outsourceModalOpen, setOutsourceModalOpen] = useState(false);
 
-  async function toggleField(field: string, value: boolean) {
+  async function toggleField(field: "is_customer_part", value: boolean) {
     if (updating) return;
     setUpdating(true);
 
-    const updateData: Record<string, boolean | number | null> = { [field]: value };
+    const updateData: { is_customer_part?: boolean; unit_price?: number | null } = { is_customer_part: value };
 
-    // 自带配件开关时同步更新价格
+    // 自带配件开关时同步更新价格（价格读取仍走客户端只读查询）
     if (field === "is_customer_part" && serviceItemId) {
       const { data: si } = await supabase
         .from("service_items")
@@ -81,13 +82,11 @@ export function ItemFlagsToggle({
       }
     }
 
-    const { error } = await supabase
-      .from("work_order_items")
-      .update(updateData)
-      .eq("id", itemId);
+    /* 写库走 Server Action */
+    const result = await 切换项目标记({ itemId, updates: updateData });
     setUpdating(false);
-    if (error) {
-      alert("更新失败: " + error.message);
+    if (!result.success) {
+      alert("更新失败: " + (result.error || "未知错误"));
       return;
     }
     router.refresh();

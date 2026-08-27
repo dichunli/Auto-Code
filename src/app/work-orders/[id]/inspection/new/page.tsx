@@ -4,7 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
-import { 删除检查媒体 } from "@/app/work-orders/actions";
+import { 保存检查单 } from "@/app/work-orders/actions";
 import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
 import { ImageAnnotator } from "@/components/ImageAnnotator";
@@ -335,103 +335,31 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
     };
 
     try {
-      let inspectionId = existingId;
-
-      if (existingId && mode === "edit") {
-        /* 更新已有记录 */
-        const { error: updateError } = await supabase
-          .from("work_order_inspections")
-          .update(inspectionData)
-          .eq("id", existingId);
-        if (updateError) throw updateError;
-
-        /* 删除旧 media */
-        const delResult = await 删除检查媒体(existingId);
-        if (!delResult.success) throw new Error(delResult.error || "删除旧媒体失败");
-      } else {
-        /* 新建记录 */
-        const { data: inspection, error: inspectionError } = await supabase
-          .from("work_order_inspections")
-          .insert({
-            work_order_id: orderId,
-            inspection_type: "inspection",
-            submitter_id: currentUser?.id || null,
-            ...inspectionData,
-          })
-          .select("id")
-          .single();
-        if (inspectionError || !inspection) throw inspectionError || new Error("创建检查记录失败");
-        inspectionId = inspection.id;
-      }
-
-      /* 统一更新工单里程和共享仪表照片 */
-      const orderUpdate: Record<string, string | number | string[] | null> = {};
-      if (inspectionMileage) orderUpdate.mileage_in = parseFloat(inspectionMileage);
-      orderUpdate.dashboard_photos = dashboardPaths.length > 0 ? dashboardPaths : null;
-      const { error: orderErr } = await supabase
-        .from("work_orders")
-        .update(orderUpdate)
-        .eq("id", orderId);
-      if (orderErr) throw orderErr;
-
-      const mediaRecords: { inspection_id: string | null; media_type: string; storage_path: string; annotations?: Line[] }[] = [];
+      /* 组装媒体清单（仪表照片存在工单表，此处只收集检查记录专属媒体） */
+      const mediaRecords: { media_type: string; storage_path: string; annotations?: Line[] }[] = [];
       if (oilBeforePath) {
-        mediaRecords.push({
-          inspection_id: inspectionId,
-          media_type: "engine_oil_before",
-          storage_path: oilBeforePath,
-          annotations: oilBeforeAnnotations,
-        });
+        mediaRecords.push({ media_type: "engine_oil_before", storage_path: oilBeforePath, annotations: oilBeforeAnnotations });
       }
       if (oilAfterPath) {
-        mediaRecords.push({
-          inspection_id: inspectionId,
-          media_type: "engine_oil_after",
-          storage_path: oilAfterPath,
-          annotations: oilAfterAnnotations,
-        });
+        mediaRecords.push({ media_type: "engine_oil_after", storage_path: oilAfterPath, annotations: oilAfterAnnotations });
       }
-      fluidPaths.forEach((path) => {
-        mediaRecords.push({
-          inspection_id: inspectionId,
-          media_type: "fluid",
-          storage_path: path,
-        });
-      });
-      /* 仪表照片已保存到工单表，此处只保存检查记录专属媒体 */
-      exteriorPaths.forEach((path) => {
-        mediaRecords.push({
-          inspection_id: inspectionId,
-          media_type: "exterior",
-          storage_path: path,
-        });
-      });
-      driveBeltPaths.forEach((path) => {
-        mediaRecords.push({
-          inspection_id: inspectionId,
-          media_type: "drive_belt",
-          storage_path: path,
-        });
-      });
-      tirePaths.forEach((path) => {
-        mediaRecords.push({
-          inspection_id: inspectionId,
-          media_type: "tire",
-          storage_path: path,
-        });
-      });
-      videoPaths.forEach((path) => {
-        mediaRecords.push({
-          inspection_id: inspectionId,
-          media_type: "inspection_video",
-          storage_path: path,
-        });
-      });
+      fluidPaths.forEach((path) => mediaRecords.push({ media_type: "fluid", storage_path: path }));
+      exteriorPaths.forEach((path) => mediaRecords.push({ media_type: "exterior", storage_path: path }));
+      driveBeltPaths.forEach((path) => mediaRecords.push({ media_type: "drive_belt", storage_path: path }));
+      tirePaths.forEach((path) => mediaRecords.push({ media_type: "tire", storage_path: path }));
+      videoPaths.forEach((path) => mediaRecords.push({ media_type: "inspection_video", storage_path: path }));
 
-      if (mediaRecords.length > 0) {
-        const { error: mediaError } = await supabase.from("work_order_inspection_media").insert(mediaRecords);
-        if (mediaError) throw mediaError;
-      }
+      /* 写库走 Server Action（建/改记录 + 工单里程照片 + 媒体，服务端一次完成） */
+      const result = await 保存检查单({
+        orderId,
+        inspectionType: "inspection",
+        inspectionId: existingId && mode === "edit" ? existingId : null,
+        data: inspectionData,
+        mileage: inspectionMileage ? parseFloat(inspectionMileage) : null,
+        dashboardPaths,
+        media: mediaRecords,
+      });
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       clearTimeout(timeoutId);
       router.push(`/work-orders/${orderId}`);

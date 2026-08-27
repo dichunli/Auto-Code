@@ -8,6 +8,7 @@ import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localE
 import PartForm, { PartFormDraft } from "@/app/parts/new/PartForm";
 import { useConfirm } from "./ConfirmDialog";
 import { 选中配件分支, 标记采购到货 } from "@/app/work-orders/parts-actions";
+import { 更新配件分支, 按组更新分支目录, 同步分支图片到配件, 配件分支更新 } from "@/app/work-orders/actions";
 
 function toFixed2(val: string | number | null | undefined): string {
   if (val === "" || val === null || val === undefined) return "";
@@ -445,19 +446,22 @@ export default function PartBranchEditor({
     setSaving(true);
     // 标记这条配件是"自己刚改的"，避免实时同步把整页刷掉
     标记本地编辑配件(part.id);
-    const updateData: Record<string, string | number | null> = {};
+    const updateData: 配件分支更新 = {};
     if (field === "unit_cost" || field === "unit_price" || field === "cost_price") {
       updateData[field] = value === "" ? null : parseFloat(value);
     } else if (field === "quantity") {
       updateData[field] = value === "" ? 1 : parseInt(value, 10);
-    } else {
+    } else if (field === "part_number" || field === "brand" || field === "specification" || field === "document_name" || field === "customer_opinion" || field === "supplier_name") {
       updateData[field] = value || null;
+    } else {
+      /* 未识别的字段不写库（防误传） */
+      setSaving(false);
+      return;
     }
 
-    const { error } = await supabase
-      .from("work_order_item_parts")
-      .update(updateData)
-      .eq("id", part.id);
+    /* 写库走 Server Action */
+    const result = await 更新配件分支({ partId: part.id, updates: updateData });
+    const error = result.success ? null : { message: result.error || "未知错误" };
 
     setSaving(false);
     if (error) {
@@ -500,7 +504,7 @@ export default function PartBranchEditor({
     }));
     setSaving(true);
     标记本地编辑配件(part.id);
-    const 更新: Record<string, unknown> = {
+    const 更新: 配件分支更新 = {
       part_number: hit.part_number || null,
       brand: hit.brand || null,
       specification: hit.specification || null,
@@ -512,9 +516,9 @@ export default function PartBranchEditor({
     if (覆盖?.part_name_id !== undefined) 更新.part_name_id = 覆盖.part_name_id;
     if (覆盖?.branch_group_id !== undefined) 更新.branch_group_id = 覆盖.branch_group_id;
     if (覆盖?.is_selected !== undefined) 更新.is_selected = 覆盖.is_selected;
-    const { error } = await supabase.from("work_order_item_parts").update(更新).eq("id", part.id);
+    const 结果 = await 更新配件分支({ partId: part.id, updates: 更新 });
     setSaving(false);
-    if (error) { alert("补齐配件失败: " + error.message); return; }
+    if (!结果.success) { alert("补齐配件失败: " + (结果.error || "未知错误")); return; }
     if (hit.unit_price != null) {
       window.dispatchEvent(new CustomEvent("wo-part-update", { detail: { itemId, partId: part.id, unit_price: hit.unit_price } }));
     }
@@ -567,7 +571,7 @@ export default function PartBranchEditor({
       document_name: data.document_name || prev.document_name,
     }));
     标记本地编辑配件(part.id);
-    const 更新: Record<string, unknown> = {
+    const 更新: 配件分支更新 = {
       part_id: partId,
       part_number: data.part_number || null,
       brand: 品牌,
@@ -578,30 +582,13 @@ export default function PartBranchEditor({
     };
     // 叶子目录：新建配件带了配件名称，且本分支还没归属名称时，一并写入
     if (data.part_name_id && !part.part_name_id) 更新.part_name_id = data.part_name_id;
-    const { error } = await supabase.from("work_order_item_parts").update(更新).eq("id", part.id);
-    if (error) { alert("补齐配件失败: " + error.message); return; }
+    const 关联结果 = await 更新配件分支({ partId: part.id, updates: 更新 });
+    if (!关联结果.success) { alert("补齐配件失败: " + (关联结果.error || "未知错误")); return; }
 
     /* 分支图片同步到新配件的"配件信息图片"（用户拍板 2026-08-06：
-     * 通过分支信息新建配件时，分支里的图片就是这个配件信息中的图片）。按路径去重 */
-    const { data: 分支图片 } = await supabase
-      .from("work_order_item_part_media")
-      .select("storage_path")
-      .eq("work_order_item_part_id", part.id)
-      .eq("media_type", "image");
-    const 图片路径 = ((分支图片 || []) as { storage_path: string | null }[])
-      .map((r) => r.storage_path)
-      .filter((p): p is string => !!p);
-    if (图片路径.length > 0) {
-      const { data: 已有 } = await supabase.from("part_images").select("storage_path, sort_order").eq("part_id", partId);
-      const 已有路径 = new Set(((已有 || []) as { storage_path: string | null }[]).map((r) => r.storage_path));
-      const 新图 = 图片路径.filter((p) => !已有路径.has(p));
-      if (新图.length > 0) {
-        const 起始 = ((已有 || []) as { sort_order: number | null }[]).reduce((s, r) => Math.max(s, r.sort_order || 0), 0);
-        await supabase.from("part_images").insert(
-          新图.map((p, i) => ({ part_id: partId, storage_path: p, sort_order: 起始 + i + 1 }))
-        );
-      }
-    }
+     * 通过分支信息新建配件时，分支里的图片就是这个配件信息中的图片）。
+     * 整个"读分支图→按路径去重→插缺"在服务端一次完成 */
+    await 同步分支图片到配件({ partId, workOrderItemPartId: part.id });
 
     if (销售价 != null) {
       window.dispatchEvent(new CustomEvent("wo-part-update", { detail: { itemId, partId: part.id, unit_price: 销售价 } }));
@@ -633,7 +620,7 @@ export default function PartBranchEditor({
       document_name: 单据名 || prev.document_name,
     }));
     标记本地编辑配件(part.id);
-    const 更新: Record<string, unknown> = {};
+    const 更新: 配件分支更新 = {};
     if (编码) 更新.part_number = 编码;
     if (品牌) 更新.brand = 品牌;
     if (规格) 更新.specification = 规格;
@@ -641,8 +628,8 @@ export default function PartBranchEditor({
     if (销售价) 更新.unit_price = parseFloat(销售价);
     if (单据名) 更新.document_name = 单据名;
     if (Object.keys(更新).length === 0) return;
-    const { error } = await supabase.from("work_order_item_parts").update(更新).eq("id", part.id);
-    if (error) { alert("带回信息失败: " + error.message); return; }
+    const 带回结果 = await 更新配件分支({ partId: part.id, updates: 更新 });
+    if (!带回结果.success) { alert("带回信息失败: " + (带回结果.error || "未知错误")); return; }
     if (销售价) {
       window.dispatchEvent(new CustomEvent("wo-part-update", { detail: { itemId, partId: part.id, unit_price: parseFloat(销售价) } }));
     }
@@ -707,9 +694,12 @@ export default function PartBranchEditor({
     set名称不符询问(null);
     if (part.branch_group_id && q.hit.part_name_id) {
       标记本地结构编辑(itemId);
-      await supabase.from("work_order_item_parts")
-        .update({ part_name_id: q.hit.part_name_id })
-        .eq("branch_group_id", part.branch_group_id);
+      /* 组内所有分支一起改，走 Server Action */
+      const 改组结果 = await 按组更新分支目录({ branchGroupId: part.branch_group_id, partNameId: q.hit.part_name_id });
+      if (!改组结果.success) {
+        alert("替换分组名失败: " + (改组结果.error || "未知错误"));
+        return;
+      }
     }
     await 应用命中配件(q.hit, { part_name_id: q.hit.part_name_id || undefined });
   }
@@ -803,13 +793,13 @@ export default function PartBranchEditor({
     if (matched) {
       if (await 请求确认("找到相同配件是否选择？")) {
         setSaving(true);
-        const { error } = await supabase
-          .from("work_order_item_parts")
-          .update({ part_id: matched.id, part_number: matched.part_number || editForm.part_number })
-          .eq("id", part.id);
+        const 关联结果 = await 更新配件分支({
+          partId: part.id,
+          updates: { part_id: matched.id, part_number: matched.part_number || editForm.part_number },
+        });
         setSaving(false);
-        if (error) {
-          alert("关联失败: " + error.message);
+        if (!关联结果.success) {
+          alert("关联失败: " + (关联结果.error || "未知错误"));
           return;
         }
         // 自动填充价格和编码
@@ -1331,10 +1321,11 @@ export default function PartBranchEditor({
                 setLocalOpinion(next);
                 setSaving(true);
                 标记本地编辑配件(part.id);
-                supabase.from("work_order_item_parts").update({ customer_opinion: next }).eq("id", part.id).then(({ error }) => {
+                /* 写库走 Server Action */
+                更新配件分支({ partId: part.id, updates: { customer_opinion: next } }).then((结果) => {
                   setSaving(false);
-                  if (error) {
-                    alert("保存失败: " + error.message);
+                  if (!结果.success) {
+                    alert("保存失败: " + (结果.error || "未知错误"));
                     setLocalOpinion(part.customer_opinion || "pending");
                   }
                 });
@@ -1350,10 +1341,10 @@ export default function PartBranchEditor({
               setLocalOpinion(next);
               setSaving(true);
               标记本地编辑配件(part.id);
-              supabase.from("work_order_item_parts").update({ customer_opinion: next }).eq("id", part.id).then(({ error }) => {
+              更新配件分支({ partId: part.id, updates: { customer_opinion: next } }).then((结果) => {
                 setSaving(false);
-                if (error) {
-                  alert("保存失败: " + error.message);
+                if (!结果.success) {
+                  alert("保存失败: " + (结果.error || "未知错误"));
                   setLocalOpinion(part.customer_opinion || "pending");
                 }
               });
