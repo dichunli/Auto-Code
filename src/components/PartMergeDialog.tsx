@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
+import { 合并配件 } from "@/app/parts/actions";
 
 interface Props {
   open: boolean;
@@ -103,163 +104,21 @@ export default function PartMergeDialog({ open, selectedItems, onClose, onSucces
 
     setMerging(true);
 
-    /* 1. 更新主配件名称、编号 */
-    const updateData: Record<string, unknown> = {
-      name: finalName.trim(),
-      part_number: finalPartNumber.trim(),
-    };
-    if (mergeQuantity) {
-      const totalQty = selectedItems.reduce((sum, i) => sum + i.quantity, 0);
-      updateData.quantity = totalQty;
-    }
-
-    const { error: nameErr } = await supabase
-      .from("parts")
-      .update(updateData)
-      .eq("id", target.id);
-    if (nameErr) {
-      alert("更新主配件信息失败: " + nameErr.message);
-      setMerging(false);
+    /* 合并走 Server Action + RPC merge_parts 一个事务：
+     * 11 张表迁移 + 删除源配件要么全成要么全败，数量在服务端读最新值累加 */
+    const result = await 合并配件({
+      targetId,
+      sourceIds: otherItems.map((i) => i.id),
+      name: finalName,
+      partNumber: finalPartNumber,
+      mergeQuantity,
+    });
+    setMerging(false);
+    if (!result.success) {
+      alert("合并失败: " + (result.error || "未知错误"));
       return;
     }
 
-    /* 2. 逐个处理被合并配件 */
-    for (const source of otherItems) {
-
-      /* 2a. 迁移车型关联（跳过冲突） */
-      const { data: sourceVehicles } = await supabase
-        .from("part_vehicle_models")
-        .select("vehicle_model_id, fitment_position, source, vin17_fitness_id")
-        .eq("part_id", source.id);
-
-      if (sourceVehicles && sourceVehicles.length > 0) {
-        const { data: targetVehicles } = await supabase
-          .from("part_vehicle_models")
-          .select("vehicle_model_id")
-          .eq("part_id", target.id);
-        const targetVehicleIds = new Set((targetVehicles || []).map((v) => v.vehicle_model_id));
-
-        for (const v of sourceVehicles) {
-          if (!targetVehicleIds.has(v.vehicle_model_id)) {
-            await supabase.from("part_vehicle_models").insert({
-              part_id: target.id,
-              vehicle_model_id: v.vehicle_model_id,
-              fitment_position: v.fitment_position,
-              source: v.source,
-              vin17_fitness_id: v.vin17_fitness_id,
-            });
-            targetVehicleIds.add(v.vehicle_model_id);
-          }
-        }
-      }
-
-      /* 2b. 迁移单位专属价格（跳过冲突） */
-      const { data: sourcePrices } = await supabase
-        .from("company_part_prices")
-        .select("company_id, price")
-        .eq("part_id", source.id);
-
-      if (sourcePrices && sourcePrices.length > 0) {
-        const { data: targetPrices } = await supabase
-          .from("company_part_prices")
-          .select("company_id")
-          .eq("part_id", target.id);
-        const targetCompanyIds = new Set((targetPrices || []).map((p) => p.company_id));
-
-        for (const p of sourcePrices) {
-          if (!targetCompanyIds.has(p.company_id)) {
-            await supabase.from("company_part_prices").insert({
-              part_id: target.id,
-              company_id: p.company_id,
-              price: p.price,
-            });
-            targetCompanyIds.add(p.company_id);
-          }
-        }
-      }
-
-      /* 2c. 迁移库存批次 */
-      const { error: batchErr } = await supabase
-        .from("part_batches")
-        .update({ part_id: target.id })
-        .eq("part_id", source.id);
-      if (batchErr) {
-        console.error("迁移批次失败:", batchErr);
-      }
-
-      /* 2d. 迁移库存日志 */
-      const { error: logErr } = await supabase
-        .from("inventory_logs")
-        .update({ part_id: target.id })
-        .eq("part_id", source.id);
-      if (logErr) {
-        console.error("迁移库存日志失败:", logErr);
-      }
-
-      /* 2e. 迁移盘点明细 */
-      const { error: checkErr } = await supabase
-        .from("inventory_check_items")
-        .update({ part_id: target.id })
-        .eq("part_id", source.id);
-      if (checkErr) {
-        console.error("迁移盘点记录失败:", checkErr);
-      }
-
-      /* 2f. 迁移退货单 */
-      const { error: returnErr } = await supabase
-        .from("purchase_returns")
-        .update({ part_id: target.id })
-        .eq("part_id", source.id);
-      if (returnErr) {
-        console.error("迁移退货记录失败:", returnErr);
-      }
-
-      /* 2g. 迁移采购订单 */
-      const { error: orderErr } = await supabase
-        .from("purchase_order_items")
-        .update({ part_id: target.id })
-        .eq("part_id", source.id);
-      if (orderErr) {
-        console.error("迁移采购记录失败:", orderErr);
-      }
-
-      /* 2h. 迁移工单配件引用 */
-      const { error: woErr } = await supabase
-        .from("work_order_item_parts")
-        .update({ part_id: target.id })
-        .eq("part_id", source.id);
-      if (woErr) {
-        console.error("迁移工单配件失败:", woErr);
-      }
-
-      /* 2i. 迁移保养模板配件 */
-      const { error: tmplErr } = await supabase
-        .from("vehicle_maintenance_template_parts")
-        .update({ part_id: target.id })
-        .eq("part_id", source.id);
-      if (tmplErr) {
-        console.error("迁移模板配件失败:", tmplErr);
-      }
-
-      /* 2j. 迁移配件图片 */
-      const { error: imgErr } = await supabase
-        .from("part_images")
-        .update({ part_id: target.id })
-        .eq("part_id", source.id);
-      if (imgErr) {
-        console.error("迁移图片失败:", imgErr);
-      }
-
-      /* 2k. 删除被合并配件 */
-      const { error: delError } = await supabase.from("parts").delete().eq("id", source.id);
-      if (delError) {
-        alert(`删除「${source.name}」失败: ${delError.message}`);
-        setMerging(false);
-        return;
-      }
-    }
-
-    setMerging(false);
     alert("合并成功");
     onSuccess();
     onClose();

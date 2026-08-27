@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { logAction } from "@/lib/operationLog";
+import { 转换工单类型 } from "@/app/work-orders/actions";
 
 interface Props {
   workOrderId: string;
@@ -14,7 +14,6 @@ interface Props {
 
 export default function WorkOrderActionButtons({ workOrderId, orderNo, currentType, onSuccess }: Props) {
   const router = useRouter();
-  const supabase = createClient();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -66,30 +65,13 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
     }
 
     setLoading(true);
-    const updates: Record<string, unknown> = {};
-
-    switch (type) {
-      case "normal":
-        updates.order_type = "normal";
-        break;
-      case "appointment":
-        updates.order_type = "appointment";
-        updates.appointment_at = new Date().toISOString();
-        break;
-      case "quote":
-        updates.order_type = "quote";
-        break;
-      case "maintenance":
-        updates.order_type = "maintenance";
-        break;
-    }
-
-    const { error } = await supabase.from("work_orders").update(updates).eq("id", workOrderId);
+    /* 写库走 Server Action（appointment_at 由服务端打时间戳） */
+    const result = await 转换工单类型({ workOrderId, type });
     setLoading(false);
     setOpen(false);
 
-    if (error) {
-      alert("操作失败: " + error.message);
+    if (!result.success) {
+      alert("操作失败: " + (result.error || "未知错误"));
       return;
     }
 
@@ -100,7 +82,7 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
       targetId: workOrderId,
       targetName: orderNo,
       description: `工单 ${orderNo} 转为${actions.find((a) => a.key === type)?.label}`,
-      newValues: updates,
+      newValues: { order_type: type },
     });
 
     /* 以事件驱动方式更新角标 */
@@ -125,15 +107,12 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
       return;
     }
     setLoading(true);
-    const { error } = await supabase
-      .from("work_orders")
-      .update({ order_type: "cancelled", cancelled_reason: reason.trim() })
-      .eq("id", workOrderId);
+    const result = await 转换工单类型({ workOrderId, type: "cancelled", cancelledReason: reason });
     setLoading(false);
     setModalOpen(false);
 
-    if (error) {
-      alert("操作失败: " + error.message);
+    if (!result.success) {
+      alert("操作失败: " + (result.error || "未知错误"));
       return;
     }
 

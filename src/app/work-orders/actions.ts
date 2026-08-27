@@ -628,6 +628,699 @@ export async function 删除项目施工人(itemId: string): Promise<{ success: 
   return { success: true };
 }
 
+/* ═══ 单人领单（施工人=当前登录用户 100%，身份取服务端 user.id） ═══ */
+export async function 单人领单(itemId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error: delErr } = await supabase
+    .from("work_order_item_mechanics")
+    .delete()
+    .eq("work_order_item_id", itemId);
+  if (delErr) {
+    return { success: false, error: delErr.message };
+  }
+
+  const { error } = await supabase.from("work_order_item_mechanics").insert({
+    work_order_item_id: itemId,
+    mechanic_id: user.id,
+    share_pct: 100,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 保存施工指派（删旧 + 插新，分成比例由前端按规则算好后传入） ═══ */
+export async function 保存施工指派(参数: {
+  itemId: string;
+  records: { mechanicId: string; sharePct: number }[];
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (参数.records.length === 0) {
+    return { success: false, error: "请选择施工人" };
+  }
+
+  const supabase = await createClient();
+  const { error: delErr } = await supabase
+    .from("work_order_item_mechanics")
+    .delete()
+    .eq("work_order_item_id", 参数.itemId);
+  if (delErr) {
+    return { success: false, error: delErr.message };
+  }
+
+  const rows = 参数.records.map((r) => ({
+    work_order_item_id: 参数.itemId,
+    mechanic_id: r.mechanicId,
+    share_pct: r.sharePct,
+  }));
+  const { error } = await supabase.from("work_order_item_mechanics").insert(rows);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 领取质检（质检人=当前登录用户，身份取服务端 user.id） ═══ */
+export async function 领取质检(itemId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_items")
+    .update({ inspector_id: user.id })
+    .eq("id", itemId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 保存质检人（inspectorId 传 null 表示取消指派） ═══ */
+export async function 保存质检人(参数: {
+  itemId: string;
+  inspectorId: string | null;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_items")
+    .update({ inspector_id: 参数.inspectorId })
+    .eq("id", 参数.itemId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 批量修改工单项目/配件分支（批量修改弹窗） ═══
+ * 只更新客户端明确传了的字段，未传字段不动。 */
+export async function 批量修改工单明细(参数: {
+  itemIds: string[];
+  itemUpdates: {
+    customer_opinion?: string;
+    business_type?: string;
+    alias_name?: string;
+  };
+  partIds: string[];
+  partUpdates: {
+    customer_opinion?: string;
+    is_purchased?: boolean;
+    is_arrived?: boolean;
+    supplier_name?: string;
+    logistics_agreement?: string;
+    alias_name?: string;
+  };
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  if (参数.itemIds.length > 0 && Object.keys(参数.itemUpdates).length > 0) {
+    const { error } = await supabase
+      .from("work_order_items")
+      .update(参数.itemUpdates)
+      .in("id", 参数.itemIds);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  if (参数.partIds.length > 0 && Object.keys(参数.partUpdates).length > 0) {
+    const { error } = await supabase
+      .from("work_order_item_parts")
+      .update(参数.partUpdates)
+      .in("id", 参数.partIds);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  return { success: true };
+}
+
+/* ═══ 切换项目标记（自带配件开关，可能同步带价格） ═══ */
+export async function 切换项目标记(参数: {
+  itemId: string;
+  updates: { is_customer_part?: boolean; unit_price?: number | null };
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_items")
+    .update(参数.updates)
+    .eq("id", 参数.itemId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 保存需求（新增/编辑 + 媒体增删，身份字段取服务端 user.id） ═══
+ * 原来是 RequirementBatchModal 客户端多步直写。
+ * changes 里只传客户端实际要改的字段；诊断/备注有改动时提交人自动记为当前登录用户。 */
+export async function 保存需求(参数: {
+  orderId: string;
+  requirementId: string | null;
+  description?: string;
+  diagnosis?: string | null;
+  remarks?: string | null;
+  deletedMediaIds: string[];
+  newMedia: { media_type: "image" | "video"; storage_path: string }[];
+}): Promise<{ success: boolean; id?: string; seq?: number; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  let 需求ID = 参数.requirementId;
+
+  if (需求ID) {
+    /* ── 编辑模式 ── */
+    const updateData: Record<string, string | null> = {};
+    if (参数.description !== undefined) updateData.description = 参数.description;
+    if (参数.diagnosis !== undefined) {
+      updateData.diagnosis = 参数.diagnosis;
+      updateData.diagnosis_submitter_id = 参数.diagnosis ? user.id : null;
+    }
+    if (参数.remarks !== undefined) {
+      updateData.remarks = 参数.remarks;
+      updateData.remarks_submitter_id = 参数.remarks ? user.id : null;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      const { error } = await supabase
+        .from("work_order_requirements")
+        .update(updateData)
+        .eq("id", 需求ID);
+      if (error) return { success: false, error: error.message };
+    }
+
+    if (参数.deletedMediaIds.length > 0) {
+      const { error } = await supabase
+        .from("work_order_requirement_media")
+        .delete()
+        .in("id", 参数.deletedMediaIds);
+      if (error) return { success: false, error: error.message };
+    }
+  } else {
+    /* ── 新增模式：序号在服务端取（防并发重号） ── */
+    const { data: existing } = await supabase
+      .from("work_order_requirements")
+      .select("seq")
+      .eq("work_order_id", 参数.orderId)
+      .order("seq", { ascending: false })
+      .limit(1);
+    const nextSeq = (existing && existing[0]?.seq ? existing[0].seq : 0) + 1;
+
+    const { data: req, error: reqError } = await supabase
+      .from("work_order_requirements")
+      .insert({
+        work_order_id: 参数.orderId,
+        seq: nextSeq,
+        description: 参数.description ?? "",
+        submitted_by: user.id,
+        diagnosis: 参数.diagnosis || null,
+        remarks: 参数.remarks || null,
+        diagnosis_submitter_id: 参数.diagnosis ? user.id : null,
+        remarks_submitter_id: 参数.remarks ? user.id : null,
+      })
+      .select("id")
+      .single();
+    if (reqError || !req) {
+      return { success: false, error: reqError?.message || "创建需求失败" };
+    }
+    需求ID = req.id;
+
+    if (参数.newMedia.length > 0) {
+      const mediaRecords = 参数.newMedia.map((m) => ({
+        requirement_id: 需求ID,
+        media_type: m.media_type,
+        storage_path: m.storage_path,
+      }));
+      const { error: mediaError } = await supabase
+        .from("work_order_requirement_media")
+        .insert(mediaRecords);
+      if (mediaError) return { success: false, error: mediaError.message };
+    }
+
+    return { success: true, id: 需求ID, seq: nextSeq };
+  }
+
+  /* 编辑模式的媒体新增 */
+  if (参数.newMedia.length > 0 && 需求ID) {
+    const mediaRecords = 参数.newMedia.map((m) => ({
+      requirement_id: 需求ID,
+      media_type: m.media_type,
+      storage_path: m.storage_path,
+    }));
+    const { error: mediaError } = await supabase
+      .from("work_order_requirement_media")
+      .insert(mediaRecords);
+    if (mediaError) return { success: false, error: mediaError.message };
+  }
+
+  return { success: true, id: 需求ID };
+}
+
+/* ═══ 指派需求给某人（指派人取服务端 user.id） ═══ */
+export async function 指派需求(参数: {
+  requirementId: string;
+  assigneeId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_requirements")
+    .update({
+      assigned_to: 参数.assigneeId,
+      assignment_type: "assigned",
+      dispatcher_id: user.id,
+    })
+    .eq("id", 参数.requirementId);
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+/* ═══ 领取需求（领单人=当前登录用户，取服务端 user.id） ═══ */
+export async function 领取需求(requirementId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_requirements")
+    .update({
+      assigned_to: user.id,
+      assignment_type: "claimed",
+      dispatcher_id: null,
+    })
+    .eq("id", requirementId);
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+/* ═══ 取消需求指派 ═══ */
+export async function 取消需求指派(requirementId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_requirements")
+    .update({ assigned_to: null, assignment_type: null, dispatcher_id: null })
+    .eq("id", requirementId);
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+/* ═══ 删除需求（服务端先查是否挂有维修项目，有则拒绝） ═══ */
+export async function 删除需求(requirementId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { count, error: 查询错误 } = await supabase
+    .from("work_order_items")
+    .select("id", { count: "exact", head: true })
+    .eq("requirement_id", requirementId);
+  if (查询错误) return { success: false, error: "检查项目失败: " + 查询错误.message };
+  if ((count ?? 0) > 0) {
+    return { success: false, error: `该需求下有 ${count} 个维修项目，无法删除。请先删除这些维修项目，再删除需求。` };
+  }
+
+  const { error } = await supabase
+    .from("work_order_requirements")
+    .delete()
+    .eq("id", requirementId);
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+/* ═══ 保存检查单（车况检查/接车检查：建/改记录 + 工单里程照片 + 媒体） ═══
+ * 原来是检查页客户端 4 步连写（改/建记录 → 删旧媒体 → 改工单 → 插媒体），
+ * 收编到服务端一次完成；提交人取服务端 user.id（仅车况检查，与原有口径一致）。 */
+export interface 检查单数据 {
+  front_brake_pad_thickness?: number | null;
+  rear_brake_pad_thickness?: number | null;
+  exhaust_hc?: number | null;
+  exhaust_co?: number | null;
+  exhaust_no?: number | null;
+  exhaust_co2?: number | null;
+  exhaust_o2?: number | null;
+  light_checks?: Record<string, string> | null;
+  engine_oil_before_level?: number | null;
+  engine_oil_after_level?: number | null;
+  coolant_ph?: number | null;
+  brake_fluid_water?: number | null;
+  battery_health?: number | null;
+  battery_voltage?: number | null;
+  drive_belt_status?: string | null;
+  tire_checks?: Record<string, unknown> | null;
+  inspection_mileage?: number | null;
+  notes?: string | null;
+}
+
+export async function 保存检查单(参数: {
+  orderId: string;
+  inspectionType: "inspection" | "reception";
+  inspectionId: string | null;
+  data: 检查单数据;
+  mileage: number | null;
+  dashboardPaths: string[];
+  media: { media_type: string; storage_path: string; annotations?: unknown }[];
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  let inspectionId = 参数.inspectionId;
+
+  if (inspectionId) {
+    /* 更新已有记录（车况检查编辑模式） */
+    const { error: updateError } = await supabase
+      .from("work_order_inspections")
+      .update(参数.data)
+      .eq("id", inspectionId);
+    if (updateError) return { success: false, error: updateError.message };
+
+    /* 删除旧媒体 */
+    const { error: delErr } = await supabase
+      .from("work_order_inspection_media")
+      .delete()
+      .eq("inspection_id", inspectionId);
+    if (delErr) return { success: false, error: delErr.message };
+  } else {
+    /* 新建记录（提交人：仅车况检查记录，与原有口径一致） */
+    const { data: inspection, error: inspectionError } = await supabase
+      .from("work_order_inspections")
+      .insert({
+        work_order_id: 参数.orderId,
+        inspection_type: 参数.inspectionType,
+        submitter_id: 参数.inspectionType === "inspection" ? user.id : null,
+        ...参数.data,
+      })
+      .select("id")
+      .single();
+    if (inspectionError || !inspection) {
+      return { success: false, error: inspectionError?.message || "创建检查记录失败" };
+    }
+    inspectionId = inspection.id;
+  }
+
+  /* 统一更新工单里程和共享仪表照片 */
+  const orderUpdate: Record<string, number | string[] | null> = {};
+  if (参数.mileage) orderUpdate.mileage_in = 参数.mileage;
+  orderUpdate.dashboard_photos = 参数.dashboardPaths.length > 0 ? 参数.dashboardPaths : null;
+  const { error: orderErr } = await supabase
+    .from("work_orders")
+    .update(orderUpdate)
+    .eq("id", 参数.orderId);
+  if (orderErr) return { success: false, error: orderErr.message };
+
+  /* 插入检查媒体 */
+  if (参数.media.length > 0) {
+    const mediaRecords = 参数.media.map((m) => ({
+      inspection_id: inspectionId,
+      media_type: m.media_type,
+      storage_path: m.storage_path,
+      ...(m.annotations !== undefined ? { annotations: m.annotations } : {}),
+    }));
+    const { error: mediaError } = await supabase
+      .from("work_order_inspection_media")
+      .insert(mediaRecords);
+    if (mediaError) return { success: false, error: mediaError.message };
+  }
+
+  clearWorkOrderDataCache(参数.orderId);
+  revalidatePath(`/work-orders/${参数.orderId}`);
+  return { success: true };
+}
+
+/* ═══ 更新配件分支字段（PartBranchEditor 各类单字段保存） ═══
+ * 只更新传了的字段；原来是客户端直写 work_order_item_parts。 */
+export interface 配件分支更新 {
+  part_number?: string | null;
+  brand?: string | null;
+  specification?: string | null;
+  unit_cost?: number | null;
+  unit_price?: number | null;
+  cost_price?: number | null;
+  document_name?: string | null;
+  part_id?: string | null;
+  part_name_id?: string | null;
+  branch_group_id?: string | null;
+  is_selected?: boolean;
+  quantity?: number | null;
+  customer_opinion?: string | null;
+  supplier_name?: string | null;
+  name?: string | null;
+  unit?: string | null;
+  notes?: string | null;
+}
+
+/* ═══ 批量更新配件分支字段（同组多分支一起改：数量/名称替换/关联库存配件） ═══ */
+export async function 批量更新配件分支(参数: {
+  partIds: string[];
+  updates: 配件分支更新;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (参数.partIds.length === 0 || Object.keys(参数.updates).length === 0) {
+    return { success: true };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_item_parts")
+    .update(参数.updates)
+    .in("id", 参数.partIds);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 配件分支图片记录 增/删（上传成功后写记录 / 删除时清记录） ═══ */
+export async function 添加配件图片记录(参数: {
+  partBranchId: string;
+  paths: string[];
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (参数.paths.length === 0) {
+    return { success: true };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("work_order_item_part_media").insert(
+    参数.paths.map((path) => ({
+      work_order_item_part_id: 参数.partBranchId,
+      media_type: "image",
+      storage_path: path,
+    }))
+  );
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+export async function 删除配件图片记录(参数: {
+  partBranchId: string;
+  path: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_item_part_media")
+    .delete()
+    .eq("work_order_item_part_id", 参数.partBranchId)
+    .eq("storage_path", 参数.path);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+export async function 更新配件分支(参数: {
+  partId: string;
+  updates: 配件分支更新;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (Object.keys(参数.updates).length === 0) {
+    return { success: true };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_item_parts")
+    .update(参数.updates)
+    .eq("id", 参数.partId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 按组更新配件分支目录（替换分组名：同组所有分支一起改） ═══ */
+export async function 按组更新分支目录(参数: {
+  branchGroupId: string;
+  partNameId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_item_parts")
+    .update({ part_name_id: 参数.partNameId })
+    .eq("branch_group_id", 参数.branchGroupId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 分支图片同步到配件信息图片（新建配件保存后调用） ═══
+ * 把分支里的图片按路径去重写入 part_images（用户拍板 2026-08-06：
+ * 通过分支信息新建配件时，分支里的图片就是这个配件信息中的图片）。
+ * 整个"读分支图 → 读已有 → 插缺"链路挪到服务端一次完成。 */
+export async function 同步分支图片到配件(参数: {
+  partId: string;
+  workOrderItemPartId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data: 分支图片 } = await supabase
+    .from("work_order_item_part_media")
+    .select("storage_path")
+    .eq("work_order_item_part_id", 参数.workOrderItemPartId)
+    .eq("media_type", "image");
+  const 图片路径 = ((分支图片 || []) as { storage_path: string | null }[])
+    .map((r) => r.storage_path)
+    .filter((p): p is string => !!p);
+  if (图片路径.length === 0) {
+    return { success: true };
+  }
+
+  const { data: 已有 } = await supabase
+    .from("part_images")
+    .select("storage_path, sort_order")
+    .eq("part_id", 参数.partId);
+  const 已有路径 = new Set(((已有 || []) as { storage_path: string | null }[]).map((r) => r.storage_path));
+  const 新图 = 图片路径.filter((p) => !已有路径.has(p));
+  if (新图.length === 0) {
+    return { success: true };
+  }
+
+  const 起始 = ((已有 || []) as { sort_order: number | null }[]).reduce((s, r) => Math.max(s, r.sort_order || 0), 0);
+  const { error } = await supabase.from("part_images").insert(
+    新图.map((p, i) => ({ part_id: 参数.partId, storage_path: p, sort_order: 起始 + i + 1 }))
+  );
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 转换工单类型（正常/预约/报价/作废/保养） ═══ */
+export async function 转换工单类型(参数: {
+  workOrderId: string;
+  type: "normal" | "appointment" | "quote" | "cancelled" | "maintenance";
+  cancelledReason?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const updates: Record<string, string | null> = { order_type: 参数.type };
+  if (参数.type === "appointment") {
+    updates.appointment_at = new Date().toISOString();
+  }
+  if (参数.type === "cancelled") {
+    const reason = (参数.cancelledReason || "").trim();
+    if (!reason) {
+      return { success: false, error: "请填写作废原因" };
+    }
+    updates.cancelled_reason = reason;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("work_orders").update(updates).eq("id", 参数.workOrderId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  clearWorkOrderDataCache(参数.workOrderId);
+  revalidatePath(`/work-orders/${参数.workOrderId}`);
+  return { success: true };
+}
+
 /* ═══ 删除报销项（保存报销单时先删旧） ═══ */
 export async function 删除报销项(reimbursementId: string): Promise<{ success: boolean; error?: string }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
@@ -642,6 +1335,85 @@ export async function 删除报销项(reimbursementId: string): Promise<{ succes
     .eq("reimbursement_id", reimbursementId);
   if (error) {
     return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 保存报销单（建/改头 + 删旧明细 + 插新明细，服务端一次完成） ═══
+ * 原来是客户端三步连写，收编到服务端避免 session 异常中途断档。
+ * 报销单只用于打印，不影响利润/绩效/库存（页面原有口径）。 */
+export async function 保存报销单(参数: {
+  orderId: string;
+  reimbursementId: string | null;
+  title: string;
+  companyName: string;
+  notes: string;
+  items: { name: string; spec: string; quantity: number; unit_price: number; total_price: number }[];
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const validItems = 参数.items.filter((it) => it.name.trim() !== "");
+  if (validItems.length === 0) {
+    return { success: false, error: "请至少填写一条项目" };
+  }
+
+  const supabase = await createClient();
+  let rid = 参数.reimbursementId;
+
+  if (!rid) {
+    const { data: created, error: createErr } = await supabase
+      .from("work_order_reimbursements")
+      .insert({
+        work_order_id: 参数.orderId,
+        title: 参数.title || "维修费用报销单",
+        company_name: 参数.companyName.trim() || null,
+        notes: 参数.notes.trim() || null,
+      })
+      .select("id")
+      .single();
+    if (createErr || !created) {
+      return { success: false, error: createErr?.message || "创建报销单失败" };
+    }
+    rid = created.id;
+  } else {
+    const { error: updErr } = await supabase
+      .from("work_order_reimbursements")
+      .update({
+        title: 参数.title || "维修费用报销单",
+        company_name: 参数.companyName.trim() || null,
+        notes: 参数.notes.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", rid);
+    if (updErr) {
+      return { success: false, error: updErr.message };
+    }
+
+    const { error: delErr } = await supabase
+      .from("work_order_reimbursement_items")
+      .delete()
+      .eq("reimbursement_id", rid);
+    if (delErr) {
+      return { success: false, error: delErr.message };
+    }
+  }
+
+  const rows = validItems.map((it, idx) => ({
+    reimbursement_id: rid,
+    name: it.name.trim(),
+    spec: it.spec.trim() || null,
+    quantity: it.quantity,
+    unit_price: it.unit_price,
+    total_price: it.total_price,
+    sort_order: idx,
+  }));
+  const { error: itemErr } = await supabase.from("work_order_reimbursement_items").insert(rows);
+  if (itemErr) {
+    return { success: false, error: itemErr.message };
   }
 
   return { success: true };

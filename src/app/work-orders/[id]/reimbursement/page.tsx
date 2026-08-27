@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
-import { 删除报销项 } from "@/app/work-orders/actions";
+import { 保存报销单 } from "@/app/work-orders/actions";
 
 export default function ReimbursementPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -162,53 +162,16 @@ export default function ReimbursementPage({ params }: { params: Promise<{ id: st
     setSaving(true);
 
     try {
-      let rid = reimbursementId;
-
-      if (!rid) {
-        const { data: created, error: createErr } = await supabase
-          .from("work_order_reimbursements")
-          .insert({
-            work_order_id: orderId,
-            title: title || "维修费用报销单",
-            company_name: companyName || null,
-            notes: notes || null,
-          })
-          .select("id")
-          .single();
-
-        if (createErr) throw createErr;
-        rid = created!.id;
-        setReimbursementId(rid);
-      } else {
-        const { error: updErr } = await supabase
-          .from("work_order_reimbursements")
-          .update({
-            title: title || "维修费用报销单",
-            company_name: companyName || null,
-            notes: notes || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", rid);
-
-        if (updErr) throw updErr;
-
-        // 删除旧项目重新插入（简单实现）
-        const delResult = await 删除报销项(rid);
-        if (!delResult.success) throw new Error(delResult.error || "删除旧报销项失败");
-      }
-
-      const rows = validItems.map((it, idx) => ({
-        reimbursement_id: rid,
-        name: it.name.trim(),
-        spec: it.spec.trim() || null,
-        quantity: it.quantity,
-        unit_price: it.unit_price,
-        total_price: it.total_price,
-        sort_order: idx,
-      }));
-
-      const { error: itemErr } = await supabase.from("work_order_reimbursement_items").insert(rows);
-      if (itemErr) throw itemErr;
+      /* 涉钱写操作走 Server Action，服务端一次完成（建/改头 + 删旧明细 + 插新明细） */
+      const result = await 保存报销单({
+        orderId,
+        reimbursementId,
+        title,
+        companyName,
+        notes,
+        items: validItems,
+      });
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       router.push(`/work-orders/${orderId}/print?type=reimbursement`);
     } catch (err: unknown) {

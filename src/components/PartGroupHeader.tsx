@@ -10,6 +10,7 @@ import { useUpload } from "@/hooks/useUpload";
 import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localEditSignal";
 import { useConfirm } from "./ConfirmDialog";
 import { 添加配件分支, 删除配件目录 } from "@/app/work-orders/parts-actions";
+import { 批量更新配件分支, 更新配件分支, 添加配件图片记录, 删除配件图片记录 } from "@/app/work-orders/actions";
 
 interface PartBranch {
   id: string;
@@ -287,13 +288,11 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     const ids = parts.map((p) => p.id).filter(Boolean);
     if (ids.length > 0) {
       ids.forEach((id) => 标记本地编辑配件(id));
-      const { error } = await supabase
-        .from("work_order_item_parts")
-        .update({ quantity: val })
-        .in("id", ids);
+      /* 数量是整组共用，同组所有分支一起更新；写库走 Server Action */
+      const result = await 批量更新配件分支({ partIds: ids, updates: { quantity: val } });
       setSaving(false);
-      if (error) {
-        alert("保存数量失败: " + error.message);
+      if (!result.success) {
+        alert("保存数量失败: " + (result.error || "未知错误"));
         return;
       }
       // 广播给小计/费用合计组件：同组每个分支都通知，局部更新不刷整页
@@ -313,12 +312,9 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     if (!parts[0]) return;
     // 标记本地编辑，避免实时同步刷整页（备注本就局部更新，无需刷）
     标记本地编辑配件(parts[0].id);
-    const { error } = await supabase
-      .from("work_order_item_parts")
-      .update({ notes })
-      .eq("id", parts[0].id);
-    if (error) {
-      alert("保存备注失败: " + error.message);
+    const result = await 更新配件分支({ partId: parts[0].id, updates: { notes } });
+    if (!result.success) {
+      alert("保存备注失败: " + (result.error || "未知错误"));
     }
   }
 
@@ -349,15 +345,11 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       const fileArray = Array.from(fileList).slice(0, remaining);
       const { urls, errors } = await 上传(fileArray);
 
-      /* 上传成功后写入数据库 */
-      for (const path of urls) {
-        const { error: dbError } = await supabase.from("work_order_item_part_media").insert({
-          work_order_item_part_id: parts[0].id,
-          media_type: "image",
-          storage_path: path,
-        });
-        if (dbError) {
-          console.error("保存配件图片记录失败:", dbError.message);
+      /* 上传成功后写入数据库（走 Server Action，一次插入全部） */
+      if (urls.length > 0) {
+        const 记录结果 = await 添加配件图片记录({ partBranchId: parts[0].id, paths: urls });
+        if (!记录结果.success) {
+          console.error("保存配件图片记录失败:", 记录结果.error);
         }
       }
 
@@ -379,13 +371,9 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     const path = images[index];
     setImages((prev) => prev.filter((_, i) => i !== index));
     if (!parts[0]) return;
-    const { error } = await supabase
-      .from("work_order_item_part_media")
-      .delete()
-      .eq("work_order_item_part_id", parts[0].id)
-      .eq("storage_path", path);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除配件图片记录({ partBranchId: parts[0].id, path });
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     /* 同步删除服务端文件 */
@@ -449,11 +437,11 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
 
     const ids = parts.map((p) => p.id).filter(Boolean);
 
-    // 1. 如果有待替换的名称，先执行名称替换，同时清空所有分支的旧库存关联
+    // 1. 如果有待替换的名称，先执行名称替换，同时清空所有分支的旧库存关联（走 Server Action）
     if (pendingName) {
-      const { error } = await supabase
-        .from("work_order_item_parts")
-        .update({
+      const result = await 批量更新配件分支({
+        partIds: ids,
+        updates: {
           part_name_id: pendingName.id,
           name: pendingName.name,
           unit: pendingName.unit || parts[0].unit,
@@ -463,37 +451,35 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
           specification: "",
           unit_cost: null,
           unit_price: null,
-        })
-        .in("id", ids);
-      if (error) {
+        },
+      });
+      if (!result.success) {
         setSaving(false);
-        alert("替换配件名称失败: " + error.message);
+        alert("替换配件名称失败: " + (result.error || "未知错误"));
         return;
       }
     }
 
-    // 2. 如果选择了库存配件，更新所有分支的 part_id 及相关信息
+    // 2. 如果选择了库存配件，更新所有分支的 part_id 及相关信息（走 Server Action）
     if (selectedRealPart) {
-      const updateData: Record<string, unknown> = {
-        part_id: selectedRealPart.id,
-        part_name_id: selectedRealPart.part_name_id,
-        part_number: selectedRealPart.part_number || "",
-        name: selectedRealPart.name,
-        unit: selectedRealPart.unit || "件",
-        brand: selectedRealPart.part_brands?.name || "",
-        specification: selectedRealPart.specification_text || selectedRealPart.part_specifications?.name || "",
-        unit_cost: selectedRealPart.unit_cost,
-        unit_price: selectedRealPart.unit_price,
-      };
+      const result = await 批量更新配件分支({
+        partIds: ids,
+        updates: {
+          part_id: selectedRealPart.id,
+          part_name_id: selectedRealPart.part_name_id,
+          part_number: selectedRealPart.part_number || "",
+          name: selectedRealPart.name,
+          unit: selectedRealPart.unit || "件",
+          brand: selectedRealPart.part_brands?.name || "",
+          specification: selectedRealPart.specification_text || selectedRealPart.part_specifications?.name || "",
+          unit_cost: selectedRealPart.unit_cost,
+          unit_price: selectedRealPart.unit_price,
+        },
+      });
 
-      const { error } = await supabase
-        .from("work_order_item_parts")
-        .update(updateData)
-        .in("id", ids);
-
-      if (error) {
+      if (!result.success) {
         setSaving(false);
-        alert("关联库存配件失败: " + error.message);
+        alert("关联库存配件失败: " + (result.error || "未知错误"));
         return;
       }
     }

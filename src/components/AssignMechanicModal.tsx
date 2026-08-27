@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
+import { 单人领单, 保存施工指派, 删除项目施工人 } from "@/app/work-orders/actions";
 
 interface Profile {
   id: string;
@@ -244,15 +245,11 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
       setLoading(false);
       return;
     }
-    await supabase.from("work_order_item_mechanics").delete().eq("work_order_item_id", itemId);
-    const { error } = await supabase.from("work_order_item_mechanics").insert({
-      work_order_item_id: itemId,
-      mechanic_id: user.id,
-      share_pct: 100,
-    });
+    /* 写库走 Server Action，领单人取服务端登录用户 */
+    const result = await 单人领单(itemId);
     setLoading(false);
-    if (error) {
-      alert("领单失败: " + error.message);
+    if (!result.success) {
+      alert("领单失败: " + (result.error || "未知错误"));
       return;
     }
     // 写库成功后才通知父组件更新显示
@@ -285,13 +282,11 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
       setLoading(false);
       return;
     }
-    const { error } = await supabase
-      .from("work_order_item_mechanics")
-      .delete()
-      .eq("work_order_item_id", itemId);
+    /* 写库走 Server Action */
+    const result = await 删除项目施工人(itemId);
     setLoading(false);
-    if (error) {
-      alert("取消失败: " + error.message);
+    if (!result.success) {
+      alert("取消失败: " + (result.error || "未知错误"));
       return;
     }
     onSaved?.([]);
@@ -374,21 +369,16 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
       }
     }
 
-    // 删除旧记录
-    await supabase.from("work_order_item_mechanics").delete().eq("work_order_item_id", itemId);
-
-    // 插入新记录
+    // 写库走 Server Action（删旧 + 插新在服务端完成）
     const records = mechanicIds.map((id) => ({
-      work_order_item_id: itemId,
-      mechanic_id: id,
-      share_pct: ratios[id] ?? 100,
+      mechanicId: id,
+      sharePct: ratios[id] ?? 100,
     }));
-
-    const { error } = await supabase.from("work_order_item_mechanics").insert(records);
+    const result = await 保存施工指派({ itemId, records });
     setLoading(false);
 
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       return;
     }
 

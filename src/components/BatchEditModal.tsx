@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
+import { 批量修改工单明细 } from "@/app/work-orders/actions";
 
 interface BatchEditModalProps {
   orderId: string;
@@ -40,7 +40,6 @@ interface LogisticsCompany {
 }
 
 export function BatchEditModal({ items, itemParts, suppliers, logisticsCompanies, onClose, onSuccess }: BatchEditModalProps) {
-  const supabase = createClient();
   const [loading, setLoading] = useState(false);
 
   // 构建可选项：项目 + 分支
@@ -95,33 +94,35 @@ export function BatchEditModal({ items, itemParts, suppliers, logisticsCompanies
       const selectedItems = Array.from(selectedIds).filter((id) => options.find((o) => o.id === id)?.type === "item");
       const selectedParts = Array.from(selectedIds).filter((id) => options.find((o) => o.id === id)?.type === "part");
 
-      // 批量更新项目
-      if (selectedItems.length > 0) {
-        const itemUpdates: Record<string, unknown> = {};
-        if (batchValues.customer_opinion) itemUpdates.customer_opinion = batchValues.customer_opinion;
-        if (batchValues.business_type) itemUpdates.business_type = batchValues.business_type;
-        if (batchValues.alias_name) itemUpdates.alias_name = batchValues.alias_name;
-        if (Object.keys(itemUpdates).length > 0) {
-          const { error } = await supabase.from("work_order_items").update(itemUpdates).in("id", selectedItems);
-          if (error) throw error;
-        }
-      }
+      /* 只收集用户实际填了的字段，未填字段不动 */
+      const itemUpdates: { customer_opinion?: string; business_type?: string; alias_name?: string } = {};
+      if (batchValues.customer_opinion) itemUpdates.customer_opinion = batchValues.customer_opinion;
+      if (batchValues.business_type) itemUpdates.business_type = batchValues.business_type;
+      if (batchValues.alias_name) itemUpdates.alias_name = batchValues.alias_name;
 
-      // 批量更新分支
-      if (selectedParts.length > 0) {
-        const partUpdates: Record<string, unknown> = {};
-        if (batchValues.customer_opinion) partUpdates.customer_opinion = batchValues.customer_opinion;
-        if (batchValues.is_purchased !== "") partUpdates.is_purchased = batchValues.is_purchased === "true";
-        if (batchValues.is_arrived !== "") partUpdates.is_arrived = batchValues.is_arrived === "true";
-        if (batchValues.supplier_name) partUpdates.supplier_name = batchValues.supplier_name;
-        if (batchValues.logistics_agreement) partUpdates.logistics_agreement = batchValues.logistics_agreement;
-        if (batchValues.alias_name) partUpdates.alias_name = batchValues.alias_name;
+      const partUpdates: {
+        customer_opinion?: string;
+        is_purchased?: boolean;
+        is_arrived?: boolean;
+        supplier_name?: string;
+        logistics_agreement?: string;
+        alias_name?: string;
+      } = {};
+      if (batchValues.customer_opinion) partUpdates.customer_opinion = batchValues.customer_opinion;
+      if (batchValues.is_purchased !== "") partUpdates.is_purchased = batchValues.is_purchased === "true";
+      if (batchValues.is_arrived !== "") partUpdates.is_arrived = batchValues.is_arrived === "true";
+      if (batchValues.supplier_name) partUpdates.supplier_name = batchValues.supplier_name;
+      if (batchValues.logistics_agreement) partUpdates.logistics_agreement = batchValues.logistics_agreement;
+      if (batchValues.alias_name) partUpdates.alias_name = batchValues.alias_name;
 
-        if (Object.keys(partUpdates).length > 0) {
-          const { error } = await supabase.from("work_order_item_parts").update(partUpdates).in("id", selectedParts);
-          if (error) throw error;
-        }
-      }
+      /* 写库走 Server Action */
+      const result = await 批量修改工单明细({
+        itemIds: selectedItems,
+        itemUpdates,
+        partIds: selectedParts,
+        partUpdates,
+      });
+      if (!result.success) throw new Error(result.error || "批量更新失败");
 
       onSuccess();
     } catch (err: unknown) {
