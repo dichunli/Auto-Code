@@ -6,79 +6,55 @@ import RequirementBatchModal from "./RequirementBatchModal";
 /* ============================================================
    RequirementBatchModal — 保存逻辑测试
 
-   背景：环境误判（[[capacitor-web-shim-misdetect-app]]）修复后，session
-   本就健康，保存前不再需要 await 确保有session()（联网注入，拖慢保存）。
-   保存改用 getSession（读本地、瞬时）拿用户，并在点击瞬间 setSaving 防重复提交。
-
+   架构说明（2026-08-27 客户端直写收编后）：
+   写库不再走客户端 supabase 直写，统一走 Server Action
+   （保存需求/删除需求/指派需求/领取需求/取消需求指派）。
    本测试守护：
-   1. 点保存能正常 insert，且用 getSession（不联网的 getUser）
-   2. 内容为空时不写库
+   1. 点保存 → 调 保存需求 Action，成功后广播 wo-requirement-added 局部追加
+   2. 内容为空 → 不调 Action（提示后中止）
+   3. 删除：Action 端校验失败（需求下有项目）→ 弹提示、不广播删除事件
+   4. 删除：Action 成功 → 广播 wo-requirement-deleted 局部移除
    ============================================================ */
 
 /* 记录关键调用顺序 */
 const 调用顺序: string[] = [];
 
-const mockInsert = vi.fn(() => {
-  调用顺序.push("insert");
-  return {
-    select: () => ({
-      single: () => Promise.resolve({ data: { id: "req-1" }, error: null }),
-    }),
-  };
+/* 删除需求 Action 的模拟结果：success=false 表示服务端检查发现需求下有项目 */
+let 模拟删除结果 = { success: true as boolean, error: undefined as string | undefined };
+
+const mock保存需求 = vi.fn(async (..._args: unknown[]) => {
+  调用顺序.push("保存需求");
+  return { success: true, id: "req-1", seq: 1 };
 });
-
-/* 删除前会实时查库数项目，用这个变量控制模拟结果 */
- 
-let 模拟项目数 = 0;
-
-/* select 链：新增模式会先查最大 seq（.eq().order().limit()），
- * 删除前会实时数项目（.eq() 直接 await），两种用法都支持 */
-const mockSelect = vi.fn(() => ({
-  eq: () => ({
-    order: () => ({
-      limit: () => Promise.resolve({ data: [{ seq: 0 }], error: null }),
-    }),
-    /* 让 eq 的结果可直接 await（删除前数项目），返回模拟的项目数 */
-    then: (resolve: (v: { count: number; error: null }) => void) =>
-      resolve({ count: 模拟项目数, error: null }),
-  }),
-}));
-
-const mockDelete = vi.fn(() => {
-  调用顺序.push("delete");
-  return {
-    eq: () => Promise.resolve({ error: null }),
-  };
+const mock删除需求 = vi.fn(async (..._args: unknown[]) => {
+  调用顺序.push("删除需求");
+  return 模拟删除结果;
 });
-
-const mockFrom = vi.fn(() => ({
-  select: mockSelect,
-  insert: mockInsert,
-  delete: mockDelete,
-}));
-
-const mockGetSession = vi.fn(async () => {
-  调用顺序.push("getSession");
-  return { data: { session: { access_token: "t", user: { id: "user-1" } } } };
-});
-const mockGetUser = vi.fn(async () => ({ data: { user: { id: "user-1" } } }));
-
-vi.mock("@/lib/supabase/client", () => ({
-  createClient: () => ({
-    from: mockFrom,
-    auth: {
-      getUser: mockGetUser,
-      getSession: mockGetSession,
-    },
-  }),
-}));
-
-/* 保存成功后会调 Server Action 清缓存+重新验证页面，mock 掉并记录顺序 */
 const mock刷新工单详情 = vi.fn(async (..._args: unknown[]) => {
   调用顺序.push("刷新工单详情");
 });
+
 vi.mock("@/app/work-orders/actions", () => ({
+  保存需求: (...args: unknown[]) => mock保存需求(...args),
+  删除需求: (...args: unknown[]) => mock删除需求(...args),
+  指派需求: vi.fn(async () => ({ success: true })),
+  领取需求: vi.fn(async () => ({ success: true })),
+  取消需求指派: vi.fn(async () => ({ success: true })),
   刷新工单详情: (...args: unknown[]) => mock刷新工单详情(...args),
+}));
+
+/* 只读查询（角色、当前用户）仍走客户端 supabase */
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: () => ({
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => Promise.resolve({ data: [], error: null })),
+      })),
+    })),
+    auth: {
+      getUser: vi.fn(async () => ({ data: { user: { id: "user-1" } } })),
+    },
+  }),
 }));
 
 const mockRefresh = vi.fn();
@@ -97,7 +73,7 @@ vi.mock("@/components/VideoUploader", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   调用顺序.length = 0;
-  模拟项目数 = 0;
+  模拟删除结果 = { success: true, error: undefined };
   /* jsdom 未实现 alert，mock 掉避免噪音 */
   vi.spyOn(window, "alert").mockImplementation(() => {});
   /* jsdom 未实现 scrollIntoView（组件聚焦时 300ms 后调用），补空实现防未捕获异常 */
@@ -105,7 +81,7 @@ beforeEach(() => {
 });
 
 describe("RequirementBatchModal - 保存逻辑", () => {
-  it("点保存 → 写库 insert 后广播 wo-requirement-added 局部追加（不整页刷新）", async () => {
+  it("点保存 → 调 保存需求 Action 后广播 wo-requirement-added 局部追加（不整页刷新）", async () => {
     const user = userEvent.setup();
     const 事件监听 = vi.fn();
     window.addEventListener("wo-requirement-added", 事件监听);
@@ -122,12 +98,12 @@ describe("RequirementBatchModal - 保存逻辑", () => {
 
     /* 等异步保存流程跑完（机器满载时 1 秒默认上限不够，放宽到 5 秒防偶发超时） */
     await waitFor(() => {
-      expect(mockInsert).toHaveBeenCalled();
+      expect(mock保存需求).toHaveBeenCalled();
     }, { timeout: 5000 });
 
     /* 断言：写库成功后广播 wo-requirement-added 事件（局部追加需求卡片），
      * 不再调 刷新工单详情 整页刷新（局部更新模式） */
-    expect(调用顺序).toContain("insert");
+    expect(调用顺序).toContain("保存需求");
     await waitFor(() => {
       expect(事件监听).toHaveBeenCalled();
     });
@@ -135,25 +111,28 @@ describe("RequirementBatchModal - 保存逻辑", () => {
     window.removeEventListener("wo-requirement-added", 事件监听);
   });
 
-  it("内容为空 → 不写库，也不必走保存流程（提示后中止）", async () => {
+  it("内容为空 → 不调 Action，提示后中止", async () => {
     const user = userEvent.setup();
     render(
       <RequirementBatchModal open={true} onClose={vi.fn()} orderId="wo-1" />
     );
 
-    /* 不填任何内容直接点保存：会 alert 并 return，不应写库 */
+    /* 不填任何内容直接点保存：会 alert 并 return，不应走保存流程 */
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mock保存需求).not.toHaveBeenCalled();
   });
 });
 
 describe("RequirementBatchModal - 删除防误删保护", () => {
   const 编辑用需求 = { id: "req-1", seq: 1, description: "刹车异响" };
 
-  it("删除前实时查库：需求下有项目 → 点删除弹出提示，且不删库", async () => {
+  it("服务端校验需求下有项目 → 点删除弹出提示，且不广播删除事件", async () => {
     const alert提示 = vi.spyOn(window, "alert").mockImplementation(() => {});
-    模拟项目数 = 2;
+    /* 模拟服务端返回"需求下有 2 个项目" */
+    模拟删除结果 = { success: false, error: "该需求下有 2 个维修项目，无法删除。请先删除这些维修项目，再删除需求。" };
+    const 事件监听 = vi.fn();
+    window.addEventListener("wo-requirement-deleted", 事件监听);
     const user = userEvent.setup();
     render(
       <RequirementBatchModal
@@ -170,14 +149,23 @@ describe("RequirementBatchModal - 删除防误删保护", () => {
     expect(删除按钮).not.toBeDisabled();
 
     await user.click(删除按钮);
-    /* 应弹出提示说明原因，且不调用 delete */
-    expect(alert提示).toHaveBeenCalled();
-    expect(mockDelete).not.toHaveBeenCalled();
+
+    /* 居中确认弹窗出现，点"确定"触发 Action */
+    const 确定按钮 = await screen.findByRole("button", { name: "确定" });
+    await user.click(确定按钮);
+
+    /* 应弹出提示说明原因，且不广播删除事件 */
+    await waitFor(() => {
+      expect(alert提示).toHaveBeenCalled();
+    });
+    expect(mock删除需求).toHaveBeenCalled();
+    expect(事件监听).not.toHaveBeenCalled();
+    window.removeEventListener("wo-requirement-deleted", 事件监听);
   });
 
-  it("删除前实时查库：需求下无项目 → 可删除，广播 wo-requirement-deleted 局部移除", async () => {
+  it("需求下无项目 → 可删除，广播 wo-requirement-deleted 局部移除", async () => {
     /* 删除会弹居中确认弹窗（不再是浏览器 confirm），点"确定"继续 */
-    模拟项目数 = 0;
+    模拟删除结果 = { success: true, error: undefined };
     const 事件监听 = vi.fn();
     window.addEventListener("wo-requirement-deleted", 事件监听);
     const user = userEvent.setup();
@@ -202,7 +190,7 @@ describe("RequirementBatchModal - 删除防误删保护", () => {
 
     /* 删除后广播 wo-requirement-deleted 事件（卡片局部消失），不再整页刷新 */
     await waitFor(() => {
-      expect(mockDelete).toHaveBeenCalled();
+      expect(mock删除需求).toHaveBeenCalled();
     });
     await waitFor(() => {
       expect(事件监听).toHaveBeenCalled();

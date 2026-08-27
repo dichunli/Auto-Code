@@ -31,6 +31,42 @@ export async function 保存配件(
   return result;
 }
 
+/* ═══ 合并配件（11 张表迁移，走原子事务 RPC merge_parts） ═══
+ * 原来是客户端逐表循环写，中途失败留半成品；收编后一个事务要么全成要么全败。
+ * 库存累加在服务端读最新数量，不用客户端快照。 */
+export async function 合并配件(参数: {
+  targetId: string;
+  sourceIds: string[];
+  name: string;
+  partNumber: string;
+  mergeQuantity: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("merge_parts", {
+    p_target_id: 参数.targetId,
+    p_source_ids: 参数.sourceIds,
+    p_name: 参数.name,
+    p_part_number: 参数.partNumber,
+    p_merge_quantity: 参数.mergeQuantity,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  const 结果 = data as { success: boolean; error?: string };
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "合并失败" };
+  }
+
+  revalidatePath("/inventory");
+  return { success: true };
+}
+
 interface 同步结果 {
   success: boolean;
   message?: string;

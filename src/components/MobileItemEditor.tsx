@@ -16,8 +16,8 @@ import ItemQcActions from "./ItemQcActions";
 import { PartWorkflowActions } from "./PartWorkflowActions";
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import { 申领配件, 取消申领 } from "@/app/picking-orders/actions";
-import { 重置外包财务记录 } from "@/app/outsource-orders/actions";
-import { 删除工单项目 } from "@/app/work-orders/actions";
+import { 移除外包明细 } from "@/app/outsource-orders/actions";
+import { 删除工单项目, 保存工单项目字段, 保存施工指派, 删除项目施工人, 单人领单, 放弃领单, 更新配件分支, 批量更新配件分支, 添加配件图片记录, 删除配件图片记录, type 配件分支更新 } from "@/app/work-orders/actions";
 import {
   删除配件分支,
   删除配件目录,
@@ -736,13 +736,20 @@ export default function MobileItemEditor({
     if (loading || isLocked) return;
     setLoading(true);
 
-    const updateData: Record<string, unknown> = {
+    const updateData: {
+      customer_opinion?: string | null;
+      is_customer_part?: boolean;
+      description?: string | null;
+      unit_price?: number;
+      quantity?: number;
+    } = {
       customer_opinion: draftOpinion,
       is_customer_part: draftCustomerPart,
       description: notes.trim() || null,
     };
 
     if (draftCustomerPart !== !!item.is_customer_part && item.service_item_id) {
+      /* 价格读取仍走客户端只读查询 */
       const { data: si } = await supabase
         .from("service_items")
         .select("default_price, customer_parts_price")
@@ -761,11 +768,12 @@ export default function MobileItemEditor({
     updateData.quantity = parseFloat(draftQuantity) || 1;
     updateData.unit_price = parseFloat(draftUnitPrice) || 0;
 
-    const { error } = await supabase.from("work_order_items").update(updateData).eq("id", item.id);
+    /* 写库走 Server Action */
+    const 保存结果 = await 保存工单项目字段({ itemId: item.id, updates: updateData });
     setLoading(false);
 
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!保存结果.success) {
+      alert("保存失败: " + (保存结果.error || "未知错误"));
       return;
     }
 
@@ -830,19 +838,15 @@ export default function MobileItemEditor({
     if (!ratios) return;
 
     setLoading(true);
-    await supabase.from("work_order_item_mechanics").delete().eq("work_order_item_id", item.id);
-
-    const records = ids.map((id) => ({
-      work_order_item_id: item.id,
-      mechanic_id: id,
-      share_pct: ratios[id] ?? 100,
-    }));
-
-    const { error } = await supabase.from("work_order_item_mechanics").insert(records);
+    /* 写库走 Server Action（删旧 + 插新在服务端完成） */
+    const 指派结果 = await 保存施工指派({
+      itemId: item.id,
+      records: ids.map((id) => ({ mechanicId: id, sharePct: ratios[id] ?? 100 })),
+    });
     setLoading(false);
 
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!指派结果.success) {
+      alert("保存失败: " + (指派结果.error || "未知错误"));
       return;
     }
 
@@ -854,37 +858,23 @@ export default function MobileItemEditor({
   async function clearMechanics() {
     if (!(await 请求确认("确定取消施工指派？"))) return;
     setLoading(true);
-    const { error } = await supabase
-      .from("work_order_item_mechanics")
-      .delete()
-      .eq("work_order_item_id", item.id);
+    const 清除结果 = await 删除项目施工人(item.id);
     setLoading(false);
-    if (error) {
-      alert("取消失败: " + error.message);
+    if (!清除结果.success) {
+      alert("取消失败: " + (清除结果.error || "未知错误"));
       return;
     }
     setShowMechanicModal(false);
     refresh();
   }
 
-  /* 领单 — 独立完成 */
+  /* 领单 — 独立完成（领单人取服务端登录用户） */
   async function handleSoloClaim() {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      alert("未登录，无法领单");
-      setLoading(false);
-      return;
-    }
-    await supabase.from("work_order_item_mechanics").delete().eq("work_order_item_id", item.id);
-    const { error } = await supabase.from("work_order_item_mechanics").insert({
-      work_order_item_id: item.id,
-      mechanic_id: user.id,
-      share_pct: 100,
-    });
+    const 领单结果 = await 单人领单(item.id);
     setLoading(false);
-    if (error) {
-      alert("领单失败: " + error.message);
+    if (!领单结果.success) {
+      alert("领单失败: " + (领单结果.error || "未知错误"));
       return;
     }
     setShowMechanicModal(false);
@@ -905,35 +895,18 @@ export default function MobileItemEditor({
     setShowClaimChoice(false);
   }
 
-  /* 放弃领单 */
+  /* 放弃领单（删自己 + 剩余重摊均分，服务端读最新名单） */
   async function abandonClaim() {
     if (!currentUserId) return;
     if (!(await 请求确认("确定放弃领单？"))) return;
     setLoading(true);
 
-    await supabase
-      .from("work_order_item_mechanics")
-      .delete()
-      .eq("work_order_item_id", item.id)
-      .eq("mechanic_id", currentUserId);
-
-    const { data: remaining } = await supabase
-      .from("work_order_item_mechanics")
-      .select("mechanic_id")
-      .eq("work_order_item_id", item.id);
-
-    if (remaining && remaining.length > 0) {
-      const ratio = 100 / remaining.length;
-      for (const r of remaining) {
-        await supabase
-          .from("work_order_item_mechanics")
-          .update({ share_pct: Math.round(ratio * 100) / 100 })
-          .eq("work_order_item_id", item.id)
-          .eq("mechanic_id", (r as { mechanic_id: string }).mechanic_id);
-      }
-    }
-
+    const 放弃结果 = await 放弃领单(item.id);
     setLoading(false);
+    if (!放弃结果.success) {
+      alert("放弃领单失败: " + (放弃结果.error || "未知错误"));
+      return;
+    }
     refresh();
   }
 
@@ -1262,16 +1235,15 @@ export default function MobileItemEditor({
       return;
     }
     setLoading(true);
-    /* 数量为目录级：同步更新该目录(branch_group_id)下所有分支 */
+    /* 数量为目录级：同步更新该目录(branch_group_id)下所有分支；写库走 Server Action */
     const target = parts.find((p) => p.id === partId);
-    let q = supabase.from("work_order_item_parts").update({ quantity: qty });
-    q = target?.branch_group_id
-      ? q.eq("branch_group_id", target.branch_group_id)
-      : q.eq("id", partId);
-    const { error } = await q;
+    const 目标ids = target?.branch_group_id
+      ? parts.filter((p) => p.branch_group_id === target.branch_group_id).map((p) => p.id)
+      : [partId];
+    const 数量结果 = await 批量更新配件分支({ partIds: 目标ids, updates: { quantity: qty } });
     setLoading(false);
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!数量结果.success) {
+      alert("保存失败: " + (数量结果.error || "未知错误"));
       return;
     }
     /* 函数式更新：等待保存期间用户可能已关闭抽屉，prev 为 null 时不得"复活"抽屉 */
@@ -1282,10 +1254,10 @@ export default function MobileItemEditor({
   /* 保存配件客户意见 */
   async function savePartOpinion(partId: string, opinion: string) {
     setLoading(true);
-    const { error } = await supabase.from("work_order_item_parts").update({ customer_opinion: opinion }).eq("id", partId);
+    const 意见结果 = await 更新配件分支({ partId, updates: { customer_opinion: opinion } });
     setLoading(false);
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!意见结果.success) {
+      alert("保存失败: " + (意见结果.error || "未知错误"));
       return;
     }
     setSelectedPartForDetail((prev) => (prev ? { ...prev, customer_opinion: opinion } : prev));
@@ -1296,22 +1268,30 @@ export default function MobileItemEditor({
   /* 保存配件备注 */
   async function savePartNotes(partId: string, notes: string) {
     setLoading(true);
-    const { error } = await supabase.from("work_order_item_parts").update({ notes: notes.trim() || null }).eq("id", partId);
+    const 备注结果 = await 更新配件分支({ partId, updates: { notes: notes.trim() || null } });
     setLoading(false);
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!备注结果.success) {
+      alert("保存失败: " + (备注结果.error || "未知错误"));
       return;
     }
     setSelectedPartForDetail((prev) => (prev ? { ...prev, notes: notes.trim() || null } : prev));
   }
 
-  /* 通用保存配件字段 */
+  /* 通用保存配件字段（仅限白名单字段，写库走 Server Action） */
   async function savePartField(partId: string, field: string, value: unknown) {
     setLoading(true);
-    const { error } = await supabase.from("work_order_item_parts").update({ [field]: value }).eq("id", partId);
+    const 白名单 = ["brand", "document_name", "part_number", "specification", "supplier_name", "unit", "unit_cost", "unit_price"] as const;
+    type 字段名 = typeof 白名单[number];
+    if (!白名单.includes(field as 字段名)) {
+      setLoading(false);
+      alert("不支持保存该字段");
+      return;
+    }
+    const 更新 = { [field as 字段名]: value } as 配件分支更新;
+    const 字段结果 = await 更新配件分支({ partId, updates: 更新 });
     setLoading(false);
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!字段结果.success) {
+      alert("保存失败: " + (字段结果.error || "未知错误"));
       return;
     }
     setSelectedPartForDetail((prev) => (prev ? { ...prev, [field]: value } : prev));
@@ -1356,10 +1336,30 @@ export default function MobileItemEditor({
   }
 
   /* 把命中的库存配件带回当前分支：关联 part_id 并补齐编码/品牌/规格/价格/单据名
-   * （同桌面端"应用命中配件"，但不改配件名称和分组归属） */
+   * （同桌面端"应用命中配件"，但不改配件名称和分组归属）；写库走 Server Action */
   async function 应用命中配件到分支(branchId: string, hit: 编码命中配件) {
     setLoading(true);
-    const 更新 = {
+    const 带回结果 = await 更新配件分支({
+      partId: branchId,
+      updates: {
+        part_id: hit.id,
+        part_number: hit.part_number || null,
+        brand: hit.brand || null,
+        specification: hit.specification || null,
+        unit_cost: hit.unit_cost,
+        unit_price: hit.unit_price,
+        document_name: hit.document_name || null,
+      },
+    });
+    setLoading(false);
+    if (!带回结果.success) {
+      alert("带回配件信息失败: " + (带回结果.error || "未知错误"));
+      return;
+    }
+    /* 库存配件可能未设价（可空），而 ItemPart 声明必填；
+     * 数据库已写成功，本地详情面板同步最新值，类型以 ItemPart 为准断言 */
+    setSelectedPartForDetail((prev) => (prev ? {
+      ...prev,
       part_id: hit.id,
       part_number: hit.part_number || null,
       brand: hit.brand || null,
@@ -1367,16 +1367,7 @@ export default function MobileItemEditor({
       unit_cost: hit.unit_cost,
       unit_price: hit.unit_price,
       document_name: hit.document_name || null,
-    };
-    const { error } = await supabase.from("work_order_item_parts").update(更新).eq("id", branchId);
-    setLoading(false);
-    if (error) {
-      alert("带回配件信息失败: " + error.message);
-      return;
-    }
-    /* 更新对象的 unit_cost/unit_price 可空（库存配件可能未设价），而 ItemPart 声明必填；
-     * 数据库已写成功，本地详情面板同步最新值，类型以 ItemPart 为准断言 */
-    setSelectedPartForDetail((prev) => (prev ? { ...prev, ...更新 } as ItemPart : prev));
+    } as ItemPart : prev));
     if (hit.unit_price != null) {
       window.dispatchEvent(
         new CustomEvent("wo-part-update", { detail: { itemId: item.id, partId: branchId, unit_price: hit.unit_price } })
@@ -1532,23 +1523,27 @@ export default function MobileItemEditor({
     const pb = newPart.part_brands;
     const brandName = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
 
-    const { error } = await supabase.from("work_order_item_parts").update({
-      part_id: newPart.id,
-      part_name_id: newPart.part_name_id,
-      name: newPart.name,
-      part_number: newPart.part_number || "",
-      unit: newPart.unit || "件",
-      brand: brandName,
-      specification: newPart.specification_text || "",
-      unit_cost: newPart.unit_cost,
-      unit_price: newPart.unit_price,
-    }).eq("id", oldPartId);
+    /* 写库走 Server Action */
+    const 替换结果 = await 更新配件分支({
+      partId: oldPartId,
+      updates: {
+        part_id: newPart.id,
+        part_name_id: newPart.part_name_id,
+        name: newPart.name,
+        part_number: newPart.part_number || "",
+        unit: newPart.unit || "件",
+        brand: brandName,
+        specification: newPart.specification_text || "",
+        unit_cost: newPart.unit_cost,
+        unit_price: newPart.unit_price,
+      },
+    });
 
     setLoading(false);
     setReplacePartTarget(null);
 
-    if (error) {
-      alert("替换失败: " + error.message);
+    if (!替换结果.success) {
+      alert("替换失败: " + (替换结果.error || "未知错误"));
       return;
     }
 
@@ -1687,12 +1682,9 @@ export default function MobileItemEditor({
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "上传失败");
 
-      const { error: dbError } = await supabase.from("work_order_item_part_media").insert({
-        work_order_item_part_id: branchId,
-        media_type: "image",
-        storage_path: result.path,
-      });
-      if (dbError) throw dbError;
+      /* 图片记录写库走 Server Action */
+      const 记录结果 = await 添加配件图片记录({ partBranchId: branchId, paths: [result.path] });
+      if (!记录结果.success) throw new Error(记录结果.error || "保存图片记录失败");
 
       /* 立即更新抽屉里的图片显示（本地覆盖，不用等整页刷新） */
       if (result.path) {
@@ -1708,17 +1700,13 @@ export default function MobileItemEditor({
     }
   }
 
-  /* 删除配件图片 */
+  /* 删除配件图片（写库走 Server Action） */
   async function removePartImage(branchId: string, storagePath: string, index: number) {
     setLoading(true);
-    const { error } = await supabase
-      .from("work_order_item_part_media")
-      .delete()
-      .eq("work_order_item_part_id", branchId)
-      .eq("storage_path", storagePath);
+    const 删除结果 = await 删除配件图片记录({ partBranchId: branchId, path: storagePath });
     setLoading(false);
-    if (error) {
-      alert("删除失败: " + error.message);
+    if (!删除结果.success) {
+      alert("删除失败: " + (删除结果.error || "未知错误"));
       return;
     }
     /* 立即从抽屉显示中移除（本地覆盖） */
@@ -1821,46 +1809,14 @@ export default function MobileItemEditor({
 
     setLoading(true);
     try {
-      /* 财务记录重置（2026-08-16 批次3 破口修复）：原直写两张财务表已被 RLS 拦截，
-         现由 RPC 一个事务"清旧+建新"；整单删除时金额 0 只清不建 */
-      if (willDeleteOrder) {
-        const finRes = await 重置外包财务记录({
-          单号: existingOrder.order_no,
-          供应商id: null,
-          金额: 0,
-          已付: false,
-        });
-        if (!finRes.success) throw new Error("财务记录清理失败: " + (finRes.error || "未知错误"));
-      }
-
-      // 删除明细
-      const { error: delErr } = await supabase.from("outsource_order_items").delete().eq("id", existingItem.id);
-      if (delErr) throw new Error("移除外包项目失败: " + delErr.message);
-
-      // 清理工单项目标记
-      const { error: woErr } = await supabase.from("work_order_items").update({
-        is_outsourced: false,
-        outsourced_supplier_id: null,
-      }).eq("id", item.id);
-      if (woErr) throw new Error("更新工单项目失败: " + woErr.message);
-
-      if (willDeleteOrder) {
-        const { error: orderErr } = await supabase.from("outsource_orders").delete().eq("id", existingOrder.id);
-        if (orderErr) throw new Error("删除外包单失败: " + orderErr.message);
-      } else {
-        const { data: remaining } = await supabase.from("outsource_order_items").select("amount").eq("outsource_order_id", existingOrder.id);
-        const newTotal = (remaining as Array<{ amount: number | string }> | null || []).reduce(
-          (sum, it) => sum + (parseFloat(String(it.amount)) || 0), 0
-        );
-        await supabase.from("outsource_orders").update({ total_amount: newTotal }).eq("id", existingOrder.id);
-        const finRes = await 重置外包财务记录({
-          单号: existingOrder.order_no,
-          供应商id: existingOrder.supplier_id,
-          金额: newTotal,
-          已付: existingOrder.is_paid,
-        });
-        if (!finRes.success) throw new Error("财务记录更新失败: " + (finRes.error || "未知错误"));
-      }
+      /* 移除明细（末项时整单删除 + 财务清理）走 Server Action + RPC 一个事务 */
+      const 移除结果 = await 移除外包明细({
+        workOrderId: orderId,
+        orderId: existingOrder.id,
+        itemId: existingItem.id,
+        workOrderItemId: item.id,
+      });
+      if (!移除结果.success) throw new Error(移除结果.error || "操作失败");
 
       refresh();
     } catch (err: unknown) {

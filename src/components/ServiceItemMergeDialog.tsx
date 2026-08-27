@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
+import { 合并维修项目 } from "@/app/service-items/actions";
 
 interface Props {
   open: boolean;
@@ -109,172 +110,20 @@ export default function ServiceItemMergeDialog({ open, selectedItems, onClose, o
 
     setMerging(true);
 
-    /* 1. 更新主项目名称 */
-    if (finalName.trim() !== target.name) {
-      const { error: nameErr } = await supabase
-        .from("service_items")
-        .update({ name: finalName.trim() })
-        .eq("id", target.id);
-      if (nameErr) {
-        alert("更新合并后名称失败: " + nameErr.message);
-        setMerging(false);
-        return;
-      }
-    }
-
-    /* 2. 逐个处理被合并项目 */
-    for (const source of otherItems) {
-      /* 2a. 迁移车型定价 */
-      const { data: sourcePrices } = await supabase
-        .from("service_item_prices")
-        .select("vehicle_model_id,price,vip_price,customer_parts_price,company_price,group_key")
-        .eq("service_item_id", source.id);
-
-      if (sourcePrices && sourcePrices.length > 0) {
-        const { data: targetPrices } = await supabase
-          .from("service_item_prices")
-          .select("vehicle_model_id,group_key")
-          .eq("service_item_id", target.id);
-        const targetPriceKeys = new Set(
-          (targetPrices || []).map((p) => `${p.vehicle_model_id}:${p.group_key || ""}`)
-        );
-
-        for (const price of sourcePrices) {
-          const key = `${price.vehicle_model_id}:${price.group_key || ""}`;
-          const hasConflict = targetPriceKeys.has(key);
-
-          if (!hasConflict) {
-            /* 无冲突，直接插入 */
-            await supabase.from("service_item_prices").insert({
-              service_item_id: target.id,
-              vehicle_model_id: price.vehicle_model_id,
-              price: price.price,
-              vip_price: price.vip_price,
-              customer_parts_price: price.customer_parts_price,
-              company_price: price.company_price,
-              group_key: price.group_key || null,
-            });
-            targetPriceKeys.add(key);
-          } else if (mergeStrategy === "override") {
-            /* 有冲突且选择覆盖 */
-            await supabase
-              .from("service_item_prices")
-              .update({
-                price: price.price,
-                vip_price: price.vip_price,
-                customer_parts_price: price.customer_parts_price,
-                company_price: price.company_price,
-              })
-              .eq("service_item_id", target.id)
-              .eq("vehicle_model_id", price.vehicle_model_id)
-              .eq("group_key", price.group_key || null);
-          }
-          /* 有冲突且选择保留主项目价格：跳过 */
-        }
-      }
-
-      /* 2b. 迁移指定用户价格 */
-      const { data: sourceSpecialPrices } = await supabase
-        .from("service_item_special_prices")
-        .select("company_id,customer_id,vehicle_id,price")
-        .eq("service_item_id", source.id);
-
-      if (sourceSpecialPrices && sourceSpecialPrices.length > 0) {
-        const { data: targetSpecialPrices } = await supabase
-          .from("service_item_special_prices")
-          .select("company_id,customer_id,vehicle_id")
-          .eq("service_item_id", target.id);
-        const targetSpecialKeys = new Set(
-          (targetSpecialPrices || []).map(
-            (p) => `${p.company_id || ""}:${p.customer_id || ""}:${p.vehicle_id || ""}`
-          )
-        );
-
-        for (const sp of sourceSpecialPrices) {
-          const key = `${sp.company_id || ""}:${sp.customer_id || ""}:${sp.vehicle_id || ""}`;
-          const hasConflict = targetSpecialKeys.has(key);
-
-          if (!hasConflict) {
-            await supabase.from("service_item_special_prices").insert({
-              service_item_id: target.id,
-              company_id: sp.company_id,
-              customer_id: sp.customer_id,
-              vehicle_id: sp.vehicle_id,
-              price: sp.price,
-            });
-            targetSpecialKeys.add(key);
-          } else if (mergeStrategy === "override") {
-            await supabase
-              .from("service_item_special_prices")
-              .update({ price: sp.price })
-              .eq("service_item_id", target.id)
-              .eq("company_id", sp.company_id || null)
-              .eq("customer_id", sp.customer_id || null)
-              .eq("vehicle_id", sp.vehicle_id || null);
-          }
-        }
-      }
-
-      /* 2c. 迁移单位服务价格 */
-      const { data: sourceCompanyPrices } = await supabase
-        .from("company_service_prices")
-        .select("company_id,price")
-        .eq("service_item_id", source.id);
-
-      if (sourceCompanyPrices && sourceCompanyPrices.length > 0) {
-        const { data: targetCompanyPrices } = await supabase
-          .from("company_service_prices")
-          .select("company_id")
-          .eq("service_item_id", target.id);
-        const targetCompanyIds = new Set((targetCompanyPrices || []).map((p) => p.company_id));
-
-        for (const cp of sourceCompanyPrices) {
-          const hasConflict = targetCompanyIds.has(cp.company_id);
-
-          if (!hasConflict) {
-            await supabase.from("company_service_prices").insert({
-              service_item_id: target.id,
-              company_id: cp.company_id,
-              price: cp.price,
-            });
-            targetCompanyIds.add(cp.company_id);
-          } else if (mergeStrategy === "override") {
-            await supabase
-              .from("company_service_prices")
-              .update({ price: cp.price })
-              .eq("service_item_id", target.id)
-              .eq("company_id", cp.company_id);
-          }
-        }
-      }
-
-      /* 2d. 更新引用表 */
-      const refTables = [
-        "work_order_items",
-        "vehicle_maintenance_template_items",
-        "knowledge_service_links",
-        "outsource_order_items",
-      ];
-      for (const table of refTables) {
-        const { error } = await supabase
-          .from(table)
-          .update({ service_item_id: target.id })
-          .eq("service_item_id", source.id);
-        if (error) {
-          console.error(`更新 ${table} 失败:`, error);
-        }
-      }
-
-      /* 2e. 删除被合并项目（ON DELETE CASCADE 会自动清理关联的定价表） */
-      const { error: delError } = await supabase.from("service_items").delete().eq("id", source.id);
-      if (delError) {
-        alert(`删除「${source.name}」失败: ${delError.message}`);
-        setMerging(false);
-        return;
-      }
-    }
-
+    /* 合并走 Server Action + RPC merge_service_items 一个事务：
+     * 4 张价格表按策略迁移 + 4 张引用表换主 + 删除源项目，要么全成要么全败 */
+    const result = await 合并维修项目({
+      targetId,
+      sourceIds: otherItems.map((i) => i.id),
+      name: finalName,
+      strategy: mergeStrategy,
+    });
     setMerging(false);
+    if (!result.success) {
+      alert("合并失败: " + (result.error || "未知错误"));
+      return;
+    }
+
     alert("合并成功");
     onSuccess();
     onClose();
