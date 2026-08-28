@@ -369,3 +369,170 @@ export async function 新建采购退货(参数: {
   revalidatePath("/inventory");
   return { success: true };
 }
+
+/* ═══ Excel 批量导入配件 Server Action ═══
+ * 导入的写库阶段（建缺失名称/品牌/规格 → 分批插配件 → 建规格关联）收口到服务端。
+ * 解析 Excel、编号查重等只读步骤仍留在客户端。 */
+export async function 批量导入配件(参数: {
+  /* 客户端比对后确认缺失、需要新建的名称 */
+  newPartNames: string[];
+  newBrands: string[];
+  newSpecs: string[];
+  records: {
+    name: string;
+    part_number: string;
+    oe_number: string | null;
+    /* 已是 UUID 或名称字符串（服务端再解析成 UUID） */
+    part_name_id: string | null;
+    category_id: string | null;
+    brand_name: string | null;
+    spec_name: string | null;
+    unit: string;
+    quantity: number;
+    min_stock: number;
+    unit_cost: number | null;
+    unit_price: number | null;
+    supplier_id: string | null;
+    location: string | null;
+    notes: string | null;
+  }[];
+}): Promise<{ success: boolean; inserted?: number; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  interface NamedRow {
+    id: string;
+    name: string;
+  }
+
+  /* 服务端自建名称→ID 映射（与客户端查询口径一致，不信任客户端传入的映射） */
+  const [
+    { data: partNames },
+    { data: brands },
+    { data: specs },
+  ] = await Promise.all([
+    supabase.from("part_names").select("id, name").limit(100),
+    supabase.from("part_brands").select("id, name").limit(100),
+    supabase.from("part_specifications").select("id, name").limit(100),
+  ]);
+
+  const partNameMap = new Map((partNames || []).map((p: NamedRow) => [p.name, p.id]));
+  const brandMap = new Map((brands || []).map((b: NamedRow) => [b.name, b.id]));
+  const specMap = new Map((specs || []).map((s: NamedRow) => [s.name, s.id]));
+
+  /* 创建缺失的配件名称 */
+  if (参数.newPartNames.length > 0) {
+    const { data: insertedNames, error: nameErr } = await supabase
+      .from("part_names")
+      .insert(参数.newPartNames.map((name) => ({ name })))
+      .select("id, name");
+    if (nameErr) {
+      return { success: false, error: "创建配件名称失败: " + nameErr.message };
+    }
+    (insertedNames || []).forEach((p: NamedRow) => partNameMap.set(p.name, p.id));
+  }
+
+  /* 创建缺失的品牌 */
+  if (参数.newBrands.length > 0) {
+    const { data: insertedBrands, error: brandErr } = await supabase
+      .from("part_brands")
+      .insert(参数.newBrands.map((name) => ({ name })))
+      .select("id, name");
+    if (brandErr) {
+      return { success: false, error: "创建品牌失败: " + brandErr.message };
+    }
+    (insertedBrands || []).forEach((b: NamedRow) => brandMap.set(b.name, b.id));
+  }
+
+  /* 创建缺失的规格 */
+  if (参数.newSpecs.length > 0) {
+    const { data: insertedSpecs, error: specErr } = await supabase
+      .from("part_specifications")
+      .insert(参数.newSpecs.map((name) => ({ name })))
+      .select("id, name");
+    if (specErr) {
+      return { success: false, error: "创建规格失败: " + specErr.message };
+    }
+    (insertedSpecs || []).forEach((s: NamedRow) => specMap.set(s.name, s.id));
+  }
+
+  /* 构建最终插入数据 */
+  interface InsertPartData {
+    name: string;
+    part_number: string;
+    oe_number: string | null;
+    part_name_id: string | undefined;
+    category_id: string | null;
+    unit: string;
+    quantity: number;
+    min_stock: number;
+    unit_cost: number | null;
+    unit_price: number | null;
+    supplier_id: string | null;
+    location: string | null;
+    notes: string | null;
+    brand_id?: string | null;
+  }
+
+  const insertData: InsertPartData[] = 参数.records.map((r) => {
+    const data: InsertPartData = {
+      name: r.name,
+      part_number: r.part_number,
+      oe_number: r.oe_number,
+      part_name_id: typeof r.part_name_id === "string" && r.part_name_id.length === 36
+        ? r.part_name_id
+        : partNameMap.get(r.part_name_id as string),
+      category_id: r.category_id,
+      unit: r.unit,
+      quantity: r.quantity,
+      min_stock: r.min_stock,
+      unit_cost: r.unit_cost,
+      unit_price: r.unit_price,
+      supplier_id: r.supplier_id,
+      location: r.location,
+      notes: r.notes,
+    };
+    if (r.brand_name) {
+      data.brand_id = brandMap.get(r.brand_name) || null;
+    }
+    return data;
+  });
+
+  /* 分批插入配件 */
+  const batchSize = 50;
+  let inserted = 0;
+  const insertedPartIds: string[] = [];
+
+  for (let i = 0; i < insertData.length; i += batchSize) {
+    const batch = insertData.slice(i, i + batchSize);
+    const { data: insertedParts, error } = await supabase
+      .from("parts")
+      .insert(batch)
+      .select("id");
+    if (error) {
+      return { success: false, error: `第 ${i + 1} 批导入失败: ${error.message}` };
+    }
+    (insertedParts || []).forEach((p: { id: string }) => insertedPartIds.push(p.id));
+    inserted += batch.length;
+  }
+
+  /* 创建规格关联 */
+  const specLinks = 参数.records
+    .filter((r, idx) => r.spec_name && insertedPartIds[idx])
+    .map((r, idx) => ({
+      part_id: insertedPartIds[idx],
+      specification_id: specMap.get(r.spec_name as string),
+    }))
+    .filter((l): l is { part_id: string; specification_id: string } => !!l.specification_id);
+
+  if (specLinks.length > 0) {
+    await supabase.from("parts_specifications").insert(specLinks);
+  }
+
+  revalidatePath("/inventory");
+  return { success: true, inserted };
+}

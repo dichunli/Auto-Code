@@ -168,6 +168,142 @@ export async function 创建工单(参数: {
   return { success: true, orderId: rpcResult.order_id };
 }
 
+/* ═══ 手机接车登记（/m/reception/new 一步提交）═══
+ * 建车/建客户/关联 + 建工单 + 接车检查 + 里程表照片，全部挪到服务端。
+ * 工单创建复用 create_work_order RPC（与电脑端"创建工单"同一通道），
+ * 单号由数据库统一生成，不再在客户端手拼；接待人取服务端登录用户。 */
+export async function 手机接车登记(参数: {
+  isNewVehicle: boolean;
+  newVehicle: {
+    plate_number: string;
+    brand: string;
+    model: string;
+    vin: string;
+    vehicle_model_id: number | null;
+    engine_no: string;
+    chassis_code: string;
+    transmission_type: string;
+    transmission_code: string;
+    year: string;
+  };
+  selectedVehicleId: string | null;
+  isNewCustomer: boolean;
+  newCustomer: { name: string; phone: string };
+  selectedCustomerId: string | null;
+  vehicleCustomerId: string | null;
+  mileage: string;
+  senderName: string;
+  senderPhone: string;
+  dashboardPaths: string[];
+}): Promise<{ success: boolean; orderId?: string; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 1. 处理车辆（新建车辆带完整车型字段） */
+  let vehicleId: string;
+  if (参数.isNewVehicle) {
+    const { data: v, error: ve } = await supabase
+      .from("vehicles")
+      .insert({
+        plate_number: 参数.newVehicle.plate_number.trim().toUpperCase(),
+        brand: 参数.newVehicle.brand.trim() || null,
+        model: 参数.newVehicle.model.trim() || null,
+        vin: 参数.newVehicle.vin || null,
+        vehicle_model_id: 参数.newVehicle.vehicle_model_id,
+        engine_no: 参数.newVehicle.engine_no.trim() || null,
+        chassis_code: 参数.newVehicle.chassis_code.trim() || null,
+        transmission_type: 参数.newVehicle.transmission_type.trim() || null,
+        transmission_code: 参数.newVehicle.transmission_code.trim() || null,
+        year: 参数.newVehicle.year ? parseInt(参数.newVehicle.year) : null,
+      })
+      .select("id")
+      .single();
+    if (ve || !v) return { success: false, error: "创建车辆失败: " + (ve?.message || "未知错误") };
+    vehicleId = v.id;
+  } else if (参数.selectedVehicleId) {
+    vehicleId = 参数.selectedVehicleId;
+  } else {
+    return { success: false, error: "请选择或新建车辆" };
+  }
+
+  /* 2. 处理客户 */
+  let customerId: string;
+  if (参数.isNewCustomer) {
+    const { data: c, error: ce } = await supabase
+      .from("customers")
+      .insert({ name: 参数.newCustomer.name.trim(), phone: 参数.newCustomer.phone.trim() || null })
+      .select("id")
+      .single();
+    if (ce || !c) return { success: false, error: "创建客户失败: " + (ce?.message || "未知错误") };
+    customerId = c.id;
+  } else if (参数.selectedCustomerId) {
+    customerId = 参数.selectedCustomerId;
+  } else if (参数.vehicleCustomerId) {
+    customerId = 参数.vehicleCustomerId;
+  } else {
+    return { success: false, error: "请选择或新建客户" };
+  }
+
+  /* 3. 关联车辆和客户 */
+  const { error: linkErr } = await supabase
+    .from("vehicles")
+    .update({ customer_id: customerId })
+    .eq("id", vehicleId);
+  if (linkErr) return { success: false, error: "关联车辆客户失败: " + linkErr.message };
+
+  /* 4. 创建工单（复用 create_work_order RPC，接待人取服务端登录用户） */
+  const 里程 = parseInt(参数.mileage) || 0;
+  const { data: result, error: rpcErr } = await supabase.rpc("create_work_order", {
+    p_customer_id: customerId,
+    p_vehicle_id: vehicleId,
+    p_mileage_in: 里程,
+    p_fuel_level: null,
+    p_customer_complaint: "",
+    p_inspection_notes: "",
+    p_receptionist_id: user.id,
+    p_requirements: [],
+    p_sender_name: 参数.senderName.trim() || null,
+    p_sender_phone: 参数.senderPhone.trim() || null,
+  });
+  if (rpcErr) return { success: false, error: "创建工单失败: " + rpcErr.message };
+  const rpcResult = result as { success: boolean; error?: string; order_id?: string };
+  if (!rpcResult?.success || !rpcResult.order_id) {
+    return { success: false, error: rpcResult?.error || "创建工单失败" };
+  }
+  const orderId = rpcResult.order_id;
+
+  /* 5. 创建接车检查 */
+  const { data: inspection, error: ie } = await supabase
+    .from("work_order_inspections")
+    .insert({
+      work_order_id: orderId,
+      inspection_type: "reception",
+      inspection_mileage: parseInt(参数.mileage) || null,
+    })
+    .select("id")
+    .single();
+  if (ie) return { success: false, error: "创建接车检查失败: " + ie.message };
+
+  /* 6. 保存里程表照片 */
+  if (参数.dashboardPaths.length > 0 && inspection) {
+    const { error: me } = await supabase.from("work_order_inspection_media").insert(
+      参数.dashboardPaths.map((path) => ({
+        inspection_id: inspection.id,
+        media_type: "dashboard",
+        storage_path: path,
+      }))
+    );
+    if (me) return { success: false, error: "保存里程表照片失败: " + me.message };
+  }
+
+  revalidatePath("/work-orders");
+  return { success: true, orderId };
+}
+
 /* ═══ 结算工单（收银页提交）═══
  * settle_work_order 原子结算 RPC + 结算后的提醒/通知/回访写入，
  * 全部挪到服务端。结算涉及金额，必须等服务端确认后再更新 UI。 */

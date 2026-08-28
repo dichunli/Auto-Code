@@ -5,6 +5,7 @@ import Link from "next/link";
 import JsBarcode from "jsbarcode";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
+import { 批量导入配件 } from "./actions";
 import DeletePartButton from "./DeletePartButton";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import PartMergeDialog from "@/components/PartMergeDialog";
@@ -128,23 +129,6 @@ interface ImportRecord {
   supplier_id: string | null;
   location: string | null;
   notes: string | null;
-}
-
-interface InsertPartData {
-  name: string;
-  part_number: string;
-  oe_number: string | null;
-  part_name_id: string | undefined;
-  category_id: string | null;
-  unit: string;
-  quantity: number;
-  min_stock: number;
-  unit_cost: number | null;
-  unit_price: number | null;
-  supplier_id: string | null;
-  location: string | null;
-  notes: string | null;
-  brand_id?: string | null;
 }
 
 interface NamedRow {
@@ -465,108 +449,22 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
       records.length = 0;
       records.push(...filteredRecords);
 
-      setImportMsg("正在创建缺失的关联数据...");
-
-      // 创建缺失的配件名称
-      if (newPartNames.length > 0) {
-        const { data: insertedNames, error: nameErr } = await supabase
-          .from("part_names")
-          .insert(newPartNames)
-          .select("id, name");
-        if (nameErr) {
-          setImportMsg("创建配件名称失败: " + nameErr.message);
-          setImporting(false);
-          return;
-        }
-        (insertedNames || []).forEach((p: NamedRow) => partNameMap.set(p.name, p.id));
-      }
-
-      // 创建缺失的品牌
-      if (newBrands.length > 0) {
-        const { data: insertedBrands, error: brandErr } = await supabase
-          .from("part_brands")
-          .insert(newBrands)
-          .select("id, name");
-        if (brandErr) {
-          setImportMsg("创建品牌失败: " + brandErr.message);
-          setImporting(false);
-          return;
-        }
-        (insertedBrands || []).forEach((b: NamedRow) => brandMap.set(b.name, b.id));
-      }
-
-      // 创建缺失的规格
-      if (newSpecs.length > 0) {
-        const { data: insertedSpecs, error: specErr } = await supabase
-          .from("part_specifications")
-          .insert(newSpecs)
-          .select("id, name");
-        if (specErr) {
-          setImportMsg("创建规格失败: " + specErr.message);
-          setImporting(false);
-          return;
-        }
-        (insertedSpecs || []).forEach((s: NamedRow) => specMap.set(s.name, s.id));
-      }
-
-      // 构建最终插入数据
-      const insertData: InsertPartData[] = records.map((r) => {
-        const data: InsertPartData = {
-          name: r.name,
-          part_number: r.part_number,
-          oe_number: r.oe_number,
-          part_name_id: typeof r.part_name_id === "string" && r.part_name_id.length === 36
-            ? r.part_name_id
-            : partNameMap.get(r.part_name_id as string),
-          category_id: r.category_id,
-          unit: r.unit,
-          quantity: r.quantity,
-          min_stock: r.min_stock,
-          unit_cost: r.unit_cost,
-          unit_price: r.unit_price,
-          supplier_id: r.supplier_id,
-          location: r.location,
-          notes: r.notes,
-        };
-        if (r.brand_name) {
-          data.brand_id = brandMap.get(r.brand_name) || null;
-        }
-        return data;
+      /* 写库走 Server Action：建缺失名称/品牌/规格 → 分批插配件 → 建规格关联 */
+      setImportMsg(`验证通过 ${records.length} 条，正在导入...`);
+      const 导入结果 = await 批量导入配件({
+        newPartNames: newPartNames.map((p) => p.name),
+        newBrands: newBrands.map((b) => b.name),
+        newSpecs: newSpecs.map((s) => s.name),
+        records,
       });
 
-      setImportMsg(`验证通过 ${insertData.length} 条，开始导入...`);
-      const batchSize = 50;
-      let inserted = 0;
-      const insertedPartIds: string[] = [];
-
-      for (let i = 0; i < insertData.length; i += batchSize) {
-        const batch = insertData.slice(i, i + batchSize);
-        const { data: insertedParts, error } = await supabase
-          .from("parts")
-          .insert(batch)
-          .select("id");
-        if (error) {
-          setImportMsg(`第 ${i + 1} 批导入失败: ${error.message}`);
-          setImporting(false);
-          return;
-        }
-        (insertedParts || []).forEach((p: { id: string }) => insertedPartIds.push(p.id));
-        inserted += batch.length;
-        setImportMsg(`已导入 ${inserted}/${insertData.length} 条...`);
+      if (!导入结果.success) {
+        setImportMsg(导入结果.error || "导入失败");
+        setImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
       }
-
-      // 创建规格关联
-      const specLinks = records
-        .filter((r, idx) => r.spec_name && insertedPartIds[idx])
-        .map((r, idx) => ({
-          part_id: insertedPartIds[idx],
-          specification_id: specMap.get(r.spec_name as string),
-        }))
-        .filter((l): l is { part_id: string; specification_id: string } => !!l.specification_id);
-
-      if (specLinks.length > 0) {
-        await supabase.from("parts_specifications").insert(specLinks);
-      }
+      const inserted = 导入结果.inserted || 0;
 
       let msg = `导入完成：新增 ${inserted} 条`;
       if (duplicateInDb > 0) msg += `，跳过 ${duplicateInDb} 条（编号已存在）`;

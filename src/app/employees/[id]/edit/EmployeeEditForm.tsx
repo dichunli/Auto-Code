@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
+import { 解绑钉钉账号, 保存员工档案 } from "../../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 
@@ -85,7 +85,6 @@ export function EmployeeEditForm({
   initialContacts,
 }: Props) {
   const router = useRouter();
-  const supabase = createClient();
 
   const [saving, setSaving] = useState(false);
 
@@ -120,16 +119,16 @@ export function EmployeeEditForm({
     );
   }
 
-  /* 解除钉钉绑定（解绑后该员工不再参与考勤同步） */
+  /* 解除钉钉绑定（写库走 Server Action，解绑后该员工不再参与考勤同步） */
   async function 解绑钉钉() {
     if (!confirm("确定解除钉钉绑定吗？解绑后该员工不再参与考勤同步，可之后重新匹配。")) return;
     set解绑中(true);
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ dingtalk_userid: null })
-        .eq("id", employeeId);
-      if (error) throw error;
+      const result = await 解绑钉钉账号(employeeId);
+      if (!result.success) {
+        alert("解绑失败：" + (result.error || "未知错误"));
+        return;
+      }
       setDingtalkUserid("");
       alert("已解绑");
     } catch (err: unknown) {
@@ -170,90 +169,30 @@ export function EmployeeEditForm({
 
     setSaving(true);
     try {
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          full_name: fullName,
-          phone: phone || null,
-          group_id: groupId || null,
-          mechanic_level_id: levelId || null,
-          gender: gender || null,
-          entry_date: entryDate || null,
-          address: address || null,
-          notes: notes || null,
-          is_active: isActive,
-          id_card: idCard || null,
-          id_card_front_url: idCardFrontUrl || null,
-          id_card_back_url: idCardBackUrl || null,
-          base_salary: baseSalary.trim() ? Number(baseSalary) : null,
-        })
-        .eq("id", employeeId);
-
-      if (profileError) throw profileError;
-
-      const { data: existingRoles } = await supabase
-        .from("profile_roles")
-        .select("role_id")
-        .eq("profile_id", employeeId);
-      const existingRoleIds = (existingRoles || []).map((r: { role_id: string }) => r.role_id);
-      const rolesToAdd = roleIds.filter((id) => !existingRoleIds.includes(id));
-      const rolesToRemove = existingRoleIds.filter((id) => !roleIds.includes(id));
-
-      if (rolesToAdd.length > 0) {
-        const roleRows = rolesToAdd.map((rid) => ({
-          profile_id: employeeId,
-          role_id: rid,
-        }));
-        const { error: addRoleError } = await supabase.from("profile_roles").insert(roleRows);
-        if (addRoleError) throw addRoleError;
-      }
-      if (rolesToRemove.length > 0) {
-        const { error: removeRoleError } = await supabase
-          .from("profile_roles")
-          .delete()
-          .eq("profile_id", employeeId)
-          .in("role_id", rolesToRemove);
-        if (removeRoleError) throw removeRoleError;
-      }
-
-      const validContacts = contacts.filter((c) => c.name.trim());
-      const contactsToAdd = validContacts.filter((c) => !c.id);
-      const contactsToUpdate = validContacts.filter((c) => c.id);
-      const keptContactIds = new Set(contactsToUpdate.map((c) => c.id));
-      const contactIdsToRemove = [...originalContactIds].filter((id) => !keptContactIds.has(id));
-
-      if (contactsToAdd.length > 0) {
-        const contactRows = contactsToAdd.map((c) => ({
-          profile_id: employeeId,
-          name: c.name.trim(),
-          phone: c.phone || null,
-          relationship: c.relationship || "other",
-          is_primary: c.is_primary,
-        }));
-        const { error: addContactError } = await supabase.from("employee_contacts").insert(contactRows);
-        if (addContactError) throw addContactError;
-      }
-
-      for (const c of contactsToUpdate) {
-        const { error: updateContactError } = await supabase
-          .from("employee_contacts")
-          .update({
-            name: c.name.trim(),
-            phone: c.phone || null,
-            relationship: c.relationship || "other",
-            is_primary: c.is_primary,
-          })
-          .eq("id", c.id);
-        if (updateContactError) throw updateContactError;
-      }
-
-      if (contactIdsToRemove.length > 0) {
-        const { error: removeContactError } = await supabase
-          .from("employee_contacts")
-          .delete()
-          .eq("profile_id", employeeId)
-          .in("id", contactIdsToRemove);
-        if (removeContactError) throw removeContactError;
+      /* 写库走 Server Action：主表 + 角色 + 联系人在服务端一次提交内顺序执行 */
+      const result = await 保存员工档案({
+        employeeId,
+        fullName,
+        phone,
+        groupId,
+        levelId,
+        gender,
+        entryDate,
+        address,
+        notes,
+        isActive,
+        idCard,
+        idCardFrontUrl,
+        idCardBackUrl,
+        baseSalary,
+        roleIds,
+        contacts,
+        originalContactIds: [...originalContactIds],
+      });
+      if (!result.success) {
+        alert("保存失败：" + (result.error || "未知错误"));
+        setSaving(false);
+        return;
       }
 
       await 刷新基础数据缓存();
