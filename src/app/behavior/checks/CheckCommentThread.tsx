@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 提交考核评论 } from "./actions";
 
 interface 评论 {
   id: string;
@@ -55,17 +56,9 @@ export default function CheckCommentThread({ checkRecordId, initialCount, onPost
     if (!content) return;
     setSending(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-        alert("登录已失效，请刷新页面");
-        return;
-      }
-      const { error } = await supabase.from("behavior_check_comments").insert({
-        check_record_id: checkRecordId,
-        author_id: userData.user.id,
-        content,
-      });
-      if (error) throw error;
+      /* 写库走 Server Action，作者取服务端登录用户 */
+      const result = await 提交考核评论({ checkRecordId, content });
+      if (!result.success) throw new Error(result.error || "评论失败");
       setInput("");
       await loadComments();
       onPosted?.();

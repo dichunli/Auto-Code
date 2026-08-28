@@ -2,6 +2,7 @@
 
 import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 发起晋级申请 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -170,22 +171,21 @@ export default function PromotionOverviewContent({ initialStatusList }: { initia
 
     setPromotingId(emp.employee.id);
     try {
-      await supabase.auth.getUser();
-      const { error } = await supabase.from("promotion_records").insert({
-        employee_id: emp.employee.id,
-        type: "promotion",
-        from_level_id: emp.employee.level_id,
-        to_level_id: emp.next_level_id,
+      /* 写库走 Server Action（管理员代员工发起） */
+      const result = await 发起晋级申请({
+        employeeId: emp.employee.id,
+        selfApply: false,
+        fromLevelId: emp.employee.level_id,
+        toLevelId: emp.next_level_id,
         reason: `满足晋级条件，自动申请：${emp.employee.level_name} → ${emp.next_level_name}`,
-        course_points: emp.course_points,
-        work_order_count: emp.work_order_count,
-        rework_loss_total: emp.rework_loss,
-        daily_loss_total: emp.daily_loss,
-        behavior_score_total: emp.behavior_score,
-        status: "pending",
+        coursePoints: emp.course_points,
+        workOrderCount: emp.work_order_count,
+        reworkLossTotal: emp.rework_loss,
+        dailyLossTotal: emp.daily_loss,
+        behaviorScoreTotal: emp.behavior_score,
       });
 
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error || "申请失败");
       alert("晋级申请已提交，等待审核");
       fetchData();
     } catch (err: unknown) {

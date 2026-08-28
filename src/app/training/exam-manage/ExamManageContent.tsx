@@ -3,6 +3,7 @@
 import {useState, useEffect, useRef, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 保存考题, 删除考题 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -162,13 +163,9 @@ export default function ExamManageContent({
         sort_order: editingQuestion ? editingQuestion.sort_order : questions.length,
       };
 
-      if (editingQuestion) {
-        const { error } = await supabase.from("exam_questions").update(payload).eq("id", editingQuestion.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("exam_questions").insert(payload);
-        if (error) throw error;
-      }
+      /* 写库走 Server Action */
+      const result = await 保存考题({ id: editingQuestion?.id || null, payload });
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       setModalOpen(false);
       /* 刷新题目列表 */
@@ -187,9 +184,9 @@ export default function ExamManageContent({
 
   async function handleDeleteQuestion(id: string) {
     if (!(await 请求确认("确定删除这道题吗？"))) return;
-    const { error } = await supabase.from("exam_questions").delete().eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除考题(id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     setQuestions(questions.filter((q) => q.id !== id));

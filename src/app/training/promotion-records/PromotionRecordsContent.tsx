@@ -2,6 +2,7 @@
 
 import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 审核晋级 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -92,28 +93,9 @@ export default function PromotionRecordsContent({ initialRecords }: { initialRec
 
     setProcessingId(record.id);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const approverId = userData.user?.id;
-
-      /* 更新申请状态 */
-      const { error: updateError } = await supabase
-        .from("promotion_records")
-        .update({
-          status: "approved",
-          approved_by: approverId,
-          approved_at: new Date().toISOString(),
-        })
-        .eq("id", record.id);
-
-      if (updateError) throw updateError;
-
-      /* 更新员工等级 */
-      const { error: empError } = await supabase
-        .from("profiles")
-        .update({ mechanic_level_id: record.to_level_id })
-        .eq("id", record.employee_id);
-
-      if (empError) throw empError;
+      /* 写库走 Server Action（批准时同步更新员工等级，审批人取服务端登录用户） */
+      const result = await 审核晋级({ recordId: record.id, approve: true });
+      if (!result.success) throw new Error(result.error || "操作失败");
 
       alert("已批准");
       fetchData();
@@ -130,20 +112,8 @@ export default function PromotionRecordsContent({ initialRecords }: { initialRec
 
     setProcessingId(record.id);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const approverId = userData.user?.id;
-
-      const { error } = await supabase
-        .from("promotion_records")
-        .update({
-          status: "rejected",
-          approved_by: approverId,
-          approved_at: new Date().toISOString(),
-          reason: reason,
-        })
-        .eq("id", record.id);
-
-      if (error) throw error;
+      const result = await 审核晋级({ recordId: record.id, approve: false, reason });
+      if (!result.success) throw new Error(result.error || "操作失败");
       alert("已拒绝");
       fetchData();
     } catch (err: unknown) {

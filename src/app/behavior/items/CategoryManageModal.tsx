@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { 删除行为分类 } from "./actions";
+import { 删除行为分类, 新建行为分类, 更新行为分类, 切换行为分类启用 } from "./actions";
 
 export interface 行为分类 {
   id: string;
@@ -37,10 +37,11 @@ export default function CategoryManageModal({ categories, onClose, onChanged }: 
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from("behavior_categories").insert({ name });
+    /* 写库走 Server Action */
+    const result = await 新建行为分类(name);
     setSaving(false);
-    if (error) {
-      alert(error.code === "23505" ? "分类名称已存在" : "新增失败: " + error.message);
+    if (!result.success) {
+      alert(result.error || "新增失败");
       return;
     }
     setNewName("");
@@ -61,13 +62,10 @@ export default function CategoryManageModal({ categories, onClose, onChanged }: 
       return;
     }
     setSaving(true);
-    const { error } = await supabase
-      .from("behavior_categories")
-      .update({ name, sort_order: parseInt(editSort) || 0 })
-      .eq("id", editingId);
+    const result = await 更新行为分类({ id: editingId, name, sortOrder: parseInt(editSort) || 0 });
     setSaving(false);
-    if (error) {
-      alert(error.code === "23505" ? "分类名称已存在" : "保存失败: " + error.message);
+    if (!result.success) {
+      alert(result.error || "保存失败");
       return;
     }
     setEditingId(null);
@@ -75,12 +73,9 @@ export default function CategoryManageModal({ categories, onClose, onChanged }: 
   }
 
   async function toggleActive(c: 行为分类) {
-    const { error } = await supabase
-      .from("behavior_categories")
-      .update({ is_active: !c.is_active })
-      .eq("id", c.id);
-    if (error) {
-      alert("操作失败: " + error.message);
+    const result = await 切换行为分类启用({ id: c.id, isActive: !c.is_active });
+    if (!result.success) {
+      alert("操作失败: " + (result.error || "未知错误"));
       return;
     }
     onChanged();

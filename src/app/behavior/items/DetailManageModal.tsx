@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { 批量删除行为明细 } from "./actions";
+import { 保存行为明细 } from "./actions";
 
 /* 检查细节编辑行：真实行用数据库 id，新增行用 new-序号 临时 id */
 interface 细节行 {
@@ -97,31 +97,20 @@ export default function DetailManageModal({ itemId, itemName, onClose, onSaved }
 
     setSaving(true);
     try {
-      /* 1. 删除 */
-      if (deletedIds.length > 0) {
-        const delResult = await 批量删除行为明细(deletedIds);
-        if (!delResult.success) throw new Error(delResult.error || "删除失败");
-      }
-
-      /* 2. 新增与修改（sort_order 按当前排列顺序落库） */
-      for (let i = 0; i < details.length; i++) {
-        const d = details[i];
-        const payload = {
-          item_id: itemId,
-          name: d.name.trim(),
-          description: d.description.trim() || null,
+      /* 删旧 + 逐条新增/修改 全部走 Server Action 一次完成（sort_order 按当前排列顺序落库） */
+      const result = await 保存行为明细({
+        itemId,
+        deletedIds,
+        details: details.map((d, i) => ({
+          id: d.isNew ? null : d.id,
+          name: d.name,
+          description: d.description,
           score_value: parseInt(d.score_value),
           guide_images: d.guide_images,
           sort_order: i,
-        };
-        if (d.isNew) {
-          const { error } = await supabase.from("behavior_item_details").insert(payload);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from("behavior_item_details").update(payload).eq("id", d.id);
-          if (error) throw error;
-        }
-      }
+        })),
+      });
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       onSaved();
       onClose();

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { createClient, 确保有session } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
+import { 分配培训课程 } from "../../actions";
 import { PageHeader } from "@/components/PageHeader";
 import AssignByGroupModal from "./AssignByGroupModal";
 
@@ -77,16 +78,13 @@ export default function AssignCoursePage({ params }: { params: Promise<{ id: str
     setLoading(true);
 
     try {
-      await 确保有session();
-
-      const records = selectedEmployees.map((empId) => ({
-        course_id: courseId,
-        employee_id: empId,
-        due_date: dueDate || null,
-      }));
-
-      const { error } = await supabase.from("training_assignments").insert(records);
-      if (error) throw error;
+      /* 写库走 Server Action */
+      const result = await 分配培训课程({
+        courseId,
+        employeeIds: selectedEmployees,
+        dueDate: dueDate,
+      });
+      if (!result.success) throw new Error(result.error || "分配失败");
 
       router.push(`/training/${courseId}`);
       router.refresh();

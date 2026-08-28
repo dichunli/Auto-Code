@@ -1,7 +1,7 @@
 "use client";
 
-import {useState, useMemo} from "react";
-import { createClient } from "@/lib/supabase/client";
+import {useState} from "react";
+import { 判卷打分 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 
 interface 待判卷答题 {
@@ -17,7 +17,6 @@ interface 待判卷答题 {
 }
 
 export default function ExamGradeContent({ initialPending }: { initialPending: 待判卷答题[] }) {
-  const supabase = useMemo(() => createClient(), []);
   /* 首屏数据由服务端传入；判卷后本地移除该条，无需整表重查 */
   const [pendingList, setPendingList] = useState<待判卷答题[]>(initialPending);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -30,73 +29,14 @@ export default function ExamGradeContent({ initialPending }: { initialPending: �
 
     setSavingId(item.id);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const graderId = userData.user?.id;
-
-      /* 更新答题记录 */
-      const { error: answerError } = await supabase
-        .from("exam_answers")
-        .update({
-          score: gradedScore,
-          is_correct: gradedScore > 0,
-          graded_by: graderId,
-          graded_at: new Date().toISOString(),
-        })
-        .eq("id", item.id);
-
-      if (answerError) throw answerError;
-
-      /* 重新计算考试总分 */
-      await supabase
-        .from("exam_answers")
-        .select("score, is_correct")
-        .eq("assignment_id", item.exam_result_id);
-
-      /* 获取考试成绩记录 */
-      const { data: resultRecord } = await supabase
-        .from("exam_results")
-        .select("assignment_id, total_score, max_score")
-        .eq("id", item.exam_result_id)
-        .single();
-
-      if (resultRecord) {
-        /* 查询该考试所有答题记录（按 assignment_id） */
-        const { data: examAnswers } = await supabase
-          .from("exam_answers")
-          .select("score")
-          .eq("assignment_id", resultRecord.assignment_id);
-
-        const newTotal = (examAnswers || []).reduce((sum: number, a: { score: number | null }) => sum + (a.score || 0), 0);
-
-        /* 检查是否还有未判卷的题 */
-        const { data: pendingAnswers } = await supabase
-          .from("exam_answers")
-          .select("id")
-          .eq("assignment_id", resultRecord.assignment_id)
-          .is("is_correct", null);
-
-        const newStatus = pendingAnswers && pendingAnswers.length > 0 ? "pending" : newTotal >= (resultRecord.max_score * 0.6) ? "passed" : "failed";
-
-        await supabase
-          .from("exam_results")
-          .update({
-            total_score: newTotal,
-            status: newStatus,
-          })
-          .eq("id", item.exam_result_id);
-
-        /* 如果全部判完且通过，更新分配记录 */
-        if (newStatus === "passed") {
-          await supabase
-            .from("training_assignments")
-            .update({
-              status: "completed",
-              score: newTotal,
-              completed_at: new Date().toISOString(),
-            })
-            .eq("id", resultRecord.assignment_id);
-        }
-      }
+      /* 判卷（改答题分 + 重算总分 + 更新成绩状态 + 通过则完成分配）走 Server Action 一次完成 */
+      const result = await 判卷打分({
+        answerId: item.id,
+        examResultId: item.exam_result_id,
+        gradedScore,
+        maxScore: item.max_score,
+      });
+      if (!result.success) throw new Error(result.error || "判卷失败");
 
       /* 刷新列表 */
       setPendingList(pendingList.filter((p) => p.id !== item.id));

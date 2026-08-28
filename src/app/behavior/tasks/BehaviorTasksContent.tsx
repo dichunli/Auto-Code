@@ -4,7 +4,7 @@ import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { 删除考核任务 } from "./actions";
+import { 删除考核任务, 保存考核任务 } from "./actions";
 
 interface 行为项目 {
   id: string;
@@ -178,13 +178,9 @@ export default function BehaviorTasksContent({
         is_active: form.is_active,
       };
 
-      if (editingTask) {
-        const { error } = await supabase.from("behavior_check_tasks").update(payload).eq("id", editingTask.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("behavior_check_tasks").insert(payload);
-        if (error) throw error;
-      }
+      /* 写库走 Server Action */
+      const result = await 保存考核任务({ id: editingTask?.id || null, payload });
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       setModalOpen(false);
       /* 新增任务按创建时间倒序在第 1 页；编辑停留在当前页 */

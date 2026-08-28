@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 保存培训专题, 删除培训专题 } from "../actions";
 
 interface 专题 {
   id: string;
@@ -65,40 +66,13 @@ export default function TopicsContent({
       return;
     }
     setSaving(true);
-    await 确保有session();
 
-    /* 查重 */
-    const { data: dup } = await supabase
-      .from("training_topics")
-      .select("id")
-      .ilike("name", form.name.trim())
-      .maybeSingle();
-    if (dup && dup.id !== editingId) {
-      alert("该专题名称已存在，请更换");
+    /* 写库走 Server Action（查重在服务端） */
+    const result = await 保存培训专题({ id: editingId, name: form.name, isActive: form.is_active });
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       setSaving(false);
       return;
-    }
-
-    if (editingId) {
-      const { error } = await supabase
-        .from("training_topics")
-        .update({ name: form.name.trim(), is_active: form.is_active })
-        .eq("id", editingId);
-      if (error) {
-        alert("保存失败: " + error.message);
-        setSaving(false);
-        return;
-      }
-    } else {
-      const { error } = await supabase.from("training_topics").insert({
-        name: form.name.trim(),
-        is_active: form.is_active,
-      });
-      if (error) {
-        alert("保存失败: " + error.message);
-        setSaving(false);
-        return;
-      }
     }
 
     setForm({ name: "", is_active: true });
@@ -111,12 +85,10 @@ export default function TopicsContent({
   async function handleDelete(id: string, name: string) {
     if (!(await 请求确认(`确定要删除专题「${name}」吗？`))) return;
 
-    await 确保有session();
-    /* 先删除关联 */
-    await supabase.from("training_course_topics").delete().eq("topic_id", id);
-    const { error } = await supabase.from("training_topics").delete().eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    /* 关联清理 + 删除走 Server Action */
+    const result = await 删除培训专题(id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     await load();

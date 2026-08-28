@@ -7,7 +7,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { ImageUploader } from "@/components/ImageUploader";
 import CategoryManageModal, { 行为分类 } from "./CategoryManageModal";
 import DetailManageModal from "./DetailManageModal";
-import { 删除行为项目 } from "./actions";
+import { 删除行为项目, 保存行为项目 } from "./actions";
 
 interface 行为项目 {
   id: string;
@@ -160,13 +160,9 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
         is_active: form.is_active,
       };
 
-      if (editingItem) {
-        const { error } = await supabase.from("behavior_score_items").update(payload).eq("id", editingItem.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("behavior_score_items").insert(payload);
-        if (error) throw error;
-      }
+      /* 写库走 Server Action */
+      const result = await 保存行为项目({ id: editingItem?.id || null, payload });
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       setModalOpen(false);
       fetchItems();
