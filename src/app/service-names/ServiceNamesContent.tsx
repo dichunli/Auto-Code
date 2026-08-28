@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import { DeleteButton } from "./DeleteButton";
+import { 批量导入维修项目名称 } from "./actions";
 
 interface ServiceName {
   id: string;
@@ -203,19 +204,14 @@ export default function ServiceNamesContent({ initialData }: { initialData: Serv
       }
 
       setImportMsg(`将导入 ${toInsert.length} 条（跳过 ${duplicateInDb} 条已存在），开始导入...`);
-      const batchSize = 100;
-      let inserted = 0;
-      for (let i = 0; i < toInsert.length; i += batchSize) {
-        const batch = toInsert.slice(i, i + batchSize);
-        const { error } = await supabase.from("service_names").insert(batch);
-        if (error) {
-          setImportMsg(`第 ${i + 1} 批导入失败: ${error.message}`);
-          setImporting(false);
-          return;
-        }
-        inserted += batch.length;
-        setImportMsg(`已导入 ${inserted}/${toInsert.length} 条...`);
+      /* 分批插入走 Server Action */
+      const 导入结果 = await 批量导入维修项目名称({ rows: toInsert });
+      if (!导入结果.success) {
+        setImportMsg("导入失败: " + (导入结果.error || "未知错误"));
+        setImporting(false);
+        return;
       }
+      const inserted = 导入结果.inserted ?? 0;
 
       let msg = `导入完成：新增 ${inserted} 条`;
       if (duplicateInDb > 0) msg += `，跳过 ${duplicateInDb} 条（名称已存在）`;

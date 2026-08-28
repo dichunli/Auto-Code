@@ -2,6 +2,7 @@
 
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 批量关联规格到名称 } from "./actions";
 
 interface Props {
   open: boolean;
@@ -59,29 +60,19 @@ export function BatchLinkDialog({ open, selectedSpecIds, onClose, onSuccess }: P
   async function handleLink() {
     if (!selectedCategoryId || partNames.length === 0 || selectedSpecIds.length === 0) return;
     setLinking(true);
-    let success = 0;
-    let skipped = 0;
-    let failed = 0;
 
-    for (const specId of selectedSpecIds) {
-      for (const pn of partNames) {
-        const { error } = await supabase
-          .from("part_name_specifications")
-          .upsert({ part_name_id: pn.id, specification_id: specId }, { onConflict: "part_name_id,specification_id" });
-        if (error) {
-          if (error.message.includes("duplicate")) {
-            skipped++;
-          } else {
-            failed++;
-          }
-        } else {
-          success++;
-        }
-      }
-    }
+    /* 写库走 Server Action（逐条 upsert 在服务端完成） */
+    const result = await 批量关联规格到名称({
+      specIds: selectedSpecIds,
+      partNameIds: partNames.map((pn) => pn.id),
+    });
 
     setLinking(false);
-    setResultText(`关联完成：成功 ${success} 条，跳过 ${skipped} 条，失败 ${failed} 条`);
+    if (!result.success) {
+      alert("关联失败: " + (result.error || "未知错误"));
+      return;
+    }
+    setResultText(`关联完成：成功 ${result.成功 ?? 0} 条，跳过 ${result.跳过 ?? 0} 条，失败 ${result.失败 ?? 0} 条`);
     onSuccess();
   }
 

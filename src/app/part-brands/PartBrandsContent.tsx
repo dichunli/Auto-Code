@@ -6,6 +6,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
+import { 新建品牌并关联 } from "./actions";
 
 interface PartBrand {
   id: string;
@@ -115,30 +116,15 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
     }
     setSaving(true);
 
-    const { data: brandData, error: brandError } = await supabase
-      .from("part_brands")
-      .insert({ name: name.trim() })
-      .select("id")
-      .single();
-
-    if (brandError || !brandData) {
-      alert("保存失败: " + (brandError?.message || "未知错误"));
+    /* 写库走 Server Action（建品牌 + 关联配件名称，服务端一次完成） */
+    const result = await 新建品牌并关联({
+      name: name.trim(),
+      partNameIds: linkedNames.map((n) => n.id),
+    });
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       setSaving(false);
       return;
-    }
-
-    const brandId = brandData.id;
-    if (linkedNames.length > 0) {
-      const rows = linkedNames.map((n) => ({
-        brand_id: brandId,
-        part_name_id: n.id,
-      }));
-      const { error: linkError } = await supabase.from("part_name_brands").insert(rows);
-      if (linkError) {
-        alert("品牌创建成功，但关联配件名称失败: " + linkError.message);
-        setSaving(false);
-        return;
-      }
     }
 
     setShowForm(false);

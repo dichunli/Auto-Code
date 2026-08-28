@@ -4,6 +4,7 @@ import {useState, useCallback, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新建维修项目名称 } from "../actions";
 
 interface LinkedItem {
   id: string;
@@ -243,41 +244,16 @@ export default function NewServiceNamePage() {
       return;
     }
 
-    const { data: inserted, error } = await supabase
-      .from("service_names")
-      .insert({
-        category_id: form.category_id,
-        name: form.name.trim(),
-        search_keywords: form.search_keywords || null,
-        sales_commission_type: form.sales_type || null,
-        sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-        diagnosis_commission_type: form.diagnosis_type || null,
-        diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-        repair_commission_type: form.repair_type || null,
-        repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-        qc_commission_type: form.qc_type || null,
-        qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-      })
-      .select("id")
-      .single();
+    /* 写库走 Server Action（重名检查 + 建名称 + 关联配件，服务端一次完成） */
+    const result = await 新建维修项目名称({
+      form,
+      linkedParts: linkedParts.map((p) => ({ id: p.id, quantity: p.quantity })),
+    });
 
-    if (error || !inserted) {
-      alert("保存失败: " + (error?.message || "未知错误"));
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       setLoading(false);
       return;
-    }
-
-    if (linkedParts.length > 0) {
-      const { error: linkError } = await supabase
-        .from("service_name_part_names")
-        .insert(
-          linkedParts.map((p, idx) => ({ service_name_id: inserted.id, part_name_id: p.id, sort_order: idx, quantity: p.quantity }))
-        );
-      if (linkError) {
-        alert("保存配件关联失败: " + linkError.message);
-        setLoading(false);
-        return;
-      }
     }
 
     router.push("/service-names");

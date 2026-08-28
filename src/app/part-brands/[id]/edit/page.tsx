@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 更新配件品牌 } from "../../actions";
 
 interface PartNameResult {
   id: string;
@@ -24,10 +25,6 @@ interface PartNameBrandLink {
     name: string;
     part_categories: { name: string } | null;
   } | null;
-}
-
-interface ExistingLink {
-  part_name_id: string;
 }
 
 export default function EditPartBrandPage() {
@@ -115,49 +112,16 @@ export default function EditPartBrandPage() {
     }
     setSaving(true);
 
-    const { error: updateError } = await supabase
-      .from("part_brands")
-      .update({ name: name.trim() })
-      .eq("id", id);
-
-    if (updateError) {
-      alert("保存失败: " + updateError.message);
+    /* 写库走 Server Action（改名 + 关联差量同步，服务端一次完成） */
+    const result = await 更新配件品牌({
+      id,
+      name,
+      linkedPartNameIds: linkedNames.map((n) => n.id),
+    });
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       setSaving(false);
       return;
-    }
-
-    const { data: existing } = await supabase
-      .from("part_name_brands")
-      .select("part_name_id")
-      .eq("brand_id", id);
-
-    const existingIds = new Set((existing || []).map((x: ExistingLink) => x.part_name_id));
-    const newIds = new Set(linkedNames.map((n) => n.id));
-
-    const toDelete = Array.from(existingIds).filter((pid) => !newIds.has(pid));
-    const toInsert = Array.from(newIds).filter((pid) => !existingIds.has(pid));
-
-    if (toDelete.length > 0) {
-      const { error: delError } = await supabase
-        .from("part_name_brands")
-        .delete()
-        .eq("brand_id", id)
-        .in("part_name_id", toDelete);
-      if (delError) {
-        alert("更新关联失败: " + delError.message);
-        setSaving(false);
-        return;
-      }
-    }
-
-    if (toInsert.length > 0) {
-      const rows = toInsert.map((pid) => ({ brand_id: id, part_name_id: pid }));
-      const { error: insError } = await supabase.from("part_name_brands").insert(rows);
-      if (insError) {
-        alert("更新关联失败: " + insError.message);
-        setSaving(false);
-        return;
-      }
     }
 
     router.push("/part-brands");

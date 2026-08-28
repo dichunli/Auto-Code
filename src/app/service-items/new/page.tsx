@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新建维修项目 } from "../actions";
 import type { 车型库行 } from "@/lib/vehicleModelFields";
 import VehiclePriceModal from "@/components/VehiclePriceModal";
 import VehiclePriceEditModal from "@/components/VehiclePriceEditModal";
@@ -467,96 +468,30 @@ export default function NewServiceItemPage() {
     }
     setLoading(true);
 
-    // 新建项目
-    const autoCode = `XM-${Date.now().toString(36).toUpperCase().slice(-6)}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
-    const { data: inserted, error } = await supabase
-      .from("service_items")
-      .insert({
-        code: autoCode,
-        category_id: form.category_id,
-        name: form.name.trim(),
-        search_keywords: form.search_keywords.trim() || null,
-        description: form.description || null,
-        default_price: form.default_price ? parseFloat(form.default_price) : null,
-        vip_price: form.vip_price ? parseFloat(form.vip_price) : null,
-        customer_parts_price: form.customer_parts_price ? parseFloat(form.customer_parts_price) : null,
-        company_price: form.company_price ? parseFloat(form.company_price) : null,
-        sales_commission_type: form.sales_type || null,
-        sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-        diagnosis_commission_type: form.diagnosis_type || null,
-        diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-        repair_commission_type: form.repair_type || null,
-        repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-        qc_commission_type: form.qc_type || null,
-        qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-        require_qc: form.require_qc,
-      })
-      .select("id")
-      .single();
-
-    if (error || !inserted) {
-      alert("保存失败: " + (error?.message || "未知错误"));
-      setLoading(false);
-      return;
-    }
-    const itemId = inserted.id;
-
-    // 保存车型定价
-    if (vehiclePrices.length > 0) {
-      const insertData = vehiclePrices.map((p) => ({
-        service_item_id: itemId,
+    /* 写库走 Server Action（编码服务端生成，主表 + 车型定价 + 指定用户价格 + 关联配件一次写完） */
+    const result = await 新建维修项目({
+      form,
+      vehiclePrices: vehiclePrices.map((p) => ({
         vehicle_model_id: p.vehicle_model_id,
         price: p.price,
         vip_price: p.vip_price,
         customer_parts_price: p.customer_parts_price,
         company_price: p.company_price,
         group_key: p.group_key || null,
-      }));
-      const batchSize = 500;
-      for (let i = 0; i < insertData.length; i += batchSize) {
-        const batch = insertData.slice(i, i + batchSize);
-        const { error: vpError } = await supabase.from("service_item_prices").insert(batch);
-        if (vpError) {
-          alert(`车型定价保存失败（第${i + 1}-${Math.min(i + batchSize, insertData.length)}条）: ` + vpError.message);
-          setLoading(false);
-          return;
-        }
-      }
-    }
+      })),
+      specialPrices: specialPrices.map((p) => ({
+        company_id: p.company_id || null,
+        customer_id: p.customer_id || null,
+        vehicle_id: p.vehicle_id || null,
+        price: p.price,
+      })),
+      linkedParts: linkedParts.map((p) => ({ id: p.id, quantity: p.quantity })),
+    });
 
-    // 保存指定用户价格
-    if (specialPrices.length > 0) {
-      const { error: spError } = await supabase.from("service_item_special_prices").insert(
-        specialPrices.map((p) => ({
-          service_item_id: itemId,
-          company_id: p.company_id || null,
-          customer_id: p.customer_id || null,
-          vehicle_id: p.vehicle_id || null,
-          price: p.price,
-        }))
-      );
-      if (spError) {
-        alert("指定用户价格保存失败: " + spError.message);
-        setLoading(false);
-        return;
-      }
-    }
-
-    // 保存关联配件
-    if (linkedParts.length > 0) {
-      const { error: lpError } = await supabase.from("service_item_part_names").insert(
-        linkedParts.map((p, idx) => ({
-          service_item_id: itemId,
-          part_name_id: p.id,
-          sort_order: idx,
-          quantity: p.quantity,
-        }))
-      );
-      if (lpError) {
-        alert("关联配件保存失败: " + lpError.message);
-        setLoading(false);
-        return;
-      }
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
+      setLoading(false);
+      return;
     }
 
     router.push("/service-items");

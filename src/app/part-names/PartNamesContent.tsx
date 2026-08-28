@@ -10,6 +10,8 @@ import { DeleteButton } from "./DeleteButton";
 import { BatchLinkDialog } from "./BatchLinkDialog";
 import { BatchMergeDialog } from "./BatchMergeDialog";
 import { SearchLinkSection } from "./SearchLinkSection";
+import { 新建配件名称, 批量导入配件名称 } from "./actions";
+import { 新建配件品牌, 新建配件规格 } from "@/app/inventory/actions";
 
 interface LinkedItem {
   id: string;
@@ -386,19 +388,14 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
       }
 
       setImportMsg(`将导入 ${toInsert.length} 条（跳过 ${duplicateInDb} 条已存在），开始导入...`);
-      const batchSize = 100;
-      let inserted = 0;
-      for (let i = 0; i < toInsert.length; i += batchSize) {
-        const batch = toInsert.slice(i, i + batchSize);
-        const { error } = await supabase.from("part_names").insert(batch);
-        if (error) {
-          setImportMsg(`第 ${i + 1} 批导入失败: ${error.message}`);
-          setImporting(false);
-          return;
-        }
-        inserted += batch.length;
-        setImportMsg(`已导入 ${inserted}/${toInsert.length} 条...`);
+      /* 分批插入走 Server Action（中途 session 断不会留下半截导入） */
+      const 导入结果 = await 批量导入配件名称({ rows: toInsert });
+      if (!导入结果.success) {
+        setImportMsg("导入失败: " + (导入结果.error || "未知错误"));
+        setImporting(false);
+        return;
       }
+      const inserted = 导入结果.inserted ?? 0;
 
       let msg = `导入完成：新增 ${inserted} 条`;
       if (duplicateInDb > 0) msg += `，跳过 ${duplicateInDb} 条（名称已存在）`;
@@ -441,17 +438,18 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
 
   async function createBrandAndLink() {
     if (!brandQuery.trim()) return;
-    const { data, error } = await supabase.from("part_brands").insert({ name: brandQuery.trim() }).select("id, name").single();
-    if (error || !data) { alert("创建品牌失败: " + (error?.message || "未知错误")); return; }
-    addBrand({ id: data.id, name: data.name });
+    /* 写库走 Server Action */
+    const result = await 新建配件品牌(brandQuery.trim());
+    if (!result.success || !result.id) { alert("创建品牌失败: " + (result.error || "未知错误")); return; }
+    addBrand({ id: result.id, name: brandQuery.trim() });
     setBrandQuery("");
   }
 
   async function createSpecAndLink() {
     if (!specQuery.trim()) return;
-    const { data, error } = await supabase.from("part_specifications").insert({ name: specQuery.trim() }).select("id, name").single();
-    if (error || !data) { alert("创建规格失败: " + (error?.message || "未知错误")); return; }
-    addSpec({ id: data.id, name: data.name });
+    const result = await 新建配件规格(specQuery.trim());
+    if (!result.success || !result.id) { alert("创建规格失败: " + (result.error || "未知错误")); return; }
+    addSpec({ id: result.id, name: specQuery.trim() });
     setSpecQuery("");
   }
 
@@ -485,50 +483,17 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
     }
     setSaving(true);
 
-    const trimmedName = form.name.trim();
-    const { data: existed } = await supabase
-      .from("part_names")
-      .select("id")
-      .eq("name", trimmedName)
-      .limit(1);
-    if (existed && existed.length > 0) {
-      alert(`配件名称"${trimmedName}"已存在，请使用其他名称`);
+    /* 写库走 Server Action（重名检查 + 建名称 + 关联品牌/规格，服务端一次完成） */
+    const result = await 新建配件名称({
+      form,
+      linkedBrandIds: linkedBrands.map((b) => b.id),
+      linkedSpecIds: linkedSpecs.map((s) => s.id),
+    });
+
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       setSaving(false);
       return;
-    }
-
-    const { data: inserted, error } = await supabase.from("part_names").insert({
-      name: trimmedName,
-      category_id: form.category_id,
-      unit: form.unit,
-      search_keywords: form.search_keywords || null,
-      default_quantity: form.default_quantity ? parseInt(form.default_quantity) : null,
-      auto_link_vehicle_model: form.auto_link_vehicle_model,
-      is_consumable: form.is_consumable,
-      sales_commission_type: form.sales_type || null,
-      sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-      diagnosis_commission_type: form.diagnosis_type || null,
-      diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-      repair_commission_type: form.repair_type || null,
-      repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-      qc_commission_type: form.qc_type || null,
-      qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-      picking_commission_type: form.picking_type || null,
-      picking_commission_value: form.picking_value ? parseFloat(form.picking_value) : null,
-    }).select("id").single();
-
-    if (error || !inserted) {
-      alert("保存失败: " + (error?.message || "未知错误"));
-      setSaving(false);
-      return;
-    }
-
-    const newId = inserted.id;
-    if (linkedBrands.length > 0) {
-      await supabase.from("part_name_brands").insert(linkedBrands.map((b) => ({ part_name_id: newId, brand_id: b.id })));
-    }
-    if (linkedSpecs.length > 0) {
-      await supabase.from("part_name_specifications").insert(linkedSpecs.map((s) => ({ part_name_id: newId, specification_id: s.id })));
     }
 
     setShowForm(false);

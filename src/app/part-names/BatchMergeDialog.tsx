@@ -1,9 +1,9 @@
 "use client";
 
-import {useState, useEffect, useMemo} from "react";
+import {useState, useEffect} from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 合并配件名称 } from "./actions";
 
 interface Props {
   open: boolean;
@@ -14,7 +14,6 @@ interface Props {
 
 export function BatchMergeDialog({ open, selectedNames, onClose, onSuccess }: Props) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [targetId, setTargetId] = useState<string>("");
   const [finalName, setFinalName] = useState("");
   const [merging, setMerging] = useState(false);
@@ -60,91 +59,19 @@ export function BatchMergeDialog({ open, selectedNames, onClose, onSuccess }: Pr
 
     setMerging(true);
 
-    // 1. 如果最终名称与目标不同，更新目标名称
-    if (finalName.trim() !== targetName) {
-      const { error: updateNameError } = await supabase
-        .from("part_names")
-        .update({ name: finalName.trim() })
-        .eq("id", targetId);
-      if (updateNameError) {
-        alert("更新合并后名称失败: " + updateNameError.message);
-        setMerging(false);
-        return;
-      }
-    }
-
-    // 2. 对每个非目标选中的配件进行合并
-    for (const source of selectedNames) {
-      if (source.id === targetId) continue;
-
-      // 2a. 处理 part_name_brands（避免 UNIQUE 冲突）
-      const { data: currentBrandLinks } = await supabase
-        .from("part_name_brands")
-        .select("brand_id, usage_count")
-        .eq("part_name_id", source.id);
-      const { data: targetBrandLinks } = await supabase
-        .from("part_name_brands")
-        .select("brand_id")
-        .eq("part_name_id", targetId);
-      const targetBrandIds = new Set((targetBrandLinks || []).map((l) => l.brand_id));
-
-      for (const link of currentBrandLinks || []) {
-        if (!targetBrandIds.has(link.brand_id)) {
-          await supabase.from("part_name_brands").insert({
-            part_name_id: targetId,
-            brand_id: link.brand_id,
-            usage_count: link.usage_count || 0,
-          });
-        }
-      }
-      await supabase.from("part_name_brands").delete().eq("part_name_id", source.id);
-
-      // 2b. 处理 part_name_specifications（避免 UNIQUE 冲突）
-      const { data: currentSpecLinks } = await supabase
-        .from("part_name_specifications")
-        .select("specification_id, usage_count")
-        .eq("part_name_id", source.id);
-      const { data: targetSpecLinks } = await supabase
-        .from("part_name_specifications")
-        .select("specification_id")
-        .eq("part_name_id", targetId);
-      const targetSpecIds = new Set((targetSpecLinks || []).map((l) => l.specification_id));
-
-      for (const link of currentSpecLinks || []) {
-        if (!targetSpecIds.has(link.specification_id)) {
-          await supabase.from("part_name_specifications").insert({
-            part_name_id: targetId,
-            specification_id: link.specification_id,
-            usage_count: link.usage_count || 0,
-          });
-        }
-      }
-      await supabase.from("part_name_specifications").delete().eq("part_name_id", source.id);
-
-      // 2c. 更新其他表的 part_name_id
-      const tables = ["parts", "work_order_parts", "company_part_prices", "purchase_order_items"];
-      for (const table of tables) {
-        const { error } = await supabase
-          .from(table)
-          .update({ part_name_id: targetId })
-          .eq("part_name_id", source.id);
-        if (error) {
-          alert(`合并失败（${table}）: ${error.message}`);
-          setMerging(false);
-          return;
-        }
-      }
-
-      // 2d. 删除原配件名称
-      const { error: delError } = await supabase.from("part_names").delete().eq("id", source.id);
-      if (delError) {
-        alert("合并失败（删除原名称）: " + delError.message);
-        setMerging(false);
-        return;
-      }
-    }
-
+    /* 合并走 Server Action + RPC merge_part_names 一个事务：
+     * 品牌/规格关联去重合并 + 4 张引用表换主 + 删除源名称，要么全成要么全败 */
+    const result = await 合并配件名称({
+      targetId,
+      sourceIds: selectedNames.filter((n) => n.id !== targetId).map((n) => n.id),
+      finalName: finalName.trim(),
+    });
     setMerging(false);
+    if (!result.success) {
+      alert("合并失败: " + (result.error || "未知错误"));
+      return;
+    }
+
     onSuccess();
     router.refresh();
   }
