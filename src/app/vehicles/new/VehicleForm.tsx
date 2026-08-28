@@ -8,7 +8,7 @@ import { VehicleModelSearch } from "@/components/VehicleModelSearch";
 import { ImageUploader } from "@/components/ImageUploader";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
-import { 标准化VIN } from "@/lib/vinValidator";
+import { 变更车主, 新建车辆 } from "../actions";
 
 type OwnerMode = "existing" | "new";
 
@@ -138,10 +138,10 @@ export default function VehicleForm() {
       return;
     }
     setSavingTransfer(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("vehicles").update({ customer_id: targetCustomerId }).eq("id", vehicleId);
-    if (error) {
-      alert("关联车辆失败: " + error.message);
+    /* 写库走 Server Action */
+    const result = await 变更车主({ vehicleId, customerId: targetCustomerId });
+    if (!result.success) {
+      alert("关联车辆失败: " + (result.error || "未知错误"));
       setSavingTransfer(false);
       return;
     }
@@ -156,10 +156,9 @@ export default function VehicleForm() {
       return;
     }
     setSavingTransfer(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("vehicles").update({ customer_id: targetCustomerId }).eq("id", vehicleId);
-    if (error) {
-      alert("变更车主失败: " + error.message);
+    const result = await 变更车主({ vehicleId, customerId: targetCustomerId });
+    if (!result.success) {
+      alert("变更车主失败: " + (result.error || "未知错误"));
       setSavingTransfer(false);
       return;
     }
@@ -209,86 +208,32 @@ export default function VehicleForm() {
       return;
     }
 
-    let customerId = existingCustomerId;
-    const supabase = createClient();
+    /* 组装照片清单 */
+    const photos: { category: string; url: string }[] = [];
+    exteriorPhotos.forEach((url) => photos.push({ category: "exterior", url }));
+    nameplatePhotos.forEach((url) => photos.push({ category: "nameplate", url }));
+    licenseFrontPhotos.forEach((url) => photos.push({ category: "license_front", url }));
+    licenseBackPhotos.forEach((url) => photos.push({ category: "license_back", url }));
 
-    if (ownerMode === "new") {
-      if (!newCustomer.name.trim()) {
-        alert("请填写新车主的姓名");
-        return;
-      }
-      const { data: cust, error: custErr } = await supabase
-        .from("customers")
-        .insert({ name: newCustomer.name.trim(), phone: newCustomer.phone.trim() || null, gender: newCustomer.gender || null })
-        .select("id")
-        .single();
-      if (custErr || !cust) {
-        alert("创建车主失败: " + (custErr?.message || "未知错误"));
-        return;
-      }
-      customerId = cust.id;
-    } else {
-      if (!existingCustomerId) {
-        alert("请选择已有车主");
-        return;
-      }
-    }
-
-    // 车牌号唯一性校验
-    const { data: existingPlate } = await supabase
-      .from("vehicles")
-      .select("id")
-      .eq("plate_number", form.plate_number.trim().toUpperCase())
-      .maybeSingle();
-    if (existingPlate) {
-      alert("该车牌号已被使用，请更换");
-      setLoading(false);
-      return;
-    }
-
-    // VIN 唯一性校验（此前误写成 form.标准化VIN(vin)，填 VIN 保存必报错，已改为库函数调用）
-    if (form.vin.trim()) {
-      const { data: existingVin } = await supabase
-        .from("vehicles")
-        .select("id")
-        .eq("vin", 标准化VIN(form.vin))
-        .maybeSingle();
-      if (existingVin) {
-        alert("该 VIN 码已被使用，请更换");
+    setLoading(true);
+    /* 写库走 Server Action（建车主→查重→建车→插照片，服务端一次完成） */
+    try {
+      const result = await 新建车辆({
+        existingCustomerId: ownerMode === "existing" ? existingCustomerId : "",
+        newCustomer: ownerMode === "new" ? newCustomer : null,
+        companyId,
+        form,
+        photos,
+      });
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
         setLoading(false);
         return;
       }
-    }
-
-    setLoading(true);
-    const { data: vehicleData, error } = await supabase.from("vehicles").insert({
-      customer_id: customerId,
-      company_id: companyId || null,
-      vehicle_model_id: form.vehicle_model_id,
-      plate_number: form.plate_number.trim(),
-      vin: form.vin.trim() || null,
-      brand: form.brand.trim() || null,
-      model: form.model.trim() || null,
-      engine_no: form.engine_no.trim() || null,
-      chassis_code: form.chassis_code.trim() || null,
-      transmission_type: form.transmission_type.trim() || null,
-      transmission_code: form.transmission_code.trim() || null,
-      color: form.color.trim() || null,
-      year: form.year ? parseInt(form.year) : null,
-      mileage: form.mileage ? parseInt(form.mileage) : null,
-      notes: form.notes.trim() || null,
-    }).select("id").single();
-
-    if (error || !vehicleData?.id) { alert("保存失败: " + (error?.message || "未知错误")); setLoading(false); return; }
-
-    const vehicleId = vehicleData.id;
-    const photoInserts: { vehicle_id: string; category: string; url: string; storage_path: string }[] = [];
-    exteriorPhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "exterior", url, storage_path: url }));
-    nameplatePhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "nameplate", url, storage_path: url }));
-    licenseFrontPhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "license_front", url, storage_path: url }));
-    licenseBackPhotos.forEach((url) => photoInserts.push({ vehicle_id: vehicleId, category: "license_back", url, storage_path: url }));
-    if (photoInserts.length > 0) {
-      await supabase.from("vehicle_photos").insert(photoInserts);
+    } catch {
+      alert("保存失败：网络异常，请重试");
+      setLoading(false);
+      return;
     }
 
     router.push("/vehicles");

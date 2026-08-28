@@ -1,9 +1,9 @@
 "use client";
 
-import {useState, useMemo} from "react";
+import {useState} from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 更新提醒状态 } from "../actions";
 
 interface 提醒 {
   id: string;
@@ -19,31 +19,17 @@ interface 提醒 {
 
 export function ReminderActions({ reminder }: { reminder: 提醒 }) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
   const [notes, setNotes] = useState(reminder.notes || "");
   const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function markNotified() {
     setLoading(true);
-    const { error } = await supabase
-      .from("maintenance_reminders")
-      .update({ status: "notified", notes: notes.trim() || null })
-      .eq("id", reminder.id);
-    if (error) {
-      alert("操作失败: " + error.message);
+    /* 写库走 Server Action（状态 + 通知记录一次完成） */
+    const result = await 更新提醒状态({ reminderId: reminder.id, action: "notified", notes });
+    if (!result.success) {
+      alert("操作失败: " + (result.error || "未知错误"));
     } else {
-      // 同时创建通知记录
-      await supabase.from("notifications").insert({
-        customer_id: reminder.customer_id,
-        type: "maintenance_due",
-        title: reminder.title,
-        content: `您的车辆 (${reminder.vehicles?.plate_number}) ${reminder.title}，${reminder.reminder_type === "time" ? "已到期" : "已达到建议保养里程"}，请及时预约到店。`,
-        status: "sent",
-        sent_at: new Date().toISOString(),
-        related_type: "maintenance_reminder",
-        related_id: reminder.id,
-      });
       router.refresh();
     }
     setLoading(false);
@@ -51,12 +37,9 @@ export function ReminderActions({ reminder }: { reminder: 提醒 }) {
 
   async function markCompleted() {
     setLoading(true);
-    const { error } = await supabase
-      .from("maintenance_reminders")
-      .update({ status: "completed", notes: notes.trim() || null })
-      .eq("id", reminder.id);
-    if (error) {
-      alert("操作失败: " + error.message);
+    const result = await 更新提醒状态({ reminderId: reminder.id, action: "completed", notes });
+    if (!result.success) {
+      alert("操作失败: " + (result.error || "未知错误"));
     } else {
       router.push("/reminders");
       router.refresh();
@@ -67,12 +50,9 @@ export function ReminderActions({ reminder }: { reminder: 提醒 }) {
   async function cancelReminder() {
     if (!(await 请求确认("确定取消此提醒吗？"))) return;
     setLoading(true);
-    const { error } = await supabase
-      .from("maintenance_reminders")
-      .update({ status: "cancelled" })
-      .eq("id", reminder.id);
-    if (error) {
-      alert("操作失败: " + error.message);
+    const result = await 更新提醒状态({ reminderId: reminder.id, action: "cancelled" });
+    if (!result.success) {
+      alert("操作失败: " + (result.error || "未知错误"));
     } else {
       router.push("/reminders");
       router.refresh();

@@ -2,6 +2,7 @@
 
 import {useState, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 导入车辆 } from "./actions";
 import * as XLSX from "xlsx";
 
 interface Vehicle {
@@ -227,183 +228,19 @@ export default function VehicleImportExport({ vehicles }: VehicleImportExportPro
         return;
       }
 
-      // 缓存车主和单位
-      const phoneToCustomerId = new Map<string, string>();
-      const nameToCustomerId = new Map<string, string>();
-      const companyNameToId = new Map<string, string>();
+      setImportMsg(`正在导入 ${newRows.length} 条车辆数据（含查重、建车主/单位）...`);
 
-      // 收集需要查找的车主和单位
-      const uniquePhones = [...new Set(newRows.map((r) => r.ownerPhone).filter(Boolean))];
-      const uniqueNames = [...new Set(newRows.map((r) => r.ownerName).filter(Boolean))];
-      const uniqueCompanies = [...new Set(newRows.map((r) => r.companyName).filter(Boolean))];
-
-      // 批量查询车主（按电话）
-      if (uniquePhones.length > 0) {
-        for (let i = 0; i < uniquePhones.length; i += 500) {
-          const batch = uniquePhones.slice(i, i + 500);
-          const { data } = await supabase.from("customers").select("id, phone").in("phone", batch);
-          data?.forEach((r: unknown) => { const rv = r as Record<string, unknown>; phoneToCustomerId.set(rv.phone as string, rv.id as string); });
-        }
-      }
-
-      // 批量查询车主（按姓名）——只查还没有匹配到电话的
-      const unmatchedNames = uniqueNames.filter((n) => {
-        return !newRows.some((r) => r.ownerName === n && r.ownerPhone && phoneToCustomerId.has(r.ownerPhone));
-      });
-      if (unmatchedNames.length > 0) {
-        for (let i = 0; i < unmatchedNames.length; i += 500) {
-          const batch = unmatchedNames.slice(i, i + 500);
-          const { data } = await supabase.from("customers").select("id, name").in("name", batch);
-          data?.forEach((r: unknown) => {
-            const rv = r as Record<string, unknown>;
-            if (!nameToCustomerId.has(rv.name as string)) nameToCustomerId.set(rv.name as string, rv.id as string);
-          });
-        }
-      }
-
-      // 批量查询单位
-      if (uniqueCompanies.length > 0) {
-        for (let i = 0; i < uniqueCompanies.length; i += 500) {
-          const batch = uniqueCompanies.slice(i, i + 500);
-          const { data } = await supabase.from("companies").select("id, name").in("name", batch);
-          data?.forEach((r: unknown) => {
-            const rv = r as Record<string, unknown>;
-            companyNameToId.set(rv.name as string, rv.id as string);
-          });
-        }
-      }
-
-      // 为找不到车主的行创建新客户
-      const customersToCreate: { name: string; phone: string }[] = [];
-      const createdPhoneToId = new Map<string, string>();
-
-      for (const row of newRows) {
-        if (!row.ownerPhone && !row.ownerName) continue;
-        let foundId: string | null = null;
-        if (row.ownerPhone) foundId = phoneToCustomerId.get(row.ownerPhone) || null;
-        if (!foundId && row.ownerName) foundId = nameToCustomerId.get(row.ownerName) || null;
-        if (!foundId && row.ownerPhone) {
-          // 需要创建
-          const key = `${row.ownerName}|${row.ownerPhone}`;
-          if (!createdPhoneToId.has(key)) {
-            customersToCreate.push({ name: row.ownerName || row.ownerPhone, phone: row.ownerPhone });
-            createdPhoneToId.set(key, "pending");
-          }
-        }
-      }
-
-      if (customersToCreate.length > 0) {
-        setImportMsg(`正在创建 ${customersToCreate.length} 个新客户...`);
-        // 先过滤掉 phone 已存在的（可能刚才查询时遗漏了）
-        const phonesToCreate = customersToCreate.map((c) => c.phone);
-        const { data: existingPhoneData } = await supabase.from("customers").select("id, phone").in("phone", phonesToCreate);
-        const existingPhoneSet = new Set(existingPhoneData?.map((r: unknown) => (r as Record<string, unknown>).phone as string) || []);
-        const filteredCreate = customersToCreate.filter((c) => !existingPhoneSet.has(c.phone));
-
-        if (filteredCreate.length > 0) {
-          const { data: insertedCustomers, error: custErr } = await supabase
-            .from("customers")
-            .insert(filteredCreate)
-            .select("id, phone");
-          if (custErr) {
-            setImportMsg("创建车主失败: " + custErr.message);
-            setImporting(false);
-            return;
-          }
-          insertedCustomers?.forEach((r: unknown) => {
-            const rv = r as Record<string, unknown>;
-            createdPhoneToId.set(rv.phone as string, rv.id as string);
-          });
-        }
-        // 把已有的也加入映射
-        existingPhoneData?.forEach((r: unknown) => {
-          const rv = r as Record<string, unknown>;
-          createdPhoneToId.set(rv.phone as string, rv.id as string);
-        });
-      }
-
-      // 为找不到单位的行创建新单位
-      const companiesToCreate: { name: string }[] = [];
-      const createdCompanyToId = new Map<string, string>();
-
-      for (const row of newRows) {
-        if (!row.companyName) continue;
-        if (!companyNameToId.has(row.companyName)) {
-          if (!createdCompanyToId.has(row.companyName)) {
-            companiesToCreate.push({ name: row.companyName });
-            createdCompanyToId.set(row.companyName, "pending");
-          }
-        }
-      }
-
-      if (companiesToCreate.length > 0) {
-        setImportMsg(`正在创建 ${companiesToCreate.length} 个新单位...`);
-        const { data: insertedCompanies, error: compErr } = await supabase
-          .from("companies")
-          .insert(companiesToCreate)
-          .select("id, name");
-        if (compErr) {
-          setImportMsg("创建单位失败: " + compErr.message);
-          setImporting(false);
-          return;
-        }
-        insertedCompanies?.forEach((r: unknown) => {
-          const rv = r as Record<string, unknown>;
-          createdCompanyToId.set(rv.name as string, rv.id as string);
-        });
-      }
-
-      // 组装车辆记录
-      const vehicleRecords: Record<string, unknown>[] = [];
-      for (const row of newRows) {
-        let customerId: string | null = null;
-        if (row.ownerPhone) {
-          customerId = phoneToCustomerId.get(row.ownerPhone) || createdPhoneToId.get(row.ownerPhone) || null;
-        }
-        if (!customerId && row.ownerName) {
-          customerId = nameToCustomerId.get(row.ownerName) || null;
-        }
-
-        let companyId: string | null = null;
-        if (row.companyName) {
-          companyId = companyNameToId.get(row.companyName) || createdCompanyToId.get(row.companyName) || null;
-        }
-
-        vehicleRecords.push({
-          plate_number: row.plate,
-          vin: row.vin || null,
-          brand: row.brand || null,
-          model: row.model || null,
-          engine_no: row.engine_no || null,
-          color: row.color || null,
-          year: row.year,
-          mileage: row.mileage,
-          customer_id: customerId,
-          company_id: companyId,
-          notes: row.notes || null,
-        });
-      }
-
-      setImportMsg(`正在导入 ${vehicleRecords.length} 条车辆数据...`);
-
-      // 批量插入车辆
-      const batchSize = 500;
-      let inserted = 0;
-      for (let i = 0; i < vehicleRecords.length; i += batchSize) {
-        const batch = vehicleRecords.slice(i, i + batchSize);
-        const { error } = await supabase.from("vehicles").insert(batch);
-        if (error) {
-          setImportMsg(`第 ${i + 1} 批导入失败: ${error.message}`);
-          setImporting(false);
-          return;
-        }
-        inserted += batch.length;
-        setImportMsg(`已导入 ${inserted}/${vehicleRecords.length} 条...`);
+      /* 查重、找/建车主、找/建单位、分批插入全部在服务端一次完成 */
+      const 结果 = await 导入车辆({ rows: newRows });
+      if (!结果.success) {
+        setImportMsg("导入失败: " + (结果.error || "未知错误"));
+        setImporting(false);
+        return;
       }
 
       setImportMsg(
-        `导入完成：新增 ${inserted} 条车辆` +
-          (skippedCount > 0 ? `，跳过 ${skippedCount} 条（车牌号或 VIN 已存在）` : "")
+        `导入完成：新增 ${结果.inserted ?? 0} 条车辆` +
+          ((结果.skipped ?? 0) > 0 ? `，跳过 ${结果.skipped} 条（车牌号或 VIN 已存在）` : "")
       );
       window.location.reload();
     } catch (err: unknown) {
