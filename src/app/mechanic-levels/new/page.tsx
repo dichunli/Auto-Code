@@ -1,13 +1,12 @@
 "use client";
 
-import {useState, useMemo} from "react";
+import {useState} from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 保存技师等级 } from "../actions";
 
 export default function NewMechanicLevelPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
 
   const [name, setName] = useState("");
   const [levelCode, setLevelCode] = useState("");
@@ -35,14 +34,16 @@ export default function NewMechanicLevelPage() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.from("mechanic_levels").insert({
+      /* 写库走 Server Action */
+      const result = await 保存技师等级({
+        id: null,
         name,
-        level_code: levelCode || null,
-        share_coefficient: numCoefficient,
-        commission_weight: numWeight,
+        levelCode,
+        shareCoefficient: numCoefficient,
+        commissionWeight: numWeight,
       });
 
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       router.push("/mechanic-levels");
       router.refresh();

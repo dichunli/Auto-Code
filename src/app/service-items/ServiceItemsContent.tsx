@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import * as XLSX from "xlsx";
+import { 批量更新维修项目, 批量导入维修项目 } from "./actions";
 import ServiceItemMergeDialog from "@/components/ServiceItemMergeDialog";
 
 interface ServiceItem {
@@ -161,10 +162,11 @@ export default function ServiceItemsContent({ items, categories }: Props) {
       return;
     }
     setBatchSaving(true);
-    const { error } = await supabase.from("service_items").update(updates).in("id", ids);
+    /* 写库走 Server Action */
+    const result = await 批量更新维修项目({ ids, updates: updates as Parameters<typeof 批量更新维修项目>[0]["updates"] });
     setBatchSaving(false);
-    if (error) {
-      alert("批量修改失败: " + error.message);
+    if (!result.success) {
+      alert("批量修改失败: " + (result.error || "未知错误"));
       return;
     }
     setBatchOpen(false);
@@ -271,19 +273,14 @@ export default function ServiceItemsContent({ items, categories }: Props) {
       }
 
       setImportMsg(`验证通过 ${records.length} 条，开始导入...`);
-      const batchSize = 100;
-      let inserted = 0;
-      for (let i = 0; i < records.length; i += batchSize) {
-        const batch = records.slice(i, i + batchSize);
-        const { error } = await supabase.from("service_items").insert(batch);
-        if (error) {
-          setImportMsg(`第 ${i + 1} 批导入失败: ${error.message}`);
-          setImporting(false);
-          return;
-        }
-        inserted += batch.length;
-        setImportMsg(`已导入 ${inserted}/${records.length} 条...`);
+      /* 分批插入走 Server Action */
+      const 导入结果 = await 批量导入维修项目({ rows: records });
+      if (!导入结果.success) {
+        setImportMsg("导入失败: " + (导入结果.error || "未知错误"));
+        setImporting(false);
+        return;
       }
+      const inserted = 导入结果.inserted ?? 0;
 
       let msg = `导入完成：新增 ${inserted} 条`;
       if (errors.length > 0) {

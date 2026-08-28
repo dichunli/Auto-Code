@@ -5,6 +5,8 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { SearchLinkSection } from "../../SearchLinkSection";
+import { 更新配件名称 } from "../../actions";
+import { 新建配件品牌, 新建配件规格 } from "@/app/inventory/actions";
 
 interface LinkedItem {
   id: string;
@@ -197,17 +199,18 @@ export default function EditPartNamePage() {
 
   async function createBrandAndLink() {
     if (!brandQuery.trim()) return;
-    const { data, error } = await supabase.from("part_brands").insert({ name: brandQuery.trim() }).select("id, name").single();
-    if (error || !data) { alert("创建品牌失败: " + (error?.message || "未知错误")); return; }
-    addBrand({ id: data.id, name: data.name });
+    /* 写库走 Server Action */
+    const result = await 新建配件品牌(brandQuery.trim());
+    if (!result.success || !result.id) { alert("创建品牌失败: " + (result.error || "未知错误")); return; }
+    addBrand({ id: result.id, name: brandQuery.trim() });
     setBrandQuery("");
   }
 
   async function createSpecAndLink() {
     if (!specQuery.trim()) return;
-    const { data, error } = await supabase.from("part_specifications").insert({ name: specQuery.trim() }).select("id, name").single();
-    if (error || !data) { alert("创建规格失败: " + (error?.message || "未知错误")); return; }
-    addSpec({ id: data.id, name: data.name });
+    const result = await 新建配件规格(specQuery.trim());
+    if (!result.success || !result.id) { alert("创建规格失败: " + (result.error || "未知错误")); return; }
+    addSpec({ id: result.id, name: specQuery.trim() });
     setSpecQuery("");
   }
 
@@ -238,43 +241,14 @@ export default function EditPartNamePage() {
     if (!form.name.trim() || !form.category_id) { alert("请填写配件名称和所属分类"); return; }
     setSaving(true);
 
-    const { error } = await supabase.from("part_names").update({
-      name: form.name.trim(), category_id: form.category_id, unit: form.unit,
-      search_keywords: form.search_keywords || null,
-      default_quantity: form.default_quantity ? parseInt(form.default_quantity) : null,
-      auto_link_vehicle_model: form.auto_link_vehicle_model,
-      auto_match_17vin_models: form.auto_match_17vin_models,
-      is_consumable: form.is_consumable,
-      require_scan_check: form.require_scan_check,
-      require_location_check: form.require_location_check,
-      sales_commission_type: form.sales_type || null, sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-      diagnosis_commission_type: form.diagnosis_type || null, diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-      repair_commission_type: form.repair_type || null, repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-      qc_commission_type: form.qc_type || null, qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-      picking_commission_type: form.picking_type || null, picking_commission_value: form.picking_value ? parseFloat(form.picking_value) : null,
-    }).eq("id", id);
-
-    if (error) { alert("保存失败: " + error.message); setSaving(false); return; }
-
-    // 同步品牌关联
-    const { data: existingBrands } = await supabase.from("part_name_brands").select("brand_id").eq("part_name_id", id);
-    interface ExistingBrand { brand_id: string; }
-    const existingBrandIds = new Set((existingBrands || []).map((b: ExistingBrand) => b.brand_id));
-    const newBrandIds = new Set(linkedBrands.map((b) => b.id));
-    const brandsToDelete = Array.from(existingBrandIds).filter((bid) => !newBrandIds.has(bid));
-    const brandsToInsert = Array.from(newBrandIds).filter((bid) => !existingBrandIds.has(bid));
-    if (brandsToDelete.length > 0) await supabase.from("part_name_brands").delete().eq("part_name_id", id).in("brand_id", brandsToDelete);
-    if (brandsToInsert.length > 0) await supabase.from("part_name_brands").insert(brandsToInsert.map((bid) => ({ part_name_id: id, brand_id: bid })));
-
-    // 同步规格关联
-    const { data: existingSpecs } = await supabase.from("part_name_specifications").select("specification_id").eq("part_name_id", id);
-    interface ExistingSpec { specification_id: string; }
-    const existingSpecIds = new Set((existingSpecs || []).map((s: ExistingSpec) => s.specification_id));
-    const newSpecIds = new Set(linkedSpecs.map((s) => s.id));
-    const specsToDelete = Array.from(existingSpecIds).filter((sid) => !newSpecIds.has(sid));
-    const specsToInsert = Array.from(newSpecIds).filter((sid) => !existingSpecIds.has(sid));
-    if (specsToDelete.length > 0) await supabase.from("part_name_specifications").delete().eq("part_name_id", id).in("specification_id", specsToDelete);
-    if (specsToInsert.length > 0) await supabase.from("part_name_specifications").insert(specsToInsert.map((sid) => ({ part_name_id: id, specification_id: sid })));
+    /* 写库走 Server Action（重名检查 + 更新 + 品牌/规格关联差量同步，服务端一次完成） */
+    const result = await 更新配件名称({
+      id,
+      form,
+      linkedBrandIds: linkedBrands.map((b) => b.id),
+      linkedSpecIds: linkedSpecs.map((s) => s.id),
+    });
+    if (!result.success) { alert("保存失败: " + (result.error || "未知错误")); setSaving(false); return; }
 
     router.push("/part-names");
     router.refresh();

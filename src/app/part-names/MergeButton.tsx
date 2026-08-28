@@ -1,13 +1,12 @@
 "use client";
 
-import {useState, useMemo} from "react";
+import {useState} from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 合并配件名称 } from "./actions";
 
 export function MergeButton({ id, name, allNames }: { id: string; name: string; allNames: { id: string; name: string }[] }) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [open, setOpen] = useState(false);
   const [targetId, setTargetId] = useState("");
   const [merging, setMerging] = useState(false);
@@ -26,43 +25,10 @@ export function MergeButton({ id, name, allNames }: { id: string; name: string; 
     }
     setMerging(true);
 
-    // 1. 处理 part_name_brands（避免 UNIQUE 冲突）
-    const { data: currentLinks } = await supabase
-      .from("part_name_brands")
-      .select("brand_id, usage_count")
-      .eq("part_name_id", id);
-    const { data: targetLinks } = await supabase
-      .from("part_name_brands")
-      .select("brand_id")
-      .eq("part_name_id", targetId);
-    const targetBrandIds = new Set((targetLinks || []).map((l) => l.brand_id));
-
-    for (const link of currentLinks || []) {
-      if (!targetBrandIds.has(link.brand_id)) {
-        await supabase.from("part_name_brands").insert({
-          part_name_id: targetId,
-          brand_id: link.brand_id,
-          usage_count: link.usage_count || 0,
-        });
-      }
-    }
-    await supabase.from("part_name_brands").delete().eq("part_name_id", id);
-
-    // 2. 更新其他表的 part_name_id
-    const tables = ["parts", "work_order_parts", "company_part_prices", "purchase_order_items"];
-    for (const table of tables) {
-      const { error } = await supabase.from(table).update({ part_name_id: targetId }).eq("part_name_id", id);
-      if (error) {
-        alert(`合并失败（${table}）: ${error.message}`);
-        setMerging(false);
-        return;
-      }
-    }
-
-    // 3. 删除原配件名称
-    const { error: delError } = await supabase.from("part_names").delete().eq("id", id);
-    if (delError) {
-      alert("合并失败（删除原名称）: " + delError.message);
+    /* 合并走 Server Action + RPC merge_part_names 一个事务（不改名） */
+    const result = await 合并配件名称({ targetId, sourceIds: [id] });
+    if (!result.success) {
+      alert("合并失败: " + (result.error || "未知错误"));
       setMerging(false);
       return;
     }

@@ -4,6 +4,7 @@ import {useState, useCallback, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新建品牌并关联 } from "../actions";
 
 interface 品牌搜索结果 {
   id: string;
@@ -70,20 +71,15 @@ export default function NewPartBrandPage() {
     if (!name.trim()) { alert("请输入品牌名称"); return; }
     setLoading(true);
 
-    const { data: brandData, error: brandError } = await supabase
-      .from("part_brands").insert({ name: name.trim() }).select("id").single();
-
-    if (brandError || !brandData) {
-      alert("保存失败: " + (brandError?.message || "未知错误"));
+    /* 写库走 Server Action（建品牌 + 关联配件名称，服务端一次完成） */
+    const result = await 新建品牌并关联({
+      name: name.trim(),
+      partNameIds: Array.from(selectedIds),
+    });
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       setLoading(false);
       return;
-    }
-
-    const brandId = brandData.id;
-    if (selectedIds.size > 0) {
-      const rows = Array.from(selectedIds).map((partNameId) => ({ brand_id: brandId, part_name_id: partNameId }));
-      const { error: linkError } = await supabase.from("part_name_brands").insert(rows);
-      if (linkError) { alert("品牌创建成功，但关联配件名称失败: " + linkError.message); setLoading(false); return; }
     }
 
     router.push("/part-brands");

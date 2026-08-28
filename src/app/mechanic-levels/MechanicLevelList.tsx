@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { 删除技师等级 } from "./actions";
+import { 删除技师等级, 交换等级排序 } from "./actions";
 import { useConfirm } from "@/components/ConfirmDialog";
 
 interface Level {
@@ -21,7 +20,6 @@ interface Props {
 
 export function MechanicLevelList({ levels }: Props) {
   const router = useRouter();
-  const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete(id: string, name: string) {
@@ -43,10 +41,8 @@ export function MechanicLevelList({ levels }: Props) {
     const current = levels[index];
     const prev = levels[index - 1];
 
-    await Promise.all([
-      supabase.from("mechanic_levels").update({ sort_order: prev.sort_order }).eq("id", current.id),
-      supabase.from("mechanic_levels").update({ sort_order: current.sort_order }).eq("id", prev.id),
-    ]);
+    /* 排序交换走 Server Action */
+    await 交换等级排序({ idA: current.id, sortA: current.sort_order, idB: prev.id, sortB: prev.sort_order });
 
     router.refresh();
   }
@@ -56,10 +52,7 @@ export function MechanicLevelList({ levels }: Props) {
     const current = levels[index];
     const next = levels[index + 1];
 
-    await Promise.all([
-      supabase.from("mechanic_levels").update({ sort_order: next.sort_order }).eq("id", current.id),
-      supabase.from("mechanic_levels").update({ sort_order: current.sort_order }).eq("id", next.id),
-    ]);
+    await 交换等级排序({ idA: current.id, sortA: current.sort_order, idB: next.id, sortB: next.sort_order });
 
     router.refresh();
   }

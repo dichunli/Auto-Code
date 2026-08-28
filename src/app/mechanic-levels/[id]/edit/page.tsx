@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 保存技师等级 } from "../../actions";
 
 export default function EditMechanicLevelPage() {
   const router = useRouter();
@@ -59,18 +60,17 @@ export default function EditMechanicLevelPage() {
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("mechanic_levels")
-        .update({
-          name,
-          level_code: levelCode || null,
-          share_coefficient: numCoefficient,
-          commission_weight: numWeight,
-          sort_order: parseInt(sortOrder) || 0,
-        })
-        .eq("id", levelId);
+      /* 写库走 Server Action */
+      const result = await 保存技师等级({
+        id: levelId,
+        name,
+        levelCode,
+        shareCoefficient: numCoefficient,
+        commissionWeight: numWeight,
+        sortOrder: parseInt(sortOrder) || 0,
+      });
 
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       router.push("/mechanic-levels");
       router.refresh();

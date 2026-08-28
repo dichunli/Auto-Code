@@ -4,6 +4,7 @@ import {useState, useCallback, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新建规格并关联 } from "../actions";
 
 interface 规格项 {
   id: string;
@@ -50,9 +51,10 @@ export default function NewPartSpecificationPage() {
     if (!name.trim()) { alert("请输入规格名称"); return; }
     setLoading(true);
 
-    const { error } = await supabase.from("part_specifications").insert({ name: name.trim() });
-    if (error) {
-      alert("保存失败: " + error.message);
+    /* 写库走 Server Action */
+    const result = await 新建规格并关联({ name: name.trim(), partNameIds: [] });
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       setLoading(false);
       return;
     }

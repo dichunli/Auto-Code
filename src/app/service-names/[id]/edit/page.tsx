@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 更新维修项目名称, 同步提成到维修项目 } from "../../actions";
 
 interface LinkedItem {
   id: string;
@@ -251,41 +252,13 @@ export default function EditServiceNamePage() {
 
     setSyncing(true);
     try {
-      const { data: items, error: fetchError } = await supabase
-        .from("service_items")
-        .select("id")
-        .eq("service_name_id", id);
-
-      if (fetchError) {
-        alert("查询关联维修项目失败: " + fetchError.message);
+      /* 写库走 Server Action */
+      const result = await 同步提成到维修项目({ id, form });
+      if (!result.success) {
+        alert(result.error || "同步失败");
         return;
       }
-
-      if (!items || items.length === 0) {
-        alert("当前名称库没有关联任何维修项目，无需同步");
-        return;
-      }
-
-      const { error: updateError } = await supabase
-        .from("service_items")
-        .update({
-          sales_commission_type: form.sales_type || null,
-          sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-          diagnosis_commission_type: form.diagnosis_type || null,
-          diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-          repair_commission_type: form.repair_type || null,
-          repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-          qc_commission_type: form.qc_type || null,
-          qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-        })
-        .eq("service_name_id", id);
-
-      if (updateError) {
-        alert("同步失败: " + updateError.message);
-        return;
-      }
-
-      alert(`已成功同步到 ${items.length} 个维修项目`);
+      alert(`已成功同步到 ${result.count} 个维修项目`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert("同步异常: " + msg);
@@ -302,44 +275,16 @@ export default function EditServiceNamePage() {
     }
     setSaving(true);
 
-    const { error } = await supabase
-      .from("service_names")
-      .update({
-        category_id: form.category_id,
-        name: form.name.trim(),
-        search_keywords: form.search_keywords || null,
-        sales_commission_type: form.sales_type || null,
-        sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-        diagnosis_commission_type: form.diagnosis_type || null,
-        diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-        repair_commission_type: form.repair_type || null,
-        repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-        qc_commission_type: form.qc_type || null,
-        qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert("保存失败: " + error.message);
+    /* 写库走 Server Action（更新 + 配件关联全量替换，服务端一次完成） */
+    const result = await 更新维修项目名称({
+      id,
+      form,
+      linkedParts: linkedParts.map((p) => ({ id: p.id, quantity: p.quantity })),
+    });
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       setSaving(false);
       return;
-    }
-
-    const { error: delError } = await supabase.from("service_name_part_names").delete().eq("service_name_id", id);
-    if (delError) {
-      alert("删除旧配件关联失败: " + delError.message);
-      setSaving(false);
-      return;
-    }
-    if (linkedParts.length > 0) {
-      const { error: insertError } = await supabase
-        .from("service_name_part_names")
-        .insert(linkedParts.map((p, idx) => ({ service_name_id: id, part_name_id: p.id, sort_order: idx, quantity: p.quantity })));
-      if (insertError) {
-        alert("保存配件关联失败: " + insertError.message);
-        setSaving(false);
-        return;
-      }
     }
 
     router.push("/service-names");

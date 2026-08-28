@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
 import { BatchLinkDialog } from "./BatchLinkDialog";
+import { 新建规格并关联, 批量导入配件规格 } from "./actions";
 
 function normalize(str: string) {
   return str.toLowerCase().replace(/[\s\p{P}]/gu, "");
@@ -139,30 +140,15 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
     }
     setSaving(true);
 
-    const { data: specData, error: specError } = await supabase
-      .from("part_specifications")
-      .insert({ name: name.trim() })
-      .select("id")
-      .single();
-
-    if (specError || !specData) {
-      alert("保存失败: " + (specError?.message || "未知错误"));
+    /* 写库走 Server Action（建规格 + 关联配件名称，服务端一次完成） */
+    const result = await 新建规格并关联({
+      name: name.trim(),
+      partNameIds: linkedNames.map((n) => n.id),
+    });
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       setSaving(false);
       return;
-    }
-
-    const specId = specData.id;
-    if (linkedNames.length > 0) {
-      const rows = linkedNames.map((n) => ({
-        specification_id: specId,
-        part_name_id: n.id,
-      }));
-      const { error: linkError } = await supabase.from("part_name_specifications").insert(rows);
-      if (linkError) {
-        alert("规格创建成功，但关联配件名称失败: " + linkError.message);
-        setSaving(false);
-        return;
-      }
     }
 
     setShowForm(false);
@@ -224,15 +210,15 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
       if (cols[0]) namesToInsert.push(cols[0]);
     }
 
-    let success = 0;
-    let failed = 0;
-    for (const n of namesToInsert) {
-      const { error } = await supabase.from("part_specifications").insert({ name: n });
-      if (error) failed++;
-      else success++;
+    /* 逐条插入走 Server Action（允许部分失败，与原逻辑一致） */
+    const result = await 批量导入配件规格({ names: namesToInsert });
+    if (!result.success) {
+      alert("导入失败: " + (result.error || "未知错误"));
+      setImportLoading(false);
+      return;
     }
 
-    alert(`导入完成：成功 ${success} 条，失败 ${failed} 条`);
+    alert(`导入完成：成功 ${result.成功 ?? 0} 条，失败 ${result.失败 ?? 0} 条`);
     setImportOpen(false);
     setImportLoading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";

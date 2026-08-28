@@ -2,6 +2,7 @@
 
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 批量关联配件名称 } from "./actions";
 
 interface 关联项 {
   id: string;
@@ -28,7 +29,6 @@ export function BatchLinkDialog({ open, type, selectedIds, onClose, onSuccess }:
   const placeholder = isBrand ? "搜索品牌名称..." : "搜索规格名称...";
   const table = isBrand ? "part_brands" : "part_specifications";
   const linkTable = isBrand ? "part_name_brands" : "part_name_specifications";
-  const idColumn = isBrand ? "brand_id" : "specification_id";
 
   useEffect(() => {
     if (!open) {
@@ -58,15 +58,16 @@ export function BatchLinkDialog({ open, type, selectedIds, onClose, onSuccess }:
     if (selectedIds.length === 0) return;
     setLinking(true);
 
-    for (const partNameId of selectedIds) {
-      const { error } = await supabase
-        .from(linkTable)
-        .upsert({ part_name_id: partNameId, [idColumn]: targetId }, { onConflict: "part_name_id,${idColumn}" });
-      if (error && !error.message.includes("duplicate")) {
-        alert(`关联失败: ${error.message}`);
-        setLinking(false);
-        return;
-      }
+    /* 写库走 Server Action（逐条关联在服务端完成） */
+    const result = await 批量关联配件名称({
+      partNameIds: Array.from(selectedIds),
+      linkTable,
+      targetId,
+    });
+    if (!result.success) {
+      alert(`关联失败: ${result.error || "未知错误"}`);
+      setLinking(false);
+      return;
     }
 
     setLinking(false);
