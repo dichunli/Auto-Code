@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import BarcodeScanModal from "@/components/BarcodeScanModal";
 import { ImageUploader } from "@/components/ImageUploader";
+import { 借用工具, 归还工具 } from "@/app/tools/actions";
 
 interface 工具 {
   id: string;
@@ -144,19 +145,9 @@ export default function ToolBorrowScanPage() {
     }
     set提交中(true);
     try {
-      const { error: insertError } = await supabase.from("tool_borrow_records").insert({
-        tool_id: 工具.id,
-        borrower_id: operatorId,
-        borrowed_at: new Date().toISOString(),
-        notes: 备注.trim() || null,
-      });
-      if (insertError) throw insertError;
-
-      const { error: updateError } = await supabase
-        .from("tools")
-        .update({ status: "borrowed", updated_at: new Date().toISOString() })
-        .eq("id", 工具.id);
-      if (updateError) throw updateError;
+      /* 写库走 Server Action：插借用记录 + 改工具状态在服务端顺序执行 */
+      const result = await 借用工具({ toolId: 工具.id, borrowerId: operatorId, notes: 备注 });
+      if (!result.success) throw new Error(result.error || "借用失败");
 
       set成功提示("借用登记成功");
       setTimeout(() => router.push("/tools/management"), 1200);
@@ -228,34 +219,18 @@ export default function ToolBorrowScanPage() {
     }
     set提交中(true);
     try {
-      const { error: updateRecordError } = await supabase
-        .from("tool_borrow_records")
-        .update({
-          returner_id: operatorId,
-          returned_at: new Date().toISOString(),
-          notes: 未归还记录.notes
-            ? `${未归还记录.notes}\n归还备注：${备注.trim() || "无"}\n仓位扫码：${已扫仓位 || "未要求"}`
-            : `归还备注：${备注.trim() || "无"}\n仓位扫码：${已扫仓位 || "未要求"}`,
-        })
-        .eq("id", 未归还记录.id);
-      if (updateRecordError) throw updateRecordError;
-
-      /* 保存归还照片 */
-      if (归还照片.length > 0) {
-        const photos = 归还照片.map((url) => ({
-          borrow_record_id: 未归还记录.id,
-          tool_id: 工具.id,
-          photo_url: url,
-        }));
-        const { error: photoError } = await supabase.from("tool_return_photos").insert(photos);
-        if (photoError) console.warn("归还照片保存失败:", photoError.message);
-      }
-
-      const { error: updateToolError } = await supabase
-        .from("tools")
-        .update({ status: "available", updated_at: new Date().toISOString() })
-        .eq("id", 工具.id);
-      if (updateToolError) throw updateToolError;
+      /* 写库走 Server Action：改记录 + 存归还照片 + 改工具状态在服务端顺序执行 */
+      const 合并备注 = 未归还记录.notes
+        ? `${未归还记录.notes}\n归还备注：${备注.trim() || "无"}\n仓位扫码：${已扫仓位 || "未要求"}`
+        : `归还备注：${备注.trim() || "无"}\n仓位扫码：${已扫仓位 || "未要求"}`;
+      const result = await 归还工具({
+        recordId: 未归还记录.id,
+        toolId: 工具.id,
+        returnerId: operatorId,
+        notes: 合并备注,
+        photos: 归还照片,
+      });
+      if (!result.success) throw new Error(result.error || "归还失败");
 
       set成功提示("归还登记成功");
       setTimeout(() => router.push("/tools/management"), 1200);

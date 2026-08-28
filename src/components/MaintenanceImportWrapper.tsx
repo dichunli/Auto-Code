@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient, 确保有session } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { 标记本机操作 } from "@/lib/localEditSignal";
-import { 保养单草稿前缀, 找重复项目名, 计算需求顺延 } from "@/lib/maintenance";
-import { 添加工单配件 } from "@/app/work-orders/parts-actions";
+import { 保养单草稿前缀, 找重复项目名 } from "@/lib/maintenance";
+import { 导入保养单到工单 } from "@/app/vehicles/actions";
+import type { 保养导入项目, 保养导入配件 } from "@/app/vehicles/actions";
 
 interface Props {
   vehicleId: string;
@@ -270,147 +271,42 @@ function MaintenanceImportModal({ vehicleId, orderId, onClose }: Props & { onClo
     await 执行导入("跳过");
   }
 
-  // 执行导入：处理模式 = 跳过重复 | 覆盖重复
+  // 执行导入：处理模式 = 跳过重复 | 覆盖重复（写库走 Server Action）
   async function 执行导入(处理模式: "跳过" | "覆盖") {
     if (!保养单) return;
     设置显示重复确认(false);
     设置导入中(true);
 
     try {
-      await 确保有session();
       标记本机操作();
 
-      // 获取当前工单已有项目（含ID，覆盖时需要删除）
-      const { data: 已有项目 } = await supabase
-        .from("work_order_items")
-        .select("id, name")
-        .eq("work_order_id", orderId);
-      const 已有名称集 = new Set((已有项目 || []).map((i: { name: string }) => i.name));
+      /* 待导入项目清单（按勾选过滤；跳过模式的按名剔重由服务端做） */
+      const 待导入项目: 保养导入项目[] = 项目列表.filter((项目) => 选中项目ID.has(项目.id));
 
-      // 覆盖模式：先删除当前工单中同名的项目（配件随级联删除）
-      if (处理模式 === "覆盖" && 重复项目名.length > 0) {
-        const 待删除ID = (已有项目 || [])
-          .filter((i: { id: string; name: string }) => 重复项目名.includes(i.name))
-          .map((i: { id: string; name: string }) => i.id);
-        if (待删除ID.length > 0) {
-          const { error: 删除错误 } = await supabase
-            .from("work_order_items")
-            .delete()
-            .in("id", 待删除ID);
-          if (删除错误) throw 删除错误;
+      /* 勾选配件按源项目分组，传给服务端按新项目归属写入 */
+      const 配件映射参数: Record<string, 保养导入配件[]> = {};
+      for (const 项目 of 待导入项目) {
+        const 勾选配件 = 选中配件ID[项目.id] || new Set<string>();
+        const 清单 = (配件映射[项目.id] || []).filter((配件) => 勾选配件.has(配件.id));
+        if (清单.length > 0) {
+          配件映射参数[项目.id] = 清单;
         }
       }
 
-      // 获取当前工单已有需求数量，导入的需求作为需求1，已有需求顺延
-      const { data: 已有需求列表 } = await supabase
-        .from("work_order_requirements")
-        .select("id, seq")
-        .eq("work_order_id", orderId)
-        .order("seq", { ascending: true });
-
-      // 如果已有需求，先更新它们的 seq（全部+1），为新需求腾出位置1
-      /* 各行 update 互不依赖，并行发起（原来逐条串行，需求多时每个都要等一轮） */
-      if (已有需求列表 && 已有需求列表.length > 0) {
-        const 顺延后seq = 计算需求顺延(已有需求列表.map((r: { seq: number | null }) => r.seq || 1));
-        await Promise.all(
-          已有需求列表.map((r, i) =>
-            supabase
-              .from("work_order_requirements")
-              .update({ seq: 顺延后seq[i] })
-              .eq("id", r.id)
-          )
-        );
+      const result = await 导入保养单到工单({
+        orderId,
+        orderNo: 保养单.order_no,
+        处理模式,
+        重复项目名,
+        项目列表: 待导入项目,
+        配件映射: 配件映射参数,
+      });
+      if (!result.success) {
+        throw new Error(result.error || "导入失败");
       }
 
-      // 创建需求，seq=1（需求1）
-      const { data: 需求 } = await supabase
-        .from("work_order_requirements")
-        .insert({
-          work_order_id: orderId,
-          seq: 1,
-          description: `保养单导入: ${保养单.order_no}`,
-          diagnosis: "",
-        })
-        .select("id")
-        .single();
-
-      let 跳过数量 = 0;
-      /* 待导入项目清单（跳过模式剔除重复名） */
-      const 待导入项目 = 项目列表.filter((项目) => {
-        if (!选中项目ID.has(项目.id)) return false;
-        if (处理模式 === "跳过" && 已有名称集.has(项目.name)) {
-          跳过数量++;
-          return false;
-        }
-        return true;
-      });
-
-      /* 项目并行插入（每条返回自己的 id，对应关系可靠）——
-       * 原来逐条串行 await，N 个项目就要等 N 轮网络，慢网络下"长时间没反应" */
-      const 新项目结果 = await Promise.all(
-        待导入项目.map((项目) =>
-          supabase
-            .from("work_order_items")
-            .insert({
-              work_order_id: orderId,
-              requirement_id: 需求?.id || null,
-              service_item_id: 项目.service_item_id,
-              name: 项目.name,
-              item_type: 项目.item_type,
-              quantity: 项目.quantity || 1,
-              unit_price: 项目.unit_price || 0,
-              description: 项目.description,
-              mechanic_id: 项目.mechanic_id,
-              customer_opinion: "agree",
-              business_type: "normal",
-            })
-            .select("id")
-            .single()
-        )
-      );
-
-      /* 汇总各项目的勾选配件，按新项目分组（写库已收编为 Server Action，RPC 按 p_item_id 归属），
-       * 各项目并行调用——原来全部合并成一次 insert，收编后按项目分调用仍保持并行不串行 */
-      const 按项目配件 = new Map<string, Record<string, unknown>[]>();
-      待导入项目.forEach((项目, idx) => {
-        const 新项目 = 新项目结果[idx]?.data;
-        if (!新项目) return;
-
-        const 配件列表 = 配件映射[项目.id] || [];
-        const 勾选配件 = 选中配件ID[项目.id] || new Set();
-        配件列表
-          .filter((配件) => 勾选配件.has(配件.id))
-          .forEach((配件) => {
-            const 清单 = 按项目配件.get(新项目.id) || [];
-            清单.push({
-              part_name_id: 配件.part_name_id,
-              part_id: 配件.part_id,
-              name: 配件.name,
-              part_number: 配件.part_number,
-              unit: 配件.unit,
-              brand: 配件.brand,
-              specification: 配件.specification,
-              quantity: 配件.quantity || 1,
-              unit_price: 配件.unit_price,
-              unit_cost: 配件.unit_cost,
-              notes: 配件.notes,
-              customer_opinion: "agree",
-              is_selected: true,
-            });
-            按项目配件.set(新项目.id, 清单);
-          });
-      });
-
-      if (按项目配件.size > 0) {
-        const 配件结果列表 = await Promise.all(
-          [...按项目配件.entries()].map(([新项目id, 清单]) => 添加工单配件(新项目id, 清单))
-        );
-        const 失败 = 配件结果列表.find((r) => !r.success);
-        if (失败) throw new Error(失败.error || "导入配件失败");
-      }
-
-      if (处理模式 === "跳过" && 跳过数量 > 0) {
-        alert(`导入完成。${跳过数量} 个项目因名称重复已跳过。`);
+      if (处理模式 === "跳过" && (result.跳过数量 || 0) > 0) {
+        alert(`导入完成。${result.跳过数量} 个项目因名称重复已跳过。`);
       }
       if (处理模式 === "覆盖" && 重复项目名.length > 0) {
         alert(`导入完成。${重复项目名.length} 个重复项目已覆盖更新。`);

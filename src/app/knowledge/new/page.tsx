@@ -8,7 +8,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelector";
 import { 处理外部图片 } from "@/lib/processExternalImages";
-import { syncKnowledgeModelsFromVin } from "../actions";
+import { syncKnowledgeModelsFromVin, 新建知识文章 } from "../actions";
 import { 生成知识库搜索文本 } from "@/lib/knowledgeSearch";
 
 const BlockNoteEditor = dynamic(
@@ -183,37 +183,21 @@ export default function NewKnowledgePage() {
         authorName: "",
       });
 
-      const { data: article, error } = await supabase
-        .from("knowledge_articles")
-        .insert({
-          title: form.title,
-          type: form.type,
-          category_id: form.category_id || null,
-          content: form.content || null,
-          content_blocks: contentBlocks,
-          video_url: form.type === "video" ? form.video_url || null : null,
-          visibility: form.visibility,
-          search_text: searchText,
-        })
-        .select("id")
-        .single();
+      /* 写库走 Server Action：插文章 + 插项目/车型关联在服务端一次完成 */
+      const result = await 新建知识文章({
+        title: form.title,
+        type: form.type,
+        categoryId: form.category_id,
+        content: form.content,
+        contentBlocks,
+        videoUrl: form.video_url,
+        visibility: form.visibility,
+        searchText,
+        linkedNameIds: linkedNames.map((n) => n.id),
+        linkedVehicleIds: linkedVehicles.map((v) => Number(v.id)),
+      });
 
-      if (error || !article) throw error || new Error("创建失败");
-
-      if (linkedNames.length > 0) {
-        const nameLinks = linkedNames.map((n) => ({ article_id: article.id, service_name_id: n.id }));
-        const { error: insertNameError } = await supabase.from("knowledge_service_links").insert(nameLinks);
-        if (insertNameError) throw insertNameError;
-      }
-
-      if (linkedVehicles.length > 0) {
-        const vehicleLinks = linkedVehicles.map((v) => ({
-          article_id: article.id,
-          vehicle_model_id: Number(v.id),
-        }));
-        const { error: insertVehicleError } = await supabase.from("knowledge_vehicle_links").insert(vehicleLinks);
-        if (insertVehicleError) throw insertVehicleError;
-      }
+      if (!result.success) throw new Error(result.error || "创建失败");
 
       router.push("/knowledge");
       router.refresh();

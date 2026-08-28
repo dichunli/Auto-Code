@@ -431,3 +431,212 @@ export async function 删除运单(id: string): Promise<{ success: boolean; erro
   revalidatePath("/logistics");
   return { success: true };
 }
+
+/* ═══ 物流管理页写操作收编 ═══ */
+
+/* ─── 保存运单（新建/编辑，PC 物流管理页单条表单） ─── */
+export async function 保存运单(参数: {
+  id: string | null;
+  trackingNo: string;
+  logisticsCompanyId: string;
+  logisticsCompanyName: string;
+  phone: string;
+  supplierName: string;
+  packageCount: number;
+  freightAmount: number;
+  codAmount: number;
+  photos: string[];
+  notes: string;
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!参数.trackingNo.trim()) {
+    return { success: false, error: "请填写运单号" };
+  }
+
+  const payload = {
+    tracking_no: 参数.trackingNo.trim(),
+    logistics_company_id: 参数.logisticsCompanyId || null,
+    logistics_company_name: 参数.logisticsCompanyName || null,
+    phone: 参数.phone.trim() || null,
+    supplier_name: 参数.supplierName.trim() || null,
+    package_count: 参数.packageCount,
+    freight_amount: 参数.freightAmount,
+    cod_amount: 参数.codAmount,
+    photos: 参数.photos.length > 0 ? 参数.photos : null,
+    notes: 参数.notes.trim() || null,
+  };
+
+  const supabase = await createClient();
+  if (参数.id) {
+    const { error } = await supabase.from("logistics_waybills").update(payload).eq("id", 参数.id);
+    if (error) return { success: false, error: error.message };
+  } else {
+    const { error } = await supabase.from("logistics_waybills").insert({ ...payload, status: "pending" });
+    if (error) return { success: false, error: error.message };
+  }
+
+  revalidatePath("/logistics");
+  return { success: true };
+}
+
+/* ─── 批量创建运单（PC 物流管理页"按数量/单号清单"入口） ─── */
+export async function 批量建运单(参数: {
+  logisticsCompanyId: string;
+  logisticsCompanyName: string;
+  trackingNos: string[];
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (参数.trackingNos.length === 0) {
+    return { success: false, error: "请至少输入一个物流单号" };
+  }
+
+  const supabase = await createClient();
+  const records = 参数.trackingNos.map((trackingNo) => ({
+    tracking_no: trackingNo,
+    logistics_company_id: 参数.logisticsCompanyId || null,
+    logistics_company_name: 参数.logisticsCompanyName || null,
+    status: "pending",
+  }));
+  const { error } = await supabase.from("logistics_waybills").insert(records);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/logistics");
+  return { success: true };
+}
+
+/* ─── 行内保存运单字段（电话变更时服务端同步供应商名） ─── */
+export async function 保存运单行内字段(参数: {
+  waybillId: string;
+  field: "phone" | "package_count" | "freight_amount" | "cod_amount";
+  value: string;
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  let payload: Record<string, string | number | null> = {};
+  if (参数.field === "phone") {
+    payload = { phone: 参数.value.trim() || null };
+  } else if (参数.field === "package_count") {
+    payload = { package_count: parseInt(参数.value, 10) || 0 };
+  } else if (参数.field === "freight_amount") {
+    payload = { freight_amount: parseFloat(参数.value) || 0 };
+  } else {
+    payload = { cod_amount: parseFloat(参数.value) || 0 };
+  }
+
+  const { error } = await supabase.from("logistics_waybills").update(payload).eq("id", 参数.waybillId);
+  if (error) return { success: false, error: error.message };
+
+  /* 电话变更 → 服务端查供应商并同步 supplier_name（完全匹配口径） */
+  if (参数.field === "phone") {
+    if (参数.value.trim()) {
+      const { data: 命中 } = await supabase
+        .from("suppliers")
+        .select("name")
+        .eq("phone", 参数.value.trim())
+        .limit(1);
+      await supabase
+        .from("logistics_waybills")
+        .update({ supplier_name: 命中 && 命中.length > 0 ? (命中[0].name as string) : null })
+        .eq("id", 参数.waybillId);
+    } else {
+      await supabase.from("logistics_waybills").update({ supplier_name: null }).eq("id", 参数.waybillId);
+    }
+  }
+
+  revalidatePath("/logistics");
+  return { success: true };
+}
+
+/* ─── 保存物流公司（新建/编辑） ─── */
+export async function 保存物流公司(参数: {
+  id: string | null;
+  name: string;
+  scopes: string[];
+  contact: string;
+  phone: string;
+  trackingUrl: string;
+  notes: string;
+  sortOrder: number;
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!参数.name.trim()) {
+    return { success: false, error: "请填写物流公司名称" };
+  }
+  if (参数.scopes.length === 0) {
+    return { success: false, error: "请至少选择一个服务范围" };
+  }
+
+  const payload = {
+    name: 参数.name.trim(),
+    scopes: 参数.scopes,
+    contact: 参数.contact.trim() || null,
+    phone: 参数.phone.trim() || null,
+    tracking_url: 参数.trackingUrl.trim() || null,
+    notes: 参数.notes.trim() || null,
+    sort_order: 参数.sortOrder,
+  };
+
+  const supabase = await createClient();
+  if (参数.id) {
+    const { error } = await supabase.from("logistics_companies").update(payload).eq("id", 参数.id);
+    if (error) return { success: false, error: error.message };
+  } else {
+    const { error } = await supabase.from("logistics_companies").insert(payload);
+    if (error) return { success: false, error: error.message };
+  }
+
+  revalidatePath("/logistics");
+  return { success: true };
+}
+
+/* ─── 物流公司排序（交换 / 直接改排序号） ─── */
+export async function 交换物流公司排序(参数: {
+  idA: string;
+  sortA: number;
+  idB: string;
+  sortB: number;
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error: e1 } = await supabase.from("logistics_companies").update({ sort_order: 参数.sortB }).eq("id", 参数.idA);
+  if (e1) return { success: false, error: e1.message };
+  const { error: e2 } = await supabase.from("logistics_companies").update({ sort_order: 参数.sortA }).eq("id", 参数.idB);
+  if (e2) return { success: false, error: e2.message };
+
+  revalidatePath("/logistics");
+  return { success: true };
+}
+
+export async function 保存物流公司排序号(参数: {
+  id: string;
+  sortOrder: number;
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("logistics_companies").update({ sort_order: 参数.sortOrder }).eq("id", 参数.id);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/logistics");
+  return { success: true };
+}

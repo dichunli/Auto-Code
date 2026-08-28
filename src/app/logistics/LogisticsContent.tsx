@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 更新供应商电话 } from "@/app/suppliers/actions";
-import { 结清运费, 删除物流公司, 删除运单 } from "@/app/logistics/actions";
+import { 结清运费, 删除物流公司, 删除运单, 保存运单, 批量建运单, 保存运单行内字段, 保存物流公司, 交换物流公司排序, 保存物流公司排序号 } from "@/app/logistics/actions";
 import { useToast } from "@/components/Toast";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import Link from "next/link";
@@ -431,39 +431,21 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
     setSingleSaving(true);
     const company = companies.find((c) => c.id === singleCompanyId);
     try {
-      if (editingWaybill) {
-        const { error } = await supabase
-          .from("logistics_waybills")
-          .update({
-            tracking_no: singleTrackingNo.trim(),
-            logistics_company_id: singleCompanyId || null,
-            logistics_company_name: company?.name || null,
-            phone: singlePhone.trim() || null,
-            supplier_name: singleSupplierName.trim() || null,
-            package_count: parseInt(singlePackageCount) || 1,
-            freight_amount: parseFloat(singleFreight) || 0,
-            cod_amount: parseFloat(singleCod) || 0,
-            photos: singlePhotos.length > 0 ? singlePhotos : null,
-            notes: singleNotes.trim() || null,
-          })
-          .eq("id", editingWaybill.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("logistics_waybills").insert({
-          tracking_no: singleTrackingNo.trim(),
-          logistics_company_id: singleCompanyId || null,
-          logistics_company_name: company?.name || null,
-          phone: singlePhone.trim() || null,
-          supplier_name: singleSupplierName.trim() || null,
-          package_count: parseInt(singlePackageCount) || 1,
-          freight_amount: parseFloat(singleFreight) || 0,
-          cod_amount: parseFloat(singleCod) || 0,
-          photos: singlePhotos.length > 0 ? singlePhotos : null,
-          notes: singleNotes.trim() || null,
-          status: "pending",
-        });
-        if (error) throw error;
-      }
+      /* 写库走 Server Action */
+      const result = await 保存运单({
+        id: editingWaybill?.id || null,
+        trackingNo: singleTrackingNo,
+        logisticsCompanyId: singleCompanyId,
+        logisticsCompanyName: company?.name || "",
+        phone: singlePhone,
+        supplierName: singleSupplierName,
+        packageCount: parseInt(singlePackageCount) || 1,
+        freightAmount: parseFloat(singleFreight) || 0,
+        codAmount: parseFloat(singleCod) || 0,
+        photos: singlePhotos,
+        notes: singleNotes,
+      });
+      if (!result.success) throw new Error(result.error || "保存失败");
       /* 编辑后留在当前页，新建回第 1 页（新运单按创建时间倒序在最前） */
       const 是编辑 = !!editingWaybill;
       closeSingleCreateModal();
@@ -504,17 +486,16 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
 
     setBatchSaving(true);
     const company = companies.find((c) => c.id === batchCompanyId);
-    const records = trackingNos.map((trackingNo) => ({
-      tracking_no: trackingNo,
-      logistics_company_id: batchCompanyId || null,
-      logistics_company_name: company?.name || null,
-      status: "pending" as const,
-    }));
 
-    const { error } = await supabase.from("logistics_waybills").insert(records);
+    /* 写库走 Server Action */
+    const result = await 批量建运单({
+      logisticsCompanyId: batchCompanyId,
+      logisticsCompanyName: company?.name || "",
+      trackingNos,
+    });
     setBatchSaving(false);
-    if (error) {
-      alert("批量创建失败: " + error.message);
+    if (!result.success) {
+      alert("批量创建失败: " + (result.error || "未知错误"));
       return;
     }
     setBatchModalOpen(false);
@@ -525,43 +506,16 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
     loadWaybills(1);
   }
 
-  /* 行内保存某个字段 */
+  /* 行内保存某个字段（走 Server Action；电话变更时供应商名在服务端同步） */
   async function saveInlineField(waybillId: string, field: keyof Waybill, value: string) {
-    let payload: Record<string, string | number | null> = {};
-    if (field === "phone") {
-      payload = { phone: value.trim() || null };
-    } else if (field === "package_count") {
-      payload = { package_count: parseInt(value, 10) || 0 };
-    } else if (field === "freight_amount") {
-      payload = { freight_amount: parseFloat(value) || 0 };
-    } else if (field === "cod_amount") {
-      payload = { cod_amount: parseFloat(value) || 0 };
-    }
+    if (field !== "phone" && field !== "package_count" && field !== "freight_amount" && field !== "cod_amount") return;
 
-    const { error } = await supabase.from("logistics_waybills").update(payload).eq("id", waybillId);
-    if (error) {
-      alert("保存失败: " + error.message);
+    const result = await 保存运单行内字段({ waybillId, field, value });
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       /* 保存失败刷新当前页，回滚本地编辑状态 */
       loadWaybills(waybillPage);
       return;
-    }
-
-    /* 如果修改的是电话,保存后自动检索供应商并同步更新 supplier_name */
-    if (field === "phone") {
-      if (value.trim()) {
-        const result = await findSupplierByPhone(value);
-        if (result) {
-          await supabase
-            .from("logistics_waybills")
-            .update({ supplier_name: result.name })
-            .eq("id", waybillId);
-        }
-      } else {
-        await supabase
-          .from("logistics_waybills")
-          .update({ supplier_name: null })
-          .eq("id", waybillId);
-      }
     }
 
     /* 行内字段保存完成，刷新当前页 */
@@ -606,14 +560,8 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
     const a = companies[index];
     const b = companies[targetIndex];
 
-    await supabase
-      .from("logistics_companies")
-      .update({ sort_order: b.sort_order })
-      .eq("id", a.id);
-    await supabase
-      .from("logistics_companies")
-      .update({ sort_order: a.sort_order })
-      .eq("id", b.id);
+    /* 排序交换走 Server Action */
+    await 交换物流公司排序({ idA: a.id, sortA: a.sort_order, idB: b.id, sortB: b.sort_order });
 
     loadCompanies();
   }
@@ -1055,10 +1003,8 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
                         onBlur={async (e) => {
                           const newOrder = parseInt(e.target.value, 10);
                           if (isNaN(newOrder)) return;
-                          await supabase
-                            .from("logistics_companies")
-                            .update({ sort_order: newOrder })
-                            .eq("id", c.id);
+                          /* 写库走 Server Action */
+                          await 保存物流公司排序号({ id: c.id, sortOrder: newOrder });
                           loadCompanies();
                         }}
                         className="w-16 px-2 py-1 text-xs text-center border border-gray-300 rounded"
@@ -1457,7 +1403,6 @@ interface CompanyEditModalProps {
 }
 
 function CompanyEditModal({ company, onClose, onSaved }: CompanyEditModalProps) {
-  const supabase = createClient();
   const [name, setName] = useState(company?.name || "");
   const [scopes, setScopes] = useState<string[]>(company?.scopes && company.scopes.length > 0 ? company.scopes : ["harbin"]);
   const [contact, setContact] = useState(company?.contact || "");
@@ -1481,30 +1426,21 @@ function CompanyEditModal({ company, onClose, onSaved }: CompanyEditModalProps) 
       return;
     }
     setSaving(true);
-    const payload = {
-      name: name.trim(),
+    /* 写库走 Server Action */
+    const result = await 保存物流公司({
+      id: company?.id || null,
+      name,
       scopes,
-      contact: contact.trim() || null,
-      phone: phone.trim() || null,
-      tracking_url: trackingUrl.trim() || null,
-      notes: notes.trim() || null,
-      sort_order: parseInt(sortOrderInput, 10) || 0,
-    };
-
-    if (company) {
-      const { error } = await supabase.from("logistics_companies").update(payload).eq("id", company.id);
-      setSaving(false);
-      if (error) {
-        alert("保存失败: " + error.message);
-        return;
-      }
-    } else {
-      const { error } = await supabase.from("logistics_companies").insert(payload);
-      setSaving(false);
-      if (error) {
-        alert("新增失败: " + error.message);
-        return;
-      }
+      contact,
+      phone,
+      trackingUrl,
+      notes,
+      sortOrder: parseInt(sortOrderInput, 10) || 0,
+    });
+    setSaving(false);
+    if (!result.success) {
+      alert((company ? "保存" : "新增") + "失败: " + (result.error || "未知错误"));
+      return;
     }
     await 刷新基础数据缓存();
     onSaved();

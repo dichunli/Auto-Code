@@ -16,6 +16,8 @@ import { 标准化VIN } from "@/lib/vinValidator";
 import { VehicleModelDetail } from "@/components/VehicleModelSearch";
 import VinCameraModal from "@/components/VinCameraModal";
 import type { VinDecodeResult } from "@/components/VinDecodeInput";
+import { 手机接车登记 } from "@/app/work-orders/actions";
+import { 替换车牌 } from "@/app/vehicles/actions";
 
 /* ============================================================
    接车登记 — 手机端新建工单（一步提交）
@@ -648,123 +650,41 @@ export default function MobileReceptionNewPage() {
         }
       }
 
-      let vehicleId: string;
-      let customerId: string;
-
-      /* 1. 处理车辆 */
-      if (isNewVehicle) {
-        const { data: v, error: ve } = await supabase
-          .from("vehicles")
-          .insert({
-            plate_number: newPlate.trim().toUpperCase(),
-            brand: newBrand.trim() || null,
-            model: newModel.trim() || null,
-            vin: 标准化VIN(newVin) || null,
-            vehicle_model_id: newVehicleModelId,
-            engine_no: newEngineNo.trim() || null,
-            chassis_code: newChassisCode.trim() || null,
-            transmission_type: newTransmissionType.trim() || null,
-            transmission_code: newTransmissionCode.trim() || null,
-            year: newYear ? parseInt(newYear) : null,
-          })
-          .select("id")
-          .single();
-        if (ve) throw new Error("创建车辆失败: " + ve.message);
-        vehicleId = v.id;
-      } else if (selectedVehicle) {
-        vehicleId = selectedVehicle.id;
-      } else {
-        throw new Error("请选择或新建车辆");
-      }
-
-      /* 2. 处理客户 */
-      if (isNewCustomer) {
-        const { data: c, error: ce } = await supabase
-          .from("customers")
-          .insert({ name: newCustomerName.trim(), phone: newCustomerPhone.trim() || null })
-          .select("id")
-          .single();
-        if (ce) throw new Error("创建客户失败: " + ce.message);
-        customerId = c.id;
-      } else if (selectedCustomer) {
-        customerId = selectedCustomer.id;
-      } else if (getVehicleCustomer(selectedVehicle)) {
-        customerId = getVehicleCustomer(selectedVehicle)!.id;
-      } else {
-        throw new Error("请选择或新建客户");
-      }
-
-      /* 3. 关联车辆和客户 */
-      const { error: linkErr } = await supabase
-        .from("vehicles")
-        .update({ customer_id: customerId })
-        .eq("id", vehicleId);
-      if (linkErr) throw new Error("关联车辆客户失败: " + linkErr.message);
-
-      /* 4. 生成工单号 */
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const prefix = `WO${dateStr}`;
-      const { data: last, error: lastErr } = await supabase
-        .from("work_orders")
-        .select("order_no")
-        .ilike("order_no", `${prefix}%`)
-        .order("order_no", { ascending: false })
-        .limit(1);
-      if (lastErr) throw new Error("生成工单号失败: " + lastErr.message);
-      let seq = 1;
-      if (last && last.length > 0 && last[0].order_no) {
-        const suffix = last[0].order_no.slice(prefix.length);
-        const num = parseInt(suffix, 10);
-        if (!isNaN(num)) seq = num + 1;
-      }
-      const orderNo = `${prefix}${String(seq).padStart(3, "0")}`;
-
-      /* 5. 创建工单 */
-      const { data: order, error: oe } = await supabase
-        .from("work_orders")
-        .insert({
-          order_no: orderNo,
-          customer_id: customerId,
-          vehicle_id: vehicleId,
-          mileage_in: parseInt(mileage) || 0,
-          customer_complaint: null,
-          sender_name: senderName.trim() || null,
-          sender_phone: senderPhone.trim() || null,
-          status: "received",
-        })
-        .select("id")
-        .single();
-      if (oe) throw new Error("创建工单失败: " + oe.message);
-
-      /* 6. 创建接车检查 */
-      const { data: inspection, error: ie } = await supabase
-        .from("work_order_inspections")
-        .insert({
-          work_order_id: order.id,
-          inspection_type: "reception",
-          inspection_mileage: parseInt(mileage) || null,
-        })
-        .select("id")
-        .single();
-      if (ie) throw new Error("创建接车检查失败: " + ie.message);
-
-      /* 7. 保存里程表照片 */
-      if (dashboardPaths.length > 0 && inspection) {
-        const { error: me } = await supabase.from("work_order_inspection_media").insert(
-          dashboardPaths.map((path) => ({
-            inspection_id: inspection.id,
-            media_type: "dashboard",
-            storage_path: path,
-          }))
-        );
-        if (me) throw new Error("保存里程表照片失败: " + me.message);
+      /* 写库走 Server Action：建车/建客户/关联 + 建工单(create_work_order RPC)
+       * + 接车检查 + 里程表照片，全部在服务端完成 */
+      const result = await 手机接车登记({
+        isNewVehicle,
+        newVehicle: {
+          plate_number: newPlate,
+          brand: newBrand,
+          model: newModel,
+          vin: 标准化VIN(newVin),
+          vehicle_model_id: newVehicleModelId,
+          engine_no: newEngineNo,
+          chassis_code: newChassisCode,
+          transmission_type: newTransmissionType,
+          transmission_code: newTransmissionCode,
+          year: newYear,
+        },
+        selectedVehicleId: selectedVehicle?.id || null,
+        isNewCustomer,
+        newCustomer: { name: newCustomerName, phone: newCustomerPhone },
+        selectedCustomerId: selectedCustomer?.id || null,
+        vehicleCustomerId: getVehicleCustomer(selectedVehicle)?.id || null,
+        mileage,
+        senderName,
+        senderPhone,
+        dashboardPaths,
+      });
+      if (!result.success || !result.orderId) {
+        throw new Error(result.error || "提交失败");
       }
 
       clearTimeout(timeoutId);
       showToast("接车登记成功", "success");
       sessionStorage.removeItem("reception-dashboard-paths");
       /* 移动端某些环境（PWA/WebView）下 router.push 不可靠，使用硬跳转 */
-      window.location.href = `/work-orders/${order.id}?newReq=1`;
+      window.location.href = `/work-orders/${result.orderId}?newReq=1`;
       return;
     } catch (err: unknown) {
       clearTimeout(timeoutId);
@@ -1406,12 +1326,10 @@ export default function MobileReceptionNewPage() {
                             return;
                           }
 
-                          const { error: updateErr } = await supabase
-                            .from("vehicles")
-                            .update({ plate_number: newPlateClean })
-                            .eq("id", vinDuplicateVehicle.id);
-                          if (updateErr) {
-                            showToast("更新车牌失败: " + updateErr.message, "error");
+                          /* 写库走 Server Action */
+                          const result = await 替换车牌({ vehicleId: vinDuplicateVehicle.id, plate: newPlateClean });
+                          if (!result.success) {
+                            showToast("更新车牌失败: " + (result.error || "未知错误"), "error");
                             return;
                           }
 

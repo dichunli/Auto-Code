@@ -8,7 +8,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelector";
 import { 处理外部图片 } from "@/lib/processExternalImages";
-import { syncKnowledgeModelsFromVin } from "../../actions";
+import { syncKnowledgeModelsFromVin, 更新知识文章 } from "../../actions";
 import { 生成知识库搜索文本 } from "@/lib/knowledgeSearch";
 
 const BlockNoteEditor = dynamic(
@@ -306,84 +306,27 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
         authorName: "",
       });
 
-      /* 获取当前用户 */
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      /* 写库走 Server Action：更新文章 + 重建项目/车型/岗位关联在服务端完成，
+         created_by 取服务端验证的用户 id */
+      const result = await 更新知识文章({
+        articleId,
+        title: form.title,
+        type: form.type,
+        categoryId: form.category_id,
+        content: form.content,
+        contentBlocks,
+        videoUrl: form.video_url,
+        visibility: form.visibility,
+        searchText,
+        linkedNameIds: linkedNames.map((n) => n.id),
+        linkedVehicleIds: linkedVehicles.map((v) => Number(v.id)),
+        selectedRoleNames: selectedRoles,
+      });
 
-      /* 更新文章 */
-      const { data: updatedRows, error: updateError } = await supabase
-        .from("knowledge_articles")
-        .update({
-          title: form.title,
-          type: form.type,
-          category_id: form.category_id || null,
-          content: form.content || null,
-          content_blocks: contentBlocks,
-          video_url: form.type === "video" ? form.video_url || null : null,
-          visibility: form.visibility,
-          created_by: currentUser?.id,
-          search_text: searchText,
-        })
-        .eq("id", articleId)
-        .select();
+      if (!result.success) throw new Error(result.error || "保存失败");
 
-      if (updateError) throw updateError;
-      if (!updatedRows || updatedRows.length === 0) {
-        throw new Error("更新失败，请检查是否有编辑权限");
-      }
-
-      /* 三条关联数据链条并行执行：删除旧的 → 插入新的，互不阻塞 */
-      const 任务链: Promise<{ 类型: string; 错误?: string }>[] = [];
-
-      /* 链条1：维修项目名称关联 */
-      任务链.push((async () => {
-        const { error: delErr } = await supabase.from("knowledge_service_links").delete().eq("article_id", articleId);
-        if (delErr) return { 类型: "项目", 错误: delErr.message };
-        if (linkedNames.length > 0) {
-          const { error: insErr } = await supabase.from("knowledge_service_links").insert(
-            linkedNames.map((n) => ({ article_id: articleId, service_name_id: n.id }))
-          );
-          if (insErr) return { 类型: "项目", 错误: insErr.message };
-        }
-        return { 类型: "项目" };
-      })());
-
-      /* 链条2：车型关联 */
-      任务链.push((async () => {
-        const { error: delErr } = await supabase.from("knowledge_vehicle_links").delete().eq("article_id", articleId);
-        if (delErr) return { 类型: "车型", 错误: delErr.message };
-        if (linkedVehicles.length > 0) {
-          const { error: insErr } = await supabase.from("knowledge_vehicle_links").insert(
-            linkedVehicles.map((v) => ({ article_id: articleId, vehicle_model_id: Number(v.id) }))
-          );
-          if (insErr) return { 类型: "车型", 错误: insErr.message };
-        }
-        return { 类型: "车型" };
-      })());
-
-      /* 链条3：岗位权限关联 */
-      任务链.push((async () => {
-        const { error: delErr } = await supabase.from("knowledge_article_roles").delete().eq("article_id", articleId);
-        if (delErr) return { 类型: "岗位", 错误: delErr.message };
-        if (form.visibility === "role" && selectedRoles.length > 0) {
-          const { error: insErr } = await supabase.from("knowledge_article_roles").insert(
-            selectedRoles.map((roleName) => ({ article_id: articleId, role_name: roleName }))
-          );
-          if (insErr) return { 类型: "岗位", 错误: insErr.message };
-        }
-        return { 类型: "岗位" };
-      })());
-
-      const 结果数组 = await Promise.all(任务链);
-
-      /* 检查结果：项目/车型关联失败则报错，岗位失败仅提示 */
-      for (const r of 结果数组) {
-        if (r.错误 && r.类型 !== "岗位") throw new Error(`${r.类型}关联更新失败: ${r.错误}`);
-      }
-      const roleResult = 结果数组.find((r) => r.类型 === "岗位");
-      const roleUpdateError = roleResult?.错误 || "";
-
-      if (roleUpdateError) {
-        alert("文章已保存，但岗位权限更新失败：" + roleUpdateError);
+      if (result.roleWarning) {
+        alert("文章已保存，但岗位权限更新失败：" + result.roleWarning);
       }
       /* 保存成功后软跳转到详情页 */
       router.push(`/knowledge/${articleId}`);

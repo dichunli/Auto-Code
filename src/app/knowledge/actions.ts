@@ -1,6 +1,7 @@
 "use server";
 
 import mammoth from "mammoth";
+import { revalidatePath } from "next/cache";
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { 中文分词 } from "@/lib/chineseSegmenter";
@@ -1275,5 +1276,232 @@ export async function 删除知识文章(articleId: string): Promise<{ success: 
     return { success: false, error: error.message };
   }
 
+  return { success: true };
+}
+
+/* ═══ 新建知识文章 Server Action ═══
+ * 新建页的写库操作（插文章 + 插维修项目/车型关联）从客户端直写收口到服务端。 */
+export async function 新建知识文章(参数: {
+  title: string;
+  type: string;
+  categoryId: string;
+  content: string;
+  contentBlocks: unknown;
+  videoUrl: string;
+  visibility: string;
+  searchText: string;
+  linkedNameIds: string[];
+  linkedVehicleIds: number[];
+}): Promise<{ success: boolean; articleId?: string; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  const { data: article, error } = await supabase
+    .from("knowledge_articles")
+    .insert({
+      title: 参数.title,
+      type: 参数.type,
+      category_id: 参数.categoryId || null,
+      content: 参数.content || null,
+      content_blocks: 参数.contentBlocks,
+      video_url: 参数.type === "video" ? 参数.videoUrl || null : null,
+      visibility: 参数.visibility,
+      search_text: 参数.searchText,
+    })
+    .select("id")
+    .single();
+
+  if (error || !article) {
+    return { success: false, error: error?.message || "创建失败" };
+  }
+
+  if (参数.linkedNameIds.length > 0) {
+    const nameLinks = 参数.linkedNameIds.map((id) => ({ article_id: article.id, service_name_id: id }));
+    const { error: insertNameError } = await supabase.from("knowledge_service_links").insert(nameLinks);
+    if (insertNameError) {
+      return { success: false, error: insertNameError.message };
+    }
+  }
+
+  if (参数.linkedVehicleIds.length > 0) {
+    const vehicleLinks = 参数.linkedVehicleIds.map((id) => ({ article_id: article.id, vehicle_model_id: id }));
+    const { error: insertVehicleError } = await supabase.from("knowledge_vehicle_links").insert(vehicleLinks);
+    if (insertVehicleError) {
+      return { success: false, error: insertVehicleError.message };
+    }
+  }
+
+  revalidatePath("/knowledge");
+  return { success: true, articleId: article.id };
+}
+
+/* ═══ 更新知识文章 Server Action ═══
+ * 编辑页的写库操作（更新文章 + 重建项目/车型/岗位三条关联链）收口到服务端。
+ * created_by 取服务端验证的用户 id，不接受客户端传入。 */
+export async function 更新知识文章(参数: {
+  articleId: string;
+  title: string;
+  type: string;
+  categoryId: string;
+  content: string;
+  contentBlocks: unknown;
+  videoUrl: string;
+  visibility: string;
+  searchText: string;
+  linkedNameIds: string[];
+  linkedVehicleIds: number[];
+  selectedRoleNames: string[];
+}): Promise<{ success: boolean; error?: string; roleWarning?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { articleId } = 参数;
+
+  /* 更新文章（created_by 记录服务端验证的当前用户） */
+  const { data: updatedRows, error: updateError } = await supabase
+    .from("knowledge_articles")
+    .update({
+      title: 参数.title,
+      type: 参数.type,
+      category_id: 参数.categoryId || null,
+      content: 参数.content || null,
+      content_blocks: 参数.contentBlocks,
+      video_url: 参数.type === "video" ? 参数.videoUrl || null : null,
+      visibility: 参数.visibility,
+      created_by: user.id,
+      search_text: 参数.searchText,
+    })
+    .eq("id", articleId)
+    .select();
+
+  if (updateError) {
+    return { success: false, error: updateError.message };
+  }
+  if (!updatedRows || updatedRows.length === 0) {
+    return { success: false, error: "更新失败，请检查是否有编辑权限" };
+  }
+
+  /* 三条关联数据链条并行执行：删除旧的 → 插入新的，互不阻塞 */
+  const 任务链: Promise<{ 类型: string; 错误?: string }>[] = [];
+
+  /* 链条1：维修项目名称关联 */
+  任务链.push((async () => {
+    const { error: delErr } = await supabase.from("knowledge_service_links").delete().eq("article_id", articleId);
+    if (delErr) return { 类型: "项目", 错误: delErr.message };
+    if (参数.linkedNameIds.length > 0) {
+      const { error: insErr } = await supabase.from("knowledge_service_links").insert(
+        参数.linkedNameIds.map((id) => ({ article_id: articleId, service_name_id: id }))
+      );
+      if (insErr) return { 类型: "项目", 错误: insErr.message };
+    }
+    return { 类型: "项目" };
+  })());
+
+  /* 链条2：车型关联 */
+  任务链.push((async () => {
+    const { error: delErr } = await supabase.from("knowledge_vehicle_links").delete().eq("article_id", articleId);
+    if (delErr) return { 类型: "车型", 错误: delErr.message };
+    if (参数.linkedVehicleIds.length > 0) {
+      const { error: insErr } = await supabase.from("knowledge_vehicle_links").insert(
+        参数.linkedVehicleIds.map((id) => ({ article_id: articleId, vehicle_model_id: id }))
+      );
+      if (insErr) return { 类型: "车型", 错误: insErr.message };
+    }
+    return { 类型: "车型" };
+  })());
+
+  /* 链条3：岗位权限关联 */
+  任务链.push((async () => {
+    const { error: delErr } = await supabase.from("knowledge_article_roles").delete().eq("article_id", articleId);
+    if (delErr) return { 类型: "岗位", 错误: delErr.message };
+    if (参数.visibility === "role" && 参数.selectedRoleNames.length > 0) {
+      const { error: insErr } = await supabase.from("knowledge_article_roles").insert(
+        参数.selectedRoleNames.map((roleName) => ({ article_id: articleId, role_name: roleName }))
+      );
+      if (insErr) return { 类型: "岗位", 错误: insErr.message };
+    }
+    return { 类型: "岗位" };
+  })());
+
+  const 结果数组 = await Promise.all(任务链);
+
+  /* 检查结果：项目/车型关联失败则报错，岗位失败仅提示 */
+  for (const r of 结果数组) {
+    if (r.错误 && r.类型 !== "岗位") {
+      return { success: false, error: `${r.类型}关联更新失败: ${r.错误}` };
+    }
+  }
+  const roleResult = 结果数组.find((r) => r.类型 === "岗位");
+
+  revalidatePath(`/knowledge/${articleId}`);
+  revalidatePath("/knowledge");
+  return { success: true, roleWarning: roleResult?.错误 || "" };
+}
+
+/* ═══ 知识库分类写操作 Server Action ═══
+ * 分类管理页的新建 / 更新 / 删除从客户端直写收口到服务端。 */
+export async function 新建知识分类(name: string, sortOrder: number): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("knowledge_categories")
+    .insert({ name, sort_order: sortOrder });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/knowledge/categories");
+  revalidatePath("/knowledge");
+  return { success: true };
+}
+
+export async function 更新知识分类(id: string, name: string, sortOrder: number): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("knowledge_categories")
+    .update({ name, sort_order: sortOrder })
+    .eq("id", id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/knowledge/categories");
+  revalidatePath("/knowledge");
+  return { success: true };
+}
+
+export async function 删除知识分类(id: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("knowledge_categories")
+    .delete()
+    .eq("id", id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/knowledge/categories");
+  revalidatePath("/knowledge");
   return { success: true };
 }

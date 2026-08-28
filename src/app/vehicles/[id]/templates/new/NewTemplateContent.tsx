@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新建保养模板 } from "@/app/vehicles/actions";
 
 interface ServiceCategory {
   id: string;
@@ -266,56 +267,24 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
     setLoading(true);
 
     try {
-      const { data: template, error: tErr } = await supabase
-        .from("vehicle_maintenance_templates")
-        .insert({
-          vehicle_id: vehicleId,
-          name: name.trim(),
-          previous_cost: previousCost ? parseFloat(previousCost) : null,
-          customer_notes: customerNotes || null,
-        })
-        .select("id")
-        .single();
-
-      if (tErr || !template) throw tErr || new Error("创建模板失败");
-
-      for (const item of items) {
-        if (!item.name) continue;
-        const { data: createdItem, error: itemErr } = await supabase
-          .from("vehicle_maintenance_template_items")
-          .insert({
-            template_id: template.id,
-            service_item_id: item.service_item_id || null,
-            name: item.name,
-            item_type: item.item_type,
-            quantity: parseFloat(item.quantity) || 1,
-            unit_price: parseFloat(item.unit_price) || 0,
-            standard_hours: item.standard_hours ? parseFloat(item.standard_hours) : null,
-            mechanic_id: item.mechanic_id || null,
-          })
-          .select("id")
-          .single();
-
-        if (itemErr || !createdItem) throw itemErr || new Error("创建模板项目失败");
-
-        for (const part of item.parts) {
-          if (!part.part_name_id && !part.name) continue;
-          const { error: partErr } = await supabase
-            .from("vehicle_maintenance_template_parts")
-            .insert({
-              template_item_id: createdItem.id,
-              part_name_id: part.part_name_id || null,
-              part_id: part.part_id || null,
-              quantity: parseInt(part.quantity) || 1,
-              name: part.name || null,
-              brand: part.brand || null,
-              specification: part.specification || null,
-              unit_cost: parseFloat(part.unit_cost) || null,
-              unit_price: parseFloat(part.unit_price) || null,
-            });
-          if (partErr) throw partErr;
-        }
-      }
+      /* 写库走 Server Action：模板 + 项目 + 配件三层插入全部在服务端完成 */
+      const result = await 新建保养模板({
+        vehicleId,
+        name,
+        previousCost,
+        customerNotes,
+        items: items.map((it) => ({
+          service_item_id: it.service_item_id,
+          name: it.name,
+          item_type: it.item_type,
+          quantity: it.quantity,
+          unit_price: it.unit_price,
+          mechanic_id: it.mechanic_id,
+          standard_hours: it.standard_hours,
+          parts: it.parts,
+        })),
+      });
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       router.push(`/vehicles/${vehicleId}/templates`);
       router.refresh();

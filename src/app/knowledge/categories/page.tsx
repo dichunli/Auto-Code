@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 新建知识分类, 更新知识分类, 删除知识分类 } from "../actions";
 
 interface 分类 {
   id: string;
@@ -76,17 +77,14 @@ export default function KnowledgeCategoriesPage() {
     setSaving(true);
 
     try {
+      /* 写库走 Server Action */
+      const sortOrder = parseInt(formSort, 10) || 0;
       if (editingId === "new") {
-        const { error } = await supabase
-          .from("knowledge_categories")
-          .insert({ name, sort_order: parseInt(formSort, 10) || 0 });
-        if (error) throw error;
+        const result = await 新建知识分类(name, sortOrder);
+        if (!result.success) throw new Error(result.error || "保存失败");
       } else if (editingId) {
-        const { error } = await supabase
-          .from("knowledge_categories")
-          .update({ name, sort_order: parseInt(formSort, 10) || 0 })
-          .eq("id", editingId);
-        if (error) throw error;
+        const result = await 更新知识分类(editingId, name, sortOrder);
+        if (!result.success) throw new Error(result.error || "保存失败");
       }
 
       await loadCategories();
@@ -103,11 +101,9 @@ export default function KnowledgeCategoriesPage() {
     if (!(await 请求确认(`确定要删除分类「${name}」吗？`))) return;
 
     try {
-      const { error } = await supabase
-        .from("knowledge_categories")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
+      /* 写库走 Server Action */
+      const result = await 删除知识分类(id);
+      if (!result.success) throw new Error(result.error || "删除失败");
       await loadCategories();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
