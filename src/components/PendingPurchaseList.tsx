@@ -7,7 +7,7 @@ import { filterLogisticsByRegion, REGION_LABELS } from "@/lib/logisticsFilter";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { useConfirm } from "./ConfirmDialog";
-import { 移除采购暂存行 } from "@/app/procurement/actions";
+import { 移除采购暂存行, 保存暂存行数量, 保存待采购配件数量, 批量撤销配件意见 } from "@/app/procurement/actions";
 import PartForm from "@/app/parts/new/PartForm";
 import { PURCHASE_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
@@ -464,13 +464,11 @@ export function PendingPurchaseList() {
     }
     setSubmitting(true);
     try {
-      if (row.staging) {
-        const { error } = await supabase.from("custom_purchase_staging").update({ quantity: 新值 }).eq("id", row.staging.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("work_order_item_parts").update({ quantity: 新值 }).eq("id", row.id);
-        if (error) throw error;
-      }
+      /* 写库走 Server Action */
+      const result = row.staging
+        ? await 保存暂存行数量({ stagingId: row.staging.id, quantity: 新值 })
+        : await 保存待采购配件数量({ partId: row.id, quantity: 新值 });
+      if (!result.success) throw new Error(result.error || "保存失败");
       set数量草稿((prev) => { const n = { ...prev }; delete n[row.id]; return n; });
       loadData();
     } catch (err: unknown) {
@@ -894,14 +892,9 @@ export function PendingPurchaseList() {
     setSubmitting(true);
     try {
       const ids = selectedRows.map((r) => r.id);
-      const { error } = await supabase
-        .from("work_order_item_parts")
-        .update({
-          customer_opinion: revokeOpinion,
-          revoke_reason: finalReason,
-        })
-        .in("id", ids);
-      if (error) throw error;
+      /* 写库走 Server Action */
+      const result = await 批量撤销配件意见({ ids, opinion: revokeOpinion, reason: finalReason });
+      if (!result.success) throw new Error(result.error || "撤销失败");
       alert("已撤销");
       setShowRevokeModal(false);
       setSelected(new Set());

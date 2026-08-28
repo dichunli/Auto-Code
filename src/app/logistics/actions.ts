@@ -221,6 +221,85 @@ export async function 批量创建运单(
   return { success: true, 结果 };
 }
 
+/* ─── 创建单个运单（PC 待收货页"新建运单"弹窗） ───
+ * 与 批量创建运单 的区别：供应商名由用户显式填写（不强制电话匹配），
+ * 但仍检测电话命中的供应商及其待关联采购单数，供前端弹问关联。 */
+export async function 创建运单(参数: {
+  trackingNo: string;
+  logisticsCompanyId: string;
+  logisticsCompanyName: string;
+  phone: string;
+  supplierName: string;
+  packageCount: number;
+  freightAmount: number;
+  codAmount: number;
+  photos: string[];
+}): Promise<操作结果 & {
+  waybillId?: string;
+  命中供应商id?: string | null;
+  命中供应商名?: string | null;
+  待关联单数?: number;
+}> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!参数.trackingNo.trim()) {
+    return { success: false, error: "请填写运单号" };
+  }
+  if (!Number.isInteger(参数.packageCount) || 参数.packageCount <= 0) {
+    return { success: false, error: "请填写件数" };
+  }
+
+  const supabase = await createClient();
+  const { data: waybill, error } = await supabase
+    .from("logistics_waybills")
+    .insert({
+      tracking_no: 参数.trackingNo.trim(),
+      logistics_company_id: 参数.logisticsCompanyId || null,
+      logistics_company_name: 参数.logisticsCompanyName || null,
+      phone: 参数.phone.trim() || null,
+      supplier_name: 参数.supplierName.trim() || null,
+      package_count: 参数.packageCount,
+      freight_amount: 参数.freightAmount,
+      cod_amount: 参数.codAmount,
+      photos: 参数.photos.length > 0 ? 参数.photos : null,
+      status: "pending",
+    })
+    .select("id")
+    .single();
+  if (error || !waybill) {
+    return { success: false, error: error?.message || "创建运单失败" };
+  }
+
+  /* 电话完全匹配命中供应商 → 统计其未关联运单的待收货采购单数（供前端弹问） */
+  let 命中供应商id: string | null = null;
+  let 命中供应商名: string | null = null;
+  let 待关联单数 = 0;
+  if (参数.phone.trim()) {
+    const { data: 命中 } = await supabase
+      .from("suppliers")
+      .select("id, name")
+      .eq("phone", 参数.phone.trim())
+      .limit(1);
+    if (命中 && 命中.length > 0) {
+      命中供应商id = 命中[0].id as string;
+      命中供应商名 = 命中[0].name as string;
+      const { count } = await supabase
+        .from("purchase_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("supplier_id", 命中供应商id)
+        .in("status", 待收货状态)
+        .is("waybill_id", null);
+      待关联单数 = count || 0;
+    }
+  }
+
+  revalidatePath("/procurement");
+  revalidatePath("/logistics");
+  return { success: true, waybillId: waybill.id, 命中供应商id, 命中供应商名, 待关联单数 };
+}
+
 /* ─── 结清运费（三期：记物流公司已付运费+运单打标，数据库一个事务） ─── */
 export async function 结清运费(运单id: string): Promise<操作结果> {
   const { user, error: 登录错误 } = await 验证用户已登录();

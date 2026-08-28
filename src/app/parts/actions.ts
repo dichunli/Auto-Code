@@ -67,6 +67,59 @@ export async function 合并配件(参数: {
   return { success: true };
 }
 
+/* ═══ 配件信息图片 增/删（采购看板目录图片） ═══ */
+export async function 添加配件图片(参数: {
+  partId: string;
+  storagePath: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  /* 排序号在服务端取现有数量（防并发同号） */
+  const { count } = await supabase
+    .from("part_images")
+    .select("id", { count: "exact", head: true })
+    .eq("part_id", 参数.partId);
+
+  const { error } = await supabase.from("part_images").insert({
+    part_id: 参数.partId,
+    storage_path: 参数.storagePath,
+    sort_order: count || 0,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath(`/parts/${参数.partId}`);
+  return { success: true };
+}
+
+export async function 删除配件图片(参数: {
+  partId: string;
+  storagePath: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("part_images")
+    .delete()
+    .eq("part_id", 参数.partId)
+    .eq("storage_path", 参数.storagePath);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath(`/parts/${参数.partId}`);
+  return { success: true };
+}
+
 interface 同步结果 {
   success: boolean;
   message?: string;

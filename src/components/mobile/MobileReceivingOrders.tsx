@@ -9,7 +9,7 @@ import BarcodeScanModal from "@/components/BarcodeScanModal";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
-import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单 } from "@/app/procurement/actions";
+import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单, 保存采购明细图片, 保存供应商销售单 } from "@/app/procurement/actions";
 import { 关联运单到采购单, 关联运单到采购单或配件, 设置运单豁免 } from "@/app/logistics/actions";
 
 /* 2026-08-21 手机端待收货管理（老流程采购单）：
@@ -103,7 +103,6 @@ function ReceiveModal({
 }) {
   const { showToast } = useToast();
   const { 请求确认, 确认弹窗 } = useConfirm();
-  const supabase = createClient();
   /* 数量不预填（对齐桌面端 2026-08-20 口径）：按实际点数手动填；扫码场景由外部数量覆盖 */
   const [数量, set数量] = useState("");
   const [问题, set问题] = useState<"" | "broken" | "wrong">("");
@@ -133,11 +132,9 @@ function ReceiveModal({
   /* 配件图片上传即落库（追加到采购明细 photos，入库后工单/库存也能看到实物图） */
   async function 保存配件图片(paths: string[]) {
     set配件图(paths);
-    const { error } = await supabase
-      .from("purchase_order_items")
-      .update({ photos: paths })
-      .eq("id", 明细.id);
-    if (error) showToast("图片保存失败: " + error.message, "error");
+    /* 写库走 Server Action */
+    const 结果 = await 保存采购明细图片({ itemId: 明细.id, paths });
+    if (!结果.success) showToast("图片保存失败: " + (结果.error || "未知错误"), "error");
   }
 
   async function 提交() {
@@ -158,14 +155,13 @@ function ReceiveModal({
       return;
     }
     if (slipNo.trim() || 新金额 !== null || slipPhotos.length > 0) {
-      await supabase
-        .from("purchase_orders")
-        .update({
-          supplier_order_no: slipNo.trim() || null,
-          supplier_order_amount: 新金额,
-          supplier_slip_photos: slipPhotos.length > 0 ? slipPhotos : null,
-        })
-        .eq("id", 订单.id);
+      /* 销售单顺带保存走 Server Action（选填不阻塞收货） */
+      await 保存供应商销售单({
+        orderId: 订单.id,
+        slipNo,
+        slipAmount: 新金额,
+        slipPhotos,
+      });
     }
 
     if (qty === 订购) {

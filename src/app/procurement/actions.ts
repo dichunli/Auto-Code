@@ -22,6 +22,239 @@ interface RPC返回 {
   inbound_no?: string;
 }
 
+/* ═══ 行内配件关联（usePartLinking 共享 Hook 的写库收编） ═══
+ * 收货/入库/退货/采购 4 个列表的"行内编辑配件"写库统一走这里：
+ * 主表 + 可选双写 WOI 副表，"为空才填"的当前值在服务端读最新（不用客户端快照）。
+ * 字段级差异由客户端配置传入，语义与原 Hook 完全一致。 */
+export interface 行内配件快照 {
+  id: string;
+  part_number?: string | null;
+  barcode?: string | null;
+  name?: string | null;
+  unit?: string | null;
+  unit_cost?: number | null;
+  unit_price?: number | null;
+  purchase_price?: number | null;
+  part_names?: {
+    name?: string | null;
+    unit?: string | null;
+    part_categories?: { name?: string | null } | null;
+  } | null;
+  part_brands?: { name?: string | null } | null;
+  part_specifications?: { name?: string | null } | null;
+}
+
+export async function 行内配件关联(参数: {
+  主表: "purchase_order_items" | "work_order_item_parts";
+  主表行id: string;
+  副表行id: string | null;
+  双写WOI: boolean;
+  写WoiPartId: boolean;
+  行内unitCost来源: "unit_cost" | "purchase_price";
+  行内写售价: boolean;
+  弹窗写supplierPartName: boolean;
+  弹窗写WoiDocumentName: boolean;
+  弹窗规格来源: "specification_text" | "join";
+  模式: "弹窗保存" | "行内选中" | "行内清除";
+  partId?: string;
+  行内配件?: 行内配件快照;
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const 取join名 = (v: { name?: string | null }[] | { name?: string | null } | null | undefined): string | null =>
+    Array.isArray(v) ? v[0]?.name ?? null : v?.name ?? null;
+
+  /* ── 行内清除：解除配件关联 ── */
+  if (参数.模式 === "行内清除") {
+    const { error: 主表Err } = await supabase
+      .from(参数.主表)
+      .update({ part_id: null, part_number: null })
+      .eq("id", 参数.主表行id);
+    if (主表Err) return { success: false, error: 主表Err.message };
+
+    if (参数.双写WOI && 参数.副表行id) {
+      const { error: woiErr } = await supabase
+        .from("work_order_item_parts")
+        .update({ part_id: null, part_number: null })
+        .eq("id", 参数.副表行id);
+      if (woiErr) console.warn("同步清除工单配件信息失败:", woiErr);
+    }
+    revalidatePath("/procurement");
+    return { success: true };
+  }
+
+  /* ── 弹窗保存：服务端读配件全量信息，写主表 + 双写副表 ── */
+  if (参数.模式 === "弹窗保存") {
+    if (!参数.partId) return { success: false, error: "缺少配件信息" };
+
+    const { data: part } = await supabase
+      .from("parts")
+      .select("part_number, name, unit, part_categories(name), part_brands(name), specification_text, part_specifications(name), purchase_price, notes, document_name")
+      .eq("id", 参数.partId)
+      .single();
+    const p = (part || {}) as Record<string, unknown>;
+    const brandName = 取join名(p.part_brands as { name?: string }[] | { name?: string } | null | undefined);
+
+    const 主表Updates: Record<string, unknown> = { part_id: 参数.partId };
+    if (p.part_number != null) 主表Updates.part_number = p.part_number;
+    if (p.name != null) 主表Updates.name = p.name;
+    if (p.unit != null) 主表Updates.unit = p.unit;
+    if (p.brand_id != null) 主表Updates.brand = brandName;
+    if (p.purchase_price != null) 主表Updates.unit_cost = p.purchase_price;
+    if (p.notes != null) 主表Updates.notes = p.notes;
+
+    if (参数.主表 === "purchase_order_items") {
+      const catName = 取join名(p.part_categories as { name?: string }[] | { name?: string } | null | undefined);
+      if (catName != null) 主表Updates.category = catName;
+      if (p.specification_text != null) 主表Updates.specification = p.specification_text;
+      if (参数.弹窗写supplierPartName && p.document_name != null) {
+        主表Updates.supplier_part_name = p.document_name;
+      }
+    } else {
+      if (参数.弹窗规格来源 === "join") {
+        const specName = 取join名(p.part_specifications as { name?: string }[] | { name?: string } | null | undefined);
+        if (specName != null) 主表Updates.specification = specName;
+      } else if (p.specification_text != null) {
+        主表Updates.specification = p.specification_text;
+      }
+      if (参数.弹窗写WoiDocumentName && p.document_name != null) {
+        主表Updates.document_name = p.document_name;
+      }
+    }
+
+    const { error: 主表Err } = await supabase
+      .from(参数.主表)
+      .update(主表Updates)
+      .eq("id", 参数.主表行id);
+    if (主表Err) return { success: false, error: 主表Err.message };
+
+    if (参数.双写WOI && 参数.副表行id) {
+      const woiUpdates: Record<string, unknown> = {};
+      /* 缺陷保持：副表不写 part_id（写WoiPartId 此时为 false） */
+      if (参数.写WoiPartId) woiUpdates.part_id = 参数.partId;
+      if (p.part_number != null) woiUpdates.part_number = p.part_number;
+      if (p.name != null) woiUpdates.name = p.name;
+      if (p.unit != null) woiUpdates.unit = p.unit;
+      if (p.brand_id != null) woiUpdates.brand = brandName;
+      if (p.specification_text != null) woiUpdates.specification = p.specification_text;
+      if (p.purchase_price != null) woiUpdates.unit_cost = p.purchase_price;
+      if (p.notes != null) woiUpdates.notes = p.notes;
+      if (参数.弹窗写WoiDocumentName && p.document_name != null) {
+        woiUpdates.document_name = p.document_name;
+      }
+      if (Object.keys(woiUpdates).length > 0) {
+        const { error: woiErr } = await supabase
+          .from("work_order_item_parts")
+          .update(woiUpdates)
+          .eq("id", 参数.副表行id);
+        if (woiErr) console.warn("同步工单配件信息失败:", woiErr);
+      }
+    }
+
+    revalidatePath("/procurement");
+    return { success: true };
+  }
+
+  /* ── 行内选中：客户端传入配件快照，"为空才填"的当前值在服务端读最新 ── */
+  const part = 参数.行内配件;
+  if (!part) return { success: false, error: "缺少配件信息" };
+
+  /* 读主表行当前值（两表列不同：POI 无 unit_price、有 category；WOI 相反） */
+  const { data: 主表行 } = 参数.主表 === "purchase_order_items"
+    ? await supabase
+        .from(参数.主表)
+        .select("name, unit, brand, specification, unit_cost, category")
+        .eq("id", 参数.主表行id)
+        .single()
+    : await supabase
+        .from(参数.主表)
+        .select("name, unit, brand, specification, unit_cost, unit_price")
+        .eq("id", 参数.主表行id)
+        .single();
+  const 行视图 = (主表行 || {}) as Record<string, unknown>;
+
+  const 主表Updates: Record<string, unknown> = { part_id: part.id };
+  if (part.part_number != null) 主表Updates.part_number = part.part_number;
+  if (part.barcode != null && !part.part_number) 主表Updates.part_number = part.barcode;
+  if (!行视图.name) {
+    if (part.name != null) 主表Updates.name = part.name;
+    else if (part.part_names?.name != null) 主表Updates.name = part.part_names.name;
+  }
+  if (!行视图.unit) {
+    if (part.unit != null) 主表Updates.unit = part.unit;
+    else if (part.part_names?.unit != null) 主表Updates.unit = part.part_names.unit;
+  }
+  if (!行视图.brand && part.part_brands?.name != null) 主表Updates.brand = part.part_brands.name;
+  if (!行视图.specification && part.part_specifications?.name != null) 主表Updates.specification = part.part_specifications.name;
+
+  if (参数.主表 === "purchase_order_items") {
+    /* POI 专属：分类（正确路径在 part_names 里） */
+    if (!行视图.category) {
+      const catName = part.part_names?.part_categories?.name;
+      if (catName != null) 主表Updates.category = catName;
+    }
+  }
+
+  /* 主表为 WOI（退货/采购）时，价格/part_id 也在主表写 */
+  if (参数.主表 === "work_order_item_parts") {
+    if (参数.写WoiPartId) 主表Updates.part_id = part.id;
+    const cost来源 = 参数.行内unitCost来源 === "purchase_price" ? part.purchase_price : part.unit_cost;
+    if ((行视图.unit_cost == null || 行视图.unit_cost === 0) && cost来源 != null) {
+      主表Updates.unit_cost = cost来源;
+    }
+    if (参数.行内写售价 && 行视图.unit_price == null && part.unit_price != null) {
+      主表Updates.unit_price = part.unit_price;
+    }
+  }
+
+  const { error: 主表Err } = await supabase
+    .from(参数.主表)
+    .update(主表Updates)
+    .eq("id", 参数.主表行id);
+  if (主表Err) return { success: false, error: 主表Err.message };
+
+  /* 双写 WOI 副表（收货/入库）：服务端读副表当前值再按"为空才填" */
+  if (参数.双写WOI && 参数.副表行id) {
+    const { data: woi行 } = await supabase
+      .from("work_order_item_parts")
+      .select("name, unit, brand, specification, unit_cost, unit_price")
+      .eq("id", 参数.副表行id)
+      .single();
+    const woiCurrent = (woi行 || {}) as Record<string, unknown>;
+
+    const woiUpdates: Record<string, unknown> = {};
+    if (part.part_number != null) woiUpdates.part_number = part.part_number;
+    if (!woiCurrent.name && part.name != null) woiUpdates.name = part.name;
+    if (!woiCurrent.unit && part.unit != null) woiUpdates.unit = part.unit;
+    if (!woiCurrent.brand && part.part_brands?.name != null) woiUpdates.brand = part.part_brands.name;
+    if (!woiCurrent.specification && part.part_specifications?.name != null) woiUpdates.specification = part.part_specifications.name;
+
+    const cost来源 = 参数.行内unitCost来源 === "purchase_price" ? part.purchase_price : part.unit_cost;
+    if ((woiCurrent.unit_cost == null || woiCurrent.unit_cost === 0) && cost来源 != null) {
+      woiUpdates.unit_cost = cost来源;
+    }
+    if (参数.行内写售价 && woiCurrent.unit_price == null && part.unit_price != null) {
+      woiUpdates.unit_price = part.unit_price;
+    }
+
+    if (Object.keys(woiUpdates).length > 0) {
+      const { error: woiErr } = await supabase
+        .from("work_order_item_parts")
+        .update(woiUpdates)
+        .eq("id", 参数.副表行id);
+      if (woiErr) console.warn("同步工单配件信息失败:", woiErr);
+    }
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
+
+
 /* ─── 入库明细(前端弹窗确认后的每行) ─── */
 export interface 入库明细输入 {
   purchase_order_item_id: string;
@@ -739,5 +972,137 @@ export async function 移除采购暂存行(stagingId: string): Promise<操作�
   }
 
   revalidatePath("/procurement");
+  return { success: true };
+}
+
+/* ─── 保存采购暂存行数量（自定义采购项数量必填） ─── */
+export async function 保存暂存行数量(参数: {
+  stagingId: string;
+  quantity: number | null;
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (参数.quantity === null) {
+    return { success: false, error: "自定义采购项数量必填" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("custom_purchase_staging")
+    .update({ quantity: 参数.quantity })
+    .eq("id", 参数.stagingId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
+
+/* ─── 保存待采购配件数量（配件分支行，数量可空=未填） ─── */
+export async function 保存待采购配件数量(参数: {
+  partId: string;
+  quantity: number | null;
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_item_parts")
+    .update({ quantity: 参数.quantity })
+    .eq("id", 参数.partId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
+
+/* ─── 批量撤销配件客户意见（待采购列表"撤销"操作） ─── */
+export async function 批量撤销配件意见(参数: {
+  ids: string[];
+  opinion: string;
+  reason: string;
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (参数.ids.length === 0) {
+    return { success: false, error: "请先选择配件" };
+  }
+  if (!参数.reason.trim()) {
+    return { success: false, error: "请填写撤销原因" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_item_parts")
+    .update({ customer_opinion: 参数.opinion, revoke_reason: 参数.reason.trim() })
+    .in("id", 参数.ids);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
+
+/* ─── 保存采购明细配件图片（手机收货时补拍实物图，追加即落库） ─── */
+export async function 保存采购明细图片(参数: {
+  itemId: string;
+  paths: string[];
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("purchase_order_items")
+    .update({ photos: 参数.paths })
+    .eq("id", 参数.itemId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/m/receiving");
+  return { success: true };
+}
+
+/* ─── 保存供应商销售单（收货时顺带保存，选填不阻塞） ─── */
+export async function 保存供应商销售单(参数: {
+  orderId: string;
+  slipNo: string;
+  slipAmount: number | null;
+  slipPhotos: string[];
+}): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("purchase_orders")
+    .update({
+      supplier_order_no: 参数.slipNo.trim() || null,
+      supplier_order_amount: 参数.slipAmount,
+      supplier_slip_photos: 参数.slipPhotos.length > 0 ? 参数.slipPhotos : null,
+    })
+    .eq("id", 参数.orderId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/procurement");
+  revalidatePath("/m/receiving");
   return { success: true };
 }
