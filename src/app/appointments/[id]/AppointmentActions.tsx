@@ -1,9 +1,9 @@
 "use client";
 
-import {useState, useMemo} from "react";
+import {useState} from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 更新预约状态, 预约转工单 } from "../actions";
 import Link from "next/link";
 
 interface Appointment {
@@ -21,18 +21,19 @@ interface Appointment {
 
 export function AppointmentActions({ appointment }: { appointment: Appointment }) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
   const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function updateStatus(status: string) {
     setLoading(true);
-    const { error } = await supabase
-      .from("appointments")
-      .update({ status })
-      .eq("id", appointment.id);
-    if (error) {
-      alert("操作失败: " + error.message);
+    /* 写库走 Server Action */
+    try {
+      const result = await 更新预约状态({ appointmentId: appointment.id, status });
+      if (!result.success) {
+        alert("操作失败: " + (result.error || "未知错误"));
+      }
+    } catch {
+      alert("操作失败：网络异常，请重试");
     }
     router.refresh();
     setLoading(false);
@@ -40,80 +41,18 @@ export function AppointmentActions({ appointment }: { appointment: Appointment }
 
   async function convertToWorkOrder() {
     setLoading(true);
+    /* 转工单（找/建客户/车辆 + 建工单 + 改预约状态）走 Server Action，服务端一次完成 */
     try {
-      // 1. 查找或创建客户
-      let customerId: string | null = null;
-      const { data: existingCustomer } = await supabase
-        .from("customers")
-        .select("id")
-        .eq("phone", appointment.customer_phone)
-        .maybeSingle();
-
-      if (existingCustomer) {
-        customerId = existingCustomer.id;
-      } else {
-        const { data: newCustomer, error: cErr } = await supabase
-          .from("customers")
-          .insert({ name: appointment.customer_name, phone: appointment.customer_phone || null })
-          .select("id")
-          .single();
-        if (cErr) throw cErr;
-        customerId = newCustomer.id;
+      const result = await 预约转工单({ appointmentId: appointment.id });
+      if (!result.success || !result.workOrderId) {
+        alert("转工单失败: " + (result.error || "未知错误"));
+        setLoading(false);
+        return;
       }
-
-      // 2. 查找或创建车辆
-      let vehicleId: string | null = null;
-      if (appointment.plate_number) {
-        const { data: existingVehicle } = await supabase
-          .from("vehicles")
-          .select("id")
-          .eq("plate_number", appointment.plate_number)
-          .maybeSingle();
-
-        if (existingVehicle) {
-          vehicleId = existingVehicle.id;
-        } else {
-          const { data: newVehicle, error: vErr } = await supabase
-            .from("vehicles")
-            .insert({
-              customer_id: customerId,
-              plate_number: appointment.plate_number,
-              brand: appointment.vehicle_brand || null,
-              model: appointment.vehicle_model || null,
-            })
-            .select("id")
-            .single();
-          if (vErr) throw vErr;
-          vehicleId = newVehicle.id;
-        }
-      }
-
-      // 3. 创建工单
-      const orderNo = `WO${Date.now().toString().slice(-8)}`;
-      const { data: workOrder, error: woErr } = await supabase
-        .from("work_orders")
-        .insert({
-          order_no: orderNo,
-          customer_id: customerId,
-          vehicle_id: vehicleId,
-          status: "received",
-          notes: `由预约转化: ${appointment.service_type || ""}。${appointment.notes || ""}`,
-        })
-        .select("id")
-        .single();
-      if (woErr) throw woErr;
-
-      // 4. 更新预约状态
-      const { error: aErr } = await supabase
-        .from("appointments")
-        .update({ status: "arrived", work_order_id: workOrder.id })
-        .eq("id", appointment.id);
-      if (aErr) throw aErr;
-
-      router.push(`/work-orders/${workOrder.id}`);
+      router.push(`/work-orders/${result.workOrderId}`);
       router.refresh();
-    } catch (err: unknown) {
-      alert("转工单失败: " + (err instanceof Error ? err.message : String(err)));
+    } catch {
+      alert("转工单失败：网络异常，请重试");
       setLoading(false);
     }
   }
