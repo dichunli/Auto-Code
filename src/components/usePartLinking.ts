@@ -17,6 +17,7 @@
 
 import { useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { 行内配件关联, type 行内配件快照 } from "@/app/procurement/actions";
 
 /* 行内下拉选中的配件（PartSearchDropdown 的 MatchedPart 结构） */
 export interface 行内配件 {
@@ -87,14 +88,7 @@ export interface PartLinking配置<T> {
   reload: () => void;
 }
 
-/* 关联数组/单对象两种 join 返回形态的名字 */
-function 取join名(v: { name?: string | null }[] | { name?: string | null } | null | undefined): string | null {
-  const name = Array.isArray(v) ? v[0]?.name : v?.name;
-  return name ?? null;
-}
-
 export function usePartLinking<T>(配置: PartLinking配置<T>) {
-  const { supabase } = 配置;
   const [editRow, setEditRow] = useState<T | null>(null);
   const [newPartQuery, setNewPartQuery] = useState("");
 
@@ -116,82 +110,27 @@ export function usePartLinking<T>(配置: PartLinking配置<T>) {
     setEditRow(null);
   }
 
-  /* ========== 弹窗保存后回写（handlePartSaved） ========== */
+  /* ========== 弹窗保存后回写（handlePartSaved） ==========
+   * 写库走 Server Action：配件信息在服务端读，主表+副表一次完成 */
   async function handlePartSaved(partId: string) {
     if (!editRow) return;
     配置.setSubmitting(busyKeyOf("edit", 配置.getRowId(editRow)));
     try {
-      const { data: part } = await supabase
-        .from("parts")
-        .select("part_number, name, unit, category_id, part_categories(name), brand_id, part_brands(name), specification_text, specification_id, part_specifications(name), purchase_price, notes, document_name")
-        .eq("id", partId)
-        .single();
-
-      const p = (part || {}) as Record<string, unknown>;
-      const brandName = 取join名(p.part_brands as { name?: string }[] | { name?: string } | null | undefined);
-
-      /* ----- 主表写入 ----- */
-      const 主表Updates: Record<string, unknown> = { part_id: partId };
-      if (p.part_number != null) 主表Updates.part_number = p.part_number;
-      if (p.name != null) 主表Updates.name = p.name;
-      if (p.unit != null) 主表Updates.unit = p.unit;
-      if (p.brand_id != null) 主表Updates.brand = brandName;
-      if (p.purchase_price != null) 主表Updates.unit_cost = p.purchase_price;
-      if (p.notes != null) 主表Updates.notes = p.notes;
-
-      if (配置.主表 === "purchase_order_items") {
-        /* POI 专属字段：分类 join 名 + 规格文本 + 单据名（配置） */
-        const catName = 取join名(p.part_categories as { name?: string }[] | { name?: string } | null | undefined);
-        if (catName != null) 主表Updates.category = catName;
-        if (p.specification_text != null) 主表Updates.specification = p.specification_text;
-        if (配置.弹窗写supplierPartName && p.document_name != null) {
-          主表Updates.supplier_part_name = p.document_name;
-        }
-      } else {
-        /* WOI 主表字段：规格按配置来源 + 单据名（配置） */
-        if (配置.弹窗规格来源 === "join") {
-          const specName = 取join名(p.part_specifications as { name?: string }[] | { name?: string } | null | undefined);
-          if (specName != null) 主表Updates.specification = specName;
-        } else if (p.specification_text != null) {
-          主表Updates.specification = p.specification_text;
-        }
-        if (配置.弹窗写WoiDocumentName && p.document_name != null) {
-          主表Updates.document_name = p.document_name;
-        }
-      }
-
-      const { error: 主表Err } = await supabase
-        .from(配置.主表)
-        .update(主表Updates)
-        .eq("id", 配置.getRowId(editRow));
-      if (主表Err) throw 主表Err;
-
-      /* ----- 双写 WOI 副表（收货/入库，且行有关联 WOI 时） ----- */
-      if (配置.双写WOI) {
-        const woiId = 配置.getWoiId(editRow);
-        if (woiId) {
-          const woiUpdates: Record<string, unknown> = {};
-          /* 缺陷 3 保持：副表不写 part_id（配置.写WoiPartId 此时为 false） */
-          if (配置.写WoiPartId) woiUpdates.part_id = partId;
-          if (p.part_number != null) woiUpdates.part_number = p.part_number;
-          if (p.name != null) woiUpdates.name = p.name;
-          if (p.unit != null) woiUpdates.unit = p.unit;
-          if (p.brand_id != null) woiUpdates.brand = brandName;
-          if (p.specification_text != null) woiUpdates.specification = p.specification_text;
-          if (p.purchase_price != null) woiUpdates.unit_cost = p.purchase_price;
-          if (p.notes != null) woiUpdates.notes = p.notes;
-          if (配置.弹窗写WoiDocumentName && p.document_name != null) {
-            woiUpdates.document_name = p.document_name;
-          }
-          if (Object.keys(woiUpdates).length > 0) {
-            const { error: woiErr } = await supabase
-              .from("work_order_item_parts")
-              .update(woiUpdates)
-              .eq("id", woiId);
-            if (woiErr) console.warn("同步工单配件信息失败:", woiErr);
-          }
-        }
-      }
+      const result = await 行内配件关联({
+        主表: 配置.主表,
+        主表行id: 配置.getRowId(editRow),
+        副表行id: 配置.getWoiId(editRow),
+        双写WOI: 配置.双写WOI,
+        写WoiPartId: 配置.写WoiPartId,
+        行内unitCost来源: 配置.行内unitCost来源,
+        行内写售价: 配置.行内写售价,
+        弹窗写supplierPartName: 配置.弹窗写supplierPartName,
+        弹窗写WoiDocumentName: 配置.弹窗写WoiDocumentName,
+        弹窗规格来源: 配置.弹窗规格来源,
+        模式: "弹窗保存",
+        partId,
+      });
+      if (!result.success) throw new Error(result.error || "同步失败");
 
       closeEditModal();
       配置.reload();
@@ -203,85 +142,27 @@ export function usePartLinking<T>(配置: PartLinking配置<T>) {
     }
   }
 
-  /* ========== 行内搜索选中配件（handleInlinePartSelect） ========== */
+  /* ========== 行内搜索选中配件（handleInlinePartSelect） ==========
+   * 写库走 Server Action："为空才填"的当前值在服务端读最新 */
   async function handleInlinePartSelect(row: T, part: 行内配件) {
     const rowId = 配置.getRowId(row);
     配置.setSubmitting(busyKeyOf("inline", rowId));
     try {
-      const 行视图 = 配置.取弹前行(row);
-
-      /* ----- 主表写入：part_id 无条件、part_number 无条件+barcode 兜底、其余"为空才填" ----- */
-      const 主表Updates: Record<string, unknown> = { part_id: part.id };
-      if (part.part_number != null) 主表Updates.part_number = part.part_number;
-      if (part.barcode != null && !part.part_number) 主表Updates.part_number = part.barcode;
-      if (!行视图.name) {
-        if (part.name != null) 主表Updates.name = part.name;
-        else if (part.part_names?.name != null) 主表Updates.name = part.part_names.name;
-      }
-      if (!行视图.unit) {
-        if (part.unit != null) 主表Updates.unit = part.unit;
-        else if (part.part_names?.unit != null) 主表Updates.unit = part.part_names.unit;
-      }
-      if (!行视图.brand && part.part_brands?.name != null) 主表Updates.brand = part.part_brands.name;
-      if (!行视图.specification && part.part_specifications?.name != null) 主表Updates.specification = part.part_specifications.name;
-
-      if (配置.主表 === "purchase_order_items") {
-        /* POI 专属：分类（修历史缺陷：原读错路径，正确路径在 part_names 里） */
-        const poi行 = row as { category?: string | null };
-        if (!poi行.category) {
-          const catName = part.part_names?.part_categories?.name;
-          if (catName != null) 主表Updates.category = catName;
-        }
-      }
-
-      /* 主表为 WOI（退货/采购）时，价格/part_id 也在主表写 */
-      if (配置.主表 === "work_order_item_parts") {
-        if (配置.写WoiPartId) 主表Updates.part_id = part.id;
-        const 行woi = 行视图 as WOI当前值;
-        const cost来源 = 配置.行内unitCost来源 === "purchase_price" ? part.purchase_price : part.unit_cost;
-        if ((行woi.unit_cost == null || 行woi.unit_cost === 0) && cost来源 != null) {
-          主表Updates.unit_cost = cost来源;
-        }
-        if (配置.行内写售价 && 行woi.unit_price == null && part.unit_price != null) {
-          主表Updates.unit_price = part.unit_price;
-        }
-      }
-
-      const { error: 主表Err } = await supabase
-        .from(配置.主表)
-        .update(主表Updates)
-        .eq("id", rowId);
-      if (主表Err) throw 主表Err;
-
-      /* ----- 双写 WOI 副表（收货/入库）：先取当前值再按"为空才填" ----- */
-      if (配置.双写WOI) {
-        const woiId = 配置.getWoiId(row);
-        if (woiId) {
-          const woiCurrent = (await 配置.getWoi当前值(row)) || {};
-          const woiUpdates: Record<string, unknown> = {};
-          if (part.part_number != null) woiUpdates.part_number = part.part_number;
-          if (!woiCurrent.name && part.name != null) woiUpdates.name = part.name;
-          if (!woiCurrent.unit && part.unit != null) woiUpdates.unit = part.unit;
-          if (!woiCurrent.brand && part.part_brands?.name != null) woiUpdates.brand = part.part_brands.name;
-          if (!woiCurrent.specification && part.part_specifications?.name != null) woiUpdates.specification = part.part_specifications.name;
-
-          const cost来源 = 配置.行内unitCost来源 === "purchase_price" ? part.purchase_price : part.unit_cost;
-          if ((woiCurrent.unit_cost == null || woiCurrent.unit_cost === 0) && cost来源 != null) {
-            woiUpdates.unit_cost = cost来源;
-          }
-          if (配置.行内写售价 && woiCurrent.unit_price == null && part.unit_price != null) {
-            woiUpdates.unit_price = part.unit_price;
-          }
-
-          if (Object.keys(woiUpdates).length > 0) {
-            const { error: woiErr } = await supabase
-              .from("work_order_item_parts")
-              .update(woiUpdates)
-              .eq("id", woiId);
-            if (woiErr) console.warn("同步工单配件信息失败:", woiErr);
-          }
-        }
-      }
+      const result = await 行内配件关联({
+        主表: 配置.主表,
+        主表行id: rowId,
+        副表行id: 配置.getWoiId(row),
+        双写WOI: 配置.双写WOI,
+        写WoiPartId: 配置.写WoiPartId,
+        行内unitCost来源: 配置.行内unitCost来源,
+        行内写售价: 配置.行内写售价,
+        弹窗写supplierPartName: 配置.弹窗写supplierPartName,
+        弹窗写WoiDocumentName: 配置.弹窗写WoiDocumentName,
+        弹窗规格来源: 配置.弹窗规格来源,
+        模式: "行内选中",
+        行内配件: part as 行内配件快照,
+      });
+      if (!result.success) throw new Error(result.error || "更新失败");
 
       配置.reload();
     } catch (err: unknown) {
@@ -292,27 +173,26 @@ export function usePartLinking<T>(配置: PartLinking配置<T>) {
     }
   }
 
-  /* ========== 行内清除配件关联（handleInlineClear） ========== */
+  /* ========== 行内清除配件关联（handleInlineClear） ==========
+   * 写库走 Server Action */
   async function handleInlineClear(row: T) {
     const rowId = 配置.getRowId(row);
     配置.setSubmitting(busyKeyOf("inline", rowId));
     try {
-      const { error: 主表Err } = await supabase
-        .from(配置.主表)
-        .update({ part_id: null, part_number: null })
-        .eq("id", rowId);
-      if (主表Err) throw 主表Err;
-
-      if (配置.双写WOI) {
-        const woiId = 配置.getWoiId(row);
-        if (woiId) {
-          const { error: woiErr } = await supabase
-            .from("work_order_item_parts")
-            .update({ part_id: null, part_number: null })
-            .eq("id", woiId);
-          if (woiErr) console.warn("同步清除工单配件信息失败:", woiErr);
-        }
-      }
+      const result = await 行内配件关联({
+        主表: 配置.主表,
+        主表行id: rowId,
+        副表行id: 配置.getWoiId(row),
+        双写WOI: 配置.双写WOI,
+        写WoiPartId: 配置.写WoiPartId,
+        行内unitCost来源: 配置.行内unitCost来源,
+        行内写售价: 配置.行内写售价,
+        弹窗写supplierPartName: 配置.弹窗写supplierPartName,
+        弹窗写WoiDocumentName: 配置.弹窗写WoiDocumentName,
+        弹窗规格来源: 配置.弹窗规格来源,
+        模式: "行内清除",
+      });
+      if (!result.success) throw new Error(result.error || "清除失败");
 
       配置.reload();
     } catch (err: unknown) {

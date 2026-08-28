@@ -1097,6 +1097,131 @@ export async function 保存检查单(参数: {
   return { success: true };
 }
 
+/* ═══ 批量保存分支编辑（采购看板行内编辑，多行不同字段） ═══ */
+export async function 批量保存分支编辑(参数: {
+  updates: { id: string; data: 配件分支更新 }[];
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (参数.updates.length === 0) {
+    return { success: true };
+  }
+
+  const supabase = await createClient();
+  for (const u of 参数.updates) {
+    const { error } = await supabase
+      .from("work_order_item_parts")
+      .update(u.data)
+      .eq("id", u.id);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  return { success: true };
+}
+
+/* ═══ 撤销分支价格（待报价撤销→清进价 / 待确认撤销→清销售价） ═══ */
+export async function 撤销分支价格(参数: {
+  ids: string[];
+  field: "unit_cost" | "unit_price";
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (参数.ids.length === 0) {
+    return { success: true };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_item_parts")
+    .update({ [参数.field]: null })
+    .in("id", 参数.ids);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 分支关联库存配件并同步采购明细（两张表一起写，服务端一次完成） ═══
+ * 分支行写入配件快照信息；关联的采购明细行同步换配件。 */
+export async function 分支关联配件并同步采购(参数: {
+  branchId: string;
+  partId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data: part } = await supabase
+    .from("parts")
+    .select("part_number, name, unit, part_categories(name), part_brands(name), part_specifications(name), purchase_price, notes, document_name")
+    .eq("id", 参数.partId)
+    .single();
+
+  interface 配件详情 {
+    part_number: string | null;
+    name: string | null;
+    unit: string | null;
+    purchase_price: number | null;
+    notes: string | null;
+    document_name: string | null;
+    part_brands: { name: string | null } | { name: string | null }[] | null;
+    part_specifications: { name: string | null } | { name: string | null }[] | null;
+    part_categories: { name: string | null } | { name: string | null }[] | null;
+  }
+  const p = part as unknown as 配件详情 | null;
+  const 取名 = (v: { name: string | null } | { name: string | null }[] | null | undefined): string | null =>
+    !v ? null : Array.isArray(v) ? v[0]?.name ?? null : v.name ?? null;
+
+  /* 1. 分支行写入快照 */
+  const updates: 配件分支更新 = { part_id: 参数.partId };
+  if (p) {
+    if (p.part_number != null) updates.part_number = p.part_number;
+    if (p.name != null) updates.name = p.name;
+    if (p.unit != null) updates.unit = p.unit;
+    const brandName = 取名(p.part_brands);
+    const specName = 取名(p.part_specifications);
+    if (brandName != null) updates.brand = brandName;
+    if (specName != null) updates.specification = specName;
+    if (p.purchase_price != null) updates.unit_cost = p.purchase_price;
+    if (p.notes != null) updates.notes = p.notes;
+    if (p.document_name != null) updates.document_name = p.document_name;
+  }
+
+  const { error } = await supabase
+    .from("work_order_item_parts")
+    .update(updates)
+    .eq("id", 参数.branchId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  /* 2. 同步更新关联的采购明细（失败仅告警不阻断，与原逻辑一致） */
+  const { error: poiErr } = await supabase
+    .from("purchase_order_items")
+    .update({
+      part_id: 参数.partId,
+      part_number: p?.part_number || updates.part_number || null,
+      name: p?.name || updates.name || null,
+      unit: p?.unit || updates.unit || null,
+      brand: 取名(p?.part_brands) || updates.brand || null,
+      specification: 取名(p?.part_specifications) || updates.specification || null,
+      category: 取名(p?.part_categories) || null,
+    })
+    .eq("work_order_item_part_id", 参数.branchId);
+  if (poiErr) console.warn("同步采购单配件信息失败:", poiErr);
+
+  return { success: true };
+}
+
 /* ═══ 更新配件分支字段（PartBranchEditor 各类单字段保存） ═══
  * 只更新传了的字段；原来是客户端直写 work_order_item_parts。 */
 export interface 配件分支更新 {

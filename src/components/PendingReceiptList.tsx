@@ -11,7 +11,7 @@ import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单, 撤销采购明细退回待采购 } from "@/app/procurement/actions";
-import { 关联运单到供应商待收货单, 关联运单到采购单或配件, 设置运单豁免 } from "@/app/logistics/actions";
+import { 关联运单到供应商待收货单, 关联运单到采购单或配件, 设置运单豁免, 创建运单, 关联运单到采购单 } from "@/app/logistics/actions";
 import { WaybillBatchForm } from "@/components/WaybillBatchForm";
 import { SupplierPhoneInput } from "@/components/SupplierPhoneInput";
 import { useDebounce } from "@/lib/useDebounce";
@@ -762,75 +762,51 @@ export function PendingReceiptList() {
     setSubmitting("create-waybill");
     try {
       const company = wbCompanies.find((c) => c.id === wbCompanyId);
-      const { data: waybill, error } = await supabase
-        .from("logistics_waybills")
-        .insert({
-          tracking_no: wbTrackingNo.trim(),
-          logistics_company_id: wbCompanyId || null,
-          logistics_company_name: company?.name || null,
-          phone: wbPhone.trim() || null,
-          supplier_name: wbSupplierName.trim() || null,
-          package_count: parseInt(wbPackageCount) || 1,
-          freight_amount: parseFloat(wbFreight) || 0,
-          cod_amount: parseFloat(wbCod) || 0,
-          photos: wbPhotos.length > 0 ? wbPhotos : null,
-          status: "pending",
-        })
-        .select("id")
-        .single();
-
-      if (error || !waybill) throw error || new Error("创建运单失败");
+      /* 创建运单走 Server Action（含电话命中供应商检测） */
+      const 创建结果 = await 创建运单({
+        trackingNo: wbTrackingNo,
+        logisticsCompanyId: wbCompanyId,
+        logisticsCompanyName: company?.name || "",
+        phone: wbPhone,
+        supplierName: wbSupplierName,
+        packageCount: parseInt(wbPackageCount) || 1,
+        freightAmount: parseFloat(wbFreight) || 0,
+        codAmount: parseFloat(wbCod) || 0,
+        photos: wbPhotos,
+      });
+      if (!创建结果.success || !创建结果.waybillId) {
+        throw new Error(创建结果.error || "创建运单失败");
+      }
+      const waybillId = 创建结果.waybillId;
 
       if (isBatch) {
-        /* 批量创建运单后自动关联到选中的采购单 */
-        const { error: assocErr } = await supabase
-          .from("purchase_orders")
-          .update({ waybill_id: waybill.id })
-          .in("id", Array.from(selectedOrderIds));
-        if (assocErr) throw assocErr;
+        /* 批量创建运单后自动关联到选中的采购单（走 Server Action） */
+        const res = await 关联运单到采购单(waybillId, Array.from(selectedOrderIds));
+        if (!res.success) throw new Error(res.error || "关联采购单失败");
         alert(`运单创建成功，已自动关联 ${selectedOrderIds.size} 张采购单`);
         setSelectedOrderIds(new Set());
         setBatchWaybillMode(false);
       } else if (isStandalone) {
         /* 需求2（2026-08-20）：运单电话命中供应商时，弹问是否关联其待收货采购单；
            2026-08-21 改完全匹配：防止电话片段误关联到别家供应商 */
-        let 已提示 = false;
-        if (wbPhone.trim()) {
-          const { data: 命中 } = await supabase
-            .from("suppliers")
-            .select("id, name")
-            .eq("phone", wbPhone.trim())
-            .limit(1);
-          if (命中 && 命中.length > 0) {
-            const { count } = await supabase
-              .from("purchase_orders")
-              .select("id", { count: "exact", head: true })
-              .eq("supplier_id", 命中[0].id)
-              .in("status", ["submitted", "approved", "partial_received"])
-              .is("waybill_id", null);
-            if ((count || 0) > 0) {
-              已提示 = true;
-              const 同意 = await 请求确认(
-                `运单电话命中供应商「${命中[0].name}」，该供应商有 ${count} 张待收货采购单，是否关联到这张运单？`
-              );
-              if (同意) {
-                const res = await 关联运单到供应商待收货单(waybill.id, 命中[0].id);
-                if (!res.success) throw new Error(res.error || "关联采购单失败");
-                alert(`运单创建成功，已关联 ${res.count} 张待收货采购单`);
-              } else {
-                alert("运单创建成功");
-              }
-            }
+        if (创建结果.命中供应商id && (创建结果.待关联单数 || 0) > 0) {
+          const 同意 = await 请求确认(
+            `运单电话命中供应商「${创建结果.命中供应商名}」，该供应商有 ${创建结果.待关联单数} 张待收货采购单，是否关联到这张运单？`
+          );
+          if (同意) {
+            const res = await 关联运单到供应商待收货单(waybillId, 创建结果.命中供应商id);
+            if (!res.success) throw new Error(res.error || "关联采购单失败");
+            alert(`运单创建成功，已关联 ${res.count} 张待收货采购单`);
+          } else {
+            alert("运单创建成功");
           }
-        }
-        if (!已提示) {
+        } else {
           alert("运单创建成功,请用「批量关联运单」或各单「选择已有运单」进行关联");
         }
       } else {
-        await supabase
-          .from("purchase_orders")
-          .update({ waybill_id: waybill.id })
-          .eq("id", createWaybillOrder!.id);
+        /* 单张关联（走 Server Action） */
+        const res = await 关联运单到采购单(waybillId, [createWaybillOrder!.id]);
+        if (!res.success) throw new Error(res.error || "关联采购单失败");
         alert("运单创建成功");
       }
 
@@ -846,13 +822,10 @@ export function PendingReceiptList() {
 
   async function handleAssignWaybill(waybillId: string) {
     if (batchWaybillMode && selectedOrderIds.size > 0) {
-      /* 批量关联 */
-      const { error } = await supabase
-        .from("purchase_orders")
-        .update({ waybill_id: waybillId })
-        .in("id", Array.from(selectedOrderIds));
-      if (error) {
-        alert("批量关联运单失败: " + error.message);
+      /* 批量关联（走 Server Action） */
+      const res = await 关联运单到采购单(waybillId, Array.from(selectedOrderIds));
+      if (!res.success) {
+        alert("批量关联运单失败: " + (res.error || "未知错误"));
         return;
       }
       setSelectedOrderIds(new Set());
@@ -863,12 +836,10 @@ export function PendingReceiptList() {
     }
     if (!waybillModalFor) return;
     const orderId = waybillModalFor;
-    const { error } = await supabase
-      .from("purchase_orders")
-      .update({ waybill_id: waybillId })
-      .eq("id", orderId);
-    if (error) {
-      alert("关联运单失败: " + error.message);
+    /* 单张关联（走 Server Action） */
+    const res = await 关联运单到采购单(waybillId, [orderId]);
+    if (!res.success) {
+      alert("关联运单失败: " + (res.error || "未知错误"));
       return;
     }
     closeWaybillModal();

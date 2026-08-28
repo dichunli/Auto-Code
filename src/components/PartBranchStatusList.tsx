@@ -11,8 +11,10 @@ import { PartSearchDropdown } from "./PartSearchDropdown";
 import QuoteSheetModal from "./QuoteSheetModal";
 import { resolvePartSellingPrice } from "@/lib/partPriceResolver";
 import PartForm from "@/app/parts/new/PartForm";
+import { 添加配件图片, 删除配件图片 } from "@/app/parts/actions";
 import { useConfirm } from "./ConfirmDialog";
 import { 添加配件分支, 删除配件分支 } from "@/app/work-orders/parts-actions";
+import { 添加配件图片记录, 分支关联配件并同步采购, 撤销分支价格, 批量保存分支编辑, type 配件分支更新 } from "@/app/work-orders/actions";
 
 const STATUS_TITLES: Record<string, string> = {
   pending_inquiry: "待询价",
@@ -359,12 +361,9 @@ export function PartBranchStatusList({ status }: Props) {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "上传失败");
-      const { error } = await supabase.from("part_images").insert({
-        part_id: row.parts.id,
-        storage_path: result.path,
-        sort_order: (row.parts.part_images || []).length,
-      });
-      if (error) throw new Error(error.message);
+      /* 写库走 Server Action（排序号服务端取） */
+      const 结果 = await 添加配件图片({ partId: row.parts.id, storagePath: result.path });
+      if (!结果.success) throw new Error(结果.error || "保存图片记录失败");
       await loadData();
     } catch (err: unknown) {
       alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
@@ -376,13 +375,9 @@ export function PartBranchStatusList({ status }: Props) {
   /* 删除配件信息图片 */
   async function 删除目录图片(row: PartBranchRow, storagePath: string) {
     if (!row.parts?.id) return;
-    const { error } = await supabase
-      .from("part_images")
-      .delete()
-      .eq("part_id", row.parts.id)
-      .eq("storage_path", storagePath);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除配件图片({ partId: row.parts.id, storagePath });
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     await loadData();
@@ -402,12 +397,9 @@ export function PartBranchStatusList({ status }: Props) {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "上传失败");
-      const { error } = await supabase.from("work_order_item_part_media").insert({
-        work_order_item_part_id: row.id,
-        media_type: "image",
-        storage_path: result.path,
-      });
-      if (error) throw new Error(error.message);
+      /* 写库走 Server Action */
+      const 结果 = await 添加配件图片记录({ partBranchId: row.id, paths: [result.path] });
+      if (!结果.success) throw new Error(结果.error || "保存图片记录失败");
       await loadData();
     } catch (err: unknown) {
       alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
@@ -510,78 +502,13 @@ export function PartBranchStatusList({ status }: Props) {
     setEditRow(null);
   }
 
-  interface PartDetail {
-    part_number: string | null;
-    name: string | null;
-    unit: string | null;
-    category_id: string | null;
-    brand_id: string | null;
-    specification_id: string | null;
-    unit_cost: number | null;
-    unit_price: number | null;
-    purchase_price: number | null;
-    notes: string | null;
-    document_name: string | null;
-    part_brands: { name: string | null } | { name: string | null }[] | null;
-    part_specifications: { name: string | null } | { name: string | null }[] | null;
-    part_categories: { name: string | null } | { name: string | null }[] | null;
-  }
-
-  function extractName(
-    val: { name: string | null } | { name: string | null }[] | null | undefined
-  ): string | null {
-    if (!val) return null;
-    if (Array.isArray(val)) return val[0]?.name ?? null;
-    return val.name ?? null;
-  }
-
   async function handlePartSaved(partId: string) {
     if (!editRow) return;
     setSavingId(editRow.id);
     try {
-      const { data: part } = await supabase
-        .from("parts")
-        .select(
-          "part_number, name, unit, category_id, part_categories(name), brand_id, part_brands(name), specification_id, part_specifications(name), unit_cost, unit_price, purchase_price, notes, document_name"
-        )
-        .eq("id", partId)
-        .single();
-
-      const p = part as unknown as PartDetail | null;
-      const updates: Record<string, string | number | null> = { part_id: partId };
-      if (p) {
-        if (p.part_number != null) updates.part_number = p.part_number;
-        if (p.name != null) updates.name = p.name;
-        if (p.unit != null) updates.unit = p.unit;
-        const brandName = extractName(p.part_brands);
-        const specName = extractName(p.part_specifications);
-        if (brandName != null) updates.brand = brandName;
-        if (specName != null) updates.specification = specName;
-        if (p.purchase_price != null) updates.unit_cost = p.purchase_price;
-        if (p.notes != null) updates.notes = p.notes;
-        if (p.document_name != null) updates.document_name = p.document_name;
-      }
-
-      const { error } = await supabase
-        .from("work_order_item_parts")
-        .update(updates)
-        .eq("id", editRow.id);
-      if (error) throw error;
-
-      /* 同步更新关联的 purchase_order_items */
-      const { error: poiErr } = await supabase
-        .from("purchase_order_items")
-        .update({
-          part_id: partId,
-          part_number: p?.part_number || updates.part_number || null,
-          name: p?.name || updates.name || null,
-          unit: p?.unit || updates.unit || null,
-          brand: extractName(p?.part_brands) || updates.brand || null,
-          specification: extractName(p?.part_specifications) || updates.specification || null,
-          category: extractName(p?.part_categories) || null,
-        })
-        .eq("work_order_item_part_id", editRow.id);
-      if (poiErr) console.warn("同步采购单配件信息失败:", poiErr);
+      /* 分支行写入配件快照 + 同步采购明细，走 Server Action 一次完成 */
+      const result = await 分支关联配件并同步采购({ branchId: editRow.id, partId });
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       closeEditModal();
       lastSelfUpdate.current = Date.now();
@@ -737,21 +664,15 @@ export function PartBranchStatusList({ status }: Props) {
     if (!(await 请求确认(`确定将选中的 ${selectedIds.size} 条配件撤销到「${prevStatus}」状态吗？`))) return;
 
     setSubmitting(true);
-    let updateData: Record<string, string | number | null> = {};
-    if (status === "pending_quote") {
-      updateData = { unit_cost: null };
-    } else if (status === "pending_confirm") {
-      updateData = { unit_price: null };
-    }
-
-    const { error } = await supabase
-      .from("work_order_item_parts")
-      .update(updateData)
-      .in("id", Array.from(selectedIds));
+    /* 写库走 Server Action（清进价/清销售价） */
+    const result = await 撤销分支价格({
+      ids: Array.from(selectedIds),
+      field: status === "pending_quote" ? "unit_cost" : "unit_price",
+    });
 
     setSubmitting(false);
-    if (error) {
-      alert("撤销失败: " + error.message);
+    if (!result.success) {
+      alert("撤销失败: " + (result.error || "未知错误"));
       return;
     }
     setSelectedIds(new Set());
@@ -838,16 +759,14 @@ export function PartBranchStatusList({ status }: Props) {
     }
 
     setSubmitting(true);
-    const results = await Promise.all(
-      updates.map(({ id, data }) =>
-        supabase.from("work_order_item_parts").update(data).eq("id", id)
-      )
-    );
+    /* 多行编辑写库走 Server Action（逐行服务端执行） */
+    const result = await 批量保存分支编辑({
+      updates: updates.map(({ id, data }) => ({ id, data: data as 配件分支更新 })),
+    });
     setSubmitting(false);
 
-    const errors = results.filter((r) => r.error);
-    if (errors.length > 0) {
-      alert("保存失败: " + errors.map((e) => e.error?.message).filter(Boolean).join("; "));
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       return;
     }
 
