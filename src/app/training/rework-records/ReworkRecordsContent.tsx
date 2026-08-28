@@ -2,6 +2,7 @@
 
 import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 录入返工记录, 删除返工记录 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -94,25 +95,14 @@ export default function ReworkRecordsContent({
 
     setSaving(true);
     try {
-      /* 查找工单ID（如果输入了工单号） */
-      let workOrderId = null;
-      if (form.work_order_no.trim()) {
-        const { data: wo } = await supabase
-          .from("work_orders")
-          .select("id")
-          .eq("order_no", form.work_order_no.trim())
-          .single();
-        if (wo) workOrderId = wo.id;
-      }
-
-      const { error } = await supabase.from("rework_records").insert({
-        employee_id: form.employee_id,
-        work_order_id: workOrderId,
-        description: form.description.trim(),
-        loss_amount: form.loss_amount ? parseFloat(form.loss_amount) : 0,
+      /* 写库走 Server Action（工单号在服务端查实） */
+      const result = await 录入返工记录({
+        employeeId: form.employee_id,
+        workOrderNo: form.work_order_no,
+        description: form.description,
+        lossAmount: form.loss_amount ? parseFloat(form.loss_amount) : 0,
       });
-
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       setModalOpen(false);
       setForm({ employee_id: "", work_order_no: "", description: "", loss_amount: "" });
@@ -127,9 +117,9 @@ export default function ReworkRecordsContent({
 
   async function handleDelete(id: string) {
     if (!(await 请求确认("确定删除这条返工记录吗？"))) return;
-    const { error } = await supabase.from("rework_records").delete().eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除返工记录(id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     fetchData();

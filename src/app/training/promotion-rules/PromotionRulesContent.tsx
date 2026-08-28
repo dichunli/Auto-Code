@@ -2,6 +2,7 @@
 
 import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 保存晋级规则, 删除晋级规则 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -168,13 +169,9 @@ export default function PromotionRulesContent({
         is_active: form.is_active,
       };
 
-      if (editingRule) {
-        const { error } = await supabase.from("promotion_rules").update(payload).eq("id", editingRule.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("promotion_rules").insert(payload);
-        if (error) throw error;
-      }
+      /* 写库走 Server Action */
+      const result = await 保存晋级规则({ id: editingRule?.id || null, payload });
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       setModalOpen(false);
       fetchData();
@@ -187,9 +184,9 @@ export default function PromotionRulesContent({
 
   async function handleDelete(id: string) {
     if (!(await 请求确认("确定删除这条晋级规则吗？"))) return;
-    const { error } = await supabase.from("promotion_rules").delete().eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除晋级规则(id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     fetchData();

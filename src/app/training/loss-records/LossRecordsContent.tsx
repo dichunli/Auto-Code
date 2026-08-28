@@ -2,6 +2,7 @@
 
 import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 录入日常损失, 删除日常损失 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -95,14 +96,14 @@ export default function LossRecordsContent({
 
     setSaving(true);
     try {
-      const { error } = await supabase.from("daily_loss_records").insert({
-        employee_id: form.employee_id,
-        loss_type: form.loss_type,
-        description: form.description.trim(),
-        loss_amount: form.loss_amount ? parseFloat(form.loss_amount) : 0,
+      /* 写库走 Server Action */
+      const result = await 录入日常损失({
+        employeeId: form.employee_id,
+        lossType: form.loss_type,
+        description: form.description,
+        lossAmount: form.loss_amount ? parseFloat(form.loss_amount) : 0,
       });
-
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       setModalOpen(false);
       setForm({ employee_id: "", loss_type: "工具损坏", description: "", loss_amount: "" });
@@ -117,9 +118,9 @@ export default function LossRecordsContent({
 
   async function handleDelete(id: string) {
     if (!(await 请求确认("确定删除这条损失记录吗？"))) return;
-    const { error } = await supabase.from("daily_loss_records").delete().eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    const result = await 删除日常损失(id);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
     fetchData();

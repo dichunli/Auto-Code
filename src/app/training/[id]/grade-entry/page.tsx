@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 录入成绩 } from "../../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -209,8 +210,8 @@ export default function GradeEntryPage() {
     setSubmitting(true);
 
     try {
-      /* 逐题构建答题记录 */
-      const answerRecords = [];
+      /* 逐题构建答题记录（判分人由服务端取登录用户） */
+      const answerRecords: { question_id: string; answer_text: string | null; is_correct: boolean | null; score: number }[] = [];
 
       for (const q of questions) {
         const ans = answers[q.id];
@@ -224,52 +225,25 @@ export default function GradeEntryPage() {
         }
 
         answerRecords.push({
-          assignment_id: selectedStudentId,
           question_id: q.id,
-          employee_id: student.employee_id,
           answer_text: ans.answer_text.trim() || null,
           is_correct: isCorrect,
           score,
-          graded_by: (await supabase.auth.getUser()).data.user?.id,
-          graded_at: new Date().toISOString(),
         });
       }
 
-      /* 批量插入答题记录 */
-      const { error: answerError } = await supabase.from("exam_answers").insert(answerRecords);
-      if (answerError) throw answerError;
-
-      /* 查询已考试次数 */
-      const { count: examCount } = await supabase
-        .from("exam_results")
-        .select("id", { count: "exact", head: true })
-        .eq("assignment_id", selectedStudentId);
-
-      const currentExamCount = (examCount || 0) + 1;
-
-      const status = totalScore >= passingScore ? "passed" : "failed";
-
-      /* 插入考试成绩 */
-      const { error: resultError } = await supabase.from("exam_results").insert({
-        assignment_id: selectedStudentId,
-        employee_id: student.employee_id,
-        course_id: courseId,
-        total_score: totalScore,
-        max_score: maxScore,
-        status,
-        exam_count: currentExamCount,
+      /* 写库走 Server Action：插答题 + 插成绩 + 更新分配 */
+      const 录入结果 = await 录入成绩({
+        assignmentId: selectedStudentId,
+        courseId,
+        employeeId: student.employee_id,
+        totalScore,
+        maxScore,
+        passingScore,
+        answerRecords,
       });
-      if (resultError) throw resultError;
-
-      /* 更新分配记录 */
-      await supabase
-        .from("training_assignments")
-        .update({
-          status: status === "passed" ? "completed" : "in_progress",
-          score: totalScore,
-          completed_at: status === "passed" ? new Date().toISOString() : null,
-        })
-        .eq("id", selectedStudentId);
+      if (!录入结果.success) throw new Error(录入结果.error || "录入失败");
+      const status = 录入结果.status || "failed";
 
       alert(`成绩录入完成！${student.profiles?.full_name}: ${totalScore}/${maxScore} 分，${status === "passed" ? "通过" : "未通过"}`);
       router.push(`/training/${courseId}`);

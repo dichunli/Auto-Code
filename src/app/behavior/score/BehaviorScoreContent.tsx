@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useUpload } from "@/hooks/useUpload";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { base64转Blob } from "@/lib/imageCompress";
+import { 提交行为记分 } from "./actions";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 
 interface 员工 {
@@ -269,16 +270,17 @@ export default function BehaviorScoreContent({
         mediaUrls = await uploadMedia(mediaFiles);
       }
 
-      const { error } = await supabase.from("behavior_score_records").insert({
-        employee_id: selectedEmployee,
-        item_id: selectedItem,
+      /* 写库走 Server Action（打分人取服务端登录用户） */
+      const result = await 提交行为记分({
+        employeeId: selectedEmployee,
+        itemId: selectedItem,
         score: finalScore,
-        notes: notes.trim() || null,
-        event_time: eventTime ? new Date(eventTime).toISOString() : new Date().toISOString(),
-        media_urls: mediaUrls.length > 0 ? mediaUrls : null,
+        notes,
+        eventTime: eventTime ? new Date(eventTime).toISOString() : new Date().toISOString(),
+        mediaUrls,
       });
 
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error || "保存失败");
 
       setSelectedEmployee("");
       setSelectedItem("");

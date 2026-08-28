@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 保存培训分类, 删除培训分类 } from "../actions";
 
 interface 课程分类 {
   id: string;
@@ -171,52 +172,19 @@ export default function TrainingCategoriesContent({
       return;
     }
     setSaving(true);
-    await 确保有session();
 
-    /* 查重 */
-    const { data: dup } = await supabase
-      .from("training_categories")
-      .select("id")
-      .ilike("name", form.name.trim())
-      .maybeSingle();
-    if (dup && dup.id !== editingId) {
-      alert("该分类名称已存在，请更换");
+    /* 写库走 Server Action（查重、父子校验在服务端兜底） */
+    const result = await 保存培训分类({
+      id: editingId,
+      name: form.name,
+      code: form.code,
+      parentId: form.parent_id,
+      isActive: form.is_active,
+    });
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       setSaving(false);
       return;
-    }
-
-    /* 不能把自己设为自己的父分类 */
-    const parentId = form.parent_id || null;
-    if (editingId && parentId === editingId) {
-      alert("不能将自己设为父分类");
-      setSaving(false);
-      return;
-    }
-
-    const payload = {
-      name: form.name.trim(),
-      code: form.code.trim() || null,
-      parent_id: parentId,
-      is_active: form.is_active,
-    };
-
-    if (editingId) {
-      const { error } = await supabase
-        .from("training_categories")
-        .update(payload)
-        .eq("id", editingId);
-      if (error) {
-        alert("保存失败: " + error.message);
-        setSaving(false);
-        return;
-      }
-    } else {
-      const { error } = await supabase.from("training_categories").insert(payload);
-      if (error) {
-        alert("保存失败: " + error.message);
-        setSaving(false);
-        return;
-      }
     }
 
     setForm({ name: "", code: "", parent_id: "", is_active: true });
@@ -228,36 +196,11 @@ export default function TrainingCategoriesContent({
 
   async function handleDelete(id: string, name: string) {
     if (!(await 请求确认(`确定要删除分类「${name}」吗？`))) return;
-    await 确保有session();
 
-    /* 检查是否有子分类 */
-    const { data: children } = await supabase
-      .from("training_categories")
-      .select("id")
-      .eq("parent_id", id)
-      .limit(1);
-    if (children && children.length > 0) {
-      alert("该分类下有子分类，请先删除子分类");
-      return;
-    }
-
-    /* 检查是否有关联课程 */
-    const { data: courses } = await supabase
-      .from("training_courses")
-      .select("id")
-      .eq("category_id", id)
-      .limit(1);
-    if (courses && courses.length > 0) {
-      alert("该分类下有课程，请先将课程移动到其他分类");
-      return;
-    }
-
-    const { error } = await supabase
-      .from("training_categories")
-      .delete()
-      .eq("id", id);
-    if (error) {
-      alert("删除失败: " + error.message);
+    /* 子分类/课程检查和删除都在服务端做 */
+    const result = await 删除培训分类(id);
+    if (!result.success) {
+      alert(result.error || "删除失败");
       return;
     }
     await load();

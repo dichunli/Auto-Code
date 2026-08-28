@@ -1,7 +1,7 @@
 "use client";
 
-import {useState, useMemo} from "react";
-import { createClient } from "@/lib/supabase/client";
+import {useState} from "react";
+import { 发起晋级申请 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -52,7 +52,6 @@ export default function PromotionStatusContent({
   initialRule: 晋级规则 | null;
   initialCheckResult: 晋级检查结果 | null;
 }) {
-  const supabase = useMemo(() => createClient(), []);
   /* 首屏数据由服务端传入；本页无客户端重查 */
   const [currentLevel] = useState<等级信息 | null>(initialCurrentLevel);
   const [nextLevel] = useState<等级信息 | null>(initialNextLevel);
@@ -67,22 +66,21 @@ export default function PromotionStatusContent({
 
     setApplying(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const { error } = await supabase.from("promotion_records").insert({
-        employee_id: userData.user?.id,
-        type: "promotion",
-        from_level_id: currentLevel?.id || null,
-        to_level_id: rule.to_level_id,
+      /* 写库走 Server Action；自主申请的员工身份由服务端取登录用户 */
+      const result = await 发起晋级申请({
+        employeeId: "",
+        selfApply: true,
+        fromLevelId: currentLevel?.id || null,
+        toLevelId: rule.to_level_id,
         reason: `员工自主申请晋级：${currentLevel?.name} → ${nextLevel.name}`,
-        course_points: checkResult?.course_points || 0,
-        work_order_count: checkResult?.work_order_count || 0,
-        rework_loss_total: checkResult?.rework_loss_total || 0,
-        daily_loss_total: checkResult?.daily_loss_total || 0,
-        behavior_score_total: checkResult?.behavior_score_total || 0,
-        status: "pending",
+        coursePoints: checkResult?.course_points || 0,
+        workOrderCount: checkResult?.work_order_count || 0,
+        reworkLossTotal: checkResult?.rework_loss_total || 0,
+        dailyLossTotal: checkResult?.daily_loss_total || 0,
+        behaviorScoreTotal: checkResult?.behavior_score_total || 0,
       });
 
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error || "申请失败");
       alert("晋级申请已提交，等待管理员审核");
     } catch (err: unknown) {
       alert("申请失败: " + (err instanceof Error ? err.message : String(err)));

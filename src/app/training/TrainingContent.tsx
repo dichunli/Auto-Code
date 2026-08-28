@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { 保存课程排序 } from "./actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useDebounce } from "@/lib/useDebounce";
 import Link from "next/link";
@@ -133,7 +133,6 @@ export default function TrainingContent({
   categories: 课程分类[];
   topics: 专题[];
 }) {
-  const supabase = useMemo(() => createClient(), []);
   const [courses, setCourses] = useState<课程[]>(initialCourses);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -227,8 +226,10 @@ export default function TrainingContent({
       sort_order: index,
     }));
 
-    for (const u of updates) {
-      await supabase.from("training_courses").update({ sort_order: u.sort_order }).eq("id", u.id);
+    /* 写库走 Server Action */
+    const result = await 保存课程排序(updates);
+    if (!result.success) {
+      alert("排序保存失败: " + (result.error || "未知错误"));
     }
   }
 

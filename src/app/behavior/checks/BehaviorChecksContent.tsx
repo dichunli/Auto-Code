@@ -3,7 +3,8 @@
 import { useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
-import { 本地今日字符串, 过滤今日任务, 计算时段状态, 时段状态展示 } from "@/lib/behaviorCheck";
+import { 本地今日字符串, 计算时段状态, 时段状态展示 } from "@/lib/behaviorCheck";
+import { 懒生成今日考核记录 } from "./actions";
 import CheckCompleteModal from "./CheckCompleteModal";
 import SelfReportModal from "./SelfReportModal";
 import CheckCommentThread from "./CheckCommentThread";
@@ -108,62 +109,9 @@ export default function BehaviorChecksContent({ initialRecords, initialCount, cu
     const uid = userData.user.id;
     const today = 本地今日字符串();
 
-    const { data: taskData } = await supabase
-      .from("behavior_check_tasks")
-      .select("*, behavior_score_items(id, name, score_type, score_value, description, responsible_ids, checker_ids, guide_images)")
-      .eq("is_active", true);
-
-    const todayTasks = 过滤今日任务((taskData || []) as 嵌套任务[]);
-
-    for (const task of todayTasks) {
-      const item = 取单(task.behavior_score_items);
-      if (item?.responsible_ids && item.responsible_ids.length > 0) {
-        for (const 责任人 of item.responsible_ids) {
-          const 应检查人集合 = item.checker_ids && item.checker_ids.length > 0 ? item.checker_ids : [责任人];
-          if (uid !== 责任人 && !应检查人集合.includes(uid)) continue;
-          const { data: existing } = await supabase
-            .from("behavior_check_records")
-            .select("id")
-            .eq("task_id", task.id)
-            .eq("employee_id", 责任人)
-            .eq("check_date", today)
-            .maybeSingle();
-          if (!existing) {
-            const { error } = await supabase.from("behavior_check_records").insert({
-              task_id: task.id,
-              employee_id: 责任人,
-              checker_ids: 应检查人集合,
-              check_date: today,
-              status: "pending",
-            });
-            if (error && error.code !== "23505") {
-              console.error("生成今日考核记录失败:", error.message);
-            }
-          }
-        }
-      } else {
-        if (task.employee_ids && task.employee_ids.length > 0 && !task.employee_ids.includes(uid)) continue;
-        const { data: existing } = await supabase
-          .from("behavior_check_records")
-          .select("id")
-          .eq("task_id", task.id)
-          .eq("employee_id", uid)
-          .eq("check_date", today)
-          .maybeSingle();
-        if (!existing) {
-          const { error } = await supabase.from("behavior_check_records").insert({
-            task_id: task.id,
-            employee_id: uid,
-            checker_ids: [uid],
-            check_date: today,
-            status: "pending",
-          });
-          if (error && error.code !== "23505") {
-            console.error("生成今日考核记录失败:", error.message);
-          }
-        }
-      }
-    }
+    /* 懒生成今日考核记录走 Server Action（先查后插、忽略唯一冲突，逻辑与服务端渲染一致），
+     * 不再由客户端逐条直写 */
+    await 懒生成今日考核记录();
 
     const from = (目标页 - 1) * pageSize;
     const { data, count } = await supabase

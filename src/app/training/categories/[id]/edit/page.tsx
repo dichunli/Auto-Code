@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 保存培训分类 } from "../../../actions";
 
 interface 课程分类 {
   id: string;
@@ -70,30 +71,16 @@ export default function EditTrainingCategoryPage() {
     setSaving(true);
     await 确保有session();
 
-    const { data: dup } = await supabase
-      .from("training_categories")
-      .select("id")
-      .ilike("name", form.name.trim())
-      .neq("id", id)
-      .maybeSingle();
-    if (dup) {
-      alert("该分类名称已存在，请更换");
-      setSaving(false);
-      return;
-    }
-
-    const { error } = await supabase
-      .from("training_categories")
-      .update({
-        name: form.name.trim(),
-        code: form.code.trim() || null,
-        parent_id: parentId,
-        is_active: form.is_active,
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert("保存失败: " + error.message);
+    /* 写库走 Server Action（查重、父子校验在服务端兜底） */
+    const result = await 保存培训分类({
+      id,
+      name: form.name,
+      code: form.code,
+      parentId: form.parent_id,
+      isActive: form.is_active,
+    });
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       setSaving(false);
       return;
     }

@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 提交考试 } from "../../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -28,6 +29,8 @@ export default function ExamPage() {
   const supabase = useMemo(() => createClient(), []);
 
   const [courseTitle, setCourseTitle] = useState("");
+  /* 通过分数线：仅用于提交后的提示文案（真实判定在服务端） */
+  const [passingScore, setPassingScore] = useState(60);
   const [questions, setQuestions] = useState<考题[]>([]);
   const [assignment, setAssignment] = useState<分配记录 | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,7 +53,7 @@ export default function ExamPage() {
       /* 查询课程信息 */
       const { data: course } = await supabase
         .from("training_courses")
-        .select("title, has_exam, exam_mode")
+        .select("title, has_exam, exam_mode, passing_score")
         .eq("id", courseId)
         .single();
 
@@ -61,6 +64,7 @@ export default function ExamPage() {
       }
 
       setCourseTitle(course.title);
+      if (course.passing_score) setPassingScore(course.passing_score);
 
       if (!course.has_exam) {
         alert("该课程不包含考试");
@@ -148,23 +152,11 @@ export default function ExamPage() {
     setSubmitting(true);
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const employeeId = userData.user?.id;
-      if (!employeeId) throw new Error("未登录");
-
-      /* 获取当前用户已考试次数 */
-      const { count: examCount } = await supabase
-        .from("exam_results")
-        .select("id", { count: "exact", head: true })
-        .eq("assignment_id", assignment.id);
-
-      const currentExamCount = (examCount || 0) + 1;
-
-      /* 逐题判卷 */
+      /* 逐题判卷（客观题判分在客户端做，需要题目数据；写库走 Server Action） */
       let totalScore = 0;
       let maxScore = 0;
       let hasEssay = false;
-      const answerRecords = [];
+      const answerRecords: { question_id: string; answer_text: string | null; is_correct: boolean | null; score: number }[] = [];
 
       for (const q of questions) {
         maxScore += q.score;
@@ -199,60 +191,24 @@ export default function ExamPage() {
         }
 
         answerRecords.push({
-          assignment_id: assignment.id,
           question_id: q.id,
-          employee_id: employeeId,
           answer_text: userAnswer.trim() || null,
           is_correct: isCorrect,
           score,
         });
       }
 
-      /* 批量插入答题记录 */
-      const { error: answerError } = await supabase.from("exam_answers").insert(answerRecords);
-      if (answerError) throw answerError;
-
-      /* 查询通过分数 */
-      const { data: course } = await supabase
-        .from("training_courses")
-        .select("passing_score, points")
-        .eq("id", courseId)
-        .single();
-
-      const passingScore = course?.passing_score || 60;
-      const status = hasEssay ? "pending" : totalScore >= passingScore ? "passed" : "failed";
-
-      /* 插入考试成绩 */
-      const { error: resultError } = await supabase.from("exam_results").insert({
-        assignment_id: assignment.id,
-        employee_id: employeeId,
-        course_id: courseId,
-        total_score: totalScore,
-        max_score: maxScore,
-        status,
-        exam_count: currentExamCount,
+      /* 写库走 Server Action：插答题 + 插成绩 + 更新分配，考生身份取服务端登录用户 */
+      const 提交结果 = await 提交考试({
+        assignmentId: assignment.id,
+        courseId,
+        hasEssay,
+        totalScore,
+        maxScore,
+        answerRecords,
       });
-      if (resultError) throw resultError;
-
-      /* 更新分配记录（如果没有简答题且通过，则标记完成） */
-      if (!hasEssay && status === "passed") {
-        await supabase
-          .from("training_assignments")
-          .update({
-            status: "completed",
-            score: totalScore,
-            completed_at: new Date().toISOString(),
-          })
-          .eq("id", assignment.id);
-      } else {
-        await supabase
-          .from("training_assignments")
-          .update({
-            status: hasEssay ? "in_progress" : status === "passed" ? "completed" : "in_progress",
-            score: totalScore,
-          })
-          .eq("id", assignment.id);
-      }
+      if (!提交结果.success) throw new Error(提交结果.error || "提交失败");
+      const status = 提交结果.status || "pending";
 
       if (hasEssay) {
         alert(`试卷已提交，包含简答题待人工判卷。客观题得分: ${totalScore}/${maxScore}`);
