@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
+import { 导入车型, 车型导入行 } from "./actions";
 import * as XLSX from "xlsx";
 
 interface VehicleModel {
@@ -154,7 +154,6 @@ interface Props {
 
 export default function VehicleModelsContent({ models, total, page, keyword, columnFilters }: Props) {
   const router = useRouter();
-  const supabase = createClient();
   const [detailModel, setDetailModel] = useState<VehicleModel | null>(null);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
@@ -260,10 +259,9 @@ export default function VehicleModelsContent({ models, total, page, keyword, col
       const headers = rows[0].map((h) => String(h ?? ""));
       const dataRows = rows.slice(1);
 
-      const allRecords: Record<string, unknown>[] = [];
-      const allIds: number[] = [];
+      const allRecords: 车型导入行[] = [];
       for (const row of dataRows) {
-        const record: Record<string, unknown> = {};
+        const record: 车型导入行 = {};
         for (let j = 0; j < headers.length; j++) {
           const key = headers[j];
           let value: unknown = row[j];
@@ -279,43 +277,24 @@ export default function VehicleModelsContent({ models, total, page, keyword, col
           record[key] = value;
         }
         allRecords.push(record);
-        if (record.id != null) allIds.push(record.id as number);
       }
 
-      setImportMsg("正在验证数据唯一性...");
-      const existingIds = new Set<number>();
-      if (allIds.length > 0) {
-        for (let i = 0; i < allIds.length; i += 1000) {
-          const batchIds = allIds.slice(i, i + 1000);
-          const { data } = await supabase
-            .from("vehicle_models")
-            .select("id")
-            .in("id", batchIds);
-          data?.forEach((r: { id: number }) => existingIds.add(r.id));
-        }
-      }
+      setImportMsg(`正在导入 ${allRecords.length} 条数据（服务端查重并写入）...`);
 
-      const newRecords = allRecords.filter((r) => !existingIds.has(r.id as number));
-      const skippedCount = allRecords.length - newRecords.length;
-
-      if (newRecords.length === 0) {
-        setImportMsg(`没有新数据可导入（已跳过 ${skippedCount} 条重复ID）`);
+      /* ID 查重 + 分批插入全部在服务端完成 */
+      const importResult = await 导入车型({ rows: allRecords });
+      if (!importResult.success) {
+        setImportMsg("导入失败: " + (importResult.error || "未知错误"));
         setImporting(false);
         return;
       }
 
-      const batchSize = 500;
-      let inserted = 0;
-      for (let i = 0; i < newRecords.length; i += batchSize) {
-        const batch = newRecords.slice(i, i + batchSize);
-        const { error } = await supabase.from("vehicle_models").insert(batch);
-        if (error) {
-          setImportMsg(`第 ${i + 1} 批导入失败: ${error.message}`);
-          setImporting(false);
-          return;
-        }
-        inserted += batch.length;
-        setImportMsg(`已导入 ${inserted}/${newRecords.length} 条...`);
+      const inserted = importResult.inserted ?? 0;
+      const skippedCount = importResult.skipped ?? 0;
+      if (inserted === 0) {
+        setImportMsg(`没有新数据可导入（已跳过 ${skippedCount} 条重复ID）`);
+        setImporting(false);
+        return;
       }
 
       setImportMsg(

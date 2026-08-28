@@ -1,14 +1,13 @@
 "use client";
 
-import {useState, useMemo} from "react";
+import {useState} from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
+import { 新建预约 } from "../actions";
 
 export default function NewAppointmentPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
@@ -35,20 +34,15 @@ export default function NewAppointmentPage() {
     }
 
     setLoading(true);
-    const { error } = await supabase.from("appointments").insert({
-      customer_name: form.customer_name.trim(),
-      customer_phone: form.customer_phone.trim(),
-      plate_number: form.plate_number.trim() || null,
-      vehicle_brand: form.vehicle_brand.trim() || null,
-      vehicle_model: form.vehicle_model.trim() || null,
-      appointment_date: form.appointment_date,
-      appointment_time: form.appointment_time || null,
-      service_type: form.service_type.trim() || null,
-      notes: form.notes.trim() || null,
-    });
-
-    if (error) {
-      alert("保存失败: " + error.message);
+    try {
+      const result = await 新建预约(form);
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        setLoading(false);
+        return;
+      }
+    } catch {
+      alert("保存失败: 网络异常，请重试");
       setLoading(false);
       return;
     }

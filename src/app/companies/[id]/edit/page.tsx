@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 更新单位 } from "../../actions";
 
 export default function EditCompanyPage() {
   const router = useRouter();
@@ -90,36 +91,18 @@ export default function EditCompanyPage() {
     e.preventDefault();
     if (!form.name.trim()) { alert("请填写单位名称"); return; }
     setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("companies").update({
-      name: form.name.trim(),
-      contact: form.contact.trim() || null,
-      phone: form.phone.trim() || null,
-      address: form.address.trim() || null,
-      credit_limit: form.credit_limit ? parseFloat(form.credit_limit) : 0,
-      payment_terms: form.payment_terms.trim() || "月结",
-      notes: form.notes.trim() || null,
-      invoice_title: form.invoice_title.trim() || null,
-      tax_no: form.tax_no.trim() || null,
-      bank_name: form.bank_name.trim() || null,
-      bank_account: form.bank_account.trim() || null,
-      invoice_address: form.invoice_address.trim() || null,
-      invoice_phone: form.invoice_phone.trim() || null,
-    }).eq("id", id);
 
-    if (error) { alert("保存失败: " + error.message); setSaving(false); return; }
-
-    // 同步联系人：先删除旧的，再插入新的
-    await supabase.from("company_contacts").delete().eq("company_id", id);
-    const validContacts = contacts.filter((c) => c.name.trim());
-    if (validContacts.length > 0) {
-      const contactInserts = validContacts.map((c) => ({
-        company_id: id,
-        name: c.name.trim(),
-        phone: c.phone.trim() || null,
-        title: c.title.trim() || null,
-      }));
-      await supabase.from("company_contacts").insert(contactInserts);
+    try {
+      const result = await 更新单位({ id, form, contacts });
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        setSaving(false);
+        return;
+      }
+    } catch {
+      alert("保存失败: 网络异常，请重试");
+      setSaving(false);
+      return;
     }
 
     router.push("/companies");

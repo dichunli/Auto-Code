@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { 创建供应商退货记录 } from "@/app/supplier-returns/actions";
 import { ImageUploader } from "./ImageUploader";
 import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
 
@@ -33,7 +33,6 @@ export function SupplierReturnModal({
   onClose,
   onSuccess,
 }: Props) {
-  const supabase = createClient();
   const [returnReason, setReturnReason] = useState("wrong_ship");
   const [quantity, setQuantity] = useState(1);
   const [supplierName, setSupplierName] = useState("");
@@ -57,16 +56,17 @@ export function SupplierReturnModal({
     setLoading(true);
 
     try {
-      const { error } = await supabase.from("supplier_return_records").insert({
-        work_order_item_part_id: workOrderItemPartId,
-        return_reason: returnReason,
+      /* 写库走 Server Action；空字符串统一转 null */
+      const result = await 创建供应商退货记录({
+        workOrderItemPartId,
+        returnReason,
         quantity,
-        supplier_name: supplierName || null,
-        logistics_company: logisticsCompany || null,
-        tracking_no: trackingNo || null,
+        supplierName: supplierName || null,
+        logisticsCompany: logisticsCompany || null,
+        trackingNo: trackingNo || null,
         photos,
       });
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error || "未知错误");
 
       onSuccess();
       onClose();

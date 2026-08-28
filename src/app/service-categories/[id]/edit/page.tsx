@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 更新服务分类, 同步分类提成到项目 } from "../../actions";
 
 function CommissionField({
   label,
@@ -109,27 +110,16 @@ export default function EditServiceCategoryPage() {
     e.preventDefault();
     setSaving(true);
 
-    const { error } = await supabase
-      .from("service_categories")
-      .update({
-        name: form.name,
-        sales_commission_type: form.sales_type || null,
-        sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-        diagnosis_commission_type: form.diagnosis_type || null,
-        diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-        repair_commission_type: form.repair_type || null,
-        repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-        qc_commission_type: form.qc_type || null,
-        qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-        dispatch_commission_type: form.dispatch_type || null,
-        dispatch_commission_value: form.dispatch_value ? parseFloat(form.dispatch_value) : null,
-        claim_commission_type: form.claim_type || null,
-        claim_commission_value: form.claim_value ? parseFloat(form.claim_value) : null,
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert("保存失败: " + error.message);
+    /* 更新写库收口到服务端 */
+    try {
+      const result = await 更新服务分类(id, form);
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        setSaving(false);
+        return;
+      }
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : "未知错误"));
       setSaving(false);
       return;
     }
@@ -142,36 +132,20 @@ export default function EditServiceCategoryPage() {
     if (!(await 请求确认("确定要将当前分类的提成规则同步到所有使用该分类的项目名称和项目实例吗？此操作会覆盖这些记录的现有提成设置。"))) return;
     setSyncing(true);
 
-    /* service_names 和 service_items 表目前只有这4种提成字段 */
-    const commissionData = {
-      sales_commission_type: form.sales_type || null,
-      sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-      diagnosis_commission_type: form.diagnosis_type || null,
-      diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-      repair_commission_type: form.repair_type || null,
-      repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-      qc_commission_type: form.qc_type || null,
-      qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-    };
-
-    const { data: nameData, error: nameError } = await supabase
-      .from("service_names")
-      .update(commissionData)
-      .eq("category_id", id)
-      .select("id");
-    if (nameError) { alert("同步项目名称失败: " + nameError.message); setSyncing(false); return; }
-
-    const { data: itemData, error: itemError } = await supabase
-      .from("service_items")
-      .update(commissionData)
-      .eq("category_id", id)
-      .select("id");
-    if (itemError) { alert("同步项目实例失败: " + itemError.message); setSyncing(false); return; }
-
-    const nameCount = nameData?.length ?? 0;
-    const itemCount = itemData?.length ?? 0;
-    alert(`同步成功：已更新 ${nameCount} 个项目名称，${itemCount} 个维修项目`);
-    setSyncing(false);
+    /* 同步项目名称 + 项目实例两步写在服务端一次完成 */
+    try {
+      const result = await 同步分类提成到项目(id, form);
+      if (!result.success) {
+        alert(result.error || "同步失败");
+        setSyncing(false);
+        return;
+      }
+      alert(`同步成功：已更新 ${result.nameCount ?? 0} 个项目名称，${result.itemCount ?? 0} 个维修项目`);
+      setSyncing(false);
+    } catch (err: unknown) {
+      alert("同步失败: " + (err instanceof Error ? err.message : "未知错误"));
+      setSyncing(false);
+    }
   }
 
   if (loading) {

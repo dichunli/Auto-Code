@@ -6,6 +6,7 @@ import { ImageUploader } from "@/components/ImageUploader";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 更新工具 } from "@/app/tools/actions";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
@@ -39,7 +40,6 @@ export default function EditToolPage() {
   const [位置列表, set位置列表] = useState<工具[]>([]);
   const [使用新位置, set使用新位置] = useState(false);
   const [新位置, set新位置] = useState("");
-  const [原始编码, set原始编码] = useState("");
 
   /* 加载 */
   useEffect(() => {
@@ -53,7 +53,6 @@ export default function EditToolPage() {
         const { data: tool } = toolRes;
         if (!tool) { alert("工具不存在"); router.push("/tools/management"); return; }
 
-        set原始编码(tool.code);
         set表单({
           code: tool.code || "",
           name: tool.name || "",
@@ -89,23 +88,23 @@ export default function EditToolPage() {
     const finalLocation = 使用新位置 ? 新位置.trim() : 表单.location.trim();
 
     try {
-      if (code !== 原始编码) {
-        const { data: 重复 } = await supabase.from("tools").select("id").ilike("code", code).maybeSingle();
-        if (重复 && 重复.id !== id) { alert("工具编码已存在"); set保存中(false); return; }
-      }
-
-      const { error } = await supabase.from("tools").update({
+      /* 保存走 Server Action：编码唯一性服务端兜底（排除自己） */
+      const result = await 更新工具(id, {
         code,
         name,
-        image_url: 图片地址.length > 0 ? 图片地址.join(",") : null,
-        instructions: 表单.instructions.trim() || null,
-        location: finalLocation || null,
+        imageUrl: 图片地址.length > 0 ? 图片地址.join(",") : null,
+        instructions: 表单.instructions,
+        location: finalLocation,
         status: 表单.status,
-        require_return_photos: 表单.require_return_photos,
-        require_location_scan: 表单.require_location_scan,
-      }).eq("id", id);
+        requireReturnPhotos: 表单.require_return_photos,
+        requireLocationScan: 表单.require_location_scan,
+      });
 
-      if (error) throw error;
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        set保存中(false);
+        return;
+      }
       router.push(`/tools/management/${id}`);
       router.refresh();
     } catch (err: unknown) {

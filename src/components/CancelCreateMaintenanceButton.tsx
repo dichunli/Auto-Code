@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient, 确保有session } from "@/lib/supabase/client";
+import { 取消创建保养单 } from "@/app/vehicles/actions";
 import { useConfirm } from "./ConfirmDialog";
 
 interface Props {
@@ -9,7 +9,6 @@ interface Props {
 }
 
 export function CancelCreateMaintenanceButton({ orderId }: Props) {
-  const supabase = createClient();
   const [处理中, 设置处理中] = useState(false);
   const { 请求确认, 确认弹窗 } = useConfirm();
 
@@ -17,15 +16,11 @@ export function CancelCreateMaintenanceButton({ orderId }: Props) {
     if (!(await 请求确认("确定要取消创建吗？该保养单将被删除，不会保留。"))) return;
     设置处理中(true);
     try {
-      await 确保有session();
-      // 删除保养单（需求/项目/配件随外键级联删除）
-      const { error } = await supabase
-        .from("work_orders")
-        .delete()
-        .eq("id", orderId);
+      /* 写库走 Server Action：删除保养单草稿（需求/项目/配件随外键级联删除） */
+      const result = await 取消创建保养单(orderId);
 
-      if (error) {
-        alert("取消失败: " + error.message);
+      if (!result.success) {
+        alert("取消失败: " + (result.error || "未知错误"));
         设置处理中(false);
         return;
       }

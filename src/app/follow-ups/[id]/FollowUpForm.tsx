@@ -1,8 +1,8 @@
 "use client";
 
-import {useState, useMemo} from "react";
+import {useState} from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { 完成回访 } from "../actions";
 
 const METHOD_OPTIONS = [
   { value: "phone", label: "电话" },
@@ -12,7 +12,6 @@ const METHOD_OPTIONS = [
 
 export function FollowUpForm({ followUpId }: { followUpId: string }) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
   const [method, setMethod] = useState("phone");
   const [result, setResult] = useState("");
@@ -26,18 +25,15 @@ export function FollowUpForm({ followUpId }: { followUpId: string }) {
     }
 
     setLoading(true);
-    const { error } = await supabase
-      .from("follow_ups")
-      .update({
-        completed_at: new Date().toISOString(),
-        method,
-        result: result.trim(),
-        notes: notes.trim() || null,
-      })
-      .eq("id", followUpId);
-
-    if (error) {
-      alert("保存失败: " + error.message);
+    try {
+      const res = await 完成回访({ followUpId, method, result, notes });
+      if (!res.success) {
+        alert("保存失败: " + (res.error || "未知错误"));
+        setLoading(false);
+        return;
+      }
+    } catch {
+      alert("保存失败: 网络异常，请重试");
       setLoading(false);
       return;
     }

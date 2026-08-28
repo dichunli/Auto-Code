@@ -1,14 +1,13 @@
 "use client";
 
-import {useState, useMemo} from "react";
+import {useState} from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
+import { 新建员工分组 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 
 export default function NewEmployeeGroupPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -22,15 +21,16 @@ export default function NewEmployeeGroupPage() {
     }
 
     setLoading(true);
-    const { error } = await supabase.from("employee_groups").insert({
+    /* 保存走 Server Action，避免客户端 session 异常导致 401 */
+    const result = await 新建员工分组({
       name,
-      description: description || null,
-      sort_order: parseInt(sortOrder) || 0,
+      description,
+      sortOrder: parseInt(sortOrder) || 0,
     });
     setLoading(false);
 
-    if (error) {
-      alert("保存失败：" + error.message);
+    if (!result.success) {
+      alert("保存失败：" + (result.error || "未知错误"));
       return;
     }
 

@@ -1,12 +1,11 @@
 "use client";
 
-import {useState, useMemo} from "react";
-import { createClient } from "@/lib/supabase/client";
+import {useState} from "react";
 import { CustomerSearchDropdown, Customer } from "@/components/CustomerSearchDropdown";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 合并客户 } from "./actions";
 
 export function MergeButton() {
-  const supabase = useMemo(() => createClient(), []);
   const [open, setOpen] = useState(false);
   const [sourceCustomer, setSourceCustomer] = useState<Customer | null>(null);
   const [targetCustomer, setTargetCustomer] = useState<Customer | null>(null);
@@ -37,31 +36,23 @@ export function MergeButton() {
 
     setMerging(true);
 
-    /* 先更新保留客户的名称（如果需要） */
-    if (mergedName.trim() && mergedName.trim() !== targetCustomer.name) {
-      const { error: nameErr } = await supabase
-        .from("customers")
-        .update({ name: mergedName.trim() })
-        .eq("id", targetCustomer.id);
-      if (nameErr) {
-        alert("更新客户名称失败: " + nameErr.message);
+    try {
+      /* 改名 + RPC 数据迁移都在服务端顺序执行 */
+      const result = await 合并客户({
+        sourceId: sourceCustomer.id,
+        targetId: targetCustomer.id,
+        newName:
+          mergedName.trim() && mergedName.trim() !== targetCustomer.name
+            ? mergedName.trim()
+            : null,
+      });
+      if (!result.success) {
+        alert("合并失败: " + (result.error || "未知错误"));
         setMerging(false);
         return;
       }
-    }
-
-    const { data, error } = await supabase.rpc("merge_customers", {
-      source_id: sourceCustomer.id,
-      target_id: targetCustomer.id,
-    });
-    if (error) {
-      alert("合并失败: " + error.message);
-      setMerging(false);
-      return;
-    }
-    const result = data as { success?: boolean; error?: string };
-    if (!result?.success) {
-      alert("合并失败: " + (result?.error || "未知错误"));
+    } catch {
+      alert("合并失败: 网络异常，请重试");
       setMerging(false);
       return;
     }

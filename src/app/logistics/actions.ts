@@ -640,3 +640,46 @@ export async function 保存物流公司排序号(参数: {
   revalidatePath("/logistics");
   return { success: true };
 }
+
+/* ═══ 新建独立运单 Server Action（物流页"新建运单"） ═══
+ * 写操作从客户端直写收口到服务端，避免客户端 session 异常导致 401 / 被 RLS 拦截。
+ * 与 创建运单 的区别：独立录入不关联采购单、不强制电话匹配供应商，多一个备注字段。 */
+export async function 新建独立运单(参数: {
+  trackingNo: string;
+  logisticsCompanyId: string;
+  logisticsCompanyName: string;
+  phone: string;
+  packageCount: number;
+  freightAmount: number;
+  codAmount: number;
+  photos: string[];
+  notes: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!参数.trackingNo.trim()) {
+    return { success: false, error: "请填写物流单号" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("logistics_waybills").insert({
+    tracking_no: 参数.trackingNo.trim(),
+    logistics_company_id: 参数.logisticsCompanyId || null,
+    logistics_company_name: 参数.logisticsCompanyName || null,
+    phone: 参数.phone.trim() || null,
+    package_count: 参数.packageCount,
+    freight_amount: 参数.freightAmount,
+    cod_amount: 参数.codAmount,
+    photos: 参数.photos.length > 0 ? 参数.photos : null,
+    status: "pending",
+    notes: 参数.notes.trim() || null,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/logistics");
+  return { success: true };
+}

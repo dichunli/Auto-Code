@@ -856,6 +856,123 @@ export async function syncOeFromVin(
   };
 }
 
+/* ═══ 配件表单页（parts/new）现场新建品牌 / 规格 + 关联配件名称 ═══
+ * 原来在 BrandSearch/SpecSearch 组件里客户端直写，收口到服务端。
+ * 关联表插入遇唯一冲突（重复关联）视为成功，与客户端原逻辑一致。 */
+
+/* 新建品牌，返回新记录 id（客户端选中用） */
+export async function 新建品牌(name: string): Promise<{ success: boolean; id?: string; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!name.trim()) {
+    return { success: false, error: "品牌名称不能为空" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("part_brands")
+    .insert({ name: name.trim() })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    return { success: false, error: error?.message || "创建品牌失败" };
+  }
+  return { success: true, id: data.id };
+}
+
+/* 新建规格，返回新记录 id（客户端选中用） */
+export async function 新建规格(name: string): Promise<{ success: boolean; id?: string; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!name.trim()) {
+    return { success: false, error: "规格名称不能为空" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("part_specifications")
+    .insert({ name: name.trim() })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    return { success: false, error: error?.message || "创建规格失败" };
+  }
+  return { success: true, id: data.id };
+}
+
+/* 关联配件名称 ↔ 品牌（重复关联静默忽略） */
+export async function 关联名称品牌(
+  partNameId: string,
+  brandId: string
+): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("part_name_brands")
+    .insert({ part_name_id: partNameId, brand_id: brandId });
+
+  /* 重复关联不算失败（与客户端原逻辑一致） */
+  if (error && !error.message.includes("duplicate")) {
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}
+
+/* 关联配件名称 ↔ 规格（重复关联静默忽略） */
+export async function 关联名称规格(
+  partNameId: string,
+  specificationId: string
+): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("part_name_specifications")
+    .insert({ part_name_id: partNameId, specification_id: specificationId });
+
+  /* 重复关联不算失败（与客户端原逻辑一致） */
+  if (error && !error.message.includes("duplicate")) {
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}
+
+/* ═══ 补写配件的 17VIN 分组ID ═══
+ * 编辑配件时从 vin_filter_cache 找回 group_id 后顺手补到配件表，
+ * 原来在 usePartFormInit 客户端直写，收口到服务端。 */
+export async function 补写配件分组ID(
+  partId: string,
+  groupId: string
+): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("parts")
+    .update({ vin17_group_id: groupId })
+    .eq("id", partId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}
+
 /* VIN查三滤：用新接口7001（aftermarket_vin）查询保养件 */
 export async function searchVinFilters(
   vin: string,

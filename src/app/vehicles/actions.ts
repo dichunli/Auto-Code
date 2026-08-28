@@ -2,7 +2,7 @@
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { 保养单草稿前缀, 计算需求顺延 } from "@/lib/maintenance";
+import { 保养单草稿前缀, 生成保养单号, 计算需求顺延 } from "@/lib/maintenance";
 
 /* ═══ 车辆删除 Server Action ═══
  * 删除操作从客户端直写收口到服务端，删除前检查关联工单防止误删。 */
@@ -841,6 +841,75 @@ export async function 创建保养单(参数: {
   }
 
   return { success: true, orderId: 新工单ID };
+}
+
+/* ═══ 保存保养单（创建模式生成正式 BY- 单号；普通编辑只更新确认时间戳） ═══
+ * 原来在 SaveMaintenanceButton 客户端直写，单号统计与更新收口到服务端一次完成。 */
+export async function 保存保养单(参数: {
+  orderId: string;
+  创建模式: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  if (参数.创建模式) {
+    /* 保存时才生成正式 BY- 单号，替换 DRAFT- 草稿单号 */
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, "");
+    const { count } = await supabase
+      .from("work_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("order_type", "maintenance")
+      .not("order_no", "like", 保养单草稿前缀 + "%")
+      .gte("created_at", today.toISOString().slice(0, 10));
+    const 单号 = 生成保养单号(dateStr, count || 0);
+
+    const { error } = await supabase
+      .from("work_orders")
+      .update({ order_no: 单号, updated_at: new Date().toISOString() })
+      .eq("id", 参数.orderId);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  }
+
+  /* 普通编辑场景：数据在编辑过程中已实时保存，这里只更新时间戳表示确认保存 */
+  const { error } = await supabase
+    .from("work_orders")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", 参数.orderId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 取消创建保养单（删除 DRAFT- 草稿；需求/项目/配件随外键级联删除） ═══
+ * 限定 order_type=maintenance 且单号为 DRAFT- 前缀，防止误删正式工单。 */
+export async function 取消创建保养单(orderId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_orders")
+    .delete()
+    .eq("id", orderId)
+    .eq("order_type", "maintenance")
+    .like("order_no", 保养单草稿前缀 + "%");
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
 }
 
 /* ═══ 从保养单导入项目到当前工单 ═══

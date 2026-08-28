@@ -2,6 +2,7 @@
 
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 新增仓位 } from "@/app/inventory/warehouses/actions";
 
 export interface StockLocationRow {
   id: string;
@@ -71,9 +72,10 @@ export default function StockLocationSection({ value, onChange }: StockLocationS
       alert("仓位名称只能包含中文、英文、数字和-");
       return;
     }
-    const { error } = await supabase.from("warehouse_locations").insert({ warehouse_id: wh.id, name });
-    if (error) {
-      alert("创建仓位失败：" + error.message);
+    /* 新建仓位收口到服务端 */
+    const result = await 新增仓位({ warehouse_id: wh.id, name });
+    if (!result.success) {
+      alert("创建仓位失败：" + (result.error || "未知错误"));
       return;
     }
     await loadLocationsForWarehouse(warehouseName);

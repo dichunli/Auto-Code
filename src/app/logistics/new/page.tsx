@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
+import { 新建独立运单 } from "../actions";
 
 function generateTrackingNo(): string {
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -49,20 +50,24 @@ export default function NewWaybillPage() {
     const company = companies.find((c) => c.id === companyId);
 
     try {
-      const { error } = await supabase.from("logistics_waybills").insert({
-        tracking_no: trackingNo.trim(),
-        logistics_company_id: companyId || null,
-        logistics_company_name: company?.name || null,
-        phone: phone.trim() || null,
-        package_count: parseInt(packageCount) || 1,
-        freight_amount: parseFloat(freightAmount) || 0,
-        cod_amount: parseFloat(codAmount) || 0,
-        photos: photos.length > 0 ? photos : null,
-        status: "pending",
-        notes: notes || null,
+      /* 保存走 Server Action，避免客户端 session 异常导致 401 */
+      const result = await 新建独立运单({
+        trackingNo,
+        logisticsCompanyId: companyId,
+        logisticsCompanyName: company?.name || "",
+        phone,
+        packageCount: parseInt(packageCount) || 1,
+        freightAmount: parseFloat(freightAmount) || 0,
+        codAmount: parseFloat(codAmount) || 0,
+        photos,
+        notes,
       });
 
-      if (error) throw error;
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        setLoading(false);
+        return;
+      }
       router.push("/logistics");
       router.refresh();
     } catch (err: unknown) {

@@ -1,13 +1,12 @@
 "use client";
 
-import {useState, useMemo} from "react";
+import {useState} from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新建仓库 } from "../actions";
 
 export default function NewWarehousePage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [saving, setSaving] = useState(false);
@@ -17,14 +16,17 @@ export default function NewWarehousePage() {
     if (!name.trim()) return;
 
     setSaving(true);
-    const { error } = await supabase.from("warehouses").insert({
-      name: name.trim(),
-      address: address.trim() || null,
-    });
-    setSaving(false);
+    try {
+      const result = await 新建仓库({ name, address });
+      setSaving(false);
 
-    if (error) {
-      alert("保存失败：" + error.message);
+      if (!result.success) {
+        alert("保存失败：" + (result.error || "未知错误"));
+        return;
+      }
+    } catch (err: unknown) {
+      setSaving(false);
+      alert("保存失败：" + (err instanceof Error ? err.message : "未知错误"));
       return;
     }
 

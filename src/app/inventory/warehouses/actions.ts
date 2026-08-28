@@ -48,6 +48,28 @@ export async function 获取仓库列表(): Promise<{
   }) as Promise<{ success: boolean; data?: 仓库[]; error?: string }>;
 }
 
+/* 新增仓库 */
+export async function 新建仓库(参数: {
+  name: string;
+  address?: string | null;
+}): Promise<{ success: boolean; error?: string }> {
+  return 包装ServerAction错误(async () => {
+    const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
+    const { error } = await supabase.from("warehouses").insert({
+      name: 参数.name.trim(),
+      address: 参数.address?.trim() || null,
+    });
+
+    if (error) {
+      return { success: false, error: "保存失败：" + error.message };
+    }
+
+    return { success: true };
+  }) as Promise<{ success: boolean; error?: string }>;
+}
+
 /* 删除仓库 */
 export async function 删除仓库(id: string): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {

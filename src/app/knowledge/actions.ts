@@ -1505,3 +1505,50 @@ export async function 删除知识分类(id: string): Promise<{ success: boolean
   revalidatePath("/knowledge");
   return { success: true };
 }
+
+/* ═══ Word 导入文章保存 Server Action ═══
+ * 导入写库从客户端直写收口到服务端；created_by 取服务端验证的 user.id。 */
+export async function 导入Word文章(参数: {
+  title: string;
+  blocks: unknown;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("knowledge_articles").insert({
+    title: 参数.title,
+    content_blocks: 参数.blocks,
+    type: "article",
+    category_id: null,
+    created_by: user.id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/knowledge");
+  return { success: true };
+}
+
+/* ═══ 文章阅读记录 Server Action ═══
+ * 阅读记录 upsert 收口到服务端；user_id 取服务端验证的 user.id。
+ * 用于详情页服务端渲染期记录阅读，失败静默忽略（不阻塞页面）。 */
+export async function 记录文章阅读(articleId: string): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("knowledge_article_reads").upsert(
+    { article_id: articleId, user_id: user.id, read_date: new Date().toISOString().split("T")[0] },
+    { onConflict: "article_id,user_id,read_date" }
+  );
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { 快速更新客户 } from "@/app/customers/actions";
 
 interface Props {
   open: boolean;
@@ -11,7 +11,6 @@ interface Props {
 }
 
 export default function CustomerEditModal({ open, onClose, customer, onSaved }: Props) {
-  const supabase = createClient();
   const [name, setName] = useState(customer?.name || "");
   const [phone, setPhone] = useState(customer?.phone || "");
   const [hasPhone, setHasPhone] = useState(!!customer?.phone);
@@ -30,19 +29,19 @@ export default function CustomerEditModal({ open, onClose, customer, onSaved }: 
     }
     setSaving(true);
     const cid = customer!.id;
-    const { data, error } = await supabase
-      .from("customers")
-      .update({ name: name.trim(), phone: hasPhone ? phone.trim() : null })
-      .eq("id", cid)
-      .select("id, name, phone")
-      .single();
-    setSaving(false);
-    if (error) {
-      alert("保存失败: " + error.message);
-      return;
+    try {
+      const result = await 快速更新客户({ id: cid, name, phone, hasPhone });
+      setSaving(false);
+      if (!result.success || !result.data) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        return;
+      }
+      onSaved({ id: result.data.id, name: result.data.name, phone: result.data.phone || "" });
+      onClose();
+    } catch {
+      setSaving(false);
+      alert("保存失败: 网络异常，请重试");
     }
-    onSaved(data);
-    onClose();
   }
 
   return (

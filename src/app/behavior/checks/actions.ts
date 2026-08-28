@@ -2,7 +2,7 @@
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { 计算时段状态, 本地今日字符串, 过滤今日任务 } from "@/lib/behaviorCheck";
+import { 计算时段状态 } from "@/lib/behaviorCheck";
 
 /* ═══ 行为考核写操作 Server Action ═══
  * 自检上报（上报即合格直接按满分计分）与检查人核查打分（含事后改判）
@@ -296,98 +296,6 @@ export async function 核查打分(参数: {
   }
 
   revalidatePath("/behavior/checks");
-  return { success: true };
-}
-
-/* ─── 懒生成今日考核记录（先查后插 + 忽略唯一冲突，约束上线前后都安全） ───
- * 与 page.tsx 服务端渲染时同一套逻辑；客户端翻页/刷新前也调它，
- * 身份取服务端登录用户，不再由客户端组装插入。
- * （生成时机本身是否挪到按钮/cron 是待办清单第 6 项，另行处理） */
-interface 懒生成任务 {
-  id: string;
-  frequency: string;
-  execute_time: string;
-  end_time: string;
-  execute_weekday: number | null;
-  execute_day: number | null;
-  employee_ids: string[] | null;
-  behavior_score_items: { responsible_ids: string[] | null; checker_ids: string[] | null }[] | { responsible_ids: string[] | null; checker_ids: string[] | null } | null;
-}
-
-export async function 懒生成今日考核记录(): Promise<动作结果> {
-  const { user, error: 登录错误 } = await 验证用户已登录();
-  if (!user) return { success: false, error: 登录错误 };
-  const uid = user.id;
-  const today = 本地今日字符串();
-
-  const supabase = await createClient();
-  const { data: taskData } = await supabase
-    .from("behavior_check_tasks")
-    .select("*, behavior_score_items(responsible_ids, checker_ids)")
-    .eq("is_active", true);
-
-  const todayTasks = 过滤今日任务((taskData || []) as unknown as 懒生成任务[]);
-
-  for (const task of todayTasks) {
-    const item = 取单(task.behavior_score_items);
-
-    if (item?.responsible_ids && item.responsible_ids.length > 0) {
-      /* 责任人模式：每个责任人各生成一条记录（各自被考核）。
-       * 应检查人集合=配置的检查人（空=该责任人自检）。
-       * 责任人本人（要自检上报）或检查人（要核查）打开页面都会触发生成 */
-      for (const 责任人 of item.responsible_ids) {
-        const 应检查人集合 = item.checker_ids && item.checker_ids.length > 0 ? item.checker_ids : [责任人];
-        if (uid !== 责任人 && !应检查人集合.includes(uid)) continue;
-
-        const { data: existing } = await supabase
-          .from("behavior_check_records")
-          .select("id")
-          .eq("task_id", task.id)
-          .eq("employee_id", 责任人)
-          .eq("check_date", today)
-          .maybeSingle();
-
-        if (!existing) {
-          const { error } = await supabase.from("behavior_check_records").insert({
-            task_id: task.id,
-            employee_id: 责任人,
-            checker_ids: 应检查人集合,
-            check_date: today,
-            status: "pending",
-          });
-          /* 23505 = 唯一约束冲突（两台设备同时打开页面），忽略即可 */
-          if (error && error.code !== "23505") {
-            console.error("生成今日考核记录失败:", error.message);
-          }
-        }
-      }
-    } else {
-      /* 旧模式：任务 employee_ids 空=全员，否则只给名单内的人生成；本人自检 */
-      if (task.employee_ids && task.employee_ids.length > 0 && !task.employee_ids.includes(uid)) continue;
-
-      const { data: existing } = await supabase
-        .from("behavior_check_records")
-        .select("id")
-        .eq("task_id", task.id)
-        .eq("employee_id", uid)
-        .eq("check_date", today)
-        .maybeSingle();
-
-      if (!existing) {
-        const { error } = await supabase.from("behavior_check_records").insert({
-          task_id: task.id,
-          employee_id: uid,
-          checker_ids: [uid],
-          check_date: today,
-          status: "pending",
-        });
-        if (error && error.code !== "23505") {
-          console.error("生成今日考核记录失败:", error.message);
-        }
-      }
-    }
-  }
-
   return { success: true };
 }
 

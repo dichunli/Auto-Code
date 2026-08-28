@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新建会员 } from "../actions";
 
 export default function NewMemberForm() {
   const router = useRouter();
@@ -62,42 +63,25 @@ export default function NewMemberForm() {
     setLoading(true);
 
     try {
-      const balance = parseFloat(initialBalance) || 0;
-
-      // 创建会员
-      const { data: member, error: memberErr } = await supabase
-        .from("members")
-        .insert({
-          card_no: cardNo.trim(),
-          customer_id: customerId || null,
-          name: name.trim(),
-          phone: phone.trim() || null,
-          balance: balance,
-          discount_rate: parseFloat(discountRate) || 1,
-          notes: notes || null,
-        })
-        .select("id")
-        .single();
-
-      if (memberErr) throw memberErr;
-
-      // 如果有初始充值，创建交易记录
-      if (balance > 0) {
-        await supabase.from("member_transactions").insert({
-          member_id: member.id,
-          type: "recharge",
-          amount: balance,
-          balance_after: balance,
-          payment_method: "cash",
-          notes: "开卡初始充值",
-        });
+      const result = await 新建会员({
+        cardNo,
+        customerId,
+        name,
+        phone,
+        initialBalance,
+        discountRate,
+        notes,
+      });
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        setLoading(false);
+        return;
       }
 
       router.push("/members");
       router.refresh();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      alert("保存失败: " + message);
+    } catch {
+      alert("保存失败: 网络异常，请重试");
       setLoading(false);
     }
   }

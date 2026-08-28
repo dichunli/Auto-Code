@@ -4,6 +4,7 @@ import {useState, useEffect, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { 更新会员 } from "../actions";
 import Link from "next/link";
 
 interface CustomerInfo {
@@ -122,20 +123,21 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
   }
 
   async function handleSaveEdit() {
-    const { error } = await supabase
-      .from("members")
-      .update({
-        name: editForm.name,
-        phone: editForm.phone || null,
-        discount_rate: parseFloat(editForm.discount_rate || "") || 1,
-        status: editForm.status,
-        notes: editForm.notes || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", memberId);
-
-    if (error) {
-      alert("保存失败: " + error.message);
+    try {
+      const result = await 更新会员({
+        id: memberId,
+        name: editForm.name || "",
+        phone: editForm.phone || "",
+        discountRate: editForm.discount_rate || "1",
+        status: editForm.status || "active",
+        notes: editForm.notes || "",
+      });
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        return;
+      }
+    } catch {
+      alert("保存失败: 网络异常，请重试");
       return;
     }
     setEditing(false);

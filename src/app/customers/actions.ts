@@ -351,3 +351,226 @@ export async function 删除客户(id: string): Promise<{ success: boolean; erro
   revalidatePath("/customers");
   return { success: true };
 }
+
+/* ═══ 客户详情页：新建车辆并关联当前客户 ═══
+ * 原来是客户端直写 vehicles，收口到服务端；
+ * 车牌 trim+大写、车牌/VIN 唯一性校验在服务端兜底。 */
+export async function 为客户新建车辆(参数: {
+  customerId: string;
+  plate_number: string;
+  vin: string;
+  brand: string;
+  model: string;
+  color: string;
+  year: string;
+  mileage: string;
+}): Promise<保存结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const 车牌 = 参数.plate_number.trim().toUpperCase();
+  if (!车牌) {
+    return { success: false, error: "请填写车牌号" };
+  }
+
+  const supabase = await createClient();
+
+  /* 车牌唯一性校验（数据库唯一锁为最后防线） */
+  const { data: existingPlate } = await supabase
+    .from("vehicles")
+    .select("id")
+    .eq("plate_number", 车牌)
+    .maybeSingle();
+  if (existingPlate) {
+    return { success: false, error: "该车牌号已被使用，请更换" };
+  }
+
+  const vin = 参数.vin.trim().toUpperCase();
+  if (vin) {
+    const { data: existingVin } = await supabase
+      .from("vehicles")
+      .select("id")
+      .eq("vin", vin)
+      .maybeSingle();
+    if (existingVin) {
+      return { success: false, error: "该 VIN 码已被使用，请更换" };
+    }
+  }
+
+  const { data: vehicleData, error } = await supabase
+    .from("vehicles")
+    .insert({
+      customer_id: 参数.customerId,
+      plate_number: 车牌,
+      vin: vin || null,
+      brand: 参数.brand.trim() || null,
+      model: 参数.model.trim() || null,
+      color: 参数.color.trim() || null,
+      year: 参数.year ? parseInt(参数.year) : null,
+      mileage: 参数.mileage ? parseInt(参数.mileage) : null,
+    })
+    .select("id")
+    .single();
+  if (error || !vehicleData) {
+    return { success: false, error: error?.message || "创建车辆失败" };
+  }
+
+  revalidatePath(`/customers/${参数.customerId}`);
+  revalidatePath("/vehicles");
+  return { success: true, id: vehicleData.id };
+}
+
+/* ═══ 合并客户（改名 + RPC 数据迁移，两步都在服务端顺序执行） ═══
+ * 原来客户端先 update 名称再调 RPC，中途失败留半成品；收口到服务端。 */
+export async function 合并客户(参数: {
+  sourceId: string;
+  targetId: string;
+  newName: string | null; // 非空时先把保留客户改名为该值
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  if (参数.sourceId === 参数.targetId) {
+    return { success: false, error: "不能选择同一个客户" };
+  }
+
+  const supabase = await createClient();
+
+  /* 先更新保留客户的名称（如果需要） */
+  if (参数.newName && 参数.newName.trim()) {
+    const { error: nameErr } = await supabase
+      .from("customers")
+      .update({ name: 参数.newName.trim() })
+      .eq("id", 参数.targetId);
+    if (nameErr) {
+      return { success: false, error: "更新客户名称失败: " + nameErr.message };
+    }
+  }
+
+  const { data, error } = await supabase.rpc("merge_customers", {
+    source_id: 参数.sourceId,
+    target_id: 参数.targetId,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const result = data as { success?: boolean; error?: string };
+  if (!result?.success) {
+    return { success: false, error: result?.error || "未知错误" };
+  }
+
+  revalidatePath("/customers");
+  return { success: true };
+}
+
+/* ═══ 客户 Excel 导入（查重 + 分批插入都在服务端） ═══
+ * 客户端只负责解析 Excel，把行数据传过来；
+ * 电话查重、分批插入全部在服务端做，避免客户端 session 异常中断导入。 */
+export interface 客户导入行 {
+  name: string;
+  phone: string;
+  gender?: string | null;
+  company?: string | null;
+  address?: string | null;
+  id_card?: string | null;
+  star_level?: number | null;
+  notes?: string | null;
+}
+
+export async function 导入客户(参数: {
+  rows: 客户导入行[];
+}): Promise<{ success: boolean; inserted?: number; skipped?: number; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const parsedRows = 参数.rows.filter((r) => r.name && r.phone);
+  if (parsedRows.length === 0) {
+    return { success: false, error: "没有有效的数据行（客户姓名和电话不能为空）" };
+  }
+
+  const supabase = await createClient();
+
+  /* 电话查重（分批查） */
+  const phones = parsedRows.map((r) => r.phone);
+  const existingPhones = new Set<string>();
+  for (let i = 0; i < phones.length; i += 500) {
+    const { data } = await supabase.from("customers").select("phone").in("phone", phones.slice(i, i + 500));
+    data?.forEach((r) => existingPhones.add(r.phone as string));
+  }
+
+  const newRows = parsedRows.filter((r) => !existingPhones.has(r.phone));
+  const skipped = parsedRows.length - newRows.length;
+  if (newRows.length === 0) {
+    return { success: true, inserted: 0, skipped };
+  }
+
+  /* 分批插入 */
+  const batchSize = 500;
+  let inserted = 0;
+  for (let i = 0; i < newRows.length; i += batchSize) {
+    const batch = newRows.slice(i, i + batchSize);
+    const { error } = await supabase.from("customers").insert(batch);
+    if (error) {
+      return { success: false, error: `第 ${Math.floor(i / batchSize) + 1} 批导入失败: ${error.message}（已导入 ${inserted} 条）` };
+    }
+    inserted += batch.length;
+  }
+
+  revalidatePath("/customers");
+  return { success: true, inserted, skipped };
+}
+
+/* ═══ 快速编辑客户（工单等页面的简易弹窗，只改姓名和手机号） ═══ */
+export async function 快速更新客户(参数: {
+  id: string;
+  name: string;
+  phone: string;
+  hasPhone: boolean;
+}): Promise<{ success: boolean; data?: { id: string; name: string; phone: string | null }; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  if (!参数.name.trim()) {
+    return { success: false, error: "姓名不能为空" };
+  }
+  if (参数.hasPhone && !参数.phone.trim()) {
+    return { success: false, error: "请输入手机号" };
+  }
+
+  const supabase = await createClient();
+
+  /* 手机号唯一性校验（排除自己） */
+  if (参数.hasPhone && 参数.phone.trim()) {
+    const { data: existingPhone } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("phone", 参数.phone.trim())
+      .neq("id", 参数.id)
+      .maybeSingle();
+    if (existingPhone) {
+      return { success: false, error: "该手机号已被其他客户使用，请更换" };
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("customers")
+    .update({ name: 参数.name.trim(), phone: 参数.hasPhone ? 参数.phone.trim() : null })
+    .eq("id", 参数.id)
+    .select("id, name, phone")
+    .single();
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/customers");
+  revalidatePath(`/customers/${参数.id}`);
+  return { success: true, data: data as { id: string; name: string; phone: string | null } };
+}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { DeleteButton } from "./DeleteButton";
+import { 新建服务分类, 保存服务分类排序 } from "./actions";
 
 interface 维修分类 {
   id: string;
@@ -161,13 +162,12 @@ export default function ServiceCategoriesContent({ initialCategories }: { initia
   async function saveSortOrder(list: 维修分类[]) {
     setSavingOrder(true);
     try {
-      const updates = list.map((item, index) =>
-        supabase.from("service_categories").update({ sort_order: index }).eq("id", item.id)
+      /* 批量更新 sort_order（服务端写库） */
+      const result = await 保存服务分类排序(
+        list.map((item, index) => ({ id: item.id, sort_order: index }))
       );
-      const results = await Promise.all(updates);
-      const errors = results.filter((r) => r.error);
-      if (errors.length > 0) {
-        alert("排序保存失败: " + errors[0].error?.message);
+      if (!result.success) {
+        alert("排序保存失败: " + (result.error || "未知错误"));
         await load();
       }
     } catch (err: unknown) {
@@ -187,36 +187,16 @@ export default function ServiceCategoriesContent({ initialCategories }: { initia
     }
     setSaving(true);
 
-    // 查重
-    const { data: dup } = await supabase
-      .from("service_categories")
-      .select("id")
-      .ilike("name", form.name.trim())
-      .maybeSingle();
-    if (dup) {
-      alert("该分类名称已存在，请更换");
-      setSaving(false);
-      return;
-    }
-
-    const { error } = await supabase.from("service_categories").insert({
-      name: form.name.trim(),
-      sales_commission_type: form.sales_type || null,
-      sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-      diagnosis_commission_type: form.diagnosis_type || null,
-      diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-      repair_commission_type: form.repair_type || null,
-      repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-      qc_commission_type: form.qc_type || null,
-      qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-      dispatch_commission_type: form.dispatch_type || null,
-      dispatch_commission_value: form.dispatch_value ? parseFloat(form.dispatch_value) : null,
-      claim_commission_type: form.claim_type || null,
-      claim_commission_value: form.claim_value ? parseFloat(form.claim_value) : null,
-    });
-
-    if (error) {
-      alert("保存失败: " + error.message);
+    /* 查重 + 插入都在服务端完成 */
+    try {
+      const result = await 新建服务分类(form);
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        setSaving(false);
+        return;
+      }
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : "未知错误"));
       setSaving(false);
       return;
     }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { 指派需求, 领取需求, 取消需求指派 } from "@/app/work-orders/actions";
 
 interface Requirement {
   id: string;
@@ -22,37 +22,38 @@ export default function RequirementActions({
   requirement: Requirement;
   profiles: Profile[];
 }) {
-  const supabase = createClient();
   // 本地保存当前指派人：保存成功后只更新按钮和标签，不整页刷新
   const [当前指派, 设置当前指派] = useState<string | null>(requirement.assigned_to ?? null);
 
+  /* 写库走 Server Action：派单/领单/取消指派，指派人身份由服务端校验 */
   async function handleAssign(assignedToId: string, type: "assigned" | "claimed") {
-    const { data: authData } = await supabase.auth.getUser();
-    const dispatcherId = type === "assigned" ? authData.user?.id : null;
+    let 生效指派人 = assignedToId || null;
+    let result: { success: boolean; error?: string };
+    if (!assignedToId) {
+      result = await 取消需求指派(requirement.id);
+    } else if (type === "claimed") {
+      /* 领单：领单人=当前登录用户，由服务端确定并返回 */
+      const 领单结果 = await 领取需求(requirement.id);
+      result = 领单结果;
+      生效指派人 = 领单结果.assigneeId || null;
+    } else {
+      result = await 指派需求({ requirementId: requirement.id, assigneeId: assignedToId });
+    }
 
-    const { error } = await supabase
-      .from("work_order_requirements")
-      .update({
-        assigned_to: assignedToId || null,
-        assignment_type: assignedToId ? type : null,
-        dispatcher_id: dispatcherId,
-      })
-      .eq("id", requirement.id);
-
-    if (error) {
-      alert("操作失败: " + error.message);
+    if (!result.success) {
+      alert("操作失败: " + (result.error || "未知错误"));
       return;
     }
 
     /* 局部更新：更新按钮状态 + 广播指派事件（标题栏标签监听后更新），不整页刷新 */
-    设置当前指派(assignedToId || null);
-    const 指派人 = profiles.find((p) => p.id === assignedToId);
+    设置当前指派(生效指派人);
+    const 指派人 = profiles.find((p) => p.id === 生效指派人);
     window.dispatchEvent(
       new CustomEvent("wo-requirement-assigned", {
         detail: {
           requirementId: requirement.id,
-          assignedTo: assignedToId || null,
-          assignmentType: assignedToId ? type : null,
+          assignedTo: 生效指派人,
+          assignmentType: 生效指派人 ? type : null,
           fullName: 指派人?.full_name || "",
         },
       })
@@ -80,10 +81,7 @@ export default function RequirementActions({
             ))}
           </select>
           <button
-            onClick={async () => {
-              const { data: authData } = await supabase.auth.getUser();
-              if (authData.user) handleAssign(authData.user.id, "claimed");
-            }}
+            onClick={() => handleAssign("self", "claimed")}
             className="text-xs px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100"
           >
             领单

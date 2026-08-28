@@ -10,6 +10,7 @@ import { PresentationView } from "@/components/PresentationView";
 import { KnowledgeDeleteButton } from "@/components/KnowledgeDeleteButton";
 import { 是抖音链接, 抖音视频简化卡片 } from "@/components/DouyinVideo";
 import { 消毒Html } from "@/lib/sanitizeHtml";
+import { 记录文章阅读 } from "../actions";
 
 interface 维修项目关联 {
   service_names: { name: string } | null;
@@ -83,11 +84,8 @@ export default async function KnowledgeDetailPage({
     const { data: profileData } = profileResult;
     userGroupId = profileData?.group_id ? String(profileData.group_id) : "";
 
-    /* 记录阅读（不阻塞页面加载） */
-    void supabase.from("knowledge_article_reads").upsert(
-      { article_id: id, user_id: currentUserId, read_date: new Date().toISOString().split("T")[0] },
-      { onConflict: "article_id,user_id,read_date" }
-    ).then(() => {}, () => {});
+    /* 记录阅读（不阻塞页面加载）；写库收口到 Server Action，用户身份由服务端验证 */
+    void 记录文章阅读(id).then(() => {}, () => {});
   }
 
   /* 权限检查 */

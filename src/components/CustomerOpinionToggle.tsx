@@ -1,6 +1,6 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
+import { 保存工单项目字段 } from "@/app/work-orders/actions";
 import { useState, useCallback } from "react";
 
 interface Props {
@@ -11,7 +11,6 @@ interface Props {
 }
 
 export function CustomerOpinionToggle({ itemId, opinion, disabled = false }: Props) {
-  const supabase = createClient();
   const [updating, setUpdating] = useState(false);
   // 用本地状态保存当前客户意见，保存成功后只更新这个按钮，不刷新整页（性能优化）
   const [current, setCurrent] = useState(opinion || "pending");
@@ -19,13 +18,14 @@ export function CustomerOpinionToggle({ itemId, opinion, disabled = false }: Pro
   const updateOpinion = useCallback(async (newOpinion: string) => {
     if (updating) return;
     setUpdating(true);
-    const { error } = await supabase
-      .from("work_order_items")
-      .update({ customer_opinion: newOpinion })
-      .eq("id", itemId);
+    /* 写库走 Server Action */
+    const result = await 保存工单项目字段({
+      itemId,
+      updates: { customer_opinion: newOpinion },
+    });
     setUpdating(false);
-    if (error) {
-      alert("更新失败: " + error.message);
+    if (!result.success) {
+      alert("更新失败: " + (result.error || "未知错误"));
       return;
     }
     // 写库成功后才更新本地显示，保证数据正确性
@@ -33,7 +33,7 @@ export function CustomerOpinionToggle({ itemId, opinion, disabled = false }: Pro
     /* 广播：列表页分栏卡片监听后刷新列表（阶段自动挪列）；
      * 详情页各徽章组件监听后重查自身状态（与派工/质检同一事件约定） */
     window.dispatchEvent(new CustomEvent("wo-item-update", { detail: { itemId } }));
-  }, [itemId, supabase, updating]);
+  }, [itemId, updating]);
 
   function handleClick() {
     if (current === "agree") {

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { LinkedItem } from "@/components/VehicleModelSelector";
 import { PartNameItem } from "./PartNameSearch";
+import { 新建品牌, 关联名称品牌 } from "../../actions";
 
 interface IdNameItem {
   id: string;
@@ -98,26 +99,21 @@ export default function BrandSearch({
   async function createBrandAndSelect() {
     const name = query.trim();
     if (!name) return;
-    const { data, error } = await supabase
-      .from("part_brands")
-      .insert({ name })
-      .select("id, name")
-      .single();
-    if (error || !data) {
-      alert("创建品牌失败: " + (error?.message || "未知错误"));
+    /* 新建品牌收口到服务端 */
+    const result = await 新建品牌(name);
+    if (!result.success || !result.id) {
+      alert("创建品牌失败: " + (result.error || "未知错误"));
       return;
     }
-    onSelectBrand({ id: data.id, name: data.name });
-    setQuery(data.name);
+    onSelectBrand({ id: result.id, name });
+    setQuery(name);
     setResults(null);
     setHighlightedIndex(-1);
     if (selectedPartName) {
-      await supabase
-        .from("part_name_brands")
-        .insert({ part_name_id: selectedPartName.id, brand_id: data.id })
-        .then(({ error }) => {
-          if (error && !error.message.includes("duplicate")) console.error(error);
-        });
+      /* 关联配件名称（重复关联服务端静默忽略），失败只记日志不打断 */
+      关联名称品牌(selectedPartName.id, result.id).then((r) => {
+        if (!r.success) console.error(r.error);
+      });
     }
   }
 
@@ -127,12 +123,10 @@ export default function BrandSearch({
     setResults(null);
     setHighlightedIndex(-1);
     if (selectedPartName && !item.linked) {
-      supabase
-        .from("part_name_brands")
-        .insert({ part_name_id: selectedPartName.id, brand_id: item.id })
-        .then(({ error }) => {
-          if (error && !error.message.includes("duplicate")) console.error(error);
-        });
+      /* 关联配件名称（重复关联服务端静默忽略），失败只记日志不打断 */
+      关联名称品牌(selectedPartName.id, item.id).then((r) => {
+        if (!r.success) console.error(r.error);
+      });
     }
   }
 

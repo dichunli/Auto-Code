@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { 保存接车信息 } from "@/app/work-orders/actions";
 import { ImageUploader } from "./ImageUploader";
 
 function toDatetimeLocal(isoString: string | null | undefined): string {
@@ -43,7 +43,6 @@ export function ReceptionInfoEditor({
   senderPhone,
 }: Props) {
   const router = useRouter();
-  const supabase = createClient();
   const [open, setOpen] = useState(false);
   const [mileage, setMileage] = useState(mileageIn != null ? String(mileageIn) : "");
   const [delivery, setDelivery] = useState(toDatetimeLocal(estimatedCompletionAt));
@@ -55,21 +54,18 @@ export function ReceptionInfoEditor({
 
   async function handleSave() {
     setSaving(true);
-    const payload: Record<string, string | number | string[] | null> = {};
-    if (mileage.trim() !== "") payload.mileage_in = Number(mileage);
-    else payload.mileage_in = null;
-
-    if (delivery.trim() !== "") payload.estimated_completion_at = fromDatetimeLocal(delivery);
-    else payload.estimated_completion_at = null;
-
-    payload.sender_name = sName.trim() || null;
-    payload.sender_phone = sPhone.trim() || null;
-    payload.dashboard_photos = dashPaths.length > 0 ? dashPaths : null;
-
-    const { error } = await supabase.from("work_orders").update(payload).eq("id", orderId);
+    /* 写库走 Server Action；空字符串统一转 null，数字字段空值传 null */
+    const result = await 保存接车信息({
+      orderId,
+      mileage_in: mileage.trim() !== "" ? Number(mileage) : null,
+      estimated_completion_at: delivery.trim() !== "" ? fromDatetimeLocal(delivery) : null,
+      sender_name: sName.trim() || null,
+      sender_phone: sPhone.trim() || null,
+      dashboard_photos: dashPaths.length > 0 ? dashPaths : null,
+    });
     setSaving(false);
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       return;
     }
     setOpen(false);

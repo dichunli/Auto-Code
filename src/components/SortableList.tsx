@@ -1,7 +1,7 @@
 "use client";
 
 import { Children, useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { 保存排序 } from "@/app/work-orders/actions";
 import { ItemLevelSortContext, PartLevelSortContext } from "@/lib/sortOrderContext";
 
 interface Props {
@@ -13,7 +13,6 @@ interface Props {
 }
 
 export default function SortableList({ ids, tableName, extraIdMap, children }: Props) {
-  const supabase = createClient();
   const [orderedIds, setOrderedIds] = useState<string[]>(ids);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -62,20 +61,10 @@ export default function SortableList({ ids, tableName, extraIdMap, children }: P
       }
     });
 
-    // 逐个更新（upsert 会要求补全所有 not-null 字段，改用 update）
-    const entries = Object.entries(updateMap);
-    let hasError = false;
-    for (const [updateId, sort_order] of entries) {
-      const { error } = await supabase
-        .from(tableName)
-        .update({ sort_order })
-        .eq("id", updateId);
-      if (error) {
-        hasError = true;
-        console.error("排序保存失败:", error);
-      }
-    }
-    if (hasError) {
+    // 写库走 Server Action（upsert 会要求补全所有 not-null 字段，用 update）
+    const 结果 = await 保存排序({ tableName, updates: updateMap });
+    if (!结果.success) {
+      console.error("排序保存失败:", 结果.error);
       alert("排序保存失败，请检查网络或刷新后重试");
       return;
     }

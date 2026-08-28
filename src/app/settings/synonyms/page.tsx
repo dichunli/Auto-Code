@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { 删除同义词 } from "./actions";
+import { 删除同义词, 新增同义词, 更新同义词 } from "./actions";
 
 interface 同义词记录 {
   id: string;
@@ -86,14 +86,12 @@ export default function SynonymsPage() {
       }
 
       setSaving(true);
-      const { error } = await supabase
-        .from("synonym_mapping")
-        .update({ term: 原词, synonyms: 同义词组, updated_at: new Date().toISOString() })
-        .eq("id", editingId);
+      /* 更新走 Server Action，避免客户端 session 异常导致 401 */
+      const result = await 更新同义词(editingId, 原词, 同义词组);
       setSaving(false);
 
-      if (error) {
-        alert("更新失败: " + error.message);
+      if (!result.success) {
+        alert("更新失败: " + (result.error || "未知错误"));
         return;
       }
 
@@ -113,28 +111,20 @@ export default function SynonymsPage() {
     }
 
     setSaving(true);
-    const { data, error } = await supabase
-      .from("synonym_mapping")
-      .insert({ term: 原词, synonyms: 同义词组 })
-      .select("id, term, synonyms")
-      .single();
+    /* 新增走 Server Action，返回新行就地更新列表 */
+    const result = await 新增同义词(原词, 同义词组);
     setSaving(false);
 
-    if (error) {
-      alert("添加失败: " + error.message);
+    if (!result.success) {
+      alert("添加失败: " + (result.error || "未知错误"));
       return;
     }
 
-    if (data) {
-      setSynonyms((prev) => [
-        {
-          id: String(data.id),
-          term: String(data.term),
-          synonyms: Array.isArray(data.synonyms) ? (data.synonyms as string[]) : [],
-        },
-        ...prev,
-      ]);
+    if (result.data) {
+      const 新行: 同义词记录 = result.data;
+      setSynonyms((prev) => [新行, ...prev]);
     }
+
     setTerm("");
     setSynonymInput("");
   }

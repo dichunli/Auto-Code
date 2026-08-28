@@ -1,6 +1,6 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
+import { 保存工单项目字段 } from "@/app/work-orders/actions";
 import { useState } from "react";
 
 interface Props {
@@ -12,7 +12,6 @@ interface Props {
 }
 
 export function ItemNotesEditor({ itemId, description, disabled = false }: Props) {
-  const supabase = createClient();
   const [open, setOpen] = useState(false);
   // 用本地状态保存已生效的备注，保存成功后只更新这一小块，不刷新整页（性能优化）
   const [savedDesc, setSavedDesc] = useState(description || "");
@@ -35,13 +34,14 @@ export function ItemNotesEditor({ itemId, description, disabled = false }: Props
   async function handleSave() {
     setSaving(true);
     const trimmed = value.trim();
-    const { error } = await supabase
-      .from("work_order_items")
-      .update({ description: trimmed || null })
-      .eq("id", itemId);
+    /* 写库走 Server Action；空备注传 null 不存空字符串 */
+    const result = await 保存工单项目字段({
+      itemId,
+      updates: { description: trimmed || null },
+    });
     setSaving(false);
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       return;
     }
     setOpen(false);

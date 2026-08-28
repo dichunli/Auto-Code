@@ -1070,8 +1070,9 @@ export async function 指派需求(参数: {
   return { success: true };
 }
 
-/* ═══ 领取需求（领单人=当前登录用户，取服务端 user.id） ═══ */
-export async function 领取需求(requirementId: string): Promise<{ success: boolean; error?: string }> {
+/* ═══ 领取需求（领单人=当前登录用户，取服务端 user.id） ═══
+ * 返回 assigneeId 供客户端广播事件用（客户端不再直查 auth）。 */
+export async function 领取需求(requirementId: string): Promise<{ success: boolean; assigneeId?: string; error?: string }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
     return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
@@ -1087,7 +1088,7 @@ export async function 领取需求(requirementId: string): Promise<{ success: bo
     })
     .eq("id", requirementId);
   if (error) return { success: false, error: error.message };
-  return { success: true };
+  return { success: true, assigneeId: user.id };
 }
 
 /* ═══ 取消需求指派 ═══ */
@@ -1548,7 +1549,9 @@ export async function 同步分支图片到配件(参数: {
   return { success: true };
 }
 
-/* ═══ 保存工单项目字段（手机端编辑：客户意见/自带件/描述/数量/单价） ═══ */
+/* ═══ 保存工单项目字段（通用字段更新） ═══
+ * 手机端编辑：客户意见/自带件/描述/数量/单价；
+ * 电脑端复用：备注、业务类型、别名/必须质检/替换项目（编辑弹窗）。 */
 export async function 保存工单项目字段(参数: {
   itemId: string;
   updates: {
@@ -1557,6 +1560,11 @@ export async function 保存工单项目字段(参数: {
     description?: string | null;
     unit_price?: number;
     quantity?: number;
+    business_type?: string;
+    alias_name?: string | null;
+    require_qc?: boolean;
+    service_item_id?: string;
+    name?: string;
   };
 }): Promise<{ success: boolean; error?: string }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
@@ -1569,6 +1577,110 @@ export async function 保存工单项目字段(参数: {
     .from("work_order_items")
     .update(参数.updates)
     .eq("id", 参数.itemId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 保存接车信息（接车里程/仪表照片/约定交车时间/送修人） ═══ */
+export async function 保存接车信息(参数: {
+  orderId: string;
+  mileage_in: number | null;
+  estimated_completion_at: string | null;
+  sender_name: string | null;
+  sender_phone: string | null;
+  dashboard_photos: string[] | null;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { orderId, ...更新字段 } = 参数;
+  const { error } = await supabase
+    .from("work_orders")
+    .update(更新字段)
+    .eq("id", orderId);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  /* 清掉详情页服务端缓存，保证客户端 router.refresh() 拿到最新数据 */
+  clearWorkOrderDataCache(orderId);
+  return { success: true };
+}
+
+/* ═══ 保存排序（拖动排序后批量更新 sort_order；仅限工单项目/配件两表） ═══ */
+export async function 保存排序(参数: {
+  tableName: "work_order_items" | "work_order_item_parts";
+  updates: Record<string, number>;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  /* 各行 update 互不依赖，并行发起（原来是客户端逐个串行 await） */
+  const 结果列表 = await Promise.all(
+    Object.entries(参数.updates).map(([id, sort_order]) =>
+      supabase.from(参数.tableName).update({ sort_order }).eq("id", id)
+    )
+  );
+  const 失败 = 结果列表.find((r) => r.error);
+  if (失败?.error) {
+    return { success: false, error: 失败.error.message };
+  }
+
+  return { success: true };
+}
+
+/* ═══ 项目级图片记录 增/删（work_order_item_media，区别于分支级 part_media） ═══ */
+export async function 添加项目图片记录(参数: {
+  itemId: string;
+  paths: string[];
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (参数.paths.length === 0) {
+    return { success: true };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("work_order_item_media").insert(
+    参数.paths.map((path) => ({
+      work_order_item_id: 参数.itemId,
+      media_type: "image",
+      storage_path: path,
+    }))
+  );
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+export async function 删除项目图片记录(参数: {
+  itemId: string;
+  path: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("work_order_item_media")
+    .delete()
+    .eq("work_order_item_id", 参数.itemId)
+    .eq("storage_path", 参数.path);
   if (error) {
     return { success: false, error: error.message };
   }
@@ -1826,6 +1938,187 @@ export async function 预收款退款(参数: {
   const rpcResult = result as { success: boolean; error?: string };
   if (!rpcResult?.success) {
     return { success: false, error: rpcResult?.error || "退款失败" };
+  }
+
+  clearWorkOrderDataCache(参数.orderId);
+  revalidatePath(`/work-orders/${参数.orderId}`);
+  return { success: true };
+}
+
+/* ═══ 批量添加工单项目（ItemBatchPickerModal 勾选添加） ═══
+ * 原来是客户端"查重 + 插入"两步直写，收口到服务端一次完成。
+ * 服务端重新查重，不信任客户端的旧列表。 */
+export interface 批量添加项目行 {
+  id: string;
+  name: string;
+  alias_name: string | null;
+  item_type: string;
+  description: string | null;
+  quantity: number | null;
+  unit_price: number | null;
+  total_price: number | null;
+  service_item_id: string | null;
+  customer_opinion: string | null;
+  business_type: string | null;
+}
+
+export async function 批量添加工单项目(参数: {
+  orderId: string;
+  requirementId: string;
+  itemType: "labor" | "part" | "other";
+  items: {
+    service_item_id: string;
+    name: string;
+    description: string | null;
+    unit_price: number;
+    require_qc: boolean;
+  }[];
+}): Promise<{ success: boolean; items?: 批量添加项目行[]; skippedNames?: string[]; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 服务端查重：当前工单已有项目名称 */
+  const { data: existingItems } = await supabase
+    .from("work_order_items")
+    .select("name")
+    .eq("work_order_id", 参数.orderId);
+  const existingNames = new Set((existingItems as { name: string }[] | null)?.map((i) => i.name) || []);
+
+  const toInsert = 参数.items.filter((si) => !existingNames.has(si.name));
+  const skippedNames = 参数.items.filter((si) => existingNames.has(si.name)).map((si) => si.name);
+
+  if (toInsert.length === 0) {
+    return { success: true, items: [], skippedNames };
+  }
+
+  const records = toInsert.map((si) => ({
+    work_order_id: 参数.orderId,
+    requirement_id: 参数.requirementId,
+    service_item_id: si.service_item_id,
+    name: si.name,
+    item_type: 参数.itemType,
+    description: si.description,
+    quantity: 1,
+    unit_price: si.unit_price,
+    /* 从维修项目库带入"必须质检"默认设置（工单内可单独改） */
+    require_qc: si.require_qc,
+  }));
+
+  const { data: 新项目们, error } = await supabase
+    .from("work_order_items")
+    .insert(records)
+    .select("id, name, alias_name, item_type, description, quantity, unit_price, total_price, service_item_id, customer_opinion, business_type");
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  clearWorkOrderDataCache(参数.orderId);
+  revalidatePath(`/work-orders/${参数.orderId}`);
+  return { success: true, items: (新项目们 || []) as 批量添加项目行[], skippedNames };
+}
+
+/* ═══ 导入保养模板（TemplateImportModal 确认导入） ═══
+ * 原来是客户端"建需求 → 逐项目插入 → 逐项目加配件"多步直写，
+ * 收口到服务端顺序执行；配件写入仍走 add_work_order_item_parts RPC 事务函数。 */
+export async function 导入保养模板(参数: {
+  orderId: string;
+  templateName: string;
+  items: {
+    service_item_id: string | null;
+    name: string;
+    item_type: string;
+    quantity: number | null;
+    unit_price: number | null;
+    mechanic_id: string | null;
+    parts: {
+      part_name_id: string | null;
+      part_id: string | null;
+      quantity: number | null;
+      name: string;
+      brand: string | null;
+      specification: string | null;
+      unit_cost: number | null;
+      unit_price: number | null;
+    }[];
+  }[];
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 1. 创建需求记录（作为导入的容器） */
+  const { data: req, error: reqErr } = await supabase
+    .from("work_order_requirements")
+    .insert({
+      work_order_id: 参数.orderId,
+      description: `保养模板导入: ${参数.templateName}`,
+      diagnosis: "",
+    })
+    .select("id")
+    .single();
+
+  if (reqErr || !req) {
+    return { success: false, error: reqErr?.message || "创建需求失败" };
+  }
+
+  /* 2. 逐项目导入 */
+  for (const item of 参数.items) {
+    const { data: createdItem, error: itemErr } = await supabase
+      .from("work_order_items")
+      .insert({
+        work_order_id: 参数.orderId,
+        requirement_id: req.id,
+        service_item_id: item.service_item_id,
+        name: item.name,
+        item_type: item.item_type,
+        quantity: item.quantity || 1,
+        unit_price: item.unit_price || 0,
+        mechanic_id: item.mechanic_id,
+        customer_opinion: "agree",
+        business_type: "normal",
+      })
+      .select("id")
+      .single();
+
+    if (itemErr || !createdItem) {
+      return { success: false, error: itemErr?.message || "导入项目失败" };
+    }
+
+    /* 3. 导入配件（按模板顺序写入 sort_order，保证显示顺序与模板一致）
+       走 RPC 事务函数，每个项目一次批量调用 */
+    if (item.parts.length > 0) {
+      const 提交列表: Record<string, unknown>[] = item.parts.map((part, 序) => ({
+        part_name_id: part.part_name_id,
+        part_id: part.part_id,
+        quantity: part.quantity || 1,
+        name: part.name,
+        brand: part.brand,
+        specification: part.specification,
+        unit_cost: part.unit_cost,
+        unit_price: part.unit_price,
+        customer_opinion: "agree",
+        sort_order: 序,
+        is_selected: true,
+      }));
+      const { data: rpc结果, error: rpcErr } = await supabase.rpc("add_work_order_item_parts", {
+        p_item_id: createdItem.id,
+        p_parts: 提交列表,
+      });
+      if (rpcErr) {
+        return { success: false, error: rpcErr.message };
+      }
+      const 配件结果 = rpc结果 as unknown as { success: boolean; error?: string };
+      if (!配件结果?.success) {
+        return { success: false, error: 配件结果?.error || "导入配件失败" };
+      }
+    }
   }
 
   clearWorkOrderDataCache(参数.orderId);

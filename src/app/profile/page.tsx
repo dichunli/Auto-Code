@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 import { PasswordChangeModal } from "./PasswordChangeModal";
+import { 保存个人信息 } from "./actions";
 
 const GENDERS = [
   { value: "male", label: "男" },
@@ -94,29 +95,18 @@ export default function ProfilePage() {
     setSaving(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        alert("未登录，请重新登录");
-        setSaving(false);
-        return;
-      }
+      /* 保存走 Server Action，用户身份由服务端验证，只改自己的资料 */
+      const result = await 保存个人信息({
+        fullName,
+        phone,
+        avatarUrl,
+        gender,
+        address,
+        notes,
+      });
 
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          full_name: fullName.trim(),
-          phone: phone.trim() || null,
-          avatar_url: avatarUrl || null,
-          gender: gender || null,
-          address: address.trim() || null,
-          notes: notes.trim() || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id);
-
-      if (error) {
-        alert("保存失败：" + error.message);
-        setSaving(false);
+      if (!result.success) {
+        alert("保存失败：" + (result.error || "未知错误"));
         return;
       }
 

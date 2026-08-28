@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 批量添加工单项目 } from "@/app/work-orders/actions";
 
 interface Props {
   open: boolean;
@@ -29,8 +30,6 @@ type ServiceItemPrice = {
   vehicle_model_id: number;
   price: number | null;
 };
-
-type ExistingItem = { name: string };
 
 /* 常用维修项目快捷标签 */
 const QUICK_TAGS = [
@@ -157,56 +156,46 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
 
     setSaving(true);
     try {
-      const { data: existingItems } = await supabase
-        .from("work_order_items")
-        .select("name")
-        .eq("work_order_id", orderId);
-      const existingNames = new Set((existingItems || []).map((it: ExistingItem) => it.name));
-
       const selected = selectedIds
         .map((id) => allServiceItems.find((s) => s.id === id))
         .filter(Boolean) as ServiceItem[];
 
-      const toInsert = selected.filter((si) => !existingNames.has(si.name));
-      const duplicates = selected.filter((si) => existingNames.has(si.name));
+      /* 查重 + 插入都在服务端完成（服务端重新查重，不信客户端旧列表） */
+      const result = await 批量添加工单项目({
+        orderId,
+        requirementId,
+        itemType: defaultType,
+        items: selected.map((si) => ({
+          service_item_id: si.id,
+          name: si.name,
+          description: si.description || null,
+          unit_price: getVehiclePrice(si.id) ?? si.default_price ?? 0,
+          require_qc: si.require_qc ?? false,
+        })),
+      });
 
-      if (toInsert.length === 0) {
-        alert("勾选的项目都已存在于当前工单，无需重复添加");
-        setSaving(false);
+      if (!result.success) {
+        alert("批量添加失败: " + (result.error || "未知错误"));
         return;
       }
 
-      const records = toInsert.map((si) => {
-        const vPrice = getVehiclePrice(si.id);
-        return {
-          work_order_id: orderId,
-          requirement_id: requirementId,
-          service_item_id: si.id,
-          name: si.name,
-          item_type: defaultType,
-          description: si.description || null,
-          quantity: 1,
-          unit_price: vPrice ?? si.default_price ?? 0,
-          /* 从维修项目库带入"必须质检"默认设置（工单内可单独改） */
-          require_qc: si.require_qc ?? false,
-        };
-      });
+      const 新项目们 = result.items || [];
+      const skippedNames = result.skippedNames || [];
 
-      const { data: 新项目们, error } = await supabase
-        .from("work_order_items")
-        .insert(records)
-        .select("id, name, alias_name, item_type, description, quantity, unit_price, total_price, service_item_id, customer_opinion, business_type");
-      if (error) throw error;
+      if (新项目们.length === 0) {
+        alert("勾选的项目都已存在于当前工单，无需重复添加");
+        return;
+      }
 
-      if (duplicates.length > 0) {
-        alert(`已添加 ${toInsert.length} 项；跳过 ${duplicates.length} 个重复项目：${duplicates.map((d) => d.name).join("、")}`);
+      if (skippedNames.length > 0) {
+        alert(`已添加 ${新项目们.length} 项；跳过 ${skippedNames.length} 个重复项目：${skippedNames.join("、")}`);
       }
 
       /* 局部更新：广播"wo-items-added"事件，需求下的 LiveItemsList 立即追加项目行、
        * WorkOrderTotalFooter 同步合计，不整页刷新（与配件添加同一模式）。
        * 整页刷新后服务端数据已含这些项目，追加行按 id 去重自动移除。 */
       onClose();
-      if (新项目们 && 新项目们.length > 0) {
+      if (新项目们.length > 0) {
         window.dispatchEvent(
           new CustomEvent("wo-items-added", {
             detail: { requirementId, items: 新项目们 },

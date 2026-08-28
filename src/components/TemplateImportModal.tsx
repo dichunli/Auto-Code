@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
-import { 添加工单配件 } from "@/app/work-orders/parts-actions";
+import { 导入保养模板 } from "@/app/work-orders/actions";
 
 interface Props {
   vehicleId: string;
@@ -83,63 +83,35 @@ export function TemplateImportModal({ vehicleId, orderId, onClose, onSuccess }: 
     if (!selectedId || !detail) return;
     setImporting(true);
 
+    /* 建需求 + 逐项目插入 + 逐项目加配件，全部收口到服务端一次完成 */
     try {
-      // 1. 创建需求记录（作为导入的容器）
-      const { data: req, error: reqErr } = await supabase
-        .from("work_order_requirements")
-        .insert({
-          work_order_id: orderId,
-          description: `保养模板导入: ${detail.name}`,
-          diagnosis: "",
-        })
-        .select("id")
-        .single();
-
-      if (reqErr || !req) throw reqErr || new Error("创建需求失败");
-
-      // 2. 导入项目
-      for (const item of detail.vehicle_maintenance_template_items || []) {
-        const { data: createdItem, error: itemErr } = await supabase
-          .from("work_order_items")
-          .insert({
-            work_order_id: orderId,
-            requirement_id: req.id,
-            service_item_id: item.service_item_id,
-            name: item.name,
-            item_type: item.item_type,
-            quantity: item.quantity || 1,
-            unit_price: item.unit_price || 0,
-            mechanic_id: item.mechanic_id,
-            customer_opinion: "agree",
-            business_type: "normal",
-          })
-          .select("id")
-          .single();
-
-        if (itemErr || !createdItem) throw itemErr || new Error("导入项目失败");
-
-        // 3. 导入配件（按模板顺序写入 sort_order，保证显示顺序与模板一致）
-        // 写库收编为 Server Action（RPC 事务函数），每个项目一次批量调用
-        const 配件列表 = item.vehicle_maintenance_template_parts || [];
-        if (配件列表.length > 0) {
-          const 提交列表: Record<string, unknown>[] = 配件列表.map((part, 序) => ({
+      const result = await 导入保养模板({
+        orderId,
+        templateName: detail.name,
+        items: (detail.vehicle_maintenance_template_items || []).map((item) => ({
+          service_item_id: item.service_item_id,
+          name: item.name,
+          item_type: item.item_type,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          mechanic_id: item.mechanic_id,
+          parts: (item.vehicle_maintenance_template_parts || []).map((part) => ({
             part_name_id: part.part_name_id,
             part_id: part.part_id,
-            quantity: part.quantity || 1,
+            quantity: part.quantity,
             name: part.name,
             brand: part.brand,
             specification: part.specification,
             unit_cost: part.unit_cost,
             unit_price: part.unit_price,
-            customer_opinion: "agree",
-            sort_order: 序,
-            is_selected: true,
-          }));
-          const 结果 = await 添加工单配件(createdItem.id, 提交列表);
-          if (!结果.success) throw new Error(结果.error || "导入配件失败");
-        }
+          })),
+        })),
+      });
+      if (!result.success) {
+        alert("导入失败: " + (result.error || "未知错误"));
+        setImporting(false);
+        return;
       }
-
       onSuccess();
     } catch (err: unknown) {
       alert("导入失败: " + (err instanceof Error ? err.message : String(err)));

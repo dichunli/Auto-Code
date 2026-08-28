@@ -4,6 +4,7 @@ import {useState, useCallback, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新建服务分类 } from "../actions";
 
 interface 维修分类 {
   id: string;
@@ -116,32 +117,16 @@ export default function NewServiceCategoryPage() {
     }
     setLoading(true);
 
-    // 再次查重
-    const { data: dup } = await supabase
-      .from("service_categories")
-      .select("id")
-      .ilike("name", form.name.trim())
-      .maybeSingle();
-    if (dup) {
-      alert("该分类名称已存在，请更换");
-      setLoading(false);
-      return;
-    }
-
-    const { error } = await supabase.from("service_categories").insert({
-      name: form.name.trim(),
-      sales_commission_type: form.sales_type || null,
-      sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-      diagnosis_commission_type: form.diagnosis_type || null,
-      diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-      repair_commission_type: form.repair_type || null,
-      repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-      qc_commission_type: form.qc_type || null,
-      qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-    });
-
-    if (error) {
-      alert("保存失败: " + error.message);
+    /* 查重 + 插入都在服务端完成 */
+    try {
+      const result = await 新建服务分类(form);
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        setLoading(false);
+        return;
+      }
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : "未知错误"));
       setLoading(false);
       return;
     }

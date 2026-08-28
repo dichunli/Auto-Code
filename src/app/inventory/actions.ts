@@ -536,3 +536,68 @@ export async function 批量导入配件(参数: {
   revalidatePath("/inventory");
   return { success: true, inserted };
 }
+
+/* ═══ 新建盘点单 Server Action ═══
+ * 建盘点单 + 插明细两步写收口到服务端一次完成，
+ * 避免客户端 session 异常导致只建了单头没插明细。 */
+export async function 新建盘点单(参数: {
+  check_no: string;
+  location: string;
+  notes: string;
+  items: {
+    part_id: string;
+    system_qty: number;
+    actual_qty: string;
+    notes: string;
+  }[];
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 创建盘点单 */
+  const { data: check, error: checkError } = await supabase
+    .from("inventory_checks")
+    .insert({
+      check_no: 参数.check_no.trim() || null,
+      location: 参数.location.trim() || null,
+      notes: 参数.notes.trim() || null,
+      status: "pending",
+    })
+    .select("id")
+    .single();
+
+  if (checkError || !check) {
+    return { success: false, error: checkError?.message || "创建盘点单失败" };
+  }
+
+  /* 插入盘点明细（只插填写了实际库存的行） */
+  const itemsToInsert = 参数.items
+    .filter((item) => item.actual_qty !== "")
+    .map((item) => {
+      const actual = parseInt(item.actual_qty) || 0;
+      return {
+        check_id: check.id,
+        part_id: item.part_id,
+        system_qty: item.system_qty,
+        actual_qty: actual,
+        diff_qty: actual - item.system_qty,
+        notes: item.notes.trim() || null,
+      };
+    });
+
+  if (itemsToInsert.length > 0) {
+    const { error: itemsError } = await supabase
+      .from("inventory_check_items")
+      .insert(itemsToInsert);
+    if (itemsError) {
+      return { success: false, error: itemsError.message };
+    }
+  }
+
+  revalidatePath("/inventory/checks");
+  return { success: true };
+}

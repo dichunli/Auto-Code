@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
+import { 变更车主 } from "@/app/vehicles/actions";
+import { 为客户新建车辆 } from "@/app/customers/actions";
 import Link from "next/link";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 
@@ -85,10 +87,15 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
 
   async function handleDirectLink(vehicleId: string) {
     setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("vehicles").update({ customer_id: customerId }).eq("id", vehicleId);
-    if (error) {
-      alert("关联车辆失败: " + error.message);
+    try {
+      const result = await 变更车主({ vehicleId, customerId });
+      if (!result.success) {
+        alert("关联车辆失败: " + (result.error || "未知错误"));
+        setSaving(false);
+        return;
+      }
+    } catch {
+      alert("关联车辆失败: 网络异常，请重试");
       setSaving(false);
       return;
     }
@@ -99,10 +106,15 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
 
   async function handleTransfer(vehicleId: string) {
     setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("vehicles").update({ customer_id: customerId }).eq("id", vehicleId);
-    if (error) {
-      alert("变更车主失败: " + error.message);
+    try {
+      const result = await 变更车主({ vehicleId, customerId });
+      if (!result.success) {
+        alert("变更车主失败: " + (result.error || "未知错误"));
+        setSaving(false);
+        return;
+      }
+    } catch {
+      alert("变更车主失败: 网络异常，请重试");
       setSaving(false);
       return;
     }
@@ -118,19 +130,24 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
       return;
     }
     setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("vehicles").insert({
-      customer_id: customerId,
-      plate_number: newVehicle.plate_number.trim(),
-      vin: newVehicle.vin.trim() || null,
-      brand: newVehicle.brand.trim() || null,
-      model: newVehicle.model.trim() || null,
-      color: newVehicle.color.trim() || null,
-      year: newVehicle.year ? parseInt(newVehicle.year) : null,
-      mileage: newVehicle.mileage ? parseInt(newVehicle.mileage) : null,
-    });
-    if (error) {
-      alert("创建车辆失败: " + error.message);
+    try {
+      const result = await 为客户新建车辆({
+        customerId,
+        plate_number: newVehicle.plate_number,
+        vin: newVehicle.vin,
+        brand: newVehicle.brand,
+        model: newVehicle.model,
+        color: newVehicle.color,
+        year: newVehicle.year,
+        mileage: newVehicle.mileage,
+      });
+      if (!result.success) {
+        alert("创建车辆失败: " + (result.error || "未知错误"));
+        setSaving(false);
+        return;
+      }
+    } catch {
+      alert("创建车辆失败: 网络异常，请重试");
       setSaving(false);
       return;
     }
