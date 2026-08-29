@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
+import { 转义HTML } from "@/lib/escapeHtml";
 
 interface Props {
   location: string;
@@ -64,7 +65,7 @@ export default function LocationQrCode({ location }: Props) {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>仓位码 - ${location}</title>
+          <title>仓位码 - ${转义HTML(location)}</title>
           <style>
             ${样式}
             .no-print {
@@ -84,7 +85,7 @@ export default function LocationQrCode({ location }: Props) {
         <body>
           <div class="print-box">
             <div class="left">
-              <div class="title">${location}</div>
+              <div class="title">${转义HTML(location)}</div>
             </div>
             <div class="qr"><img src="${dataUrl}" alt="仓位码" /></div>
           </div>

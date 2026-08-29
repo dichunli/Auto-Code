@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
+import { 转义HTML } from "@/lib/escapeHtml";
 
 interface Props {
   toolId: string;
@@ -66,7 +67,7 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>工具标签 - ${toolName}</title>
+          <title>工具标签 - ${转义HTML(toolName)}</title>
           <style>
             ${样式}
             .no-print {
@@ -86,7 +87,7 @@ export default function ToolQrCode({ toolId, toolName, toolCode }: Props) {
         <body>
           <div class="print-box">
             <div class="left">
-              <div class="title">${toolName}</div>
+              <div class="title">${转义HTML(toolName)}</div>
             </div>
             <div class="qr"><img src="${dataUrl}" alt="二维码" /></div>
           </div>
