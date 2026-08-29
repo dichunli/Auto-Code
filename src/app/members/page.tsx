@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import Link from "next/link";
 
 export default async function MembersPage({ searchParams }: { searchParams?: Promise<{ status?: string; q?: string; page?: string }> }) {
@@ -17,8 +18,8 @@ export default async function MembersPage({ searchParams }: { searchParams?: Pro
 
   if (status && status !== "all") query = query.eq("status", status);
   if (q) {
-    // 清理输入中的 SQL LIKE 通配符，防止非预期匹配
-    const safeQ = q.replace(/[%_]/g, "");
+    // 清理输入中的过滤器特殊字符，防止破坏 PostgREST 过滤器语法
+    const safeQ = 清理搜索词(q);
     if (safeQ) {
       query = query.or(`name.ilike.%${safeQ}%,phone.ilike.%${safeQ}%,card_no.ilike.%${safeQ}%`);
     }

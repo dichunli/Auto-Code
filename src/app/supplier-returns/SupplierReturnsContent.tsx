@@ -3,6 +3,7 @@
 import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 完成退货记录 } from "@/app/procurement/actions";
@@ -57,7 +58,7 @@ export default function SupplierReturnsContent({ initialRecords, initialCount }:
     if (!session) return;
     setLoading(true);
     const from = (目标页 - 1) * pageSize;
-    const 关键词 = search.trim();
+    const 关键词 = 清理搜索词(search);
     /* 有搜索词时配件表用 !inner 才能按配件名称/编号过滤主表；
        work_order_item_part_id 必填（每条退货记录必关联工单配件），inner 不会丢记录 */
     const 配件关联 = 关键词 ? "work_order_item_parts!inner(name, part_number)" : "work_order_item_parts(name, part_number)";

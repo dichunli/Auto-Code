@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { 保存供应商档案 } from "@/app/suppliers/actions";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -148,7 +149,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
   useEffect(() => {
     const t = setTimeout(async () => {
       if (!pnQuery.trim()) { setPnResults([]); return; }
-      const q = pnQuery.trim();
+      const q = 清理搜索词(pnQuery);
       const { data } = await supabase
         .from("part_names")
         .select("id, name")
@@ -173,7 +174,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
   useEffect(() => {
     const t = setTimeout(async () => {
       if (!vehicleQuery.trim()) { setVehicleResults([]); return; }
-      const q = vehicleQuery.trim();
+      const q = 清理搜索词(vehicleQuery);
       const { data } = await supabase
         .from("vehicle_models")
         .select("id,厂商,品牌,车系")

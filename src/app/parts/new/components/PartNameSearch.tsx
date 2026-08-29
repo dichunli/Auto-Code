@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 
 export interface PartNameItem {
   id: string;
@@ -96,7 +97,7 @@ export default function PartNameSearch({
              picking_commission_type, picking_commission_value
            )`
         )
-        .or(`name.ilike.%${value}%,search_keywords.ilike.%${value}%`)
+        .or(`name.ilike.%${清理搜索词(value)}%,search_keywords.ilike.%${清理搜索词(value)}%`)
         .order("name")
         .limit(10);
       setResults(data || []);

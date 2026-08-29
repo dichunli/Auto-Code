@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 
 interface MatchedPart {
   id: string;
@@ -75,7 +76,7 @@ export function PartSearchDropdown({
   }, []);
 
   const doSearch = useCallback(async (q: string) => {
-    const trimmed = q.trim().toUpperCase().replace(/\s+/g, "");
+    const trimmed = 清理搜索词(q).toUpperCase().replace(/\s+/g, "");
     if (!trimmed || trimmed.length < 1) {
       setResults([]);
       setShowDropdown(false);

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import OperationLogsContent from "./OperationLogsContent";
 
 /* 首屏只取第一页（20 条）+ 总数；筛选走 URL（表单 GET 提交，服务端过滤），翻页由客户端组件接管 */
@@ -23,7 +24,7 @@ export default async function OperationLogsPage({
     query = query.ilike("user_name", `%${userName}%`);
   }
   if (keyword) {
-    query = query.or(`description.ilike.%${keyword}%,target_name.ilike.%${keyword}%`);
+    query = query.or(`description.ilike.%${清理搜索词(keyword)}%,target_name.ilike.%${清理搜索词(keyword)}%`);
   }
 
   const { data: logs, count } = await query;

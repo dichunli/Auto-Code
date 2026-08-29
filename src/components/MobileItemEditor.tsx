@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { base64转Blob, 压缩图片 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import ItemImageUploader from "./ItemImageUploader";
 import { PartPickerModal } from "./PartPickerModal";
@@ -1072,7 +1073,7 @@ export default function MobileItemEditor({
       .select("id, part_number, name, quantity, unit_price, part_name_id")
       .limit(100);
     if (keyword.trim()) {
-      query = query.or(`name.ilike.%${keyword.trim()}%,part_number.ilike.%${keyword.trim()}%`);
+      query = query.or(`name.ilike.%${清理搜索词(keyword)}%,part_number.ilike.%${清理搜索词(keyword)}%`);
     }
     const { data } = await query;
     const results = (data || []) as InventoryPart[];
@@ -1104,7 +1105,7 @@ export default function MobileItemEditor({
     const query = supabase
       .from("parts")
       .select("id, part_number, name, quantity, unit_price, part_name_id")
-      .or(`part_number.ilike.%${trimmed}%,name.ilike.%${trimmed}%`)
+      .or(`part_number.ilike.%${清理搜索词(trimmed)}%,name.ilike.%${清理搜索词(trimmed)}%`)
       .limit(20);
 
     const { data } = await query;

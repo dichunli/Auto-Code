@@ -3,6 +3,7 @@
 import {useState, useEffect, useCallback, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import * as XLSX from "xlsx";
@@ -181,8 +182,8 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
         )
         .order("created_at", { ascending: false });
       if (search?.trim()) {
-        const s = search.trim();
-        q = q.or(`name.ilike.%${s}%,search_keywords.ilike.%${s}%`);
+        const s = 清理搜索词(search);
+        if (s) q = q.or(`name.ilike.%${s}%,search_keywords.ilike.%${s}%`);
       }
       const { data } = await q;
       setNames((data as PartName[]) || []);

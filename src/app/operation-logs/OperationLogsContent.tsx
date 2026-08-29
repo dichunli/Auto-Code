@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 
 interface 操作日志 {
   id: string;
@@ -92,7 +93,7 @@ export default function OperationLogsContent({ initialLogs, initialCount, action
       q = q.ilike("user_name", `%${userName}%`);
     }
     if (keyword) {
-      q = q.or(`description.ilike.%${keyword}%,target_name.ilike.%${keyword}%`);
+      q = q.or(`description.ilike.%${清理搜索词(keyword)}%,target_name.ilike.%${清理搜索词(keyword)}%`);
     }
 
     const { data, count, error } = await q;

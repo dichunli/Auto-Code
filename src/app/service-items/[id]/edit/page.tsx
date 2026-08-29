@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { 更新维修项目, 保存车型定价 } from "../../actions";
 import VehiclePriceModal from "@/components/VehiclePriceModal";
 import type { 车型库行 } from "@/lib/vehicleModelFields";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import VehiclePriceEditModal from "@/components/VehiclePriceEditModal";
 import VehicleDeleteModal from "@/components/VehicleDeleteModal";
 import VehiclePriceViewModal from "@/components/VehiclePriceViewModal";
@@ -438,7 +439,7 @@ export default function EditServiceItemPage() {
   /* ========== 关联配件 ========== */
   useEffect(() => {
     const t = setTimeout(async () => {
-      const q = partQuery.trim();
+      const q = 清理搜索词(partQuery);
       if (!q) { setPartResults(null); setHighlightIndex(-1); return; }
       setPartSearching(true);
       const { data } = await supabase

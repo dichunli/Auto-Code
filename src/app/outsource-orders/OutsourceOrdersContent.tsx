@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 
@@ -60,7 +61,7 @@ export default function OutsourceOrdersContent({ initialOrders, initialCount }: 
     if (!session) return;
     setLoading(true);
     const from = (目标页 - 1) * pageSize;
-    const 关键词 = search.trim();
+    const 关键词 = 清理搜索词(search);
     /* 有搜索词时关联表用 !inner 才能按工单号/供应商/项目名过滤主表；
        work_order_id、supplier_id 必填，inner 不丢单；仅「无项目的外包单」在搜索时查不到 */
     const select串 = 关键词

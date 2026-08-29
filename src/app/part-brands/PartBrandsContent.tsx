@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo, useRef} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
@@ -76,7 +77,7 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
       const { data } = await supabase
         .from("part_names")
         .select("id, name, part_categories(name)")
-        .or(`name.ilike.%${pnQuery.trim()}%,search_keywords.ilike.%${pnQuery.trim()}%`)
+        .or(`name.ilike.%${清理搜索词(pnQuery)}%,search_keywords.ilike.%${清理搜索词(pnQuery)}%`)
         .order("name")
         .limit(10);
       setPnResults((data || []) as unknown as PartName[]);
