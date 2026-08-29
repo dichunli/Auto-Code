@@ -10,6 +10,7 @@ import { createClient as createSupabaseClient, type SupabaseClient } from "@supa
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 包装写操作标记 } from "./clientWriteMarker";
 import { 认证存储Key, APP认证存储Key, 浏览器存储, APP存储 } from "./sessionStorage";
+import { 写入Session到Cookie, 清除Session的Cookie } from "./sessionCookie";
 
 /* 裸 SupabaseClient（默认泛型）：与 createSupabaseClient(url, key) 推导出的实例类型一致。
  * 不能用 ReturnType<typeof createSupabaseClient>——泛型函数 typeof 的 ReturnType 会按 unknown 实例化，太窄 */
@@ -33,6 +34,22 @@ export function createClient() {
           },
         }
       ));
+
+      /* 2026-08-29 照片接口防"冒充手机"（待办清单第1项）：
+       * APP 的 session 只存在 localStorage，WebView 里 <img> 请求 /api/media 不带凭据，
+       * 所以照片接口以前靠 UA 判断放行（改 UA 即可免登录下载私有照片）。
+       * 这里把 session 同步镜像成与浏览器同款的 SSR cookie：
+       * 登录/续期(含启动时 INITIAL_SESSION 事件)时写入，退出登录时清除。
+       * 镜像后 /api/media 对 APP 和浏览器统一走 cookie 校验，UA 放行已删除。
+       * 注意：不主动调 getSession()（历史坑：刷新失败会清空 session），
+       * 靠 onAuthStateChange 的 INITIAL_SESSION 事件拿到启动时已有的 session。 */
+      appClient.auth.onAuthStateChange((event, session) => {
+        if (session) {
+          写入Session到Cookie(认证存储Key, JSON.stringify(session));
+        } else {
+          清除Session的Cookie(认证存储Key);
+        }
+      });
     }
     return appClient;
   }
