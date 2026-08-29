@@ -208,7 +208,19 @@ try {
     断言(b3行?.[0]?.description?.includes("刹车异响"), "B3 工单加需求弹窗保存", 工单id);
   }
 
-  /* ── B4 记一笔财务账 ── */
+  /* ── B4 记一笔财务账 ──
+   * 财务表 RLS 收紧后（admin/boss/accountant 可写），主测试账号（技师+接待+仓管）
+   * 没有记账权限。B4 换财务测试账号（SMOKE_FINANCE_ACCOUNT）；没配就用主账号（老行为）。 */
+  const 财务账号 = process.env.SMOKE_FINANCE_ACCOUNT;
+  const 财务密码 = process.env.SMOKE_FINANCE_PASSWORD || 密码;
+  if (财务账号) {
+    await context.clearCookies();
+    await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+    await page.fill("#login-account", 财务账号);
+    await page.fill("#login-password", 财务密码);
+    await page.getByRole("button", { name: "登录", exact: true }).first().click();
+    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15000 });
+  }
   await page.goto(`${BASE}/finance/transactions/new`, { waitUntil: "domcontentloaded" });
   /* 等下拉选项异步加载完成（否则选完会被 React 重置回"请选择"） */
   await page.waitForFunction(() => {
@@ -233,7 +245,15 @@ try {
   const b4流水 = await api("GET", `finance_transactions?description=eq.${encodeURIComponent(流水备注)}&select=id`);
   断言(Array.isArray(b4流水) && b4流水.length > 0, "B4 记一笔财务账", Array.isArray(b4流水) && b4流水.length > 0 ? 流水备注 : `未找到，URL=${page.url()}`);
 
-  /* ── B5 配件入库 ── */
+  /* ── B5 配件入库（换回主账号，仓管角色） ── */
+  if (process.env.SMOKE_FINANCE_ACCOUNT) {
+    await context.clearCookies();
+    await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+    await page.fill("#login-account", 账号);
+    await page.fill("#login-password", 密码);
+    await page.getByRole("button", { name: "登录", exact: true }).first().click();
+    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15000 });
+  }
   const [分类行] = await api("POST", "part_categories", { name: `自动化测试分类${随机尾}` });
   const [配件名称行] = await api("POST", "part_names", { name: `自动化测试配件名称${随机尾}`, unit: "件", category_id: 分类行.id });
   await api("POST", "parts", { part_number: 配件编号, name: "自动化测试配件", quantity: 0, part_name_id: 配件名称行.id });
