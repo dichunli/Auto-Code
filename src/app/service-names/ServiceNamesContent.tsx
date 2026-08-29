@@ -2,6 +2,7 @@
 
 import {useState, useEffect, useRef, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import * as XLSX from "xlsx";
@@ -44,8 +45,8 @@ export default function ServiceNamesContent({ initialData }: { initialData: Serv
       .order("created_at", { ascending: false });
 
     if (searchName.trim()) {
-      const s = searchName.trim();
-      query = query.or(`name.ilike.%${s}%,search_keywords.ilike.%${s}%`);
+      const s = 清理搜索词(searchName);
+      if (s) query = query.or(`name.ilike.%${s}%,search_keywords.ilike.%${s}%`);
     }
 
     const { data, error } = await query;

@@ -6,6 +6,7 @@ import JsBarcode from "jsbarcode";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { 批量导入配件 } from "./actions";
+import { 转义HTML } from "@/lib/escapeHtml";
 import DeletePartButton from "./DeletePartButton";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import PartMergeDialog from "@/components/PartMergeDialog";
@@ -502,12 +503,13 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
       return;
     }
     const imgData = canvasRef.current.toDataURL("image/png");
+    /* 名称/编码来自用户输入（可经 Excel 导入），拼进打印 HTML 前必须转义（待办清单第2项） */
     printWindow.document.write(`
       <html><head><title>打印条形码</title></head>
       <body style="text-align:center;padding:40px 20px;">
-        <div style="margin-bottom:16px;font-size:16px;font-weight:500;">${part.name}</div>
+        <div style="margin-bottom:16px;font-size:16px;font-weight:500;">${转义HTML(part.name)}</div>
         <img src="${imgData}" style="max-width:100%;" />
-        <div style="margin-top:8px;font-size:13px;color:#666;">${code}</div>
+        <div style="margin-top:8px;font-size:13px;color:#666;">${转义HTML(code)}</div>
       </body></html>
     `);
     printWindow.document.close();
@@ -548,7 +550,7 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
         continue;
       }
       const imgData = canvas.toDataURL("image/png");
-      html += `<div class="barcode-item"><div class="barcode-name">${part.name}</div><img src="${imgData}" /><div class="barcode-code">${code}</div></div>`;
+      html += `<div class="barcode-item"><div class="barcode-name">${转义HTML(part.name)}</div><img src="${imgData}" /><div class="barcode-code">${转义HTML(code)}</div></div>`;
     }
     html += `</div></body></html>`;
     printWindow.document.write(html);

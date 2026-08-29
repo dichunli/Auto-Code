@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 
 export interface SpecialPriceItem {
   id: string;
@@ -189,7 +190,7 @@ export default function SpecialPricingSection({
       let query = supabase
         .from("vehicle_models")
         .select("id, 品牌, 车系, 车型, 年款, 发动机型号")
-        .or(`品牌.ilike.%${value}%,车系.ilike.%${value}%,车型.ilike.%${value}%`)
+        .or(`品牌.ilike.%${清理搜索词(value)}%,车系.ilike.%${清理搜索词(value)}%,车型.ilike.%${清理搜索词(value)}%`)
         .limit(10);
       if (excludeIds.length > 0) query = query.not("id", "in", "(" + excludeIds.join(",") + ")");
       const { data } = await query;

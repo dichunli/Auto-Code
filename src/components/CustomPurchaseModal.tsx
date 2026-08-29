@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { 添加采购暂存 } from "@/app/procurement/actions";
@@ -84,7 +85,7 @@ export default function CustomPurchaseModal({ open, onClose, suppliers, on成功
 
   /* 搜索：编码/条码/OE号/名称 直查 + 品牌名命中后按品牌查配件，合并去重 */
   useEffect(() => {
-    const kw = 防抖搜索词.trim().replace(/[%_]/g, "");
+    const kw = 清理搜索词(防抖搜索词);
     if (kw.length < 1) {
       set搜索结果([]);
       return;

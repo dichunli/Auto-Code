@@ -3,6 +3,7 @@
 import { randomBytes } from "crypto";
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 
 /* ═══ 供应商自助报价（询价链接）Server Action ═══
  * 内部操作（生成/列表/作废/采用）必须登录；
@@ -473,7 +474,7 @@ export async function 按编码查配件(token: string, 编码: string): Promise
   if (单.status === "adopted") return { success: false, error: "该询价单已采用，不能再修改" };
   if (!检查限流(token)) return { success: false, error: "查询太频繁，请稍后再试" };
 
-  const code = 编码.trim().toUpperCase().replace(/\s+/g, "");
+  const code = 清理搜索词(编码.trim().toUpperCase().replace(/\s+/g, ""));
   if (!code) return { success: false, error: "编码为空" };
 
   const { data } = await admin

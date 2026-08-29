@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { 中文分词 } from "@/lib/chineseSegmenter";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { 文字转向量, 文档转向量, 生成嵌入文本 } from "@/lib/localEmbedding";
 
 /* ═════════════════════════════════════════════════════════════════
@@ -302,7 +303,10 @@ export async function loadKnowledgeArticles(params: {
         .select("*", { count: "exact", head: true });
       countQuery = 应用筛选条件(countQuery);
       for (const kw of searchKeywords) {
-        countQuery = countQuery.or(`title.ilike.%${kw}%,content.ilike.%${kw}%`);
+        /* 清理用户输入中的过滤器特殊字符；清理后为空则跳过，避免匹配全表 */
+        const 清理后词 = 清理搜索词(kw);
+        if (!清理后词) continue;
+        countQuery = countQuery.or(`title.ilike.%${清理后词}%,content.ilike.%${清理后词}%`);
       }
       const { count, error: countError } = await countQuery;
       if (countError) {
@@ -317,7 +321,9 @@ export async function loadKnowledgeArticles(params: {
         .range(fromIdx, toIdx);
       query = 应用筛选条件(query);
       for (const kw of searchKeywords) {
-        query = query.or(`title.ilike.%${kw}%,content.ilike.%${kw}%`);
+        const 清理后词 = 清理搜索词(kw);
+        if (!清理后词) continue;
+        query = query.or(`title.ilike.%${清理后词}%,content.ilike.%${清理后词}%`);
       }
 
       const { data, error } = await query;

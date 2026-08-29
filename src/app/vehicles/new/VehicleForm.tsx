@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import { VehicleModelSearch } from "@/components/VehicleModelSearch";
 import { ImageUploader } from "@/components/ImageUploader";
@@ -171,7 +172,7 @@ export default function VehicleForm() {
     const t = setTimeout(async () => {
       if (!customerQuery.trim()) { setCustomerResults([]); setSearching(false); return; }
       setSearching(true);
-      const q = customerQuery.trim();
+      const q = 清理搜索词(customerQuery);
       const supabase = createClient();
       const { data } = await supabase
         .from("customers")

@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 更新配件品牌 } from "../../actions";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 
 interface PartNameResult {
   id: string;
@@ -81,7 +82,7 @@ export default function EditPartBrandPage() {
       const { data } = await supabase
         .from("part_names")
         .select("id, name, part_categories(name)")
-        .or(`name.ilike.%${pnQuery.trim()}%,search_keywords.ilike.%${pnQuery.trim()}%`)
+        .or(`name.ilike.%${清理搜索词(pnQuery)}%,search_keywords.ilike.%${清理搜索词(pnQuery)}%`)
         .order("name")
         .limit(10);
       setPnResults((data || []) as unknown as PartNameResult[]);

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 删除工具 as 删除工具Action } from "./actions";
@@ -80,7 +81,7 @@ export default function ToolManagementPage() {
         .select("*")
         .order("created_at", { ascending: false });
 
-      const keyword = 防抖搜索词.trim();
+      const keyword = 清理搜索词(防抖搜索词);
       if (keyword) {
         query = query.or(`code.ilike.%${keyword}%,name.ilike.%${keyword}%`);
       }

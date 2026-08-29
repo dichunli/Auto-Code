@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 新建维修项目名称 } from "../actions";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 
 interface LinkedItem {
   id: string;
@@ -116,7 +117,8 @@ export default function NewServiceNamePage() {
 
   const search = useCallback(
     async (q: string) => {
-      if (!q.trim()) {
+      const s = 清理搜索词(q);
+      if (!s) {
         setResults([]);
         return;
       }
@@ -124,7 +126,7 @@ export default function NewServiceNamePage() {
       const { data } = await supabase
         .from("service_names")
         .select("id, name, service_categories(name)")
-        .or(`name.ilike.%${q.trim()}%,search_keywords.ilike.%${q.trim()}%`)
+        .or(`name.ilike.%${s}%,search_keywords.ilike.%${s}%`)
         .order("name")
         .limit(20);
       setResults((data || []) as unknown as { id: string; name: string; service_categories?: { name: string } | null }[]);
@@ -170,7 +172,7 @@ export default function NewServiceNamePage() {
   }
 
   async function handleSearchPart() {
-    const q = partQuery.trim();
+    const q = 清理搜索词(partQuery);
     if (!q) {
       setPartResults(null);
       return;

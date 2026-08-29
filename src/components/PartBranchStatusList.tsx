@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { requestNotificationPermission, sendBrowserNotification } from "@/lib/notification";
 import { PartBranchImages } from "./PartBranchImages";
 import { 压缩图片 } from "@/lib/imageCompress";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { usePriceVisibility } from "./PriceVisibilityContext";
 import { PartSearchDropdown } from "./PartSearchDropdown";
 import QuoteSheetModal from "./QuoteSheetModal";
@@ -614,7 +615,7 @@ export function PartBranchStatusList({ status }: Props) {
 
   /* 根据编码从库存中查找配件并预填充 */
   async function tryReplaceByPartNumber(rowId: string, partNumber: string) {
-    const pn = partNumber.trim().toUpperCase();
+    const pn = 清理搜索词(partNumber).toUpperCase();
     if (!pn) return;
 
     const { data } = await supabase

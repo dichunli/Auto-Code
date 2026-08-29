@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { SubNav } from "../customers/SubNav";
@@ -15,7 +16,7 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
     const { data } = await supabase
       .from("customers")
       .select("id")
-      .or(`name.ilike.%${searchParams.customer}%,phone.ilike.%${searchParams.customer}%`);
+      .or(`name.ilike.%${清理搜索词(searchParams.customer)}%,phone.ilike.%${清理搜索词(searchParams.customer)}%`);
     customerIds = data?.map((c) => c.id) || [];
   }
 

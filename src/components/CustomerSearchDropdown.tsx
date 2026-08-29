@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { SearchDropdown } from "./SearchDropdown";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 
 export interface CustomerTag {
   id: string;
@@ -73,7 +74,7 @@ export function CustomerSearchDropdown({
       const { data } = await supabase
         .from("customers")
         .select("id, name, phone, company, star_level, customer_tags(tags(id, name, color))")
-        .or(`name.ilike.%${query}%,phone.ilike.%${query}%`)
+        .or(`name.ilike.%${清理搜索词(query)}%,phone.ilike.%${清理搜索词(query)}%`)
         .limit(10);
       return (data || []) as unknown as Customer[];
     },

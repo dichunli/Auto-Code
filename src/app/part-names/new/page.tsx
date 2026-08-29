@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { SearchLinkSection } from "../SearchLinkSection";
 import { 新建配件名称 } from "../actions";
 import { 新建配件品牌, 新建配件规格 } from "@/app/inventory/actions";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 
 interface LinkedItem {
   id: string;
@@ -149,7 +150,7 @@ export default function NewPartNamePage() {
       const { data } = await supabase
         .from("part_names")
         .select("id, name, part_categories(name)")
-        .or(`name.ilike.%${q.trim()}%,search_keywords.ilike.%${q.trim()}%`)
+        .or(`name.ilike.%${清理搜索词(q)}%,search_keywords.ilike.%${清理搜索词(q)}%`)
         .order("name")
         .limit(20);
       setResults((data || []) as unknown as SearchResult[]);

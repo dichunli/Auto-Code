@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { useDebounce } from "@/lib/useDebounce";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import BarcodeScanModal from "./BarcodeScanModal";
 
 interface Part {
@@ -217,7 +218,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
       .select(
         "id, part_number, oe_number, name, unit, quantity, min_stock, unit_cost, unit_price, location, specification_text, part_name_id, part_names(name, unit), part_brands(name), part_specifications(name), part_categories(name), suppliers(name)"
       )
-      .or(`part_number.ilike.%${trimmed}%,name.ilike.%${trimmed}%`)
+      .or(`part_number.ilike.%${清理搜索词(trimmed)}%,name.ilike.%${清理搜索词(trimmed)}%`)
       .order("name", { ascending: true })
       .limit(100);
 
@@ -244,7 +245,7 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
     const { data } = await supabase
       .from("parts")
       .select("id, part_number, oe_number, name, unit, quantity, min_stock, unit_cost, unit_price, location, specification_text, part_name_id, barcode, part_names(name, unit), part_brands(name), part_specifications(name), part_categories(name), suppliers(name)")
-      .or(`part_number.eq.${kw},barcode.eq.${kw}`)
+      .or(`part_number.eq.${清理搜索词(kw)},barcode.eq.${清理搜索词(kw)}`)
       .limit(2);
     let toast = "";
     if (!data || data.length === 0) {

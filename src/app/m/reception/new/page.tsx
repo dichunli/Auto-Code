@@ -3,6 +3,7 @@
 import {useState, useEffect, useRef, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { MobilePageHeader } from "@/components/mobile/MobilePageHeader";
 import { useMobileToast } from "@/components/mobile/MobileToast";
 import { ImageUploader } from "@/components/ImageUploader";
@@ -361,7 +362,7 @@ export default function MobileReceptionNewPage() {
      ============================================================ */
   useEffect(() => {
     if (customerTimeoutRef.current) clearTimeout(customerTimeoutRef.current);
-    const q = customerQuery.trim();
+    const q = 清理搜索词(customerQuery);
     if (!q) {
       setCustomerResults([]);
       return;

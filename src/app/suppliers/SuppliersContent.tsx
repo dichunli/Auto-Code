@@ -3,6 +3,7 @@
 import {useState, useEffect, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { 删除供应商 } from "./actions";
 import { PageHeader } from "@/components/PageHeader";
@@ -59,7 +60,7 @@ export default function SuppliersContent({ initialSuppliers, initialCount }: { i
       .order("created_at", { ascending: false })
       .range(from, from + pageSize - 1);
     if (search?.trim()) {
-      q = q.or(`name.ilike.%${search.trim()}%,contact.ilike.%${search.trim()}%,phone.ilike.%${search.trim()}%`);
+      q = q.or(`name.ilike.%${清理搜索词(search)}%,contact.ilike.%${清理搜索词(search)}%,phone.ilike.%${清理搜索词(search)}%`);
     }
     if (region) {
       q = q.eq("region", region);

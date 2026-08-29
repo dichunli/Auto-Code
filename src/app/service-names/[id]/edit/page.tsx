@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 更新维修项目名称, 同步提成到维修项目 } from "../../actions";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 
 interface LinkedItem {
   id: string;
@@ -192,7 +193,7 @@ export default function EditServiceNamePage() {
   }
 
   async function handleSearchPart() {
-    const q = partQuery.trim();
+    const q = 清理搜索词(partQuery);
     if (!q) {
       setPartResults(null);
       return;
