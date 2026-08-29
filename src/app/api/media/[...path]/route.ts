@@ -7,15 +7,6 @@ import { Readable } from "stream";
 /* 本地附件存储根目录（可通过环境变量 UPLOAD_DIR 配置） */
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "E:/autorepair-uploads";
 
-/* 判断是否为 APP（安卓 WebView）环境 */
-function 是APP环境(userAgent: string): boolean {
-  return (
-    userAgent.includes("wv") ||
-    userAgent.includes("Capacitor") ||
-    (!userAgent.includes("Chrome/") && userAgent.includes("Linux; Android"))
-  );
-}
-
 const mimeTypes: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -124,10 +115,12 @@ export async function GET(
      *（供应商打开询价链接时没有登录态，看不到图就没法核对） */
     const 是公开报价图片 = pathSegments[0] === "quote";
 
-    /* ── 认证：本地校验 session 真伪（不联网），伪造空 cookie 无法通过 ── */
+    /* ── 认证：本地校验 session 真伪（不联网），伪造空 cookie 无法通过 ──
+     * 2026-08-29 删除 UA 放行（待办清单第1项）：原来 APP 环境靠 User-Agent 判断免校验，
+     * 任何人改 UA 就能免登录下载私有照片。现在 APP 登录后会把 session 镜像成 cookie
+     * （见 clientCore.ts），APP 与浏览器统一走同一套 cookie 校验。 */
     if (!是公开报价图片) {
-      const userAgent = request.headers.get("user-agent") || "";
-      if (!是APP环境(userAgent) && !有有效会话(request)) {
+      if (!有有效会话(request)) {
         return NextResponse.json({ error: "未登录" }, { status: 401 });
       }
     }

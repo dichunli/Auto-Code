@@ -5,7 +5,12 @@ import { stringFromBase64URL } from "@supabase/ssr";
    Mock 外部依赖
    ============================================================ */
 const mockState = {
-  createClient: vi.fn<(...args: unknown[]) => { mockSupabase: boolean }>(() => ({ mockSupabase: true })),
+  /* 2026-08-29 clientCore 在 APP 分支会调 client.auth.onAuthStateChange（session 镜像 cookie），
+   * 假客户端必须带 auth 结构 */
+  createClient: vi.fn<(...args: unknown[]) => { mockSupabase: boolean }>(() => ({
+    mockSupabase: true,
+    auth: { onAuthStateChange: vi.fn() },
+  })),
   isCapacitor: false,
 };
 
