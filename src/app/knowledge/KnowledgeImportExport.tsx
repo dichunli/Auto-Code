@@ -1,8 +1,7 @@
 "use client";
 
-import {useState, useRef, useMemo} from "react";
-import { createClient } from "@/lib/supabase/client";
-import { 解析Word文档, 生成Word文档 } from "./actions";
+import {useState, useRef} from "react";
+import { 解析Word文档, 生成Word文档, 导入Word文章 } from "./actions";
 
 /* ========== 类型定义 ========== */
 
@@ -34,7 +33,6 @@ interface Props {
 /* ========== 主组件 ========== */
 
 export default function KnowledgeImportExport({ articles, onSuccess }: Props) {
-  const supabase = useMemo(() => createClient(), []);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
   const [showExportModal, setShowExportModal] = useState(false);
@@ -57,19 +55,11 @@ export default function KnowledgeImportExport({ articles, onSuccess }: Props) {
         return { success: false, msg: `「${file.name}」解析结果为空` };
       }
 
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
+      /* 保存走 Server Action，作者取服务端验证的用户身份 */
+      const 保存结果 = await 导入Word文章({ title, blocks });
 
-      const { error } = await supabase.from("knowledge_articles").insert({
-        title,
-        content_blocks: blocks,
-        type: "article",
-        category_id: null,
-        created_by: userId || null,
-      });
-
-      if (error) {
-        return { success: false, msg: `「${title}」保存失败: ${error.message}` };
+      if (!保存结果.success) {
+        return { success: false, msg: `「${title}」保存失败: ${保存结果.error || "未知错误"}` };
       }
 
       return { success: true, msg: `「${title}」导入成功` };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useId } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { 添加项目图片记录, 删除项目图片记录 } from "@/app/work-orders/actions";
 import { base64转Blob } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
@@ -15,7 +15,6 @@ interface Props {
 }
 
 export default function ItemImageUploader({ itemId, existingImages, isLocked }: Props) {
-  const supabase = createClient();
   const [images, setImages] = useState<string[]>(existingImages);
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
   const [viewerIndex, setViewerIndex] = useState(0);
@@ -51,15 +50,11 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
       const fileArray = Array.from(files).slice(0, remaining);
       const { urls, errors } = await 上传(fileArray);
 
-      /* 上传成功后写入数据库 */
-      for (const path of urls) {
-        const { error: dbError } = await supabase.from("work_order_item_media").insert({
-          work_order_item_id: itemId,
-          media_type: "image",
-          storage_path: path,
-        });
-        if (dbError) {
-          console.error("保存图片记录失败:", dbError.message);
+      /* 上传成功后写入数据库（写库走 Server Action） */
+      if (urls.length > 0) {
+        const 记录结果 = await 添加项目图片记录({ itemId, paths: urls });
+        if (!记录结果.success) {
+          console.error("保存图片记录失败:", 记录结果.error);
         }
       }
 
@@ -72,7 +67,7 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
         alert("图片上传失败:\n" + msg);
       }
     },
-    [images, itemId, 上传, supabase]
+    [images, itemId, 上传]
   );
 
   /* ========== 删除 ========== */
@@ -81,14 +76,10 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
     const path = images[index];
     setImages((prev) => prev.filter((_, i) => i !== index));
 
-    /* 删除数据库记录 */
-    const { error } = await supabase
-      .from("work_order_item_media")
-      .delete()
-      .eq("work_order_item_id", itemId)
-      .eq("storage_path", path);
-    if (error) {
-      alert("删除失败: " + error.message);
+    /* 删除数据库记录（写库走 Server Action） */
+    const result = await 删除项目图片记录({ itemId, path });
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
       setImages(existingImages);
       return;
     }

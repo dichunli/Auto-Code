@@ -1,8 +1,8 @@
 "use client";
 
-import {useState, useRef, useMemo} from "react";
-import { createClient } from "@/lib/supabase/client";
+import {useState, useRef} from "react";
 import * as XLSX from "xlsx";
+import { 导入客户, 客户导入行 } from "./actions";
 
 interface Customer {
   id: string;
@@ -20,16 +20,7 @@ interface CustomerImportExportProps {
   customers: Customer[];
 }
 
-interface ImportRecord {
-  name: string;
-  phone: string;
-  gender?: string | null;
-  company?: string | null;
-  address?: string | null;
-  id_card?: string | null;
-  star_level?: number | null;
-  notes?: string | null;
-}
+type ImportRecord = 客户导入行;
 
 type ExcelRow = (string | number | null | undefined)[];
 
@@ -45,7 +36,6 @@ const exportHeaders = [
 ];
 
 export default function CustomerImportExport({ customers }: CustomerImportExportProps) {
-  const supabase = useMemo(() => createClient(), []);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,7 +95,6 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
       }
 
       const records: ImportRecord[] = [];
-      const phones: string[] = [];
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
         const name = String(row[colMap["name"]] || "").trim();
@@ -134,7 +123,6 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
           record.notes = String(row[colMap["notes"]] || "").trim() || null;
         }
         records.push(record);
-        phones.push(phone);
       }
 
       if (records.length === 0) {
@@ -143,38 +131,22 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
         return;
       }
 
-      setImportMsg(`正在检查 ${records.length} 条数据的电话唯一性...`);
+      setImportMsg(`正在导入 ${records.length} 条数据（服务端查重并写入）...`);
 
-      // 检查电话是否已存在
-      const existingPhones = new Set<string>();
-      for (let i = 0; i < phones.length; i += 500) {
-        const batch = phones.slice(i, i + 500);
-        const { data } = await supabase.from("customers").select("phone").in("phone", batch);
-        data?.forEach((r: { phone: string }) => existingPhones.add(r.phone));
-      }
-
-      const newRecords = records.filter((r) => !existingPhones.has(r.phone));
-      const skippedCount = records.length - newRecords.length;
-
-      if (newRecords.length === 0) {
-        setImportMsg(`没有新数据可导入（已跳过 ${skippedCount} 条，电话已存在）`);
+      /* 电话查重 + 分批插入全部在服务端完成 */
+      const result = await 导入客户({ rows: records });
+      if (!result.success) {
+        setImportMsg("导入失败: " + (result.error || "未知错误"));
         setImporting(false);
         return;
       }
 
-      // 批量插入
-      const batchSize = 500;
-      let inserted = 0;
-      for (let i = 0; i < newRecords.length; i += batchSize) {
-        const batch = newRecords.slice(i, i + batchSize);
-        const { error } = await supabase.from("customers").insert(batch);
-        if (error) {
-          setImportMsg(`第 ${i + 1} 批导入失败: ${error.message}`);
-          setImporting(false);
-          return;
-        }
-        inserted += batch.length;
-        setImportMsg(`已导入 ${inserted}/${newRecords.length} 条...`);
+      const inserted = result.inserted ?? 0;
+      const skippedCount = result.skipped ?? 0;
+      if (inserted === 0) {
+        setImportMsg(`没有新数据可导入（已跳过 ${skippedCount} 条，电话已存在）`);
+        setImporting(false);
+        return;
       }
 
       setImportMsg(

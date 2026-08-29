@@ -1,10 +1,9 @@
 "use client";
 
-import {useState, useMemo} from "react";
+import {useState} from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { 删除自动关联 } from "./actions";
+import { 删除自动关联, 更新自动关联备注 } from "./actions";
 
 interface AutoLinkedRow {
   id: string;
@@ -44,7 +43,6 @@ interface AutoLinkedRow {
 }
 
 export default function AutoLinkedPartsReportTable({ rows: initialRows }: { rows: AutoLinkedRow[] }) {
-  const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<AutoLinkedRow[]>(initialRows);
   const [noteValues, setNoteValues] = useState<Record<string, string>>(
     Object.fromEntries(initialRows.map((row) => [row.id, row.notes || ""]))
@@ -71,10 +69,11 @@ export default function AutoLinkedPartsReportTable({ rows: initialRows }: { rows
   async function handleSave(id: string) {
     setSavingId(id);
     const notes = noteValues[id]?.trim() || null;
-    const { error } = await supabase.from("part_vehicle_models").update({ notes }).eq("id", id);
+    /* 保存走 Server Action，避免客户端 session 异常导致 401 */
+    const result = await 更新自动关联备注(id, notes);
     setSavingId(null);
-    if (error) {
-      alert("保存失败：" + error.message);
+    if (!result.success) {
+      alert("保存失败：" + (result.error || "未知错误"));
       return;
     }
     setRows((current) => current.map((row) => (row.id === id ? { ...row, notes } : row)));

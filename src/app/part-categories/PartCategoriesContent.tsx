@@ -6,6 +6,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
+import { 新建配件分类, 保存配件分类排序 } from "./actions";
 
 interface 配件分类 {
   id: string;
@@ -167,16 +168,17 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
     newCategories.splice(targetIndex, 0, removed);
     setCategories(newCategories);
 
-    /* 保存到数据库 */
+    /* 保存到数据库（服务端批量更新排序） */
     setSortSaving(true);
-    for (let i = 0; i < newCategories.length; i++) {
-      const { error } = await supabase
-        .from("part_categories")
-        .update({ sort_order: i + 1 })
-        .eq("id", newCategories[i].id);
-      if (error) {
-        console.error("保存排序失败:", error);
+    try {
+      const result = await 保存配件分类排序(
+        newCategories.map((c, i) => ({ id: c.id, sort_order: i + 1 }))
+      );
+      if (!result.success) {
+        console.error("保存排序失败:", result.error);
       }
+    } catch (err: unknown) {
+      console.error("保存排序失败:", err instanceof Error ? err.message : err);
     }
     setSortSaving(false);
   }
@@ -199,31 +201,16 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
     }
     setSaving(true);
 
-    const maxSort = categories.length > 0
-      ? Math.max(...categories.map((c) => c.sort_order || 0))
-      : 0;
-
-    const { error } = await supabase.from("part_categories").insert({
-      name: form.name.trim(),
-      sort_order: maxSort + 1,
-      auto_link_vehicle_model: form.auto_link_vehicle_model,
-      is_consumable: form.is_consumable,
-      require_scan_check: form.require_scan_check,
-      require_location_check: form.require_location_check,
-      sales_commission_type: form.sales_type || null,
-      sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-      diagnosis_commission_type: form.diagnosis_type || null,
-      diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-      repair_commission_type: form.repair_type || null,
-      repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-      qc_commission_type: form.qc_type || null,
-      qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-      picking_commission_type: form.picking_type || null,
-      picking_commission_value: form.picking_value ? parseFloat(form.picking_value) : null,
-    });
-
-    if (error) {
-      alert("保存失败: " + error.message);
+    /* 插入收口到服务端（sort_order 服务端取最大值+1） */
+    try {
+      const result = await 新建配件分类(form);
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        setSaving(false);
+        return;
+      }
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : "未知错误"));
       setSaving(false);
       return;
     }

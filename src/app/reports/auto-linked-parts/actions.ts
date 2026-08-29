@@ -20,3 +20,21 @@ export async function 删除自动关联(id: string): Promise<{ success: boolean
   revalidatePath("/reports/auto-linked-parts");
   return { success: true };
 }
+
+/* ═══ 自动关联配件备注保存 Server Action ═══
+ * 备注更新从客户端直写收口到服务端，避免客户端 session 异常导致 401 / 被 RLS 拦截。 */
+export async function 更新自动关联备注(id: string, notes: string | null): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("part_vehicle_models").update({ notes }).eq("id", id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/reports/auto-linked-parts");
+  return { success: true };
+}

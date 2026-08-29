@@ -93,3 +93,105 @@ export async function 归还工具(参数: {
   revalidatePath("/tools/management");
   return { success: true };
 }
+
+/* ═══ 新建工具 Server Action ═══
+ * 写操作从客户端直写收口到服务端；编码唯一性在服务端再查一次兜底，
+ * created_by 取服务端验证的 user.id，不接受客户端传入。 */
+export interface 工具表单 {
+  code: string;
+  name: string;
+  imageUrl: string | null;
+  instructions: string;
+  location: string;
+  status: string;
+  requireReturnPhotos: boolean;
+  requireLocationScan: boolean;
+}
+
+export async function 新建工具(表单: 工具表单): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const code = 表单.code.trim();
+  const name = 表单.name.trim();
+  if (!code || !name) {
+    return { success: false, error: "请填写工具编码和名称" };
+  }
+
+  const supabase = await createClient();
+
+  /* 服务端再查一次编码唯一性（忽略大小写），防止并发/绕过前端校验 */
+  const { data: 重复 } = await supabase
+    .from("tools")
+    .select("id")
+    .ilike("code", code)
+    .maybeSingle();
+  if (重复) {
+    return { success: false, error: "工具编码已存在，请更换" };
+  }
+
+  const { error } = await supabase.from("tools").insert({
+    code,
+    name,
+    image_url: 表单.imageUrl,
+    instructions: 表单.instructions.trim() || null,
+    location: 表单.location.trim() || null,
+    status: 表单.status,
+    require_return_photos: 表单.requireReturnPhotos,
+    require_location_scan: 表单.requireLocationScan,
+    created_by: user.id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/tools/management");
+  return { success: true };
+}
+
+/* ═══ 更新工具 Server Action ═══
+ * 写操作从客户端直写收口到服务端；改编码时服务端再查一次唯一性兜底。 */
+export async function 更新工具(id: string, 表单: 工具表单): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const code = 表单.code.trim();
+  const name = 表单.name.trim();
+  if (!code || !name) {
+    return { success: false, error: "请填写工具编码和名称" };
+  }
+
+  const supabase = await createClient();
+
+  /* 编码唯一性检查（排除自己，忽略大小写） */
+  const { data: 重复 } = await supabase
+    .from("tools")
+    .select("id")
+    .ilike("code", code)
+    .maybeSingle();
+  if (重复 && 重复.id !== id) {
+    return { success: false, error: "工具编码已存在" };
+  }
+
+  const { error } = await supabase.from("tools").update({
+    code,
+    name,
+    image_url: 表单.imageUrl,
+    instructions: 表单.instructions.trim() || null,
+    location: 表单.location.trim() || null,
+    status: 表单.status,
+    require_return_photos: 表单.requireReturnPhotos,
+    require_location_scan: 表单.requireLocationScan,
+  }).eq("id", id);
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/tools/management");
+  revalidatePath(`/tools/management/${id}`);
+  return { success: true };
+}

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
+import { 保存工单项目字段 } from "@/app/work-orders/actions";
 import { useDebounce } from "@/lib/useDebounce";
 
 interface ServiceItem {
@@ -107,7 +108,14 @@ export function EditWorkOrderItemModal({
     const 新数量 = parseFloat(quantity) || 1;
     const 新单价 = parseFloat(unitPrice) || 0;
 
-    const updateData: Record<string, unknown> = {
+    const updateData: {
+      alias_name: string | null;
+      quantity: number;
+      unit_price: number;
+      require_qc: boolean;
+      service_item_id?: string;
+      name?: string;
+    } = {
       alias_name: aliasName.trim() || null,
       quantity: 新数量,
       unit_price: 新单价,
@@ -123,14 +131,12 @@ export function EditWorkOrderItemModal({
       }
     }
 
-    const { error } = await supabase
-      .from("work_order_items")
-      .update(updateData)
-      .eq("id", itemId);
+    /* 写库走 Server Action（搜索联想仍为客户端只读查询） */
+    const result = await 保存工单项目字段({ itemId, updates: updateData });
 
     setLoading(false);
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
       return;
     }
 
@@ -141,7 +147,7 @@ export function EditWorkOrderItemModal({
       new CustomEvent("wo-item-update", {
         detail: {
           itemId,
-          name: updateData.name as string | undefined,
+          name: updateData.name,
           alias_name: updateData.alias_name,
           quantity: 新数量,
           unit_price: 新单价,

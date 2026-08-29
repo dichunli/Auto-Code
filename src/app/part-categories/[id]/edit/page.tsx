@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { 更新配件分类, 同步分类属性到配件 } from "../../actions";
 
 function CommissionField({
   label,
@@ -115,30 +116,16 @@ export default function EditPartCategoryPage() {
     e.preventDefault();
     setSaving(true);
 
-    const { error } = await supabase
-      .from("part_categories")
-      .update({
-        name: form.name,
-        auto_link_vehicle_model: form.auto_link_vehicle_model,
-        auto_match_17vin_models: form.auto_match_17vin_models,
-        is_consumable: form.is_consumable,
-        require_scan_check: form.require_scan_check,
-        require_location_check: form.require_location_check,
-        sales_commission_type: form.sales_type || null,
-        sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-        diagnosis_commission_type: form.diagnosis_type || null,
-        diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-        repair_commission_type: form.repair_type || null,
-        repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-        qc_commission_type: form.qc_type || null,
-        qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-        picking_commission_type: form.picking_type || null,
-        picking_commission_value: form.picking_value ? parseFloat(form.picking_value) : null,
-      })
-      .eq("id", id);
-
-    if (error) {
-      alert("保存失败: " + error.message);
+    /* 更新写库收口到服务端 */
+    try {
+      const result = await 更新配件分类(id, form);
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        setSaving(false);
+        return;
+      }
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : "未知错误"));
       setSaving(false);
       return;
     }
@@ -151,32 +138,20 @@ export default function EditPartCategoryPage() {
     if (!(await 请求确认("确定要将当前分类的属性同步到所有使用该分类的配件名称和配件吗？此操作会覆盖这些配件名称及配件的现有属性设置。"))) return;
     setSyncing(true);
 
-    const updateData = {
-      auto_link_vehicle_model: form.auto_link_vehicle_model,
-      auto_match_17vin_models: form.auto_match_17vin_models,
-      is_consumable: form.is_consumable,
-      require_scan_check: form.require_scan_check,
-      require_location_check: form.require_location_check,
-      sales_commission_type: form.sales_type || null,
-      sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-      diagnosis_commission_type: form.diagnosis_type || null,
-      diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-      repair_commission_type: form.repair_type || null,
-      repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-      qc_commission_type: form.qc_type || null,
-      qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-      picking_commission_type: form.picking_type || null,
-      picking_commission_value: form.picking_value ? parseFloat(form.picking_value) : null,
-    };
-
-    const { error: nameError } = await supabase.from("part_names").update(updateData).eq("category_id", id);
-    if (nameError) { alert("同步配件名称失败: " + nameError.message); setSyncing(false); return; }
-
-    const { error: partError } = await supabase.from("parts").update(updateData).eq("category_id", id);
-    if (partError) { alert("同步配件失败: " + partError.message); setSyncing(false); return; }
-
-    alert("同步成功");
-    setSyncing(false);
+    /* 同步配件名称 + 配件两步写在服务端一次完成 */
+    try {
+      const result = await 同步分类属性到配件(id, form);
+      if (!result.success) {
+        alert(result.error || "同步失败");
+        setSyncing(false);
+        return;
+      }
+      alert("同步成功");
+      setSyncing(false);
+    } catch (err: unknown) {
+      alert("同步失败: " + (err instanceof Error ? err.message : "未知错误"));
+      setSyncing(false);
+    }
   }
 
   if (loading) {

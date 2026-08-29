@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { 删除需求 } from "@/app/work-orders/actions";
 import { useConfirm } from "./ConfirmDialog";
 
 interface Props {
@@ -11,19 +11,16 @@ interface Props {
 
 export default function DeleteRequirementButton({ requirementId, className = "" }: Props) {
   const router = useRouter();
-  const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function handleDelete() {
     if (!(await 请求确认("确定要删除这条需求吗？关联的媒体文件也会被删除。"))) return;
 
-    const { error } = await supabase
-      .from("work_order_requirements")
-      .delete()
-      .eq("id", requirementId);
+    /* 写库走 Server Action：服务端先查是否挂有维修项目，有则拒绝删除 */
+    const result = await 删除需求(requirementId);
 
-    if (error) {
-      alert("删除失败: " + error.message);
+    if (!result.success) {
+      alert("删除失败: " + (result.error || "未知错误"));
     } else {
       router.refresh();
     }

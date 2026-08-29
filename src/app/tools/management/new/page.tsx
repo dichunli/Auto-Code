@@ -6,6 +6,7 @@ import { ImageUploader } from "@/components/ImageUploader";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新建工具 } from "@/app/tools/actions";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
@@ -81,32 +82,23 @@ export default function NewToolPage() {
 
     set保存中(true);
     try {
-      const { data: 重复 } = await supabase
-        .from("tools")
-        .select("id")
-        .ilike("code", code)
-        .maybeSingle();
-      if (重复) {
-        alert("工具编码已存在，请更换");
+      /* 保存走 Server Action：编码唯一性服务端兜底，created_by 取服务端验证的用户 */
+      const result = await 新建工具({
+        code,
+        name,
+        imageUrl: 图片地址.length > 0 ? 图片地址.join(",") : null,
+        instructions: 表单.instructions,
+        location: finalLocation,
+        status: 表单.status,
+        requireReturnPhotos: 表单.require_return_photos,
+        requireLocationScan: 表单.require_location_scan,
+      });
+
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
         set保存中(false);
         return;
       }
-
-      const { data: { user } } = await supabase.auth.getUser();
-
-      const { error } = await supabase.from("tools").insert({
-        code,
-        name,
-        image_url: 图片地址.length > 0 ? 图片地址.join(",") : null,
-        instructions: 表单.instructions.trim() || null,
-        location: finalLocation || null,
-        status: 表单.status,
-        require_return_photos: 表单.require_return_photos,
-        require_location_scan: 表单.require_location_scan,
-        created_by: user?.id || null,
-      });
-
-      if (error) throw error;
       router.push("/tools/management");
       router.refresh();
     } catch (err: unknown) {

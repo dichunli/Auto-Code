@@ -4,7 +4,6 @@ import { useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 本地今日字符串, 计算时段状态, 时段状态展示 } from "@/lib/behaviorCheck";
-import { 懒生成今日考核记录 } from "./actions";
 import CheckCompleteModal from "./CheckCompleteModal";
 import SelfReportModal from "./SelfReportModal";
 import CheckCommentThread from "./CheckCommentThread";
@@ -109,9 +108,8 @@ export default function BehaviorChecksContent({ initialRecords, initialCount, cu
     const uid = userData.user.id;
     const today = 本地今日字符串();
 
-    /* 懒生成今日考核记录走 Server Action（先查后插、忽略唯一冲突，逻辑与服务端渲染一致），
-     * 不再由客户端逐条直写 */
-    await 懒生成今日考核记录();
+    /* 今日考核记录由每日定时任务生成（/api/cron/generate-behavior-checks），
+     * 翻页/刷新只读不写库（待办清单第6项） */
 
     const from = (目标页 - 1) * pageSize;
     const { data, count } = await supabase

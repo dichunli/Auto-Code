@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 新建盘点单 } from "../../actions";
 
 interface 盘点项 {
   part_id: string;
@@ -58,40 +59,24 @@ export default function NewInventoryCheckPage() {
     e.preventDefault();
     setLoading(true);
 
+    /* 建盘点单 + 插明细在服务端一次完成 */
     try {
-      // 创建盘点单
-      const { data: check, error: checkError } = await supabase
-        .from("inventory_checks")
-        .insert({
-          check_no: form.check_no || null,
-          location: form.location || null,
-          notes: form.notes || null,
-          status: "pending",
-        })
-        .select("id")
-        .single();
-
-      if (checkError || !check) throw checkError || new Error("创建盘点单失败");
-
-      // 插入盘点明细
-      const itemsToInsert = checkItems
-        .filter((item) => item.actual_qty !== "")
-        .map((item) => ({
-          check_id: check.id,
+      const result = await 新建盘点单({
+        check_no: form.check_no,
+        location: form.location,
+        notes: form.notes,
+        items: checkItems.map((item) => ({
           part_id: item.part_id,
           system_qty: item.system_qty,
-          actual_qty: parseInt(item.actual_qty) || 0,
-          diff_qty: (parseInt(item.actual_qty) || 0) - item.system_qty,
-          notes: item.notes || null,
-        }));
-
-      if (itemsToInsert.length > 0) {
-        const { error: itemsError } = await supabase
-          .from("inventory_check_items")
-          .insert(itemsToInsert);
-        if (itemsError) throw itemsError;
+          actual_qty: item.actual_qty,
+          notes: item.notes,
+        })),
+      });
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        setLoading(false);
+        return;
       }
-
       router.push("/inventory/checks");
       router.refresh();
     } catch (err: unknown) {

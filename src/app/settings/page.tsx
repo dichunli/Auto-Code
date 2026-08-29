@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { 保存主管授权码 } from "./actions";
 
 export default function SettingsPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -34,13 +35,11 @@ export default function SettingsPage() {
       return;
     }
     setSaving(true);
-    const { error } = await supabase
-      .from("system_settings")
-      .update({ value: code.trim(), updated_at: new Date().toISOString() })
-      .eq("key", "supervisor_code");
+    /* 保存走 Server Action，避免客户端 session 异常导致 401 */
+    const result = await 保存主管授权码(code);
     setSaving(false);
-    if (error) {
-      alert("保存失败: " + error.message);
+    if (!result.success) {
+      alert("保存失败: " + (result.error || "未知错误"));
     } else {
       alert("保存成功");
     }

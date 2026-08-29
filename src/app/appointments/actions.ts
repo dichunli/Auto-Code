@@ -7,6 +7,47 @@ import { revalidatePath } from "next/cache";
  * 预约状态变更、预约转工单从客户端直写收口到服务端，
  * 避免客户端 session 异常导致 401 / 被 RLS 拦截。 */
 
+/* ─── 新建预约 ─── */
+export async function 新建预约(参数: {
+  customer_name: string;
+  customer_phone: string;
+  plate_number: string;
+  vehicle_brand: string;
+  vehicle_model: string;
+  appointment_date: string;
+  appointment_time: string;
+  service_type: string;
+  notes: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  if (!参数.customer_name.trim() || !参数.customer_phone.trim() || !参数.appointment_date) {
+    return { success: false, error: "请填写客户姓名、电话和预约日期" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("appointments").insert({
+    customer_name: 参数.customer_name.trim(),
+    customer_phone: 参数.customer_phone.trim(),
+    plate_number: 参数.plate_number.trim() || null,
+    vehicle_brand: 参数.vehicle_brand.trim() || null,
+    vehicle_model: 参数.vehicle_model.trim() || null,
+    appointment_date: 参数.appointment_date,
+    appointment_time: 参数.appointment_time || null,
+    service_type: 参数.service_type.trim() || null,
+    notes: 参数.notes.trim() || null,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/appointments");
+  return { success: true };
+}
+
 export async function 更新预约状态(参数: {
   appointmentId: string;
   status: string;

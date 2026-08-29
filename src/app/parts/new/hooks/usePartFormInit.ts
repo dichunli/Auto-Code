@@ -7,6 +7,7 @@ import { LinkedItem } from "@/components/VehicleModelSelector";
 import { StockLocationRow } from "../components/StockLocationSection";
 import { SpecialPriceItem, VehicleModelPriceItem } from "../components/SpecialPricingSection";
 import { PartNameItem } from "../components/PartNameSearch";
+import { 补写配件分组ID } from "../../actions";
 
 interface SupplierItem {
   id: string;
@@ -443,8 +444,10 @@ export default function usePartFormInit(
             .maybeSingle();
           if (cacheRow?.vin17_group_id) {
             groupId = cacheRow.vin17_group_id;
-            /* 顺便把group_id补到配件表，下次不用再查 */
-            await supabase.from("parts").update({ vin17_group_id: groupId }).eq("id", editId);
+            /* 顺便把group_id补到配件表，下次不用再查（服务端写库，失败静默忽略） */
+            if (editId) {
+              补写配件分组ID(editId, groupId).catch(() => { /* 补写失败不影响表单加载 */ });
+            }
           }
         }
         setVin17GroupId(groupId);

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
+import { 新建配件分类 } from "../actions";
 
 interface 配件分类 {
   id: string;
@@ -122,25 +123,16 @@ export default function NewPartCategoryPage() {
     }
     setLoading(true);
 
-    const { error } = await supabase.from("part_categories").insert({
-      name: form.name.trim(),
-      auto_link_vehicle_model: form.auto_link_vehicle_model,
-      auto_match_17vin_models: form.auto_match_17vin_models,
-      is_consumable: form.is_consumable,
-      sales_commission_type: form.sales_type || null,
-      sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-      diagnosis_commission_type: form.diagnosis_type || null,
-      diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-      repair_commission_type: form.repair_type || null,
-      repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-      qc_commission_type: form.qc_type || null,
-      qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-      picking_commission_type: form.picking_type || null,
-      picking_commission_value: form.picking_value ? parseFloat(form.picking_value) : null,
-    });
-
-    if (error) {
-      alert("保存失败: " + error.message);
+    /* 插入收口到服务端 */
+    try {
+      const result = await 新建配件分类(form);
+      if (!result.success) {
+        alert("保存失败: " + (result.error || "未知错误"));
+        setLoading(false);
+        return;
+      }
+    } catch (err: unknown) {
+      alert("保存失败: " + (err instanceof Error ? err.message : "未知错误"));
       setLoading(false);
       return;
     }

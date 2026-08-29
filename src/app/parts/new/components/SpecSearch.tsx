@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { LinkedItem } from "@/components/VehicleModelSelector";
 import { PartNameItem } from "./PartNameSearch";
+import { 新建规格, 关联名称规格 } from "../../actions";
 
 interface SpecSearchProps {
   selectedSpecs: LinkedItem[];
@@ -68,23 +69,18 @@ export default function SpecSearch({
   async function createSpecAndAdd() {
     const name = query.trim();
     if (!name) return;
-    const { data, error } = await supabase
-      .from("part_specifications")
-      .insert({ name })
-      .select("id, name")
-      .single();
-    if (error || !data) {
-      alert("创建规格失败: " + (error?.message || "未知错误"));
+    /* 新建规格收口到服务端 */
+    const result = await 新建规格(name);
+    if (!result.success || !result.id) {
+      alert("创建规格失败: " + (result.error || "未知错误"));
       return;
     }
-    addSpec({ id: data.id, name: data.name });
+    addSpec({ id: result.id, name });
     if (selectedPartName) {
-      await supabase
-        .from("part_name_specifications")
-        .insert({ part_name_id: selectedPartName.id, specification_id: data.id })
-        .then(({ error }) => {
-          if (error && !error.message.includes("duplicate")) console.error(error);
-        });
+      /* 关联配件名称（重复关联服务端静默忽略），失败只记日志不打断 */
+      关联名称规格(selectedPartName.id, result.id).then((r) => {
+        if (!r.success) console.error(r.error);
+      });
     }
   }
 
@@ -96,15 +92,10 @@ export default function SpecSearch({
     setHighlightedIndex(-1);
     setTimeout(() => document.getElementById("spec-input")?.focus(), 0);
     if (selectedPartName) {
-      supabase
-        .from("part_name_specifications")
-        .insert({
-          part_name_id: (selectedPartName as Record<string, unknown>).id,
-          specification_id: item.id,
-        })
-        .then(({ error }) => {
-          if (error && !error.message.includes("duplicate")) console.error(error);
-        });
+      /* 关联配件名称（重复关联服务端静默忽略），失败只记日志不打断 */
+      关联名称规格(selectedPartName.id, item.id).then((r) => {
+        if (!r.success) console.error(r.error);
+      });
     }
   }
 

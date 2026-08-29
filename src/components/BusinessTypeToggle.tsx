@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { 保存工单项目字段 } from "@/app/work-orders/actions";
 
 interface Props {
   itemId: string;
@@ -17,7 +17,6 @@ const 选项 = [
 ] as const;
 
 export function BusinessTypeToggle({ itemId, businessType, disabled }: Props) {
-  const supabase = createClient();
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   // 本地状态保存当前类型：切换成功后只更新本标签，不整页刷新
@@ -59,14 +58,15 @@ export function BusinessTypeToggle({ itemId, businessType, disabled }: Props) {
       return;
     }
     setUpdating(true);
-    const { error } = await supabase
-      .from("work_order_items")
-      .update({ business_type: 新类型 })
-      .eq("id", itemId);
+    /* 写库走 Server Action */
+    const result = await 保存工单项目字段({
+      itemId,
+      updates: { business_type: 新类型 },
+    });
     setUpdating(false);
     setOpen(false);
-    if (error) {
-      alert("切换失败: " + error.message);
+    if (!result.success) {
+      alert("切换失败: " + (result.error || "未知错误"));
       return;
     }
     // 局部更新：只更新本标签，不整页刷新（业务类型不影响金额合计）

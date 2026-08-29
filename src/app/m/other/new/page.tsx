@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
+import { 新增其它收支 } from "@/app/finance/other/actions";
 
 interface 账户 {
   id: string;
@@ -93,26 +94,21 @@ export default function MobileNewOtherPage() {
     }
 
     setLoading(true);
-    const supabase = createClient();
-    const { data: userData } = await supabase.auth.getUser();
-    const operatorId = userData.user?.id || null;
-
-    const { error } = await supabase.from("other_transactions").insert({
+    /* 保存走 Server Action，经办人取服务端验证的用户身份 */
+    const result = await 新增其它收支({
       type,
       amount: Number(amount),
-      name: null,
-      counterparty: counterparty.trim() || null,
-      operator_id: operatorId,
-      account_id: accountId,
-      category_id: categoryId,
-      transaction_date: transactionDate,
-      notes: notes.trim() || null,
-      images: images.length > 0 ? images : null,
+      counterparty,
+      accountId,
+      categoryId,
+      transactionDate,
+      notes,
+      images,
     });
 
     setLoading(false);
-    if (error) {
-      alert("保存失败：" + error.message);
+    if (!result.success) {
+      alert("保存失败：" + (result.error || "未知错误"));
       return;
     }
 

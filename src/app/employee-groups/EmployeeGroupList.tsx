@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
-import { 删除员工分组 } from "./actions";
+import { 删除员工分组, 交换员工分组排序, 保存员工分组排序号 } from "./actions";
 import { useRouter } from "next/navigation";
-import {useState, useMemo} from "react";
+import {useState} from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
 
 interface Group {
@@ -22,7 +21,6 @@ interface Props {
 
 export function EmployeeGroupList({ groups }: Props) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState<string | null>(null);
   const { 请求确认, 确认弹窗 } = useConfirm();
 
@@ -52,16 +50,14 @@ export function EmployeeGroupList({ groups }: Props) {
     const b = groups[targetIndex];
     setBusy(a.id);
     try {
-      const { error: e1 } = await supabase
-        .from("employee_groups")
-        .update({ sort_order: b.sort_order })
-        .eq("id", a.id);
-      if (e1) throw e1;
-      const { error: e2 } = await supabase
-        .from("employee_groups")
-        .update({ sort_order: a.sort_order })
-        .eq("id", b.id);
-      if (e2) throw e2;
+      /* 排序互换走 Server Action，避免客户端 session 异常导致 401 */
+      const result = await 交换员工分组排序({
+        aId: a.id,
+        aSortOrder: a.sort_order,
+        bId: b.id,
+        bSortOrder: b.sort_order,
+      });
+      if (!result.success) throw new Error(result.error || "未知错误");
       router.refresh();
     } catch (err: unknown) {
       alert("排序失败：" + (err instanceof Error ? err.message : String(err)));
@@ -75,11 +71,9 @@ export function EmployeeGroupList({ groups }: Props) {
     if (isNaN(num)) return;
     setBusy(id);
     try {
-      const { error } = await supabase
-        .from("employee_groups")
-        .update({ sort_order: num })
-        .eq("id", id);
-      if (error) throw error;
+      /* 排序号保存走 Server Action */
+      const result = await 保存员工分组排序号(id, num);
+      if (!result.success) throw new Error(result.error || "未知错误");
       router.refresh();
     } catch (err: unknown) {
       alert("排序失败：" + (err instanceof Error ? err.message : String(err)));
