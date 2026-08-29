@@ -165,7 +165,7 @@
 
 ### 数据安全
 - **禁止在客户端暴露敏感密钥**：Supabase service_role key、第三方 API 密钥等只能用在服务端（Server Action / API Route）
-- **文件上传类型白名单**：只允许图片（jpg/png/webp）和视频（mp4），禁止上传可执行文件
+- **文件上传类型白名单**：图片（jpg/jpeg/png/webp/gif）、视频（mp4/webm/mov/3gp）、办公文档（doc/docx/xls/xlsx/ppt/pptx/pdf，供应商报价/资料用），禁止上传可执行文件
 - **SQL 注入防护**：手写 SQL 时使用参数化查询（`$1, $2` 占位符），严禁字符串拼接 SQL
 
 ## 性能规范
