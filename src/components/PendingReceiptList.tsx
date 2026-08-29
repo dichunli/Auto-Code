@@ -100,6 +100,28 @@ export function PendingReceiptList() {
   const { 请求确认, 确认弹窗 } = useConfirm();
   /* 价格显示开关：仅 admin/boss/warehouse 可见可用（其余角色 Context 层面已强制隐藏价格） */
   const { showPrices, canTogglePrices, togglePrices } = usePriceVisibility();
+  /* 运单管理权限（待办清单第8项）：仅 admin/boss/warehouse 可关联/创建运单，
+   * 其余角色（接待岗等）隐藏入口——表级 RLS 收紧后他们点了也会被拦，提前藏起来体验更好 */
+  const [可管理运单, set可管理运单] = useState(true);
+  useEffect(() => {
+    let 已卸载 = false;
+    async function 加载角色() {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) return;
+      const { data: prs } = await supabase
+        .from("profile_roles")
+        .select("roles(name)")
+        .eq("profile_id", data.user.id);
+      const 角色列表 = (prs || [])
+        .map((r) => (r.roles as unknown as { name: string } | null)?.name || "")
+        .filter(Boolean);
+      if (!已卸载) {
+        set可管理运单(角色列表.some((r) => r === "admin" || r === "boss" || r === "warehouse"));
+      }
+    }
+    加载角色();
+    return () => { 已卸载 = true; };
+  }, [supabase]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -567,7 +589,8 @@ export function PendingReceiptList() {
   async function openGateModal(order: PurchaseOrder, item: PurchaseOrderItem) {
     setGateOrder(order);
     setGateItem(item);
-    setGateTab("link");
+    /* 无运单管理权限的角色直接落到豁免通道 */
+    setGateTab(可管理运单 ? "link" : "exempt");
     setGateScope("order");
     setGateWaybillId("");
     setGateFreight("");
@@ -1001,28 +1024,32 @@ export function PendingReceiptList() {
         {selectedOrderIds.size > 0 && (
           <span className="text-xs text-blue-600">已选 {selectedOrderIds.size} 张</span>
         )}
-        <button
-          type="button"
-          onClick={openBatchWaybillModal}
-          disabled={selectedOrderIds.size === 0}
-          className="px-3 py-1 text-xs rounded border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          批量关联运单
-        </button>
-        <button
-          type="button"
-          onClick={openBatchCreateWaybillModal}
-          className="px-3 py-1 text-xs rounded border border-green-300 text-green-700 bg-green-50 hover:bg-green-100"
-        >
-          批量创建运单
-        </button>
-        <button
-          type="button"
-          onClick={openStandaloneCreateWaybillModal}
-          className="px-3 py-1 text-xs rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
-        >
-          创建运单
-        </button>
+        {可管理运单 && (
+          <>
+            <button
+              type="button"
+              onClick={openBatchWaybillModal}
+              disabled={selectedOrderIds.size === 0}
+              className="px-3 py-1 text-xs rounded border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              批量关联运单
+            </button>
+            <button
+              type="button"
+              onClick={openBatchCreateWaybillModal}
+              className="px-3 py-1 text-xs rounded border border-green-300 text-green-700 bg-green-50 hover:bg-green-100"
+            >
+              批量创建运单
+            </button>
+            <button
+              type="button"
+              onClick={openStandaloneCreateWaybillModal}
+              className="px-3 py-1 text-xs rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+            >
+              创建运单
+            </button>
+          </>
+        )}
         {selectedOrderIds.size > 0 && (
           <button
             type="button"
@@ -1095,13 +1122,15 @@ export function PendingReceiptList() {
                         <span className="text-xs text-gray-500">
                           {wb.logistics_companies?.name || wb.logistics_company_name || "-"}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => openWaybillModal(order.id)}
-                          className="text-blue-600 hover:underline text-xs"
-                        >
-                          更换
-                        </button>
+                        {可管理运单 && (
+                          <button
+                            type="button"
+                            onClick={() => openWaybillModal(order.id)}
+                            className="text-blue-600 hover:underline text-xs"
+                          >
+                            更换
+                          </button>
+                        )}
                       </>
                     ) : needsWaybill ? (
                       <>
@@ -1113,13 +1142,15 @@ export function PendingReceiptList() {
                             物流: {order.logistics_companies.name}
                           </span>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => openWaybillModal(order.id)}
-                          className="px-2 py-0.5 text-xs rounded border border-gray-200 text-gray-600 bg-white hover:bg-gray-50"
-                        >
-                          选择已有运单
-                        </button>
+                        {可管理运单 && (
+                          <button
+                            type="button"
+                            onClick={() => openWaybillModal(order.id)}
+                            className="px-2 py-0.5 text-xs rounded border border-gray-200 text-gray-600 bg-white hover:bg-gray-50"
+                          >
+                            选择已有运单
+                          </button>
+                        )}
                       </>
                     ) : (
                       <span className="px-2 py-0.5 rounded bg-gray-50 text-gray-500 text-xs">
@@ -1340,31 +1371,35 @@ export function PendingReceiptList() {
                 是外阜供应商，货一般走物流。请关联运单；没有运单的（自行采购/捎带等）选「不关联运单」并写明情况。
               </p>
 
-              {/* 模式选择 */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setGateTab("link")}
-                  className={`py-2 text-sm rounded-lg border transition-colors ${
-                    gateTab === "link"
+              {/* 模式选择（无运单管理权限的角色只显示豁免通道） */}
+              {可管理运单 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setGateTab("link")}
+                    className={`py-2 text-sm rounded-lg border transition-colors ${
+                      gateTab === "link"
                       ? "border-blue-500 bg-blue-50 text-blue-700 font-medium"
                       : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  关联运单
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setGateTab("exempt")}
-                  className={`py-2 text-sm rounded-lg border transition-colors ${
-                    gateTab === "exempt"
+                    }`}
+                  >
+                    关联运单
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGateTab("exempt")}
+                    className={`py-2 text-sm rounded-lg border transition-colors ${
+                      gateTab === "exempt"
                       ? "border-amber-500 bg-amber-50 text-amber-700 font-medium"
                       : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  不关联运单
-                </button>
-              </div>
+                    }`}
+                  >
+                    不关联运单
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500">无运单管理权限，请选「不关联运单」并写明情况，或联系仓管处理。</p>
+              )}
 
               {/* 作用范围：整单 / 仅当前配件（一单多件只到了其中一件的运单场景） */}
               <div className="flex items-center gap-2">
