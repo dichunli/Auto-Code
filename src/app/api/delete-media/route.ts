@@ -55,6 +55,33 @@ export async function POST(request: Request) {
       return Response.json({ error: "非法路径" }, { status: 403 });
     }
 
+    /* 归属校验（待办清单第4项）：被业务数据引用的文件只有 admin/boss 能删；
+     * 未被引用的（刚上传又取消的孤儿文件）登录用户即可删。
+     * 前端正常流程不受影响——先删数据库记录再删文件时，文件已不被引用。 */
+    const supabase服务端 = await createClient();
+    const 引用检查 = await Promise.all([
+      supabase服务端.from("vehicle_photos").select("id", { count: "exact", head: true }).eq("storage_path", relativePath),
+      supabase服务端.from("part_images").select("id", { count: "exact", head: true }).eq("storage_path", relativePath),
+      supabase服务端.from("work_order_item_part_media").select("id", { count: "exact", head: true }).eq("storage_path", relativePath),
+      supabase服务端.from("work_order_inspection_media").select("id", { count: "exact", head: true }).eq("storage_path", relativePath),
+      supabase服务端.from("work_order_requirement_media").select("id", { count: "exact", head: true }).eq("storage_path", relativePath),
+      supabase服务端.from("work_order_item_media").select("id", { count: "exact", head: true }).eq("storage_path", relativePath),
+    ]);
+    const 被引用 = 引用检查.some((r) => (r.count ?? 0) > 0);
+
+    if (被引用) {
+      const { data: 角色行 } = await supabase服务端
+        .from("profile_roles")
+        .select("roles(name)")
+        .eq("profile_id", userId);
+      const 角色们 = ((角色行 || []) as unknown as { roles: { name: string } | { name: string }[] | null }[])
+        .flatMap((r) => (Array.isArray(r.roles) ? r.roles : r.roles ? [r.roles] : []))
+        .map((r) => r.name);
+      if (!角色们.some((n) => n === "admin" || n === "boss")) {
+        return Response.json({ error: "该文件正被业务数据使用，只有管理员能删除" }, { status: 403 });
+      }
+    }
+
     await unlink(fullPath);
 
     return Response.json({ success: true });

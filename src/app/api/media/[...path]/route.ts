@@ -187,7 +187,8 @@ export async function GET(
             "Content-Range": `bytes ${start}-${end}/${fileSize}`,
             "Content-Length": String(end - start + 1),
             "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=86400",
+            /* 私有文件不走公开缓存（待办清单第4项），报价图片（quote/）仍公开缓存 */
+            "Cache-Control": 是公开报价图片 ? "public, max-age=86400" : "private, max-age=86400",
           },
         });
       }
@@ -201,7 +202,7 @@ export async function GET(
           "Content-Type": contentType,
           "Content-Length": String(fileSize),
           "Accept-Ranges": "bytes",
-          "Cache-Control": "public, max-age=86400",
+          "Cache-Control": 是公开报价图片 ? "public, max-age=86400" : "private, max-age=86400",
         },
       });
     }
@@ -214,7 +215,7 @@ export async function GET(
       headers: {
         "Content-Type": contentType,
         "Content-Length": String(fileSize),
-        "Cache-Control": "public, max-age=31536000",
+        "Cache-Control": 是公开报价图片 ? "public, max-age=31536000" : "private, max-age=31536000",
       },
     });
   } catch {
