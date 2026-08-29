@@ -563,7 +563,8 @@ export async function 保存工单需求(参数: {
         quantity: parseFloat(item.quantity) || 1,
         unit_price: parseFloat(item.unit_price) || 0,
         mechanic_id: item.mechanic_id || null,
-        submitter_id: item.submitter_id || user.id,
+        /* 提交人一律取服务端验证的登录用户，不接受客户端传入（防伪造提交人） */
+        submitter_id: user.id,
         inspector_id: item.inspector_id || null,
         customer_opinion: item.customer_opinion || "pending",
         is_outsourced: item.is_outsourced || false,
