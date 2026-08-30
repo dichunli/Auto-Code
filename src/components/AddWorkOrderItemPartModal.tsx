@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { PartPickerModal } from "./PartPickerModal";
+import { SearchDropdown } from "./SearchDropdown";
 import { 标记本地结构编辑 } from "@/lib/localEditSignal";
 import { 添加工单配件 } from "@/app/work-orders/parts-actions";
-import { useDebounce } from "@/lib/useDebounce";
 
 interface PartName {
   id: string;
@@ -116,11 +116,8 @@ export function AddWorkOrderItemPartModal({
   // 已选库存配件（右侧）
   const [selectedRealParts, setSelectedRealParts] = useState<SelectedRealPart[]>([]);
 
-  // 搜索
+  // 搜索（受控值交给 SearchDropdown，防抖/查询/下拉由组件内部处理）
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<PartName[]>([]);
-  const [searching, setSearching] = useState(false);
-  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   // 搜索后：先点选一个候选配件名称，填数量，再点"确认添加"才加入（不自动添加）
   const [pickedName, setPickedName] = useState<PartName | null>(null);
   const [pickedQty, setPickedQty] = useState<string>("");
@@ -135,7 +132,6 @@ export function AddWorkOrderItemPartModal({
     setSelectedPartNames([]);
     setSelectedRealParts([]);
     setSearchQuery("");
-    setSearchResults([]);
     setPickedName(null);
     setPickedQty("");
     setExistingPartNameIds(new Set());
@@ -192,33 +188,15 @@ export function AddWorkOrderItemPartModal({
      
   }, [open, serviceItemId, itemId]);
 
-  // 搜索配件名称
-  const doSearch = useCallback(
-    async (keyword: string) => {
-      if (!keyword.trim()) {
-        setSearchResults([]);
-        return;
-      }
-      setSearching(true);
-      const { data } = await supabase
-        .from("part_names")
-        .select("id, name, unit, default_quantity")
-        .ilike("name", `%${keyword.trim()}%`)
-        .order("name")
-        .limit(20);
-      setSearchResults(data || []);
-      setSearching(false);
-    },
-    [supabase]
-  );
-
-  /* 防抖搜索：输入停止 300ms 后执行 */
-  useEffect(() => {
-    doSearch(debouncedSearchQuery);
-  }, [debouncedSearchQuery, doSearch]);
-
-  function handleSearchChange(val: string) {
-    setSearchQuery(val);
+  /* 配件名称搜索（SearchDropdown 的 searchFn）：查询条件与原手写块完全一致 */
+  async function 搜索配件名称(keyword: string): Promise<PartName[]> {
+    const { data } = await supabase
+      .from("part_names")
+      .select("id, name, unit, default_quantity")
+      .ilike("name", `%${keyword.trim()}%`)
+      .order("name")
+      .limit(20);
+    return data || [];
   }
 
   // 切换预置配件的选中状态
@@ -246,6 +224,11 @@ export function AddWorkOrderItemPartModal({
       alert("该配件已选择");
       return;
     }
+    /* 原手写下拉里"已添加"项是禁用不可点的；收敛后下拉项都能点，这里拦截提示 */
+    if (existingPartNameIds.has(part.id)) {
+      alert("该配件已在本项目中，无需重复添加");
+      return;
+    }
     setPickedName(part);
     setPickedQty(part.default_quantity != null ? String(part.default_quantity) : "");
   }
@@ -266,7 +249,6 @@ export function AddWorkOrderItemPartModal({
     setPickedName(null);
     setPickedQty("");
     setSearchQuery("");
-    setSearchResults([]);
   }
 
   // 移除已选配件名称
@@ -488,61 +470,43 @@ export function AddWorkOrderItemPartModal({
                 </div>
               )}
 
-              {/* 手动搜索 */}
+              {/* 手动搜索（通用 SearchDropdown：防抖/键盘导航/点外关闭内置） */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-2">手动搜索添加</h3>
-                <input
-                  type="text"
+                <SearchDropdown<PartName>
                   value={searchQuery}
-                  onChange={(e) => handleSearchChange(e.target.value)}
+                  onQueryChange={setSearchQuery}
+                  searchFn={搜索配件名称}
+                  getKey={(part) => part.id}
+                  onSelect={pickFromSearch}
                   placeholder="输入配件名称搜索..."
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  emptyText="未找到匹配配件"
+                  renderItem={(part) => {
+                    const alreadySelected = selectedPartNames.some(
+                      (sp) => sp.part_name_id === part.id
+                    );
+                    const alreadyExists = existingPartNameIds.has(part.id);
+                    const isPicked = pickedName?.id === part.id;
+                    const disabled = alreadySelected || alreadyExists;
+                    return (
+                      <>
+                        <span className={`font-medium ${disabled ? "text-gray-400" : ""}`}>{part.name}</span>
+                        <span className="text-xs text-gray-400 ml-2">
+                          单位: {part.unit || "件"}
+                        </span>
+                        {alreadySelected && (
+                          <span className="text-xs text-blue-600 ml-2">已选择</span>
+                        )}
+                        {alreadyExists && !alreadySelected && (
+                          <span className="text-xs text-gray-400 ml-2">已添加</span>
+                        )}
+                        {isPicked && !disabled && (
+                          <span className="text-xs text-blue-600 ml-2">已点选</span>
+                        )}
+                      </>
+                    );
+                  }}
                 />
-                {searching && <p className="text-xs text-gray-400 mt-1">搜索中...</p>}
-                {searchResults.length > 0 && (
-                  <div className="mt-2 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
-                    {searchResults.map((part) => {
-                      const alreadySelected = selectedPartNames.some(
-                        (sp) => sp.part_name_id === part.id
-                      );
-                      const alreadyExists = existingPartNameIds.has(part.id);
-                      const isPicked = pickedName?.id === part.id;
-                      const disabled = alreadySelected || alreadyExists;
-                      return (
-                        <button
-                          key={part.id}
-                          type="button"
-                          onClick={() => !disabled && pickFromSearch(part)}
-                          disabled={disabled}
-                          className={`w-full text-left px-3 py-2 text-sm border-b border-gray-100 last:border-0 ${
-                            disabled
-                              ? "text-gray-400 bg-gray-50 cursor-not-allowed"
-                              : isPicked
-                              ? "bg-blue-50"
-                              : "hover:bg-gray-50"
-                          }`}
-                        >
-                          <span className="font-medium">{part.name}</span>
-                          <span className="text-xs text-gray-400 ml-2">
-                            单位: {part.unit || "件"}
-                          </span>
-                          {alreadySelected && (
-                            <span className="text-xs text-blue-600 ml-2">已选择</span>
-                          )}
-                          {alreadyExists && !alreadySelected && (
-                            <span className="text-xs text-gray-400 ml-2">已添加</span>
-                          )}
-                          {isPicked && !disabled && (
-                            <span className="text-xs text-blue-600 ml-2">已点选</span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {searchQuery.trim() && !searching && searchResults.length === 0 && (
-                  <p className="text-xs text-gray-400 mt-1">未找到匹配配件</p>
-                )}
 
                 {/* 点选候选后：填数量 + 确认添加 */}
                 {pickedName && (

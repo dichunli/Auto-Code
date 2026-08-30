@@ -159,16 +159,9 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
   const [linkedSpecs, setLinkedSpecs] = useState<LinkedItem[]>([]);
 
   const [brandQuery, setBrandQuery] = useState("");
-  const [brandResults, setBrandResults] = useState<PartBrand[] | null>(null);
-  const [brandSearching, setBrandSearching] = useState(false);
-
   const [specQuery, setSpecQuery] = useState("");
-  const [specResults, setSpecResults] = useState<PartSpecification[] | null>(null);
-  const [specSearching, setSpecSearching] = useState(false);
 
   const debouncedQuery = useDebounce(query, 300);
-  const debouncedBrandQuery = useDebounce(brandQuery, 300);
-  const debouncedSpecQuery = useDebounce(specQuery, 300);
 
   const loadNames = useCallback(
     async (search?: string) => {
@@ -198,29 +191,16 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
     loadNames(debouncedQuery);
   }, [debouncedQuery, loadNames]);
 
-  useEffect(() => {
-    setBrandResults(null);
-    if (!debouncedBrandQuery.trim()) return;
-    async function doSearch() {
-      setBrandSearching(true);
-      const { data } = await supabase.from("part_brands").select("id, name").ilike("name", `%${debouncedBrandQuery.trim()}%`).order("name").limit(10);
-      setBrandResults((data as PartBrand[]) || []);
-      setBrandSearching(false);
-    }
-    doSearch();
-  }, [debouncedBrandQuery, supabase]);
+  /* 品牌/规格联想查询（查询条件与原防抖块一致，仅换成 SearchDropdown 的 searchFn） */
+  async function 搜索品牌(q: string): Promise<PartBrand[]> {
+    const { data } = await supabase.from("part_brands").select("id, name").ilike("name", `%${q}%`).order("name").limit(10);
+    return (data as PartBrand[]) || [];
+  }
 
-  useEffect(() => {
-    setSpecResults(null);
-    if (!debouncedSpecQuery.trim()) return;
-    async function doSearch() {
-      setSpecSearching(true);
-      const { data } = await supabase.from("part_specifications").select("id, name").ilike("name", `%${debouncedSpecQuery.trim()}%`).order("name").limit(10);
-      setSpecResults((data as PartSpecification[]) || []);
-      setSpecSearching(false);
-    }
-    doSearch();
-  }, [debouncedSpecQuery, supabase]);
+  async function 搜索规格(q: string): Promise<PartSpecification[]> {
+    const { data } = await supabase.from("part_specifications").select("id, name").ilike("name", `%${q}%`).order("name").limit(10);
+    return (data as PartSpecification[]) || [];
+  }
 
   function toggleSelect(id: string) {
     const next = new Set(selectedIds);
@@ -458,7 +438,6 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
     if (linkedBrands.some((x) => x.id === b.id)) return;
     setLinkedBrands((prev) => [...prev, b]);
     setBrandQuery("");
-    setBrandResults(null);
   }
 
   function removeBrand(id: string) {
@@ -469,7 +448,6 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
     if (linkedSpecs.some((x) => x.id === s.id)) return;
     setLinkedSpecs((prev) => [...prev, s]);
     setSpecQuery("");
-    setSpecResults(null);
   }
 
   function removeSpec(id: string) {
@@ -767,8 +745,7 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
               label="关联品牌"
               query={brandQuery}
               setQuery={setBrandQuery}
-              results={brandResults}
-              searching={brandSearching}
+              searchFn={搜索品牌}
               linked={linkedBrands}
               onAdd={addBrand}
               onRemove={removeBrand}
@@ -779,8 +756,7 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
               label="关联规格"
               query={specQuery}
               setQuery={setSpecQuery}
-              results={specResults}
-              searching={specSearching}
+              searchFn={搜索规格}
               linked={linkedSpecs}
               onAdd={addSpec}
               onRemove={removeSpec}

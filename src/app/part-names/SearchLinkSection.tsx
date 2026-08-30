@@ -1,13 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { SearchDropdown } from "@/components/SearchDropdown";
 
 interface LinkedItem {
-  id: string;
-  name: string;
-}
-
-interface 搜索结果项 {
   id: string;
   name: string;
 }
@@ -16,108 +12,68 @@ interface Props {
   label: string;
   query: string;
   setQuery: (q: string) => void;
-  results: 搜索结果项[] | null;
-  searching: boolean;
+  /* 联想查询：调用方把原来的防抖查询条件包成 searchFn 传入（SearchDropdown 内部统一防抖） */
+  searchFn: (q: string) => Promise<LinkedItem[]>;
   linked: LinkedItem[];
   onAdd: (item: LinkedItem) => void;
   onRemove: (id: string) => void;
   onCreate: () => void;
 }
 
+/* 关联品牌/规格搜索块：SearchDropdown（单选添加）+ 已关联标签 + 无结果时的"新建并关联"按钮 */
 export function SearchLinkSection({
   label,
   query,
   setQuery,
-  results,
-  searching,
+  searchFn,
   linked,
   onAdd,
   onRemove,
   onCreate,
 }: Props) {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  /* 记录最近一次查询是否无结果（用于决定"新建"按钮是否显示，与原逻辑一致：只有搜不到才给新建入口） */
+  const [lastResultsEmpty, setLastResultsEmpty] = useState(false);
 
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [results]);
-
-  const alreadyLinkedIds = new Set(linked.map((x) => x.id));
-
-  function toggleResult(id: string) {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedIds(next);
+  function handleQueryChange(q: string) {
+    /* 查询词变化后、防抖查询完成前，先隐藏新建按钮，避免误点 */
+    setLastResultsEmpty(false);
+    setQuery(q);
   }
 
-  function handleAddSelected() {
-    if (!results) return;
-    for (const r of results) {
-      if (selectedIds.has(r.id) && !alreadyLinkedIds.has(r.id)) {
-        onAdd(r);
-      }
-    }
-    setSelectedIds(new Set());
-    setQuery("");
+  async function 包装查询(q: string): Promise<LinkedItem[]> {
+    const data = await searchFn(q);
+    setLastResultsEmpty(data.length === 0);
+    return data;
   }
 
   return (
     <div className="mt-6">
       <label className="block text-sm font-medium text-gray-700 mb-2">{label}（可选，可关联多个）</label>
-      <div className="relative">
-        <input
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder={`搜索${label}并添加...`}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        {searching && <div className="text-xs text-gray-400 mt-1">搜索中...</div>}
-        {results && results.length > 0 && (
-          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-            {results.map((r: 搜索结果项) => {
-              const isLinked = alreadyLinkedIds.has(r.id);
-              const isSelected = selectedIds.has(r.id);
-              return (
-                <label
-                  key={r.id}
-                  className={`flex items-center gap-2 px-4 py-2 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50 ${isLinked ? "opacity-40" : ""}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    disabled={isLinked}
-                    onChange={() => toggleResult(r.id)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm text-gray-900">{r.name}</span>
-                </label>
-              );
-            })}
-            {selectedIds.size > 0 && (
-              <div className="sticky bottom-0 bg-white border-t border-gray-100 px-4 py-2">
-                <button
-                  type="button"
-                  onClick={handleAddSelected}
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
-                >
-                  添加选中 ({selectedIds.size})
-                </button>
-              </div>
-            )}
-          </div>
+      <SearchDropdown<LinkedItem>
+        value={query}
+        onQueryChange={handleQueryChange}
+        searchFn={包装查询}
+        getKey={(item) => item.id}
+        onSelect={onAdd}
+        placeholder={`搜索${label}并添加...`}
+        renderItem={(item) => (
+          <span className={`text-sm text-gray-900 ${linked.some((x) => x.id === item.id) ? "opacity-40" : ""}`}>
+            {item.name}
+          </span>
         )}
-        {!searching && query.trim() && results !== null && results.length === 0 && (
-          <div className="mt-2">
+        suffix={
+          query.trim() && lastResultsEmpty ? (
             <button
               type="button"
               onClick={onCreate}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
+              className="px-2 py-0.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 whitespace-nowrap"
+              title={`新建「${query.trim()}」并关联`}
             >
-              新建「{query.trim()}」并关联
+              新建
             </button>
-          </div>
-        )}
-      </div>
+          ) : undefined
+        }
+      />
       {linked.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {linked.map((item) => (
