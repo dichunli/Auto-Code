@@ -54,7 +54,8 @@ interface Waybill {
   logistics_companies: { name: string } | null;
 }
 
-interface PurchaseOrder {
+/* 订单类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
+export interface PurchaseOrder {
   id: string;
   order_no: string | null;
   supplier_id: string | null;
@@ -95,7 +96,14 @@ function resolveImageUrl(path: string): string {
   return `${base}/storage/v1/object/public/work-order-media/${path}`;
 }
 
-export function PendingReceiptList() {
+/* 首屏数据 props（服务端查询注入，待办清单第9项）：
+   有 initialOrders 时首屏直接渲染、跳过 useEffect 里的 loadData，
+   避免 SPA 软导航时 session 未就绪导致整页空白；后续操作照常走 loadData 刷新 */
+interface PendingReceiptListProps {
+  initialOrders?: PurchaseOrder[];
+}
+
+export function PendingReceiptList(props: PendingReceiptListProps) {
   const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
   /* 价格显示开关：仅 admin/boss/warehouse 可见可用（其余角色 Context 层面已强制隐藏价格） */
@@ -122,8 +130,8 @@ export function PendingReceiptList() {
     加载角色();
     return () => { 已卸载 = true; };
   }, [supabase]);
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<PurchaseOrder[]>(props.initialOrders ?? []);
+  const [loading, setLoading] = useState(!props.initialOrders);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<GroupBy>("supplier");
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
@@ -196,6 +204,8 @@ export function PendingReceiptList() {
   const [shortEvidence, setShortEvidence] = useState<string[]>([]);
 
   useEffect(() => {
+    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
+    if (props.initialOrders) return;
     loadData();
   }, []);
 
