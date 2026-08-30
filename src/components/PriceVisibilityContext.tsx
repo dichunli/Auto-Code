@@ -33,29 +33,38 @@ export function PriceVisibilityProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  /* 加载当前用户角色，判定是否允许看价格 */
+  /* 加载当前用户角色，判定是否允许看价格。
+     2026-08-31 修复"老板也全站 ***"：判定改走服务端 has_role RPC（SECURITY DEFINER，
+     用 auth.uid() 判定，绕开客户端查表受 RLS 策略不全影响的变数）；
+     并用 onAuthStateChange 监听，根治两类时序竞态：
+       ① 整页刷新瞬间 getUser 未就绪返回 null → 误判无角色锁死
+       ② 登录页 SPA 跳转回系统，Provider 不重挂载保持"未登录"旧判定 */
   useEffect(() => {
     let 已卸载 = false;
-    async function 加载角色() {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) {
-        if (!已卸载) setCanTogglePrices(false);
-        return;
-      }
-      const { data: prs } = await supabase
-        .from("profile_roles")
-        .select("roles(name)")
-        .eq("profile_id", data.user.id);
-      const 角色列表 = (prs || [])
-        .map((r) => (r.roles as unknown as { name: string } | null)?.name || "")
-        .filter(Boolean);
+    async function 判定() {
+      const { data, error } = await supabase.rpc("has_role", {
+        p_roles: 可看价格角色,
+      });
       if (!已卸载) {
-        setCanTogglePrices(角色列表.some((r) => 可看价格角色.includes(r)));
+        setCanTogglePrices(!error && data === true);
       }
     }
-    加载角色();
+    /* 立即判定一次 + 登录态变化时再判定 */
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) 判定();
+    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        判定();
+      } else if (!已卸载) {
+        setCanTogglePrices(false);
+      }
+    });
     return () => {
       已卸载 = true;
+      subscription.unsubscribe();
     };
   }, [supabase]);
 
