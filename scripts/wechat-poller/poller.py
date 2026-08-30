@@ -85,6 +85,10 @@ def 读取配置():
         "目标群列表": [g.strip() for g in 群名原文.split(",") if g.strip()],
         "轮询间隔": max(5, 解析器.getint("wechat", "interval", fallback=30)),
         "输出目录": Path(解析器.get("paths", "output", fallback="./输出")).resolve(),
+        # OCR（可选）：识别照片里的车牌，让"只拍照不打字"的消息也能正确归类
+        "OCR启用": 解析器.getboolean("ocr", "enabled", fallback=False),
+        "OCR密钥": 解析器.get("ocr", "baidu_api_key", fallback="").strip(),
+        "OCR密文": 解析器.get("ocr", "baidu_secret_key", fallback="").strip(),
     }
 
 
@@ -278,6 +282,7 @@ def 查询新消息(消息库们, 目标群id们, 游标):
                 "时间": int(创建时间 or 0),
                 "内容": 内容.strip(),
                 "图片路径": "",  # 图片消息稍后填充
+                "图片车牌": "",  # 照片 OCR 识别出的车牌（可选功能）
             })
             if 序号 > 最大序号:
                 最大序号 = 序号
@@ -286,8 +291,65 @@ def 查询新消息(消息库们, 目标群id们, 游标):
 
 
 # ============================================================
-# 图片消息处理（微信图片以加密的 .dat 文件存在硬盘上）
+# 照片车牌识别（可选，百度云车牌识别接口，免费额度内零费用）
 # ============================================================
+
+# access_token 内存缓存（有效期约 30 天，脚本运行期间只取一次）
+_百度令牌缓存 = {"令牌": "", "过期时间": 0.0}
+
+
+def 获取百度令牌(配置):
+    """用 API Key/Secret 换 access_token，失败返回空串。"""
+    import urllib.parse
+    import urllib.request
+
+    if _百度令牌缓存["令牌"] and time.time() < _百度令牌缓存["过期时间"]:
+        return _百度令牌缓存["令牌"]
+    try:
+        参数 = urllib.parse.urlencode({
+            "grant_type": "client_credentials",
+            "client_id": 配置["OCR密钥"],
+            "client_secret": 配置["OCR密文"],
+        })
+        地址 = f"https://aip.baidubce.com/oauth/2.0/token?{参数}"
+        with urllib.request.urlopen(地址, timeout=10) as 响应:
+            数据 = json.loads(响应.read().decode("utf-8"))
+        令牌 = 数据.get("access_token", "")
+        if 令牌:
+            _百度令牌缓存["令牌"] = 令牌
+            _百度令牌缓存["过期时间"] = time.time() + 数据.get("expires_in", 2592000) - 86400
+        return 令牌
+    except Exception as 异常:
+        print(f"【警告】获取 OCR 令牌失败：{异常}（本轮跳过照片识别）")
+        return ""
+
+
+def OCR识别车牌(图片文件, 配置):
+    """
+    识别图片里的车牌号。未启用/失败返回空串（不影响消息采集）。
+    """
+    if not 配置["OCR启用"] or not 配置["OCR密钥"] or not 配置["OCR密文"]:
+        return ""
+    import base64
+    import urllib.parse
+    import urllib.request
+
+    令牌 = 获取百度令牌(配置)
+    if not 令牌:
+        return ""
+    try:
+        图片数据 = base64.b64encode(Path(图片文件).read_bytes())
+        地址 = f"https://aip.baidubce.com/rest/2.0/ocr/v1/license_plate?access_token={令牌}"
+        请求体 = urllib.parse.urlencode({"image": 图片数据}).encode("utf-8")
+        with urllib.request.urlopen(地址, data=请求体, timeout=15) as 响应:
+            数据 = json.loads(响应.read().decode("utf-8"))
+        车牌 = (数据.get("words_result") or {}).get("number", "")
+        return 车牌.strip().upper()
+    except Exception as 异常:
+        print(f"【警告】照片车牌识别失败：{异常}（这张照片按无车牌处理）")
+        return ""
+
+
 
 def 寻找并解密图片(消息, 数据目录, 图片输出目录):
     """
@@ -347,67 +409,95 @@ def 寻找并解密图片(消息, 数据目录, 图片输出目录):
 
 
 # ============================================================
-# 归堆：把连续消息按"同一个人 + 时间窗口"打包
+# 归堆：按车牌归类（同一辆车的需求归到一起，拍到新车牌才另起一堆）
 # ============================================================
+
+def 提取消息车牌(消息):
+    """文字里正则识别，或照片 OCR 结果。返回车牌号，没有返回空串。"""
+    if 消息["内容"]:
+        命中 = 车牌正则.findall(消息["内容"].upper())
+        if 命中:
+            return 命中[0]
+    return 消息.get("图片车牌", "") or ""
+
 
 def 归堆成需求包(消息列表):
     """
-    把消息列表按时间排序后，同一个人、相邻间隔不超过归堆窗口的消息归为一包。
-    返回需求包列表（新的在前）。每个包含：包id、发送者、起止时间、文字列表、图片列表、识别到的车牌。
+    归堆规则（按车牌归类）：
+    1. 消息里识别到车牌 → 归入该车牌的包，并成为该发送者的"当前车辆"
+    2. 没带车牌 → 归入该发送者"当前车辆"的包（跟着上一条车牌走）
+    3. 还没有任何车辆上下文 → 进该发送者的"未识别车牌"包
+    4. 同一车牌跨自然日自动分包（昨天的需求归昨天）
+    5. 先发消息、后补车牌的，此人最近半小时的未识别包自动并入车牌包
+    返回需求包列表（最新活跃的在前）。
     """
     排序后 = sorted(消息列表, key=lambda m: (m["时间"], m["id"]))
 
-    包们 = []
-    当前包 = None
-    for 消息 in 排序后:
-        # 系统消息（入群通知等）不进包，直接跳过
-        if 消息["类型"] == 消息类型_系统:
-            continue
+    包们 = {}          # 包键 -> 包
+    包顺序 = []        # 记录创建顺序（最后按活跃时间重排）
+    每人当前车辆 = {}  # 发送者 -> (车牌, 日期)
+    每人未识别包 = {}  # 发送者 -> 其未识别包的包键
 
-        属于当前包 = (
-            当前包 is not None
-            and 消息["发送者"] == 当前包["发送者"]
-            and 消息["群id"] == 当前包["群id"]
-            and 消息["时间"] - 当前包["结束时间"] <= 归堆窗口秒
-        )
-        if not 属于当前包:
-            当前包 = {
-                "包id": f"{消息['id']}_{消息['发送者']}",
-                "发送者": 消息["发送者"],
-                "群id": 消息["群id"],
+    def 取包(键, 车牌, 日期, 消息):
+        if 键 not in 包们:
+            包们[键] = {
+                "包id": f"{车牌}_{日期}" if 车牌 else f"未识别_{日期}_{消息['发送者']}",
+                "车牌": 车牌,
+                "日期": 日期,
                 "开始时间": 消息["时间"],
                 "结束时间": 消息["时间"],
-                "文字列表": [],
-                "图片列表": [],
+                "消息们": [],
             }
-            包们.append(当前包)
-        当前包["结束时间"] = 消息["时间"]
+            包顺序.append(键)
+        return 包们[键]
 
-        if 消息["类型"] == 消息类型_图片:
-            if 消息["图片路径"]:
-                当前包["图片列表"].append(消息["图片路径"])
+    for 消息 in 排序后:
+        if 消息["类型"] == 消息类型_系统:
+            continue
+        日期 = datetime.fromtimestamp(消息["时间"]).strftime("%Y-%m-%d") if 消息["时间"] else "未知日期"
+        车牌 = 提取消息车牌(消息)
+        发送者 = 消息["发送者"]
+
+        if 车牌:
+            # 规则 5：先发配件名、后补车牌 → 此人最近的未识别包并过来
+            旧键 = 每人未识别包.pop(发送者, None)
+            if 旧键 and 旧键 in 包们:
+                旧包 = 包们[旧键]
+                if 0 <= 消息["时间"] - 旧包["结束时间"] <= 30 * 60:
+                    车牌包 = 取包((车牌, 日期), 车牌, 日期, 消息)
+                    车牌包["消息们"].extend(旧包["消息们"])
+                    车牌包["开始时间"] = min(车牌包["开始时间"], 旧包["开始时间"])
+                    del 包们[旧键]
+                    包顺序.remove(旧键)
+            每人当前车辆[发送者] = (车牌, 日期)
+            键 = (车牌, 日期)
+        else:
+            当前 = 每人当前车辆.get(发送者)
+            if 当前 and 当前[1] == 日期:
+                # 跟着此人今天的"当前车辆"走
+                键 = (当前[0], 日期)
             else:
-                当前包["文字列表"].append("[图片读取失败，请在微信里查看]")
-        elif 消息["类型"] == 消息类型_文本 and 消息["内容"]:
-            当前包["文字列表"].append(消息["内容"])
-        elif 消息["类型"] == 消息类型_语音:
-            当前包["文字列表"].append("[语音消息，请在微信里收听]")
-        elif 消息["类型"] == 消息类型_视频:
-            当前包["文字列表"].append("[视频，请在微信里查看]")
-        elif 消息["类型"] == 消息类型_应用 and 消息["内容"]:
-            # 引用/链接类消息，截取一小段提示
-            摘要 = re.sub(r"<[^>]+>", " ", 消息["内容"])
-            摘要 = re.sub(r"\s+", " ", 摘要).strip()[:60]
-            if 摘要:
-                当前包["文字列表"].append(f"[链接/引用] {摘要}")
+                # 没有任何车牌上下文，进此人当天的未识别包
+                键 = (None, 日期, 发送者)
+                每人未识别包[发送者] = 键
 
-    # 从文字里识别车牌号
-    for 包 in 包们:
-        全部文字 = " ".join(包["文字列表"])
-        包["车牌列表"] = sorted(set(车牌正则.findall(全部文字.upper())))
+        包 = 取包(键, 车牌, 日期, 消息)
+        包["消息们"].append(消息)
+        包["结束时间"] = 消息["时间"]
 
-    包们.sort(key=lambda p: p["开始时间"], reverse=True)
-    return 包们
+    结果 = []
+    for 键 in 包顺序:
+        包 = 包们[键]
+        包["消息们"].sort(key=lambda m: (m["时间"], m["id"]))
+        发送者们 = []
+        for 单条 in 包["消息们"]:
+            if 单条["发送者"] not in 发送者们:
+                发送者们.append(单条["发送者"])
+        包["发送者列表"] = 发送者们
+        结果.append(包)
+
+    结果.sort(key=lambda p: p["结束时间"], reverse=True)
+    return 结果
 
 
 # ============================================================
@@ -430,15 +520,17 @@ def 归堆成需求包(消息列表):
   .包卡片 {{ max-width: 800px; margin: 0 auto 12px; background: #fff; border-radius: 12px;
             border: 1px solid #e5e7eb; padding: 12px 16px; }}
   .包卡片.已处理 {{ opacity: 0.45; }}
-  .包头部 {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }}
-  .发送人 {{ font-weight: 600; font-size: 15px; }}
-  .车牌标签 {{ display: inline-block; background: #dcfce7; color: #166534; border-radius: 4px;
-              padding: 1px 8px; font-size: 13px; font-weight: 600; margin-left: 8px; }}
+  .包头部 {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }}
+  .车牌标题 {{ font-size: 18px; font-weight: 700; color: #111827; }}
+  .车牌标题.未识别 {{ color: #b45309; font-size: 15px; }}
+  .参与人 {{ color: #6b7280; font-size: 12px; margin-bottom: 6px; }}
   .时刻 {{ color: #9ca3af; font-size: 12px; }}
-  .文字行 {{ font-size: 14px; color: #111827; margin: 4px 0; white-space: pre-wrap; word-break: break-all; }}
-  .照片墙 {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }}
-  .照片墙 img {{ width: 120px; height: 120px; object-fit: cover; border-radius: 8px;
-                border: 1px solid #e5e7eb; cursor: zoom-in; }}
+  .消息行 {{ font-size: 14px; color: #111827; margin: 5px 0; white-space: pre-wrap; word-break: break-all; }}
+  .消息行 .人名 {{ color: #2563eb; font-size: 12px; margin-right: 6px; }}
+  .消息行 .点钟 {{ color: #9ca3af; font-size: 12px; margin-right: 4px; }}
+  .行内图 {{ display: inline-block; margin: 4px 8px 0 0; }}
+  .行内图 img {{ width: 120px; height: 120px; object-fit: cover; border-radius: 8px;
+                border: 1px solid #e5e7eb; cursor: zoom-in; vertical-align: top; }}
   .处理行 {{ margin-top: 10px; border-top: 1px dashed #e5e7eb; padding-top: 8px; font-size: 13px; color: #374151; }}
   .处理行 input[type=text] {{ width: 60%; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; }}
   .空提示 {{ max-width: 800px; margin: 40px auto; text-align: center; color: #9ca3af; }}
@@ -475,11 +567,11 @@ document.querySelectorAll(".包卡片").forEach(function(卡片) {{
 
 包卡片模板 = """<div class="包卡片" data-包id="{包id}">
   <div class="包头部">
-    <div><span class="发送人">{发送人}</span>{车牌标签}</div>
-    <div class="时刻">{起止时间}</div>
+    <div class="{标题样式}">{标题}</div>
+    <div class="时刻">{日期}　{起止时间}</div>
   </div>
-  {文字html}
-  {照片墙html}
+  <div class="参与人">{参与人}</div>
+  {消息html}
   <div class="处理行">
     <label><input type="checkbox"> 已处理</label>　备注：<input type="text" placeholder="如：已下单 / 库里">
   </div>
@@ -487,30 +579,54 @@ document.querySelectorAll(".包卡片").forEach(function(卡片) {{
 """
 
 
+def 渲染消息行(单条, 昵称表):
+    """把一条消息渲染成看板里的一行：发送人 + 时间 + 内容/图片。"""
+    人名 = 昵称表.get(单条["发送者"], "") or ("我自己" if 单条["发送者"] == "__自己__" else 单条["发送者"][-6:] if 单条["发送者"] else "未知")
+    点钟 = datetime.fromtimestamp(单条["时间"]).strftime("%H:%M") if 单条["时间"] else ""
+    前缀 = f'<span class="人名">{html.escape(人名)}</span><span class="点钟">{点钟}</span>'
+
+    if 单条["类型"] == 消息类型_图片:
+        if 单条["图片路径"]:
+            名 = html.escape(单条["图片路径"])
+            return f'<div class="消息行">{前缀}<span class="行内图"><a href="images/{名}" target="_blank"><img src="images/{名}" loading="lazy"></a></span></div>'
+        return f'<div class="消息行">{前缀}[图片读取失败，请在微信里查看]</div>'
+    if 单条["类型"] == 消息类型_文本 and 单条["内容"]:
+        return f'<div class="消息行">{前缀}{html.escape(单条["内容"])}</div>'
+    if 单条["类型"] == 消息类型_语音:
+        return f'<div class="消息行">{前缀}[语音消息，请在微信里收听]</div>'
+    if 单条["类型"] == 消息类型_视频:
+        return f'<div class="消息行">{前缀}[视频，请在微信里查看]</div>'
+    if 单条["类型"] == 消息类型_应用 and 单条["内容"]:
+        摘要 = re.sub(r"<[^>]+>", " ", 单条["内容"])
+        摘要 = re.sub(r"\s+", " ", 摘要).strip()[:60]
+        if 摘要:
+            return f'<div class="消息行">{前缀}[链接/引用] {html.escape(摘要)}</div>'
+    return ""
+
+
 def 生成看板(包们, 昵称表, 输出目录):
     """根据需求包列表生成自包含的 HTML 看板文件。所有用户来源文本先转义再进 HTML。"""
     卡片们 = []
     for 包 in 包们:
-        发送人显示 = 昵称表.get(包["发送者"], "") or ("我自己" if 包["发送者"] == "__自己__" else 包["发送者"][-6:] if 包["发送者"] else "未知")
-        发送人显示 = html.escape(发送人显示)
-        车牌标签 = "".join(f'<span class="车牌标签">{html.escape(p)}</span>' for p in 包["车牌列表"])
-        开始 = datetime.fromtimestamp(包["开始时间"]).strftime("%m-%d %H:%M") if 包["开始时间"] else ""
+        if 包["车牌"]:
+            标题 = html.escape(包["车牌"])
+            标题样式 = "车牌标题"
+        else:
+            标题 = "未识别车牌"
+            标题样式 = "车牌标题 未识别"
+        参与人 = "、".join(
+            html.escape(昵称表.get(s, "") or ("我自己" if s == "__自己__" else s[-6:] if s else "未知"))
+            for s in 包["发送者列表"]
+        )
+        开始 = datetime.fromtimestamp(包["开始时间"]).strftime("%H:%M") if 包["开始时间"] else ""
         结束 = datetime.fromtimestamp(包["结束时间"]).strftime("%H:%M") if 包["结束时间"] else ""
         起止时间 = f"{开始} ~ {结束}" if 开始 != 结束 else 开始
 
-        文字html = "".join(f'<div class="文字行">{html.escape(行)}</div>' for 行 in 包["文字列表"])
-        if 包["图片列表"]:
-            照片们 = "".join(
-                f'<a href="images/{html.escape(名)}" target="_blank"><img src="images/{html.escape(名)}" loading="lazy"></a>'
-                for 名 in 包["图片列表"]
-            )
-            照片墙html = f'<div class="照片墙">{照片们}</div>'
-        else:
-            照片墙html = ""
+        消息html = "".join(渲染消息行(单条, 昵称表) for 单条 in 包["消息们"])
 
         卡片们.append(包卡片模板.format(
-            包id=html.escape(包["包id"]), 发送人=发送人显示, 车牌标签=车牌标签,
-            起止时间=起止时间, 文字html=文字html, 照片墙html=照片墙html,
+            包id=html.escape(包["包id"]), 标题=标题, 标题样式=标题样式, 日期=包["日期"],
+            起止时间=起止时间, 参与人=参与人, 消息html=消息html,
         ))
 
     看板html = 看板模板.format(
@@ -702,10 +818,15 @@ def 主循环(配置):
 
             if 新消息们:
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] 收到 {len(新消息们)} 条新消息")
-                # 图片消息逐条尝试解密
+                # 图片消息逐条尝试解密；解密成功且启用了 OCR 时识别照片里的车牌
                 for 消息 in 新消息们:
                     if 消息["类型"] == 消息类型_图片:
                         消息["图片路径"] = 寻找并解密图片(消息, 数据目录, 图片目录)
+                        if 消息["图片路径"] and 配置["OCR启用"]:
+                            车牌 = OCR识别车牌(图片目录 / 消息["图片路径"], 配置)
+                            if 车牌:
+                                消息["图片车牌"] = 车牌
+                                print(f"  照片识别出车牌：{车牌}")
                 历史消息.extend(新消息们)
                 历史消息 = 清理过期消息(历史消息)
                 保存历史消息(输出目录, 历史消息)
