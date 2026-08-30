@@ -17,7 +17,8 @@ import { DocumentNameInput } from "./DocumentNameInput";
 import CustomPurchaseModal from "./CustomPurchaseModal";
 import PurchaseOrderNotifyModal, { type 采购通知数据, type 采购通知明细 } from "./PurchaseOrderNotifyModal";
 
-interface PartBranchRow {
+/* 行类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
+export interface PartBranchRow {
   id: string;
   name: string;
   brand: string | null;
@@ -53,13 +54,13 @@ interface PartBranchRow {
   staging?: { id: string; supplier_id: string | null } | null;
 }
 
-interface Supplier {
+export interface Supplier {
   id: string;
   name: string;
   region?: string | null;
 }
 
-interface LogisticsCompany {
+export interface LogisticsCompany {
   id: string;
   name: string;
   scopes?: string[] | null;
@@ -117,13 +118,23 @@ function getGroupKey(r: PartBranchRow, groupBy: GroupBy): string {
   }
 }
 
-export function PendingPurchaseList() {
+/* 首屏数据 props（服务端查询注入，待办清单第9项）：
+   有 initialRows 时首屏直接渲染、跳过 useEffect 里的 loadData，
+   避免 SPA 软导航时 session 未就绪导致整页空白；后续操作照常走 loadData 刷新 */
+interface PendingPurchaseListProps {
+  initialRows?: PartBranchRow[];
+  initialSuppliers?: Supplier[];
+  initialLogisticsCompanies?: LogisticsCompany[];
+  initialNotArrivedMarks?: Record<string, string>;
+}
+
+export function PendingPurchaseList(props: PendingPurchaseListProps) {
   const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
-  const [rows, setRows] = useState<PartBranchRow[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [logisticsCompanies, setLogisticsCompanies] = useState<LogisticsCompany[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<PartBranchRow[]>(props.initialRows ?? []);
+  const [suppliers, setSuppliers] = useState<Supplier[]>(props.initialSuppliers ?? []);
+  const [logisticsCompanies, setLogisticsCompanies] = useState<LogisticsCompany[]>(props.initialLogisticsCompanies ?? []);
+  const [loading, setLoading] = useState(!props.initialRows);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   /* 供应商列已改只读（2026-08-14）：supplierMap/setRowSupplier 已删除，
      供应商一律取行上的 supplier_name（询价阶段确定） */
@@ -132,7 +143,7 @@ export function PendingPurchaseList() {
   const [groupBy, setGroupBy] = useState<GroupBy>("supplier");
   /* 供应商筛选标签（2026-08-15 用户要求）：null=全部 */
   const [供应商筛选, set供应商筛选] = useState<string | null>(null);
-  const [notArrivedMarks, setNotArrivedMarks] = useState<Record<string, string>>({});
+  const [notArrivedMarks, setNotArrivedMarks] = useState<Record<string, string>>(props.initialNotArrivedMarks ?? {});
 
   /* 物流选择弹窗 */
   const [showLogisticsModal, setShowLogisticsModal] = useState(false);
@@ -181,6 +192,8 @@ export function PendingPurchaseList() {
   ];
 
   useEffect(() => {
+    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
+    if (props.initialRows) return;
     loadData();
   }, []);
 

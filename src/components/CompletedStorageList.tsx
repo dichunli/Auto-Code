@@ -35,7 +35,8 @@ interface InboundOrder {
   created_at: string;
 }
 
-interface PurchaseOrder {
+/* 订单类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
+export interface PurchaseOrder {
   id: string;
   order_no: string | null;
   supplier_id: string | null;
@@ -48,11 +49,18 @@ interface PurchaseOrder {
   inbound_orders: InboundOrder[] | null;
 }
 
-export function CompletedStorageList() {
+/* 首屏数据 props（服务端查询注入，待办清单第9项）：
+   有 initialOrders 时首屏直接渲染、跳过 useEffect 里的 loadData，
+   避免 SPA 软导航时 session 未就绪导致整页空白；后续操作照常走 loadData 刷新 */
+interface CompletedStorageListProps {
+  initialOrders?: PurchaseOrder[];
+}
+
+export function CompletedStorageList(props: CompletedStorageListProps) {
   const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<PurchaseOrder[]>(props.initialOrders ?? []);
+  const [loading, setLoading] = useState(!props.initialOrders);
   const [submitting, setSubmitting] = useState<string | null>(null);
 
   async function loadData() {
@@ -85,8 +93,10 @@ export function CompletedStorageList() {
   }
 
   useEffect(() => {
+    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
+    if (props.initialOrders) return;
     loadData();
-     
+
   }, []);
 
   /* 已入库退回待收货（2026-08-16 批次1 错账收口）：

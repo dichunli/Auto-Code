@@ -33,7 +33,8 @@ const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
   { key: "supplier", label: "按供货商" },
 ];
 
-interface PartBranchRow {
+/* 行类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
+export interface PartBranchRow {
   id: string;
   name: string;
   brand: string | null;
@@ -84,21 +85,56 @@ interface PartBranchRow {
   } | null;
 }
 
-interface Supplier {
+export interface Supplier {
   id: string;
   name: string;
   recommendation_level?: number;
 }
 
+/* 首屏数据 props（服务端查询注入，待办清单第9项）：
+   有 initialRows 时首屏直接渲染、跳过 useEffect 里的 loadData，
+   避免 SPA 软导航时 session 未就绪导致整页空白；后续操作照常走 loadData 刷新。
+   Map/Set 类数据在服务端以 Record/数组形式传入（保证可序列化），这里初始化时转回 Map/Set */
 interface Props {
   status: "pending_inquiry" | "pending_quote" | "pending_confirm";
+  initialRows?: PartBranchRow[];
+  initialSuppliers?: Supplier[];
+  initialPartMediaMap?: Record<string, { id: string; storage_path: string }[]>;
+  initialVehicleModelsMap?: Record<string, { 厂商?: string; 品牌?: string; 车系?: string }>;
+  initialSupplierVehicleMap?: Record<string, string[]>;
+  initialAvailableBrands?: string[];
+  initialAvailableSpecs?: string[];
+  initialPartBrandsMap?: Record<string, string>;
+  initialSupplierPartNameIds?: Record<string, string[]>;
+  initialSupplierPartCategoryIds?: Record<string, string[]>;
+  initialSupplierPartBrandIds?: Record<string, string[]>;
 }
 
-export function PartBranchStatusList({ status }: Props) {
+/* Record<string, string[]> → Map<string, Set<string>>（首屏 props 反序列化用） */
+function 记录转映射集(记录?: Record<string, string[]>): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  for (const [k, arr] of Object.entries(记录 ?? {})) map.set(k, new Set(arr));
+  return map;
+}
+
+export function PartBranchStatusList({
+  status,
+  initialRows,
+  initialSuppliers,
+  initialPartMediaMap,
+  initialVehicleModelsMap,
+  initialSupplierVehicleMap,
+  initialAvailableBrands,
+  initialAvailableSpecs,
+  initialPartBrandsMap,
+  initialSupplierPartNameIds,
+  initialSupplierPartCategoryIds,
+  initialSupplierPartBrandIds,
+}: Props) {
   const supabase = createClient();
-  const [rows, setRows] = useState<PartBranchRow[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<PartBranchRow[]>(initialRows ?? []);
+  const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers ?? []);
+  const [loading, setLoading] = useState(!initialRows);
   const [edits, setEdits] = useState<Record<string, Partial<Record<EditableField, string>>>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -106,18 +142,18 @@ export function PartBranchStatusList({ status }: Props) {
   const { 请求确认, 确认弹窗 } = useConfirm();
 
   /* 品牌/规格搜索建议 */
-  const [availableBrands, setAvailableBrands] = useState<string[]>([]);
-  const [availableSpecs, setAvailableSpecs] = useState<string[]>([]);
+  const [availableBrands, setAvailableBrands] = useState<string[]>(initialAvailableBrands ?? []);
+  const [availableSpecs, setAvailableSpecs] = useState<string[]>(initialAvailableSpecs ?? []);
 
   /* 供应商推荐排序数据 */
-  const [partBrandsMap, setPartBrandsMap] = useState<Map<string, string>>(new Map());
-  const [supplierPartNameIds, setSupplierPartNameIds] = useState<Map<string, Set<string>>>(new Map());
-  const [supplierCategoryIds, setSupplierCategoryIds] = useState<Map<string, Set<string>>>(new Map());
-  const [supplierBrandIds, setSupplierBrandIds] = useState<Map<string, Set<string>>>(new Map());
+  const [partBrandsMap, setPartBrandsMap] = useState<Map<string, string>>(() => new Map(Object.entries(initialPartBrandsMap ?? {})));
+  const [supplierPartNameIds, setSupplierPartNameIds] = useState<Map<string, Set<string>>>(() => 记录转映射集(initialSupplierPartNameIds));
+  const [supplierCategoryIds, setSupplierCategoryIds] = useState<Map<string, Set<string>>>(() => 记录转映射集(initialSupplierPartCategoryIds));
+  const [supplierBrandIds, setSupplierBrandIds] = useState<Map<string, Set<string>>>(() => 记录转映射集(initialSupplierPartBrandIds));
 
   /* 车型匹配数据 */
-  const [vehicleModelsMap, setVehicleModelsMap] = useState<Map<string, { 厂商?: string; 品牌?: string; 车系?: string }>>(new Map());
-  const [supplierVehicleMap, setSupplierVehicleMap] = useState<Map<string, Set<string>>>(new Map());
+  const [vehicleModelsMap, setVehicleModelsMap] = useState<Map<string, { 厂商?: string; 品牌?: string; 车系?: string }>>(() => new Map(Object.entries(initialVehicleModelsMap ?? {})));
+  const [supplierVehicleMap, setSupplierVehicleMap] = useState<Map<string, Set<string>>>(() => 记录转映射集(initialSupplierVehicleMap));
 
   /* 编码替换对应的库存配件ID */
   const [replacePartIds, setReplacePartIds] = useState<Record<string, string>>({});
@@ -132,7 +168,7 @@ export function PartBranchStatusList({ status }: Props) {
   const [openSupplierRowId, setOpenSupplierRowId] = useState<string | null>(null);
   const supplierDropdownRef = useRef<HTMLDivElement>(null);
   const [supplierDropdownPos, setSupplierDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
-  const [partMediaMap, setPartMediaMap] = useState<Record<string, { id: string; storage_path: string }[]>>({});
+  const [partMediaMap, setPartMediaMap] = useState<Record<string, { id: string; storage_path: string }[]>>(initialPartMediaMap ?? {});
 
   /* 配件信息图片编辑（图片列直接增删 part_images；rowId 级状态） */
   const [图片上传中, set图片上传中] = useState<string | null>(null);
@@ -177,8 +213,10 @@ export function PartBranchStatusList({ status }: Props) {
   }, [批量供应商弹层开]);
 
   useEffect(() => {
+    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取（tab 切换靠 key 重挂载，这里不会重复进） */
+    if (initialRows) return;
     loadData();
-     
+
   }, [status]);
 
   /* Supabase Realtime 订阅 */

@@ -27,7 +27,8 @@ interface WorkOrderItemPart {
   document_name: string | null;
 }
 
-interface ReturnRecord {
+/* 记录类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
+export interface ReturnRecord {
   id: string;
   supplier_name: string | null;
   return_reason: string;
@@ -41,11 +42,18 @@ interface ReturnRecord {
   profiles: { full_name: string | null } | null;
 }
 
-export function PendingReturnList() {
+/* 首屏数据 props（服务端查询注入，待办清单第9项）：
+   有 initialRecords 时首屏直接渲染、跳过 useEffect 里的 loadData，
+   避免 SPA 软导航时 session 未就绪导致整页空白；后续操作照常走 loadData 刷新 */
+interface PendingReturnListProps {
+  initialRecords?: ReturnRecord[];
+}
+
+export function PendingReturnList(props: PendingReturnListProps) {
   const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
-  const [records, setRecords] = useState<ReturnRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [records, setRecords] = useState<ReturnRecord[]>(props.initialRecords ?? []);
+  const [loading, setLoading] = useState(!props.initialRecords);
   const [submitting, setSubmitting] = useState<string | null>(null);
 
   /* 供应商过滤 */
@@ -110,8 +118,10 @@ export function PendingReturnList() {
   }
 
   useEffect(() => {
+    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
+    if (props.initialRecords) return;
     loadData();
-     
+
   }, []);
 
   async function handleComplete(id: string) {

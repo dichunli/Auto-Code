@@ -39,8 +39,9 @@ interface PurchaseOrderItem {
   arrival_item_id: string | null;
 }
 
-/* 已确认到货的到货确认单（2026-08-20 二期：待入库的新来源） */
-interface 到货单 {
+/* 已确认到货的到货确认单（2026-08-20 二期：待入库的新来源）；
+   导出给采购看板 page.tsx 服务端首屏查询用（待办清单第9项） */
+export interface 到货单 {
   id: string;
   receipt_no: string;
   /* 供应商销售单（2026-08-21）：建单/验货时已录的带过来 */
@@ -51,7 +52,8 @@ interface 到货单 {
   arrival_receipt_items: { count: number }[];
 }
 
-interface PurchaseOrder {
+/* 订单类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
+export interface PurchaseOrder {
   id: string;
   order_no: string | null;
   supplier_id: string | null;
@@ -104,12 +106,20 @@ interface InboundItemForm {
   freightManual: string;
 }
 
-export function PendingStorageList() {
+/* 首屏数据 props（服务端查询注入，待办清单第9项）：
+   有 initialOrders 时首屏直接渲染、跳过 useEffect 里的 loadData，
+   避免 SPA 软导航时 session 未就绪导致整页空白；后续操作照常走 loadData 刷新 */
+interface PendingStorageListProps {
+  initialOrders?: PurchaseOrder[];
+  initialArrivalReceipts?: 到货单[];
+}
+
+export function PendingStorageList(props: PendingStorageListProps) {
   const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
   const { showToast } = useToast();
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<PurchaseOrder[]>(props.initialOrders ?? []);
+  const [loading, setLoading] = useState(!props.initialOrders);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
 
@@ -128,7 +138,7 @@ export function PendingStorageList() {
   const [discountAmount, setDiscountAmount] = useState("");
 
   /* 到货确认单（二期新流程）：已确认到货、待账务入库 */
-  const [到货单列表, set到货单列表] = useState<到货单[]>([]);
+  const [到货单列表, set到货单列表] = useState<到货单[]>(props.initialArrivalReceipts ?? []);
   const [到货入库弹窗, set到货入库弹窗] = useState<到货单 | null>(null);
   const [到货运费, set到货运费] = useState("");
   /* 到货入库抹零（2026-08-21 销售单口径） */
@@ -207,8 +217,10 @@ export function PendingStorageList() {
   }
 
   useEffect(() => {
+    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
+    if (props.initialOrders) return;
     loadData();
-     
+
   }, []);
 
   /* 打开入库单确认弹窗 */
