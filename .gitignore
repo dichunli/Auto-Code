@@ -95,6 +95,10 @@ tmp_*.html
 scripts/*
 # 冒烟测试脚本属于长期设施，需要提交
 !scripts/smoke-test.mjs
+# 微信群配件需求采集小工具（交付物，持续演进），需要提交；其运行产物不提交
+!scripts/wechat-poller/
+scripts/wechat-poller/__pycache__/
+scripts/wechat-poller/输出/
 # 认证回归测试脚本同属长期设施
 !scripts/auth-test.mjs
 # 生产运维脚本同属长期设施（对账/备份/告警，生产机计划任务使用）
