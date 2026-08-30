@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { PartPickerModal } from "./PartPickerModal";
+import { SearchDropdown } from "./SearchDropdown";
 import { ImageViewer } from "./ImageViewer";
 import { useUpload } from "@/hooks/useUpload";
 import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localEditSignal";
 import { useConfirm } from "./ConfirmDialog";
 import { 添加配件分支, 删除配件目录 } from "@/app/work-orders/parts-actions";
 import { 批量更新配件分支, 更新配件分支, 添加配件图片记录, 删除配件图片记录 } from "@/app/work-orders/actions";
-import { useDebounce } from "@/lib/useDebounce";
 
 interface PartBranch {
   id: string;
@@ -72,9 +72,6 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     unit?: string | null;
     part_categories?: { name?: string | null } | null;
   }
-  const [nameResults, setNameResults] = useState<NameResult[]>([]);
-  const [nameSearching, setNameSearching] = useState(false);
-  const debouncedNameQuery = useDebounce(nameQuery, 300);
 
   // 配件选择器弹窗
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -195,7 +192,6 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   useEffect(() => {
     if (showModal) {
       setNameQuery("");
-      setNameResults([]);
       setPendingName(null);
       setSelectedRealPart((parts[0]?.parts || null) as unknown as RealPart | null);
     }
@@ -388,30 +384,20 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     e.target.value = "";
   }
 
-  // 搜索配件名称
-  useEffect(() => {
-    if (!debouncedNameQuery.trim()) {
-      setNameResults([]);
-      return;
-    }
-    async function 搜索名称() {
-      setNameSearching(true);
-      const { data } = await supabase
-        .from("part_names")
-        .select("id, name, unit, part_categories(name)")
-        .ilike("name", `%${debouncedNameQuery.trim()}%`)
-        .limit(10);
-      setNameResults((data || []) as unknown as NameResult[]);
-      setNameSearching(false);
-    }
-    搜索名称();
-  }, [debouncedNameQuery, supabase]);
+  /* 配件名称搜索（SearchDropdown 的 searchFn）：查询条件与原手写块完全一致 */
+  async function 搜索配件名称(keyword: string): Promise<NameResult[]> {
+    const { data } = await supabase
+      .from("part_names")
+      .select("id, name, unit, part_categories(name)")
+      .ilike("name", `%${keyword.trim()}%`)
+      .limit(10);
+    return (data || []) as unknown as NameResult[];
+  }
 
   // 选择待替换的配件名称（延迟到保存时执行）
   function handleSelectPendingName(selected: NameResult) {
     setPendingName(selected);
     setNameQuery("");
-    setNameResults([]);
     setSelectedRealPart(null); // 名称变更后清空已选库存配件
   }
 
@@ -680,40 +666,26 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
                 </p>
 
                 <div className="relative">
-                  <input
-                    type="text"
-                    autoFocus
+                  {/* 通用 SearchDropdown：防抖/键盘导航/点外关闭内置 */}
+                  <SearchDropdown<NameResult>
                     value={nameQuery}
-                    onChange={(e) => setNameQuery(e.target.value)}
+                    onQueryChange={setNameQuery}
+                    searchFn={搜索配件名称}
+                    getKey={(r) => r.id}
+                    onSelect={handleSelectPendingName}
                     placeholder="搜索配件名称..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  {nameSearching && (
-                    <span className="absolute right-3 top-2 text-xs text-gray-400">搜索中...</span>
-                  )}
-                </div>
-
-                {nameResults.length > 0 && (
-                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto">
-                    {nameResults.map((r) => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => handleSelectPendingName(r)}
-                        disabled={saving}
-                        className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0 disabled:opacity-50"
-                      >
+                    emptyText="未找到匹配的配件名称"
+                    disabled={saving}
+                    renderItem={(r) => (
+                      <>
                         <div className="text-gray-900">{r.name}</div>
                         <div className="text-xs text-gray-400">
                           {r.part_categories?.name || "-"} · {r.unit || "件"}
                         </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {nameQuery.trim() && !nameSearching && nameResults.length === 0 && (
-                  <p className="text-xs text-gray-400">未找到匹配的配件名称</p>
-                )}
+                      </>
+                    )}
+                  />
+                </div>
 
                 {/* 待替换的名称 */}
                 {pendingName && (
@@ -809,7 +781,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
             <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100 flex-shrink-0">
               <button
                 type="button"
-                onClick={() => { setShowModal(false); setNameResults([]); setPendingName(null); setSelectedRealPart(null); }}
+                onClick={() => { setShowModal(false); setPendingName(null); setSelectedRealPart(null); }}
                 disabled={saving}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
               >

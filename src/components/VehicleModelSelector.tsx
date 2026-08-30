@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { 车型库行含轮胎 } from "@/lib/vehicleModelFields";
+import { 车型库展示字段, type 车型库行含轮胎 } from "@/lib/vehicleModelFields";
 
 export interface LinkedItem {
   id: string;
@@ -60,6 +60,75 @@ const VM_MODAL_COLUMNS: { key: string; label: string; type: "int" | "text"; minW
   { key: "厂商", label: "厂商", type: "text", minWidth: 60 },
 ];
 
+/* 弹窗表格的 select 字段：展示字段 + 轮胎规格 */
+const VM_MODAL_SELECT = `${车型库展示字段}, 前轮胎规格, 后轮胎规格`;
+
+/* Supabase 查询构造器的最小约束：eq/ilike/not/in 均返回自身，可链式调用 */
+interface 可筛选查询<T> {
+  eq(column: string, value: number): T;
+  ilike(column: string, pattern: string): T;
+  not(column: string, operator: string, value: string): T;
+  in(column: string, values: number[]): T;
+}
+
+/* 把筛选条件和弹窗模式应用到车型查询上。
+ * 文本列模糊匹配、整数列精确匹配；
+ * 添加模式排除已选车型，编辑/删除模式只查已选车型；
+ * 编辑/删除模式且无已选车型时结果必为空，返回 null 让调用方直接走空结果分支。 */
+function 构建车型弹窗查询<T extends 可筛选查询<T>>(
+  query: T,
+  filters: Record<string, string>,
+  mode: "add" | "edit" | "delete",
+  selectedIds: string[]
+): T | null {
+  Object.entries(filters).forEach(([col, val]) => {
+    const trimmed = val.trim();
+    if (!trimmed) return;
+    const colDef = VM_MODAL_COLUMNS.find((c) => c.key === col);
+    if (colDef?.type === "int") {
+      const num = parseInt(trimmed, 10);
+      if (!isNaN(num)) query = query.eq(col, num);
+    } else {
+      query = query.ilike(col, `%${trimmed}%`);
+    }
+  });
+  const numericIds = selectedIds.map((id) => Number(id)).filter((n) => !isNaN(n));
+  if (mode === "add") {
+    if (numericIds.length > 0) query = query.not("id", "in", `(${numericIds.join(",")})`);
+  } else {
+    if (numericIds.length === 0) return null;
+    query = query.in("id", numericIds);
+  }
+  return query;
+}
+
+/* vehicle_models 行 → LinkedItem（轮胎列未查询时为空字符串，展示层按 falsy 处理） */
+function 车型行转LinkedItem(v: 车型库行含轮胎): LinkedItem {
+  return {
+    id: String(v.id),
+    name: `${v.品牌 || ""} ${v.车系 || ""} ${v.车型 || ""}`.trim(),
+    manufacturer: v.厂商 || "",
+    brand: v.品牌 || "",
+    series: v.车系 || "",
+    model_name: v.车型 || "",
+    sales_version: v.销售版本 || "",
+    year_start: v.年款 ?? undefined,
+    year_end: v.年款 ?? undefined,
+    displacement: v.排量 || "",
+    engine: v.发动机型号 || "",
+    fuel_type: v.燃油类型 || "",
+    intake_form: v.进气形式 || "",
+    transmission_type: v.变速箱类型 || "",
+    transmission_code: v.变速箱代号 || "",
+    chassis_code: v.底盘代号 || "",
+    drive_type: v.驱动方式 || "",
+    body_type: v.车身类型 || "",
+    emission_standard: v.排放标准 || "",
+    front_tire: v.前轮胎规格 || "",
+    rear_tire: v.后轮胎规格 || "",
+  };
+}
+
 export default function VehicleModelSelector({ value, onChange, onSyncVin }: VehicleModelSelectorProps) {
   const supabase = createClient();
 
@@ -82,31 +151,18 @@ export default function VehicleModelSelector({ value, onChange, onSyncVin }: Veh
     let cancelled = false;
     setVmModalLoading(true);
     (async () => {
-      const selectedIds = value.map((v) => v.id);
-      let query = supabase
+      const baseQuery = supabase
         .from("vehicle_models")
-        .select(
-          "id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准, 前轮胎规格, 后轮胎规格",
-          { count: "exact" }
-        )
+        .select(VM_MODAL_SELECT, { count: "exact" })
         .order("id", { ascending: true });
-      Object.entries(vmModalFilters).forEach(([col, val]) => {
-        const trimmed = val.trim();
-        if (!trimmed) return;
-        const colDef = VM_MODAL_COLUMNS.find((c) => c.key === col);
-        if (colDef?.type === "int") {
-          const num = parseInt(trimmed, 10);
-          if (!isNaN(num)) query = query.eq(col, num);
-        } else {
-          query = query.ilike(col, `%${trimmed}%`);
-        }
-      });
-      const numericIds = selectedIds.map((id) => Number(id)).filter((n) => !isNaN(n));
-      if (vmModalMode === "add" && numericIds.length > 0) {
-        query = query.not("id", "in", `(${numericIds.join(",")})`);
-      } else if ((vmModalMode === "edit" || vmModalMode === "delete") && numericIds.length > 0) {
-        query = query.in("id", numericIds);
-      } else if ((vmModalMode === "edit" || vmModalMode === "delete") && numericIds.length === 0) {
+      const scopedQuery = 构建车型弹窗查询(
+        baseQuery,
+        vmModalFilters,
+        vmModalMode,
+        value.map((v) => v.id)
+      );
+      if (!scopedQuery) {
+        /* 编辑/删除模式但没有已选车型，结果必为空 */
         setVmModalList([]);
         setVmModalTotal(0);
         setVmModalLoading(false);
@@ -114,32 +170,10 @@ export default function VehicleModelSelector({ value, onChange, onSyncVin }: Veh
       }
       const from = (vmModalPage - 1) * VM_MODAL_PAGE_SIZE;
       const to = from + VM_MODAL_PAGE_SIZE - 1;
-      const { data, count } = await query.range(from, to);
+      const { data, count } = await scopedQuery.range(from, to);
       if (cancelled) return;
 
-      const mapped: LinkedItem[] = ((data || []) as unknown as 车型库行含轮胎[]).map((v) => ({
-        id: String(v.id),
-        name: `${v.品牌 || ""} ${v.车系 || ""} ${v.车型 || ""}`.trim(),
-        manufacturer: v.厂商 || "",
-        brand: v.品牌 || "",
-        series: v.车系 || "",
-        model_name: v.车型 || "",
-        sales_version: v.销售版本 || "",
-        year_start: v.年款 ?? undefined,
-        year_end: v.年款 ?? undefined,
-        displacement: v.排量 || "",
-        engine: v.发动机型号 || "",
-        fuel_type: v.燃油类型 || "",
-        intake_form: v.进气形式 || "",
-        transmission_type: v.变速箱类型 || "",
-        transmission_code: v.变速箱代号 || "",
-        chassis_code: v.底盘代号 || "",
-        drive_type: v.驱动方式 || "",
-        body_type: v.车身类型 || "",
-        emission_standard: v.排放标准 || "",
-        front_tire: v.前轮胎规格 || "",
-        rear_tire: v.后轮胎规格 || "",
-      }));
+      const mapped: LinkedItem[] = ((data || []) as unknown as 车型库行含轮胎[]).map(车型行转LinkedItem);
       setVmModalList(mapped);
       setVmModalTotal(count || 0);
       setVmModalLoading(false);
@@ -183,57 +217,24 @@ export default function VehicleModelSelector({ value, onChange, onSyncVin }: Veh
 
   async function selectAllMatchingVmModels() {
     setVmModalSelectAllLoading(true);
-    const numericIds = value.map((v) => Number(v.id)).filter((n) => !isNaN(n));
-    let query = supabase
+    const baseQuery = supabase
       .from("vehicle_models")
-      .select(
-        "id, 厂商, 品牌, 车系, 车型, 销售版本, 年款, 排量, 发动机型号, 燃油类型, 进气形式, 变速箱类型, 变速箱代号, 底盘代号, 驱动方式, 车身类型, 排放标准"
-      )
+      .select(车型库展示字段)
       .order("id", { ascending: true });
-    Object.entries(vmModalFilters).forEach(([col, val]) => {
-      const trimmed = val.trim();
-      if (!trimmed) return;
-      const colDef = VM_MODAL_COLUMNS.find((c) => c.key === col);
-      if (colDef?.type === "int") {
-        const num = parseInt(trimmed, 10);
-        if (!isNaN(num)) query = query.eq(col, num);
-      } else {
-        query = query.ilike(col, `%${trimmed}%`);
-      }
-    });
-    if (vmModalMode === "add" && numericIds.length > 0) {
-      query = query.not("id", "in", `(${numericIds.join(",")})`);
-    } else if ((vmModalMode === "edit" || vmModalMode === "delete") && numericIds.length > 0) {
-      query = query.in("id", numericIds);
-    } else if ((vmModalMode === "edit" || vmModalMode === "delete") && numericIds.length === 0) {
+    const scopedQuery = 构建车型弹窗查询(
+      baseQuery,
+      vmModalFilters,
+      vmModalMode,
+      value.map((v) => v.id)
+    );
+    if (!scopedQuery) {
       setVmModalSelectAllLoading(false);
       return;
     }
-    query = query.limit(500);
-    const { data } = await query;
+    const { data } = await scopedQuery.limit(500);
     setVmModalSelectAllLoading(false);
     if (!data) return;
-    const mapped: LinkedItem[] = (data as unknown as 车型库行含轮胎[]).map((v) => ({
-      id: String(v.id),
-      name: `${v.品牌 || ""} ${v.车系 || ""} ${v.车型 || ""}`.trim(),
-      manufacturer: v.厂商 || "",
-      brand: v.品牌 || "",
-      series: v.车系 || "",
-      model_name: v.车型 || "",
-      sales_version: v.销售版本 || "",
-      year_start: v.年款 ?? undefined,
-      year_end: v.年款 ?? undefined,
-      displacement: v.排量 || "",
-      engine: v.发动机型号 || "",
-      fuel_type: v.燃油类型 || "",
-      intake_form: v.进气形式 || "",
-      transmission_type: v.变速箱类型 || "",
-      transmission_code: v.变速箱代号 || "",
-      chassis_code: v.底盘代号 || "",
-      drive_type: v.驱动方式 || "",
-      body_type: v.车身类型 || "",
-      emission_standard: v.排放标准 || "",
-    }));
+    const mapped: LinkedItem[] = (data as unknown as 车型库行含轮胎[]).map(车型行转LinkedItem);
     setVmModalSelected((prev) => {
       const next = new Map(prev);
       mapped.forEach((v) => next.set(v.id, v));
@@ -243,29 +244,18 @@ export default function VehicleModelSelector({ value, onChange, onSyncVin }: Veh
 
   async function deselectAllMatchingVmModels() {
     setVmModalSelectAllLoading(true);
-    const numericIds = value.map((v) => Number(v.id)).filter((n) => !isNaN(n));
-    let query = supabase.from("vehicle_models").select("id").order("id", { ascending: true });
-    Object.entries(vmModalFilters).forEach(([col, val]) => {
-      const trimmed = val.trim();
-      if (!trimmed) return;
-      const colDef = VM_MODAL_COLUMNS.find((c) => c.key === col);
-      if (colDef?.type === "int") {
-        const num = parseInt(trimmed, 10);
-        if (!isNaN(num)) query = query.eq(col, num);
-      } else {
-        query = query.ilike(col, `%${trimmed}%`);
-      }
-    });
-    if (vmModalMode === "add" && numericIds.length > 0) {
-      query = query.not("id", "in", `(${numericIds.join(",")})`);
-    } else if ((vmModalMode === "edit" || vmModalMode === "delete") && numericIds.length > 0) {
-      query = query.in("id", numericIds);
-    } else if ((vmModalMode === "edit" || vmModalMode === "delete") && numericIds.length === 0) {
+    const baseQuery = supabase.from("vehicle_models").select("id").order("id", { ascending: true });
+    const scopedQuery = 构建车型弹窗查询(
+      baseQuery,
+      vmModalFilters,
+      vmModalMode,
+      value.map((v) => v.id)
+    );
+    if (!scopedQuery) {
       setVmModalSelectAllLoading(false);
       return;
     }
-    query = query.limit(500);
-    const { data } = await query;
+    const { data } = await scopedQuery.limit(500);
     setVmModalSelectAllLoading(false);
     if (!data) return;
     const idsToRemove = new Set(data.map((v: { id: number | string }) => String(v.id)));

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
+import { SearchDropdown } from "@/components/SearchDropdown";
 import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
 import { 新建品牌并关联 } from "./actions";
@@ -42,9 +43,6 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
 
   const [name, setName] = useState("");
   const [pnQuery, setPnQuery] = useState("");
-  const debouncedPnQuery = useDebounce(pnQuery, 300);
-  const [pnResults, setPnResults] = useState<PartName[]>([]);
-  const [pnSearching, setPnSearching] = useState(false);
   const [linkedNames, setLinkedNames] = useState<{ id: string; name: string; category_name?: string | null }[]>([]);
 
   async function loadBrands(search?: string) {
@@ -68,24 +66,16 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
     loadBrands(debouncedQuery);
   }, [debouncedQuery]);
 
-  useEffect(() => {
-    if (!debouncedPnQuery.trim()) {
-      setPnResults([]);
-      return;
-    }
-    async function 搜索配件名称() {
-      setPnSearching(true);
-      const { data } = await supabase
-        .from("part_names")
-        .select("id, name, part_categories(name)")
-        .or(`name.ilike.%${清理搜索词(debouncedPnQuery)}%,search_keywords.ilike.%${清理搜索词(debouncedPnQuery)}%`)
-        .order("name")
-        .limit(10);
-      setPnResults((data || []) as unknown as PartName[]);
-      setPnSearching(false);
-    }
-    搜索配件名称();
-  }, [debouncedPnQuery, supabase]);
+  /* 配件名称联想查询（查询条件与原防抖块一致，仅换成 SearchDropdown 的 searchFn） */
+  async function 搜索配件名称(q: string): Promise<PartName[]> {
+    const { data } = await supabase
+      .from("part_names")
+      .select("id, name, part_categories(name)")
+      .or(`name.ilike.%${清理搜索词(q)}%,search_keywords.ilike.%${清理搜索词(q)}%`)
+      .order("name")
+      .limit(10);
+    return (data || []) as unknown as PartName[];
+  }
 
   function handleStartCreate() {
     setName(query.trim());
@@ -103,7 +93,6 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
       },
     ]);
     setPnQuery("");
-    setPnResults([]);
   }
 
   function removeLinkedName(id: string) {
@@ -134,7 +123,6 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
     setName("");
     setLinkedNames([]);
     setPnQuery("");
-    setPnResults([]);
     loadBrands("");
     setSaving(false);
   }
@@ -230,33 +218,20 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
 
             <div className="mt-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">关联配件名称（可选，可关联多个）</label>
-              <div className="relative">
-                <input
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="搜索配件名称并添加..."
-                  value={pnQuery}
-                  onChange={(e) => setPnQuery(e.target.value)}
-                />
-                {pnSearching && (
-                  <div className="text-xs text-gray-400 mt-1">搜索中...</div>
-                )}
-                {pnResults.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                    {pnResults.map((pn) => (
-                      <button
-                        key={pn.id}
-                        type="button"
-                        onClick={() => addLinkedName(pn)}
-                        disabled={linkedNames.some((n) => n.id === pn.id)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-gray-50 disabled:opacity-40 border-b border-gray-100 last:border-0"
-                      >
-                        <div className="text-sm text-gray-900">{pn.name}</div>
-                        <div className="text-xs text-gray-400">{pn.part_categories?.name || "-"}</div>
-                      </button>
-                    ))}
+              <SearchDropdown<PartName>
+                value={pnQuery}
+                onQueryChange={setPnQuery}
+                searchFn={搜索配件名称}
+                getKey={(pn) => pn.id}
+                onSelect={addLinkedName}
+                placeholder="搜索配件名称并添加..."
+                renderItem={(pn) => (
+                  <div className={linkedNames.some((n) => n.id === pn.id) ? "opacity-40" : ""}>
+                    <div className="text-sm text-gray-900">{pn.name}</div>
+                    <div className="text-xs text-gray-400">{pn.part_categories?.name || "-"}</div>
                   </div>
                 )}
-              </div>
+              />
 
               {linkedNames.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -285,7 +260,6 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
                   setShowForm(false);
                   setLinkedNames([]);
                   setPnQuery("");
-                  setPnResults([]);
                 }}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
               >

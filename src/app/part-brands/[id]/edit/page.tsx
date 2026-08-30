@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 更新配件品牌 } from "../../actions";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
-import { useDebounce } from "@/lib/useDebounce";
+import { SearchDropdown } from "@/components/SearchDropdown";
 
 interface PartNameResult {
   id: string;
@@ -40,9 +40,6 @@ export default function EditPartBrandPage() {
   const [name, setName] = useState("");
 
   const [pnQuery, setPnQuery] = useState("");
-  const debouncedPnQuery = useDebounce(pnQuery, 300);
-  const [pnResults, setPnResults] = useState<PartNameResult[]>([]);
-  const [pnSearching, setPnSearching] = useState(false);
   const [linkedNames, setLinkedNames] = useState<LinkedName[]>([]);
 
   useEffect(() => {
@@ -74,24 +71,16 @@ export default function EditPartBrandPage() {
     load();
   }, [id, supabase, router]);
 
-  useEffect(() => {
-    if (!debouncedPnQuery.trim()) {
-      setPnResults([]);
-      return;
-    }
-    async function 搜索配件名称() {
-      setPnSearching(true);
-      const { data } = await supabase
-        .from("part_names")
-        .select("id, name, part_categories(name)")
-        .or(`name.ilike.%${清理搜索词(debouncedPnQuery)}%,search_keywords.ilike.%${清理搜索词(debouncedPnQuery)}%`)
-        .order("name")
-        .limit(10);
-      setPnResults((data || []) as unknown as PartNameResult[]);
-      setPnSearching(false);
-    }
-    搜索配件名称();
-  }, [debouncedPnQuery, supabase]);
+  /* 配件名称联想查询（查询条件与原防抖块一致，仅换成 SearchDropdown 的 searchFn） */
+  async function 搜索配件名称(q: string): Promise<PartNameResult[]> {
+    const { data } = await supabase
+      .from("part_names")
+      .select("id, name, part_categories(name)")
+      .or(`name.ilike.%${清理搜索词(q)}%,search_keywords.ilike.%${清理搜索词(q)}%`)
+      .order("name")
+      .limit(10);
+    return (data || []) as unknown as PartNameResult[];
+  }
 
   function addLinkedName(pn: PartNameResult) {
     if (linkedNames.some((n) => n.id === pn.id)) return;
@@ -100,7 +89,6 @@ export default function EditPartBrandPage() {
       { id: pn.id, name: pn.name, category_name: pn.part_categories?.name },
     ]);
     setPnQuery("");
-    setPnResults([]);
   }
 
   function removeLinkedName(id: string) {
@@ -156,31 +144,20 @@ export default function EditPartBrandPage() {
 
         <div className="mt-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">关联配件名称（可选，可关联多个）</label>
-          <div className="relative">
-            <input
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="搜索配件名称并添加..."
-              value={pnQuery}
-              onChange={(e) => setPnQuery(e.target.value)}
-            />
-            {pnSearching && <div className="text-xs text-gray-400 mt-1">搜索中...</div>}
-            {pnResults.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                {pnResults.map((pn) => (
-                  <button
-                    key={pn.id}
-                    type="button"
-                    onClick={() => addLinkedName(pn)}
-                    disabled={linkedNames.some((n) => n.id === pn.id)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-gray-50 disabled:opacity-40 border-b border-gray-100 last:border-0"
-                  >
-                    <div className="text-sm text-gray-900">{pn.name}</div>
-                    <div className="text-xs text-gray-400">{pn.part_categories?.name || "-"}</div>
-                  </button>
-                ))}
+          <SearchDropdown<PartNameResult>
+            value={pnQuery}
+            onQueryChange={setPnQuery}
+            searchFn={搜索配件名称}
+            getKey={(pn) => pn.id}
+            onSelect={addLinkedName}
+            placeholder="搜索配件名称并添加..."
+            renderItem={(pn) => (
+              <div className={linkedNames.some((n) => n.id === pn.id) ? "opacity-40" : ""}>
+                <div className="text-sm text-gray-900">{pn.name}</div>
+                <div className="text-xs text-gray-400">{pn.part_categories?.name || "-"}</div>
               </div>
             )}
-          </div>
+          />
 
           {linkedNames.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">

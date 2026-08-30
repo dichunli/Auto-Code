@@ -16,6 +16,19 @@ interface Props<T> {
   debounceMs?: number;
   emptyText?: string;
   emptyRender?: React.ReactNode;
+  /* 已选值的外部受控（2026-08-29 待办#11 收敛需要）：
+   * 传了 value 后输入框内容完全由外部控制（选中后外部应把值设为已选项的展示文本）；
+   * 不传则组件内部自管（纯搜索选择器用法，选中后清空） */
+  value?: string;
+  onQueryChange?: (q: string) => void;
+  /* 有已选值时显示清除按钮（点清除回调 onClear，由外部清空 value） */
+  showClear?: boolean;
+  onClear?: () => void;
+  /* 有已选值时点击/聚焦输入框也显示下拉列表（配合 value 受控） */
+  openOnFocusWithValue?: boolean;
+  disabled?: boolean;
+  /* 输入框右侧附加内容（如"新建"按钮） */
+  suffix?: React.ReactNode;
 }
 
 export function SearchDropdown<T>({
@@ -31,8 +44,23 @@ export function SearchDropdown<T>({
   debounceMs = 300,
   emptyText = "未找到匹配结果",
   emptyRender,
+  value,
+  onQueryChange,
+  showClear = false,
+  onClear,
+  openOnFocusWithValue = false,
+  disabled = false,
+  suffix,
 }: Props<T>) {
-  const [query, setQuery] = useState("");
+  /* 受控/非受控双模式：传了 value 就用外部值，否则内部自管 */
+  const 受控 = value !== undefined;
+  const [内部query, set内部query] = useState("");
+  const query = 受控 ? value : 内部query;
+  const setQuery = (v: string) => {
+    if (受控) onQueryChange?.(v);
+    else set内部query(v);
+  };
+
   const [results, setResults] = useState<T[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -125,23 +153,51 @@ export function SearchDropdown<T>({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
+  /* 有已选值（受控且有内容）时聚焦也展开下拉（品牌搜索框修复的既有交互，收敛保留） */
+  function handleFocus() {
+    if (results.length > 0) {
+      setOpen(true);
+      return;
+    }
+    if (openOnFocusWithValue && query.trim()) {
+      doSearch(query);
+    }
+  }
 
   return (
     <div ref={wrapperRef} className={`relative ${className}`}>
-      <input
-        type="text"
-        placeholder={placeholder}
-        className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputClassName}`}
-        value={query}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        onFocus={() => {
-          if (results.length > 0) setOpen(true);
-        }}
-      />
-      {loading && (
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">搜索中...</span>
-      )}
+      <div className="relative flex items-center">
+        <input
+          type="text"
+          placeholder={placeholder}
+          disabled={disabled}
+          className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:bg-gray-50 ${showClear || suffix ? "pr-8" : ""} ${inputClassName}`}
+          value={query}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onFocus={handleFocus}
+        />
+        {loading && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">搜索中...</span>
+        )}
+        {/* 清除按钮：有内容且开启时显示 */}
+        {showClear && !loading && query.trim() && (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+              setResults([]);
+              setOpen(false);
+              onClear?.();
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xs"
+            title="清除"
+          >
+            ✕
+          </button>
+        )}
+        {suffix && <div className="absolute right-2 top-1/2 -translate-y-1/2">{suffix}</div>}
+      </div>
 
       {open && (
         <div

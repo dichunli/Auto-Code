@@ -6,8 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { 保存供应商档案 } from "@/app/suppliers/actions";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
-import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
+import { SearchDropdown } from "@/components/SearchDropdown";
 import { QRCodeSVG } from "qrcode.react";
 
 interface Contact {
@@ -17,6 +17,20 @@ interface Contact {
   title: string;
   is_primary: boolean;
   notes: string;
+}
+
+/* 关联搜索的通用行结构 */
+interface 关联项 {
+  id: string;
+  name: string;
+}
+
+/* 车型搜索结果（vehicle_models 字段为中文列名） */
+interface 车型搜索项 {
+  id: number;
+  厂商?: string | null;
+  品牌?: string | null;
+  车系?: string | null;
 }
 
 interface Props {
@@ -53,22 +67,12 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
   const [linkedBrands, setLinkedBrands] = useState<{ id: string; name: string }[]>([]);
 
   const [catQuery, setCatQuery] = useState("");
-  const [catResults, setCatResults] = useState<{ id: string; name: string }[]>([]);
   const [pnQuery, setPnQuery] = useState("");
-  const [pnResults, setPnResults] = useState<{ id: string; name: string }[]>([]);
   const [brandQuery, setBrandQuery] = useState("");
-  const [brandResults, setBrandResults] = useState<{ id: string; name: string }[]>([]);
 
   // 车辆关联
   const [linkedVehicles, setLinkedVehicles] = useState<{ id: number; name: string }[]>([]);
   const [vehicleQuery, setVehicleQuery] = useState("");
-  const [vehicleResults, setVehicleResults] = useState<{ id: number; 厂商?: string | null; 品牌?: string | null; 车系?: string | null }[]>([]);
-
-  /* 各搜索框防抖 */
-  const debouncedCatQuery = useDebounce(catQuery, 300);
-  const debouncedPnQuery = useDebounce(pnQuery, 300);
-  const debouncedBrandQuery = useDebounce(brandQuery, 300);
-  const debouncedVehicleQuery = useDebounce(vehicleQuery, 300);
 
   // 加载编辑数据
   useEffect(() => {
@@ -142,57 +146,39 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
     load();
   }, [editMode, supplierId, supabase]);
 
-  // 搜索分类
-  useEffect(() => {
-    const q = debouncedCatQuery.trim();
-    if (!q) { setCatResults([]); return; }
-    async function 搜索分类() {
-      const { data } = await supabase.from("part_categories").select("id, name").ilike("name", `%${q}%`).limit(10);
-      setCatResults(data || []);
-    }
-    搜索分类();
-  }, [debouncedCatQuery, supabase]);
+  // 搜索分类（查询条件与原防抖块一致，仅换成 SearchDropdown 的 searchFn）
+  async function 搜索分类(q: string): Promise<关联项[]> {
+    const { data } = await supabase.from("part_categories").select("id, name").ilike("name", `%${q}%`).limit(10);
+    return data || [];
+  }
 
   // 搜索配件名称（支持名称和搜索关键词）
-  useEffect(() => {
-    if (!debouncedPnQuery.trim()) { setPnResults([]); return; }
-    async function 搜索配件名称() {
-      const q = 清理搜索词(debouncedPnQuery);
-      const { data } = await supabase
-        .from("part_names")
-        .select("id, name")
-        .or(`name.ilike.%${q}%,search_keywords.ilike.%${q}%`)
-        .limit(10);
-      setPnResults(data || []);
-    }
-    搜索配件名称();
-  }, [debouncedPnQuery, supabase]);
+  async function 搜索配件名称(q: string): Promise<关联项[]> {
+    const s = 清理搜索词(q);
+    const { data } = await supabase
+      .from("part_names")
+      .select("id, name")
+      .or(`name.ilike.%${s}%,search_keywords.ilike.%${s}%`)
+      .limit(10);
+    return data || [];
+  }
 
   // 搜索品牌
-  useEffect(() => {
-    const q = debouncedBrandQuery.trim();
-    if (!q) { setBrandResults([]); return; }
-    async function 搜索品牌() {
-      const { data } = await supabase.from("part_brands").select("id, name").ilike("name", `%${q}%`).limit(10);
-      setBrandResults(data || []);
-    }
-    搜索品牌();
-  }, [debouncedBrandQuery, supabase]);
+  async function 搜索品牌(q: string): Promise<关联项[]> {
+    const { data } = await supabase.from("part_brands").select("id, name").ilike("name", `%${q}%`).limit(10);
+    return data || [];
+  }
 
   // 搜索车型
-  useEffect(() => {
-    if (!debouncedVehicleQuery.trim()) { setVehicleResults([]); return; }
-    async function 搜索车型() {
-      const q = 清理搜索词(debouncedVehicleQuery);
-      const { data } = await supabase
-        .from("vehicle_models")
-        .select("id,厂商,品牌,车系")
-        .or(`厂商.ilike.%${q}%,品牌.ilike.%${q}%,车系.ilike.%${q}%`)
-        .limit(15);
-      setVehicleResults((data || []) as unknown as { id: number; 厂商?: string | null; 品牌?: string | null; 车系?: string | null }[]);
-    }
-    搜索车型();
-  }, [debouncedVehicleQuery, supabase]);
+  async function 搜索车型(q: string): Promise<车型搜索项[]> {
+    const s = 清理搜索词(q);
+    const { data } = await supabase
+      .from("vehicle_models")
+      .select("id,厂商,品牌,车系")
+      .or(`厂商.ilike.%${s}%,品牌.ilike.%${s}%,车系.ilike.%${s}%`)
+      .limit(15);
+    return (data || []) as unknown as 车型搜索项[];
+  }
 
   function addContact() {
     setContacts((prev) => [...prev, { name: "", phone: "", title: "", is_primary: false, notes: "" }]);
@@ -217,7 +203,6 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
     if (linkedCategories.some((x) => x.id === c.id)) return;
     setLinkedCategories((prev) => [...prev, c]);
     setCatQuery("");
-    setCatResults([]);
   }
 
   function removeCategory(id: string) {
@@ -228,7 +213,6 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
     if (linkedPartNames.some((x) => x.id === p.id)) return;
     setLinkedPartNames((prev) => [...prev, p]);
     setPnQuery("");
-    setPnResults([]);
   }
 
   function removePartName(id: string) {
@@ -239,24 +223,22 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
     if (linkedBrands.some((x) => x.id === b.id)) return;
     setLinkedBrands((prev) => [...prev, b]);
     setBrandQuery("");
-    setBrandResults([]);
   }
 
   function removeBrand(id: string) {
     setLinkedBrands((prev) => prev.filter((x) => x.id !== id));
   }
 
-  function formatVehicleName(vm: { id: number; 厂商?: string | null; 品牌?: string | null; 车系?: string | null }): string {
+  function formatVehicleName(vm: 车型搜索项): string {
     const parts = [vm.厂商, vm.品牌, vm.车系].filter(Boolean);
     return parts.join(" ") || `车型ID:${vm.id}`;
   }
 
-  function addVehicle(vm: { id: number; 厂商?: string | null; 品牌?: string | null; 车系?: string | null }) {
+  function addVehicle(vm: 车型搜索项) {
     const id = Number(vm.id);
     if (linkedVehicles.some((x) => x.id === id)) return;
     setLinkedVehicles((prev) => [...prev, { id, name: formatVehicleName(vm) }]);
     setVehicleQuery("");
-    setVehicleResults([]);
   }
 
   function removeVehicle(id: number) {
@@ -444,15 +426,16 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
         {/* 关联配件分类 */}
         <div className="border-t border-gray-100 pt-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">关联配件分类</h3>
-          <div className="relative mb-2">
-            <input type="text" placeholder="搜索分类..." className="w-full max-w-sm px-3 py-2 border border-gray-300 rounded-lg text-sm" value={catQuery} onChange={(e) => setCatQuery(e.target.value)} />
-            {catResults.length > 0 && (
-              <div className="absolute z-10 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                {catResults.map((c) => (
-                  <button key={c.id} type="button" onClick={() => addCategory(c)} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0">{c.name}</button>
-                ))}
-              </div>
-            )}
+          <div className="mb-2 max-w-sm">
+            <SearchDropdown<关联项>
+              value={catQuery}
+              onQueryChange={setCatQuery}
+              searchFn={搜索分类}
+              getKey={(c) => c.id}
+              onSelect={addCategory}
+              placeholder="搜索分类..."
+              renderItem={(c) => <span className="text-sm text-gray-900">{c.name}</span>}
+            />
           </div>
           <div className="flex flex-wrap gap-2">
             {linkedCategories.map((c) => (
@@ -467,15 +450,16 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
         {/* 关联配件名称 */}
         <div className="border-t border-gray-100 pt-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">关联配件名称</h3>
-          <div className="relative mb-2">
-            <input type="text" placeholder="搜索配件名称..." className="w-full max-w-sm px-3 py-2 border border-gray-300 rounded-lg text-sm" value={pnQuery} onChange={(e) => setPnQuery(e.target.value)} />
-            {pnResults.length > 0 && (
-              <div className="absolute z-10 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                {pnResults.map((p) => (
-                  <button key={p.id} type="button" onClick={() => addPartName(p)} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0">{p.name}</button>
-                ))}
-              </div>
-            )}
+          <div className="mb-2 max-w-sm">
+            <SearchDropdown<关联项>
+              value={pnQuery}
+              onQueryChange={setPnQuery}
+              searchFn={搜索配件名称}
+              getKey={(p) => p.id}
+              onSelect={addPartName}
+              placeholder="搜索配件名称..."
+              renderItem={(p) => <span className="text-sm text-gray-900">{p.name}</span>}
+            />
           </div>
           <div className="flex flex-wrap gap-2">
             {linkedPartNames.map((p) => (
@@ -490,15 +474,16 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
         {/* 关联配件品牌 */}
         <div className="border-t border-gray-100 pt-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">关联配件品牌</h3>
-          <div className="relative mb-2">
-            <input type="text" placeholder="搜索品牌..." className="w-full max-w-sm px-3 py-2 border border-gray-300 rounded-lg text-sm" value={brandQuery} onChange={(e) => setBrandQuery(e.target.value)} />
-            {brandResults.length > 0 && (
-              <div className="absolute z-10 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                {brandResults.map((b) => (
-                  <button key={b.id} type="button" onClick={() => addBrand(b)} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0">{b.name}</button>
-                ))}
-              </div>
-            )}
+          <div className="mb-2 max-w-sm">
+            <SearchDropdown<关联项>
+              value={brandQuery}
+              onQueryChange={setBrandQuery}
+              searchFn={搜索品牌}
+              getKey={(b) => b.id}
+              onSelect={addBrand}
+              placeholder="搜索品牌..."
+              renderItem={(b) => <span className="text-sm text-gray-900">{b.name}</span>}
+            />
           </div>
           <div className="flex flex-wrap gap-2">
             {linkedBrands.map((b) => (
@@ -513,15 +498,16 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
         {/* 关联车型 */}
         <div className="border-t border-gray-100 pt-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">关联车型</h3>
-          <div className="relative mb-2">
-            <input type="text" placeholder="搜索厂商、品牌、车系..." className="w-full max-w-sm px-3 py-2 border border-gray-300 rounded-lg text-sm" value={vehicleQuery} onChange={(e) => setVehicleQuery(e.target.value)} />
-            {vehicleResults.length > 0 && (
-              <div className="absolute z-10 mt-1 w-96 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                {vehicleResults.map((vm) => (
-                  <button key={vm.id} type="button" onClick={() => addVehicle(vm)} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0">{formatVehicleName(vm)}</button>
-                ))}
-              </div>
-            )}
+          <div className="mb-2 max-w-sm">
+            <SearchDropdown<车型搜索项>
+              value={vehicleQuery}
+              onQueryChange={setVehicleQuery}
+              searchFn={搜索车型}
+              getKey={(vm) => String(vm.id)}
+              onSelect={addVehicle}
+              placeholder="搜索厂商、品牌、车系..."
+              renderItem={(vm) => <span className="text-sm text-gray-900">{formatVehicleName(vm)}</span>}
+            />
           </div>
           <div className="flex flex-wrap gap-2">
             {linkedVehicles.map((v) => (
