@@ -19,6 +19,11 @@ const eslintConfig = defineConfig([
         varsIgnorePattern: "^_",
         caughtErrorsIgnorePattern: "^_",
       }],
+      /* ═══ 三条红线显式写死（2026-08-29 待办#15）：原来靠插件 recommended 继承，
+       * 升级依赖可能静默降级为 warn，必须保持 error，禁止降级 ═══ */
+      "@typescript-eslint/no-explicit-any": "error",
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/static-components": "error",
     },
   },
   // Override default ignores of eslint-config-next.

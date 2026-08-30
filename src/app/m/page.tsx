@@ -76,13 +76,7 @@ const MENU_ITEMS: MenuItem[] = [
     desc: "工具台账、扫码借用归还",
     color: "bg-indigo-500",
   },
-  {
-    label: "功能测试",
-    href: "/m/test",
-    permission: "work_order:create",
-    desc: "VIN识别、扫码等功能测试",
-    color: "bg-gray-500",
-  },
+  /* 2026-08-29 待办#15：/m/test 功能测试页链接移出生产导航（页面本身保留，测试时手动输地址） */
 ];
 
 function 是APP环境(userAgent: string): boolean {
