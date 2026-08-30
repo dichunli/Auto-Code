@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { 新建维修项目 } from "../actions";
 import type { 车型库行 } from "@/lib/vehicleModelFields";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { useDebounce } from "@/lib/useDebounce";
 import VehiclePriceModal from "@/components/VehiclePriceModal";
 import VehiclePriceEditModal from "@/components/VehiclePriceEditModal";
 import VehicleDeleteModal from "@/components/VehicleDeleteModal";
@@ -131,6 +132,7 @@ export default function NewServiceItemPage() {
   // 关联配件
   const [linkedParts, setLinkedParts] = useState<LinkedItem[]>([]);
   const [partQuery, setPartQuery] = useState("");
+  const debouncedPartQuery = useDebounce(partQuery, 300);
   const [partResults, setPartResults] = useState<{ id: string; name: string; default_quantity?: number | null }[] | null>(null);
   const [partSearching, setPartSearching] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
@@ -209,34 +211,40 @@ export default function NewServiceItemPage() {
   const [spSelectedCompany, setSpSelectedCompany] = useState<{ id: string; name: string } | null>(null);
   const [spSelectedCustomer, setSpSelectedCustomer] = useState<{ id: string; name: string } | null>(null);
   const [spSelectedVehicle, setSpSelectedVehicle] = useState<{ id: string; info: string } | null>(null);
+  /* 指定价格搜索框防抖 */
+  const debouncedSpCompanyQuery = useDebounce(spCompanyQuery, 300);
+  const debouncedSpCustomerQuery = useDebounce(spCustomerQuery, 300);
+  const debouncedSpVehicleQuery = useDebounce(spVehicleQuery, 300);
 
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!spCompanyQuery.trim()) { setSpCompanyResults([]); return; }
-      const { data } = await supabase.from("companies").select("id, name").ilike("name", `%${spCompanyQuery.trim()}%`).limit(10);
+    const q = debouncedSpCompanyQuery.trim();
+    if (!q) { setSpCompanyResults([]); return; }
+    async function 搜索单位() {
+      const { data } = await supabase.from("companies").select("id, name").ilike("name", `%${q}%`).limit(10);
       setSpCompanyResults(data || []);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [spCompanyQuery, supabase]);
+    }
+    搜索单位();
+  }, [debouncedSpCompanyQuery, supabase]);
 
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!spCustomerQuery.trim()) { setSpCustomerResults([]); return; }
-      const { data } = await supabase.from("customers").select("id, name, phone").ilike("name", `%${spCustomerQuery.trim()}%`).limit(10);
+    const q = debouncedSpCustomerQuery.trim();
+    if (!q) { setSpCustomerResults([]); return; }
+    async function 搜索客户() {
+      const { data } = await supabase.from("customers").select("id, name, phone").ilike("name", `%${q}%`).limit(10);
       setSpCustomerResults(data || []);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [spCustomerQuery, supabase]);
+    }
+    搜索客户();
+  }, [debouncedSpCustomerQuery, supabase]);
 
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!spVehicleQuery.trim()) { setSpVehicleResults([]); return; }
-      const q = spVehicleQuery.trim();
+    const q = debouncedSpVehicleQuery.trim();
+    if (!q) { setSpVehicleResults([]); return; }
+    async function 搜索车辆() {
       const { data } = await supabase.from("vehicles").select("id, plate_number, brand, model, customers(name)").ilike("plate_number", `%${q}%`).limit(10);
       setSpVehicleResults((data as { id: string; plate_number: string; brand?: string | null; model?: string | null; customer_id?: string | null; customers?: { name?: string | null } | null }[]) || []);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [spVehicleQuery, supabase]);
+    }
+    搜索车辆();
+  }, [debouncedSpVehicleQuery, supabase]);
 
   function addSpecialPrice() {
     const priceVal = parseFloat(spNewPrice);
@@ -295,9 +303,9 @@ export default function NewServiceItemPage() {
 
   /* ========== 关联配件 ========== */
   useEffect(() => {
-    const t = setTimeout(async () => {
-      const q = 清理搜索词(partQuery);
-      if (!q) { setPartResults(null); setHighlightIndex(-1); return; }
+    const q = 清理搜索词(debouncedPartQuery);
+    if (!q) { setPartResults(null); setHighlightIndex(-1); return; }
+    async function 搜索配件名称() {
       setPartSearching(true);
       const { data } = await supabase
         .from("part_names")
@@ -309,9 +317,9 @@ export default function NewServiceItemPage() {
       setPartResults(results);
       setHighlightIndex(results.length > 0 ? 0 : -1);
       setPartSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [partQuery, supabase, linkedParts]);
+    }
+    搜索配件名称();
+  }, [debouncedPartQuery, supabase, linkedParts]);
 
   function handlePartInputKeyDown(e: React.KeyboardEvent) {
     if (!partResults || partResults.length === 0) return;

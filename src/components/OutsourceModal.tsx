@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 保存外包单, 移除外包明细 } from "@/app/outsource-orders/actions";
 import { useConfirm } from "./ConfirmDialog";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface Supplier {
   id: string;
@@ -69,7 +70,7 @@ export function OutsourceModal({
   const [supplierKeyword, setSupplierKeyword] = useState("");
   const [supplierResults, setSupplierResults] = useState<Supplier[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
-  const supplierTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedSupplierKeyword = useDebounce(supplierKeyword, 300);
 
   // 支付信息（订单级）
   const [isPaid, setIsPaid] = useState(false);
@@ -111,22 +112,28 @@ export function OutsourceModal({
     }
   }, [open, existingOrder, existingItem]);
 
-  // 搜索供应商
-  function handleSupplierSearch(val: string) {
-    setSupplierKeyword(val);
-    if (supplierTimer.current) clearTimeout(supplierTimer.current);
-    supplierTimer.current = setTimeout(async () => {
-      if (!val.trim()) {
-        setSupplierResults([]);
-        return;
-      }
+  // 搜索供应商（防抖）
+  useEffect(() => {
+    const kw = debouncedSupplierKeyword.trim();
+    if (!kw) {
+      setSupplierResults([]);
+      return;
+    }
+    async function 搜索供应商() {
       const { data } = await supabase
         .from("suppliers")
         .select("id, name")
-        .ilike("name", `%${val.trim()}%`)
+        .ilike("name", `%${kw}%`)
         .limit(20);
       setSupplierResults((data || []) as Supplier[]);
-    }, 300);
+    }
+    搜索供应商();
+     
+  }, [debouncedSupplierKeyword]);
+
+  // 搜索供应商输入框变化
+  function handleSupplierSearch(val: string) {
+    setSupplierKeyword(val);
   }
 
   async function handleSubmit() {

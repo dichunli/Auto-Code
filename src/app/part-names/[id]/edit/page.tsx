@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { SearchLinkSection } from "../../SearchLinkSection";
 import { 更新配件名称 } from "../../actions";
 import { 新建配件品牌, 新建配件规格 } from "@/app/inventory/actions";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface LinkedItem {
   id: string;
@@ -85,6 +86,7 @@ export default function EditPartNamePage() {
   const [linkedSpecs, setLinkedSpecs] = useState<LinkedItem[]>([]);
 
   const [brandQuery, setBrandQuery] = useState("");
+  const debouncedBrandQuery = useDebounce(brandQuery, 300);
   interface BrandResult {
     id: string;
     name: string;
@@ -93,6 +95,7 @@ export default function EditPartNamePage() {
   const [brandSearching, setBrandSearching] = useState(false);
 
   const [specQuery, setSpecQuery] = useState("");
+  const debouncedSpecQuery = useDebounce(specQuery, 300);
   interface SpecResult {
     id: string;
     name: string;
@@ -154,27 +157,29 @@ export default function EditPartNamePage() {
 
   useEffect(() => {
     setBrandResults(null);
-    const t = setTimeout(async () => {
-      if (!brandQuery.trim()) return;
+    const q = debouncedBrandQuery.trim();
+    if (!q) return;
+    async function 搜索品牌() {
       setBrandSearching(true);
-      const { data } = await supabase.from("part_brands").select("id, name").ilike("name", `%${brandQuery.trim()}%`).order("name").limit(10);
+      const { data } = await supabase.from("part_brands").select("id, name").ilike("name", `%${q}%`).order("name").limit(10);
       setBrandResults(data || []);
       setBrandSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [brandQuery, supabase]);
+    }
+    搜索品牌();
+  }, [debouncedBrandQuery, supabase]);
 
   useEffect(() => {
     setSpecResults(null);
-    const t = setTimeout(async () => {
-      if (!specQuery.trim()) return;
+    const q = debouncedSpecQuery.trim();
+    if (!q) return;
+    async function 搜索规格() {
       setSpecSearching(true);
-      const { data } = await supabase.from("part_specifications").select("id, name").ilike("name", `%${specQuery.trim()}%`).order("name").limit(10);
+      const { data } = await supabase.from("part_specifications").select("id, name").ilike("name", `%${q}%`).order("name").limit(10);
       setSpecResults(data || []);
       setSpecSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [specQuery, supabase]);
+    }
+    搜索规格();
+  }, [debouncedSpecQuery, supabase]);
 
   function handleCategoryChange(categoryId: string) {
     const cat = categories.find((c) => c.id === categoryId);

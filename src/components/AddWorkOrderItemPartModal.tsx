@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { PartPickerModal } from "./PartPickerModal";
 import { 标记本地结构编辑 } from "@/lib/localEditSignal";
 import { 添加工单配件 } from "@/app/work-orders/parts-actions";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface PartName {
   id: string;
@@ -119,7 +120,7 @@ export function AddWorkOrderItemPartModal({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<PartName[]>([]);
   const [searching, setSearching] = useState(false);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   // 搜索后：先点选一个候选配件名称，填数量，再点"确认添加"才加入（不自动添加）
   const [pickedName, setPickedName] = useState<PartName | null>(null);
   const [pickedQty, setPickedQty] = useState<string>("");
@@ -211,10 +212,13 @@ export function AddWorkOrderItemPartModal({
     [supabase]
   );
 
+  /* 防抖搜索：输入停止 300ms 后执行 */
+  useEffect(() => {
+    doSearch(debouncedSearchQuery);
+  }, [debouncedSearchQuery, doSearch]);
+
   function handleSearchChange(val: string) {
     setSearchQuery(val);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => doSearch(val), 300);
   }
 
   // 切换预置配件的选中状态

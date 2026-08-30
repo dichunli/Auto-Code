@@ -9,6 +9,7 @@ import PartForm, { PartFormDraft } from "@/app/parts/new/PartForm";
 import { useConfirm } from "./ConfirmDialog";
 import { 选中配件分支, 标记采购到货 } from "@/app/work-orders/parts-actions";
 import { 更新配件分支, 按组更新分支目录, 同步分支图片到配件, 配件分支更新 } from "@/app/work-orders/actions";
+import { useDebounce } from "@/lib/useDebounce";
 
 function toFixed2(val: string | number | null | undefined): string {
   if (val === "" || val === null || val === undefined) return "";
@@ -114,6 +115,9 @@ export default function PartBranchEditor({
     quantity: part.quantity != null ? String(part.quantity) : "1",
     document_name: part.document_name || part.parts?.document_name || "",
   });
+
+  /* 编码候选防抖（250ms） */
+  const 防抖编码 = useDebounce(editForm.part_number, 250);
 
   useEffect(() => {
     setLocalSelected(part.is_selected || false);
@@ -281,7 +285,6 @@ export default function PartBranchEditor({
     document_name: string | null; 叶子名: string;
   }
   const [名称不符询问, set名称不符询问] = useState<{ hit: 编码命中; 本组已有具体配件: boolean } | null>(null);
-  const 编码候选Timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 分支行是 overflow-x-auto 容器会裁掉绝对定位下拉，故候选用 fixed 定位逃出容器
   const 编码InputRef = useRef<HTMLInputElement>(null);
   const [编码下拉Pos, set编码下拉Pos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 224 });
@@ -302,10 +305,9 @@ export default function PartBranchEditor({
     };
   }, [显示编码候选, 编码候选]);
   useEffect(() => {
-    if (编码候选Timer.current) clearTimeout(编码候选Timer.current);
-    const kw = editForm.part_number.trim();
+    const kw = 防抖编码.trim();
     if (kw.length < 2) { set编码候选([]); set编码在系统(null); return; }
-    编码候选Timer.current = setTimeout(async () => {
+    async function 查询编码候选() {
       // 模糊候选（下拉用）
       const { data } = await supabase
         .from("parts")
@@ -320,9 +322,9 @@ export default function PartBranchEditor({
         .select("id", { count: "exact", head: true })
         .eq("part_number", kw);
       set编码在系统((count ?? 0) > 0);
-    }, 250);
-    return () => { if (编码候选Timer.current) clearTimeout(编码候选Timer.current); };
-  }, [editForm.part_number, supabase]);
+    }
+    查询编码候选();
+  }, [防抖编码, supabase]);
 
   useEffect(() => {
     if (!part.part_name_id) return;

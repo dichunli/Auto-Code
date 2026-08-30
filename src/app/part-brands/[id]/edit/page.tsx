@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 更新配件品牌 } from "../../actions";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface PartNameResult {
   id: string;
@@ -39,6 +40,7 @@ export default function EditPartBrandPage() {
   const [name, setName] = useState("");
 
   const [pnQuery, setPnQuery] = useState("");
+  const debouncedPnQuery = useDebounce(pnQuery, 300);
   const [pnResults, setPnResults] = useState<PartNameResult[]>([]);
   const [pnSearching, setPnSearching] = useState(false);
   const [linkedNames, setLinkedNames] = useState<LinkedName[]>([]);
@@ -73,23 +75,23 @@ export default function EditPartBrandPage() {
   }, [id, supabase, router]);
 
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!pnQuery.trim()) {
-        setPnResults([]);
-        return;
-      }
+    if (!debouncedPnQuery.trim()) {
+      setPnResults([]);
+      return;
+    }
+    async function 搜索配件名称() {
       setPnSearching(true);
       const { data } = await supabase
         .from("part_names")
         .select("id, name, part_categories(name)")
-        .or(`name.ilike.%${清理搜索词(pnQuery)}%,search_keywords.ilike.%${清理搜索词(pnQuery)}%`)
+        .or(`name.ilike.%${清理搜索词(debouncedPnQuery)}%,search_keywords.ilike.%${清理搜索词(debouncedPnQuery)}%`)
         .order("name")
         .limit(10);
       setPnResults((data || []) as unknown as PartNameResult[]);
       setPnSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [pnQuery, supabase]);
+    }
+    搜索配件名称();
+  }, [debouncedPnQuery, supabase]);
 
   function addLinkedName(pn: PartNameResult) {
     if (linkedNames.some((n) => n.id === pn.id)) return;

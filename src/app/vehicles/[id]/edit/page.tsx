@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { VehicleModelSearch } from "@/components/VehicleModelSearch";
 import { ImageUploader } from "@/components/ImageUploader";
@@ -41,6 +42,7 @@ export default function EditVehiclePage() {
   const [currentCustomerName, setCurrentCustomerName] = useState("");
   const [ownerMode, setOwnerMode] = useState<OwnerMode>("existing");
   const [customerQuery, setCustomerQuery] = useState("");
+  const debouncedCustomerQuery = useDebounce(customerQuery, 300);
   interface CustomerResult {
     id: string;
     name: string;
@@ -54,6 +56,7 @@ export default function EditVehiclePage() {
   const [originalPlateNumber, setOriginalPlateNumber] = useState("");
 
   const [companyQuery, setCompanyQuery] = useState("");
+  const debouncedCompanyQuery = useDebounce(companyQuery, 300);
   interface CompanyResult {
     id: string;
     name: string;
@@ -210,10 +213,10 @@ export default function EditVehiclePage() {
   }, [id]);
 
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!customerQuery.trim()) { setCustomerResults([]); setSearching(false); return; }
+    if (!debouncedCustomerQuery.trim()) { setCustomerResults([]); setSearching(false); return; }
+    async function 搜索客户() {
       setSearching(true);
-      const q = 清理搜索词(customerQuery);
+      const q = 清理搜索词(debouncedCustomerQuery);
       const supabase = createClient();
       const { data } = await supabase
         .from("customers")
@@ -222,15 +225,15 @@ export default function EditVehiclePage() {
         .limit(10);
       setCustomerResults(data || []);
       setSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [customerQuery]);
+    }
+    搜索客户();
+  }, [debouncedCustomerQuery]);
 
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!companyQuery.trim()) { setCompanyResults([]); setCompanySearching(false); return; }
+    if (!debouncedCompanyQuery.trim()) { setCompanyResults([]); setCompanySearching(false); return; }
+    async function 搜索单位() {
       setCompanySearching(true);
-      const q = companyQuery.trim();
+      const q = debouncedCompanyQuery.trim();
       const supabase = createClient();
       const { data } = await supabase
         .from("companies")
@@ -239,9 +242,9 @@ export default function EditVehiclePage() {
         .limit(10);
       setCompanyResults(data || []);
       setCompanySearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [companyQuery]);
+    }
+    搜索单位();
+  }, [debouncedCompanyQuery]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -42,6 +42,7 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
 
   const [name, setName] = useState("");
   const [pnQuery, setPnQuery] = useState("");
+  const debouncedPnQuery = useDebounce(pnQuery, 300);
   const [pnResults, setPnResults] = useState<PartName[]>([]);
   const [pnSearching, setPnSearching] = useState(false);
   const [linkedNames, setLinkedNames] = useState<{ id: string; name: string; category_name?: string | null }[]>([]);
@@ -68,23 +69,23 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
   }, [debouncedQuery]);
 
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!pnQuery.trim()) {
-        setPnResults([]);
-        return;
-      }
+    if (!debouncedPnQuery.trim()) {
+      setPnResults([]);
+      return;
+    }
+    async function 搜索配件名称() {
       setPnSearching(true);
       const { data } = await supabase
         .from("part_names")
         .select("id, name, part_categories(name)")
-        .or(`name.ilike.%${清理搜索词(pnQuery)}%,search_keywords.ilike.%${清理搜索词(pnQuery)}%`)
+        .or(`name.ilike.%${清理搜索词(debouncedPnQuery)}%,search_keywords.ilike.%${清理搜索词(debouncedPnQuery)}%`)
         .order("name")
         .limit(10);
       setPnResults((data || []) as unknown as PartName[]);
       setPnSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [pnQuery, supabase]);
+    }
+    搜索配件名称();
+  }, [debouncedPnQuery, supabase]);
 
   function handleStartCreate() {
     setName(query.trim());

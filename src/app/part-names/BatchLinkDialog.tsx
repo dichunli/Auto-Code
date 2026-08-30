@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 批量关联配件名称 } from "./actions";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface 关联项 {
   id: string;
@@ -20,6 +21,7 @@ interface Props {
 export function BatchLinkDialog({ open, type, selectedIds, onClose, onSuccess }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounce(query, 300);
   const [results, setResults] = useState<关联项[]>([]);
   const [searching, setSearching] = useState(false);
   const [linking, setLinking] = useState(false);
@@ -36,23 +38,23 @@ export function BatchLinkDialog({ open, type, selectedIds, onClose, onSuccess }:
       setResults([]);
       return;
     }
-    const t = setTimeout(async () => {
-      if (!query.trim()) {
-        setResults([]);
-        return;
-      }
+    if (!debouncedQuery.trim()) {
+      setResults([]);
+      return;
+    }
+    async function 搜索关联目标() {
       setSearching(true);
       const { data } = await supabase
         .from(table)
         .select("id, name")
-        .ilike("name", `%${query.trim()}%`)
+        .ilike("name", `%${debouncedQuery.trim()}%`)
         .order("name")
         .limit(10);
       setResults(data || []);
       setSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [query, open, supabase, table]);
+    }
+    搜索关联目标();
+  }, [debouncedQuery, open, supabase, table]);
 
   async function handleLink(targetId: string) {
     if (selectedIds.length === 0) return;
