@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { 保存供应商档案 } from "@/app/suppliers/actions";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -62,6 +63,12 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
   const [linkedVehicles, setLinkedVehicles] = useState<{ id: number; name: string }[]>([]);
   const [vehicleQuery, setVehicleQuery] = useState("");
   const [vehicleResults, setVehicleResults] = useState<{ id: number; 厂商?: string | null; 品牌?: string | null; 车系?: string | null }[]>([]);
+
+  /* 各搜索框防抖 */
+  const debouncedCatQuery = useDebounce(catQuery, 300);
+  const debouncedPnQuery = useDebounce(pnQuery, 300);
+  const debouncedBrandQuery = useDebounce(brandQuery, 300);
+  const debouncedVehicleQuery = useDebounce(vehicleQuery, 300);
 
   // 加载编辑数据
   useEffect(() => {
@@ -137,53 +144,55 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
 
   // 搜索分类
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!catQuery.trim()) { setCatResults([]); return; }
-      const { data } = await supabase.from("part_categories").select("id, name").ilike("name", `%${catQuery.trim()}%`).limit(10);
+    const q = debouncedCatQuery.trim();
+    if (!q) { setCatResults([]); return; }
+    async function 搜索分类() {
+      const { data } = await supabase.from("part_categories").select("id, name").ilike("name", `%${q}%`).limit(10);
       setCatResults(data || []);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [catQuery, supabase]);
+    }
+    搜索分类();
+  }, [debouncedCatQuery, supabase]);
 
   // 搜索配件名称（支持名称和搜索关键词）
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!pnQuery.trim()) { setPnResults([]); return; }
-      const q = 清理搜索词(pnQuery);
+    if (!debouncedPnQuery.trim()) { setPnResults([]); return; }
+    async function 搜索配件名称() {
+      const q = 清理搜索词(debouncedPnQuery);
       const { data } = await supabase
         .from("part_names")
         .select("id, name")
         .or(`name.ilike.%${q}%,search_keywords.ilike.%${q}%`)
         .limit(10);
       setPnResults(data || []);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [pnQuery, supabase]);
+    }
+    搜索配件名称();
+  }, [debouncedPnQuery, supabase]);
 
   // 搜索品牌
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!brandQuery.trim()) { setBrandResults([]); return; }
-      const { data } = await supabase.from("part_brands").select("id, name").ilike("name", `%${brandQuery.trim()}%`).limit(10);
+    const q = debouncedBrandQuery.trim();
+    if (!q) { setBrandResults([]); return; }
+    async function 搜索品牌() {
+      const { data } = await supabase.from("part_brands").select("id, name").ilike("name", `%${q}%`).limit(10);
       setBrandResults(data || []);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [brandQuery, supabase]);
+    }
+    搜索品牌();
+  }, [debouncedBrandQuery, supabase]);
 
   // 搜索车型
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!vehicleQuery.trim()) { setVehicleResults([]); return; }
-      const q = 清理搜索词(vehicleQuery);
+    if (!debouncedVehicleQuery.trim()) { setVehicleResults([]); return; }
+    async function 搜索车型() {
+      const q = 清理搜索词(debouncedVehicleQuery);
       const { data } = await supabase
         .from("vehicle_models")
         .select("id,厂商,品牌,车系")
         .or(`厂商.ilike.%${q}%,品牌.ilike.%${q}%,车系.ilike.%${q}%`)
         .limit(15);
       setVehicleResults((data || []) as unknown as { id: number; 厂商?: string | null; 品牌?: string | null; 车系?: string | null }[]);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [vehicleQuery, supabase]);
+    }
+    搜索车型();
+  }, [debouncedVehicleQuery, supabase]);
 
   function addContact() {
     setContacts((prev) => [...prev, { name: "", phone: "", title: "", is_primary: false, notes: "" }]);

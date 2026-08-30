@@ -1,7 +1,8 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface SupplierItem {
   id: string;
@@ -52,19 +53,18 @@ export default function PricingSection({
   const [supplierQuery, setSupplierQuery] = useState("");
   const [supplierResults, setSupplierResults] = useState<SupplierItem[] | null>(null);
   const [supplierSearching, setSupplierSearching] = useState(false);
-  const spTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedSupplierQuery = useDebounce(supplierQuery, 300);
 
-  // Supplier debounced search
+  // 供应商防抖搜索
   useEffect(() => {
-    if (spTimeoutRef.current) clearTimeout(spTimeoutRef.current);
-    const value = supplierQuery.trim();
+    const value = debouncedSupplierQuery.trim();
     if (!value) {
       setSupplierResults(null);
       setSupplierSearching(false);
       return;
     }
-    setSupplierSearching(true);
-    spTimeoutRef.current = setTimeout(async () => {
+    async function 搜索供应商() {
+      setSupplierSearching(true);
       const { data } = await supabase
         .from("suppliers")
         .select("id, name")
@@ -72,11 +72,9 @@ export default function PricingSection({
         .limit(10);
       setSupplierResults(data || []);
       setSupplierSearching(false);
-    }, 300);
-    return () => {
-      if (spTimeoutRef.current) clearTimeout(spTimeoutRef.current);
-    };
-  }, [supplierQuery, supabase]);
+    }
+    搜索供应商();
+  }, [debouncedSupplierQuery, supabase]);
 
   return (
     <div className="mt-4 pt-4 border-t border-gray-100">

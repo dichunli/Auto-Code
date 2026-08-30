@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { useDebounce } from "@/lib/useDebounce";
 
 export interface SpecialPriceItem {
   id: string;
@@ -55,21 +56,21 @@ export default function SpecialPricingSection({
   const [spCompanyResults, setSpCompanyResults] = useState<IdNameItem[]>([]);
   const [spCompanySearching, setSpCompanySearching] = useState(false);
   const [spCompanySelected, setSpCompanySelected] = useState<{ id: string; name: string } | null>(null);
-  const spCompanyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedSpCompanyQuery = useDebounce(spCompanyQuery, 300);
 
   // Customer search for special pricing
   const [spCustomerQuery, setSpCustomerQuery] = useState("");
   const [spCustomerResults, setSpCustomerResults] = useState<IdNameItem[]>([]);
   const [spCustomerSearching, setSpCustomerSearching] = useState(false);
   const [spCustomerSelected, setSpCustomerSelected] = useState<{ id: string; name: string } | null>(null);
-  const spCustomerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedSpCustomerQuery = useDebounce(spCustomerQuery, 300);
 
   // Vehicle search for special pricing
   const [spVehicleQuery, setSpVehicleQuery] = useState("");
   const [spVehicleResults, setSpVehicleResults] = useState<IdNameItem[]>([]);
   const [spVehicleSearching, setSpVehicleSearching] = useState(false);
   const [spVehicleSelected, setSpVehicleSelected] = useState<{ id: string; name: string } | null>(null);
-  const spVehicleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedSpVehicleQuery = useDebounce(spVehicleQuery, 300);
 
   const [spNewPrice, setSpNewPrice] = useState("");
 
@@ -90,7 +91,7 @@ export default function SpecialPricingSection({
   const [vmNewSalesPrice, setVmNewSalesPrice] = useState("");
   const [vmNewVipPrice, setVmNewVipPrice] = useState("");
   const [vmNewStandardPrice, setVmNewStandardPrice] = useState("");
-  const vmPriceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedVmPriceQuery = useDebounce(vmPriceQuery, 300);
 
   const groupedVehiclePrices = useMemo(() => {
     const map = new Map<string, VehicleModelPriceItem[]>();
@@ -109,35 +110,31 @@ export default function SpecialPricingSection({
 
   // Special pricing - company search
   useEffect(() => {
-    if (spCompanyTimeoutRef.current) clearTimeout(spCompanyTimeoutRef.current);
-    const value = spCompanyQuery.trim();
+    const value = debouncedSpCompanyQuery.trim();
     if (!value) {
       setSpCompanyResults([]);
       setSpCompanySearching(false);
       return;
     }
-    setSpCompanySearching(true);
-    spCompanyTimeoutRef.current = setTimeout(async () => {
+    async function 搜索单位() {
+      setSpCompanySearching(true);
       const { data } = await supabase.from("companies").select("id, name").ilike("name", "%" + value + "%").limit(10);
       setSpCompanyResults(data || []);
       setSpCompanySearching(false);
-    }, 300);
-    return () => {
-      if (spCompanyTimeoutRef.current) clearTimeout(spCompanyTimeoutRef.current);
-    };
-  }, [spCompanyQuery, supabase]);
+    }
+    搜索单位();
+  }, [debouncedSpCompanyQuery, supabase]);
 
   // Special pricing - customer search
   useEffect(() => {
-    if (spCustomerTimeoutRef.current) clearTimeout(spCustomerTimeoutRef.current);
-    const value = spCustomerQuery.trim();
+    const value = debouncedSpCustomerQuery.trim();
     if (!value) {
       setSpCustomerResults([]);
       setSpCustomerSearching(false);
       return;
     }
-    setSpCustomerSearching(true);
-    spCustomerTimeoutRef.current = setTimeout(async () => {
+    async function 搜索客户() {
+      setSpCustomerSearching(true);
       const { data } = await supabase
         .from("customers")
         .select("id, name, phone")
@@ -145,23 +142,20 @@ export default function SpecialPricingSection({
         .limit(10);
       setSpCustomerResults(data || []);
       setSpCustomerSearching(false);
-    }, 300);
-    return () => {
-      if (spCustomerTimeoutRef.current) clearTimeout(spCustomerTimeoutRef.current);
-    };
-  }, [spCustomerQuery, supabase]);
+    }
+    搜索客户();
+  }, [debouncedSpCustomerQuery, supabase]);
 
   // Special pricing - vehicle search
   useEffect(() => {
-    if (spVehicleTimeoutRef.current) clearTimeout(spVehicleTimeoutRef.current);
-    const value = spVehicleQuery.trim();
+    const value = debouncedSpVehicleQuery.trim();
     if (!value) {
       setSpVehicleResults([]);
       setSpVehicleSearching(false);
       return;
     }
-    setSpVehicleSearching(true);
-    spVehicleTimeoutRef.current = setTimeout(async () => {
+    async function 搜索车辆() {
+      setSpVehicleSearching(true);
       const { data } = await supabase
         .from("vehicles")
         .select("id, plate_number, brand, model, vin, customers(name)")
@@ -169,23 +163,20 @@ export default function SpecialPricingSection({
         .limit(10);
       setSpVehicleResults((data || []) as unknown as IdNameItem[]);
       setSpVehicleSearching(false);
-    }, 300);
-    return () => {
-      if (spVehicleTimeoutRef.current) clearTimeout(spVehicleTimeoutRef.current);
-    };
-  }, [spVehicleQuery, supabase]);
+    }
+    搜索车辆();
+  }, [debouncedSpVehicleQuery, supabase]);
 
   // Vehicle model pricing search
   useEffect(() => {
-    if (vmPriceTimeoutRef.current) clearTimeout(vmPriceTimeoutRef.current);
-    const value = vmPriceQuery.trim();
+    const value = debouncedVmPriceQuery.trim();
     if (!value) {
       setVmPriceResults([]);
       setVmPriceSearching(false);
       return;
     }
-    setVmPriceSearching(true);
-    vmPriceTimeoutRef.current = setTimeout(async () => {
+    async function 搜索车型定价() {
+      setVmPriceSearching(true);
       const excludeIds = vehicleModelPrices.map((v) => v.vehicle_model_id);
       let query = supabase
         .from("vehicle_models")
@@ -205,11 +196,9 @@ export default function SpecialPricingSection({
       }));
       setVmPriceResults(mapped as unknown as IdNameItem[]);
       setVmPriceSearching(false);
-    }, 300);
-    return () => {
-      if (vmPriceTimeoutRef.current) clearTimeout(vmPriceTimeoutRef.current);
-    };
-  }, [vmPriceQuery, vehicleModelPrices, supabase]);
+    }
+    搜索车型定价();
+  }, [debouncedVmPriceQuery, vehicleModelPrices, supabase]);
 
   function addSpecialPrice() {
     const company = spCompanySelected;

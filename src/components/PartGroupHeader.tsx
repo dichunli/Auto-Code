@@ -11,6 +11,7 @@ import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localE
 import { useConfirm } from "./ConfirmDialog";
 import { 添加配件分支, 删除配件目录 } from "@/app/work-orders/parts-actions";
 import { 批量更新配件分支, 更新配件分支, 添加配件图片记录, 删除配件图片记录 } from "@/app/work-orders/actions";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface PartBranch {
   id: string;
@@ -73,7 +74,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
   }
   const [nameResults, setNameResults] = useState<NameResult[]>([]);
   const [nameSearching, setNameSearching] = useState(false);
-  const nameTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedNameQuery = useDebounce(nameQuery, 300);
 
   // 配件选择器弹窗
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -389,25 +390,22 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
 
   // 搜索配件名称
   useEffect(() => {
-    if (nameTimeoutRef.current) clearTimeout(nameTimeoutRef.current);
-    if (!nameQuery.trim()) {
+    if (!debouncedNameQuery.trim()) {
       setNameResults([]);
       return;
     }
-    setNameSearching(true);
-    nameTimeoutRef.current = setTimeout(async () => {
+    async function 搜索名称() {
+      setNameSearching(true);
       const { data } = await supabase
         .from("part_names")
         .select("id, name, unit, part_categories(name)")
-        .ilike("name", `%${nameQuery.trim()}%`)
+        .ilike("name", `%${debouncedNameQuery.trim()}%`)
         .limit(10);
       setNameResults((data || []) as unknown as NameResult[]);
       setNameSearching(false);
-    }, 300);
-    return () => {
-      if (nameTimeoutRef.current) clearTimeout(nameTimeoutRef.current);
-    };
-  }, [nameQuery, supabase]);
+    }
+    搜索名称();
+  }, [debouncedNameQuery, supabase]);
 
   // 选择待替换的配件名称（延迟到保存时执行）
   function handleSelectPendingName(selected: NameResult) {

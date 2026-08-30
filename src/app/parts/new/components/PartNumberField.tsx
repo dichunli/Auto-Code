@@ -1,7 +1,8 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface PartSearchResult {
   id: string;
@@ -25,20 +26,19 @@ export default function PartNumberField({
   const supabase = useMemo(() => createClient(), []);
   const [pnResults, setPnResults] = useState<PartSearchResult[] | null>(null);
   const [pnSearching, setPnSearching] = useState(false);
-  const pnTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedValue = useDebounce(value, 300);
 
-  // Debounced search
+  // 防抖搜索
   useEffect(() => {
-    if (pnTimeoutRef.current) clearTimeout(pnTimeoutRef.current);
-    const searchValue = value.trim().toUpperCase().replace(/\s+/g, "");
+    const searchValue = debouncedValue.trim().toUpperCase().replace(/\s+/g, "");
     if (!searchValue) {
       setPnResults(null);
       setPnSearching(false);
       if (onHasDuplicateChange) onHasDuplicateChange(false);
       return;
     }
-    setPnSearching(true);
-    pnTimeoutRef.current = setTimeout(async () => {
+    async function 搜索编码() {
+      setPnSearching(true);
       let query = supabase
         .from("parts")
         .select("id, part_number, name")
@@ -55,11 +55,9 @@ export default function PartNumberField({
         const hasDup = results.some((r) => r.part_number.toUpperCase().replace(/\s+/g, "") === searchValue);
         onHasDuplicateChange(hasDup);
       }
-    }, 300);
-    return () => {
-      if (pnTimeoutRef.current) clearTimeout(pnTimeoutRef.current);
-    };
-  }, [value, supabase, editId, onHasDuplicateChange]);
+    }
+    搜索编码();
+  }, [debouncedValue, supabase, editId, onHasDuplicateChange]);
 
   function handleChange(input: string) {
     if (/[一-龥]/.test(input)) return;

@@ -3,6 +3,7 @@
 import {useState, useEffect, useCallback, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
@@ -40,6 +41,7 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
 
   const [name, setName] = useState("");
   const [pnQuery, setPnQuery] = useState("");
+  const debouncedPnQuery = useDebounce(pnQuery, 300);
   const [pnResults, setPnResults] = useState<PartName[]>([]);
   const [pnSearching, setPnSearching] = useState(false);
   const [linkedNames, setLinkedNames] = useState<{ id: string; name: string; category_name?: string }[]>([]);
@@ -81,23 +83,23 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
   }, [query, allSpecs]);
 
   useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!pnQuery.trim()) {
-        setPnResults([]);
-        return;
-      }
+    if (!debouncedPnQuery.trim()) {
+      setPnResults([]);
+      return;
+    }
+    async function 搜索配件名称() {
       setPnSearching(true);
       const { data } = await supabase
         .from("part_names")
         .select("id, name, part_categories(name)")
-        .or(`name.ilike.%${清理搜索词(pnQuery)}%,search_keywords.ilike.%${清理搜索词(pnQuery)}%`)
+        .or(`name.ilike.%${清理搜索词(debouncedPnQuery)}%,search_keywords.ilike.%${清理搜索词(debouncedPnQuery)}%`)
         .order("name")
         .limit(10);
       setPnResults((data || []) as PartName[]);
       setPnSearching(false);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [pnQuery, supabase]);
+    }
+    搜索配件名称();
+  }, [debouncedPnQuery, supabase]);
 
   function toggleSelect(id: string) {
     const next = new Set(selectedIds);

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 删除工具 as 删除工具Action } from "./actions";
@@ -62,14 +63,13 @@ export default function ToolManagementPage() {
   const [加载中, set加载中] = useState(true);
   const [错误, set错误] = useState("");
   const [搜索词, set搜索词] = useState("");
-  const [防抖搜索词, set防抖搜索词] = useState("");
+  const 防抖搜索词 = useDebounce(搜索词, 300);
   const [当前页, set当前页] = useState(1);
   const [是管理员, set是管理员] = useState(false);
   const [删除中, set删除中] = useState<string | null>(null);
   const [借还弹窗打开, set借还弹窗打开] = useState(false);
   const [选中工具, set选中工具] = useState<工具 | null>(null);
   const [显示移动端搜索, set显示移动端搜索] = useState(false);
-  const 搜索定时器 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { 请求确认, 确认弹窗 } = useConfirm();
 
   const 加载数据 = useCallback(async () => {
@@ -164,16 +164,10 @@ export default function ToolManagementPage() {
     加载数据();
   }, [加载数据]);
 
+  /* 搜索词变化（防抖后）时回到第一页 */
   useEffect(() => {
-    if (搜索定时器.current) clearTimeout(搜索定时器.current);
-    搜索定时器.current = setTimeout(() => {
-      set防抖搜索词(搜索词);
-      set当前页(1);
-    }, 300);
-    return () => {
-      if (搜索定时器.current) clearTimeout(搜索定时器.current);
-    };
-  }, [搜索词, 搜索定时器]);
+    set当前页(1);
+  }, [防抖搜索词]);
 
   const 总页数 = Math.max(1, Math.ceil(工具列表.length / 每页条数));
   const 安全页码 = Math.min(当前页, 总页数);
@@ -263,7 +257,7 @@ export default function ToolManagementPage() {
                 <button
                   onClick={() => {
                     set搜索词("");
-                    set防抖搜索词("");
+                    /* 防抖搜索词会在 300ms 后自动清空，无需手动设置 */
                     set当前页(1);
                   }}
                   className="px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100"
@@ -315,7 +309,7 @@ export default function ToolManagementPage() {
             <button
               onClick={() => {
                 set搜索词("");
-                set防抖搜索词("");
+                /* 防抖搜索词会在 300ms 后自动清空，无需手动设置 */
                 set当前页(1);
               }}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"

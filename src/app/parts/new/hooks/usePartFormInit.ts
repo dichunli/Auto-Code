@@ -8,6 +8,7 @@ import { StockLocationRow } from "../components/StockLocationSection";
 import { SpecialPriceItem, VehicleModelPriceItem } from "../components/SpecialPricingSection";
 import { PartNameItem } from "../components/PartNameSearch";
 import { 补写配件分组ID } from "../../actions";
+import { useDebounce } from "@/lib/useDebounce";
 
 interface SupplierItem {
   id: string;
@@ -91,6 +92,8 @@ export default function usePartFormInit(
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
+  /* 编码精确匹配自动填充防抖（500ms） */
+  const debouncedPartNumber = useDebounce(partNumber, 500);
 
   const {
     setLoading,
@@ -625,14 +628,14 @@ export default function usePartFormInit(
 
   /* 5. 弹窗模式下：编码精确匹配配件库时自动填充 */
   useEffect(() => {
-    if (!isEmbedded || !partNumber.trim() || isEditMode) return;
-    const timer = setTimeout(async () => {
+    if (!isEmbedded || !debouncedPartNumber.trim() || isEditMode) return;
+    async function 按编码自动填充() {
       const { data } = await supabase
         .from("parts")
         .select(
           "id, part_number, name, unit, purchase_price, notes, document_name, barcode, interchange_code, min_stock, unit_price, standard_price, vip_price, wholesale_price, supplier_id, brand_id, part_brands(id, name), specification_id, part_specifications(id, name), category_id, part_categories(id, name), part_images(image_path), part_stock_locations(warehouse_id, warehouses(name), location, quantity, min_stock, max_stock), auto_link_vehicle_model, auto_match_17vin_models, is_consumable, require_scan_check, require_location_check, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value"
         )
-        .eq("part_number", partNumber.trim().toUpperCase())
+        .eq("part_number", debouncedPartNumber.trim().toUpperCase())
         .single();
       if (!data) return;
       setPartNumber(data.part_number || "");
@@ -706,8 +709,7 @@ export default function usePartFormInit(
           })
         );
       }
-    }, 500);
-    return () => clearTimeout(timer);
-     
-  }, [partNumber, isEmbedded, isEditMode]);
+    }
+    按编码自动填充();
+  }, [debouncedPartNumber, isEmbedded, isEditMode]);
 }

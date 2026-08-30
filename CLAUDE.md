@@ -103,6 +103,8 @@
 - 数据库表结构通过 `supabase/migrations_*.sql` 手写 SQL 管理
 - 新建表必须同时创建索引和 RLS 策略
 - 删除数据前先检查关联业务数据，防止误删
+- **迁移执行台账**：Dashboard 执行完迁移后紧接着登记一行 `INSERT INTO migration_log (file_name) VALUES ('文件名');`（台账表由 `migrations_20260829_migration_log.sql` 建立）
+- **同日多文件命名**：一天内多个迁移文件加 `_a/_b/_c` 后缀，保证字母序=开发序
 - 数据唯一性约束（数据库层 + 前端校验需同时保证）：
   - 客户表：`phone` 可为空，非空时全局唯一
   - 车辆表：`vin` 全局唯一（允许空值，非空值不可重复）

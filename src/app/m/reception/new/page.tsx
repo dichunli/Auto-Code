@@ -1,9 +1,10 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { useDebounce } from "@/lib/useDebounce";
 import { MobilePageHeader } from "@/components/mobile/MobilePageHeader";
 import { useMobileToast } from "@/components/mobile/MobileToast";
 import { ImageUploader } from "@/components/ImageUploader";
@@ -78,14 +79,16 @@ export default function MobileReceptionNewPage() {
   const [modelDetailData, setModelDetailData] = useState<VehicleModelDetail | null>(null);
   const [modelDetailLoading, setModelDetailLoading] = useState(false);
   const [vinSearchKeyword, setVinSearchKeyword] = useState("");
-  const vehicleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  /* 防抖后的搜索词 */
+  const debouncedVehicleQuery = useDebounce(vehicleQuery, 300);
+  /* VIN 查重与自动解析共用一个输入值，但防抖时长不同，分别调用 */
+  const debouncedVinCheck = useDebounce(newVin, 500);
+  const debouncedVinDecode = useDebounce(newVin, 800);
 
   /* ---------- VIN 查重 ---------- */
   const [vinDuplicateVehicle, setVinDuplicateVehicle] = useState<Vehicle | null>(null);
   const [showVinDuplicateDialog, setShowVinDuplicateDialog] = useState(false);
   const [showChangeOwnerDialog, setShowChangeOwnerDialog] = useState(false);
-  const vinCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const vinDecodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   /* ---------- 车辆关联工单统计 ---------- */
   const [vehicleOrderStats, setVehicleOrderStats] = useState<{
@@ -103,7 +106,7 @@ export default function MobileReceptionNewPage() {
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
   const [showCustomerSelect, setShowCustomerSelect] = useState(false);
-  const customerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const debouncedCustomerQuery = useDebounce(customerQuery, 300);
 
   /* ---------- 送修人 ---------- */
   const [senderName, setSenderName] = useState("");
@@ -194,24 +197,21 @@ export default function MobileReceptionNewPage() {
      车辆搜索
      ============================================================ */
   useEffect(() => {
-    if (vehicleTimeoutRef.current) clearTimeout(vehicleTimeoutRef.current);
-    const q = vehicleQuery.trim();
+    const q = debouncedVehicleQuery.trim();
     if (!q) {
       setVehicleResults([]);
       return;
     }
-    vehicleTimeoutRef.current = setTimeout(async () => {
+    async function 搜索车辆() {
       const { data } = await supabase
         .from("vehicles")
         .select("id, plate_number, brand, model, vin, customer_id, customers(id, name, phone, star_level, customer_tags(tags(id, name, color)))")
         .ilike("plate_number", `%${q}%`)
         .limit(8);
       setVehicleResults((data || []) as unknown as Vehicle[]);
-    }, 300);
-    return () => {
-      if (vehicleTimeoutRef.current) clearTimeout(vehicleTimeoutRef.current);
-    };
-  }, [vehicleQuery, supabase]);
+    }
+    搜索车辆();
+  }, [debouncedVehicleQuery, supabase]);
 
   /* ============================================================
      选中车辆后加载关联工单统计
@@ -245,16 +245,14 @@ export default function MobileReceptionNewPage() {
      VIN 查重（新建车辆时）
      ============================================================ */
   useEffect(() => {
-    if (vinCheckTimeoutRef.current) clearTimeout(vinCheckTimeoutRef.current);
-
-    const vin = 标准化VIN(newVin);
+    const vin = 标准化VIN(debouncedVinCheck);
     if (!isNewVehicle || vin.length !== 17) {
       setVinDuplicateVehicle(null);
       setShowVinDuplicateDialog(false);
       return;
     }
 
-    vinCheckTimeoutRef.current = setTimeout(async () => {
+    async function 查重VIN() {
       const { data } = await supabase
         .from("vehicles")
         .select("id, plate_number, brand, model, vin, customer_id, customers(id, name, phone, star_level, customer_tags(tags(id, name, color)))")
@@ -265,23 +263,18 @@ export default function MobileReceptionNewPage() {
         setVinDuplicateVehicle(data as unknown as Vehicle);
         setShowVinDuplicateDialog(true);
       }
-    }, 500);
-
-    return () => {
-      if (vinCheckTimeoutRef.current) clearTimeout(vinCheckTimeoutRef.current);
-    };
-  }, [newVin, isNewVehicle, supabase]);
+    }
+    查重VIN();
+  }, [debouncedVinCheck, isNewVehicle, supabase]);
 
   /* ============================================================
      VIN 自动解析（17位且系统中不存在时自动调用17VIN）
      ============================================================ */
   useEffect(() => {
-    if (vinDecodeTimeoutRef.current) clearTimeout(vinDecodeTimeoutRef.current);
-
-    const vin = 标准化VIN(newVin);
+    const vin = 标准化VIN(debouncedVinDecode);
     if (!isNewVehicle || vin.length !== 17) return;
 
-    vinDecodeTimeoutRef.current = setTimeout(async () => {
+    async function 自动解析VIN() {
       /* 先检查系统中是否已有该VIN */
       const { data } = await supabase
         .from("vehicles")
@@ -326,12 +319,9 @@ export default function MobileReceptionNewPage() {
       } catch {
         /* 解析失败静默处理，不打扰用户 */
       }
-    }, 800);
-
-    return () => {
-      if (vinDecodeTimeoutRef.current) clearTimeout(vinDecodeTimeoutRef.current);
-    };
-  }, [newVin, isNewVehicle, supabase]);
+    }
+    自动解析VIN();
+  }, [debouncedVinDecode, isNewVehicle, supabase]);
 
   /* ============================================================
      选中车辆后加载车辆照片
@@ -361,24 +351,21 @@ export default function MobileReceptionNewPage() {
      客户搜索
      ============================================================ */
   useEffect(() => {
-    if (customerTimeoutRef.current) clearTimeout(customerTimeoutRef.current);
-    const q = 清理搜索词(customerQuery);
+    const q = 清理搜索词(debouncedCustomerQuery);
     if (!q) {
       setCustomerResults([]);
       return;
     }
-    customerTimeoutRef.current = setTimeout(async () => {
+    async function 搜索客户() {
       const { data } = await supabase
         .from("customers")
         .select("id, name, phone, star_level, customer_tags(tags(id, name, color))")
         .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
         .limit(8);
       setCustomerResults(data || []);
-    }, 300);
-    return () => {
-      if (customerTimeoutRef.current) clearTimeout(customerTimeoutRef.current);
-    };
-  }, [customerQuery, supabase]);
+    }
+    搜索客户();
+  }, [debouncedCustomerQuery, supabase]);
 
   /* ============================================================
      校验
