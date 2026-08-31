@@ -1,0 +1,87 @@
+diff --git a/src/components/PendingStorageList.tsx b/src/components/PendingStorageList.tsx
+index 8510771f..da53930e 100644
+--- a/src/components/PendingStorageList.tsx
++++ b/src/components/PendingStorageList.tsx
+@@ -12,6 +12,7 @@ import { usePartLinking } from "./usePartLinking";
+ import { 确认采购入库, 退回待收货 } from "@/app/procurement/actions";
+ import { 确认到货入库 } from "@/app/arrivals/actions";
+ import { useToast } from "@/components/Toast";
++import { ImageUploader } from "@/components/ImageUploader";
+ import { DocumentNameInput } from "./DocumentNameInput";
+ 
+ interface PurchaseOrderItem {
+@@ -695,6 +696,74 @@ export function PendingStorageList() {
+               </button>
+             </div>
+             <div className="p-6 space-y-4">
++              {/* 供应商销售单对照区（2026-08-21 按销售单执行入库）：
++                  填了总金额后，货款合计−抹零≠总金额 会被前后端双重拦截 */}
++              <div className="bg-blue-50/60 border border-blue-100 rounded-lg p-3 space-y-3">
++                <div className="flex items-center gap-2 flex-wrap">
++                  <span className="text-xs font-medium text-blue-800">供应商销售单</span>
++                  <input
++                    type="text"
++                    value={slipNo}
++                    onChange={(e) => setSlipNo(e.target.value)}
++                    placeholder="销售单号"
++                    className="w-36 px-2 py-1 text-xs rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
++                  />
++                  <div className="flex items-center gap-1">
++                    <span className="text-xs text-gray-600">总金额(¥):</span>
++                    <input
++                      type="number"
++                      min={0}
++                      step="0.01"
++                      value={slipAmount}
++                      onChange={(e) => setSlipAmount(e.target.value)}
++                      placeholder="不填不校验"
++                      className="w-24 px-2 py-1 text-xs text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
++                    />
++                  </div>
++                  <div className="flex items-center gap-1">
++                    <span className="text-xs text-gray-600">优惠抹零(¥):</span>
++                    <input
++                      type="number"
++                      min={0}
++                      step="0.01"
++                      value={discountAmount}
++                      onChange={(e) => setDiscountAmount(e.target.value)}
++                      placeholder="0.00"
++                      title="供应商少收的钱（减项）：明细合计−抹零=销售单总金额"
++                      className="w-20 px-2 py-1 text-xs text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
++                    />
++                  </div>
++                </div>
++                <ImageUploader
++                  onUpload={setSlipPhotos}
++                  existingImages={slipPhotos}
++                  maxImages={3}
++                  bucket="work-order-media"
++                  folder="supplier-slips"
++                />
++                {/* 金额校验条：实时显示 货款合计−抹零 与 销售单总金额 是否对平 */}
++                {slipAmount.trim() !== "" && (
++                  (() => {
++                    const 货款 = inboundItems
++                      .filter((f) => !f.isExcess)
++                      .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0), 0);
++                    const 抹零数 = parseFloat(discountAmount) || 0;
++                    const 单额 = parseFloat(slipAmount) || 0;
++                    const 差 = Math.round((货款 - 抹零数 - 单额) * 100) / 100;
++                    return Math.abs(差) <= 0.01 ? (
++                      <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1">
++                        ✓ 对平：货款 ¥{货款.toFixed(2)} − 抹零 ¥{抹零数.toFixed(2)} = 销售单 ¥{单额.toFixed(2)}
++                      </p>
++                    ) : (
++                      <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">
++                        ✗ 不平：货款 ¥{货款.toFixed(2)} − 抹零 ¥{抹零数.toFixed(2)} = ¥{(货款 - 抹零数).toFixed(2)}，
++                        与销售单 ¥{单额.toFixed(2)} 差 ¥{差.toFixed(2)}（{差 > 0 ? "货款多" : "货款少"}）——请改入库单价或填抹零
++                      </p>
++                    );
++                  })()
++                )}
++              </div>
++
+               {/* 运费信息 */}
+               <div className="bg-gray-50 rounded-lg p-3 flex items-center gap-4 flex-wrap">
+                 {waybillInfo ? (

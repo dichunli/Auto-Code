@@ -610,7 +610,7 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
       case "unit_cost":
         return <PriceValue value={item.unit_cost} />;
       case "unit_price":
-        return <PriceValue value={item.unit_price} />;
+        return <PriceValue value={item.unit_price} force />;
       case "location":
         return item.location || "-";
       case "barcode":

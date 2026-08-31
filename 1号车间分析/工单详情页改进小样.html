@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工单详情页改进小样 V2（完整页面）</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif; background: #f3f4f6; color: #111827; padding: 24px; font-size: 14px; }
+  .容器 { max-width: 1100px; margin: 0 auto; }
+  .提示条 { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; }
+  .卡片 { background: #fff; border-radius: 10px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,.05); margin-bottom: 14px; overflow: hidden; }
+  .卡片头 { padding: 14px 20px; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; }
+  .卡片标题 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .卡片体 { padding: 16px 20px; }
+
+  /* 页头 */
+  .页头 { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .工单号 { font-size: 18px; font-weight: 700; }
+  .大状态 { background: #dbeafe; color: #1d4ed8; font-weight: 600; font-size: 13px; border-radius: 999px; padding: 4px 14px; }
+  .页头按钮 { font-size: 13px; color: #2563eb; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  .页头按钮.主 { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .页头按钮.紫 { color: #7c3aed; }
+  .状态流转 { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6b7280; margin-left: auto; }
+  .流转节点 { padding: 3px 12px; border-radius: 999px; background: #f3f4f6; }
+  .流转节点.当前 { background: #16a34a; color: #fff; font-weight: 600; }
+
+  /* 基本信息 */
+  .信息行 { display: flex; gap: 24px; flex-wrap: wrap; font-size: 13px; padding: 4px 0; }
+  .信息行 .标签 { color: #6b7280; }
+  .链接 { color: #2563eb; font-weight: 600; }
+  .vin { font-family: Consolas, monospace; font-size: 12px; }
+  .分隔 { border-top: 1px solid #f3f4f6; margin: 10px 0; }
+  .车辆他单 { font-size: 12px; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 2px 8px; }
+
+  /* ① 客户徽章 */
+  .徽章组 { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+  .徽章 { border: 1px solid #e5e7eb; border-radius: 999px; padding: 5px 14px; font-size: 13px; color: #374151; display: flex; gap: 6px; align-items: center; background: #fff; }
+  .徽章 b { color: #2563eb; }
+  .徽章.有欠款 b { color: #dc2626; }
+
+  /* 需求块 */
+  .需求 { border: 1px solid #e5e7eb; border-left: 4px solid #f59e0b; border-radius: 8px; margin-bottom: 14px; }
+  .需求头 { padding: 10px 16px; background: #fffbeb; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .需求序号 { font-weight: 700; color: #b45309; }
+  .需求描述 { color: #374151; font-size: 13px; }
+  .需求诊断 { color: #6b7280; font-size: 12px; }
+
+  /* ② 快捷按钮 */
+  .快捷区 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px dashed #f3f4f6; }
+  .快捷标签 { color: #6b7280; font-size: 13px; }
+  .快捷钮 { border: 1px solid #d1d5db; background: #fff; border-radius: 6px; padding: 5px 13px; font-size: 13px; cursor: pointer; color: #374151; }
+  .快捷钮:hover { border-color: #2563eb; color: #2563eb; background: #eff6ff; }
+
+  /* 项目 */
+  .项目 { border-bottom: 1px solid #f3f4f6; padding: 12px 16px; }
+  .项目:last-child { border-bottom: none; }
+  .项目头 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .序号 { width: 24px; height: 24px; border-radius: 6px; background: #2563eb; color: #fff; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+  .项目名 { font-weight: 600; font-size: 15px; }
+  .项目状态 { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 10px; }
+  .st-待派工 { background: #fef3c7; color: #b45309; }
+  .st-待施工 { background: #e0e7ff; color: #4338ca; }
+  .st-施工中 { background: #dbeafe; color: #1d4ed8; }
+  .st-待质检 { background: #fce7f3; color: #be185d; }
+  .st-已完工 { background: #dcfce7; color: #15803d; }
+  .小按钮 { font-size: 12px; border: 1px solid #e5e7eb; background: #fff; border-radius: 999px; padding: 2px 10px; color: #374151; cursor: pointer; }
+  .小按钮.蓝 { color: #2563eb; border-color: #bfdbfe; background: #eff6ff; }
+  .小标签 { font-size: 12px; color: #6b7280; background: #f9fafb; border: 1px solid #f3f4f6; border-radius: 4px; padding: 1px 8px; }
+  .小标签.橙 { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+  .小标签.紫 { color: #7c3aed; background: #f5f3ff; border-color: #ddd6fe; }
+  .工时费 { margin-left: auto; font-weight: 700; white-space: nowrap; }
+  .工时费 small { font-weight: 400; color: #9ca3af; }
+  .项目行2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding-left: 32px; }
+
+  /* 配件嵌套 */
+  .配件区 { margin-top: 8px; margin-left: 32px; background: #fafafa; border: 1px solid #f3f4f6; border-radius: 8px; padding: 8px 14px 10px; }
+  .配件区标 { font-size: 11px; font-weight: 600; color: #b45309; display: flex; align-items: center; gap: 6px; }
+  .配件区标::before { content: ""; width: 3px; height: 12px; background: #f59e0b; border-radius: 2px; }
+  .配件名称行 { display: flex; align-items: center; gap: 10px; padding: 8px 0 4px 6px; flex-wrap: wrap; }
+  .子序号 { font-size: 12px; color: #9ca3af; width: 32px; }
+  .配件名称 { font-weight: 600; color: #1f2937; }
+  .配件状态 { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 10px; }
+  .st-待采购 { background: #fef3c7; color: #b45309; }
+  .st-已到货 { background: #e0e7ff; color: #4338ca; }
+  .st-已出库 { background: #dcfce7; color: #15803d; }
+  .领退料 { font-size: 11px; color: #6b7280; }
+  .真实配件行 { display: flex; align-items: center; gap: 10px; padding: 6px 0 6px 44px; color: #4b5563; font-size: 13px; flex-wrap: wrap; }
+  .连线 { color: #d1d5db; }
+  .真实配件信息 { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 6px 12px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .真实配件信息 .品牌 { font-weight: 600; color: #111827; }
+  .零件号 { color: #9ca3af; font-size: 12px; }
+  .仓位 { color: #6b7280; font-size: 12px; background: #eef2ff; border-radius: 4px; padding: 1px 8px; }
+  .成本价 { color: #6b7280; font-size: 12px; }
+  .价格 { font-weight: 600; color: #111827; }
+  .选真实配件钮 { border: 1px dashed #93c5fd; color: #2563eb; background: #eff6ff; border-radius: 6px; padding: 5px 13px; font-size: 13px; cursor: pointer; }
+  .待定价 { color: #b45309; font-size: 12px; }
+  .行内输入 { display: flex; align-items: center; gap: 10px; padding: 8px 0 2px 6px; }
+  .框 { border: 1px solid #e5e7eb; border-radius: 6px; padding: 6px 12px; color: #9ca3af; font-size: 13px; background: #fff; min-width: 300px; }
+  .添加项目行 { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px dashed #e5e7eb; }
+  .序号.灰 { background: #9ca3af; }
+
+  /* 图片占位 */
+  .图组 { display: flex; gap: 10px; flex-wrap: wrap; }
+  .图占位 { width: 96px; height: 72px; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 12px; }
+
+  /* 检查项 */
+  .检查格 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-size: 13px; }
+  .检查项 { background: #f9fafb; border: 1px solid #f3f4f6; border-radius: 6px; padding: 6px 10px; display: flex; justify-content: space-between; }
+  .检查项 .ok { color: #15803d; }
+  .检查项 .bad { color: #dc2626; }
+
+  /* 时间线 */
+  .时间线 { font-size: 13px; color: #4b5563; }
+  .时间线 div { padding: 4px 0 4px 18px; border-left: 2px solid #e5e7eb; margin-left: 6px; position: relative; }
+  .时间线 div::before { content: ""; position: absolute; left: -5px; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: #93c5fd; }
+  .时间 { color: #9ca3af; font-size: 12px; margin-right: 8px; }
+
+  /* 汇总 */
+  .汇总 { margin-left: auto; width: 320px; }
+  .汇总行 { display: flex; justify-content: space-between; padding: 4px 0; color: #4b5563; }
+  .汇总行.合计 { border-top: 1px solid #e5e7eb; margin-top: 6px; padding-top: 10px; font-weight: 700; font-size: 15px; }
+  .待收 { color: #dc2626; font-size: 18px; font-weight: 700; }
+
+  /* 标注 */
+  .标注 { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: #dc2626; color: #fff; font-size: 12px; font-weight: 700; flex-shrink: 0; cursor: help; }
+  .标注说明 { color: #9ca3af; font-size: 12px; }
+  .图例 { background: #fff; border-radius: 10px; border: 1px solid #e5e7eb; padding: 20px; }
+  .图例项 { display: flex; gap: 10px; padding: 6px 0; color: #374151; font-size: 13px; align-items: baseline; }
+  .图例号 { width: 20px; height: 20px; border-radius: 50%; background: #dc2626; color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .对比 { color: #16a34a; font-weight: 600; }
+  .灰字 { color: #9ca3af; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="容器">
+
+  <div class="提示条">
+    ⚠️ 这是<b>效果小样 V2（完整页面版）</b>——把真实工单页的各大板块都画全了，数据是编的，点不动。红色 ①~⑤ 是这次提议新加/调整的 5 处，其余全是现有内容，只是位置略有整理。
+  </div>
+
+  <!-- ═══════ 页头 ═══════ -->
+  <div class="页头">
+    <span class="工单号">工单 WO-20260826-018</span>
+    <span class="大状态">施工中</span>
+    <button class="页头按钮">维修记录(5)</button>
+    <button class="页头按钮 紫">开领料单</button>
+    <button class="页头按钮">预收款 ¥0</button>
+    <button class="页头按钮">更多操作 ▾</button>
+    <button class="页头按钮">打印 ▾</button>
+    <button class="页头按钮 主">编辑</button>
+  </div>
+
+  <!-- ═══════ 基本信息 ═══════ -->
+  <div class="卡片">
+    <div class="卡片体">
+      <div class="信息行">
+        <span><span class="标签">车牌:</span> <span class="链接">黑A·88K66</span></span>
+        <span><span class="标签">VIN:</span> <span class="vin">LFV2A21K8M5123456</span></span>
+        <span><span class="标签">车型:</span> 大众 迈腾 2021款 330TSI</span>
+        <span><span class="标签">接车里程:</span> 52,300 km</span>
+        <span class="灰字">创建于 2026-08-26 09:12</span>
+        <span class="车辆他单">该车辆还有: 保养单(1)</span>
+      </div>
+      <div class="分隔"></div>
+      <div class="信息行">
+        <span><span class="标签">客户:</span> <span class="链接">王先生</span> <span style="color:#f59e0b">★★★</span></span>
+        <span><span class="标签">电话:</span> 138****5678</span>
+        <span><span class="标签">消费总额:</span> ¥8,640</span>
+        <span><span class="标签">消费次数:</span> 6</span>
+        <span><span class="标签">约定交车:</span> 2026-08-27 18:00</span>
+        <span><span class="标签">送修人:</span> 王先生（同客户）</span>
+        <span class="链接" style="font-size:12px;font-weight:400">展开更多信息 ▾</span>
+      </div>
+      <!-- ① 客户徽章 -->
+      <div class="徽章组">
+        <span class="徽章">服务记录 <b>6</b></span>
+        <span class="徽章 有欠款">挂账 <b>¥1,250</b></span>
+        <span class="徽章">定金 <b>¥0</b></span>
+        <span class="徽章">卡券 <b>1</b></span>
+        <span class="徽章">商机 <b>0</b></span>
+        <span class="标注">1</span>
+        <span class="标注说明">把"消费总额/次数"扩成一排徽章，挂账红色显眼（新加）</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ 客户需求与诊断 ═══════ -->
+  <div class="卡片">
+    <div class="卡片头">
+      <div class="卡片标题">客户需求与诊断</div>
+      <div style="display:flex;gap:8px">
+        <button class="页头按钮">＋接车检查</button>
+        <button class="页头按钮">＋车况检查</button>
+      </div>
+    </div>
+
+    <!-- ② 常用项目快捷按钮 -->
+    <div class="快捷区">
+      <span class="快捷标签">常用项目点一下就加：</span>
+      <button class="快捷钮">＋更换机油</button>
+      <button class="快捷钮">＋四轮定位</button>
+      <button class="快捷钮">＋故障灯检查</button>
+      <button class="快捷钮">＋更换刹车片</button>
+      <button class="快捷钮">＋空调检修</button>
+      <span style="color:#d1d5db">｜</span>
+      <button class="快捷钮">⚙ 设置常用项目</button>
+      <span class="标注">2</span>
+    </div>
+
+    <!-- ── 需求 1 ── -->
+    <div style="padding:14px 16px 4px">
+      <div class="需求">
+        <div class="需求头">
+          <span class="需求序号">需求 1</span>
+          <span class="需求描述">客户描述：发动机怠速抖动，加速无力</span>
+          <span class="需求诊断">诊断：火花塞老化、前刹车片磨损超限</span>
+        </div>
+
+        <!-- 项目 1 -->
+        <div class="项目">
+          <div class="项目头">
+            <span class="序号">1</span>
+            <span class="项目名">更换火花塞</span>
+            <span class="项目状态 st-施工中">施工中</span>
+            <span class="小按钮 蓝">质检</span>
+            <span class="小按钮">提交:李芳</span>
+            <span class="小按钮">施工:詹鸿源</span>
+            <span class="小按钮">检查:-</span>
+            <span class="小标签">客户意向:同意</span>
+            <span class="小标签">正常</span>
+            <span class="小标签 紫">维修指导</span>
+            <span class="小标签">备注</span>
+            <span class="小标签">📷2</span>
+            <span class="标注">3</span>
+            <span class="工时费"><small>工时费</small> ¥60</span>
+          </div>
+
+          <div class="配件区">
+            <div class="配件区标">所用配件</div>
+            <div class="配件名称行">
+              <span class="子序号">1.1</span>
+              <span class="配件名称">火花塞</span>
+              <span class="配件状态 st-已出库">已出库</span>
+              <span class="领退料">领4 / 退0</span>
+            </div>
+            <div class="真实配件行">
+              <span class="连线">└─</span>
+              <div class="真实配件信息">
+                <span class="品牌">NGK 铱铂金</span>
+                <span>规格 93800</span>
+                <span class="零件号">编码 HS-93800</span>
+                <span class="仓位">主仓库 A-03</span>
+                <span class="成本价">成本 ¥45</span>
+                <span class="价格">¥80 × 4个 = ¥320</span>
+              </div>
+            </div>
+            <!-- ④ 行内搜索 -->
+            <div class="行内输入">
+              <span class="子序号"></span>
+              <div class="框">🔍 输入配件名称模糊搜索，回车直接添加…</div>
+              <span class="标注">4</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 项目 2 -->
+        <div class="项目">
+          <div class="项目头">
+            <span class="序号">2</span>
+            <span class="项目名">更换前刹车片</span>
+            <span class="项目状态 st-待施工">待施工</span>
+            <span class="小按钮">提交:李芳</span>
+            <span class="小按钮">施工:张强</span>
+            <span class="小按钮">检查:-</span>
+            <span class="小标签">客户意向:同意</span>
+            <span class="小标签">正常</span>
+            <span class="小标签">备注</span>
+            <span class="工时费"><small>工时费</small> ¥100</span>
+          </div>
+          <div class="配件区">
+            <div class="配件区标">所用配件</div>
+            <div class="配件名称行">
+              <span class="子序号">2.1</span>
+              <span class="配件名称">刹车片（前）</span>
+              <span class="配件状态 st-已到货">已到货·待入库</span>
+              <span class="领退料">供应商:宏远汽配</span>
+            </div>
+            <div class="真实配件行">
+              <span class="连线">└─</span>
+              <div class="真实配件信息">
+                <span class="品牌">布雷博 Brembo</span>
+                <span>P06078</span>
+                <span class="零件号">编码 SC-06078</span>
+                <span class="成本价">成本 ¥175</span>
+                <span class="价格">¥260 × 1套 = ¥260</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 行内添加项目 -->
+        <div class="添加项目行" style="border-top:none">
+          <span class="序号 灰">＋</span>
+          <div class="框">输入项目名称模糊搜索，或输入新名称直接创建…</div>
+          <span class="标注说明">不开弹窗，直接加（新）</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 需求 2 ── -->
+    <div style="padding:0 16px 14px">
+      <div class="需求">
+        <div class="需求头">
+          <span class="需求序号">需求 2</span>
+          <span class="需求描述">客户描述：空调不凉，要求检修；顺便做四轮定位</span>
+          <span class="需求诊断">诊断：待检查</span>
+        </div>
+
+        <!-- 项目 3：待派工 + 配件未定真实件 -->
+        <div class="项目">
+          <div class="项目头">
+            <span class="序号">3</span>
+            <span class="项目名">空调不凉检修</span>
+            <span class="项目状态 st-待派工">待派工</span>
+            <span class="小按钮">提交:李芳</span>
+            <span class="小按钮">施工:未指派</span>
+            <span class="小标签">客户意向:待定</span>
+            <span class="小标签 橙">外包</span>
+            <span class="工时费"><small>工时费</small> ¥150</span>
+          </div>
+          <div class="配件区">
+            <div class="配件区标">所用配件</div>
+            <div class="配件名称行">
+              <span class="子序号">3.1</span>
+              <span class="配件名称">冷媒 R134a</span>
+              <span class="配件状态 st-待采购">待采购</span>
+              <span class="待定价">还没选定具体用哪个件，价格待定</span>
+            </div>
+            <div class="真实配件行">
+              <span class="连线">└─</span>
+              <button class="选真实配件钮">选择库存真实配件 ／ 新建配件</button>
+              <span class="标注">5</span>
+              <span class="标注说明">4级链条：先定"要什么件"，后落定"用哪个件"</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 项目 4：纯工时 -->
+        <div class="项目">
+          <div class="项目头">
+            <span class="序号">4</span>
+            <span class="项目名">四轮定位</span>
+            <span class="项目状态 st-已完工">已完工</span>
+            <span class="小按钮">提交:李芳</span>
+            <span class="小按钮">施工:张强</span>
+            <span class="小按钮">检查:王班长 ✓</span>
+            <span class="小标签">客户意向:同意</span>
+            <span class="工时费"><small>工时费</small> ¥120</span>
+          </div>
+        </div>
+
+        <div class="添加项目行" style="border-top:none">
+          <span class="序号 灰">＋</span>
+          <div class="框">输入项目名称模糊搜索…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ 接车照片 ═══════ -->
+  <div class="卡片">
+    <div class="卡片头"><div class="卡片标题">接车照片</div><span class="灰字">4 张</span></div>
+    <div class="卡片体"><div class="图组">
+      <div class="图占位">仪表盘</div><div class="图占位">左前</div><div class="图占位">右后</div><div class="图占位">内饰</div>
+    </div></div>
+  </div>
+
+  <!-- ═══════ 接车检查 ═══════ -->
+  <div class="卡片">
+    <div class="卡片头"><div class="卡片标题">接车检查</div><span class="灰字">李芳 · 2026-08-26 09:20</span></div>
+    <div class="卡片体">
+      <div class="检查格">
+        <div class="检查项"><span>油量</span><span>1/2</span></div>
+        <div class="检查项"><span>随车工具</span><span class="ok">齐全</span></div>
+        <div class="检查项"><span>备胎</span><span class="ok">有</span></div>
+        <div class="检查项"><span>贵重物品</span><span>已提醒带走</span></div>
+        <div class="检查项"><span>外观划痕</span><span class="bad">左前门 1 处（已拍照）</span></div>
+        <div class="检查项"><span>故障灯</span><span class="bad">发动机灯亮</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ 车况检查 ═══════ -->
+  <div class="卡片">
+    <div class="卡片头"><div class="卡片标题">车况检查</div><span class="灰字">张强 · 2026-08-26 10:05</span></div>
+    <div class="卡片体">
+      <div class="检查格">
+        <div class="检查项"><span>刹车片（前）</span><span class="bad">3mm 建议更换</span></div>
+        <div class="检查项"><span>刹车片（后）</span><span class="ok">7mm</span></div>
+        <div class="检查项"><span>轮胎（前）</span><span class="ok">正常</span></div>
+        <div class="检查项"><span>轮胎（后）</span><span class="ok">正常</span></div>
+        <div class="检查项"><span>机油</span><span>中线</span></div>
+        <div class="检查项"><span>防冻液</span><span class="ok">正常</span></div>
+        <div class="检查项"><span>电瓶</span><span class="ok">12.4V</span></div>
+        <div class="检查项"><span>空调制冷</span><span class="bad">不凉 待检修</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ 质检记录 ═══════ -->
+  <div class="卡片">
+    <div class="卡片头"><div class="卡片标题">质检记录</div></div>
+    <div class="卡片体" style="font-size:13px;color:#4b5563">
+      <div>✅ <b>四轮定位</b> — 质检通过 · 王班长 · 2026-08-26 11:30</div>
+    </div>
+  </div>
+
+  <!-- ═══════ 待入库配件 ═══════ -->
+  <div class="卡片">
+    <div class="卡片头"><div class="卡片标题">待入库配件</div><span class="灰字">1 件</span></div>
+    <div class="卡片体" style="font-size:13px;color:#4b5563">
+      📦 布雷博 Brembo P06078 × 1套（刹车片（前）· 项目2 用）— 已到门店，待执行入库
+    </div>
+  </div>
+
+  <!-- ═══════ 费用合计 ═══════ -->
+  <div class="卡片">
+    <div class="卡片头"><div class="卡片标题">费用合计</div></div>
+    <div class="卡片体">
+      <div class="汇总">
+        <div class="汇总行"><span>工时费（4项）</span><span>¥430</span></div>
+        <div class="汇总行"><span>配件费（2项已定件）</span><span>¥580</span></div>
+        <div class="汇总行"><span>管理费</span><span>¥0</span></div>
+        <div class="汇总行"><span>优惠抵扣</span><span>- ¥0</span></div>
+        <div class="汇总行 合计"><span>待收金额</span><span class="待收">¥1,010</span></div>
+        <div style="color:#b45309;font-size:12px;text-align:right;margin-top:4px">＊冷媒未定件，定件后自动计入</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ 支付记录 ═══════ -->
+  <div class="卡片">
+    <div class="卡片头"><div class="卡片标题">支付记录</div></div>
+    <div class="卡片体" style="font-size:13px;color:#9ca3af">暂无收款记录</div>
+  </div>
+
+  <!-- ═══════ 回访记录 ═══════ -->
+  <div class="卡片">
+    <div class="卡片头"><div class="卡片标题">回访记录</div></div>
+    <div class="卡片体" style="font-size:13px;color:#9ca3af">暂无回访（工单完工后 3 天提醒回访）</div>
+  </div>
+
+  <!-- ═══════ 状态变更 ═══════ -->
+  <div class="卡片">
+    <div class="卡片头"><div class="卡片标题">状态变更</div></div>
+    <div class="卡片体">
+      <div class="时间线">
+        <div><span class="时间">08-26 09:12</span>开单 · 李芳</div>
+        <div><span class="时间">08-26 09:45</span>派工「更换火花塞」→ 詹鸿源</div>
+        <div><span class="时间">08-26 10:02</span>配件「火花塞」出库 4 个</div>
+        <div><span class="时间">08-26 10:20</span>开始施工 → 施工中</div>
+        <div><span class="时间">08-26 11:30</span>「四轮定位」质检通过</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ 图例 ═══════ -->
+  <div class="图例">
+    <div class="卡片标题" style="margin-bottom:10px">V2 小样说明：哪 5 处是新的</div>
+    <div class="图例项"><span class="图例号">1</span><span><b>客户上下文徽章</b>：基本信息区加一排徽章——服务记录、挂账（红色醒目）、定金、卡券、商机。<span class="对比">（现在只有消费总额/次数，挂账要跳页查）</span></span></div>
+    <div class="图例项"><span class="图例号">2</span><span><b>常用项目快捷按钮</b>：高频项目点一下就加，可自行设置。<span class="对比">（现在每个项目都要搜索选择）</span></span></div>
+    <div class="图例项"><span class="图例号">3</span><span><b>项目行信息归拢</b>：状态、质检、提交/施工/检查人、客户意向、业务类型、维修指导、备注、图片——一行摆齐；内容没变，只是不再散开错位。<span class="对比">（现在这些都有，但一行经常挤不下换行错位）</span></span></div>
+    <div class="图例项"><span class="图例号">4</span><span><b>行内模糊搜索添加配件</b>：配件区底部一行输入框，打字就搜、回车就加。<span class="对比">（现在点"添加配件"开弹窗）</span></span></div>
+    <div class="图例项"><span class="图例号">5</span><span><b>4级链条可视化</b>：配件名称行下面 └─ 缩进一行显示真实配件（品牌/规格/编码/仓位/成本）；未定件的显示"选择真实配件"按钮+价格待定提示。<span class="对比">（结构本来就有，这样摆之后"要什么件→用哪个件"一眼看清）</span></span></div>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f3f4f6;color:#6b7280;font-size:13px;line-height:1.8">
+      <b>没动的板块</b>（全部保留原功能）：页头操作按钮、基本信息、接车照片、接车检查、车况检查、质检记录、待入库配件、费用合计、支付记录、回访记录、状态变更、移动端弹窗管理。<br>
+      <b>没动底层</b>：数据库表、操作流程、权限、打印——全都不变。
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
