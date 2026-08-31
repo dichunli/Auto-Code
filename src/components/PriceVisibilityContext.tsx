@@ -100,13 +100,18 @@ export function PriceValue({
   value,
   prefix = "¥",
   className,
+  force = false,
 }: {
   value: number | string | null;
   prefix?: string;
   className?: string;
+  /* 销售价专用（2026-08-31 用户拍板"销售价不需要隐藏"）：
+     面向客户的报价/工单费用不算商业秘密，加 force 始终显示；
+     采购价/成本价/采购单金额不加，仍受门禁控制 */
+  force?: boolean;
 }) {
   const { showPrices } = usePriceVisibility();
-  if (!showPrices) {
+  if (!showPrices && !force) {
     return <span className={className}>***</span>;
   }
   const num = typeof value === "string" ? parseFloat(value) : value;

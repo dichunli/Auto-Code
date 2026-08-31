@@ -1250,31 +1250,28 @@ export function PartBranchStatusList({
         {!隐藏销售价客户意见 && (
           <>
             <td className="px-2 py-2 text-right">
-              {showPrices ? (
-                <div className="flex items-center justify-end gap-1">
-                  <span className="text-gray-400">¥</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    disabled={isSaving}
-                    value={priceValue}
-                    onChange={(e) => setEditValue(row.id, "price", e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, row, "price")}
-                    placeholder={status === "pending_quote" ? "必填" : "-"}
-                    title={status === "pending_quote" ? "销售价（必填）" : "销售价"}
-                    className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
-                      改了("unit_price")
-                        ? "border-yellow-400 bg-yellow-50"
-                        : status === "pending_quote" && !priceValue
-                          ? "border-red-400 bg-red-50"
-                          : "border-gray-200"
-                    }`}
-                  />
-                </div>
-              ) : (
-                <span className="text-gray-700">***</span>
-              )}
+              {/* 销售价不需要隐藏（2026-08-31 用户拍板）：面向客户的报价，不受价格门禁控制 */}
+              <div className="flex items-center justify-end gap-1">
+                <span className="text-gray-400">¥</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  disabled={isSaving}
+                  value={priceValue}
+                  onChange={(e) => setEditValue(row.id, "price", e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(e, row, "price")}
+                  placeholder={status === "pending_quote" ? "必填" : "-"}
+                  title={status === "pending_quote" ? "销售价（必填）" : "销售价"}
+                  className={`w-20 px-2 py-1 text-right text-xs rounded border hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50 ${
+                    改了("unit_price")
+                      ? "border-yellow-400 bg-yellow-50"
+                      : status === "pending_quote" && !priceValue
+                        ? "border-red-400 bg-red-50"
+                        : "border-gray-200"
+                  }`}
+                />
+              </div>
             </td>
             <td className="px-2 py-2">
               {status === "pending_quote" ? (
