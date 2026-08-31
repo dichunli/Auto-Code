@@ -1187,7 +1187,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
                           <PriceValue value={r.unit_cost} />
                         </td>
                         <td className="px-3 py-3 text-right text-gray-700">
-                          <PriceValue value={r.unit_price} />
+                          <PriceValue value={r.unit_price} force />
                         </td>
                         <td className="px-3 py-3">
                           {/* 暂存行（自定义采购）没有客户意见，显示 - */}

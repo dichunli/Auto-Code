@@ -1511,9 +1511,9 @@ export default async function WorkOrderDetailPage({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-4">费用合计</h2>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-gray-600"><span>配件费用</span><span><PriceValue value={order.parts_cost ?? null} /></span></div>
-              <div className="flex justify-between text-gray-600"><span>工时费用</span><span><PriceValue value={order.labor_cost ?? null} /></span></div>
-              <div className="flex justify-between text-gray-600"><span>其他费用</span><span><PriceValue value={order.other_cost ?? null} /></span></div>
+              <div className="flex justify-between text-gray-600"><span>配件费用</span><span><PriceValue value={order.parts_cost ?? null} force /></span></div>
+              <div className="flex justify-between text-gray-600"><span>工时费用</span><span><PriceValue value={order.labor_cost ?? null} force /></span></div>
+              <div className="flex justify-between text-gray-600"><span>其他费用</span><span><PriceValue value={order.other_cost ?? null} force /></span></div>
               <ShowCommission>
                 {totalCommission > 0 && (
                   <div className="flex justify-between text-purple-600">
@@ -1542,7 +1542,7 @@ export default async function WorkOrderDetailPage({
               )}
               <div className="border-t border-gray-100 pt-2 flex justify-between text-base font-bold text-gray-900">
                 <span>应收合计</span>
-                <span><PriceValue value={(order.total_cost ?? 0) - advancePaymentTotal} /></span>
+                <span><PriceValue value={(order.total_cost ?? 0) - advancePaymentTotal} force /></span>
               </div>
             </div>
           </div>

@@ -1494,7 +1494,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
               <div><span className="text-gray-400">品牌：</span>{partMatchModal.matchedPart.part_brands?.name || "-"}</div>
               <div><span className="text-gray-400">规格：</span>{partMatchModal.matchedPart.specification_text || "-"}</div>
               <div><span className="text-gray-400">成本价：</span><PriceValue value={partMatchModal.matchedPart.unit_cost ?? null} /></div>
-              <div><span className="text-gray-400">销售价：</span><PriceValue value={partMatchModal.matchedPart.unit_price ?? null} /></div>
+              <div><span className="text-gray-400">销售价：</span><PriceValue value={partMatchModal.matchedPart.unit_price ?? null} force /></div>
             </div>
             <div className="flex gap-3 justify-end">
               <button
