@@ -50,7 +50,10 @@ export default function ProfilePage() {
     async function loadProfile() {
       setLoading(true);
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      /* getSession 本地读取不联网（2026-09-01）：getUser 是网络验证请求，
+         代理/弱网挂起会导致页永不加载；真正的权限由服务端 RLS/RPC 把关 */
+      const user = session?.user ?? null;
       if (!user) {
         setLoading(false);
         return;

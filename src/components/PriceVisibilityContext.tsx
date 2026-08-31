@@ -49,9 +49,10 @@ export function PriceVisibilityProvider({ children }: { children: ReactNode }) {
         setCanTogglePrices(!error && data === true);
       }
     }
-    /* 立即判定一次 + 登录态变化时再判定 */
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) 判定();
+    /* 立即判定一次 + 登录态变化时再判定；
+       用 getSession（本地读不联网）拿身份——getUser 网络验证在代理/弱网下会挂起 */
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) 判定();
     });
     const {
       data: { subscription },

@@ -105,6 +105,24 @@ try {
   await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 45000, waitUntil: "domcontentloaded" });
   断言(true, "登录成功", page.url());
 
+  /* ── 1.5 退出登录回归（2026-09-01 代理环境下 logout 请求挂起导致失效，改本地登出） ── */
+  await page.getByRole("button", { name: "退出登录" }).first().click();
+  await page.waitForTimeout(500); /* 等确认弹窗 */
+  await page.getByRole("button", { name: "确定退出" }).click();
+  try {
+    await page.waitForURL((url) => url.pathname.startsWith("/login"), { timeout: 10000, waitUntil: "domcontentloaded" });
+    断言(true, "退出登录成功", page.url());
+  } catch {
+    断言(false, "退出登录成功", "点了确定退出但未回到登录页: " + page.url());
+  }
+
+  /* ── 1.6 退出后重新登录（继续后续用例） ── */
+  await page.fill("#login-account", 账号);
+  await page.fill("#login-password", 密码);
+  await page.getByRole("button", { name: "登录", exact: true }).first().click();
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 45000, waitUntil: "domcontentloaded" });
+  断言(true, "退出后重新登录成功", page.url());
+
   /* ── 2. 工单列表 ── */
   await page.goto(`${BASE}/work-orders`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(3000); /* 等首屏数据渲染 */
