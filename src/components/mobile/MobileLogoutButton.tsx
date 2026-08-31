@@ -10,7 +10,9 @@ export function MobileLogoutButton() {
   const [showConfirm, setShowConfirm] = useState(false);
 
   async function handleLogout() {
-    await supabase.auth.signOut();
+    /* scope:'local' 只清本地 session、不调网络（2026-09-01 修复）：
+       弱网/代理下 logout 请求挂起会导致点了没反应 */
+    await supabase.auth.signOut({ scope: "local" });
     router.push("/login");
     router.refresh();
   }

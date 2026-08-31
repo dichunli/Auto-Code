@@ -81,7 +81,8 @@ export function PasswordChangeModal({ open, onClose, userEmail }: Props) {
       /* 密码修改成功：退出登录并跳转到登录页 */
       alert("密码修改成功，请使用新密码重新登录");
       try {
-        await supabase.auth.signOut();
+        /* scope:'local' 只清本地 session、不调网络（2026-09-01 修复）：防止 logout 请求挂起 */
+        await supabase.auth.signOut({ scope: "local" });
       } catch {
         /* 忽略登出错误，强制跳转 */
       }
