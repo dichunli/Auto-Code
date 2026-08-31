@@ -317,7 +317,9 @@ export function Navbar() {
 
   async function handleLogout() {
     try {
-      await supabase.auth.signOut();
+      /* scope:'local' 只清本地 session、不调网络（2026-09-01 修复）：
+         代理/弱网环境下 /auth/v1/logout 请求会挂起，await 永不返回导致退出按钮失效 */
+      await supabase.auth.signOut({ scope: "local" });
     } catch {
       /* 忽略登出错误，强制跳转 */
     }
