@@ -17,7 +17,10 @@ export function AppAuthGuard() {
   useEffect(() => {
     async function checkAuth() {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      /* getSession 本地读取不联网（2026-09-01）：getUser 网络验证挂起会导致
+         APP 永远停在"检查登录状态..."；登出时 SIGNED_OUT 由存储清除体现 */
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
 
       if (!user) {
         /* 未登录，跳转到登录页，带上当前路径用于登录后返回 */
