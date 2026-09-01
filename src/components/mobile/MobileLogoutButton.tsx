@@ -1,18 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { 完整退出登录 } from "@/lib/logout";
 import { useRouter } from "next/navigation";
 
 export function MobileLogoutButton() {
   const router = useRouter();
-  const supabase = createClient();
   const [showConfirm, setShowConfirm] = useState(false);
 
   async function handleLogout() {
-    /* scope:'local' 只清本地 session、不调网络（2026-09-01 修复）：
-       弱网/代理下 logout 请求挂起会导致点了没反应 */
-    await supabase.auth.signOut({ scope: "local" });
+    /* 完整退出登录（2026-09-01）：本地清除+服务端后台作废 Token，见 src/lib/logout.ts */
+    await 完整退出登录();
     router.push("/login");
     router.refresh();
   }

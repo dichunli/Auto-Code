@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 完整退出登录 } from "@/lib/logout";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
@@ -316,13 +317,8 @@ export function Navbar() {
   }, [supabase]);
 
   async function handleLogout() {
-    try {
-      /* scope:'local' 只清本地 session、不调网络（2026-09-01 修复）：
-         代理/弱网环境下 /auth/v1/logout 请求会挂起，await 永不返回导致退出按钮失效 */
-      await supabase.auth.signOut({ scope: "local" });
-    } catch {
-      /* 忽略登出错误，强制跳转 */
-    }
+    /* 完整退出登录（2026-09-01）：本地清除+服务端后台作废 Token，见 src/lib/logout.ts */
+    await 完整退出登录();
     router.push("/login");
     router.refresh();
   }
