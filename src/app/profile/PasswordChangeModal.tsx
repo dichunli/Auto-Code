@@ -2,6 +2,7 @@
 
 import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
+import { 完整退出登录 } from "@/lib/logout";
 
 interface Props {
   open: boolean;
@@ -80,12 +81,8 @@ export function PasswordChangeModal({ open, onClose, userEmail }: Props) {
 
       /* 密码修改成功：退出登录并跳转到登录页 */
       alert("密码修改成功，请使用新密码重新登录");
-      try {
-        /* scope:'local' 只清本地 session、不调网络（2026-09-01 修复）：防止 logout 请求挂起 */
-        await supabase.auth.signOut({ scope: "local" });
-      } catch {
-        /* 忽略登出错误，强制跳转 */
-      }
+      /* 完整退出登录（2026-09-01）：本地清除+服务端后台作废 Token，见 src/lib/logout.ts */
+      await 完整退出登录();
       window.location.href = "/login";
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
