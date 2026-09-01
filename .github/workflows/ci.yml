@@ -1,0 +1,43 @@
+# CI 自动检查（2026-08-31 待办#21）
+# 每次推代码/开 PR 自动跑：安装依赖 → lint → 类型检查 → 单元测试 → 构建
+# 任何一步失败，PR 上会标红，防止"忘了跑测试"带病上线
+name: CI 自动检查
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 装 Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: ESLint 检查
+        run: npm run lint
+
+      - name: TypeScript 类型检查
+        run: npx tsc --noEmit
+
+      - name: 单元测试
+        run: npm run test:unit
+
+      - name: 构建
+        run: npm run build
+        env:
+          # 构建只需要"长得像"的值（页面都是动态渲染，构建期不连真实数据库）
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-key
