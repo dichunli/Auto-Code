@@ -68,7 +68,8 @@ export default function ItemQcActions({ itemId, itemName, requireQc, 实际锁�
   );
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    supabase.auth.getSession().then(({ data: sessionData }) => {
+      const data = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网 */
       const uid = data.user?.id || null;
       set当前用户Id(uid);
       重查可见性(uid);

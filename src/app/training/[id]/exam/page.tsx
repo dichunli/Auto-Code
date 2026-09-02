@@ -43,7 +43,8 @@ export default function ExamPage() {
   useEffect(() => {
     async function init() {
       /* 获取当前用户 */
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
       if (!userData.user) {
         alert("请先登录");
         router.push("/login");

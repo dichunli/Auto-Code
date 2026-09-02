@@ -78,8 +78,9 @@ export default function ToolBorrowScanPage() {
       set错误("");
       try {
         const {
-          data: { user },
-        } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null; /* getSession本地读不联网 */ 
         if (user) set当前用户ID(user.id);
 
         if (!toolId) {

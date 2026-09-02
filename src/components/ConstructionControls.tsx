@@ -114,7 +114,8 @@ export function ConstructionControls({
   const isCompleted = status === "completed";
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
+    supabase.auth.getSession().then(async ({ data: sessionData }) => {
+      const data = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网 */
       if (!data.user) return;
       setCurrentUserId(data.user.id);
       const { data: prs } = await supabase

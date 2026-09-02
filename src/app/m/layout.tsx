@@ -24,7 +24,8 @@ export default async function MobileLayout({
   /* APP 环境：跳过服务端 auth 检查，由客户端自行处理 */
   if (!是APP环境(userAgent)) {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user ?? null; /* getSession本地读不联网（2026-09-03） */
 
     if (!user) {
       redirect("/login?redirect=/m/");

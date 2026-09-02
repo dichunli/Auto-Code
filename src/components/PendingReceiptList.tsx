@@ -114,7 +114,8 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
   useEffect(() => {
     let 已卸载 = false;
     async function 加载角色() {
-      const { data } = await supabase.auth.getUser();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const data = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网 */
       if (!data.user) return;
       const { data: prs } = await supabase
         .from("profile_roles")

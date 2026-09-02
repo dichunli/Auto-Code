@@ -525,8 +525,8 @@ export default function MobileItemEditor({
       setDraftOpinion(item.customer_opinion || "pending");
       setDraftCustomerPart(!!item.is_customer_part);
       setNotes(item.description || "");
-      supabase.auth.getUser().then(({ data }) => {
-        setCurrentUserId(data.user?.id || null);
+      supabase.auth.getSession().then(({ data: sessionData }) => {
+        setCurrentUserId(sessionData.session?.user?.id || null);
       });
     }
   }, [open, item.customer_opinion, item.is_customer_part, item.description, supabase]);
@@ -884,7 +884,8 @@ export default function MobileItemEditor({
 
   /* 领单 — 与人合作 */
   async function handleCollaborateClaim() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user ?? null; /* getSession本地读不联网（2026-09-03） */
     if (!user) {
       alert("未登录，无法领单");
       return;
@@ -917,7 +918,8 @@ export default function MobileItemEditor({
     if (loading) return;
     setLoading(true);
 
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
     const mechanicId = userData.user?.id || null;
 
     const { data: rpcData, error } = await supabase.rpc("add_construction_log", {
@@ -948,7 +950,8 @@ export default function MobileItemEditor({
     if (lastLog.action !== "start" && lastLog.action !== "resume") return;
 
     setLoading(true);
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
     const mechanicId = userData.user?.id || null;
 
     const { data: rpcData, error } = await supabase.rpc("add_construction_log", {

@@ -52,7 +52,8 @@ vi.mock("@/lib/supabase/client", () => ({
       })),
     })),
     auth: {
-      getUser: vi.fn(async () => ({ data: { user: { id: "user-1" } } })),
+      /* 2026-09-03 组件已换 getSession（本地读不联网），mock 同步 */
+      getSession: vi.fn(async () => ({ data: { session: { user: { id: "user-1" } } } })),
     },
   }),
 }));

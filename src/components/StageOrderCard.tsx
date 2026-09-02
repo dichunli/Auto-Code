@@ -69,7 +69,8 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
     const key = `${itemId}:${action}`;
     if (操作中) return;
     set操作中(key);
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
     const { data, error } = await supabase.rpc("add_construction_log", {
       p_work_order_item_id: itemId,
       p_mechanic_id: userData.user?.id || null,

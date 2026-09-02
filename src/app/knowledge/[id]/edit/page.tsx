@@ -88,13 +88,14 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
         supabase.from("knowledge_categories").select("*").order("sort_order").limit(100),
         supabase.from("roles").select("id, name, label").order("name"),
         supabase.from("knowledge_articles").select("*").eq("id", id).single(),
-        supabase.auth.getUser(),
+        supabase.auth.getSession(),
       ]);
 
       const { data: cats } = catsResult;
       const { data: rolesData } = rolesResult;
       const { data: article } = articleResult;
-      const { data: userData } = userResult;
+      const { data: sessionData } = userResult;
+      const userData = { user: sessionData.session?.user ?? null };
 
       setCategories(cats || []);
       setRoles((rolesData || []) as 岗位[]);

@@ -40,7 +40,8 @@ export default async function OtherTransactionsPage({
   const endDay = new Date(yearNum, monthNum, 0).getDate();
   const endDate = `${month}-${String(endDay).padStart(2, "0")}`;
 
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
   const currentUserId = userData.user?.id;
 
   const { data: rows } = await supabase

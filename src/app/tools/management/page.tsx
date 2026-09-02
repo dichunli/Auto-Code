@@ -62,8 +62,9 @@ export default async function ToolManagementPage() {
   /* 检查当前用户是否为管理员（通过 profile_roles） */
   let isAdmin = false;
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null; /* getSession本地读不联网 */ 
   if (user) {
     const { data: roleData } = await supabase
       .from("profile_roles")
