@@ -250,8 +250,9 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     supabase.from("logistics_companies").select("*").order("name").limit(100).then(({ data }) => setLogisticsCompanies((data as 物流公司[]) || []));
     // 加载所有标准项目（含分类信息）
     supabase.from("service_items").select("*, service_categories(name)").order("name").limit(100).then(({ data }) => setAllServiceItems((data as 维修项目[]) || []));
-    // 获取当前用户信息
-    supabase.auth.getUser().then(async ({ data: authData }) => {
+    // 获取当前用户信息（getSession 本地读不联网，2026-09-03）
+    supabase.auth.getSession().then(async ({ data: sessionData }) => {
+      const authData = { user: sessionData.session?.user ?? null };
       if (authData?.user) {
         const { data: profile } = await supabase
           .from("profiles")

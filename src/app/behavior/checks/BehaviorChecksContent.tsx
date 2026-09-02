@@ -100,7 +100,8 @@ export default function BehaviorChecksContent({ initialRecords, initialCount, cu
   /* 提交后重查/翻页：与服务端 page.tsx 同一套懒生成 + 可见性逻辑（纯函数共用） */
   const fetchRecords = useCallback(async (目标页: number) => {
     setLoading(true);
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
     if (!userData.user) {
       setLoading(false);
       return;

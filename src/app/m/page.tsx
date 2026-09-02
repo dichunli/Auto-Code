@@ -96,7 +96,8 @@ export default async function MobileHomePage() {
   /* 非 APP 环境：服务端获取用户角色 */
   if (!是APP环境(userAgent)) {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user ?? null; /* getSession本地读不联网（2026-09-03） */
 
     if (user) {
       const { data } = await supabase

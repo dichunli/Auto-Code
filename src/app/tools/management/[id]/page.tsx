@@ -114,8 +114,9 @@ export default function ToolDetailPage() {
 
         /* 检查管理员权限 */
         const {
-          data: { user },
-        } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null; /* getSession本地读不联网 */ 
         if (user) {
           const { data: roleData } = await supabase
             .from("profile_roles")

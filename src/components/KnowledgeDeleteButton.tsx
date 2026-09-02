@@ -24,7 +24,8 @@ export function KnowledgeDeleteButton({ articleId, canDelete: serverCanDelete }:
     if (serverCanDelete !== undefined) return;
 
     async function checkPermission() {
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
       const currentUserId = userData?.user?.id;
       if (!currentUserId) return;
 

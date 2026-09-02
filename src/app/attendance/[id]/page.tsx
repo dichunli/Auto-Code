@@ -99,8 +99,9 @@ export default async function 个人考勤明细页({
 
   /* 当前登录用户是否管理角色（决定出勤天数是否显示编辑入口） */
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null; /* getSession本地读不联网 */ 
   let 是管理 = false;
   if (user) {
     const { data: 角色数据 } = await supabase

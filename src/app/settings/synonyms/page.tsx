@@ -8,7 +8,8 @@ export default async function SynonymsPage() {
   const supabase = await createClient();
 
   /* 检查管理员权限（与原客户端逻辑一致） */
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
   const currentUserId = userData.user?.id || "";
   let isAdmin = false;
   if (currentUserId) {

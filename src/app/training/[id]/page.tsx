@@ -47,7 +47,8 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
     .eq("course_id", id);
 
   /* 获取当前用户，判断是否已分配该课程 */
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
   const currentUserId = userData.user?.id;
   let myAssignment = null;
   let myExamResult = null;

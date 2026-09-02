@@ -35,7 +35,8 @@ function 取单<T>(v: T[] | T | null | undefined): T | null {
 /* 首屏数据在服务端查询（客户端 useEffect 加载会闪空白） */
 export default async function BehaviorChecksPage() {
   const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
   if (!userData.user) {
     return <BehaviorChecksContent initialRecords={[]} initialCount={0} currentUserId="" />;
   }

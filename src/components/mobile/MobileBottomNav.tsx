@@ -103,7 +103,8 @@ export function MobileBottomNav() {
   useEffect(() => {
     async function loadRoles() {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user ?? null; /* getSession本地读不联网（2026-09-03） */
       if (!user) return;
       const { data } = await supabase
         .from("profile_roles")

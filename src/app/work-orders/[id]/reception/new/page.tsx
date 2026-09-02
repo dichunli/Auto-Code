@@ -43,14 +43,15 @@ export default function NewReceptionPage({ params }: { params: Promise<{ id: str
       });
   }, [orderId, supabase]);
 
-  // 获取当前用户信息作为检查人
+  // 获取当前用户信息作为检查人（getSession 本地读不联网，2026-09-03）
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
+    supabase.auth.getSession().then(({ data }) => {
+      const user = data.session?.user ?? null;
+      if (user) {
         supabase
           .from("profiles")
           .select("full_name")
-          .eq("id", data.user.id)
+          .eq("id", user.id)
           .single()
           .then(({ data: profile }) => {
             if (profile?.full_name) {

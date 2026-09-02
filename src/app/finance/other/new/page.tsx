@@ -42,7 +42,8 @@ export default function NewOtherTransactionPage() {
   useEffect(() => {
     async function loadData() {
       const supabase = createClient();
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
       const operatorId = userData.user?.id;
 
       /* 查询分类 */

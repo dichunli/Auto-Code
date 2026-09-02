@@ -7,7 +7,8 @@ import type { 等级信息, 晋级检查结果, 晋级规则 } from "./Promotion
  * 未登录时服务端直接重定向到登录页（原客户端 router.push） */
 export default async function PromotionStatusPage() {
   const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: sessionData } = await supabase.auth.getSession();
+    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
   if (!userData.user) {
     redirect("/login");
   }

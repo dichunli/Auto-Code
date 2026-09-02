@@ -42,7 +42,7 @@ export default async function KnowledgeDetailPage({
 
   /* 第 1 轮并行：互不依赖的查询同时发出 */
   const [userResult, articleResult, readCountResult, linksResult] = await Promise.all([
-    supabase.auth.getUser(),
+    supabase.auth.getSession(),
     supabase
       .from("knowledge_articles")
       .select("*, knowledge_categories(name), profiles(full_name)")
@@ -58,7 +58,8 @@ export default async function KnowledgeDetailPage({
       .eq("article_id", id),
   ]);
 
-  const { data: { user: currentUser } } = userResult;
+  const { data: { session } } = userResult;
+  const currentUser = session?.user ?? null;
   const { data: article } = articleResult;
   const currentUserId = currentUser?.id;
   const readCount = readCountResult.count ?? 0;

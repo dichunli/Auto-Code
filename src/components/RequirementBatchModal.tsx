@@ -85,7 +85,8 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
   /* 获取当前用户及角色 */
   useEffect(() => {
     async function initUser() {
-      const { data: authData } = await supabase.auth.getUser();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const authData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网 */
       const uid = authData.user?.id || null;
       setCurrentUserId(uid);
       if (uid) {

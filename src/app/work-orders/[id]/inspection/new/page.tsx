@@ -182,8 +182,9 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
     /* 获取当前用户 */
     async function initUser() {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user ?? null; /* getSession本地读不联网 */ 
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
@@ -292,7 +293,8 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
         setExteriorPaths(media.filter((m) => m.media_type === "exterior").map((m) => m.storage_path));
         setVideoPaths(media.filter((m) => m.media_type === "inspection_video").map((m) => m.storage_path));
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user ?? null; /* getSession本地读不联网（2026-09-03） */
         setCanEdit(user?.id === data.submitter_id);
       }
     }
