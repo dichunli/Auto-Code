@@ -30,288 +30,28 @@ import {
 import { ShowCommission } from "./WorkOrderToggleContext";
 import { calculateItemCommission, type CommissionSource } from "@/lib/commission";
 import { useConfirm } from "./ConfirmDialog";
-
-/* ==================== 类型定义 ==================== */
-
-interface Profile {
-  id: string;
-  full_name: string;
-}
-
-interface MechanicGroup {
-  id: string;
-  name: string;
-  members: { mechanic_id: string; profiles?: { full_name?: string } | null }[];
-}
-
-interface ExistingMechanic {
-  mechanic_id: string;
-  share_pct?: number;
-  profiles?: { full_name?: string } | null;
-}
-
-interface ConstructionLog {
-  id: string;
-  action: "start" | "pause" | "resume" | "complete";
-  created_at: string;
-  mechanic_id: string | null;
-}
-
-interface OutsourceOrderItem {
-  id: string;
-  service_name?: string;
-  amount?: number;
-}
-
-interface ItemData {
-  id: string;
-  name: string;
-  alias_name?: string | null;
-  item_type: string;
-  quantity?: number | null;
-  unit_price?: number | null;
-  total_price?: number | null;
-  description?: string | null;
-  customer_opinion?: string | null;
-  is_outsourced?: boolean | null;
-  is_customer_part?: boolean | null;
-  status?: string | null;
-  require_qc?: boolean | null;
-  qc_status?: string | null;
-  mechanic_id?: string | null;
-  submitter_id?: string | null;
-  inspector_id?: string | null;
-  service_item_id?: string | null;
-  service_items?: { id?: string | null } | null;
-  outsourced_supplier?: { name?: string } | null;
-  outsource_order_items?: OutsourceOrderItem[] | null;
-}
-
-interface ItemPart {
-  id: string;
-  name: string;
-  /* 编码/品牌/规格在数据库中可空（未填即 null），原声明必填过严 */
-  part_number: string | null;
-  quantity: number;
-  unit_price: number;
-  total_price: number;
-  unit: string;
-  brand: string | null;
-  specification: string | null;
-  unit_cost?: number | null;
-  /* 以下 4 个字段由实时同步广播推送，本组件仅透传合并 */
-  cost_price?: number | null;
-  supplier_name?: string | null;
-  is_purchased?: boolean | null;
-  is_arrived?: boolean | null;
-  customer_opinion?: string | null;
-  notes?: string | null;
-  part_id?: string | null;
-  part_name_id?: string | null;
-  branch_group_id?: string | null;
-  category?: string | null;
-  is_selected?: boolean | null;
-  document_name?: string | null;
-  pickedQty?: number;
-}
-
-interface PartImageRecord {
-  storage_path?: string;
-  media_type?: string;
-}
-
-interface PartNameResult {
-  id: string;
-  name: string;
-  unit: string | null;
-  default_quantity: number | null;
-}
-
-interface SelectedPartName {
-  part_name_id: string;
-  name: string;
-  unit: string;
-  quantity: number | null;
-}
-
-interface SelectedRealPart {
-  part_id: string;
-  part_name_id: string | null;
-  name: string;
-  part_number: string;
-  unit: string;
-  brand: string;
-  specification: string;
-  unit_cost: number | null;
-  unit_price: number | null;
-  quantity: number | null;
-}
-
-interface PresetPart {
-  part_name_id: string;
-  name: string;
-  unit: string;
-  quantity: number | null;
-}
-
-interface ExistingOrder {
-  id: string;
-  order_no: string;
-  supplier_id: string;
-  total_amount: number;
-  is_paid: boolean;
-  payment_method?: string | null;
-  notes?: string | null;
-  created_at?: string | null;
-  suppliers?: { name: string } | null;
-  outsource_order_items?: Array<{
-    id: string;
-    work_order_item_id: string;
-    service_item_id: string;
-    service_name: string;
-    amount: number;
-  }>;
-}
-
-interface ExistingItem {
-  id: string;
-  service_item_id: string;
-  service_name: string;
-  amount: number;
-}
-
-interface PickerPart {
-  id: string;
-  part_name_id: string | null;
-  name: string;
-  part_number: string | null;
-  unit: string | null;
-  part_brands: { name: string } | { name: string }[] | null;
-  specification_text: string | null;
-  part_specifications: { name: string } | null;
-  unit_cost: number | null;
-  unit_price: number | null;
-  selectedQuantity?: number | null;
-}
-
-/* 编码/扫码/搜索命中的库存配件（带回分支用） */
-interface 编码命中配件 {
-  id: string;
-  part_number: string | null;
-  part_name_id: string | null;
-  name: string;
-  brand: string;
-  specification: string;
-  unit_cost: number | null;
-  unit_price: number | null;
-  document_name: string | null;
-}
-
-/* parts 表带关联名称的查询行 */
-interface 配件库行 {
-  id: string;
-  part_number: string | null;
-  part_name_id: string | null;
-  unit_cost: number | null;
-  unit_price: number | null;
-  document_name: string | null;
-  part_names: { name: string } | { name: string }[] | null;
-  part_brands: { name: string } | { name: string }[] | null;
-  part_specifications: { name: string } | { name: string }[] | null;
-}
-
-/* 把配件库查询行整理成命中结构（关联名称可能是对象或数组） */
-function 转命中配件(d: 配件库行): 编码命中配件 {
-  const pn = d.part_names;
-  const pb = d.part_brands;
-  const ps = d.part_specifications;
-  return {
-    id: d.id,
-    part_number: d.part_number,
-    part_name_id: d.part_name_id,
-    name: (Array.isArray(pn) ? pn[0]?.name : pn?.name) || "",
-    brand: (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "",
-    specification: (Array.isArray(ps) ? ps[0]?.name : ps?.name) || "",
-    unit_cost: d.unit_cost,
-    unit_price: d.unit_price,
-    document_name: d.document_name,
-  };
-}
-
-interface Props {
-  item: ItemData;
-  orderId: string;
-  profiles: Profile[];
-  mechanicGroups: MechanicGroup[];
-  existingMechanics: ExistingMechanic[];
-  images: string[];
-  knowledgeUrl?: string;
-  isLocked: boolean;
-  parts: ItemPart[];
-  vehicleModelId?: number | null;
-  existingOrder?: ExistingOrder | null;
-  existingItem?: ExistingItem | null;
-  partInventory?: Record<string, number>;
-  partImages?: Record<string, PartImageRecord[]>;
-  /* 配件工作流（领料/退库/退货/采购/到货）需要的数据 */
-  suppliers?: { id: string; name: string; region?: string | null }[];
-  logisticsCompanies?: { id: string; name: string; scopes?: string[] | null }[];
-  returnByPart?: Record<string, number>;
-  pendingSupplierReturnByPart?: Record<string, boolean>;
-  /* 待出库申领数（按分支）：详情抽屉显示"已申领"角标 + 申领入口 */
-  申领ByPart?: Record<string, number>;
-}
-
-/* ==================== 工具函数 ==================== */
-
-function formatDuration(totalSeconds: number) {
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = Math.floor(totalSeconds % 60);
-  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-}
-
-function formatTime(d: Date) {
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-}
-
-function getConstructionStatus(logs: ConstructionLog[]): "idle" | "running" | "paused" | "completed" {
-  if (logs.length === 0) return "idle";
-  const last = logs[logs.length - 1];
-  if (last.action === "complete") return "completed";
-  if (last.action === "pause") return "paused";
-  if (last.action === "start" || last.action === "resume") return "running";
-  return "idle";
-}
-
-function calculateTotalSeconds(logs: ConstructionLog[], now: Date): number {
-  let total = 0;
-  let startTime: Date | null = null;
-  for (const log of logs) {
-    const t = new Date(log.created_at);
-    if (log.action === "start" || log.action === "resume") {
-      startTime = t;
-    } else if (log.action === "pause" || log.action === "complete") {
-      if (startTime) {
-        total += (t.getTime() - startTime.getTime()) / 1000;
-        startTime = null;
-      }
-    }
-  }
-  if (startTime) {
-    total += (now.getTime() - startTime.getTime()) / 1000;
-  }
-  return Math.max(0, total);
-}
-
-function canCancelLastStart(logs: ConstructionLog[]): boolean {
-  if (logs.length === 0) return false;
-  const last = logs[logs.length - 1];
-  if (last.action !== "start" && last.action !== "resume") return false;
-  const now = new Date();
-  const startTime = new Date(last.created_at);
-  return now.getTime() - startTime.getTime() < 60 * 1000;
-}
+import type {
+  Props,
+  ItemPart,
+  PartImageRecord,
+  PartNameResult,
+  SelectedPartName,
+  SelectedRealPart,
+  PresetPart,
+  PickerPart,
+  InventoryPart,
+  申领行,
+  编码命中配件,
+  配件库行,
+} from "./mobile-item-editor/types";
+import {
+  formatDuration,
+  formatTime,
+  getConstructionStatus,
+  canCancelLastStart,
+  转命中配件,
+} from "./mobile-item-editor/utils";
+import { useItemTimer } from "./mobile-item-editor/useItemTimer";
 
 /* ==================== 主组件 ==================== */
 
@@ -341,11 +81,6 @@ export default function MobileItemEditor({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const { 请求确认, 确认弹窗 } = useConfirm();
-
-  /* 计时状态 */
-  const [logs, setLogs] = useState<ConstructionLog[]>([]);
-  const [elapsed, setElapsed] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   /* 批量草稿 */
   const [draftOpinion, setDraftOpinion] = useState(item.customer_opinion || "pending");
@@ -389,14 +124,6 @@ export default function MobileItemEditor({
   const [presetLoading, setPresetLoading] = useState(false);
 
   /* 配件库选择 */
-  interface InventoryPart {
-    id: string;
-    part_number: string | null;
-    name: string;
-    quantity: number;
-    unit_price: number | null;
-    part_name_id: string | null;
-  }
   const [linkedPartIds, setLinkedPartIds] = useState<Set<string>>(new Set());
 
   /* 配件库列表搜索 */
@@ -497,12 +224,6 @@ export default function MobileItemEditor({
   const debounced编码查询 = useDebounce(编码查询, 300);
 
   /* 配件申领：展开申领面板 / 申领数量 / 该分支待出库申领列表（面板展开时拉取） */
-  interface 申领行 {
-    id: string;
-    quantity: number;
-    notes: string | null;
-    created_at: string;
-  }
   const [申领展开, set申领展开] = useState(false);
   const [申领数量, set申领数量] = useState("1");
   const [申领列表, set申领列表] = useState<申领行[]>([]);
@@ -530,36 +251,6 @@ export default function MobileItemEditor({
       });
     }
   }, [open, item.customer_opinion, item.is_customer_part, item.description, supabase]);
-
-  /* 加载计时记录 */
-  useEffect(() => {
-    if (!open || item.item_type !== "labor") return;
-    supabase
-      .from("work_order_item_construction_logs")
-      .select("id, action, created_at, mechanic_id")
-      .eq("work_order_item_id", item.id)
-      .order("created_at", { ascending: true })
-      .then(({ data }) => {
-        const loaded = (data || []) as ConstructionLog[];
-        setLogs(loaded);
-        setElapsed(calculateTotalSeconds(loaded, new Date()));
-      });
-  }, [open, item.id, item.item_type, supabase]);
-
-  /* 实时计时 */
-  useEffect(() => {
-    const status = getConstructionStatus(logs);
-    if (status === "running") {
-      timerRef.current = setInterval(() => {
-        setElapsed(calculateTotalSeconds(logs, new Date()));
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [logs]);
 
   /* 初始化施工人编辑状态 */
   useEffect(() => {
@@ -725,6 +416,17 @@ export default function MobileItemEditor({
   const refresh = useCallback(() => {
     router.refresh();
   }, [router]);
+
+  /* 施工计时：日志加载/秒表/开始暂停完工取消 抽到独立 Hook（行为不变） */
+  const { logs, elapsed, timerAction, cancelTimer } = useItemTimer({
+    open,
+    itemId: item.id,
+    itemType: item.item_type,
+    supabase,
+    loading,
+    setLoading,
+    refresh,
+  });
 
   function togglePerson(id: string) {
     setSelectedPersons((prev) =>
@@ -910,83 +612,6 @@ export default function MobileItemEditor({
       return;
     }
     refresh();
-  }
-
-  /* 计时操作：统一走 add_construction_log RPC（与桌面端同一入口），
-   * 由 RPC 做派工/权限校验（约束1）并联动工单状态，不再直写表绕过 */
-  async function timerAction(action: "start" | "pause" | "resume" | "complete") {
-    if (loading) return;
-    setLoading(true);
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
-    const mechanicId = userData.user?.id || null;
-
-    const { data: rpcData, error } = await supabase.rpc("add_construction_log", {
-      p_work_order_item_id: item.id,
-      p_mechanic_id: mechanicId,
-      p_action: action,
-    });
-
-    setLoading(false);
-    const res = rpcData as { success: boolean; error?: string } | null;
-    if (error) {
-      alert("操作失败: " + error.message);
-      return;
-    }
-    if (!res?.success) {
-      alert(res?.error || "操作失败");
-      return;
-    }
-
-    await 重查计时日志();
-  }
-
-  /* 取消计时：走 RPC cancel（取消施工/取消完工，与桌面端同语义） */
-  async function cancelTimer() {
-    if (loading) return;
-    if (logs.length === 0) return;
-    const lastLog = logs[logs.length - 1];
-    if (lastLog.action !== "start" && lastLog.action !== "resume") return;
-
-    setLoading(true);
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
-    const mechanicId = userData.user?.id || null;
-
-    const { data: rpcData, error } = await supabase.rpc("add_construction_log", {
-      p_work_order_item_id: item.id,
-      p_mechanic_id: mechanicId,
-      p_action: "cancel",
-    });
-
-    setLoading(false);
-    const res = rpcData as { success: boolean; error?: string } | null;
-    if (error) {
-      alert("取消失败: " + error.message);
-      return;
-    }
-    if (!res?.success) {
-      alert(res?.error || "取消失败");
-      return;
-    }
-
-    await 重查计时日志();
-  }
-
-  /* 重查计时日志并刷新界面（计时/取消后共用） */
-  async function 重查计时日志() {
-    const { data } = await supabase
-      .from("work_order_item_construction_logs")
-      .select("id, action, created_at, mechanic_id")
-      .eq("work_order_item_id", item.id)
-      .order("created_at", { ascending: true });
-    const loaded = (data || []) as ConstructionLog[];
-    setLogs(loaded);
-    setElapsed(calculateTotalSeconds(loaded, new Date()));
-    refresh();
-    /* 广播：项目状态徽章立即刷新（待施工/施工中/已中断/待质检/已完工） */
-    window.dispatchEvent(new CustomEvent("wo-item-update", { detail: { itemId: item.id } }));
   }
 
   function handlePartSearchChange(val: string) {
