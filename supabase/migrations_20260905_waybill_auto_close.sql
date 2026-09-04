@@ -92,11 +92,12 @@ BEGIN
     WHERE id = ANY(v_order_ids);
   END IF;
 
-  /* 运单自动关闭（2026-09-05 用户拍板口径）：
-     本次涉及运单所关联的采购单中，"需要关联运单的商品"（外阜供应商 + 未豁免）
-     已全部提交至待入库（无 handle_action 为空的行）→ 运单转已签收关闭。
-     豁免（不关联运单）的商品和本地供货不参与判断——它们不用走运单。
-     只关本次真正涉及的运单，避免误关别的运单。 */
+  /* 运单自动关闭（2026-09-05 用户拍板口径，两层条件同时满足才关）：
+     ① 本次涉及运单关联的采购单中，"需要关联运单的商品"（外阜+未豁免）
+        已全部提交至待入库（无 handle_action 为空的行）
+     ② 整个待收货页中，不存在"需要关联运单但还没关联任何运单"的待收商品——
+        因为那些商品之后可能要挂到这张运单上，运单留着等关联。
+     豁免（不关联运单）的商品和本地供货不参与判断——它们不用走运单。 */
   UPDATE public.logistics_waybills SET status = 'received', received_at = NOW()
   WHERE status = 'pending'
     AND id IN (
@@ -105,12 +106,27 @@ BEGIN
       JOIN public.purchase_order_items poi ON poi.order_id = o.id
       WHERE poi.id = ANY(v_item_ids) AND o.waybill_id IS NOT NULL
     )
+    /* 条件①：本运单关联的单里，需要关联运单的商品都提交待入库了 */
     AND NOT EXISTS (
       SELECT 1
       FROM public.purchase_orders o
       JOIN public.purchase_order_items poi ON poi.order_id = o.id
       JOIN public.suppliers s ON s.id = o.supplier_id
       WHERE o.waybill_id = logistics_waybills.id
+        AND poi.handle_action IS NULL
+        AND COALESCE(o.waybill_exempt, false) = false
+        AND COALESCE(poi.waybill_exempt, false) = false
+        AND s.region <> 'local'
+    )
+    /* 条件②（用户 09-05 补充）：待收货页还有外阜未关联运单、未收的商品 → 不关 */
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.purchase_orders o
+      JOIN public.purchase_order_items poi ON poi.order_id = o.id
+      JOIN public.suppliers s ON s.id = o.supplier_id
+      WHERE o.status IN ('submitted', 'approved', 'partial_received')
+        AND o.waybill_id IS NULL
+        AND poi.waybill_id IS NULL
         AND poi.handle_action IS NULL
         AND COALESCE(o.waybill_exempt, false) = false
         AND COALESCE(poi.waybill_exempt, false) = false
