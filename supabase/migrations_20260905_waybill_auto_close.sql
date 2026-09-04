@@ -92,9 +92,11 @@ BEGIN
     WHERE id = ANY(v_order_ids);
   END IF;
 
-  /* 运单自动关闭（2026-09-05）：本次涉及运单所关联的所有采购单明细都已收完
-     （无 handle_action 为空的行）→ 运单转已签收关闭，不再出现在待签收列表。
-     只关本次真正涉及（本次提交的行所属采购单挂着的运单），避免误关别的运单。 */
+  /* 运单自动关闭（2026-09-05 用户拍板口径）：
+     本次涉及运单所关联的采购单中，"需要关联运单的商品"（外阜供应商 + 未豁免）
+     已全部提交至待入库（无 handle_action 为空的行）→ 运单转已签收关闭。
+     豁免（不关联运单）的商品和本地供货不参与判断——它们不用走运单。
+     只关本次真正涉及的运单，避免误关别的运单。 */
   UPDATE public.logistics_waybills SET status = 'received', received_at = NOW()
   WHERE status = 'pending'
     AND id IN (
@@ -107,7 +109,12 @@ BEGIN
       SELECT 1
       FROM public.purchase_orders o
       JOIN public.purchase_order_items poi ON poi.order_id = o.id
-      WHERE o.waybill_id = logistics_waybills.id AND poi.handle_action IS NULL
+      JOIN public.suppliers s ON s.id = o.supplier_id
+      WHERE o.waybill_id = logistics_waybills.id
+        AND poi.handle_action IS NULL
+        AND COALESCE(o.waybill_exempt, false) = false
+        AND COALESCE(poi.waybill_exempt, false) = false
+        AND s.region <> 'local'
     );
 
   RETURN jsonb_build_object('success', true, 'count', v_count, 'batch_id', v_batch_id, 'batch_no', v_batch_no);
