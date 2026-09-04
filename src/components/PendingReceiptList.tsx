@@ -10,7 +10,7 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
-import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单, 撤销采购明细退回待采购 } from "@/app/procurement/actions";
+import { 撤销收货处理, 删除采购明细, 撤销作废采购单, 撤销采购明细退回待采购, 暂存收货, 撤销暂存收货, 提交暂存收货 } from "@/app/procurement/actions";
 import { 关联运单到供应商待收货单, 关联运单到采购单或配件, 设置运单豁免, 创建运单, 关联运单到采购单 } from "@/app/logistics/actions";
 import { WaybillBatchForm } from "@/components/WaybillBatchForm";
 import { SupplierPhoneInput } from "@/components/SupplierPhoneInput";
@@ -41,6 +41,10 @@ interface PurchaseOrderItem {
   /* 配件级运单关联/豁免（2026-08-21） */
   waybill_id: string | null;
   waybill_exempt: boolean | null;
+  /* 收货暂存（2026-09-04）：确认收货先暂存不入账，手动提交统一入账 */
+  staged_qty: number | null;
+  staged_action: string | null;
+  staged_at: string | null;
 }
 
 interface Waybill {
@@ -223,7 +227,8 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
           id, name, brand, specification, quantity, unit_cost, received_qty,
           part_id, work_order_item_part_id, part_number, supplier_part_name,
           unit, category, license_plate, photos, notes, handle_action,
-          discount_amount, evidence_photos, return_reason, waybill_id, waybill_exempt
+          discount_amount, evidence_photos, return_reason, waybill_id, waybill_exempt,
+          staged_qty, staged_action, staged_at
         ),
         logistics_waybills:waybill_id(
           id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
@@ -446,20 +451,57 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
   ) {
     setSubmitting(`item-${item.id}`);
     try {
-      /* 明细更新+补货分支克隆+状态重算+运单联动已收编进数据库事务函数 receive_purchase_item */
-      const res = await 提交收货处理(
-        order.id,
+      /* 2026-09-04 口径：确认收货先写暂存（stage_receiving_item），不入账；
+         明细更新/补货克隆/状态重算/运单联动延后到「提交收货」时由 receive_staged_batch
+         逐行调 receive_purchase_item 统一完成（一次事务） */
+      const res = await 暂存收货(
         item.id,
-        payload.handle_action,
         payload.received_qty,
-        payload.evidence_photos ?? null,
-        payload.evidence_photos !== undefined
+        payload.handle_action,
+        payload.evidence_photos ?? null
       );
-      if (!res.success) throw new Error(res.error || "收货失败");
+      if (!res.success) throw new Error(res.error || "暂存失败");
       loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("收货失败: " + msg);
+      alert("收货暂存失败: " + msg);
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  /* 供应商销售单号（2026-09-04）：按供应商存，提交暂存收货时写到涉及的所有采购单 */
+  const [slipNoBySupplier, setSlipNoBySupplier] = useState<Record<string, string>>({});
+
+  /* 撤销暂存（收错了重收） */
+  async function handleUnstage(item: PurchaseOrderItem) {
+    if (!(await 请求确认("确认撤销该配件的收货暂存？撤销后可重新收货。"))) return;
+    setSubmitting(`unstage-${item.id}`);
+    try {
+      const res = await 撤销暂存收货(item.id);
+      if (!res.success) throw new Error(res.error || "撤销失败");
+      loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("撤销失败: " + msg);
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  /* 提交暂存收货（按供应商统一入账，一次事务） */
+  async function handleSubmitStaged(供应商id: string, 供应商名: string) {
+    const 销售单号 = slipNoBySupplier[供应商名]?.trim() || null;
+    if (!(await 请求确认(`确认提交「${供应商名}」的全部暂存收货？提交后立即入账入库，不可撤销。`))) return;
+    setSubmitting(`submit-${供应商id}`);
+    try {
+      const res = await 提交暂存收货(供应商id, 销售单号);
+      if (!res.success) throw new Error(res.error || "提交失败");
+      alert(`提交成功，已入账 ${res.count} 件`);
+      loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("提交失败: " + msg);
     } finally {
       setSubmitting(null);
     }
@@ -1071,7 +1113,14 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
           </button>
         )}
       </div>
-      {displayGroups.map((g) => (
+      {displayGroups.map((g) => {
+        /* 该组暂存待提交数（2026-09-04 跨单收货） */
+        const 暂存数 = g.orders.reduce(
+          (sum, o) => sum + (o.purchase_order_items || []).filter((it) => it.staged_at && !it.handle_action).length,
+          0
+        );
+        const 组供应商id = g.orders[0]?.supplier_id || null;
+        return (
         /* 分组卡片：与待采购页统一风格（2026-08-15）——左侧蓝竖条+蓝色标签+加粗组名 */
         <div key={g.key} className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-blue-500 overflow-hidden">
           <div className="px-6 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
@@ -1281,6 +1330,11 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                                   <span className={`text-xs px-2 py-0.5 rounded whitespace-nowrap ${actionInfo.color}`}>
                                     {actionInfo.text}
                                   </span>
+                                ) : item.staged_at ? (
+                                  /* 已暂存（2026-09-04）：确认收货未提交入账的状态，黄色标记 */
+                                  <span className="text-xs px-2 py-0.5 rounded whitespace-nowrap bg-yellow-100 text-yellow-700">
+                                    已暂存{item.staged_action && ACTION_LABELS[item.staged_action] ? "·" + ACTION_LABELS[item.staged_action].text : ""}
+                                  </span>
                                 ) : (
                                   <span className="text-xs text-gray-400">待处理</span>
                                 )}
@@ -1295,6 +1349,17 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                                       className="px-2 py-1 text-xs rounded border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-50 whitespace-nowrap"
                                     >
                                       {submitting === `revoke-${item.id}` ? "撤销中..." : "撤销"}
+                                    </button>
+                                  ) : item.staged_at ? (
+                                    /* 已暂存（2026-09-04）：可撤销重收 */
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUnstage(item)}
+                                      disabled={submitting === `unstage-${item.id}`}
+                                      title="撤销这次暂存的收货，重新收货"
+                                      className="px-2 py-1 text-xs rounded border border-yellow-300 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 disabled:opacity-50 whitespace-nowrap"
+                                    >
+                                      {submitting === `unstage-${item.id}` ? "撤销中..." : "撤销暂存"}
                                     </button>
                                   ) : (
                                     <>
@@ -1359,8 +1424,34 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
               );
             })}
           </div>
+
+          {/* 提交收货区（2026-09-04 跨单收货）：该供应商有暂存时显示，手动统一入账 */}
+          {暂存数 > 0 && 组供应商id && (
+            <div className="px-6 py-3 border-t border-yellow-200 bg-yellow-50 flex items-center gap-3 flex-wrap">
+              <span className="text-sm font-medium text-yellow-800">
+                已暂存 <span className="font-bold">{暂存数}</span> 件待提交
+              </span>
+              <input
+                type="text"
+                value={slipNoBySupplier[g.key] || ""}
+                onChange={(e) => setSlipNoBySupplier((prev) => ({ ...prev, [g.key]: e.target.value }))}
+                placeholder="供应商销售单号（提交时记入，对账用）"
+                className="w-56 px-2.5 py-1.5 text-xs rounded border border-yellow-300 bg-white focus:outline-none focus:border-yellow-500"
+              />
+              <button
+                type="button"
+                onClick={() => handleSubmitStaged(组供应商id, g.key)}
+                disabled={submitting === `submit-${组供应商id}`}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                {submitting === `submit-${组供应商id}` ? "提交中..." : `提交收货（${暂存数} 件）`}
+              </button>
+              <span className="text-xs text-yellow-700">提交后立即入账入库，不可撤销</span>
+            </div>
+          )}
         </div>
-      ))}
+        );
+      })}
 
       {/* 运单处理弹窗（2026-08-21）：外阜单未关联运单时点收货弹出，关联运单或豁免 */}
       {gateOrder && gateItem && (

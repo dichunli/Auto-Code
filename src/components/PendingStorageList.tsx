@@ -9,7 +9,7 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
-import { 确认采购入库, 退回待收货 } from "@/app/procurement/actions";
+import { 确认采购入库, 退回待收货, 确认批次入库 } from "@/app/procurement/actions";
 import { 确认到货入库 } from "@/app/arrivals/actions";
 import { useToast } from "@/components/Toast";
 import { ImageUploader } from "@/components/ImageUploader";
@@ -37,6 +37,8 @@ interface PurchaseOrderItem {
   evidence_photos: string[] | null;
   return_reason: string | null;
   arrival_item_id: string | null;
+  /* 收货批次关联（2026-09-04）：非空表示该行走批次入库，不进按单入库列表 */
+  receiving_batch_id: string | null;
 }
 
 /* 已确认到货的到货确认单（2026-08-20 二期：待入库的新来源）；
@@ -68,6 +70,17 @@ export interface PurchaseOrder {
   supplier_slip_photos: string[] | null;
   suppliers: { id: string; name: string } | null;
   purchase_order_items: PurchaseOrderItem[];
+}
+
+/* 收货批次（2026-09-04 跨单收货）：一次手动提交=一个批次，按批次一张清单入库 */
+interface 收货批次 {
+  id: string;
+  batch_no: string;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  supplier_order_no: string | null;
+  status: string;
+  created_at: string;
 }
 
 /* 处理动作标签已抽到 @/lib/purchaseFlowLabels（唯一来源）;
@@ -144,6 +157,10 @@ export function PendingStorageList(props: PendingStorageListProps) {
   /* 到货入库抹零（2026-08-21 销售单口径） */
   const [到货抹零, set到货抹零] = useState("");
 
+  /* 收货批次（2026-09-04）：待入库批次 + 批次入库弹窗 */
+  const [批次列表, set批次列表] = useState<收货批次[]>([]);
+  const [batchModal, setBatchModal] = useState<收货批次 | null>(null);
+
   async function loadData() {
     setLoading(true);
     const { data, error } = await supabase
@@ -157,7 +174,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
           id, name, brand, specification, quantity, unit_cost, received_qty,
           part_id, work_order_item_part_id, part_number, supplier_part_name,
           unit, category, license_plate, photos, notes,
-          handle_action, discount_amount, evidence_photos, return_reason, arrival_item_id
+          handle_action, discount_amount, evidence_photos, return_reason, arrival_item_id, receiving_batch_id
         )
       `
       )
@@ -170,9 +187,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
       return;
     }
 
-    /* 走过到货确认单的采购单不进老入库列表（老入库函数也会拒绝，这里直接不显示） */
+    /* 走过到货确认单或收货批次的采购单不进老按单入库列表（它们从各自的流程入库，防双入库） */
     const 老流程单 = ((data || []) as unknown as PurchaseOrder[]).filter(
-      (o) => !(o.purchase_order_items || []).some((it) => it.arrival_item_id)
+      (o) => !(o.purchase_order_items || []).some((it) => it.arrival_item_id || it.receiving_batch_id)
     );
     setOrders(老流程单);
 
@@ -183,6 +200,14 @@ export function PendingStorageList(props: PendingStorageListProps) {
       .eq("status", "confirmed")
       .order("confirmed_at", { ascending: false });
     set到货单列表(((到货单 || []) as unknown) as 到货单[]);
+
+    /* 收货批次（2026-09-04 跨单收货）：手动提交后待入库 */
+    const { data: 批次们 } = await supabase
+      .from("receiving_batches")
+      .select("id, batch_no, supplier_id, supplier_name, supplier_order_no, status, created_at")
+      .eq("status", "pending_storage")
+      .order("created_at", { ascending: false });
+    set批次列表(((批次们 || []) as unknown) as 收货批次[]);
     setLoading(false);
   }
 
@@ -211,6 +236,124 @@ export function PendingStorageList(props: PendingStorageListProps) {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("确认入库失败: " + msg, "error");
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  /* 打开批次入库弹窗（2026-09-04 跨单收货）：批次行查库组装，复用按单弹窗的整套表单状态 */
+  async function openBatchInboundModal(批: 收货批次) {
+    const { data: 行们, error } = await supabase
+      .from("purchase_order_items")
+      .select(`
+        id, name, brand, specification, quantity, unit_cost, received_qty,
+        part_id, work_order_item_part_id, part_number, supplier_part_name,
+        unit, category, license_plate, photos, notes, handle_action,
+        discount_amount, evidence_photos, return_reason, arrival_item_id
+      `)
+      .eq("receiving_batch_id", 批.id)
+      .order("created_at", { ascending: true });
+    if (error) {
+      showToast("加载批次明细失败: " + error.message, "error");
+      return;
+    }
+
+    let formIdCounter = 0;
+    const forms: InboundItemForm[] = (((行们 || []) as unknown) as PurchaseOrderItem[])
+      .filter((it) => it.handle_action !== "wrong_discard" && getStorageQty(it) > 0)
+      .flatMap((it) => {
+        if (it.handle_action === "excess_return") {
+          return [
+            {
+              id: `form-${formIdCounter++}`, item: it, quantity: String(it.quantity),
+              batchNo: "", notes: it.notes || "", warehouseId: "", location: "",
+              isExcess: false,
+              unitCost: it.unit_cost != null ? String(it.unit_cost) : "", freightManual: "",
+            },
+            {
+              id: `form-${formIdCounter++}`, item: it,
+              quantity: String(Math.max(0, (it.received_qty ?? 0) - it.quantity)),
+              batchNo: "", notes: "多发退货", warehouseId: "", location: "",
+              isExcess: true,
+              unitCost: it.unit_cost != null ? String(it.unit_cost) : "", freightManual: "",
+            },
+          ];
+        }
+        return [
+          {
+            id: `form-${formIdCounter++}`, item: it,
+            quantity: String(getStorageQty(it)),
+            batchNo: "", notes: it.notes || "", warehouseId: "", location: "",
+            isExcess: false,
+            unitCost: it.unit_cost != null ? String(it.unit_cost) : "", freightManual: "",
+          },
+        ];
+      });
+
+    /* 加载仓库列表（与按单弹窗共用） */
+    const { data: whData } = await supabase.from("warehouses").select("id, name").order("name");
+    setWarehouses(whData || []);
+
+    /* 销售单信息从批次带出（单号只读显示，金额可在弹窗改） */
+    setSlipNo(批.supplier_order_no || "");
+    setSlipAmount("");
+    setSlipPhotos([]);
+    setDiscountAmount("");
+    setWaybillInfo(null);
+    setFreightAmount("");
+    setBatchModal(批);
+    setInboundModalOrder(null);
+    setInboundItems(forms);
+    setInboundModalOpen(true);
+  }
+
+  /* 批次入库提交：调 complete_batch_inbound（跨采购单一次入库，应付款按批次合并） */
+  async function handleConfirmBatchInbound() {
+    if (!batchModal) return;
+    const 批次id = batchModal.id;
+
+    const 销售单金额 = slipAmount.trim() === "" ? null : parseFloat(slipAmount);
+    const 抹零 = discountAmount.trim() === "" ? 0 : parseFloat(discountAmount);
+    if (销售单金额 !== null && (isNaN(销售单金额) || 销售单金额 < 0)) {
+      alert("销售单总金额无效");
+      return;
+    }
+    if (discountAmount.trim() !== "" && (isNaN(抹零) || 抹零 < 0)) {
+      alert("优惠抹零必须是非负数字");
+      return;
+    }
+    const 货款合计 = inboundItems
+      .filter((f) => !f.isExcess)
+      .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0), 0);
+    if (销售单金额 !== null && Math.abs(货款合计 - 抹零 - 销售单金额) > 0.01) {
+      alert(
+        `入库货款合计 ¥${货款合计.toFixed(2)} − 抹零 ¥${抹零.toFixed(2)} ≠ 销售单总金额 ¥${销售单金额.toFixed(2)}，` +
+        `差 ¥${(货款合计 - 抹零 - 销售单金额).toFixed(2)}。\n请逐行核对入库单价，或在「优惠抹零」填入差额。`
+      );
+      return;
+    }
+
+    setSubmitting(`batch-${批次id}`);
+    try {
+      const 明细 = inboundItems.map((f) => ({
+        purchase_order_item_id: f.item.id,
+        quantity: parseInt(f.quantity, 10) || 0,
+        batch_no: f.batchNo,
+        warehouse_id: f.warehouseId,
+        location: f.location,
+        notes: f.notes,
+        is_excess: f.isExcess,
+        unit_cost: f.unitCost.trim() === "" ? null : parseFloat(f.unitCost),
+        freight_alloc: f.freightManual.trim() === "" ? null : parseFloat(f.freightManual),
+      }));
+      const res = await 确认批次入库(批次id, 明细, parseFloat(freightAmount) || 0, 抹零 || null, 销售单金额);
+      if (!res.success) throw new Error(res.error || "入库失败");
+      showToast(`批次入库完成，入库单号 ${res.inbound_no}`);
+      closeInboundModal();
+      loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert("批次入库失败: " + msg);
     } finally {
       setSubmitting(null);
     }
@@ -311,6 +454,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
   function closeInboundModal() {
     setInboundModalOpen(false);
     setInboundModalOrder(null);
+    setBatchModal(null);
     setInboundItems([]);
     setWaybillInfo(null);
     setFreightAmount("");
@@ -509,7 +653,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
     );
   }
 
-  if (orders.length === 0 && 到货单列表.length === 0) {
+  if (orders.length === 0 && 到货单列表.length === 0 && 批次列表.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
         暂无待入库的采购单
@@ -552,6 +696,41 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
                 >
                   确认入库
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 收货批次（2026-09-04 跨单收货）：手动提交后的待入库批次，一张清单一次入库 */}
+      {批次列表.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-yellow-500 overflow-hidden">
+          <div className="px-6 py-3 border-b border-gray-100 bg-gray-50">
+            <h3 className="text-sm font-semibold text-gray-900 flex items-center">
+              <span className="inline-block px-2 py-0.5 rounded bg-yellow-500 text-white mr-2 text-[10px] font-bold">
+                收货批次
+              </span>
+              <span className="font-bold text-gray-900">跨单收货 · 待入库</span>
+            </h3>
+            <span className="text-xs text-gray-500">一次手动提交的跨采购单收货，按批次一张清单一次入库</span>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {批次列表.map((批) => (
+              <div key={批.id} className="px-6 py-3 flex items-center gap-3 flex-wrap">
+                <span className="text-sm font-medium text-gray-900">{批.batch_no}</span>
+                <span className="text-sm text-gray-600">{批.supplier_name || "-"}</span>
+                <span className="text-xs text-gray-500">
+                  {new Date(批.created_at).toLocaleString("zh-CN")}
+                  {批.supplier_order_no ? ` · 销售单 ${批.supplier_order_no}` : ""}
+                </span>
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  onClick={() => openBatchInboundModal(批)}
+                  className="px-3 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600"
+                >
+                  生成入库单
                 </button>
               </div>
             ))}
@@ -770,14 +949,16 @@ export function PendingStorageList(props: PendingStorageListProps) {
       ))}
 
       {/* 入库单确认弹窗 */}
-      {inboundModalOpen && inboundModalOrder && (
+      {inboundModalOpen && (inboundModalOrder || batchModal) && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
           <div className="bg-white rounded-xl border border-gray-200 w-full max-w-5xl my-8 relative">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
               <div>
                 <h3 className="text-base font-semibold text-gray-900">入库单确认</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  采购单: {inboundModalOrder.order_no || inboundModalOrder.id.slice(0, 8)} · 供应商: {inboundModalOrder.suppliers?.name || "-"}
+                  {batchModal
+                    ? `收货批次: ${batchModal.batch_no} · 供应商: ${batchModal.supplier_name || "-"}${batchModal.supplier_order_no ? ` · 销售单: ${batchModal.supplier_order_no}` : ""}`
+                    : `采购单: ${inboundModalOrder!.order_no || inboundModalOrder!.id.slice(0, 8)} · 供应商: ${inboundModalOrder!.suppliers?.name || "-"}`}
                 </p>
               </div>
               <button
@@ -1135,11 +1316,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={handleConfirmInbound}
-                  disabled={submitting === `complete-${inboundModalOrder.id}`}
+                  onClick={batchModal ? handleConfirmBatchInbound : handleConfirmInbound}
+                  disabled={submitting === `complete-${inboundModalOrder?.id}` || submitting === `batch-${batchModal?.id}`}
                   className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
-                  {submitting === `complete-${inboundModalOrder.id}` ? "处理中..." : "确认入库"}
+                  {(batchModal ? submitting === `batch-${batchModal.id}` : submitting === `complete-${inboundModalOrder?.id}`) ? "处理中..." : "确认入库"}
                 </button>
               </div>
             </div>

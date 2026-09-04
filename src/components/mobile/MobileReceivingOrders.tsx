@@ -9,7 +9,7 @@ import BarcodeScanModal from "@/components/BarcodeScanModal";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
-import { 提交收货处理, 撤销收货处理, 删除采购明细, 撤销作废采购单, 保存采购明细图片, 保存供应商销售单 } from "@/app/procurement/actions";
+import { 撤销收货处理, 删除采购明细, 撤销作废采购单, 保存采购明细图片, 保存供应商销售单, 暂存收货, 撤销暂存收货, 提交暂存收货 } from "@/app/procurement/actions";
 import { 关联运单到采购单, 关联运单到采购单或配件, 设置运单豁免 } from "@/app/logistics/actions";
 
 /* 2026-08-21 手机端待收货管理（老流程采购单）：
@@ -33,6 +33,10 @@ export interface 待收明细 {
   /* 配件级运单关联/豁免（2026-08-21） */
   waybill_id: string | null;
   waybill_exempt: boolean | null;
+  /* 收货暂存（2026-09-04）：确认收货先暂存不入账，手动提交统一入账 */
+  staged_qty: number | null;
+  staged_action: string | null;
+  staged_at: string | null;
 }
 
 export interface 待收订单 {
@@ -40,6 +44,8 @@ export interface 待收订单 {
   order_no: string | null;
   status: string;
   created_at: string;
+  /* 供应商 id（2026-09-04 跨单收货提交用） */
+  supplier_id: string | null;
   waybill_id: string | null;
   /* 整单运单豁免（2026-08-21） */
   waybill_exempt: boolean | null;
@@ -477,11 +483,13 @@ export function MobileReceivingOrders({
     set提交中(`item-${明细.id}`);
     try {
       if (参数.弃货删行) {
+        /* 少发完全没到：直接删除（不走暂存） */
         const res = await 删除采购明细(订单.id, 明细.id);
         if (!res.success) throw new Error(res.error || "删除失败");
       } else {
-        const res = await 提交收货处理(订单.id, 明细.id, 参数.动作, 参数.数量, 参数.凭证, 参数.更新凭证);
-        if (!res.success) throw new Error(res.error || "收货失败");
+        /* 2026-09-04 口径：确认收货先写暂存不入账，手动「提交收货」统一入账 */
+        const res = await 暂存收货(明细.id, 参数.数量, 参数.动作, 参数.凭证);
+        if (!res.success) throw new Error(res.error || "暂存失败");
       }
       set收货目标(null);
       set扫码数量(null);
@@ -490,6 +498,42 @@ export function MobileReceivingOrders({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("收货失败: " + msg, "error");
+    } finally {
+      set提交中(null);
+    }
+  }
+
+  /* 撤销暂存（2026-09-04）：收错了重收 */
+  async function 撤销暂存(明细: 待收明细) {
+    if (!(await 请求确认(`确认撤销「${明细.name}」的收货暂存？撤销后可重新收货。`))) return;
+    set提交中(`unstage-${明细.id}`);
+    try {
+      const res = await 撤销暂存收货(明细.id);
+      if (!res.success) throw new Error(res.error || "撤销失败");
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast("撤销失败: " + msg, "error");
+    } finally {
+      set提交中(null);
+    }
+  }
+
+  /* 提交暂存收货（2026-09-04）：按供应商统一入账，生成收货批次 */
+  async function 提交暂存(订单: 待收订单) {
+    const 供应商名 = 订单.suppliers?.name || "未指定供应商";
+    if (!(await 请求确认(`确认提交「${供应商名}」的全部暂存收货？提交后立即入账入库，不可撤销。`))) return;
+    set提交中(`submit-${供应商名}`);
+    try {
+      /* 销售单号用该供应商第一张单的（暂存区各单头录入同一单号；此处取订单上的） */
+      const 销售单号 = 订单.supplier_order_no?.trim() || null;
+      const res = await 提交暂存收货(订单.supplier_id!, 销售单号);
+      if (!res.success) throw new Error(res.error || "提交失败");
+      showToast(`提交成功，已入账 ${res.count} 件`);
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast("提交失败: " + msg, "error");
     } finally {
       set提交中(null);
     }
@@ -862,6 +906,21 @@ export function MobileReceivingOrders({
                                   {提交中 === `revoke-${明细.id}` ? "撤销中..." : "撤销"}
                                 </button>
                               </>
+                            ) : 明细.staged_at ? (
+                              /* 已暂存（2026-09-04）：确认收货未提交入账，可撤销重收 */
+                              <>
+                                <span className="text-xs px-2 py-0.5 rounded whitespace-nowrap bg-yellow-100 text-yellow-700">
+                                  已暂存{明细.staged_action && ACTION_LABELS[明细.staged_action] ? "·" + ACTION_LABELS[明细.staged_action].text : ""}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => 撤销暂存(明细)}
+                                  disabled={提交中 === `unstage-${明细.id}`}
+                                  className="px-2.5 py-1 text-xs rounded border border-yellow-300 text-yellow-700 bg-yellow-50 disabled:opacity-50"
+                                >
+                                  {提交中 === `unstage-${明细.id}` ? "撤销中..." : "撤销暂存"}
+                                </button>
+                              </>
                             ) : (
                               /* 行级运单门禁（需求7）：未关联也未豁免时半透明但可点，点击弹运单处理窗；
                                  行内不再直显待退货（2026-08-20 需求4，退货在收货弹窗问题分支里选） */
@@ -892,6 +951,32 @@ export function MobileReceivingOrders({
               </div>
             );
           })}
+
+          {/* 提交收货区（2026-09-04 跨单收货）：该供应商有暂存时显示，手动统一入账 */}
+          {(() => {
+            const 暂存数 = 订单组.reduce(
+              (sum, o) => sum + (o.purchase_order_items || []).filter((it) => it.staged_at && !it.handle_action).length,
+              0
+            );
+            const 首单 = 订单组[0];
+            if (暂存数 === 0 || !首单?.supplier_id) return null;
+            return (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 space-y-2">
+                <div className="text-sm font-medium text-yellow-800">
+                  已暂存 <span className="font-bold">{暂存数}</span> 件待提交
+                </div>
+                <button
+                  type="button"
+                  onClick={() => 提交暂存(首单)}
+                  disabled={提交中 === `submit-${首单.supplier_id}`}
+                  className="w-full py-2.5 rounded-xl bg-green-600 text-white text-sm font-medium active:bg-green-700 disabled:opacity-50"
+                >
+                  {提交中 === `submit-${首单.supplier_id}` ? "提交中..." : `提交收货（${暂存数} 件）`}
+                </button>
+                <p className="text-xs text-yellow-700 text-center">提交后立即入账入库，不可撤销</p>
+              </div>
+            );
+          })()}
         </div>
       ))}
 

@@ -1106,3 +1106,122 @@ export async function 保存供应商销售单(参数: {
   revalidatePath("/m/receiving");
   return { success: true };
 }
+
+/* ═══ 跨单收货：暂存 + 手动统一提交（2026-09-04 用户拍板） ═══
+ * 同一供应商多张采购单可跨单收货；确认收货先暂存（不关页面也在），
+ * 收完一批手动「提交收货」一次事务统一入账；不新建到货确认单。 */
+
+/* ─── 写暂存（收货弹窗确认时调，不入账） ─── */
+export async function 暂存收货(
+  明细id: string,
+  数量: number,
+  动作: string,
+  凭证: string[] | null
+): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!Number.isInteger(数量) || 数量 < 0) {
+    return { success: false, error: "暂存数量必须是 ≥0 的整数" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("stage_receiving_item", {
+    p_item_id: 明细id,
+    p_qty: 数量,
+    p_action: 动作,
+    p_evidence: 凭证 && 凭证.length > 0 ? 凭证 : null,
+    p_operator_id: user.id,
+  });
+  if (error) return { success: false, error: error.message };
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) return { success: false, error: 结果?.error || "暂存失败" };
+  return { success: true };
+}
+
+/* ─── 撤销暂存（收错了重收） ─── */
+export async function 撤销暂存收货(明细id: string): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("unstage_receiving_item", {
+    p_item_id: 明细id,
+    p_operator_id: user.id,
+  });
+  if (error) return { success: false, error: error.message };
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) return { success: false, error: 结果?.error || "撤销失败" };
+  return { success: true };
+}
+
+/* ─── 提交暂存收货（按供应商统一入账，一次事务） ─── */
+export async function 提交暂存收货(
+  供应商id: string,
+  销售单号: string | null
+): Promise<操作结果 & { count?: number }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!供应商id) {
+    return { success: false, error: "缺少供应商信息" };
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("receive_staged_batch", {
+    p_supplier_id: 供应商id,
+    p_supplier_order_no: 销售单号?.trim() || null,
+    p_operator_id: user.id,
+  });
+  if (error) return { success: false, error: error.message };
+  const 结果 = data as unknown as RPC返回 & { count?: number };
+  if (!结果?.success) return { success: false, error: 结果?.error || "提交失败" };
+
+  revalidatePath("/procurement");
+  revalidatePath("/m/receiving");
+  return { success: true, count: 结果.count };
+}
+
+/* ─── 按收货批次入库（2026-09-04）：跨采购单一次入库，应付款按批次（销售单口径）合并 ─── */
+export async function 确认批次入库(
+  批次id: string,
+  明细: 入库明细输入[],
+  运费: number,
+  抹零: number | null = null,
+  销售单金额: number | null = null
+): Promise<操作结果 & { inbound_no?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!明细 || 明细.length === 0) {
+    return { success: false, error: "入库明细不能为空" };
+  }
+  for (const m of 明细) {
+    if (!m.purchase_order_item_id) {
+      return { success: false, error: "入库明细缺少采购明细信息" };
+    }
+    if (!m.is_excess && (!Number.isInteger(m.quantity) || m.quantity <= 0)) {
+      return { success: false, error: "入库数量必须是大于 0 的整数" };
+    }
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("complete_batch_inbound", {
+    p_batch_id: 批次id,
+    p_items: 明细,
+    p_freight_amount: 运费 || 0,
+    p_operator_id: user.id,
+    p_discount_amount: 抹零,
+    p_supplier_order_amount: 销售单金额,
+  });
+  if (error) return { success: false, error: error.message };
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) return { success: false, error: 结果?.error || "入库失败" };
+
+  revalidatePath("/procurement");
+  revalidatePath("/inbound-orders");
+  return { success: true, inbound_no: 结果.inbound_no };
+}
