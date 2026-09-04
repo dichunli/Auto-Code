@@ -1557,6 +1557,10 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                           <span className="text-xs text-gray-500 ml-2">
                             {w.logistics_companies?.name || w.logistics_company_name || "-"}
                             {w.supplier_name ? ` · ${w.supplier_name}` : ""}
+                            {/* 同供应商醒目标记（2026-09-05）：运单可跨供应商关联 */}
+                            {gateOrder?.suppliers?.name && w.supplier_name === gateOrder.suppliers.name && (
+                              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-bold">同供应商</span>
+                            )}
                           </span>
                         </div>
                       </label>
@@ -1694,6 +1698,10 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                               {w.supplier_name ? (
                                 <span className={isMatch ? "text-blue-700 font-medium" : "text-gray-600"}>
                                   {w.supplier_name}
+                                  {/* 同供应商醒目标记（2026-09-05）：运单可跨供应商关联，同供应商的排前并标记 */}
+                                  {isMatch && (
+                                    <span className="ml-1.5 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-bold">同供应商</span>
+                                  )}
                                 </span>
                               ) : (
                                 <span className="text-gray-400">-</span>

@@ -996,21 +996,35 @@ export function MobileReceivingOrders({
                   暂无待签收的运单，点上方「新建运单（批量）」创建
                 </div>
               )}
-              {排序运单.map((w) => (
+              {排序运单.map((w) => {
+                /* 同供应商醒目标记（2026-09-05）：运单可跨供应商关联，同供应商的排前并标记 */
+                const 目标供应商名 = 运单弹窗目标 && 运单弹窗目标 !== "batch"
+                  ? 显示订单.find((x) => x.id === 运单弹窗目标)?.suppliers?.name
+                  : null;
+                const 同供应商 = 目标供应商名 && w.supplier_name === 目标供应商名;
+                return (
                 <button
                   key={w.id}
                   type="button"
                   onClick={() => 关联运单(w.id)}
                   disabled={提交中 === "assign"}
-                  className="w-full text-left px-3 py-2.5 rounded-lg border border-gray-200 active:bg-blue-50 disabled:opacity-50"
+                  className={`w-full text-left px-3 py-2.5 rounded-lg border active:bg-blue-50 disabled:opacity-50 ${
+                    同供应商 ? "border-green-300 bg-green-50/50" : "border-gray-200"
+                  }`}
                 >
-                  <div className="font-medium text-gray-900 text-sm">{w.tracking_no}</div>
+                  <div className="font-medium text-gray-900 text-sm">
+                    {w.tracking_no}
+                    {同供应商 && (
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-bold">同供应商</span>
+                    )}
+                  </div>
                   <div className="text-xs text-gray-500 mt-0.5">
                     {w.logistics_companies?.name || w.logistics_company_name || "-"}
                     {w.supplier_name ? ` · ${w.supplier_name}` : ""}
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
