@@ -37,6 +37,8 @@ export interface 待收明细 {
   staged_qty: number | null;
   staged_action: string | null;
   staged_at: string | null;
+  /* 暂存操作人（2026-09-05 提交核对弹窗显示收货人） */
+  staged_by: string | null;
 }
 
 export interface 待收订单 {
@@ -503,6 +505,70 @@ export function MobileReceivingOrders({
     }
   }
 
+  /* 提交核对弹窗（2026-09-05）：提交前显示运单/供应商/明细/收货人清单核对 */
+  const [stagedConfirm, setStagedConfirm] = useState<{
+    供应商id: string;
+    供应商名: string;
+    行列表: { item: 待收明细; 订单号: string; 收货人: string }[];
+    运单们: { tracking_no: string; 物流公司: string; freight_amount: number | null; cod_amount: number | null }[];
+    加载中: boolean;
+  } | null>(null);
+
+  /* 打开提交核对弹窗：收集该供应商暂存行 + 收货人 + 运单 */
+  async function openStagedConfirm(订单: 待收订单) {
+    const 供应商id = 订单.supplier_id!;
+    const 供应商名 = 订单.suppliers?.name || "未指定供应商";
+    setStagedConfirm({ 供应商id, 供应商名, 行列表: [], 运单们: [], 加载中: true });
+
+    const 行列表: { item: 待收明细; 订单号: string; 收货人: string }[] = [];
+    const 收货人ids = new Set<string>();
+    const 运单ids = new Set<string>();
+    for (const o of 显示订单) {
+      if (o.supplier_id !== 供应商id) continue;
+      for (const item of o.purchase_order_items || []) {
+        if (item.staged_at && !item.handle_action) {
+          行列表.push({ item, 订单号: o.order_no || o.id.slice(0, 8), 收货人: "" });
+          if (item.staged_by) 收货人ids.add(item.staged_by);
+          if (o.waybill_id) 运单ids.add(o.waybill_id);
+          if (item.waybill_id) 运单ids.add(item.waybill_id);
+        }
+      }
+    }
+
+    const 收货人Map = new Map<string, string>();
+    if (收货人ids.size > 0) {
+      const { data: 员工们 } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", Array.from(收货人ids));
+      for (const e of (员工们 || []) as { id: string; full_name: string | null }[]) {
+        收货人Map.set(e.id, e.full_name || "-");
+      }
+    }
+    for (const r of 行列表) {
+      r.收货人 = r.item.staged_by ? 收货人Map.get(r.item.staged_by) || "-" : "-";
+    }
+
+    let 运单们: { tracking_no: string; 物流公司: string; freight_amount: number | null; cod_amount: number | null }[] = [];
+    if (运单ids.size > 0) {
+      const { data: 运单数据 } = await supabase
+        .from("logistics_waybills")
+        .select("tracking_no, logistics_company_name, freight_amount, cod_amount, logistics_companies(name)")
+        .in("id", Array.from(运单ids));
+      运单们 = ((运单数据 || []) as unknown as {
+        tracking_no: string; logistics_company_name: string | null;
+        freight_amount: number | null; cod_amount: number | null;
+        logistics_companies: { name: string } | null;
+      }[]).map((w) => ({
+        tracking_no: w.tracking_no,
+        物流公司: w.logistics_companies?.name || w.logistics_company_name || "-",
+        freight_amount: w.freight_amount,
+        cod_amount: w.cod_amount,
+      }));
+    }
+    setStagedConfirm({ 供应商id, 供应商名, 行列表, 运单们, 加载中: false });
+  }
+
   /* 撤销暂存（2026-09-04）：收错了重收 */
   async function 撤销暂存(明细: 待收明细) {
     if (!(await 请求确认(`确认撤销「${明细.name}」的收货暂存？撤销后可重新收货。`))) return;
@@ -519,15 +585,11 @@ export function MobileReceivingOrders({
     }
   }
 
-  /* 提交暂存收货（2026-09-04）：按供应商统一入账，生成收货批次 */
-  async function 提交暂存(订单: 待收订单) {
-    const 供应商名 = 订单.suppliers?.name || "未指定供应商";
-    if (!(await 请求确认(`确认提交「${供应商名}」的全部暂存收货？提交后立即入账入库，不可撤销。`))) return;
-    set提交中(`submit-${供应商名}`);
+  /* 提交暂存收货（2026-09-04）：按供应商统一入账，生成收货批次；由核对弹窗确认后调用 */
+  async function 提交暂存(供应商id: string, 供应商名: string, 销售单号: string | null) {
+    set提交中(`submit-${供应商id}`);
     try {
-      /* 销售单号用该供应商第一张单的（暂存区各单头录入同一单号；此处取订单上的） */
-      const 销售单号 = 订单.supplier_order_no?.trim() || null;
-      const res = await 提交暂存收货(订单.supplier_id!, 销售单号);
+      const res = await 提交暂存收货(供应商id, 销售单号);
       if (!res.success) throw new Error(res.error || "提交失败");
       showToast(`提交成功，已入账 ${res.count} 件`);
       router.refresh();
@@ -537,6 +599,14 @@ export function MobileReceivingOrders({
     } finally {
       set提交中(null);
     }
+  }
+
+  /* 核对弹窗点「确认提交」→ 关弹窗并提交入账 */
+  async function confirmStagedSubmit() {
+    if (!stagedConfirm) return;
+    const { 供应商id, 供应商名 } = stagedConfirm;
+    setStagedConfirm(null);
+    await 提交暂存(供应商id, 供应商名, null);
   }
 
   async function 撤销(订单: 待收订单, 明细: 待收明细) {
@@ -967,13 +1037,13 @@ export function MobileReceivingOrders({
                 </div>
                 <button
                   type="button"
-                  onClick={() => 提交暂存(首单)}
+                  onClick={() => openStagedConfirm(首单)}
                   disabled={提交中 === `submit-${首单.supplier_id}`}
                   className="w-full py-2.5 rounded-xl bg-green-600 text-white text-sm font-medium active:bg-green-700 disabled:opacity-50"
                 >
                   {提交中 === `submit-${首单.supplier_id}` ? "提交中..." : `提交收货（${暂存数} 件）`}
                 </button>
-                <p className="text-xs text-yellow-700 text-center">提交后立即入账入库，不可撤销</p>
+                <p className="text-xs text-yellow-700 text-center">提交前会先出核对清单，确认后入账</p>
               </div>
             );
           })()}
@@ -1025,6 +1095,88 @@ export function MobileReceivingOrders({
                 </button>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 提交收货核对弹窗（2026-09-05）：运单/供应商/收货明细/收货人，核对后确认才入账 */}
+      {stagedConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50">
+          <div className="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl max-h-[88vh] flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">提交收货核对 — {stagedConfirm.供应商名}</h3>
+              <button type="button" onClick={() => setStagedConfirm(null)} className="text-gray-400 text-xl leading-none">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {stagedConfirm.加载中 ? (
+                <div className="text-center text-gray-400 py-8 text-sm">加载清单...</div>
+              ) : (
+                <>
+                  {/* 运单信息 */}
+                  {stagedConfirm.运单们.length > 0 && (
+                    <div className="bg-blue-50/60 border border-blue-100 rounded-lg p-3 space-y-1.5">
+                      <div className="text-xs font-medium text-blue-800">关联运单</div>
+                      {stagedConfirm.运单们.map((w, i) => (
+                        <div key={i} className="text-sm text-gray-700">
+                          <div className="font-medium">{w.tracking_no}</div>
+                          <div className="text-xs text-gray-500">
+                            {w.物流公司} · 运费 ¥{Number(w.freight_amount || 0).toFixed(2)} · 代收 ¥{Number(w.cod_amount || 0).toFixed(2)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 收货明细（对照销售单核对） */}
+                  <div>
+                    <div className="text-xs font-medium text-gray-700 mb-1.5">
+                      收货明细（{stagedConfirm.行列表.length} 件）— 请对照销售单核对
+                    </div>
+                    <div className="space-y-2">
+                      {stagedConfirm.行列表.map((r, i) => {
+                        const 动作标签 = r.item.staged_action ? ACTION_LABELS[r.item.staged_action] : null;
+                        const 不符 = r.item.staged_qty != null && r.item.staged_qty !== r.item.quantity;
+                        return (
+                          <div key={i} className={`rounded-lg border p-2.5 ${不符 ? "border-red-300 bg-red-50/50" : "border-gray-200"}`}>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="font-medium text-gray-900 text-sm min-w-0 flex-1">{r.item.name}</div>
+                              {动作标签 && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${动作标签.color}`}>{动作标签.text}</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1 flex items-center gap-3 flex-wrap">
+                              <span>订购 {r.item.quantity} · 实收 <span className={`font-medium ${不符 ? "text-red-600" : "text-gray-900"}`}>{r.item.staged_qty ?? "-"}</span></span>
+                              <span className="text-gray-400">{r.订单号}</span>
+                              <span>收货人：{r.收货人}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {stagedConfirm.行列表.some((r) => r.item.staged_qty != null && r.item.staged_qty !== r.item.quantity) && (
+                      <p className="text-xs text-red-500 mt-1.5">红色为实收数与订购数不一致，请重点核对</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-gray-100 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setStagedConfirm(null)}
+                className="flex-1 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={confirmStagedSubmit}
+                disabled={stagedConfirm.加载中 || 提交中 === `submit-${stagedConfirm.供应商id}`}
+                className="flex-1 py-2.5 text-sm text-white bg-green-600 rounded-lg disabled:opacity-50"
+              >
+                {提交中 === `submit-${stagedConfirm.供应商id}` ? "提交中..." : `确认提交（${stagedConfirm.行列表.length} 件）`}
+              </button>
             </div>
           </div>
         </div>
