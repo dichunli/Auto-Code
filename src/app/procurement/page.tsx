@@ -73,7 +73,7 @@ export default async function ProcurementPage({
           logistics_waybills:waybill_id(id, tracking_no, logistics_company_name, logistics_companies(name)),
           purchase_order_items(
             id, name, brand, specification, quantity, unit, notes, photos,
-            part_id, part_number, supplier_part_name, handle_action, waybill_id, waybill_exempt, staged_qty, staged_action, staged_at
+            part_id, part_number, supplier_part_name, handle_action, waybill_id, waybill_exempt, staged_qty, staged_action, staged_at, staged_by
           )
         `)
         .in("status", ["submitted", "approved", "partial_received"])

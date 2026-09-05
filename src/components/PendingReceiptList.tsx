@@ -45,6 +45,8 @@ interface PurchaseOrderItem {
   staged_qty: number | null;
   staged_action: string | null;
   staged_at: string | null;
+  /* 暂存操作人（2026-09-05 提交核对弹窗显示收货人） */
+  staged_by: string | null;
 }
 
 interface Waybill {
@@ -82,6 +84,20 @@ export interface PurchaseOrder {
 }
 
 type GroupBy = "supplier" | "logistics";
+
+/* 提交核对弹窗的行（2026-09-05） */
+interface 核对行 {
+  item: PurchaseOrderItem;
+  订单号: string;
+  收货人: string;
+}
+/* 提交核对弹窗的运单 */
+interface 核对运单 {
+  tracking_no: string;
+  物流公司: string;
+  freight_amount: number | null;
+  cod_amount: number | null;
+}
 
 const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
   { key: "supplier", label: "按供应商" },
@@ -228,7 +244,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
           part_id, work_order_item_part_id, part_number, supplier_part_name,
           unit, category, license_plate, photos, notes, handle_action,
           discount_amount, evidence_photos, return_reason, waybill_id, waybill_exempt,
-          staged_qty, staged_action, staged_at
+          staged_qty, staged_action, staged_at, staged_by
         ),
         logistics_waybills:waybill_id(
           id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
@@ -473,6 +489,69 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
   /* 供应商销售单号（2026-09-04）：按供应商存，提交暂存收货时写到涉及的所有采购单 */
   const [slipNoBySupplier, setSlipNoBySupplier] = useState<Record<string, string>>({});
 
+  /* 提交核对弹窗（2026-09-05）：提交前显示运单/供应商/明细/收货人清单核对，确认后才入账 */
+  const [stagedConfirm, setStagedConfirm] = useState<{
+    供应商id: string;
+    供应商名: string;
+    行列表: 核对行[];
+    运单们: 核对运单[];
+    加载中: boolean;
+  } | null>(null);
+
+  /* 打开提交核对弹窗：收集该供应商暂存行 + 收货人 + 运单信息 */
+  async function openStagedConfirm(供应商id: string, 供应商名: string) {
+    setStagedConfirm({ 供应商id, 供应商名, 行列表: [], 运单们: [], 加载中: true });
+    const 行列表: 核对行[] = [];
+    const 收货人ids = new Set<string>();
+    const 运单ids = new Set<string>();
+    for (const order of orders) {
+      if (order.supplier_id !== 供应商id) continue;
+      for (const item of order.purchase_order_items || []) {
+        if (item.staged_at && !item.handle_action) {
+          行列表.push({ item, 订单号: order.order_no || order.id.slice(0, 8), 收货人: "" });
+          if (item.staged_by) 收货人ids.add(item.staged_by);
+          if (order.waybill_id) 运单ids.add(order.waybill_id);
+          if (item.waybill_id) 运单ids.add(item.waybill_id);
+        }
+      }
+    }
+
+    /* 收货人名（staged_by → profiles.full_name） */
+    const 收货人Map = new Map<string, string>();
+    if (收货人ids.size > 0) {
+      const { data: 员工们 } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", Array.from(收货人ids));
+      for (const e of (员工们 || []) as { id: string; full_name: string | null }[]) {
+        收货人Map.set(e.id, e.full_name || "-");
+      }
+    }
+    for (const r of 行列表) {
+      r.收货人 = r.item.staged_by ? 收货人Map.get(r.item.staged_by) || "-" : "-";
+    }
+
+    /* 运单详情（单头关联 + 配件级关联，可能多张） */
+    let 运单们: 核对运单[] = [];
+    if (运单ids.size > 0) {
+      const { data: 运单数据 } = await supabase
+        .from("logistics_waybills")
+        .select("tracking_no, logistics_company_name, freight_amount, cod_amount, logistics_companies(name)")
+        .in("id", Array.from(运单ids));
+      运单们 = ((运单数据 || []) as unknown as {
+        tracking_no: string; logistics_company_name: string | null;
+        freight_amount: number | null; cod_amount: number | null;
+        logistics_companies: { name: string } | null;
+      }[]).map((w) => ({
+        tracking_no: w.tracking_no,
+        物流公司: w.logistics_companies?.name || w.logistics_company_name || "-",
+        freight_amount: w.freight_amount,
+        cod_amount: w.cod_amount,
+      }));
+    }
+    setStagedConfirm({ 供应商id, 供应商名, 行列表, 运单们, 加载中: false });
+  }
+
   /* 撤销暂存（收错了重收） */
   async function handleUnstage(item: PurchaseOrderItem) {
     if (!(await 请求确认("确认撤销该配件的收货暂存？撤销后可重新收货。"))) return;
@@ -489,10 +568,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     }
   }
 
-  /* 提交暂存收货（按供应商统一入账，一次事务） */
+  /* 提交暂存收货（按供应商统一入账，一次事务；由核对弹窗确认后调用，不再二次确认） */
   async function handleSubmitStaged(供应商id: string, 供应商名: string) {
     const 销售单号 = slipNoBySupplier[供应商名]?.trim() || null;
-    if (!(await 请求确认(`确认提交「${供应商名}」的全部暂存收货？提交后立即入账入库，不可撤销。`))) return;
     setSubmitting(`submit-${供应商id}`);
     try {
       const res = await 提交暂存收货(供应商id, 销售单号);
@@ -505,6 +583,14 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     } finally {
       setSubmitting(null);
     }
+  }
+
+  /* 核对弹窗点「确认提交」→ 关弹窗并提交入账 */
+  async function confirmStagedSubmit() {
+    if (!stagedConfirm) return;
+    const { 供应商id, 供应商名 } = stagedConfirm;
+    setStagedConfirm(null);
+    await handleSubmitStaged(供应商id, 供应商名);
   }
 
   /* ------------------ 撤销收货 ------------------ */
@@ -1440,13 +1526,13 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
               />
               <button
                 type="button"
-                onClick={() => handleSubmitStaged(组供应商id, g.key)}
+                onClick={() => openStagedConfirm(组供应商id, g.key)}
                 disabled={submitting === `submit-${组供应商id}`}
                 className="px-4 py-1.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 {submitting === `submit-${组供应商id}` ? "提交中..." : `提交收货（${暂存数} 件）`}
               </button>
-              <span className="text-xs text-yellow-700">提交后立即入账入库，不可撤销</span>
+              <span className="text-xs text-yellow-700">提交前会先出核对清单，确认后入账入库</span>
             </div>
           )}
         </div>
@@ -1621,6 +1707,129 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                 className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 {submitting === "gate" ? "处理中..." : "确认并收货"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 提交收货核对弹窗（2026-09-05）：运单/供应商/收货明细/收货人，核对后确认才入账 */}
+      {stagedConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-2xl max-h-[85vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">
+                提交收货核对 — {stagedConfirm.供应商名}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setStagedConfirm(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6 space-y-4 overflow-y-auto">
+              {stagedConfirm.加载中 ? (
+                <div className="text-center text-gray-400 py-8 text-sm">加载清单...</div>
+              ) : (
+                <>
+                  {/* 运单信息 */}
+                  {stagedConfirm.运单们.length > 0 && (
+                    <div className="bg-blue-50/60 border border-blue-100 rounded-lg p-3 space-y-1">
+                      <div className="text-xs font-medium text-blue-800 mb-1">关联运单</div>
+                      {stagedConfirm.运单们.map((w, i) => (
+                        <div key={i} className="text-sm text-gray-700">
+                          <span className="font-medium">{w.tracking_no}</span>
+                          <span className="text-gray-500 ml-2">
+                            {w.物流公司} · 运费 ¥{Number(w.freight_amount || 0).toFixed(2)} · 代收 ¥{Number(w.cod_amount || 0).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 供应商销售单号 */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600 shrink-0">供应商销售单号:</span>
+                    <input
+                      type="text"
+                      value={slipNoBySupplier[stagedConfirm.供应商名] || ""}
+                      onChange={(e) =>
+                        setSlipNoBySupplier((prev) => ({ ...prev, [stagedConfirm.供应商名]: e.target.value }))
+                      }
+                      placeholder="提交时记入，对账用"
+                      className="flex-1 px-2.5 py-1.5 text-xs rounded border border-gray-300 focus:outline-none focus:border-blue-400"
+                    />
+                  </div>
+
+                  {/* 收货明细（对照销售单核对） */}
+                  <div>
+                    <div className="text-xs font-medium text-gray-700 mb-1.5">
+                      收货明细（{stagedConfirm.行列表.length} 件）— 请对照供应商销售单核对
+                    </div>
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">配件</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">采购单</th>
+                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">订购</th>
+                            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">实收</th>
+                            <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">处理</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">收货人</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {stagedConfirm.行列表.map((r, i) => {
+                            const 动作标签 = r.item.staged_action ? ACTION_LABELS[r.item.staged_action] : null;
+                            const 不符 = r.item.staged_qty != null && r.item.staged_qty !== r.item.quantity;
+                            return (
+                              <tr key={i} className={不符 ? "bg-red-50/50" : ""}>
+                                <td className="px-3 py-2 text-gray-900 font-medium">{r.item.name}</td>
+                                <td className="px-3 py-2 text-gray-500 text-xs">{r.订单号}</td>
+                                <td className="px-3 py-2 text-right text-gray-700">{r.item.quantity}</td>
+                                <td className={`px-3 py-2 text-right font-medium ${不符 ? "text-red-600" : "text-gray-900"}`}>
+                                  {r.item.staged_qty ?? "-"}
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  {动作标签 ? (
+                                    <span className={`text-xs px-1.5 py-0.5 rounded ${动作标签.color}`}>{动作标签.text}</span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-gray-600 text-xs">{r.收货人}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-xs text-red-500 mt-1.5">
+                      红色行为实收数与订购数不一致，请重点核对是否与销售单一致
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setStagedConfirm(null)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={confirmStagedSubmit}
+                disabled={stagedConfirm.加载中 || submitting === `submit-${stagedConfirm.供应商id}`}
+                className="px-4 py-2 text-sm text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                {submitting === `submit-${stagedConfirm.供应商id}`
+                  ? "提交中..."
+                  : `确认提交（${stagedConfirm.行列表.length} 件）`}
               </button>
             </div>
           </div>
