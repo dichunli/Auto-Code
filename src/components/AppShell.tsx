@@ -7,6 +7,7 @@ import { Navbar } from "./Navbar";
 import { PriceVisibilityProvider, usePriceVisibility } from "./PriceVisibilityContext";
 import { ToastProvider } from "./Toast";
 import { 确保会话就绪, 记录登录健康检查 } from "@/lib/supabase/client";
+import { 挂载错误上报 } from "@/lib/errorReporter";
 
 function KeyboardHandler(): null {
   const { togglePrices } = usePriceVisibility();
@@ -36,6 +37,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    * 登录页不需要等待。带超时兜底，避免网络异常时永久白屏。
    */
   const [会话就绪, set会话就绪] = useState(isLogin);
+
+  /* 全局错误上报（2026-09-04）：JS 报错/未处理 Promise 异常自动记录到 app_error_logs */
+  useEffect(() => {
+    if (isLogin) return; /* 登录页不挂（没登录态写了也没意义） */
+    return 挂载错误上报();
+  }, [isLogin]);
 
   useEffect(() => {
     if (isLogin) {
