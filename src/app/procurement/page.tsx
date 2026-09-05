@@ -96,7 +96,8 @@ export default async function ProcurementPage({
             id, name, brand, specification, quantity, unit_cost, received_qty,
             part_id, work_order_item_part_id, part_number, supplier_part_name,
             unit, category, license_plate, photos, notes, handle_action,
-            discount_amount, evidence_photos, return_reason, waybill_id, waybill_exempt
+            discount_amount, evidence_photos, return_reason, waybill_id, waybill_exempt,
+            staged_qty, staged_action, staged_at, staged_by
           ),
           logistics_waybills:waybill_id(
             id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
