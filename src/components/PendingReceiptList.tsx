@@ -1371,7 +1371,8 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                           <th className="px-2 py-2 text-left font-medium text-gray-500 w-14 whitespace-nowrap">图片</th>
                           <th className="px-2 py-2 text-left font-medium text-gray-500 w-24 whitespace-nowrap">车牌</th>
                           <th className="px-2 py-2 text-center font-medium text-gray-500 w-24 whitespace-nowrap">处理结果</th>
-                          <th className="px-2 py-2 text-center font-medium text-gray-500 w-24 whitespace-nowrap">操作</th>
+                          {/* 操作列锁定最右（2026-09-07）：横向滚动时固定可见 */}
+                          <th className="px-2 py-2 text-center font-medium text-gray-500 w-24 whitespace-nowrap sticky right-0 bg-gray-50 z-10 border-l border-gray-200">操作</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -1380,7 +1381,8 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                         {order.purchase_order_items.filter((it) => !it.handle_action && !it.staged_at).map((item, idx) => {
                           const actionInfo = item.handle_action ? ACTION_LABELS[item.handle_action] : null;
                           return (
-                            <tr key={item.id} className="hover:bg-gray-50">
+                            /* group 类供操作列 hover 时同步行背景色 */
+                            <tr key={item.id} className="hover:bg-gray-50 group">
                               <td className="px-2 py-2 text-gray-500">{idx + 1}</td>
                               <td className="px-2 py-2">
                                 <PartSearchDropdown
@@ -1454,7 +1456,8 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                                   <span className="text-xs text-gray-400">待处理</span>
                                 )}
                               </td>
-                              <td className="px-2 py-2 text-center">
+                              {/* 操作列锁定最右（2026-09-07）：sticky+背景色遮挡滚动内容，hover 时同步行背景 */}
+                              <td className="px-2 py-2 text-center sticky right-0 bg-white group-hover:bg-gray-50 border-l border-gray-200">
                                 <div className="flex items-center gap-1">
                                   {actionInfo ? (
                                     <button
