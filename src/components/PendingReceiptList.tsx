@@ -826,9 +826,14 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
 
   /* ------------------ 分组 ------------------ */
 
+  /* 待收组（2026-09-06 分栏）：只显示还有"未处理且未暂存"行的单——
+     收一件（暂存）走一件，待收货区只剩没收的，一目了然 */
   const displayGroups = useMemo(() => {
+    const 有待收行 = filteredOrders.filter((o) =>
+      (o.purchase_order_items || []).some((it) => !it.handle_action && !it.staged_at)
+    );
     const map = new Map<string, PurchaseOrder[]>();
-    for (const o of filteredOrders) {
+    for (const o of 有待收行) {
       let key: string;
       if (groupBy === "supplier") {
         key = o.suppliers?.name || "未指定供应商";
@@ -846,6 +851,23 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       .sort(([a], [b]) => a.localeCompare(b, "zh"))
       .map(([key, list]) => ({ key, orders: list }));
   }, [filteredOrders, groupBy]);
+
+  /* 已暂存组（分栏右侧）：按供应商分组的暂存行清单 */
+  const stagedGroups = useMemo(() => {
+    const map = new Map<string, { order: PurchaseOrder; item: PurchaseOrderItem }[]>();
+    for (const o of filteredOrders) {
+      for (const it of o.purchase_order_items || []) {
+        if (it.staged_at && !it.handle_action) {
+          const key = o.suppliers?.name || "未指定供应商";
+          if (!map.has(key)) map.set(key, []);
+          map.get(key)!.push({ order: o, item: it });
+        }
+      }
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "zh"))
+      .map(([key, list]) => ({ key, list }));
+  }, [filteredOrders]);
 
   /* ------------------ 运单弹窗 ------------------ */
 
@@ -1199,13 +1221,18 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
           </button>
         )}
       </div>
-      {displayGroups.map((g) => {
-        /* 该组暂存待提交数（2026-09-04 跨单收货） */
-        const 暂存数 = g.orders.reduce(
-          (sum, o) => sum + (o.purchase_order_items || []).filter((it) => it.staged_at && !it.handle_action).length,
-          0
-        );
-        const 组供应商id = g.orders[0]?.supplier_id || null;
+
+      {/* 分栏布局（2026-09-06 用户拍板）：左=待收货（未收的），右=已暂存（待提交）。
+          收一件走一件，待收区只剩没收的，一目了然 */}
+      <div className="flex flex-col lg:flex-row gap-4 items-start">
+        {/* 左列：待收货 */}
+        <div className="flex-1 min-w-0 w-full space-y-4">
+          {displayGroups.length === 0 && (
+            <div className="bg-white rounded-xl border border-dashed border-gray-200 p-8 text-center text-gray-400 text-sm">
+              待收货的都收完了，去右侧核对提交
+            </div>
+          )}
+          {displayGroups.map((g) => {
         return (
         /* 分组卡片：与待采购页统一风格（2026-08-15）——左侧蓝竖条+蓝色标签+加粗组名 */
         <div key={g.key} className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-blue-500 overflow-hidden">
@@ -1348,7 +1375,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {order.purchase_order_items.map((item, idx) => {
+                        {/* 分栏口径（2026-09-06）：待收区只显示「未收且未暂存」的行，
+                            暂存的行自动移到右侧已暂存区，收一件走一件一目了然 */}
+                        {order.purchase_order_items.filter((it) => !it.handle_action && !it.staged_at).map((item, idx) => {
                           const actionInfo = item.handle_action ? ACTION_LABELS[item.handle_action] : null;
                           return (
                             <tr key={item.id} className="hover:bg-gray-50">
@@ -1510,34 +1539,85 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
               );
             })}
           </div>
-
-          {/* 提交收货区（2026-09-04 跨单收货）：该供应商有暂存时显示，手动统一入账 */}
-          {暂存数 > 0 && 组供应商id && (
-            <div className="px-6 py-3 border-t border-yellow-200 bg-yellow-50 flex items-center gap-3 flex-wrap">
-              <span className="text-sm font-medium text-yellow-800">
-                已暂存 <span className="font-bold">{暂存数}</span> 件待提交
-              </span>
-              <input
-                type="text"
-                value={slipNoBySupplier[g.key] || ""}
-                onChange={(e) => setSlipNoBySupplier((prev) => ({ ...prev, [g.key]: e.target.value }))}
-                placeholder="供应商销售单号（提交时记入，对账用）"
-                className="w-56 px-2.5 py-1.5 text-xs rounded border border-yellow-300 bg-white focus:outline-none focus:border-yellow-500"
-              />
-              <button
-                type="button"
-                onClick={() => openStagedConfirm(组供应商id, g.key)}
-                disabled={submitting === `submit-${组供应商id}`}
-                className="px-4 py-1.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                {submitting === `submit-${组供应商id}` ? "提交中..." : `提交收货（${暂存数} 件）`}
-              </button>
-              <span className="text-xs text-yellow-700">提交前会先出核对清单，确认后入账入库</span>
-            </div>
-          )}
         </div>
         );
       })}
+        </div>
+
+        {/* 右列：已暂存待提交（2026-09-06 分栏）：收一件自动移到这里，核对清单+提交 */}
+        {stagedGroups.length > 0 && (
+          <div className="w-full lg:w-[400px] lg:shrink-0 lg:sticky lg:top-4 space-y-3">
+            <div className="bg-yellow-50 rounded-xl border border-yellow-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-yellow-200 bg-yellow-100/60">
+                <h3 className="text-sm font-bold text-yellow-800">已暂存 · 待提交</h3>
+                <p className="text-xs text-yellow-700 mt-0.5">收完的货自动归到这里，核对销售单后统一提交入账</p>
+              </div>
+              <div className="divide-y divide-yellow-100">
+                {stagedGroups.map((g) => {
+                  const 组供应商id = g.list[0]?.order.supplier_id || null;
+                  return (
+                    <div key={g.key} className="px-4 py-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-gray-900">{g.key}</span>
+                        <span className="text-xs text-yellow-700 font-medium">{g.list.length} 件</span>
+                      </div>
+                      <div className="space-y-1.5 mb-3">
+                        {g.list.map(({ order: o, item: it }) => {
+                          const 动作标签 = it.staged_action ? ACTION_LABELS[it.staged_action] : null;
+                          const 不符 = it.staged_qty != null && it.staged_qty !== it.quantity;
+                          return (
+                            <div key={it.id} className={`flex items-center gap-2 text-xs rounded-lg px-2 py-1.5 ${不符 ? "bg-red-50 border border-red-200" : "bg-white border border-yellow-100"}`}>
+                              <button
+                                type="button"
+                                onClick={() => handleUnstage(it)}
+                                disabled={submitting === `unstage-${it.id}`}
+                                title="撤销暂存，重新收货"
+                                className="text-yellow-600 hover:text-yellow-800 shrink-0 disabled:opacity-50"
+                              >
+                                ↩
+                              </button>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium text-gray-900 truncate">{it.name}</div>
+                                <div className="text-gray-400 text-[10px]">{o.order_no || o.id.slice(0, 8)}</div>
+                              </div>
+                              <div className={`text-right shrink-0 ${不符 ? "text-red-600 font-medium" : "text-gray-600"}`}>
+                                订{it.quantity} 实{it.staged_qty ?? "-"}
+                              </div>
+                              {动作标签 && (
+                                <span className={`text-[10px] px-1 py-0.5 rounded shrink-0 ${动作标签.color}`}>{动作标签.text}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* 提交区：销售单号+提交按钮 */}
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={slipNoBySupplier[g.key] || ""}
+                          onChange={(e) => setSlipNoBySupplier((prev) => ({ ...prev, [g.key]: e.target.value }))}
+                          placeholder="供应商销售单号（提交时记入）"
+                          className="w-full px-2.5 py-1.5 text-xs rounded border border-yellow-300 bg-white focus:outline-none focus:border-yellow-500"
+                        />
+                        {组供应商id && (
+                          <button
+                            type="button"
+                            onClick={() => openStagedConfirm(组供应商id, g.key)}
+                            disabled={submitting === `submit-${组供应商id}`}
+                            className="w-full py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                          >
+                            {submitting === `submit-${组供应商id}` ? "提交中..." : `提交收货（${g.list.length} 件）`}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 运单处理弹窗（2026-08-21）：外阜单未关联运单时点收货弹出，关联运单或豁免 */}
       {gateOrder && gateItem && (

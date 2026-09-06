@@ -936,9 +936,10 @@ export function MobileReceivingOrders({
                   )}
                 </div>
 
-                {/* 商品列表（上下排列） */}
+                {/* 商品列表（上下排列）。
+                    分栏口径（2026-09-06）：只显示「未收且未暂存」的行，暂存的自动移到底部已暂存区 */}
                 <div className="divide-y divide-gray-100">
-                  {单.purchase_order_items.map((明细) => {
+                  {单.purchase_order_items.filter((it) => !it.handle_action && !it.staged_at).map((明细) => {
                     const 动作 = 明细.handle_action ? ACTION_LABELS[明细.handle_action] : null;
                     return (
                       <div key={明细.id} className="px-3 py-2.5">
@@ -1022,18 +1023,48 @@ export function MobileReceivingOrders({
             );
           })}
 
-          {/* 提交收货区（2026-09-04 跨单收货）：该供应商有暂存时显示，手动统一入账 */}
+          {/* 已暂存区（2026-09-06 分栏口径：手机端上下显示，待收在上已暂存清单在下）：
+              显示明细清单（收一件自动移到这里）+销售单号+提交按钮 */}
           {(() => {
-            const 暂存数 = 订单组.reduce(
-              (sum, o) => sum + (o.purchase_order_items || []).filter((it) => it.staged_at && !it.handle_action).length,
-              0
+            const 暂存行 = 订单组.flatMap((o) =>
+              (o.purchase_order_items || [])
+                .filter((it) => it.staged_at && !it.handle_action)
+                .map((it) => ({ 订单: o, 明细: it }))
             );
             const 首单 = 订单组[0];
-            if (暂存数 === 0 || !首单?.supplier_id) return null;
+            if (暂存行.length === 0 || !首单?.supplier_id) return null;
             return (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 space-y-2">
-                <div className="text-sm font-medium text-yellow-800">
-                  已暂存 <span className="font-bold">{暂存数}</span> 件待提交
+                <div className="text-sm font-bold text-yellow-800">已暂存 · 待提交（{暂存行.length} 件）</div>
+                {/* 已暂存明细清单 */}
+                <div className="space-y-1.5">
+                  {暂存行.map(({ 订单: o, 明细: it }) => {
+                    const 动作标签 = it.staged_action ? ACTION_LABELS[it.staged_action] : null;
+                    const 不符 = it.staged_qty != null && it.staged_qty !== it.quantity;
+                    return (
+                      <div key={it.id} className={`flex items-center gap-2 text-xs rounded-lg px-2 py-1.5 ${不符 ? "bg-red-50 border border-red-200" : "bg-white border border-yellow-100"}`}>
+                        <button
+                          type="button"
+                          onClick={() => 撤销暂存(it)}
+                          disabled={提交中 === `unstage-${it.id}`}
+                          title="撤销暂存，重新收货"
+                          className="text-yellow-600 shrink-0 disabled:opacity-50"
+                        >
+                          ↩
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-gray-900 truncate">{it.name}</div>
+                          <div className="text-gray-400 text-[10px]">{o.order_no || o.id.slice(0, 8)}</div>
+                        </div>
+                        <div className={`text-right shrink-0 ${不符 ? "text-red-600 font-medium" : "text-gray-600"}`}>
+                          订{it.quantity} 实{it.staged_qty ?? "-"}
+                        </div>
+                        {动作标签 && (
+                          <span className={`text-[10px] px-1 py-0.5 rounded shrink-0 ${动作标签.color}`}>{动作标签.text}</span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 <button
                   type="button"
@@ -1041,7 +1072,7 @@ export function MobileReceivingOrders({
                   disabled={提交中 === `submit-${首单.supplier_id}`}
                   className="w-full py-2.5 rounded-xl bg-green-600 text-white text-sm font-medium active:bg-green-700 disabled:opacity-50"
                 >
-                  {提交中 === `submit-${首单.supplier_id}` ? "提交中..." : `提交收货（${暂存数} 件）`}
+                  {提交中 === `submit-${首单.supplier_id}` ? "提交中..." : `提交收货（${暂存行.length} 件）`}
                 </button>
                 <p className="text-xs text-yellow-700 text-center">提交前会先出核对清单，确认后入账</p>
               </div>
