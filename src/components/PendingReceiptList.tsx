@@ -47,6 +47,8 @@ interface PurchaseOrderItem {
   staged_at: string | null;
   /* 暂存操作人（2026-09-05 提交核对弹窗显示收货人） */
   staged_by: string | null;
+  /* 配件级运单详情（2026-09-07 已暂存区顶部显示关联运单） */
+  logistics_waybills?: Waybill | null;
 }
 
 interface Waybill {
@@ -244,7 +246,11 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
           part_id, work_order_item_part_id, part_number, supplier_part_name,
           unit, category, license_plate, photos, notes, handle_action,
           discount_amount, evidence_photos, return_reason, waybill_id, waybill_exempt,
-          staged_qty, staged_action, staged_at, staged_by
+          staged_qty, staged_action, staged_at, staged_by,
+          logistics_waybills:waybill_id(
+            id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
+            logistics_companies(name)
+          )
         ),
         logistics_waybills:waybill_id(
           id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
@@ -1558,12 +1564,32 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
               <div className="divide-y divide-yellow-100">
                 {stagedGroups.map((g) => {
                   const 组供应商id = g.list[0]?.order.supplier_id || null;
+                  /* 关联运单（2026-09-07 用户需求）：单头关联 + 配件级关联去重后显示在暂存清单顶部 */
+                  const 运单去重 = new Map<string, Waybill>();
+                  for (const { order: o2, item: it2 } of g.list) {
+                    if (o2.logistics_waybills) 运单去重.set(o2.logistics_waybills.id, o2.logistics_waybills);
+                    if (it2.logistics_waybills) 运单去重.set(it2.logistics_waybills.id, it2.logistics_waybills);
+                  }
+                  const 关联运单 = Array.from(运单去重.values());
                   return (
                     <div key={g.key} className="px-4 py-3">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-semibold text-gray-900">{g.key}</span>
                         <span className="text-xs text-yellow-700 font-medium">{g.list.length} 件</span>
                       </div>
+                      {关联运单.length > 0 && (
+                        <div className="mb-2 space-y-1">
+                          {关联运单.map((w) => (
+                            <div key={w.id} className="flex items-center gap-1.5 text-xs bg-blue-50 border border-blue-100 rounded-lg px-2 py-1">
+                              <span className="text-blue-400 shrink-0">运单</span>
+                              <span className="font-medium text-blue-800 truncate">{w.tracking_no}</span>
+                              <span className="text-blue-500 shrink-0">
+                                {w.logistics_companies?.name || w.logistics_company_name || ""}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div className="space-y-1.5 mb-3">
                         {g.list.map(({ order: o, item: it }) => {
                           const 动作标签 = it.staged_action ? ACTION_LABELS[it.staged_action] : null;
@@ -1575,9 +1601,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                                 onClick={() => handleUnstage(it)}
                                 disabled={submitting === `unstage-${it.id}`}
                                 title="撤销暂存，重新收货"
-                                className="text-yellow-600 hover:text-yellow-800 shrink-0 disabled:opacity-50"
+                                className="text-yellow-600 hover:text-yellow-800 shrink-0 disabled:opacity-50 font-medium"
                               >
-                                ↩
+                                {submitting === `unstage-${it.id}` ? "撤销中..." : "↩ 撤销"}
                               </button>
                               <div className="min-w-0 flex-1">
                                 <div className="font-medium text-gray-900 truncate">{it.name}</div>
