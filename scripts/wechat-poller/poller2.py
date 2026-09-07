@@ -481,23 +481,21 @@ def 归堆成需求包(消息列表):
   .包卡片 {{ max-width: 800px; margin: 0 auto 12px; background: #fff; border-radius: 12px;
             border: 1px solid #e5e7eb; padding: 12px 16px; }}
   .包卡片.已处理 {{ opacity: 0.45; }}
-  .包头部 {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }}
-  .车牌标题 {{ font-size: 18px; font-weight: 700; color: #111827; }}
-  .车牌标题.未识别 {{ color: #b45309; font-size: 15px; }}
-  .参与人 {{ color: #6b7280; font-size: 12px; margin-bottom: 6px; }}
-  .时刻 {{ color: #9ca3af; font-size: 12px; }}
-  .消息行2 {{ display: flex; align-items: flex-start; gap: 12px; padding: 7px 0;
-             border-top: 1px dashed #f3f4f6; }}
-  .列时间 {{ width: 64px; flex-shrink: 0; }}
+  .卡主体 {{ display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }}
+  .列时间 {{ width: 66px; flex-shrink: 0; }}
   .列时间 .点钟 {{ color: #9ca3af; font-size: 12px; }}
-  .列时间 .人名2 {{ color: #2563eb; font-size: 12px; word-break: break-all; }}
-  .列车牌 {{ flex-shrink: 0; font-weight: 700; color: #92400e; background: #fef3c7;
-            border-radius: 6px; padding: 1px 8px; font-size: 13px; }}
-  .列图片 img {{ width: 120px; height: 120px; object-fit: cover; border-radius: 8px;
-                border: 1px solid #e5e7eb; cursor: zoom-in; vertical-align: top; }}
-  .列文字 {{ font-size: 14px; color: #111827; line-height: 1.7; word-break: break-all;
-            white-space: pre-wrap; min-width: 0; }}
+  .列时间 .人名2 {{ color: #2563eb; font-size: 12px; word-break: break-all; margin-bottom: 6px; }}
+  .车牌标题 {{ font-size: 17px; font-weight: 700; color: #111827; flex-shrink: 0;
+              padding-top: 24px; min-width: 90px; }}
+  .车牌标题.未识别 {{ color: #b45309; font-size: 14px; }}
+  .列图片横排 {{ display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 1; }}
+  .列图片横排 img {{ width: 130px; height: 130px; object-fit: cover; border-radius: 8px;
+                    border: 1px solid #e5e7eb; cursor: zoom-in; }}
+  .图占位 {{ color: #9ca3af; font-size: 12px; }}
+  .列文字 {{ font-size: 14px; color: #111827; line-height: 1.8; word-break: break-all;
+            flex: 1; min-width: 160px; padding-top: 2px; }}
   .处理行 {{ margin-top: 10px; border-top: 1px dashed #e5e7eb; padding-top: 8px; font-size: 13px; color: #374151; }}
+  .处理行 .时刻 {{ color: #9ca3af; font-size: 12px; margin-right: 12px; }}
   .处理行 input[type=text] {{ width: 60%; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; }}
   .空提示 {{ max-width: 800px; margin: 40px auto; text-align: center; color: #9ca3af; }}
   /* 大图弹层：点图放大，点空白处或按 Esc 关闭 */
@@ -549,13 +547,14 @@ document.querySelectorAll(".包卡片").forEach(function(卡片) {{
 """
 
 包卡片模板 = """<div class="包卡片" data-包id="{包id}">
-  <div class="包头部">
+  <div class="卡主体">
+    <div class="列时间">{时间人列表html}</div>
     <div class="{标题样式}">{标题}</div>
-    <div class="时刻">{日期}　{起止时间}</div>
+    <div class="列图片横排">{图片们html}</div>
+    <div class="列文字">{文字们html}</div>
   </div>
-  <div class="参与人">{参与人}</div>
-  {消息html}
   <div class="处理行">
+    <span class="时刻">{日期}　{起止时间}</span>
     <label><input type="checkbox"> 已处理</label>　备注：<input type="text" placeholder="如：已下单 / 库里">
   </div>
 </div>
@@ -567,53 +566,14 @@ def 文字分行(内容):
     return [段 for 段 in re.split(r"[\s,，、。;；!！?？~～…]+", 内容) if 段]
 
 
-def 渲染消息行(单条, 昵称表):
-    """把一条消息渲染成横向行：左列时间+上传人 → 车牌 → 图片 → 文字（分行）。"""
-    人名 = 昵称表.get(单条["发送者"], "") or ("我自己" if 单条["发送者"] == "__自己__" else 单条["发送者"][-6:] if 单条["发送者"] else "未知")
-    点钟 = datetime.fromtimestamp(单条["时间"]).strftime("%H:%M") if 单条["时间"] else ""
-
-    行内容 = []
-
-    # 第二列：这条消息识别出的车牌（文字里的或照片 OCR 的）
-    车牌 = 提取消息车牌(单条)
-    if 车牌:
-        行内容.append(f'<div class="列车牌">{html.escape(车牌)}</div>')
-
-    # 第三列：图片
-    if 单条["类型"] == 消息类型_图片:
-        if 单条["图片路径"]:
-            名 = html.escape(单条["图片路径"])
-            行内容.append(f'<div class="列图片"><img src="images/{名}" loading="lazy" onclick="放大看图(\'images/{名}\')"></div>')
-        else:
-            行内容.append('<div class="列文字">[图片读取失败，请在微信里查看]</div>')
-    elif 单条["类型"] == 消息类型_语音:
-        行内容.append('<div class="列文字">[语音消息，请在微信里收听]</div>')
-    elif 单条["类型"] == 消息类型_视频:
-        行内容.append('<div class="列文字">[视频，请在微信里查看]</div>')
-    elif 单条["类型"] == 消息类型_应用 and 单条["内容"]:
-        摘要 = re.sub(r"<[^>]+>", " ", 单条["内容"])
-        摘要 = re.sub(r"\s+", " ", 摘要).strip()[:60]
-        if 摘要:
-            行内容.append(f'<div class="列文字">[链接/引用] {html.escape(摘要)}</div>')
-
-    # 第四列：文字，按标点/空格/回车分行
-    if 单条["内容"] and 单条["类型"] == 消息类型_文本:
-        分行们 = 文字分行(单条["内容"])
-        if 分行们:
-            行内容.append('<div class="列文字">' + "".join(
-                f'<div>{html.escape(行)}</div>' for 行 in 分行们) + "</div>")
-
-    if not 行内容:
-        return ""
-    return (
-        f'<div class="消息行2">'
-        f'<div class="列时间"><div class="点钟">{点钟}</div><div class="人名2">{html.escape(人名)}</div></div>'
-        + "".join(行内容) + "</div>"
-    )
+def 取显示名(发送者, 昵称表):
+    """发送者 username → 显示名（自己/昵称/账号尾号兜底）"""
+    return 昵称表.get(发送者, "") or ("我自己" if 发送者 == "__自己__" else 发送者[-6:] if 发送者 else "未知")
 
 
 def 生成看板(包们, 昵称表, 输出目录):
-    """根据需求包列表生成自包含的 HTML 看板文件。所有用户来源文本先转义再进 HTML。"""
+    """根据需求包列表生成自包含的 HTML 看板文件。所有用户来源文本先转义再进 HTML。
+    卡片内横向布局：左列时间+上传人 → 车牌 → 图片横排 → 文字分行。"""
     卡片们 = []
     for 包 in 包们:
         if 包["车牌"]:
@@ -622,19 +582,57 @@ def 生成看板(包们, 昵称表, 输出目录):
         else:
             标题 = "未识别车牌"
             标题样式 = "车牌标题 未识别"
-        参与人 = "、".join(
-            html.escape(昵称表.get(s, "") or ("我自己" if s == "__自己__" else s[-6:] if s else "未知"))
-            for s in 包["发送者列表"]
-        )
+
+        # 第一列：每个上传人一行（其在本卡片里第一条消息的时间 + 名字）
+        时间人行们 = []
+        见过的人 = set()
+        for m in 包["消息们"]:
+            if m["发送者"] in 见过的人:
+                continue
+            见过的人.add(m["发送者"])
+            点钟 = datetime.fromtimestamp(m["时间"]).strftime("%H:%M") if m["时间"] else ""
+            时间人行们.append(
+                f'<div class="点钟">{点钟}</div><div class="人名2">{html.escape(取显示名(m["发送者"], 昵称表))}</div>')
+        时间人列表html = "".join(时间人行们)
+
+        # 第三列：图片横排
+        图们 = []
+        for m in 包["消息们"]:
+            if m["类型"] == 消息类型_图片:
+                if m["图片路径"]:
+                    名 = html.escape(m["图片路径"])
+                    图们.append(f'<img src="images/{名}" loading="lazy" onclick="放大看图(\'images/{名}\')">')
+                else:
+                    图们.append('<span class="图占位">[图片读取失败]</span>')
+        图片们html = "".join(图们)
+
+        # 第四列：文字分行（多上传人时带名字前缀）
+        多人 = len(见过的人) > 1
+        文字行们 = []
+        for m in 包["消息们"]:
+            if m["类型"] == 消息类型_文本 and m["内容"]:
+                前缀 = f'{html.escape(取显示名(m["发送者"], 昵称表))}：' if 多人 else ""
+                for 行 in 文字分行(m["内容"]):
+                    文字行们.append(f"<div>{前缀}{html.escape(行)}</div>")
+            elif m["类型"] == 消息类型_语音:
+                文字行们.append("<div>[语音消息，请在微信里收听]</div>")
+            elif m["类型"] == 消息类型_视频:
+                文字行们.append("<div>[视频，请在微信里查看]</div>")
+            elif m["类型"] == 消息类型_应用 and m["内容"]:
+                摘要 = re.sub(r"<[^>]+>", " ", m["内容"])
+                摘要 = re.sub(r"\s+", " ", 摘要).strip()[:60]
+                if 摘要:
+                    文字行们.append(f"<div>[链接/引用] {html.escape(摘要)}</div>")
+        文字们html = "".join(文字行们)
+
         开始 = datetime.fromtimestamp(包["开始时间"]).strftime("%H:%M") if 包["开始时间"] else ""
         结束 = datetime.fromtimestamp(包["结束时间"]).strftime("%H:%M") if 包["结束时间"] else ""
         起止时间 = f"{开始} ~ {结束}" if 开始 != 结束 else 开始
 
-        消息html = "".join(渲染消息行(单条, 昵称表) for 单条 in 包["消息们"])
-
         卡片们.append(包卡片模板.format(
             包id=html.escape(包["包id"]), 标题=标题, 标题样式=标题样式, 日期=包["日期"],
-            起止时间=起止时间, 参与人=参与人, 消息html=消息html,
+            起止时间=起止时间, 时间人列表html=时间人列表html,
+            图片们html=图片们html, 文字们html=文字们html,
         ))
 
     看板html = 看板模板.format(
