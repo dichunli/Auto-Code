@@ -45,7 +45,7 @@ import wximg  # 同目录的微信4.x图片解密模块
 归堆窗口秒 = 5 * 60
 
 # 看板里最多保留多少天的消息（防止文件越攒越大）
-保留天数 = 30
+保留天数 = 3
 
 # 中国大陆车牌号正则（普通蓝牌/黄牌/新能源绿牌）
 车牌正则 = re.compile(
@@ -484,7 +484,6 @@ def 归堆成需求包(消息列表):
           padding: 8px 12px; border-radius: 8px; margin-top: 8px; }}
   .包卡片 {{ max-width: 800px; margin: 0 auto 12px; background: #fff; border-radius: 12px;
             border: 1px solid #e5e7eb; padding: 12px 16px; }}
-  .包卡片.已处理 {{ opacity: 0.45; }}
   .卡主体 {{ display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }}
   .列时间 {{ width: 66px; flex-shrink: 0; }}
   .列时间 .点钟 {{ color: #9ca3af; font-size: 12px; }}
@@ -528,7 +527,7 @@ def 归堆成需求包(消息列表):
 <div class="头部">
   <h1>配件需求看板</h1>
   <div class="时间">最后更新：{更新时间}　｜　共 {包数量} 个消息包　｜　保留最近 {保留天数} 天</div>
-  <div class="说明">按流程勾选：已询价 → 已报价 → 客户意见（同意/否决）→ 已发货 → 已处理（客户否决时不能发货）。
+  <div class="说明">按流程勾选：已询价 → 已报价 → 客户意见（无/同意/否决）→ 已发货 → 已处理（客户否决时不能发货）。
   所有勾选和备注存在本浏览器，刷新不丢；已询价后又来新消息会自动清空重询。照片点一下放大。有新内容页面自动刷新。</div>
 </div>
 <div class="筛选条">筛选：
@@ -536,6 +535,7 @@ def 归堆成需求包(消息列表):
   <button class="筛选钮" data-筛="未询价">未询价</button>
   <button class="筛选钮" data-筛="已询价">已询价</button>
   <button class="筛选钮" data-筛="已报价">已报价</button>
+  <button class="筛选钮" data-筛="无意见">无意见</button>
   <button class="筛选钮" data-筛="同意">客户同意</button>
   <button class="筛选钮" data-筛="否决">客户否决</button>
   <button class="筛选钮" data-筛="已发货">已发货</button>
@@ -604,13 +604,11 @@ document.querySelectorAll(".包卡片").forEach(function(卡片) {{
         localStorage.removeItem(key);
       }} else {{
         框.checked = true;
-        if (框.dataset.k === "已处理") 卡片.classList.add("已处理");
       }}
     }}
     框.addEventListener("change", function() {{
       localStorage.setItem(key, 框.checked ? "1" : "0");
       localStorage.setItem(纹key, 指纹);
-      if (框.dataset.k === "已处理") 卡片.classList.toggle("已处理", 框.checked);
     }});
   }});
   卡片.querySelectorAll("input[type=radio][data-确认]").forEach(function(钮) {{
@@ -637,6 +635,10 @@ function 应用筛选(筛) {{
       显示 = localStorage.getItem("勾_" + 筛 + "_" + id) === "1";
     else if (筛 === "同意" || 筛 === "否决")
       显示 = localStorage.getItem("确认_" + id) === 筛;
+    else if (筛 === "无意见") {{
+      var v = localStorage.getItem("确认_" + id);
+      显示 = v !== "同意" && v !== "否决";
+    }}
     卡片.style.display = 显示 ? "" : "none";
   }});
   localStorage.setItem("看板筛选", 筛);
@@ -662,7 +664,8 @@ document.querySelectorAll(".筛选钮").forEach(function(b) {{
     <span class="状态组">
       <label class="状态项"><input type="checkbox" data-k="已询价"> 已询价</label>
       <label class="状态项"><input type="checkbox" data-k="已报价"> 已报价</label>
-      <span class="状态项 意见组">客户意见：<label><input type="radio" name="确认_{包id}" data-确认="1" value="同意"> 同意</label>
+      <span class="状态项 意见组">客户意见：<label><input type="radio" name="确认_{包id}" data-确认="1" value="无"> 无</label>
+      <label><input type="radio" name="确认_{包id}" data-确认="1" value="同意"> 同意</label>
       <label><input type="radio" name="确认_{包id}" data-确认="1" value="否决"> 否决</label></span>
       <label class="状态项"><input type="checkbox" data-k="已发货"> 已发货</label>
       <label class="状态项"><input type="checkbox" data-k="已处理"> 已处理</label>
