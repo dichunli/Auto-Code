@@ -249,16 +249,27 @@ def extract_md5_from_packed_info(blob):
     return m.group(0) if m else None
 
 
-def 取图片MD5(资源库路径, local_id, 会话username=None):
+def 取图片MD5(资源库路径, local_id, 会话username=None, 消息时间=None):
     """通过 local_id 查 message_resource.db 获取图片文件 MD5。
-    注意：该库的 local_id 是全局共享的（各聊天会撞号），带上会话过滤才准。"""
+    注意两个坑：①列名是 message_local_id ②同群同 local_id 会有多行
+    （消息分散在多个 message_N.db 里，local_id 各库重复），必须再按
+    message_create_time 与消息时间完全一致（或最接近）来锁定正确那行。"""
     if not 资源库路径 or not os.path.exists(资源库路径):
         return None
     conn = sqlite3.connect(资源库路径)
     try:
-        if 会话username:
+        if 会话username and 消息时间:
             row = conn.execute(
-                "SELECT r.packed_info FROM MessageResourceInfo r "
+                "SELECT packed_info, ABS(message_create_time - ?) AS 差 "
+                "FROM MessageResourceInfo r "
+                "WHERE r.message_local_id = ? AND r.chat_id = "
+                "(SELECT rowid FROM ChatName2Id WHERE user_name = ?) "
+                "AND length(r.packed_info) > 0 ORDER BY 差 LIMIT 1",
+                (消息时间, local_id, 会话username),
+            ).fetchone()
+        elif 会话username:
+            row = conn.execute(
+                "SELECT r.packed_info, 0 FROM MessageResourceInfo r "
                 "WHERE r.message_local_id = ? AND r.chat_id = "
                 "(SELECT rowid FROM ChatName2Id WHERE user_name = ?) "
                 "AND length(r.packed_info) > 0 LIMIT 1",
@@ -266,7 +277,7 @@ def 取图片MD5(资源库路径, local_id, 会话username=None):
             ).fetchone()
         else:
             row = conn.execute(
-                "SELECT packed_info FROM MessageResourceInfo "
+                "SELECT packed_info, 0 FROM MessageResourceInfo "
                 "WHERE message_local_id = ? AND length(packed_info) > 0 LIMIT 1",
                 (local_id,),
             ).fetchone()
@@ -289,16 +300,45 @@ def 找dat文件(attach根目录, 会话username, file_md5):
     return sorted(glob.glob(pattern))
 
 
-def 解密群图片(资源库路径, attach根目录, 会话username, local_id, aes_key, 输出路径不含扩展名, xor_key=0x88):
+def 找气泡图(数据根目录, 会话username, file_md5):
+    """在气泡缓存里找显示尺寸的图（路径: cache/<年-月>/Message/<md5(username)>/Bubble/<md5>_b.dat）
+    微信为了渲染聊天窗口会**自动下载**这种中等尺寸图，不用点开大图就有，清晰度足够看和识别。"""
+    username_hash = hashlib.md5(会话username.encode()).hexdigest()
+    pattern = os.path.join(数据根目录, "cache", "*", "Message", username_hash, "Bubble", f"{file_md5}_b.dat")
+    return sorted(glob.glob(pattern))
+
+
+def _解密并转jpg(dat路径, 输出路径不含扩展名, aes_key, xor_key):
+    """解密一个 dat，wxgf 自动借微信 DLL 转 JPG。返回 (路径, 格式) 或 (None, None)"""
+    路径, fmt = _解密单个(dat路径, 输出路径不含扩展名, aes_key, xor_key)
+    if not 路径:
+        return None, None
+    if fmt != 'hevc':
+        return 路径, fmt
+    try:
+        转好的 = wxgf转图片(open(路径, 'rb').read())
+    except Exception:
+        转好的 = None
+    if not 转好的:
+        return 路径, fmt
+    目标 = 输出路径不含扩展名 + ".jpg"
+    with open(目标, 'wb') as f:
+        f.write(转好的)
+    try:
+        os.unlink(路径)
+    except OSError:
+        pass
+    return 目标, "jpg"
+
+
+def 解密群图片(资源库路径, attach根目录, 会话username, local_id, aes_key, 输出路径不含扩展名, xor_key=0x88, 数据根目录=None, 消息时间=None):
     """完整链路：local_id → MD5 → .dat → 解密。返回 (解密后路径, 格式) 或 (None, 错误说明)
-    微信 4.x 的苹果手机照片是 wxgf 私有格式（浏览器看不了），遇到时自动退回 JPEG 缩略图。"""
-    file_md5 = 取图片MD5(资源库路径, local_id, 会话username)
+    取图优先级：attach 原图/高清 > 气泡缓存图（自动下载的中等尺寸）> attach 缩略图。"""
+    file_md5 = 取图片MD5(资源库路径, local_id, 会话username, 消息时间)
     if not file_md5:
         return None, f"message_resource.db 里找不到 local_id={local_id} 的图片信息"
 
     dat_files = 找dat文件(attach根目录, 会话username, file_md5)
-    if not dat_files:
-        return None, f"找不到 .dat 文件 (MD5={file_md5})"
 
     # 候选顺序：标准版（无后缀）→ 高清 _h → 缩略图 _t
     def 排序键(p):
@@ -312,32 +352,32 @@ def 解密群图片(资源库路径, attach根目录, 会话username, local_id, 
 
     缩略图兜底 = None
     for 候选 in 候选们:
-        路径, fmt = _解密单个(候选, 输出路径不含扩展名, aes_key, xor_key)
+        路径, fmt = _解密并转jpg(候选, 输出路径不含扩展名, aes_key, xor_key)
         if not 路径:
             continue
         if fmt == 'hevc':
-            # wxgf 私有格式：先试用微信自己的解码器转 JPG，转不了再看缩略图
-            try:
-                原始 = open(路径, 'rb').read()
-                转好的 = wxgf转图片(原始)
-            except Exception:
-                转好的 = None
-            if 转好的:
-                目标 = 输出路径不含扩展名 + ".jpg"
-                with open(目标, 'wb') as f:
-                    f.write(转好的)
-                try:
-                    os.unlink(路径)  # 删掉中间的 .hevc 文件
-                except OSError:
-                    pass
-                return 目标, "jpg"
-            if 候选.endswith('_t.dat'):
+            # wxgf 且 DLL 转换失败：缩略图留作兜底
+            if 候选.endswith('_t.dat') or '_t' in os.path.basename(候选):
                 缩略图兜底 = (路径, fmt)
             continue
+        # attach 里解出的图太小（<30KB 基本是缩略图质量），试试气泡缓存有没有更大的
+        if os.path.getsize(路径) < 30 * 1024:
+            缩略图兜底 = (路径, fmt)
+            continue
         return 路径, fmt
+
+    # 气泡缓存：微信渲染聊天窗口时自动下载的中等尺寸图（不用点开大图就有）
+    if 数据根目录:
+        for 气泡 in 找气泡图(数据根目录, 会话username, file_md5):
+            路径, fmt = _解密并转jpg(气泡, 输出路径不含扩展名, aes_key, xor_key)
+            if 路径 and fmt != 'hevc' and os.path.getsize(路径) >= 30 * 1024:
+                return 路径, fmt
+            if 路径 and not 缩略图兜底:
+                缩略图兜底 = (路径, fmt)
+
     if 缩略图兜底:
         return 缩略图兜底
-    return None, "解密失败或是不支持的 wxgf 格式"
+    return None, "找不到可解密的图片文件（原图和气泡缓存都没有）"
 
 
 def _解密单个(dat_path, 输出路径不含扩展名, aes_key, xor_key=0x88):
