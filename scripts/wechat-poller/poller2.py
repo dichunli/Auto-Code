@@ -88,25 +88,39 @@ def 读取配置():
         print("请打开 config.ini，把目标群的群名填在 groups = 后面，保存后重新运行。")
         sys.exit(1)
 
+    # OCR 密钥：config.ini 没填时，自动读项目 .env.local 里的 BAIDU_API_KEY/SECRET_KEY
+    # （主系统的车牌识别就在用这套密钥，避免重复配置）
+    ocr密钥 = 解析器.get("ocr", "baidu_api_key", fallback="").strip()
+    ocr密文 = 解析器.get("ocr", "baidu_secret_key", fallback="").strip()
+    if not ocr密钥 or not ocr密文:
+        env文件 = 脚本目录.parent.parent / ".env.local"
+        if env文件.exists():
+            for 行 in env文件.read_text(encoding="utf-8").splitlines():
+                if 行.startswith("BAIDU_API_KEY=") and not ocr密钥:
+                    ocr密钥 = 行.split("=", 1)[1].strip()
+                elif 行.startswith("BAIDU_SECRET_KEY=") and not ocr密文:
+                    ocr密文 = 行.split("=", 1)[1].strip()
+
     return {
         "目标群列表": [g.strip() for g in 群名原文.split(",") if g.strip()],
         "轮询间隔": max(5, 解析器.getint("wechat", "interval", fallback=30)),
         "输出目录": Path(解析器.get("paths", "output", fallback="./输出")).resolve(),
         "工作目录": Path(解析器.get("paths", "workdir", fallback="./_工作区")).resolve(),
         "OCR启用": 解析器.getboolean("ocr", "enabled", fallback=False),
-        "OCR密钥": 解析器.get("ocr", "baidu_api_key", fallback="").strip(),
-        "OCR密文": 解析器.get("ocr", "baidu_secret_key", fallback="").strip(),
+        "OCR密钥": ocr密钥,
+        "OCR密文": ocr密文,
     }
 
 
 def 读图片钥匙():
-    """读取 image_key.json 里的图片 AES 钥匙（没有则返回空串，图片将显示占位提示）"""
+    """读取 image_key.json 里的图片钥匙（AES + XOR）。没有则返回 ("", None)"""
     if not 图片钥匙文件.exists():
-        return ""
+        return "", None
     try:
-        return json.loads(图片钥匙文件.read_text(encoding="utf-8")).get("image_aes_key", "")
+        数据 = json.loads(图片钥匙文件.read_text(encoding="utf-8"))
+        return 数据.get("image_aes_key", ""), 数据.get("image_xor_key")
     except Exception:
-        return ""
+        return "", None
 
 
 # ============================================================
@@ -245,14 +259,14 @@ def 补发送者(消息列表, 本号):
             消息["发送者"] = "__自己__"
 
 
-def 解密消息图片(消息, app, aes钥匙, 图片目录):
+def 解密消息图片(消息, app, aes钥匙, xor钥匙, 图片目录):
     """给一条图片消息解密出普通图片文件。返回文件名；失败返回空串。"""
     try:
         资源库 = app.cache.get(os.path.join("message", "message_resource.db"))
         attach根 = str(Path(app.db_dir).parent / "msg" / "attach")
         输出基础 = str(图片目录 / f"{消息['local_id']}")
         路径, 格式或错误 = wximg.解密群图片(
-            资源库, attach根, 消息["群id"], 消息["local_id"], aes钥匙, 输出基础)
+            资源库, attach根, 消息["群id"], 消息["local_id"], aes钥匙, 输出基础, xor钥匙 or 0x88)
         if 路径:
             return Path(路径).name
         消息["_图片错误"] = 格式或错误 or "未知错误"
@@ -328,7 +342,13 @@ def 提取消息车牌(消息):
         命中 = 车牌正则.findall(消息["内容"].upper())
         if 命中:
             return 命中[0]
-    return 消息.get("图片车牌", "") or ""
+    # OCR 可能有误报（把零件标签认成车牌），同样过一遍正则校验
+    ocr结果 = 消息.get("图片车牌", "") or ""
+    if ocr结果:
+        命中 = 车牌正则.findall(ocr结果.upper())
+        if 命中:
+            return 命中[0]
+    return ""
 
 
 def 归堆成需求包(消息列表):
@@ -627,7 +647,7 @@ def 诊断模式(配置):
         print(f"    {datetime.fromtimestamp(m['时间']).strftime('%H:%M')} {预览}")
 
     print("\n第 4 步：图片解密链路……")
-    aes钥匙 = 读图片钥匙()
+    aes钥匙, xor钥匙 = 读图片钥匙()
     if not aes钥匙:
         print("  【提示】还没有图片 AES 钥匙（image_key.json 不存在）。")
         print("  群里只发照片不打字的消息将无法显示图片。")
@@ -638,7 +658,7 @@ def 诊断模式(配置):
         if 图片消息:
             图片目录 = 配置["输出目录"] / "images"
             图片目录.mkdir(parents=True, exist_ok=True)
-            文件名 = 解密消息图片(图片消息, app, aes钥匙, 图片目录)
+            文件名 = 解密消息图片(图片消息, app, aes钥匙, xor钥匙, 图片目录)
             print(f"  试解最近一张图片：{'成功 → ' + 文件名 if 文件名 else '失败：' + 图片消息.get('_图片错误', '')}")
         else:
             print("  最近 1 小时没有图片消息，跳过试解。")
@@ -683,7 +703,7 @@ def 主循环(配置):
 
     游标状态 = 读游标(工作目录)
     历史消息 = 加载历史消息(工作目录)
-    aes钥匙 = 读图片钥匙()
+    aes钥匙, xor钥匙 = 读图片钥匙()
 
     while True:
         try:
@@ -721,7 +741,7 @@ def 主循环(配置):
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] 收到 {len(新消息们)} 条新消息")
                 for 消息 in 新消息们:
                     if 消息["类型"] == 消息类型_图片:
-                        消息["图片路径"] = 解密消息图片(消息, app, aes钥匙, 图片目录)
+                        消息["图片路径"] = 解密消息图片(消息, app, aes钥匙, xor钥匙, 图片目录)
                         if 消息["图片路径"] and 配置["OCR启用"]:
                             车牌 = OCR识别车牌(图片目录 / 消息["图片路径"], 配置)
                             if 车牌:
