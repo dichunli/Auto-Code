@@ -153,6 +153,87 @@ def xor_decrypt_file(dat_path, out_path=None, key=None):
     return out_path, fmt
 
 
+# ============================================================
+# wxgf（微信私有图片格式）解码：调用微信自己的 VoipEngine.dll
+# 思路移植自开源项目 HShiDianLu/wx-dat2img（MIT）
+# ============================================================
+
+_wxam函数 = None
+_wxam加载过 = False
+
+
+def _加载wxam解码器():
+    """从微信 4.x 安装目录加载 VoipEngine.dll 的 wxam_dec_wxam2pic_5 函数"""
+    global _wxam函数, _wxam加载过
+    if _wxam加载过:
+        return _wxam函数
+    _wxam加载过 = True
+    import ctypes
+    候选根们 = [
+        os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"),
+        os.environ.get("PROGRAMFILES", r"C:\Program Files"),
+    ]
+    dll路径 = None
+    for 根 in 候选根们:
+        微信目录 = os.path.join(根, "Tencent", "Weixin")
+        if not os.path.isdir(微信目录):
+            continue
+        for 子项 in os.listdir(微信目录):
+            候选 = os.path.join(微信目录, 子项, "VoipEngine.dll")
+            if os.path.exists(候选):
+                dll路径 = 候选
+                break
+        if dll路径:
+            break
+    if not dll路径:
+        return None
+    try:
+        函数 = ctypes.WinDLL(dll路径).wxam_dec_wxam2pic_5
+        函数.argtypes = [
+            ctypes.c_int64, ctypes.c_int, ctypes.c_int64,
+            ctypes.POINTER(ctypes.c_int), ctypes.c_int64,
+        ]
+        函数.restype = ctypes.c_int64
+        _wxam函数 = 函数
+    except Exception:
+        _wxam函数 = None
+    return _wxam函数
+
+
+def wxgf转图片(data):
+    """把 wxgf 数据解码成普通图片字节（jpg/png）。失败返回 None。"""
+    import ctypes
+
+    class WxAMConfig(ctypes.Structure):
+        _fields_ = [("mode", ctypes.c_int)]
+
+    函数 = _加载wxam解码器()
+    if not 函数 or not data:
+        return None
+    上限 = 64 * 1024 * 1024
+    for 模式 in (1, 2, 0, 3):
+        try:
+            配置 = WxAMConfig()
+            配置.mode = 模式
+            输入缓冲 = ctypes.create_string_buffer(data, len(data))
+            输出缓冲 = ctypes.create_string_buffer(上限)
+            输出大小 = ctypes.c_int(上限)
+            返回值 = 函数(
+                ctypes.addressof(输入缓冲), len(data),
+                ctypes.addressof(输出缓冲), ctypes.byref(输出大小),
+                ctypes.addressof(配置),
+            )
+            if 返回值 != 0 or 输出大小.value <= 0:
+                continue
+            结果 = 输出缓冲.raw[:输出大小.value]
+            # 确认解出来的是常见图片格式
+            if 结果[:3] == b'\xff\xd8\xff' or 结果[:4] in (b'\x89PNG', b'GIF8', b'RIFF'):
+                return 结果
+        except Exception:
+            continue
+    return None
+
+
 def extract_md5_from_packed_info(blob):
     """从 message_resource.db 的 packed_info (protobuf 二进制) 里提取文件 MD5"""
     if not blob:
@@ -208,7 +289,7 @@ def 找dat文件(attach根目录, 会话username, file_md5):
     return sorted(glob.glob(pattern))
 
 
-def 解密群图片(资源库路径, attach根目录, 会话username, local_id, aes_key, 输出路径不含扩展名):
+def 解密群图片(资源库路径, attach根目录, 会话username, local_id, aes_key, 输出路径不含扩展名, xor_key=0x88):
     """完整链路：local_id → MD5 → .dat → 解密。返回 (解密后路径, 格式) 或 (None, 错误说明)
     微信 4.x 的苹果手机照片是 wxgf 私有格式（浏览器看不了），遇到时自动退回 JPEG 缩略图。"""
     file_md5 = 取图片MD5(资源库路径, local_id, 会话username)
@@ -231,11 +312,25 @@ def 解密群图片(资源库路径, attach根目录, 会话username, local_id, 
 
     缩略图兜底 = None
     for 候选 in 候选们:
-        路径, fmt = _解密单个(候选, 输出路径不含扩展名, aes_key)
+        路径, fmt = _解密单个(候选, 输出路径不含扩展名, aes_key, xor_key)
         if not 路径:
             continue
         if fmt == 'hevc':
-            # wxgf 私有格式：记住缩略图能解出 JPEG 的话用它，否则跳过
+            # wxgf 私有格式：先试用微信自己的解码器转 JPG，转不了再看缩略图
+            try:
+                原始 = open(路径, 'rb').read()
+                转好的 = wxgf转图片(原始)
+            except Exception:
+                转好的 = None
+            if 转好的:
+                目标 = 输出路径不含扩展名 + ".jpg"
+                with open(目标, 'wb') as f:
+                    f.write(转好的)
+                try:
+                    os.unlink(路径)  # 删掉中间的 .hevc 文件
+                except OSError:
+                    pass
+                return 目标, "jpg"
             if 候选.endswith('_t.dat'):
                 缩略图兜底 = (路径, fmt)
             continue
@@ -245,20 +340,20 @@ def 解密群图片(资源库路径, attach根目录, 会话username, local_id, 
     return None, "解密失败或是不支持的 wxgf 格式"
 
 
-def _解密单个(dat_path, 输出路径不含扩展名, aes_key):
+def _解密单个(dat_path, 输出路径不含扩展名, aes_key, xor_key=0x88):
     """解密单个 dat 到指定文件名。返回 (路径, 格式) 或 (None, None)"""
     if is_v2_format(dat_path):
         if not aes_key:
             return None, None
-        return _v2解密到指定名(dat_path, 输出路径不含扩展名, aes_key)
+        return _v2解密到指定名(dat_path, 输出路径不含扩展名, aes_key, xor_key)
     结果路径, fmt = xor_decrypt_file(dat_path, 输出路径不含扩展名 + ".jpg")
     return (结果路径, fmt) if 结果路径 else (None, None)
 
 
-def _v2解密到指定名(dat_path, 输出路径不含扩展名, aes_key):
+def _v2解密到指定名(dat_path, 输出路径不含扩展名, aes_key, xor_key=0x88):
     """V2 解密并输出到指定文件名（自动补扩展名）"""
     # 先解到临时默认名，再移动，避免猜错扩展名
-    临时路径, fmt = v2_decrypt_file(dat_path, None, aes_key)
+    临时路径, fmt = v2_decrypt_file(dat_path, None, aes_key, xor_key)
     if not 临时路径:
         return None, "V2 解密失败（钥匙不对或文件损坏）"
     目标 = f"{输出路径不含扩展名}.{fmt}"
