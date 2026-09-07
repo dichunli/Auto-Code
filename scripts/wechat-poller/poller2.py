@@ -186,12 +186,14 @@ def 加载昵称表(app, 强制刷新=False):
 # 消息读取与解析
 # ============================================================
 
-def 查询新消息(群上下文们, 游标状态):
+def 查询新消息(app, 群上下文们, 游标状态):
     """
     从各群的消息表里查 create_time 大于游标的新消息。
     返回 (消息列表, 新游标状态)。消息字典结构和老引擎一致。
+    注意：每轮必须重新走 _find_msg_tables_for_user（内部 cache.get 会按 mtime
+    变化重新解密）。直接用启动时解析的 db_path 会一直读旧快照，新消息进不来。
     """
-    from wechat_cli.core.messages import decompress_content, _split_msg_type
+    from wechat_cli.core.messages import decompress_content, _split_msg_type, _find_msg_tables_for_user
 
     新消息 = []
     见过的 = set(游标状态.get("recent", []))
@@ -199,7 +201,7 @@ def 查询新消息(群上下文们, 游标状态):
 
     for ctx in 群上下文们:
         群id = ctx["username"]
-        for 表 in ctx["message_tables"]:
+        for 表 in _find_msg_tables_for_user(群id, app.msg_db_keys, app.cache):
             表名 = 表["table_name"]
             try:
                 连接 = sqlite3.connect(表["db_path"])
@@ -350,7 +352,7 @@ def OCR识别文字(图片文件, 配置):
         with urllib.request.urlopen(地址, data=请求体, timeout=15) as 响应:
             数据 = json.loads(响应.read().decode("utf-8"))
         全部文字 = " ".join(w.get("words", "") for w in 数据.get("words_result", []))
-        命中 = 车牌正则.findall(全部文字.upper().replace(" ", ""))
+        命中 = 车牌正则.findall(re.sub(r"[\s·・.。]", "", 全部文字.upper()))
         return 命中[0] if 命中 else ""
     except Exception as 异常:
         print(f"【警告】通用文字识别失败：{异常}（这张图按无车牌处理）")
@@ -527,6 +529,14 @@ function 关大图() {{
   document.getElementById("大图本体").src = "";
 }}
 document.addEventListener("keydown", function(e) {{ if (e.key === "Escape") 关大图(); }});
+// 自动刷新：每 60 秒拉最新看板；正在看大图或正在输入备注时本轮跳过
+setInterval(function() {{
+  var 遮罩 = document.getElementById("大图遮罩");
+  if (遮罩 && 遮罩.classList.contains("开")) return;
+  var 焦点 = document.activeElement;
+  if (焦点 && 焦点.tagName === "INPUT") return;
+  location.reload();
+}}, 60000);
 // 勾选与备注存在浏览器 localStorage，重新打开/刷新不丢失
 document.querySelectorAll(".包卡片").forEach(function(卡片) {{
   var id = 卡片.dataset.包id;
@@ -718,7 +728,7 @@ def 诊断模式(配置):
 
     print("\n第 3 步：试读最近消息……")
     试探游标 = {"max_ct": int(time.time()) - 3600, "recent": []}
-    新消息们, _ = 查询新消息(群上下文们, 试探游标)
+    新消息们, _ = 查询新消息(app, 群上下文们, 试探游标)
     print(f"  最近 1 小时读到 {len(新消息们)} 条消息。")
     for m in 新消息们[-5:]:
         预览 = m["内容"][:30] if m["内容"] else f"[类型{m['类型']}]"
@@ -828,7 +838,7 @@ def 主循环(配置):
                     time.sleep(30)
                     continue
 
-            新消息们, 新游标 = 查询新消息(群上下文们, 游标状态)
+            新消息们, 新游标 = 查询新消息(app, 群上下文们, 游标状态)
 
             # 小图升级：只有缩略图的消息，等有人在微信里点开大图后原图落地，自动换成高清并重新识别车牌
             if aes钥匙 and time.time() - 上次升级小图 > 600:
