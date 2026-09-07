@@ -894,21 +894,16 @@ export function PendingStorageList(props: PendingStorageListProps) {
                         </td>
                         <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                         <td className="px-3 py-2">
-                          <div className="flex items-center gap-1">
-                            <PartSearchDropdown
-                              value={item.part_number || ""}
-                              onChange={() => {}}
-                              onSelect={(part) => handleInlinePartSelect(item, part)}
-                              onCreateNew={(query) => openCreateNewModal(item, query)}
-                              onClear={() => handleInlineClear(item)}
-                              disabled={submitting === `inline-${item.id}`}
-                              placeholder="编码"
-                              inputClassName="w-20 border-gray-200 text-xs"
-                            />
-                            {缺编码 && (
-                              <span className="text-[10px] px-1 py-0.5 rounded bg-red-600 text-white font-bold shrink-0">缺编码</span>
-                            )}
-                          </div>
+                          <PartSearchDropdown
+                            value={item.part_number || ""}
+                            onChange={() => {}}
+                            onSelect={(part) => handleInlinePartSelect(item, part)}
+                            onCreateNew={(query) => openCreateNewModal(item, query)}
+                            onClear={() => handleInlineClear(item)}
+                            disabled={submitting === `inline-${item.id}`}
+                            placeholder={缺编码 ? "必填" : "编码"}
+                            inputClassName={`w-20 text-xs ${缺编码 ? "border-red-400 bg-red-50 placeholder-red-500" : "border-gray-200"}`}
+                          />
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <div className="text-gray-900 font-medium">{item.name}</div>
@@ -1066,21 +1061,16 @@ export function PendingStorageList(props: PendingStorageListProps) {
                           <tr key={item.id} className={缺编码 ? "bg-red-50" : "hover:bg-gray-50"}>
                             <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                             <td className="px-3 py-2">
-                              <div className="flex items-center gap-1">
-                                <PartSearchDropdown
-                                  value={item.part_number || ""}
-                                  onChange={() => {}}
-                                  onSelect={(part) => handleInlinePartSelect(item, part)}
-                                  onCreateNew={(query) => openCreateNewModal(item, query)}
-                                  onClear={() => handleInlineClear(item)}
-                                  disabled={submitting === `inline-${item.id}`}
-                                  placeholder="编码"
-                                  inputClassName="w-20 border-gray-200 text-xs"
-                                />
-                                {缺编码 && (
-                                  <span className="text-[10px] px-1 py-0.5 rounded bg-red-600 text-white font-bold shrink-0">缺编码</span>
-                                )}
-                              </div>
+                              <PartSearchDropdown
+                                value={item.part_number || ""}
+                                onChange={() => {}}
+                                onSelect={(part) => handleInlinePartSelect(item, part)}
+                                onCreateNew={(query) => openCreateNewModal(item, query)}
+                                onClear={() => handleInlineClear(item)}
+                                disabled={submitting === `inline-${item.id}`}
+                                placeholder={缺编码 ? "必填" : "编码"}
+                                inputClassName={`w-20 text-xs ${缺编码 ? "border-red-400 bg-red-50 placeholder-red-500" : "border-gray-200"}`}
+                              />
                             </td>
                             <td className="px-3 py-2 whitespace-nowrap">
                               <div className="text-gray-900 font-medium">{item.name}</div>
@@ -1356,6 +1346,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
                       const baseCost = qty * 入库单价;
                       const alloc = allocatedCosts[idx] || 0;
                       const totalCost = baseCost + alloc;
+                      /* 单位成本价（2026-09-07 用户需求）：入库价+单个分摊运费，与库存 cost_price 口径一致 */
+                      const 单位成本 = qty > 0 ? Math.round((入库单价 + alloc / qty) * 100) / 100 : 0;
                       /* 编码必填（2026-09-07）：缺编码行红底，提交时拦截 */
                       const 缺编码 = !f.isExcess && (!f.item.part_id || !f.item.part_number);
                       return (
@@ -1444,8 +1436,19 @@ export function PendingStorageList(props: PendingStorageListProps) {
                               />
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right text-gray-900 font-medium">
-                            {totalCost > 0 ? `¥${totalCost.toFixed(2)}` : "-"}
+                          {/* 成本价（2026-09-07）：显示单个成本价=入库价+单个分摊运费（与库存 cost_price 一致），
+                              行总成本灰字辅助 */}
+                          <td className="px-3 py-2 text-right">
+                            {totalCost > 0 ? (
+                              <>
+                                <span className="text-gray-900 font-medium">¥{单位成本.toFixed(2)}</span>
+                                {qty > 1 && (
+                                  <div className="text-[10px] text-gray-400">共 ¥{totalCost.toFixed(2)}</div>
+                                )}
+                              </>
+                            ) : (
+                              "-"
+                            )}
                           </td>
                           <td className="px-3 py-2">
                             {f.isExcess ? (
