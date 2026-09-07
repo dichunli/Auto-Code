@@ -462,6 +462,12 @@ def 归堆成需求包(消息列表):
   .处理行 {{ margin-top: 10px; border-top: 1px dashed #e5e7eb; padding-top: 8px; font-size: 13px; color: #374151; }}
   .处理行 input[type=text] {{ width: 60%; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; }}
   .空提示 {{ max-width: 800px; margin: 40px auto; text-align: center; color: #9ca3af; }}
+  /* 大图弹层：点图放大，点空白处或按 Esc 关闭 */
+  .大图遮罩 {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75);
+              z-index: 9999; align-items: center; justify-content: center; cursor: zoom-out; }}
+  .大图遮罩.开 {{ display: flex; }}
+  .大图遮罩 img {{ max-width: 92vw; max-height: 92vh; border-radius: 8px;
+                  box-shadow: 0 4px 30px rgba(0,0,0,.5); cursor: default; }}
 </style>
 </head>
 <body>
@@ -473,7 +479,18 @@ def 归堆成需求包(消息列表):
 </div>
 {包列表html}
 <div class="空提示" {空提示显示}>暂无群消息。确认脚本正在运行、目标群里有新消息。</div>
+<div class="大图遮罩" id="大图遮罩" onclick="关大图()"><img id="大图本体" onclick="event.stopPropagation()"></div>
 <script>
+// 大图弹层：点缩略图放大，点空白处/按 Esc 关闭
+function 放大看图(src) {{
+  document.getElementById("大图本体").src = src;
+  document.getElementById("大图遮罩").classList.add("开");
+}}
+function 关大图() {{
+  document.getElementById("大图遮罩").classList.remove("开");
+  document.getElementById("大图本体").src = "";
+}}
+document.addEventListener("keydown", function(e) {{ if (e.key === "Escape") 关大图(); }});
 // 勾选与备注存在浏览器 localStorage，重新打开/刷新不丢失
 document.querySelectorAll(".包卡片").forEach(function(卡片) {{
   var id = 卡片.dataset.包id;
@@ -516,7 +533,7 @@ def 渲染消息行(单条, 昵称表):
     if 单条["类型"] == 消息类型_图片:
         if 单条["图片路径"]:
             名 = html.escape(单条["图片路径"])
-            return f'<div class="消息行">{前缀}<span class="行内图"><a href="images/{名}" target="_blank"><img src="images/{名}" loading="lazy"></a></span></div>'
+            return f'<div class="消息行">{前缀}<span class="行内图"><img src="images/{名}" loading="lazy" onclick="放大看图(\'images/{名}\')"></span></div>'
         return f'<div class="消息行">{前缀}[图片读取失败，请在微信里查看]</div>'
     if 单条["类型"] == 消息类型_文本 and 单条["内容"]:
         return f'<div class="消息行">{前缀}{html.escape(单条["内容"])}</div>'
