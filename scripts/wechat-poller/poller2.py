@@ -309,7 +309,7 @@ def 获取百度令牌(配置):
 
 
 def OCR识别车牌(图片文件, 配置):
-    """识别图片里的车牌号。未启用/失败返回空串（不影响消息采集）。"""
+    """车牌专用接口：识别照片里的车牌号。未启用/失败返回空串。"""
     if not 配置["OCR启用"] or not 配置["OCR密钥"] or not 配置["OCR密文"]:
         return ""
     import base64
@@ -330,6 +330,39 @@ def OCR识别车牌(图片文件, 配置):
     except Exception as 异常:
         print(f"【警告】照片车牌识别失败：{异常}（这张照片按无车牌处理）")
         return ""
+
+
+def OCR识别文字(图片文件, 配置):
+    """通用文字识别（兜底）：电脑截图里的车牌专用接口认不出，用它读出全部文字再正则找车牌。"""
+    if not 配置["OCR启用"] or not 配置["OCR密钥"] or not 配置["OCR密文"]:
+        return ""
+    import base64
+    import urllib.parse
+    import urllib.request
+
+    令牌 = 获取百度令牌(配置)
+    if not 令牌:
+        return ""
+    try:
+        图片数据 = base64.b64encode(Path(图片文件).read_bytes())
+        地址 = f"https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic?access_token={令牌}"
+        请求体 = urllib.parse.urlencode({"image": 图片数据}).encode("utf-8")
+        with urllib.request.urlopen(地址, data=请求体, timeout=15) as 响应:
+            数据 = json.loads(响应.read().decode("utf-8"))
+        全部文字 = " ".join(w.get("words", "") for w in 数据.get("words_result", []))
+        命中 = 车牌正则.findall(全部文字.upper().replace(" ", ""))
+        return 命中[0] if 命中 else ""
+    except Exception as 异常:
+        print(f"【警告】通用文字识别失败：{异常}（这张图按无车牌处理）")
+        return ""
+
+
+def 识别图片车牌(图片文件, 配置):
+    """先用车牌专用接口（准），认不出再用通用文字识别兜底（覆盖电脑截图）"""
+    车牌 = OCR识别车牌(图片文件, 配置)
+    if 车牌 and 车牌正则.findall(车牌):
+        return 车牌
+    return OCR识别文字(图片文件, 配置)
 
 
 # ============================================================
@@ -453,12 +486,17 @@ def 归堆成需求包(消息列表):
   .车牌标题.未识别 {{ color: #b45309; font-size: 15px; }}
   .参与人 {{ color: #6b7280; font-size: 12px; margin-bottom: 6px; }}
   .时刻 {{ color: #9ca3af; font-size: 12px; }}
-  .消息行 {{ font-size: 14px; color: #111827; margin: 5px 0; white-space: pre-wrap; word-break: break-all; }}
-  .消息行 .人名 {{ color: #2563eb; font-size: 12px; margin-right: 6px; }}
-  .消息行 .点钟 {{ color: #9ca3af; font-size: 12px; margin-right: 4px; }}
-  .行内图 {{ display: inline-block; margin: 4px 8px 0 0; }}
-  .行内图 img {{ width: 120px; height: 120px; object-fit: cover; border-radius: 8px;
+  .消息行2 {{ display: flex; align-items: flex-start; gap: 12px; padding: 7px 0;
+             border-top: 1px dashed #f3f4f6; }}
+  .列时间 {{ width: 64px; flex-shrink: 0; }}
+  .列时间 .点钟 {{ color: #9ca3af; font-size: 12px; }}
+  .列时间 .人名2 {{ color: #2563eb; font-size: 12px; word-break: break-all; }}
+  .列车牌 {{ flex-shrink: 0; font-weight: 700; color: #92400e; background: #fef3c7;
+            border-radius: 6px; padding: 1px 8px; font-size: 13px; }}
+  .列图片 img {{ width: 120px; height: 120px; object-fit: cover; border-radius: 8px;
                 border: 1px solid #e5e7eb; cursor: zoom-in; vertical-align: top; }}
+  .列文字 {{ font-size: 14px; color: #111827; line-height: 1.7; word-break: break-all;
+            white-space: pre-wrap; min-width: 0; }}
   .处理行 {{ margin-top: 10px; border-top: 1px dashed #e5e7eb; padding-top: 8px; font-size: 13px; color: #374151; }}
   .处理行 input[type=text] {{ width: 60%; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; }}
   .空提示 {{ max-width: 800px; margin: 40px auto; text-align: center; color: #9ca3af; }}
@@ -524,29 +562,54 @@ document.querySelectorAll(".包卡片").forEach(function(卡片) {{
 """
 
 
+def 文字分行(内容):
+    """按标点/空格/回车把一段文字拆成多行（如"前弓子，询价" → 前弓子 / 询价）"""
+    return [段 for 段 in re.split(r"[\s,，、。;；!！?？~～…]+", 内容) if 段]
+
+
 def 渲染消息行(单条, 昵称表):
-    """把一条消息渲染成看板里的一行：发送人 + 时间 + 内容/图片。"""
+    """把一条消息渲染成横向行：左列时间+上传人 → 车牌 → 图片 → 文字（分行）。"""
     人名 = 昵称表.get(单条["发送者"], "") or ("我自己" if 单条["发送者"] == "__自己__" else 单条["发送者"][-6:] if 单条["发送者"] else "未知")
     点钟 = datetime.fromtimestamp(单条["时间"]).strftime("%H:%M") if 单条["时间"] else ""
-    前缀 = f'<span class="人名">{html.escape(人名)}</span><span class="点钟">{点钟}</span>'
 
+    行内容 = []
+
+    # 第二列：这条消息识别出的车牌（文字里的或照片 OCR 的）
+    车牌 = 提取消息车牌(单条)
+    if 车牌:
+        行内容.append(f'<div class="列车牌">{html.escape(车牌)}</div>')
+
+    # 第三列：图片
     if 单条["类型"] == 消息类型_图片:
         if 单条["图片路径"]:
             名 = html.escape(单条["图片路径"])
-            return f'<div class="消息行">{前缀}<span class="行内图"><img src="images/{名}" loading="lazy" onclick="放大看图(\'images/{名}\')"></span></div>'
-        return f'<div class="消息行">{前缀}[图片读取失败，请在微信里查看]</div>'
-    if 单条["类型"] == 消息类型_文本 and 单条["内容"]:
-        return f'<div class="消息行">{前缀}{html.escape(单条["内容"])}</div>'
-    if 单条["类型"] == 消息类型_语音:
-        return f'<div class="消息行">{前缀}[语音消息，请在微信里收听]</div>'
-    if 单条["类型"] == 消息类型_视频:
-        return f'<div class="消息行">{前缀}[视频，请在微信里查看]</div>'
-    if 单条["类型"] == 消息类型_应用 and 单条["内容"]:
+            行内容.append(f'<div class="列图片"><img src="images/{名}" loading="lazy" onclick="放大看图(\'images/{名}\')"></div>')
+        else:
+            行内容.append('<div class="列文字">[图片读取失败，请在微信里查看]</div>')
+    elif 单条["类型"] == 消息类型_语音:
+        行内容.append('<div class="列文字">[语音消息，请在微信里收听]</div>')
+    elif 单条["类型"] == 消息类型_视频:
+        行内容.append('<div class="列文字">[视频，请在微信里查看]</div>')
+    elif 单条["类型"] == 消息类型_应用 and 单条["内容"]:
         摘要 = re.sub(r"<[^>]+>", " ", 单条["内容"])
         摘要 = re.sub(r"\s+", " ", 摘要).strip()[:60]
         if 摘要:
-            return f'<div class="消息行">{前缀}[链接/引用] {html.escape(摘要)}</div>'
-    return ""
+            行内容.append(f'<div class="列文字">[链接/引用] {html.escape(摘要)}</div>')
+
+    # 第四列：文字，按标点/空格/回车分行
+    if 单条["内容"] and 单条["类型"] == 消息类型_文本:
+        分行们 = 文字分行(单条["内容"])
+        if 分行们:
+            行内容.append('<div class="列文字">' + "".join(
+                f'<div>{html.escape(行)}</div>' for 行 in 分行们) + "</div>")
+
+    if not 行内容:
+        return ""
+    return (
+        f'<div class="消息行2">'
+        f'<div class="列时间"><div class="点钟">{点钟}</div><div class="人名2">{html.escape(人名)}</div></div>'
+        + "".join(行内容) + "</div>"
+    )
 
 
 def 生成看板(包们, 昵称表, 输出目录):
@@ -722,6 +785,22 @@ def 主循环(配置):
     历史消息 = 加载历史消息(工作目录)
     aes钥匙, xor钥匙 = 读图片钥匙()
 
+    # 启动时给历史图片补识别车牌（截图走通用文字识别兜底，只补没识别过的）
+    if 配置["OCR启用"]:
+        补了 = 0
+        for m in 历史消息:
+            if m["类型"] == 消息类型_图片 and m.get("图片路径") and not m.get("图片车牌"):
+                try:
+                    车牌 = 识别图片车牌(图片目录 / m["图片路径"], 配置)
+                except Exception:
+                    车牌 = ""
+                if 车牌:
+                    m["图片车牌"] = 车牌
+                    补了 += 1
+        if 补了:
+            保存历史消息(工作目录, 历史消息)
+            print(f"历史图片补识别出 {补了} 张车牌")
+
     while True:
         try:
             # 上下文每小时重建一次（微信重启/换号后能自愈）
@@ -760,7 +839,7 @@ def 主循环(配置):
                     if 消息["类型"] == 消息类型_图片:
                         消息["图片路径"] = 解密消息图片(消息, app, aes钥匙, xor钥匙, 图片目录)
                         if 消息["图片路径"] and 配置["OCR启用"]:
-                            车牌 = OCR识别车牌(图片目录 / 消息["图片路径"], 配置)
+                            车牌 = 识别图片车牌(图片目录 / 消息["图片路径"], 配置)
                             if 车牌:
                                 消息["图片车牌"] = 车牌
                                 print(f"  照片识别出车牌：{车牌}")
