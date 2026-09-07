@@ -167,7 +167,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
       .from("purchase_orders")
       .select(
         `
-        id, order_no, supplier_id, status, total_amount, notes, created_at,
+        id, order_no, supplier_id, status, total_amount, notes, created_at, waybill_id,
         supplier_order_no, supplier_order_amount, supplier_slip_photos,
         suppliers(id, name),
         purchase_order_items(
