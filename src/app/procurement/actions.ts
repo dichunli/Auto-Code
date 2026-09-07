@@ -1190,7 +1190,8 @@ export async function 确认批次入库(
   明细: 入库明细输入[],
   运费: number,
   抹零: number | null = null,
-  销售单金额: number | null = null
+  销售单金额: number | null = null,
+  运单id: string | null = null
 ): Promise<操作结果 & { inbound_no?: string }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
@@ -1216,6 +1217,7 @@ export async function 确认批次入库(
     p_operator_id: user.id,
     p_discount_amount: 抹零,
     p_supplier_order_amount: 销售单金额,
+    p_waybill_id: 运单id,
   });
   if (error) return { success: false, error: error.message };
   const 结果 = data as unknown as RPC返回;
@@ -1224,4 +1226,58 @@ export async function 确认批次入库(
   revalidatePath("/procurement");
   revalidatePath("/inbound-orders");
   return { success: true, inbound_no: 结果.inbound_no };
+}
+
+/* ─── 保存批次内配件排序（2026-09-07）：卡片拖拽后落库，对照纸质销售单核对 ─── */
+export async function 保存批次配件排序(
+  批次id: string,
+  排序: Record<string, number>
+): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  const 排序数组 = Object.entries(排序).map(([id, sort_order]) => ({ id, sort_order }));
+  if (排序数组.length === 0) {
+    return { success: false, error: "排序内容不能为空" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("save_batch_sort_order", {
+    p_batch_id: 批次id,
+    p_orders: 排序数组,
+  });
+  if (error) return { success: false, error: error.message };
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) return { success: false, error: 结果?.error || "保存排序失败" };
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
+
+/* ─── 配件跨批次移动归属（2026-09-07）：清单与销售单不符时纠正，限同供应商 ─── */
+export async function 移动配件到批次(
+  明细id: string,
+  目标批次id: string
+): Promise<操作结果 & { source_batch_no?: string; target_batch_no?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!明细id || !目标批次id) {
+    return { success: false, error: "缺少配件或目标批次信息" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("move_item_to_batch", {
+    p_item_id: 明细id,
+    p_target_batch_id: 目标批次id,
+    p_operator_id: user.id,
+  });
+  if (error) return { success: false, error: error.message };
+  const 结果 = data as unknown as RPC返回 & { source_batch_no?: string; target_batch_no?: string };
+  if (!结果?.success) return { success: false, error: 结果?.error || "移动失败" };
+
+  revalidatePath("/procurement");
+  return { success: true, source_batch_no: 结果.source_batch_no, target_batch_no: 结果.target_batch_no };
 }

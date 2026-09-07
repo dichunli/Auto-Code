@@ -16,6 +16,7 @@ import { MobileReceivingOrders, 待收订单, 待签收运单 } from "@/componen
 import type { PartBranchRow as 待采购行, Supplier as 待采购供应商, LogisticsCompany as 物流公司 } from "@/components/PendingPurchaseList";
 import type { PurchaseOrder as 待收货采购单 } from "@/components/PendingReceiptList";
 import type { PurchaseOrder as 待入库采购单, 到货单 } from "@/components/PendingStorageList";
+import { 查询批次卡片, type 批次卡片 } from "@/lib/batchCards";
 import type { PurchaseOrder as 已入库采购单 } from "@/components/CompletedStorageList";
 import type { ReturnRecord as 待退货记录 } from "@/components/PendingReturnList";
 import type { ReturnRecord as 已退货记录 } from "@/components/CompletedReturnList";
@@ -381,8 +382,8 @@ export default async function ProcurementPage({
     };
   }
 
-  /* 待入库（与 PendingStorageList.loadData 同口径：老流程单 + 已确认到货单） */
-  let 待入库首屏: { orders: 待入库采购单[]; arrivalReceipts: 到货单[] } | undefined;
+  /* 待入库（与 PendingStorageList.loadData 同口径：老流程单 + 已确认到货单 + 收货批次卡片） */
+  let 待入库首屏: { orders: 待入库采购单[]; arrivalReceipts: 到货单[]; batches: 批次卡片[] } | undefined;
   if (currentTab === "pending_storage") {
     const supabase = await createClient();
     const { data } = await supabase
@@ -395,21 +396,23 @@ export default async function ProcurementPage({
           id, name, brand, specification, quantity, unit_cost, received_qty,
           part_id, work_order_item_part_id, part_number, supplier_part_name,
           unit, category, license_plate, photos, notes,
-          handle_action, discount_amount, evidence_photos, return_reason, arrival_item_id
+          handle_action, discount_amount, evidence_photos, return_reason, arrival_item_id, receiving_batch_id
         )
       `)
       .eq("status", "pending_storage")
       .order("created_at", { ascending: false });
-    /* 走过到货确认单的采购单不进老入库列表 */
+    /* 走过到货确认单或收货批次的采购单不进老入库列表（2026-09-07 补 receiving_batch_id，与 loadData 对齐） */
     const 老流程单 = ((data || []) as unknown as 待入库采购单[]).filter(
-      (o) => !(o.purchase_order_items || []).some((it) => it.arrival_item_id)
+      (o) => !(o.purchase_order_items || []).some((it) => it.arrival_item_id || it.receiving_batch_id)
     );
     const { data: 到货单数据 } = await supabase
       .from("arrival_receipts")
       .select("id, receipt_no, supplier_order_no, supplier_order_amount, suppliers(name), logistics_waybills(tracking_no, freight_amount), arrival_receipt_items(count)")
       .eq("status", "confirmed")
       .order("confirmed_at", { ascending: false });
-    待入库首屏 = { orders: 老流程单, arrivalReceipts: ((到货单数据 || []) as unknown) as 到货单[] };
+    /* 批次卡片（2026-09-07）：与客户端刷新共用同一个查询函数，口径一致 */
+    const 批次卡片们 = await 查询批次卡片(supabase);
+    待入库首屏 = { orders: 老流程单, arrivalReceipts: ((到货单数据 || []) as unknown) as 到货单[], batches: 批次卡片们 };
   }
 
   /* 已入库（与 CompletedStorageList.loadData 同口径） */
@@ -569,6 +572,7 @@ export default async function ProcurementPage({
           key={currentTab}
           initialOrders={待入库首屏?.orders}
           initialArrivalReceipts={待入库首屏?.arrivalReceipts}
+          initialBatches={待入库首屏?.batches}
         />
       )}
       {currentTab === "completed_storage" && (

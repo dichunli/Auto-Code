@@ -9,8 +9,9 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
-import { 确认采购入库, 退回待收货, 确认批次入库 } from "@/app/procurement/actions";
+import { 确认采购入库, 退回待收货, 确认批次入库, 保存批次配件排序, 移动配件到批次 } from "@/app/procurement/actions";
 import { 确认到货入库 } from "@/app/arrivals/actions";
+import { 查询批次卡片, type 批次卡片 } from "@/lib/batchCards";
 import { useToast } from "@/components/Toast";
 import { ImageUploader } from "@/components/ImageUploader";
 import { DocumentNameInput } from "./DocumentNameInput";
@@ -72,16 +73,8 @@ export interface PurchaseOrder {
   purchase_order_items: PurchaseOrderItem[];
 }
 
-/* 收货批次（2026-09-04 跨单收货）：一次手动提交=一个批次，按批次一张清单入库 */
-interface 收货批次 {
-  id: string;
-  batch_no: string;
-  supplier_id: string | null;
-  supplier_name: string | null;
-  supplier_order_no: string | null;
-  status: string;
-  created_at: string;
-}
+/* 收货批次卡片（2026-09-07 卡片化）：一张供应商销售单一张卡片，
+   类型和查询统一放在 @/lib/batchCards（客户端刷新与服务端首屏共用） */
 
 /* 处理动作标签已抽到 @/lib/purchaseFlowLabels（唯一来源）;
    「哪些动作要生成待退货」映射已下沉到数据库函数 complete_purchase_inbound,前端不再单独创建退货记录 */
@@ -125,6 +118,8 @@ interface InboundItemForm {
 interface PendingStorageListProps {
   initialOrders?: PurchaseOrder[];
   initialArrivalReceipts?: 到货单[];
+  /* 批次卡片首屏数据（2026-09-07）：服务端与客户端同走 查询批次卡片，口径一致 */
+  initialBatches?: 批次卡片[];
 }
 
 export function PendingStorageList(props: PendingStorageListProps) {
@@ -157,9 +152,14 @@ export function PendingStorageList(props: PendingStorageListProps) {
   /* 到货入库抹零（2026-08-21 销售单口径） */
   const [到货抹零, set到货抹零] = useState("");
 
-  /* 收货批次（2026-09-04）：待入库批次 + 批次入库弹窗 */
-  const [批次列表, set批次列表] = useState<收货批次[]>([]);
-  const [batchModal, setBatchModal] = useState<收货批次 | null>(null);
+  /* 收货批次卡片（2026-09-07 卡片化）：一张销售单一张卡片，含明细+关联运单 */
+  const [批次列表, set批次列表] = useState<批次卡片[]>(props.initialBatches ?? []);
+  const [batchModal, setBatchModal] = useState<批次卡片 | null>(null);
+  /* 批次入库弹窗选中的分摊运单（选项直接取 batchModal.waybills） */
+  const [batchWaybillId, setBatchWaybillId] = useState<string | null>(null);
+  /* 卡片拖拽（2026-09-07）：卡内=排序，跨卡=移动归属 */
+  const [拖拽配件, set拖拽配件] = useState<{ 配件id: string; 批次id: string } | null>(null);
+  const [拖拽目标, set拖拽目标] = useState<string | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -201,13 +201,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
       .order("confirmed_at", { ascending: false });
     set到货单列表(((到货单 || []) as unknown) as 到货单[]);
 
-    /* 收货批次（2026-09-04 跨单收货）：手动提交后待入库 */
-    const { data: 批次们 } = await supabase
-      .from("receiving_batches")
-      .select("id, batch_no, supplier_id, supplier_name, supplier_order_no, status, created_at")
-      .eq("status", "pending_storage")
-      .order("created_at", { ascending: false });
-    set批次列表(((批次们 || []) as unknown) as 收货批次[]);
+    /* 收货批次卡片（2026-09-07 卡片化）：批次+明细+关联运单+运费分摊进度，共用查询 */
+    set批次列表(await 查询批次卡片(supabase));
     setLoading(false);
   }
 
@@ -241,25 +236,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
     }
   }
 
-  /* 打开批次入库弹窗（2026-09-04 跨单收货）：批次行查库组装，复用按单弹窗的整套表单状态 */
-  async function openBatchInboundModal(批: 收货批次) {
-    const { data: 行们, error } = await supabase
-      .from("purchase_order_items")
-      .select(`
-        id, name, brand, specification, quantity, unit_cost, received_qty,
-        part_id, work_order_item_part_id, part_number, supplier_part_name,
-        unit, category, license_plate, photos, notes, handle_action,
-        discount_amount, evidence_photos, return_reason, arrival_item_id
-      `)
-      .eq("receiving_batch_id", 批.id)
-      .order("created_at", { ascending: true });
-    if (error) {
-      showToast("加载批次明细失败: " + error.message, "error");
-      return;
-    }
-
+  /* 打开批次入库弹窗（2026-09-07 卡片化）：直接用卡片已加载的明细组装，不再单独查库 */
+  async function openBatchInboundModal(批: 批次卡片) {
+    const 行们 = 批.items;
     let formIdCounter = 0;
-    const forms: InboundItemForm[] = (((行们 || []) as unknown) as PurchaseOrderItem[])
+    const forms: InboundItemForm[] = 行们
       .filter((it) => it.handle_action !== "wrong_discard" && getStorageQty(it) > 0)
       .flatMap((it) => {
         if (it.handle_action === "excess_return") {
@@ -299,8 +280,15 @@ export function PendingStorageList(props: PendingStorageListProps) {
     setSlipAmount("");
     setSlipPhotos([]);
     setDiscountAmount("");
-    setWaybillInfo(null);
-    setFreightAmount("");
+    /* 关联运单（2026-09-07）：默认选第一张，本次运费自动带出该运单剩余未分摊额度（可改） */
+    const 首选运单 = 批.waybills[0] ?? null;
+    setBatchWaybillId(首选运单?.id ?? null);
+    setWaybillInfo(
+      首选运单
+        ? { logistics_company_name: 首选运单.logistics_company_name, tracking_no: 首选运单.tracking_no, freight_amount: 首选运单.freight_amount }
+        : null
+    );
+    setFreightAmount(首选运单 ? String(Math.max(0, 首选运单.剩余)) : "");
     setBatchModal(批);
     setInboundModalOrder(null);
     setInboundItems(forms);
@@ -311,6 +299,17 @@ export function PendingStorageList(props: PendingStorageListProps) {
   async function handleConfirmBatchInbound() {
     if (!batchModal) return;
     const 批次id = batchModal.id;
+
+    /* 编码必填（2026-09-07 拍板）：缺编码的行前端先拦，RPC 还有第二道 */
+    const 缺编码行 = inboundItems.filter((f) => !f.isExcess && (!f.item.part_id || !f.item.part_number));
+    if (缺编码行.length > 0) {
+      alert(
+        `以下 ${缺编码行.length} 行缺少零件编码，不能提交入库：\n` +
+        缺编码行.map((f, i) => `${i + 1}. ${f.item.name}`).join("\n") +
+        `\n\n请返回待入库卡片，用编码搜索框补全后再提交。`
+      );
+      return;
+    }
 
     const 销售单金额 = slipAmount.trim() === "" ? null : parseFloat(slipAmount);
     const 抹零 = discountAmount.trim() === "" ? 0 : parseFloat(discountAmount);
@@ -346,7 +345,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
         unit_cost: f.unitCost.trim() === "" ? null : parseFloat(f.unitCost),
         freight_alloc: f.freightManual.trim() === "" ? null : parseFloat(f.freightManual),
       }));
-      const res = await 确认批次入库(批次id, 明细, parseFloat(freightAmount) || 0, 抹零 || null, 销售单金额);
+      const res = await 确认批次入库(批次id, 明细, parseFloat(freightAmount) || 0, 抹零 || null, 销售单金额, batchWaybillId);
       if (!res.success) throw new Error(res.error || "入库失败");
       showToast(`批次入库完成，入库单号 ${res.inbound_no}`);
       closeInboundModal();
@@ -455,6 +454,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
     setInboundModalOpen(false);
     setInboundModalOrder(null);
     setBatchModal(null);
+    setBatchWaybillId(null);
     setInboundItems([]);
     setWaybillInfo(null);
     setFreightAmount("");
@@ -491,6 +491,17 @@ export function PendingStorageList(props: PendingStorageListProps) {
   async function handleConfirmInbound() {
     if (!inboundModalOrder) return;
     const orderId = inboundModalOrder.id;
+
+    /* 编码必填（2026-09-07 拍板·全部入库入口强制）：缺编码的行前端先拦，RPC 还有第二道 */
+    const 缺编码行 = inboundItems.filter((f) => !f.isExcess && (!f.item.part_id || !f.item.part_number));
+    if (缺编码行.length > 0) {
+      alert(
+        `以下 ${缺编码行.length} 行缺少零件编码，不能提交入库：\n` +
+        缺编码行.map((f, i) => `${i + 1}. ${f.item.name}`).join("\n") +
+        `\n\n请返回列表，用编码搜索框补全后再提交。`
+      );
+      return;
+    }
 
     /* 销售单口径（2026-08-21）：填了总金额时前端先自检，不平给出明确提示（服务端还会再拦一次） */
     const 销售单金额 = slipAmount.trim() === "" ? null : parseFloat(slipAmount);
@@ -569,6 +580,78 @@ export function PendingStorageList(props: PendingStorageListProps) {
     } finally {
       setSubmitting(null);
     }
+  }
+
+  /* ─── 批次卡片拖拽（2026-09-07，原生 HTML5 drag，参照 PartCategoriesContent 模式）───
+     卡内放置 = 重排并保存 sort_order；跨卡放置 = 移动配件归属（改 receiving_batch_id） */
+
+  function 清理拖拽() {
+    set拖拽配件(null);
+    set拖拽目标(null);
+  }
+
+  /* 卡内重排：本地乐观更新 + 保存排序，失败回滚 */
+  async function 卡内放置(卡: 批次卡片, 目标配件id: string) {
+    if (!拖拽配件 || 拖拽配件.批次id !== 卡.id || 拖拽配件.配件id === 目标配件id) return;
+    const items = [...卡.items];
+    const fromIdx = items.findIndex((i) => i.id === 拖拽配件.配件id);
+    const toIdx = items.findIndex((i) => i.id === 目标配件id);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const [移走] = items.splice(fromIdx, 1);
+    items.splice(toIdx, 0, 移走);
+    set批次列表((prev) => prev.map((b) => (b.id === 卡.id ? { ...b, items } : b)));
+    const 排序 = Object.fromEntries(items.map((it, i) => [it.id, i + 1]));
+    const res = await 保存批次配件排序(卡.id, 排序);
+    if (!res.success) {
+      showToast("保存排序失败: " + (res.error || "未知错误"), "error");
+      loadData();
+    }
+  }
+
+  /* 跨卡移动：先确认（会影响按销售单记的应付），再走 RPC（服务端限同供应商） */
+  async function 跨卡移动(目标卡: 批次卡片) {
+    if (!拖拽配件 || 拖拽配件.批次id === 目标卡.id) return;
+    const 源卡 = 批次列表.find((b) => b.id === 拖拽配件.批次id);
+    const 配件 = 源卡?.items.find((i) => i.id === 拖拽配件.配件id);
+    if (!源卡 || !配件) return;
+    /* 前端预判同供应商（RPC 也会拦，这里先给个友好提示） */
+    if ((源卡.supplier_id || null) !== (目标卡.supplier_id || null)) {
+      showToast("只能移动到同一供应商的批次（不同供应商的账不能混在一起）", "warning");
+      return;
+    }
+    const 确认 = await 请求确认(
+      `将把「${配件.name}」从批次 ${源卡.batch_no}（销售单 ${源卡.supplier_order_no || "-"}）移到批次 ${目标卡.batch_no}（销售单 ${目标卡.supplier_order_no || "-"}）。` +
+      `移动后该配件的应付将计入目标批次的对账，是否继续？`
+    );
+    if (!确认) return;
+    try {
+      const res = await 移动配件到批次(配件.id, 目标卡.id);
+      if (!res.success) {
+        showToast("移动失败: " + (res.error || "未知错误"), "error");
+        return;
+      }
+      showToast(`已移动：${res.source_batch_no || ""} → ${res.target_batch_no || ""}`);
+      loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast("移动失败: " + msg, "error");
+    }
+  }
+
+  async function 行放置(e: React.DragEvent, 卡: 批次卡片, 目标配件id: string) {
+    e.preventDefault();
+    e.stopPropagation(); /* 行已接住，不再冒泡到卡片级 */
+    if (!拖拽配件) return;
+    if (拖拽配件.批次id === 卡.id) await 卡内放置(卡, 目标配件id);
+    else await 跨卡移动(卡);
+    清理拖拽();
+  }
+
+  /* 卡片空白处放置：同卡忽略，跨卡=移动到该卡末尾 */
+  async function 卡片放置(e: React.DragEvent, 卡: 批次卡片) {
+    e.preventDefault();
+    if (拖拽配件 && 拖拽配件.批次id !== 卡.id) await 跨卡移动(卡);
+    清理拖拽();
   }
 
   /* 行内配件编辑逻辑已抽到 usePartLinking（对照表驱动的共享实现） */
@@ -703,40 +786,190 @@ export function PendingStorageList(props: PendingStorageListProps) {
         </div>
       )}
 
-      {/* 收货批次（2026-09-04 跨单收货）：手动提交后的待入库批次，一张清单一次入库 */}
-      {批次列表.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 border-l-4 border-l-yellow-500 overflow-hidden">
-          <div className="px-6 py-3 border-b border-gray-100 bg-gray-50">
-            <h3 className="text-sm font-semibold text-gray-900 flex items-center">
-              <span className="inline-block px-2 py-0.5 rounded bg-yellow-500 text-white mr-2 text-[10px] font-bold">
-                收货批次
-              </span>
-              <span className="font-bold text-gray-900">跨单收货 · 待入库</span>
-            </h3>
-            <span className="text-xs text-gray-500">一次手动提交的跨采购单收货，按批次一张清单一次入库</span>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {批次列表.map((批) => (
-              <div key={批.id} className="px-6 py-3 flex items-center gap-3 flex-wrap">
-                <span className="text-sm font-medium text-gray-900">{批.batch_no}</span>
-                <span className="text-sm text-gray-600">{批.supplier_name || "-"}</span>
+      {/* 收货批次卡片（2026-09-07 卡片化）：一张供应商销售单一张卡片，
+          卡片内可拖拽排序对照纸质销售单，跨卡拖动=移动配件归属（限同供应商） */}
+      {批次列表.map((卡) => {
+        const 缺编码数 = 卡.items.filter(
+          (it) => it.handle_action !== "wrong_discard" && getStorageQty(it) > 0 && (!it.part_id || !it.part_number)
+        ).length;
+        return (
+          <div
+            key={卡.id}
+            onDragOver={(e) => {
+              if (拖拽配件 && 拖拽配件.批次id !== 卡.id) {
+                e.preventDefault();
+                set拖拽目标(`card:${卡.id}`);
+              }
+            }}
+            onDrop={(e) => 卡片放置(e, 卡)}
+            className={`bg-white rounded-xl border border-gray-200 border-l-4 border-l-yellow-500 overflow-hidden ${
+              拖拽目标 === `card:${卡.id}` ? "ring-2 ring-blue-400" : ""
+            }`}
+          >
+            <div className="px-6 py-3 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-block px-2 py-0.5 rounded bg-yellow-500 text-white text-[10px] font-bold">销售单</span>
+                <span className="text-sm font-bold text-gray-900">{卡.supplier_name || "-"}</span>
                 <span className="text-xs text-gray-500">
-                  {new Date(批.created_at).toLocaleString("zh-CN")}
-                  {批.supplier_order_no ? ` · 销售单 ${批.supplier_order_no}` : ""}
+                  {卡.batch_no}
+                  {卡.supplier_order_no ? ` · 销售单号 ${卡.supplier_order_no}` : ""}
+                  {" · "}{new Date(卡.created_at).toLocaleDateString("zh-CN")}
+                  {" · "}{卡.items.length} 件
                 </span>
+                {缺编码数 > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-bold">
+                    {缺编码数} 行缺编码
+                  </span>
+                )}
                 <div className="flex-1" />
                 <button
                   type="button"
-                  onClick={() => openBatchInboundModal(批)}
+                  onClick={() => openBatchInboundModal(卡)}
                   className="px-3 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600"
                 >
                   生成入库单
                 </button>
               </div>
-            ))}
+              {/* 关联运单（2026-09-07）：运费分摊进度，多张销售单可分次摊同一张运单 */}
+              {卡.waybills.length > 0 && (
+                <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                  {卡.waybills.map((w) => (
+                    <span
+                      key={w.id}
+                      className="inline-flex items-center gap-1 text-[11px] bg-blue-50 border border-blue-100 text-blue-800 rounded px-2 py-0.5"
+                    >
+                      运单 {w.tracking_no || "-"}
+                      {w.logistics_company_name ? ` · ${w.logistics_company_name}` : ""}
+                      {w.freight_amount != null ? ` · 运费 ¥${w.freight_amount}` : ""}
+                      <span className={w.剩余 > 0 ? "font-bold" : "text-gray-400"}>
+                        剩余 ¥{Math.max(0, w.剩余).toFixed(2)}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-2 py-2 w-8" />
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-10">序号</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">零件编码</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">商品名称</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">单据名称</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 w-14">数量</th>
+                    <th className="px-3 py-2 text-center font-medium text-gray-500 w-36">处理结果</th>
+                    <th className="px-3 py-2 text-center font-medium text-gray-500 w-28">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {卡.items.map((item, idx) => {
+                    const actionInfo = item.handle_action ? ACTION_LABELS[item.handle_action] : null;
+                    const storageQty = getStorageQty(item);
+                    const skipStorage = item.handle_action === "wrong_discard" || storageQty <= 0;
+                    /* 编码必填（2026-09-07）：需要入库但没编码的行红底高亮 */
+                    const 缺编码 = !skipStorage && (!item.part_id || !item.part_number);
+                    return (
+                      <tr
+                        key={item.id}
+                        draggable
+                        onDragStart={(e) => {
+                          set拖拽配件({ 配件id: item.id, 批次id: 卡.id });
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragEnd={清理拖拽}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          set拖拽目标(`item:${item.id}`);
+                        }}
+                        onDrop={(e) => 行放置(e, 卡, item.id)}
+                        className={`${缺编码 ? "bg-red-50" : "hover:bg-gray-50"} ${
+                          拖拽目标 === `item:${item.id}` ? "border-t-2 border-blue-400" : ""
+                        } ${拖拽配件?.配件id === item.id ? "opacity-40" : ""}`}
+                      >
+                        <td className="px-2 py-2 text-gray-300 cursor-move select-none" title="按住拖动排序；拖到别的卡片可移动归属">
+                          ⠿
+                        </td>
+                        <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1">
+                            <PartSearchDropdown
+                              value={item.part_number || ""}
+                              onChange={() => {}}
+                              onSelect={(part) => handleInlinePartSelect(item, part)}
+                              onCreateNew={(query) => openCreateNewModal(item, query)}
+                              onClear={() => handleInlineClear(item)}
+                              disabled={submitting === `inline-${item.id}`}
+                              placeholder="编码"
+                              inputClassName="w-20 border-gray-200 text-xs"
+                            />
+                            {缺编码 && (
+                              <span className="text-[10px] px-1 py-0.5 rounded bg-red-600 text-white font-bold shrink-0">缺编码</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <div className="text-gray-900 font-medium">{item.name}</div>
+                          {item.brand || item.specification ? (
+                            <div className="text-xs text-gray-400">
+                              {item.brand || ""} {item.specification || ""}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                          <DocumentNameInput 采购明细id={item.id} 初始值={item.supplier_part_name || ""} 保存后={loadData} />
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
+                        <td className="px-3 py-2 text-center">
+                          {actionInfo ? (
+                            <span className={`text-xs px-2 py-0.5 rounded ${actionInfo.color}`}>
+                              {actionInfo.text} ({item.received_qty ?? 0}/{item.quantity})
+                            </span>
+                          ) : item.return_reason ? (
+                            <span className="text-xs px-2 py-0.5 rounded bg-orange-50 text-orange-700">
+                              退货:{item.return_reason === "damaged" ? "破损" : item.return_reason === "wrong_ship" ? "错发" : item.return_reason === "excess" ? "多发退货" : "客户悔单"}
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">
+                              {item.received_qty ?? 0} / {item.quantity}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <div className="flex items-center gap-1">
+                            {skipStorage ? (
+                              <span className="text-xs text-gray-400">无需入库</span>
+                            ) : item.part_id ? (
+                              <span className="text-xs text-gray-400">走确认入库</span>
+                            ) : (
+                              <Link
+                                href={`/inventory/in?auto_fill=1&name=${encodeURIComponent(item.name)}&part_number=${encodeURIComponent(item.part_number || "")}&brand=${encodeURIComponent(item.brand || "")}&specification=${encodeURIComponent(item.specification || "")}&unit=${encodeURIComponent(item.unit || "")}&quantity=${encodeURIComponent(storageQty)}`}
+                                className="text-xs px-2 py-1 rounded bg-orange-50 text-orange-600 hover:bg-orange-100 inline-block"
+                              >
+                                入库登记
+                              </Link>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(item)}
+                              disabled={submitting === `edit-${item.id}`}
+                              className="text-xs text-gray-500 hover:text-blue-600 whitespace-nowrap"
+                            >
+                              编辑
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })}
 
       {supplierOptions.length > 0 && (
         <div className="flex items-center gap-1 flex-wrap">
@@ -827,20 +1060,27 @@ export function PendingStorageList(props: PendingStorageListProps) {
                         const actionInfo = item.handle_action ? ACTION_LABELS[item.handle_action] : null;
                         const storageQty = getStorageQty(item);
                         const skipStorage = item.handle_action === "wrong_discard" || storageQty <= 0;
+                        /* 编码必填（2026-09-07）：需要入库但没编码的行红底高亮 */
+                        const 缺编码 = !skipStorage && (!item.part_id || !item.part_number);
                         return (
-                          <tr key={item.id} className="hover:bg-gray-50">
+                          <tr key={item.id} className={缺编码 ? "bg-red-50" : "hover:bg-gray-50"}>
                             <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                             <td className="px-3 py-2">
-                              <PartSearchDropdown
-                                value={item.part_number || ""}
-                                onChange={() => {}}
-                                onSelect={(part) => handleInlinePartSelect(item, part)}
-                                onCreateNew={(query) => openCreateNewModal(item, query)}
-                                onClear={() => handleInlineClear(item)}
-                                disabled={submitting === `inline-${item.id}`}
-                                placeholder="编码"
-                                inputClassName="w-20 border-gray-200 text-xs"
-                              />
+                              <div className="flex items-center gap-1">
+                                <PartSearchDropdown
+                                  value={item.part_number || ""}
+                                  onChange={() => {}}
+                                  onSelect={(part) => handleInlinePartSelect(item, part)}
+                                  onCreateNew={(query) => openCreateNewModal(item, query)}
+                                  onClear={() => handleInlineClear(item)}
+                                  disabled={submitting === `inline-${item.id}`}
+                                  placeholder="编码"
+                                  inputClassName="w-20 border-gray-200 text-xs"
+                                />
+                                {缺编码 && (
+                                  <span className="text-[10px] px-1 py-0.5 rounded bg-red-600 text-white font-bold shrink-0">缺编码</span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-3 py-2 whitespace-nowrap">
                               <div className="text-gray-900 font-medium">{item.name}</div>
@@ -1038,9 +1278,39 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 )}
               </div>
 
-              {/* 运费信息 */}
+              {/* 运费信息（2026-09-07 批次流程可选分摊运单，自动带出剩余未分摊额度） */}
               <div className="bg-gray-50 rounded-lg p-3 flex items-center gap-4 flex-wrap">
-                {waybillInfo ? (
+                {batchModal ? (
+                  batchModal.waybills.length > 0 ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-gray-500">分摊运单:</span>
+                      <select
+                        value={batchWaybillId || ""}
+                        onChange={(e) => {
+                          const id = e.target.value || null;
+                          setBatchWaybillId(id);
+                          /* 换运单时自动带出该运单剩余未分摊额度 */
+                          const w = batchModal.waybills.find((x) => x.id === id);
+                          if (w) setFreightAmount(String(Math.max(0, w.剩余)));
+                        }}
+                        className="px-2 py-1 text-xs rounded border border-gray-200 bg-white focus:outline-none focus:border-blue-400"
+                      >
+                        {batchModal.waybills.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.logistics_company_name || "-"} / {w.tracking_no || "-"}
+                            （总运费 ¥{w.freight_amount ?? 0} · 剩余 ¥{Math.max(0, w.剩余).toFixed(2)}）
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[11px] text-gray-400">
+                        默认带出剩余未分摊，可改；多张销售单可分多次摊完同一张运单
+                        {batchModal.waybills.find((x) => x.id === batchWaybillId && x.剩余 <= 0) ? "（该运单运费已摊完）" : ""}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-500">无关联运单，可手工填运费</span>
+                  )
+                ) : waybillInfo ? (
                   <span className="text-xs text-gray-500">
                     关联运单: {waybillInfo.logistics_company_name || "-"} / {waybillInfo.tracking_no || "-"}
                   </span>
@@ -1086,8 +1356,10 @@ export function PendingStorageList(props: PendingStorageListProps) {
                       const baseCost = qty * 入库单价;
                       const alloc = allocatedCosts[idx] || 0;
                       const totalCost = baseCost + alloc;
+                      /* 编码必填（2026-09-07）：缺编码行红底，提交时拦截 */
+                      const 缺编码 = !f.isExcess && (!f.item.part_id || !f.item.part_number);
                       return (
-                        <tr key={f.id} className={f.isExcess ? "bg-gray-50" : "hover:bg-gray-50"}>
+                        <tr key={f.id} className={缺编码 ? "bg-red-50" : f.isExcess ? "bg-gray-50" : "hover:bg-gray-50"}>
                           <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                           <td className="px-3 py-2 text-gray-900 font-medium">
                             {f.item.name}
@@ -1097,7 +1369,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-gray-600">{f.item.part_number || "-"}</td>
+                          <td className="px-3 py-2 text-gray-600">
+                            {f.item.part_number || (缺编码 ? <span className="text-red-600 font-bold">缺编码</span> : "-")}
+                          </td>
                           <td className="px-3 py-2">
                             {f.isExcess ? (
                               <span className="block text-right text-gray-500 text-sm">{f.quantity}</span>
