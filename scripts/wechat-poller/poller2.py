@@ -217,7 +217,7 @@ def 查询新消息(app, 群上下文们, 游标状态):
                 continue
 
             for local_id, local_type, 创建时间, 真实发送者id, 内容, 压缩类型 in 行们:
-                唯一键 = f"{表名}:{local_id}"
+                唯一键 = f"{os.path.basename(表['db_path'])}:{表名}:{local_id}"  # 同一表名在不同 message_N.db 里 local_id 会撞，加库文件名区分
                 if 唯一键 in 见过的 or not 创建时间:
                     continue
                 见过的.add(唯一键)
@@ -265,10 +265,12 @@ def 解密消息图片(消息, app, aes钥匙, xor钥匙, 图片目录):
     """给一条图片消息解密出普通图片文件。返回文件名；失败返回空串。"""
     try:
         资源库 = app.cache.get(os.path.join("message", "message_resource.db"))
-        attach根 = str(Path(app.db_dir).parent / "msg" / "attach")
+        数据根 = Path(app.db_dir).parent  # xwechat_files/<wxid>/
+        attach根 = str(数据根 / "msg" / "attach")
         输出基础 = str(图片目录 / f"{消息['local_id']}")
         路径, 格式或错误 = wximg.解密群图片(
-            资源库, attach根, 消息["群id"], 消息["local_id"], aes钥匙, 输出基础, xor钥匙 or 0x88)
+            资源库, attach根, 消息["群id"], 消息["local_id"], aes钥匙, 输出基础,
+            xor钥匙 or 0x88, 数据根目录=str(数据根), 消息时间=消息.get("时间"))
         if 路径:
             return Path(路径).name
         消息["_图片错误"] = 格式或错误 or "未知错误"
