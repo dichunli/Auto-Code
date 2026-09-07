@@ -99,6 +99,13 @@ scripts/*
 !scripts/wechat-poller/
 scripts/wechat-poller/__pycache__/
 scripts/wechat-poller/输出/
+# 采集工具运行产物（解密工作区、生成的看板和图片），不提交
+scripts/wechat-poller/_工作区/
+# 图片 AES 钥匙是敏感数据，严禁提交；日志和测试产物不提交
+scripts/wechat-poller/image_key.json
+scripts/wechat-poller/decoded_images/
+scripts/wechat-poller/*.txt
+scripts/wechat-poller/board_check.json
 # 认证回归测试脚本同属长期设施
 !scripts/auth-test.mjs
 # 生产运维脚本同属长期设施（对账/备份/告警，生产机计划任务使用）
