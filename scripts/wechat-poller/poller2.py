@@ -498,9 +498,23 @@ def 归堆成需求包(消息列表):
   .图占位 {{ color: #9ca3af; font-size: 12px; }}
   .列文字 {{ font-size: 14px; color: #111827; line-height: 1.8; word-break: break-all;
             flex: 1; min-width: 160px; padding-top: 2px; }}
-  .处理行 {{ margin-top: 10px; border-top: 1px dashed #e5e7eb; padding-top: 8px; font-size: 13px; color: #374151; }}
+  .处理行 {{ margin-top: 10px; border-top: 1px dashed #e5e7eb; padding-top: 10px; font-size: 13px; color: #374151; }}
   .处理行 .时刻 {{ color: #9ca3af; font-size: 12px; margin-right: 12px; }}
-  .处理行 input[type=text] {{ width: 60%; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; }}
+  .处理行 input[type=text] {{ width: 40%; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; }}
+  /* 状态组：放大高亮。勾上变绿，否决变红，禁用变淡 */
+  .状态组 {{ display: inline-flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-right: 10px; }}
+  .状态项 {{ font-size: 15px; font-weight: 600; padding: 5px 12px; border-radius: 8px;
+            background: #f3f4f6; border: 1px solid #e5e7eb; cursor: pointer; user-select: none; }}
+  .状态项 input {{ transform: scale(1.25); margin-right: 4px; vertical-align: -2px; }}
+  .状态项:has(input:checked) {{ background: #dcfce7; color: #166534; border-color: #86efac; }}
+  .意见组:has(input[value=同意]:checked) {{ background: #dcfce7; color: #166534; border-color: #86efac; }}
+  .意见组:has(input[value=否决]:checked) {{ background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }}
+  .状态项:has(input:disabled) {{ opacity: 0.4; cursor: not-allowed; }}
+  /* 顶部筛选条 */
+  .筛选条 {{ max-width: 800px; margin: 0 auto 14px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
+  .筛选钮 {{ font-size: 14px; padding: 5px 14px; border-radius: 16px; border: 1px solid #d1d5db;
+            background: #fff; color: #374151; cursor: pointer; }}
+  .筛选钮.活 {{ background: #2563eb; color: #fff; border-color: #2563eb; }}
   .空提示 {{ max-width: 800px; margin: 40px auto; text-align: center; color: #9ca3af; }}
   /* 大图弹层：点图放大，点空白处或按 Esc 关闭 */
   .大图遮罩 {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75);
@@ -514,8 +528,18 @@ def 归堆成需求包(消息列表):
 <div class="头部">
   <h1>配件需求看板</h1>
   <div class="时间">最后更新：{更新时间}　｜　共 {包数量} 个消息包　｜　保留最近 {保留天数} 天</div>
-  <div class="说明">按流程勾选：待询价 → 待报价 → 待确认（同意/否决）→ 待发货 → 已处理，备注里写一句（如"已下单"）。
-  所有勾选和备注存在本浏览器，刷新不丢。照片点一下可放大。页面有新内容会自动刷新，不用手动按 F5。</div>
+  <div class="说明">按流程勾选：已询价 → 已报价 → 客户意见（同意/否决）→ 已发货 → 已处理（客户否决时不能发货）。
+  所有勾选和备注存在本浏览器，刷新不丢；已询价后又来新消息会自动清空重询。照片点一下放大。有新内容页面自动刷新。</div>
+</div>
+<div class="筛选条">筛选：
+  <button class="筛选钮 活" data-筛="全部">全部</button>
+  <button class="筛选钮" data-筛="未询价">未询价</button>
+  <button class="筛选钮" data-筛="已询价">已询价</button>
+  <button class="筛选钮" data-筛="已报价">已报价</button>
+  <button class="筛选钮" data-筛="同意">客户同意</button>
+  <button class="筛选钮" data-筛="否决">客户否决</button>
+  <button class="筛选钮" data-筛="已发货">已发货</button>
+  <button class="筛选钮" data-筛="已处理">已处理</button>
 </div>
 {包列表html}
 <div class="空提示" {空提示显示}>暂无群消息。确认脚本正在运行、目标群里有新消息。</div>
@@ -558,33 +582,75 @@ window.addEventListener("load", function() {{
 // 勾选/单选/备注都存在浏览器 localStorage，刷新不丢失
 document.querySelectorAll(".包卡片").forEach(function(卡片) {{
   var id = 卡片.dataset.包id;
+  var 指纹 = 卡片.dataset.指纹;
+
+  // 否决时禁用"已发货"；改回同意/未选则恢复
+  function 刷发货状态() {{
+    var 否决了 = 卡片.querySelector("input[data-确认][value=否决]").checked;
+    var 发货框 = 卡片.querySelector("input[data-k=已发货]");
+    发货框.disabled = 否决了;
+    if (否决了 && 发货框.checked) {{
+      发货框.checked = false;
+      localStorage.setItem("勾_已发货_" + id, "0");
+    }}
+  }}
+
   卡片.querySelectorAll("input[type=checkbox][data-k]").forEach(function(框) {{
     var key = "勾_" + 框.dataset.k + "_" + id;
+    var 纹key = "纹_" + 框.dataset.k + "_" + id;
     if (localStorage.getItem(key) === "1") {{
-      框.checked = true;
-      if (框.dataset.k === "已处理") 卡片.classList.add("已处理");
+      // 已询价特殊规则：标记后又来新消息（卡片指纹变了）→ 自动清空
+      if (框.dataset.k === "已询价" && localStorage.getItem(纹key) !== 指纹) {{
+        localStorage.removeItem(key);
+      }} else {{
+        框.checked = true;
+        if (框.dataset.k === "已处理") 卡片.classList.add("已处理");
+      }}
     }}
     框.addEventListener("change", function() {{
       localStorage.setItem(key, 框.checked ? "1" : "0");
+      localStorage.setItem(纹key, 指纹);
       if (框.dataset.k === "已处理") 卡片.classList.toggle("已处理", 框.checked);
     }});
   }});
   卡片.querySelectorAll("input[type=radio][data-确认]").forEach(function(钮) {{
     var key = "确认_" + id;
     if (localStorage.getItem(key) === 钮.value) 钮.checked = true;
-    钮.addEventListener("change", function() {{ localStorage.setItem(key, 钮.value); }});
+    钮.addEventListener("change", function() {{ localStorage.setItem(key, 钮.value); 刷发货状态(); }});
   }});
+  刷发货状态();
+
   var 备注框 = 卡片.querySelector("input[type=text]");
   var 旧备注 = localStorage.getItem("备注_" + id);
   if (旧备注) 备注框.value = 旧备注;
   备注框.addEventListener("input", function() {{ localStorage.setItem("备注_" + id, 备注框.value); }});
 }});
+
+// 顶部状态筛选（状态存在本浏览器，筛选也只影响本机显示）
+function 应用筛选(筛) {{
+  document.querySelectorAll(".筛选钮").forEach(function(b) {{ b.classList.toggle("活", b.dataset.筛 === 筛); }});
+  document.querySelectorAll(".包卡片").forEach(function(卡片) {{
+    var id = 卡片.dataset.包id;
+    var 显示 = true;
+    if (筛 === "未询价") 显示 = localStorage.getItem("勾_已询价_" + id) !== "1";
+    else if (筛 === "已询价" || 筛 === "已报价" || 筛 === "已发货" || 筛 === "已处理")
+      显示 = localStorage.getItem("勾_" + 筛 + "_" + id) === "1";
+    else if (筛 === "同意" || 筛 === "否决")
+      显示 = localStorage.getItem("确认_" + id) === 筛;
+    卡片.style.display = 显示 ? "" : "none";
+  }});
+  localStorage.setItem("看板筛选", 筛);
+}}
+document.querySelectorAll(".筛选钮").forEach(function(b) {{
+  b.addEventListener("click", function() {{ 应用筛选(b.dataset.筛); }});
+}});
+应用筛选(localStorage.getItem("看板筛选") || "全部");
 </script>
 </body>
 </html>
 """
 
-包卡片模板 = """<div class="包卡片" data-包id="{包id}">
+包卡片模板 = """<div class="包卡片" data-包id="{包id}" data-指纹="{指纹}">
   <div class="卡主体">
     <div class="列时间">{时间人列表html}</div>
     <div class="{标题样式}">{标题}</div>
@@ -593,12 +659,15 @@ document.querySelectorAll(".包卡片").forEach(function(卡片) {{
   </div>
   <div class="处理行">
     <span class="时刻">{日期}　{起止时间}</span>
-    <label><input type="checkbox" data-k="待询价"> 待询价</label>
-    <label><input type="checkbox" data-k="待报价"> 待报价</label>
-    <span class="确认组">待确认：<label><input type="radio" name="确认_{包id}" data-确认="1" value="同意"> 同意</label>
-    <label><input type="radio" name="确认_{包id}" data-确认="1" value="否决"> 否决</label></span>
-    <label><input type="checkbox" data-k="待发货"> 待发货</label>
-    <label><input type="checkbox" data-k="已处理"> 已处理</label>　备注：<input type="text" placeholder="如：已下单 / 库里">
+    <span class="状态组">
+      <label class="状态项"><input type="checkbox" data-k="已询价"> 已询价</label>
+      <label class="状态项"><input type="checkbox" data-k="已报价"> 已报价</label>
+      <span class="状态项 意见组">客户意见：<label><input type="radio" name="确认_{包id}" data-确认="1" value="同意"> 同意</label>
+      <label><input type="radio" name="确认_{包id}" data-确认="1" value="否决"> 否决</label></span>
+      <label class="状态项"><input type="checkbox" data-k="已发货"> 已发货</label>
+      <label class="状态项"><input type="checkbox" data-k="已处理"> 已处理</label>
+    </span>
+    备注：<input type="text" placeholder="如：已下单 / 库里">
   </div>
 </div>
 """
@@ -676,6 +745,8 @@ def 生成看板(包们, 昵称表, 输出目录):
             包id=html.escape(包["包id"]), 标题=标题, 标题样式=标题样式, 日期=包["日期"],
             起止时间=起止时间, 时间人列表html=时间人列表html,
             图片们html=图片们html, 文字们html=文字们html,
+            # 指纹：最后一条消息时间+消息数，来新消息就变（用于"已询价"自动清空）
+            指纹=f"{包['结束时间']}_{len(包['消息们'])}",
         ))
 
     看板html = 看板模板.format(
