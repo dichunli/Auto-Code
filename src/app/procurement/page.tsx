@@ -383,7 +383,7 @@ export default async function ProcurementPage({
   }
 
   /* 待入库（与 PendingStorageList.loadData 同口径：老流程单 + 已确认到货单 + 收货批次卡片） */
-  let 待入库首屏: { orders: 待入库采购单[]; arrivalReceipts: 到货单[]; batches: 批次卡片[] } | undefined;
+  let 待入库首屏: { orders: 待入库采购单[]; arrivalReceipts: 到货单[]; batches: 批次卡片[]; drafts: { id: string; inbound_no: string; purchase_order_id: string | null }[] } | undefined;
   if (currentTab === "pending_storage") {
     const supabase = await createClient();
     const { data } = await supabase
@@ -412,7 +412,18 @@ export default async function ProcurementPage({
       .order("confirmed_at", { ascending: false });
     /* 批次卡片（2026-09-07）：与客户端刷新共用同一个查询函数，口径一致 */
     const 批次卡片们 = await 查询批次卡片(supabase);
-    待入库首屏 = { orders: 老流程单, arrivalReceipts: ((到货单数据 || []) as unknown) as 到货单[], batches: 批次卡片们 };
+    /* 蓝卡入库确认单（2026-09-08 两阶段入库）：老流程单已生成的 draft 确认单，按钮变「待确认 →」 */
+    const 老流程单id数组 = 老流程单.map((o) => o.id);
+    let 蓝卡确认单们: { id: string; inbound_no: string; purchase_order_id: string | null }[] = [];
+    if (老流程单id数组.length > 0) {
+      const { data: 确认单数据 } = await supabase
+        .from("inbound_orders")
+        .select("id, inbound_no, purchase_order_id")
+        .eq("status", "draft")
+        .in("purchase_order_id", 老流程单id数组);
+      蓝卡确认单们 = (确认单数据 || []) as { id: string; inbound_no: string; purchase_order_id: string | null }[];
+    }
+    待入库首屏 = { orders: 老流程单, arrivalReceipts: ((到货单数据 || []) as unknown) as 到货单[], batches: 批次卡片们, drafts: 蓝卡确认单们 };
   }
 
   /* 已入库（与 CompletedStorageList.loadData 同口径） */
@@ -573,6 +584,7 @@ export default async function ProcurementPage({
           initialOrders={待入库首屏?.orders}
           initialArrivalReceipts={待入库首屏?.arrivalReceipts}
           initialBatches={待入库首屏?.batches}
+          initialDrafts={待入库首屏?.drafts}
         />
       )}
       {currentTab === "completed_storage" && (

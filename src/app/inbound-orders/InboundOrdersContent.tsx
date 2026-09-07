@@ -158,9 +158,13 @@ export default function InboundOrdersContent({ initialRecords }: { initialRecord
                       {o.freight_amount != null ? `¥${o.freight_amount.toFixed(2)}` : "-"}
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">
-                        {o.status === "completed" ? "已完成" : o.status}
-                      </span>
+                      {o.status === "draft" ? (
+                        <span className="text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">待确认</span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">
+                          {o.status === "completed" ? "已完成" : o.status}
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-gray-500 text-xs">
                       {new Date(o.created_at).toLocaleDateString("zh-CN")}

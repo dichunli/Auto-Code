@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
@@ -9,7 +10,7 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
-import { 确认采购入库, 退回待收货, 确认批次入库, 保存批次配件排序, 移动配件到批次 } from "@/app/procurement/actions";
+import { 生成批次入库确认单, 生成采购入库确认单, 退回待收货, 保存批次配件排序, 移动配件到批次 } from "@/app/procurement/actions";
 import { 确认到货入库 } from "@/app/arrivals/actions";
 import { 查询批次卡片, type 批次卡片 } from "@/lib/batchCards";
 import { useToast } from "@/components/Toast";
@@ -120,16 +121,28 @@ interface PendingStorageListProps {
   initialArrivalReceipts?: 到货单[];
   /* 批次卡片首屏数据（2026-09-07）：服务端与客户端同走 查询批次卡片，口径一致 */
   initialBatches?: 批次卡片[];
+  /* 蓝卡入库确认单首屏（2026-09-08 两阶段入库）：采购单 id → draft 确认单 */
+  initialDrafts?: { id: string; inbound_no: string; purchase_order_id: string | null }[];
 }
 
 export function PendingStorageList(props: PendingStorageListProps) {
   const supabase = createClient();
+  const router = useRouter();
   const { 请求确认, 确认弹窗 } = useConfirm();
   const { showToast } = useToast();
   const [orders, setOrders] = useState<PurchaseOrder[]>(props.initialOrders ?? []);
   const [loading, setLoading] = useState(!props.initialOrders);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
+  /* 蓝卡入库确认单映射（2026-09-08 两阶段入库）：采购单 id → draft 确认单，
+     有确认单的卡片按钮变「待确认 →」跳转入库单详情页 */
+  const [蓝卡确认单, set蓝卡确认单] = useState<Map<string, { id: string; inbound_no: string }>>(() => {
+    const 映射 = new Map<string, { id: string; inbound_no: string }>();
+    for (const d of props.initialDrafts ?? []) {
+      if (d.purchase_order_id) 映射.set(d.purchase_order_id, { id: d.id, inbound_no: d.inbound_no });
+    }
+    return 映射;
+  });
 
   /* 入库单确认弹窗 */
   const [inboundModalOpen, setInboundModalOpen] = useState(false);
@@ -192,6 +205,23 @@ export function PendingStorageList(props: PendingStorageListProps) {
       (o) => !(o.purchase_order_items || []).some((it) => it.arrival_item_id || it.receiving_batch_id)
     );
     setOrders(老流程单);
+
+    /* 蓝卡入库确认单映射（2026-09-08 两阶段入库）：查这些采购单已生成的 draft 确认单 */
+    const 老流程单id数组 = 老流程单.map((o) => o.id);
+    if (老流程单id数组.length > 0) {
+      const { data: 确认单们 } = await supabase
+        .from("inbound_orders")
+        .select("id, inbound_no, purchase_order_id")
+        .eq("status", "draft")
+        .in("purchase_order_id", 老流程单id数组);
+      const 映射 = new Map<string, { id: string; inbound_no: string }>();
+      for (const d of (确认单们 || []) as { id: string; inbound_no: string; purchase_order_id: string | null }[]) {
+        if (d.purchase_order_id) 映射.set(d.purchase_order_id, { id: d.id, inbound_no: d.inbound_no });
+      }
+      set蓝卡确认单(映射);
+    } else {
+      set蓝卡确认单(new Map());
+    }
 
     /* 新流程：已确认到货、待账务入库的到货单 */
     const { data: 到货单 } = await supabase
@@ -295,7 +325,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
     setInboundModalOpen(true);
   }
 
-  /* 批次入库提交：调 complete_batch_inbound（跨采购单一次入库，应付款按批次合并） */
+  /* 批次入库提交（2026-09-08 两阶段）：先生成入库确认单（draft 不动库存），
+     跳转到入库单详情页，在那里打印/修改/确认入库 */
   async function handleConfirmBatchInbound() {
     if (!batchModal) return;
     const 批次id = batchModal.id;
@@ -345,14 +376,19 @@ export function PendingStorageList(props: PendingStorageListProps) {
         unit_cost: f.unitCost.trim() === "" ? null : parseFloat(f.unitCost),
         freight_alloc: f.freightManual.trim() === "" ? null : parseFloat(f.freightManual),
       }));
-      const res = await 确认批次入库(批次id, 明细, parseFloat(freightAmount) || 0, 抹零 || null, 销售单金额, batchWaybillId);
-      if (!res.success) throw new Error(res.error || "入库失败");
-      showToast(`批次入库完成，入库单号 ${res.inbound_no}`);
+      const res = await 生成批次入库确认单(批次id, 明细, parseFloat(freightAmount) || 0, 抹零 || null, 销售单金额, batchWaybillId);
+      if (!res.success) throw new Error(res.error || "生成确认单失败");
+      showToast(`已生成入库确认单 ${res.inbound_no}，请核对后确认入库`);
       closeInboundModal();
-      loadData();
+      /* 跳转入库单详情页：打印入库单/条形码、修改、确认入库都在那里操作 */
+      if (res.draft_id) {
+        router.push(`/inbound-orders/${res.draft_id}`);
+      } else {
+        loadData();
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("批次入库失败: " + msg);
+      alert("生成入库确认单失败: " + msg);
     } finally {
       setSubmitting(null);
     }
@@ -527,8 +563,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
 
     setSubmitting(`complete-${orderId}`);
     try {
-      /* 多表写入已收编进数据库事务函数 complete_purchase_inbound:
-         入库单/明细/加库存/仓位/批次/流水/应付款/采购单状态/退货记录,任一失败整体回滚 */
+      /* 2026-09-08 两阶段入库：先生成入库确认单（draft 不动库存），
+         跳转到入库单详情页打印/修改/确认入库；
+         确认后由 complete_purchase_inbound 一个事务落账，任一失败整体回滚 */
       const 明细 = inboundItems.map((f) => ({
         purchase_order_item_id: f.item.id,
         quantity: parseInt(f.quantity, 10) || 0,
@@ -541,7 +578,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
         unit_cost: f.unitCost.trim() === "" ? null : parseFloat(f.unitCost),
         freight_alloc: f.freightManual.trim() === "" ? null : parseFloat(f.freightManual),
       }));
-      const res = await 确认采购入库(
+      const res = await 生成采购入库确认单(
         orderId,
         明细,
         parseFloat(freightAmount) || 0,
@@ -550,11 +587,16 @@ export function PendingStorageList(props: PendingStorageListProps) {
         销售单金额
       );
       if (!res.success) {
-        alert("入库失败: " + (res.error || "未知错误"));
+        alert("生成入库确认单失败: " + (res.error || "未知错误"));
         return;
       }
+      showToast(`已生成入库确认单 ${res.inbound_no}，请核对后确认入库`);
       closeInboundModal();
-      loadData();
+      if (res.draft_id) {
+        router.push(`/inbound-orders/${res.draft_id}`);
+      } else {
+        loadData();
+      }
     } catch (err: unknown) {
       const e = err as Error;
       alert("操作失败: " + (e.message || String(err)));
@@ -822,13 +864,23 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   </span>
                 )}
                 <div className="flex-1" />
-                <button
-                  type="button"
-                  onClick={() => openBatchInboundModal(卡)}
-                  className="px-3 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600"
-                >
-                  生成入库单
-                </button>
+                {/* 入库确认单（2026-09-08 两阶段）：已生成确认单的批次跳详情页，防重复生成 */}
+                {卡.draft_inbound_id ? (
+                  <Link
+                    href={`/inbound-orders/${卡.draft_inbound_id}`}
+                    className="px-3 py-1 bg-orange-500 text-white text-xs rounded hover:bg-orange-600 font-medium"
+                  >
+                    待确认 {卡.draft_inbound_no} →
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openBatchInboundModal(卡)}
+                    className="px-3 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600"
+                  >
+                    生成入库单
+                  </button>
+                )}
               </div>
               {/* 关联运单（2026-09-07）：运费分摊进度，多张销售单可分次摊同一张运单 */}
               {卡.waybills.length > 0 && (
@@ -1158,19 +1210,30 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   <button
                     type="button"
                     onClick={() => handleRevokeStorage(order)}
-                    disabled={submitting === `revoke-${order.id}`}
+                    disabled={submitting === `revoke-${order.id}` || 蓝卡确认单.has(order.id)}
                     className="px-3 py-1.5 border border-red-200 text-red-600 bg-red-50 text-sm font-medium rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
                   >
                     {submitting === `revoke-${order.id}` ? "处理中..." : "退回待收货"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => openInboundModal(order)}
-                    disabled={submitting === `complete-${order.id}`}
-                    className="px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                  >
-                    {submitting === `complete-${order.id}` ? "处理中..." : "生成入库单"}
-                  </button>
+                  {/* 入库确认单（2026-09-08 两阶段）：已生成的跳详情页，防重复生成；
+                      有确认单时禁用退回（RPC 也会拦，这里先置灰提示） */}
+                  {蓝卡确认单.has(order.id) ? (
+                    <Link
+                      href={`/inbound-orders/${蓝卡确认单.get(order.id)!.id}`}
+                      className="px-3 py-1.5 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+                    >
+                      待确认 {蓝卡确认单.get(order.id)!.inbound_no} →
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => openInboundModal(order)}
+                      disabled={submitting === `complete-${order.id}`}
+                      className="px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                    >
+                      {submitting === `complete-${order.id}` ? "处理中..." : "生成入库单"}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -1184,7 +1247,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
           <div className="bg-white rounded-xl border border-gray-200 w-full max-w-5xl my-8 relative">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
               <div>
-                <h3 className="text-base font-semibold text-gray-900">入库单确认</h3>
+                <h3 className="text-base font-semibold text-gray-900">生成入库确认单</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {batchModal
                     ? `收货批次: ${batchModal.batch_no} · 供应商: ${batchModal.supplier_name || "-"}${batchModal.supplier_order_no ? ` · 销售单: ${batchModal.supplier_order_no}` : ""}`
@@ -1597,9 +1660,13 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   disabled={submitting === `complete-${inboundModalOrder?.id}` || submitting === `batch-${batchModal?.id}`}
                   className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
-                  {(batchModal ? submitting === `batch-${batchModal.id}` : submitting === `complete-${inboundModalOrder?.id}`) ? "处理中..." : "确认入库"}
+                  {(batchModal ? submitting === `batch-${batchModal.id}` : submitting === `complete-${inboundModalOrder?.id}`) ? "处理中..." : "生成入库确认单"}
                 </button>
               </div>
+              {/* 两阶段入库提示（2026-09-08）：生成确认单后库存还不会变，确认入库才变 */}
+              <p className="text-xs text-gray-400 text-right mt-2">
+                生成确认单后库存不变，可在下一页打印入库单/条形码、修改内容，确认入库后才加库存
+              </p>
             </div>
           </div>
         </div>

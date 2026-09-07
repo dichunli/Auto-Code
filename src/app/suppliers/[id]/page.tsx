@@ -80,6 +80,8 @@ export default async function SupplierDetailPage({
       .from("inbound_orders")
       .select("id, inbound_no, total_quantity, total_amount, freight_amount, status, created_at")
       .eq("supplier_id", id)
+      /* 2026-09-08 两阶段入库：供应商对账只看正式入库单，不含待确认的 draft */
+      .eq("status", "completed")
       .order("created_at", { ascending: false }),
     supabase
       .from("purchase_return_orders")

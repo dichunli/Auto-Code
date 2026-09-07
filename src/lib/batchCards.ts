@@ -60,10 +60,53 @@ export interface 批次卡片 {
   created_at: string;
   items: 批次配件行[];
   waybills: 批次运单[];
+  /* 入库确认单（2026-09-08 两阶段入库）：已生成 draft 时带出，卡片按钮变「待确认 →」 */
+  draft_inbound_id: string | null;
+  draft_inbound_no: string | null;
 }
 
-/* 查所有待入库批次卡片；失败或没有批次时返回空数组（调用方按空列表渲染即可） */
-export async function 查询批次卡片(supabase: SupabaseClient): Promise<批次卡片[]> {
+/* 查单个批次的关联运单（入库确认单编辑页换分摊运单用）：
+   与 查询批次卡片 同口径——配件级 waybill 优先、空则回退采购单单头，
+   剩余 = 运单总运费 − 已完成入库单已分摊之和（不含 draft 占用，与确认时 RPC 口径一致） */
+export async function 查询批次运单(supabase: SupabaseClient, 批次id: string): Promise<批次运单[]> {
+  const { data: 行们 } = await supabase
+    .from("purchase_order_items")
+    .select("waybill_id, purchase_orders:order_id(waybill_id)")
+    .eq("receiving_batch_id", 批次id);
+  const 运单id集合 = new Set<string>();
+  /* postgrest 联表按数组形态返回，取 [0] 兜底（与详情页查询同写法） */
+  const 行列表 = ((行们 || []) as unknown) as { waybill_id: string | null; purchase_orders: { waybill_id: string | null }[] | { waybill_id: string | null } | null }[];
+  for (const 行 of 行列表) {
+    const 单头 = Array.isArray(行.purchase_orders) ? 行.purchase_orders[0] : 行.purchase_orders;
+    const 运单id = 行.waybill_id || 单头?.waybill_id;
+    if (运单id) 运单id集合.add(运单id);
+  }
+  const 运单id数组 = Array.from(运单id集合);
+  if (运单id数组.length === 0) return [];
+
+  const { data: 运单们 } = await supabase
+    .from("logistics_waybills")
+    .select("id, tracking_no, logistics_company_name, freight_amount")
+    .in("id", 运单id数组);
+  const { data: 分摊们 } = await supabase
+    .from("inbound_orders")
+    .select("waybill_id, freight_amount")
+    .in("waybill_id", 运单id数组)
+    .eq("status", "completed");
+  const 已分摊映射 = new Map<string, number>();
+  for (const s of (分摊们 || []) as { waybill_id: string | null; freight_amount: number | null }[]) {
+    if (!s.waybill_id) continue;
+    已分摊映射.set(s.waybill_id, (已分摊映射.get(s.waybill_id) || 0) + (s.freight_amount || 0));
+  }
+
+  return ((运单们 || []) as { id: string; tracking_no: string | null; logistics_company_name: string | null; freight_amount: number | null }[]).map((w) => {
+    const 已分摊 = Math.round((已分摊映射.get(w.id) || 0) * 100) / 100;
+    const 剩余 = Math.round(((w.freight_amount || 0) - 已分摊) * 100) / 100;
+    return { id: w.id, tracking_no: w.tracking_no, logistics_company_name: w.logistics_company_name, freight_amount: w.freight_amount, 已分摊, 剩余 };
+  });
+}
+
+/* 查所有待入库批次卡片；失败或没有批次时返回空数组（调用方按空列表渲染即可） */export async function 查询批次卡片(supabase: SupabaseClient): Promise<批次卡片[]> {
   const { data: 批次们, error } = await supabase
     .from("receiving_batches")
     .select("id, batch_no, supplier_id, supplier_name, supplier_order_no, status, created_at")
@@ -72,6 +115,17 @@ export async function 查询批次卡片(supabase: SupabaseClient): Promise<批�
   if (error || !批次们 || 批次们.length === 0) return [];
 
   const 批次id数组 = (批次们 as { id: string }[]).map((b) => b.id);
+
+  /* 入库确认单（draft）映射：批次 → 确认单（同批次最多一张，数据库唯一索引兜底） */
+  const { data: 确认单们 } = await supabase
+    .from("inbound_orders")
+    .select("id, inbound_no, receiving_batch_id")
+    .eq("status", "draft")
+    .in("receiving_batch_id", 批次id数组);
+  const 确认单映射 = new Map<string, { id: string; inbound_no: string }>();
+  for (const d of (确认单们 || []) as { id: string; inbound_no: string; receiving_batch_id: string | null }[]) {
+    if (d.receiving_batch_id) 确认单映射.set(d.receiving_batch_id, { id: d.id, inbound_no: d.inbound_no });
+  }
 
   const { data: 行们 } = await supabase
     .from("purchase_order_items")
@@ -116,7 +170,7 @@ export async function 查询批次卡片(supabase: SupabaseClient): Promise<批�
     }
   }
 
-  return (批次们 as Omit<批次卡片, "items" | "waybills">[]).map((批) => {
+  return (批次们 as Omit<批次卡片, "items" | "waybills" | "draft_inbound_id" | "draft_inbound_no">[]).map((批) => {
     const items = 配件行们.filter((行) => 行.receiving_batch_id === 批.id);
     /* 本批次涉及的运单去重，保持配件行里出现的先后顺序 */
     const 本批运单 = new Map<string, 批次运单>();
@@ -129,6 +183,13 @@ export async function 查询批次卡片(supabase: SupabaseClient): Promise<批�
       const 剩余 = Math.round(((运单.freight_amount || 0) - 已分摊) * 100) / 100;
       本批运单.set(运单id, { id: 运单id, ...运单, 已分摊, 剩余 });
     }
-    return { ...批, items, waybills: Array.from(本批运单.values()) };
+    const 确认单 = 确认单映射.get(批.id) || null;
+    return {
+      ...批,
+      items,
+      waybills: Array.from(本批运单.values()),
+      draft_inbound_id: 确认单?.id || null,
+      draft_inbound_no: 确认单?.inbound_no || null,
+    };
   });
 }

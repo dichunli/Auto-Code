@@ -12,11 +12,13 @@ import ProcurementReportContent, {
 export default async function ProcurementReportPage() {
   const supabase = await createClient();
 
-  /* 与客户端 loadData 无日期筛选时完全一致的三路查询 */
+  /* 与客户端 loadData 无日期筛选时完全一致的三路查询
+     （2026-09-08 两阶段入库：只统计正式入库单，draft 确认单不进报表） */
   const [{ data: inboundData }, { data: returnData }, { data: itemData }] = await Promise.all([
     supabase
       .from("inbound_orders")
       .select("id, supplier_name, total_amount, total_quantity, created_at")
+      .eq("status", "completed")
       .order("created_at", { ascending: false }),
     supabase
       .from("purchase_return_orders")
@@ -24,7 +26,8 @@ export default async function ProcurementReportPage() {
       .order("created_at", { ascending: false }),
     supabase
       .from("inbound_order_items")
-      .select("name, part_number, quantity, unit_cost, inbound_orders!inner(created_at)")
+      .select("name, part_number, quantity, unit_cost, inbound_orders!inner(created_at, status)")
+      .eq("inbound_orders.status", "completed")
       .order("created_at", { ascending: false }),
   ]);
 
