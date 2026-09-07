@@ -514,8 +514,8 @@ def 归堆成需求包(消息列表):
 <div class="头部">
   <h1>配件需求看板</h1>
   <div class="时间">最后更新：{更新时间}　｜　共 {包数量} 个消息包　｜　保留最近 {保留天数} 天</div>
-  <div class="说明">看完一条处理完一条：勾选"已处理"即可（勾选状态本浏览器自动记住）。
-  建议处理完在备注里写一句（如"已下单"）。照片点一下可放大。</div>
+  <div class="说明">按流程勾选：待询价 → 待报价 → 待确认（同意/否决）→ 待发货 → 已处理，备注里写一句（如"已下单"）。
+  所有勾选和备注存在本浏览器，刷新不丢。照片点一下可放大。页面有新内容会自动刷新，不用手动按 F5。</div>
 </div>
 {包列表html}
 <div class="空提示" {空提示显示}>暂无群消息。确认脚本正在运行、目标群里有新消息。</div>
@@ -531,26 +531,52 @@ function 关大图() {{
   document.getElementById("大图本体").src = "";
 }}
 document.addEventListener("keydown", function(e) {{ if (e.key === "Escape") 关大图(); }});
-// 自动刷新：每 60 秒拉最新看板；正在看大图或正在输入备注时本轮跳过
-setInterval(function() {{
+// 智能刷新：每 30 秒后台比对一次，内容真变了才刷新，刷新后回到原滚动位置
+// （最后更新时间戳每轮都变，比对前先抹掉，避免无意义的刷新闪烁）
+var 看板指纹 = null;
+function 规范化(t) {{ return t.replace(/最后更新：[^｜]+/, ""); }}
+async function 检查更新() {{
   var 遮罩 = document.getElementById("大图遮罩");
   if (遮罩 && 遮罩.classList.contains("开")) return;
   var 焦点 = document.activeElement;
   if (焦点 && 焦点.tagName === "INPUT") return;
-  location.reload();
-}}, 60000);
-// 勾选与备注存在浏览器 localStorage，重新打开/刷新不丢失
+  try {{
+    var r = await fetch(location.pathname, {{ cache: "no-store" }});
+    var t = 规范化(await r.text());
+    if (看板指纹 === null) {{ 看板指纹 = t; return; }}
+    if (t !== 看板指纹) {{
+      sessionStorage.setItem("看板滚动", String(window.scrollY));
+      location.reload();
+    }}
+  }} catch (e) {{}}
+}}
+setInterval(检查更新, 30000);
+window.addEventListener("load", function() {{
+  var y = sessionStorage.getItem("看板滚动");
+  if (y) {{ sessionStorage.removeItem("看板滚动"); window.scrollTo(0, parseInt(y)); }}
+}});
+// 勾选/单选/备注都存在浏览器 localStorage，刷新不丢失
 document.querySelectorAll(".包卡片").forEach(function(卡片) {{
   var id = 卡片.dataset.包id;
-  var 勾选框 = 卡片.querySelector("input[type=checkbox]");
+  卡片.querySelectorAll("input[type=checkbox][data-k]").forEach(function(框) {{
+    var key = "勾_" + 框.dataset.k + "_" + id;
+    if (localStorage.getItem(key) === "1") {{
+      框.checked = true;
+      if (框.dataset.k === "已处理") 卡片.classList.add("已处理");
+    }}
+    框.addEventListener("change", function() {{
+      localStorage.setItem(key, 框.checked ? "1" : "0");
+      if (框.dataset.k === "已处理") 卡片.classList.toggle("已处理", 框.checked);
+    }});
+  }});
+  卡片.querySelectorAll("input[type=radio][data-确认]").forEach(function(钮) {{
+    var key = "确认_" + id;
+    if (localStorage.getItem(key) === 钮.value) 钮.checked = true;
+    钮.addEventListener("change", function() {{ localStorage.setItem(key, 钮.value); }});
+  }});
   var 备注框 = 卡片.querySelector("input[type=text]");
-  if (localStorage.getItem("已处理_" + id) === "1") {{ 勾选框.checked = true; 卡片.classList.add("已处理"); }}
   var 旧备注 = localStorage.getItem("备注_" + id);
   if (旧备注) 备注框.value = 旧备注;
-  勾选框.addEventListener("change", function() {{
-    localStorage.setItem("已处理_" + id, 勾选框.checked ? "1" : "0");
-    卡片.classList.toggle("已处理", 勾选框.checked);
-  }});
   备注框.addEventListener("input", function() {{ localStorage.setItem("备注_" + id, 备注框.value); }});
 }});
 </script>
@@ -567,7 +593,12 @@ document.querySelectorAll(".包卡片").forEach(function(卡片) {{
   </div>
   <div class="处理行">
     <span class="时刻">{日期}　{起止时间}</span>
-    <label><input type="checkbox"> 已处理</label>　备注：<input type="text" placeholder="如：已下单 / 库里">
+    <label><input type="checkbox" data-k="待询价"> 待询价</label>
+    <label><input type="checkbox" data-k="待报价"> 待报价</label>
+    <span class="确认组">待确认：<label><input type="radio" name="确认_{包id}" data-确认="1" value="同意"> 同意</label>
+    <label><input type="radio" name="确认_{包id}" data-确认="1" value="否决"> 否决</label></span>
+    <label><input type="checkbox" data-k="待发货"> 待发货</label>
+    <label><input type="checkbox" data-k="已处理"> 已处理</label>　备注：<input type="text" placeholder="如：已下单 / 库里">
   </div>
 </div>
 """
