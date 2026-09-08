@@ -177,7 +177,8 @@ export function ProcurementTabBar({ currentTab }: Props) {
     const pendingReturn = (returnData as ReturnRecordRow[] | null || []).filter((r) => r.status === "pending").length;
     const completedReturn = (returnData as ReturnRecordRow[] | null || []).filter((r) => r.status === "completed").length;
 
-    const { data: inboundData } = await supabase.from("inbound_orders").select("id");
+    /* 入库单角标（2026-09-08 两阶段入库）：只数正式单，待确认 draft 不计入 */
+    const { data: inboundData } = await supabase.from("inbound_orders").select("id").eq("status", "completed");
     const inboundOrdersCount = inboundData?.length || 0;
 
     const { data: returnOrderData } = await supabase.from("purchase_return_orders").select("id");

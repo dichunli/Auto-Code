@@ -49,9 +49,11 @@ export default function ProcurementReportContent({
 
   async function loadData() {
     setLoading(true);
+    /* 2026-09-08 两阶段入库：只统计正式入库单，draft 确认单不进报表 */
     let inboundQuery = supabase
       .from("inbound_orders")
       .select("id, supplier_name, total_amount, total_quantity, created_at")
+      .eq("status", "completed")
       .order("created_at", { ascending: false });
     let returnQuery = supabase
       .from("purchase_return_orders")
@@ -59,7 +61,8 @@ export default function ProcurementReportContent({
       .order("created_at", { ascending: false });
     let itemQuery = supabase
       .from("inbound_order_items")
-      .select("name, part_number, quantity, unit_cost, inbound_orders!inner(created_at)")
+      .select("name, part_number, quantity, unit_cost, inbound_orders!inner(created_at, status)")
+      .eq("inbound_orders.status", "completed")
       .order("created_at", { ascending: false });
 
     if (dateFrom) {

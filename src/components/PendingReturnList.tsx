@@ -168,7 +168,9 @@ export function PendingReturnList(props: PendingReturnListProps) {
           const { data: ioRows } = await supabase
             .from("inbound_orders")
             .select("inbound_no")
-            .in("purchase_order_id", orderIds);
+            .in("purchase_order_id", orderIds)
+            /* 2026-09-08 两阶段入库：提示文案只列正式入库单号 */
+            .eq("status", "completed");
           inboundNos = [...new Set((ioRows || []).map((o: { inbound_no: string }) => o.inbound_no))].join("、");
         }
       }

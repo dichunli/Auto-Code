@@ -105,11 +105,13 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
   async function handleRevokeCompleted(orderId: string) {
     setSubmitting(`revoke-${orderId}`);
     try {
-      /* 1. 查询关联的入库单（只读：入库单表登录即可读） */
+      /* 1. 查询关联的入库单（只读：入库单表登录即可读；
+            2026-09-08 两阶段入库：只查正式单，draft 确认单不参与退回已入库） */
       const { data: inboundOrderList } = await supabase
         .from("inbound_orders")
         .select("id, inbound_no")
-        .eq("purchase_order_id", orderId);
+        .eq("purchase_order_id", orderId)
+        .eq("status", "completed");
 
       /* 2. 查询关联的待退货记录（只读，用于提示将被一并删除的条数） */
       const { data: poiList } = await supabase
