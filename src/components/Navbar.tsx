@@ -12,8 +12,6 @@ interface NavItem {
   href: string;
   label: string;
   children?: { href: string; label: string; countKey?: string }[];
-  /* 静态页面（如采集工具生成的配件需求看板）用新窗口打开，不走前端路由 */
-  newTab?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -66,7 +64,6 @@ const navItems: NavItem[] = [
     ],
   },
   { href: "/logistics", label: "物流运单" },
-  { href: "/wechat-board/配件需求看板.html", label: "配件需求看板", newTab: true },
   {
     href: "/service-items",
     label: "维修项目",
@@ -171,19 +168,6 @@ function NavGroup({
   }, [pathname, item.href, item.children]);
 
   if (!item.children) {
-    if (item.newTab) {
-      return (
-        <a
-          href={item.href}
-          target="_blank"
-          rel="noreferrer"
-          onClick={onClick}
-          className="block px-3 py-2 rounded-md text-sm font-medium transition-colors text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-        >
-          {item.label}
-        </a>
-      );
-    }
     return (
       <Link
         href={item.href}
