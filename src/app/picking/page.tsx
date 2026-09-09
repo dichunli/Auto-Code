@@ -3,11 +3,9 @@ import { PageHeader } from "@/components/PageHeader";
 import { StickyPageHeader } from "@/components/StickyPageHeader";
 import Link from "next/link";
 import { PickingTabBar, type PickingTab } from "./PickingTabBar";
-import { PendingPickList, type 待领工单组 } from "./PendingPickList";
+import { PendingPickBoard, type 待领工单组, type 员工选项 } from "./PendingPickBoard";
 import { PendingReturnRequestList, type 退料申请行 } from "./PendingReturnRequestList";
-import { PickingSearchBar } from "./PickingSearchBar";
 import { PickedOrdersGrouped, type 已领料单, type 领料明细行 } from "./PickedOrdersGrouped";
-import type { 员工选项 } from "./DirectPickButton";
 import MaterialReturnsContent from "../material-returns/MaterialReturnsContent";
 import type { 退料单 } from "../material-returns/page";
 
@@ -55,12 +53,10 @@ interface 采购行联查 {
   purchase_orders: { status: string } | null;
 }
 
-const 每页分支数 = 50;
-
 export default async function PickingManagePage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; page?: string; q?: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const sp = await searchParams;
   const currentTab: PickingTab = ["pending_pick", "picked", "pending_return", "returned"].includes(
@@ -68,14 +64,12 @@ export default async function PickingManagePage({
   )
     ? (sp.tab as PickingTab)
     : "pending_pick";
-  const 当前页 = Math.max(1, parseInt(sp.page || "1") || 1);
-  const 搜索词 = (sp.q || "").trim();
 
   const supabase = await createClient();
 
-  /* ═══ 待领料：选中分支 + 客户已同意 + 净领未达需求 +（有库存 或 已进入待入库流程） ═══ */
+  /* ═══ 待领料：选中分支 + 客户已同意 + 净领未达需求 +（有库存 或 已进入待入库流程）。
+         全量分组传给 PendingPickBoard，搜索/分页在组件内前端完成（篮子 state 不丢） ═══ */
   let 待领组列表: 待领工单组[] = [];
-  let 待领总分支数 = 0;
   let 员工列表: 员工选项[] = [];
   if (currentTab === "pending_pick") {
     const { data: 分支数据 } = await supabase
@@ -229,20 +223,8 @@ export default async function PickingManagePage({
       });
     }
 
-    /* 搜索过滤（2026-09-09 需求）：工单号/车牌/车主（姓名/电话）/车辆厂家品牌车型，不区分大小写 */
-    const 关键词 = 搜索词.toLowerCase();
-    const 过滤后行列表 = 关键词
-      ? 行列表.filter((r) =>
-          r.工单号.toLowerCase().includes(关键词) ||
-          r.车牌.toLowerCase().includes(关键词) ||
-          r.客户.toLowerCase().includes(关键词) ||
-          r.车主电话.toLowerCase().includes(关键词) ||
-          r.车型信息.toLowerCase().includes(关键词)
-        )
-      : 行列表;
-
     /* 仓库仓位（2026-09-09 需求）：按配件查分仓库存，拼成"仓库·仓位×数量"文本 */
-    const 有档案配件ids = [...new Set(过滤后行列表.map((r) => r.part_id).filter((v): v is string => !!v))];
+    const 有档案配件ids = [...new Set(行列表.map((r) => r.part_id).filter((v): v is string => !!v))];
     const 仓位Map: Record<string, string> = {};
     if (有档案配件ids.length > 0) {
       const { data: 仓位数据 } = await supabase
@@ -268,13 +250,9 @@ export default async function PickingManagePage({
       }
     }
 
-    /* 分页（按分支行 50 条/页） */
-    待领总分支数 = 过滤后行列表.length;
-    const 页内行 = 过滤后行列表.slice((当前页 - 1) * 每页分支数, 当前页 * 每页分支数);
-
-    /* 按工单分组 */
+    /* 按工单分组（全量；搜索/分页由 PendingPickBoard 在前端完成） */
     const 组Map = new Map<string, 待领工单组>();
-    for (const r of 页内行) {
+    for (const r of 行列表) {
       const 已有 = 组Map.get(r.工单id);
       const 行 = {
         id: r.id,
@@ -436,18 +414,7 @@ export default async function PickingManagePage({
       </StickyPageHeader>
 
       {currentTab === "pending_pick" && (
-        <>
-          <PickingSearchBar 初始值={搜索词} />
-          <PendingPickList
-            key={currentTab}
-            组列表={待领组列表}
-            当前页={当前页}
-            总条数={待领总分支数}
-            每页={每页分支数}
-            员工列表={员工列表}
-            搜索词={搜索词}
-          />
-        </>
+        <PendingPickBoard key={currentTab} 组列表={待领组列表} 员工列表={员工列表} />
       )}
       {currentTab === "picked" && (
         <PickedOrdersGrouped
