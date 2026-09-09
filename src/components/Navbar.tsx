@@ -43,6 +43,7 @@ const navItems: NavItem[] = [
     href: "/inventory",
     label: "配件库存",
     children: [
+      { href: "/picking", label: "领料管理" },
       { href: "/inventory", label: "配件列表" },
       { href: "/part-categories", label: "配件分类" },
       { href: "/part-names", label: "名称库管理" },
@@ -50,7 +51,6 @@ const navItems: NavItem[] = [
       { href: "/part-specifications", label: "规格管理" },
       { href: "/inventory/warehouses", label: "仓库管理" },
       { href: "/inventory/batches", label: "批次管理" },
-      { href: "/picking", label: "领料管理" },
       { href: "/picking-orders", label: "领料单" },
       { href: "/material-returns", label: "退料单" },
     ],
