@@ -6,7 +6,14 @@ import type { 领料单 } from "./page";
 
 const PAGE_SIZE = 15;
 
-export default function PickingOrdersContent({ initialRecords }: { initialRecords: 领料单[] }) {
+export default function PickingOrdersContent({
+  initialRecords,
+  嵌入模式 = false,
+}: {
+  initialRecords: 领料单[];
+  /* 嵌入模式：作为领料管理页"已领料"Tab 内容时隐藏自身大标题和页面边距 */
+  嵌入模式?: boolean;
+}) {
   const [orders] = useState<领料单[]>(initialRecords);
   const [keyword, setKeyword] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -42,16 +49,18 @@ export default function PickingOrdersContent({ initialRecords }: { initialRecord
   const pagedOrders = filteredOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold text-gray-900">领料单列表</h1>
-        <Link
-          href="/picking-orders/new"
-          className="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700"
-        >
-          + 开领料单
-        </Link>
-      </div>
+    <div className={嵌入模式 ? "" : "p-6 max-w-7xl mx-auto"}>
+      {!嵌入模式 && (
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-xl font-bold text-gray-900">领料单列表</h1>
+          <Link
+            href="/picking-orders/new"
+            className="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700"
+          >
+            + 开领料单
+          </Link>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <input

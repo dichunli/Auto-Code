@@ -462,14 +462,14 @@ async function DispatchDoc({ order }: { order: WorkOrder }) {
 async function PickingDoc({ order }: { order: WorkOrder }) {
   const supabase = await createClient();
 
+  /* 2026-09-09 修复：旧口径按 status='out' 过滤，但 0731 新领料流程不再回写该列，
+     导致新领的件打印不出来。改为先查全部配件分支，再按"有领料记录"过滤 */
   const { data: itemParts } = await supabase
     .from("work_order_item_parts")
     .select("*, part_names(name, unit), parts(*, part_brands(name))")
-    .eq("work_order_id", order.id)
-    .eq("status", "out");
+    .eq("work_order_id", order.id);
 
-  const typedItemParts = (itemParts || []) as unknown as WorkOrderItemPart[];
-  const partIds = typedItemParts.map((p) => p.id);
+  const partIds = ((itemParts || []) as unknown as WorkOrderItemPart[]).map((p) => p.id);
 
   /* 三元空分支 [] 会推导 any[]，给解构模式加注解统一类型 */
   const { data: pickingRecords }: { data: unknown[] | null } = partIds.length > 0
@@ -487,6 +487,11 @@ async function PickingDoc({ order }: { order: WorkOrder }) {
     if (!pickingByPart[r.work_order_item_part_id]) pickingByPart[r.work_order_item_part_id] = [];
     pickingByPart[r.work_order_item_part_id].push(r);
   });
+
+  /* 只保留有领料记录的分支（替代旧 status='out' 口径） */
+  const typedItemParts = ((itemParts || []) as unknown as WorkOrderItemPart[]).filter(
+    (p) => (pickingByPart[p.id] || []).length > 0
+  );
 
   return (
     <div className="space-y-6">

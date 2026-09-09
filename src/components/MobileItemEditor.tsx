@@ -17,6 +17,8 @@ import ItemQcActions from "./ItemQcActions";
 import { PartWorkflowActions } from "./PartWorkflowActions";
 import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import { 申领配件, 取消申领 } from "@/app/picking-orders/actions";
+import { 申请退料, 取消退料申请 } from "@/app/material-returns/actions";
+import { 退料类型选项 } from "@/lib/returnTypes";
 import { 移除外包明细 } from "@/app/outsource-orders/actions";
 import { 删除工单项目, 保存工单项目字段, 保存施工指派, 删除项目施工人, 单人领单, 放弃领单, 更新配件分支, 批量更新配件分支, 添加配件图片记录, 删除配件图片记录, type 配件分支更新 } from "@/app/work-orders/actions";
 import {
@@ -41,6 +43,8 @@ import type {
   PickerPart,
   InventoryPart,
   申领行,
+  可退领料行,
+  退料申请行,
   编码命中配件,
   配件库行,
 } from "./mobile-item-editor/types";
@@ -227,6 +231,14 @@ export default function MobileItemEditor({
   const [申领展开, set申领展开] = useState(false);
   const [申领数量, set申领数量] = useState("1");
   const [申领列表, set申领列表] = useState<申领行[]>([]);
+
+  /* 退料申请：展开退料面板 / 退料数量 / 退料类型 / 选中的领料记录 / 可退领料列表 / 待确认退料申请（面板展开时拉取） */
+  const [退料展开, set退料展开] = useState(false);
+  const [退料数量, set退料数量] = useState("1");
+  const [退料类型, set退料类型] = useState("excess");
+  const [选中领料记录id, set选中领料记录id] = useState("");
+  const [可退领料列表, set可退领料列表] = useState<(可退领料行 & { 可退: number })[]>([]);
+  const [退申请列表, set退申请列表] = useState<退料申请行[]>([]);
 
   /* 替换配件弹窗 */
   const [replacePartTarget, setReplacePartTarget] = useState<ItemPart | null>(null);
@@ -1136,6 +1148,102 @@ export default function MobileItemEditor({
         return;
       }
       set申领列表((prev) => prev.filter((x) => x.id !== 申领id));
+      refresh();
+    } catch (err: unknown) {
+      alert("取消失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* 退料面板展开时拉取该分支的领料记录（算可退数量 = 已领 - 已退 - 申请中）和待确认退料申请 */
+  useEffect(() => {
+    if (!退料展开) return;
+    const branch = 当前详情分支();
+    if (!branch) return;
+    (async () => {
+      const { data: 领料们 } = await supabase
+        .from("part_picking_records")
+        .select("id, quantity, created_at, picking_orders(picking_no)")
+        .eq("work_order_item_part_id", branch.id)
+        .order("created_at", { ascending: false });
+      const 记录们 = (领料们 || []) as unknown as 可退领料行[];
+      const 记录ids = 记录们.map((r) => r.id);
+      const [{ data: 退库们 }, { data: 申请们 }] = await Promise.all([
+        记录ids.length > 0
+          ? supabase.from("part_return_records").select("picking_record_id, quantity").in("picking_record_id", 记录ids)
+          : Promise.resolve({ data: [] as { picking_record_id: string; quantity: number }[] }),
+        supabase
+          .from("part_return_requests")
+          .select("id, picking_record_id, quantity, return_type, created_at")
+          .eq("work_order_item_part_id", branch.id)
+          .eq("status", "pending")
+          .order("created_at", { ascending: false }),
+      ]);
+      /* 占用 = 已退 + 待确认申请，超过已领的就不再可退 */
+      const 占用Map: Record<string, number> = {};
+      for (const r of 退库们 || []) {
+        占用Map[r.picking_record_id] = (占用Map[r.picking_record_id] || 0) + r.quantity;
+      }
+      for (const r of (申请们 || []) as 退料申请行[]) {
+        占用Map[r.picking_record_id] = (占用Map[r.picking_record_id] || 0) + r.quantity;
+      }
+      set可退领料列表(
+        记录们
+          .map((r) => ({ ...r, 可退: r.quantity - (占用Map[r.id] || 0) }))
+          .filter((r) => r.可退 > 0)
+      );
+      set退申请列表((申请们 || []) as 退料申请行[]);
+    })();
+
+  }, [退料展开, detailActiveBranchId, selectedPartForDetail?.id]);
+
+  /* 提交退料申请（走 Server Action，只记意向不动库存；库管确认后才生成退料单） */
+  async function 提交退料申请() {
+    const branch = 当前详情分支();
+    if (!branch) return;
+    if (!选中领料记录id) {
+      alert("请选择退哪一笔领料");
+      return;
+    }
+    const 数量 = parseInt(退料数量);
+    if (!Number.isInteger(数量) || 数量 <= 0) {
+      alert("退料数量必须是大于 0 的整数");
+      return;
+    }
+    const 记录 = 可退领料列表.find((r) => r.id === 选中领料记录id);
+    if (记录 && 数量 > 记录.可退) {
+      alert(`该笔最多还能退 ${记录.可退} 件`);
+      return;
+    }
+    setLoading(true);
+    try {
+      const r = await 申请退料(选中领料记录id, 数量, 退料类型, "");
+      if (!r.success) {
+        alert("申请退料失败: " + (r.error || "未知错误"));
+        return;
+      }
+      set退料展开(false);
+      set退料数量("1");
+      set选中领料记录id("");
+      refresh();
+    } catch (err: unknown) {
+      alert("申请退料失败: " + (err instanceof Error ? err.message : "网络异常"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* 取消一条待确认退料申请 */
+  async function 取消一条退申请(申请id: string) {
+    setLoading(true);
+    try {
+      const r = await 取消退料申请(申请id);
+      if (!r.success) {
+        alert("取消失败: " + (r.error || "未知错误"));
+        return;
+      }
+      set退申请列表((prev) => prev.filter((x) => x.id !== 申请id));
       refresh();
     } catch (err: unknown) {
       alert("取消失败: " + (err instanceof Error ? err.message : "网络异常"));
@@ -3170,6 +3278,16 @@ export default function MobileItemEditor({
                             申领
                           </button>
                         )}
+                        {/* 退料申请入口：已领料（净领>0）才可申请；师傅申请→库管确认→生成退料单 */}
+                        {!isLocked && 净领 > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => set退料展开((v) => !v)}
+                            className="text-[10px] px-1.5 py-0.5 rounded border bg-white text-red-600 border-red-300 hover:bg-red-50"
+                          >
+                            退料
+                          </button>
+                        )}
                         {/* 空分支已到货 → 入库登记（跳转入库页自动带参，同桌面端） */}
                         {activeBranch.is_arrived && !activeBranch.part_id && (
                           <a
@@ -3212,6 +3330,83 @@ export default function MobileItemEditor({
                                   <button
                                     type="button"
                                     onClick={() => 取消一条申领(r.id)}
+                                    disabled={loading}
+                                    className="text-red-500 disabled:opacity-50"
+                                  >
+                                    取消
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* 退料面板：选领料记录 + 数量 + 类型 + 提交；待确认申请可取消 */}
+                      {退料展开 && !isLocked && (
+                        <div className="mt-2 border border-red-200 rounded-lg p-2 bg-red-50/50">
+                          {可退领料列表.length === 0 ? (
+                            <p className="text-xs text-gray-400">该配件没有可退的领料记录</p>
+                          ) : (
+                            <>
+                              <div className="space-y-1">
+                                {可退领料列表.map((r) => (
+                                  <label key={r.id} className="flex items-center gap-2 text-xs text-gray-700">
+                                    <input
+                                      type="radio"
+                                      name="退料领料记录"
+                                      checked={选中领料记录id === r.id}
+                                      onChange={() => set选中领料记录id(r.id)}
+                                      className="accent-red-600"
+                                    />
+                                    <span>
+                                      {r.picking_orders?.picking_no || "领料"} ×{r.quantity}（可退 {r.可退}）
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                              <div className="flex items-center gap-2 mt-2">
+                                <select
+                                  value={退料类型}
+                                  onChange={(e) => set退料类型(e.target.value)}
+                                  aria-label="退料类型"
+                                  className="px-1.5 py-1 border border-gray-300 rounded text-xs bg-white"
+                                >
+                                  {退料类型选项.map((t) => (
+                                    <option key={t.key} value={t.key}>
+                                      {t.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={退料数量}
+                                  onChange={(e) => set退料数量(e.target.value)}
+                                  aria-label="退料数量"
+                                  className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-center"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={提交退料申请}
+                                  disabled={loading}
+                                  className="px-2 py-1 text-xs text-white bg-red-600 rounded disabled:opacity-50"
+                                >
+                                  {loading ? "提交中..." : "提交退料申请"}
+                                </button>
+                              </div>
+                              <span className="text-[10px] text-gray-400">申请后由库管确认才会退回库存</span>
+                            </>
+                          )}
+                          {退申请列表.length > 0 && (
+                            <div className="mt-2 space-y-1 border-t border-red-100 pt-1.5">
+                              {退申请列表.map((r) => (
+                                <div key={r.id} className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-600">
+                                    申请退 ×{r.quantity} · {new Date(r.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => 取消一条退申请(r.id)}
                                     disabled={loading}
                                     className="text-red-500 disabled:opacity-50"
                                   >

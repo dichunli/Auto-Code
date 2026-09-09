@@ -206,6 +206,23 @@ export interface 申领行 {
   created_at: string;
 }
 
+/* 退料申请：该分支的可退领料记录行（面板展开时拉取，picking_orders 联查单号） */
+export interface 可退领料行 {
+  id: string;
+  quantity: number;
+  created_at: string;
+  picking_orders: { picking_no: string } | null;
+}
+
+/* 退料申请：该分支待确认退料申请行（面板展开时拉取） */
+export interface 退料申请行 {
+  id: string;
+  picking_record_id: string;
+  quantity: number;
+  return_type: string;
+  created_at: string;
+}
+
 export interface Props {
   item: ItemData;
   orderId: string;
