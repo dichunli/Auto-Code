@@ -18,6 +18,12 @@ export interface 领料明细输入 {
   unit_cost?: number | null;
 }
 
+/* 直领明细输入（急件直领只需分支和数量，采购行分摊由 RPC 自动做） */
+export interface 直领明细输入 {
+  work_order_item_part_id: string;
+  quantity: number;
+}
+
 interface 开单结果 {
   success: boolean;
   data?: { id: string; no: string };
@@ -75,9 +81,34 @@ export async function 创建领料单(
     return { success: false, error: 结果?.error || "创建领料单失败" };
   }
 
-  /* 实领后自动核销申领：按分支"剩余实领额度 = 累计实领 - 已核销申领"，
-   * 从最早开始逐条覆盖，能盖住就标记 done（退库导致的倒挂不在此处理） */
-  const 分支ids = [...new Set(明细.map((m) => m.work_order_item_part_id))];
+  /* 实领后自动核销申领 */
+  await 核销申领(supabase, 分支ids去重(明细.map((m) => m.work_order_item_part_id)), user.id);
+
+  revalidatePath("/picking-orders");
+  revalidatePath("/picking");
+  if (工单id) {
+    revalidatePath(`/work-orders/${工单id}`);
+  }
+  return {
+    success: true,
+    data: { id: 结果.picking_order_id!, no: 结果.picking_no! },
+  };
+}
+
+/* 分支 id 数组去重 */
+function 分支ids去重(ids: string[]): string[] {
+  return [...new Set(ids)];
+}
+
+/**
+ * 实领（含直领）后自动核销申领：按分支"剩余实领额度 = 累计实领 - 已核销申领"，
+ * 从最早开始逐条覆盖，能盖住就标记 done（退库导致的倒挂不在此处理）
+ */
+async function 核销申领(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  分支ids: string[],
+  操作人id: string
+) {
   for (const 分支id of 分支ids) {
     const [{ data: 实领记录 }, { data: 全部申领 }] = await Promise.all([
       supabase.from("part_picking_records").select("quantity").eq("work_order_item_part_id", 分支id),
@@ -97,19 +128,125 @@ export async function 创建领料单(
     if (核销ids.length > 0) {
       await supabase
         .from("part_pick_requests")
-        .update({ status: "done", done_at: new Date().toISOString(), done_by: user.id })
+        .update({ status: "done", done_at: new Date().toISOString(), done_by: 操作人id })
         .in("id", 核销ids);
     }
   }
+}
+
+/* ═══ 急件直领（2026-09-09 二期）：待入库未入账的配件直接开领料单，
+       登记后不动库存；确认入库事务里即入即出冲账 ═══ */
+
+interface 直领RPC返回 {
+  success: boolean;
+  error?: string;
+  picking_order_id?: string;
+  picking_no?: string;
+}
+
+/**
+ * 直领开单：调 create_direct_picking_order RPC（校验+分摊采购行全在数据库事务里）
+ * 直领登记算"已领"（结单门禁/申领核销自动兼容），库存账等确认入库时轧平
+ */
+export async function 直领开单(
+  明细: 直领明细输入[],
+  领料人: string,
+  备注: string
+): Promise<开单结果> {
+  if (!明细 || 明细.length === 0) {
+    return { success: false, error: "直领明细不能为空" };
+  }
+  for (const m of 明细) {
+    if (!m.work_order_item_part_id) {
+      return { success: false, error: "直领明细缺少配件分支信息" };
+    }
+    if (!Number.isInteger(m.quantity) || m.quantity <= 0) {
+      return { success: false, error: "直领数量必须是大于 0 的整数" };
+    }
+  }
+
+  const supabase = await createClient();
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "登录已失效，请重新登录" };
+  }
+
+  const { data, error } = await supabase.rpc("create_direct_picking_order", {
+    p_items: 明细,
+    p_receiver_name: 领料人,
+    p_notes: 备注,
+    p_operator_id: user.id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  const 结果 = data as unknown as 直领RPC返回;
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "直领开单失败" };
+  }
+
+  /* 直领也算实领：按同口径核销申领 */
+  await 核销申领(supabase, 分支ids去重(明细.map((m) => m.work_order_item_part_id)), user.id);
+
+  /* 反查工单 id 用于刷新工单详情页 */
+  const { data: 单 } = await supabase
+    .from("picking_orders")
+    .select("work_order_id")
+    .eq("id", 结果.picking_order_id!)
+    .single();
 
   revalidatePath("/picking-orders");
-  if (工单id) {
-    revalidatePath(`/work-orders/${工单id}`);
+  revalidatePath("/picking");
+  if (单?.work_order_id) {
+    revalidatePath(`/work-orders/${单.work_order_id}`);
   }
   return {
     success: true,
     data: { id: 结果.picking_order_id!, no: 结果.picking_no! },
   };
+}
+
+/**
+ * 取消直领（仅限未冲账的直领记录）：删登记+删明细行，单空则整单删除
+ * 已冲账（入库完成）的不能取消，走退料流程
+ */
+export async function 取消直领(领料记录id: string): Promise<申领结果 & { 单已删?: boolean }> {
+  const supabase = await createClient();
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "登录已失效，请重新登录" };
+  }
+
+  /* 先反查工单 id（删完记录就查不到了），用于刷新工单详情页 */
+  const { data: 记录 } = await supabase
+    .from("part_picking_records")
+    .select("work_order_item_parts(work_order_items(work_order_id))")
+    .eq("id", 领料记录id)
+    .single();
+  interface 记录联查 {
+    work_order_item_parts: { work_order_items: { work_order_id: string } | null } | null;
+  }
+  const 工单id = (记录 as unknown as 记录联查 | null)?.work_order_item_parts?.work_order_items?.work_order_id;
+
+  const { data, error } = await supabase.rpc("cancel_direct_picking", {
+    p_picking_record_id: 领料记录id,
+    p_operator_id: user.id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as unknown as { success: boolean; error?: string; order_deleted?: boolean };
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "取消直领失败" };
+  }
+
+  revalidatePath("/picking-orders");
+  revalidatePath("/picking");
+  if (工单id) {
+    revalidatePath(`/work-orders/${工单id}`);
+  }
+  return { success: true, 单已删: 结果.order_deleted };
 }
 
 /* ═══ 配件申领（师傅手机端发起，只记需求不动库存；库管实领后自动核销） ═══ */

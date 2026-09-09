@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DirectPickButton } from "./DirectPickButton";
 
 /* 待领料行（一个工单配件分支） */
 export interface 待领行 {
@@ -111,9 +112,15 @@ export function PendingPickList({ 组列表, 当前页, 总条数, 每页 }: Pro
                           有库存可领
                         </span>
                       ) : (
-                        <span className="text-xs px-2 py-0.5 rounded bg-gray-50 text-gray-500 border border-gray-200">
-                          待入库后可领
-                        </span>
+                        /* 待入库未入账：急件直领（登记后不动库存，确认入库时即入即出） */
+                        <div className="flex items-center gap-1.5">
+                          <DirectPickButton
+                            分支id={行.id}
+                            名称={行.名称}
+                            剩余需领={行.需求数量 - 行.已领}
+                          />
+                          <span className="text-[10px] text-gray-400">待入库</span>
+                        </div>
                       )}
                     </td>
                   </tr>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { PrintButton } from "@/components/PrintButton";
+import { CancelDirectButton } from "./CancelDirectButton";
 
 interface 领料单明细 {
   id: string;
@@ -13,6 +14,9 @@ interface 领料单明细 {
   batch_no: string | null;
   unit_cost: number | null;
   quantity: number;
+  picking_record_id: string | null;
+  /* 急件直领标记：is_direct=true 且 batch_id 空 = 待入库冲账 */
+  part_picking_records: { is_direct: boolean; batch_id: string | null } | null;
 }
 
 interface 领料单 {
@@ -52,7 +56,7 @@ export default async function PickingOrderDetailPage({
 
   const { data: items } = await supabase
     .from("picking_order_items")
-    .select("id, part_number, name, brand, specification, unit, batch_no, unit_cost, quantity")
+    .select("id, part_number, name, brand, specification, unit, batch_no, unit_cost, quantity, picking_record_id, part_picking_records(is_direct, batch_id)")
     .eq("picking_order_id", id)
     .order("created_at", { ascending: true });
 
@@ -172,13 +176,30 @@ export default async function PickingOrderDetailPage({
                 <th className="px-6 py-3 text-right font-medium text-gray-500">数量</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">单位</th>
                 <th className="px-6 py-3 text-right font-medium text-gray-500">成本价</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500 print:hidden">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {明细.map((it, idx) => (
+              {明细.map((it, idx) => {
+                /* 急件直领：is_direct=true 且批次未回填 = 待入库冲账中 */
+                const 待冲账直领 = !!it.part_picking_records?.is_direct && !it.part_picking_records?.batch_id;
+                const 已冲账直领 = !!it.part_picking_records?.is_direct && !!it.part_picking_records?.batch_id;
+                return (
                 <tr key={it.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-gray-500">{idx + 1}</td>
-                  <td className="px-6 py-4 text-gray-900 font-medium">{it.name || "-"}</td>
+                  <td className="px-6 py-4 text-gray-900 font-medium">
+                    {it.name || "-"}
+                    {待冲账直领 && (
+                      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-200 print:hidden">
+                        急件直领·待入库冲账
+                      </span>
+                    )}
+                    {已冲账直领 && (
+                      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-gray-50 text-gray-500 border border-gray-200 print:hidden">
+                        急件直领
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-gray-600">{it.part_number || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{it.brand || "-"}</td>
                   <td className="px-6 py-4 text-gray-600">{it.specification || "-"}</td>
@@ -188,11 +209,17 @@ export default async function PickingOrderDetailPage({
                   <td className="px-6 py-4 text-right text-gray-900">
                     {it.unit_cost != null ? `¥${it.unit_cost.toFixed(2)}` : "-"}
                   </td>
+                  <td className="px-6 py-4 print:hidden">
+                    {待冲账直领 && it.picking_record_id && (
+                      <CancelDirectButton 领料记录id={it.picking_record_id} />
+                    )}
+                  </td>
                 </tr>
-              ))}
+                );
+              })}
               {明细.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-gray-400">
+                  <td colSpan={10} className="px-6 py-8 text-center text-gray-400">
                     暂无领料明细
                   </td>
                 </tr>

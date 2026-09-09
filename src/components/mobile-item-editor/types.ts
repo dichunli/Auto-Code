@@ -206,11 +206,12 @@ export interface 申领行 {
   created_at: string;
 }
 
-/* 退料申请：该分支的可退领料记录行（面板展开时拉取，picking_orders 联查单号） */
+/* 退料申请：该分支的可退领料记录行（面板展开时拉取，picking_orders 联查单号；
+   注意领料记录的时间字段是 picked_at，不是 created_at） */
 export interface 可退领料行 {
   id: string;
   quantity: number;
-  created_at: string;
+  picked_at: string;
   picking_orders: { picking_no: string } | null;
 }
 
