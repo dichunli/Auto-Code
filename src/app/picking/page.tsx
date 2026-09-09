@@ -34,7 +34,7 @@ interface 分支联查行 {
       status: string;
       order_type: string | null;
       settled_at: string | null;
-      vehicles: { plate_number: string; vehicle_model_id: number | null } | null;
+      vehicles: { plate_number: string; vehicle_model_id: number | null; brand: string | null; model: string | null } | null;
       customers: { name: string; phone: string | null } | null;
     } | null;
   } | null;
@@ -87,7 +87,7 @@ export default async function PickingManagePage({
         parts(quantity),
         work_order_items!inner(
           name,
-          work_orders!inner(id, order_no, status, order_type, settled_at, vehicles(plate_number, vehicle_model_id), customers(name, phone))
+          work_orders!inner(id, order_no, status, order_type, settled_at, vehicles(plate_number, vehicle_model_id, brand, model), customers(name, phone))
         )
       `)
       .eq("is_selected", true)
@@ -222,7 +222,8 @@ export default async function PickingManagePage({
         车牌: wo.vehicles?.plate_number || "-",
         客户: wo.customers?.name || "-",
         车主电话: wo.customers?.phone || "",
-        车型信息: 车型Map[String(wo.vehicles?.vehicle_model_id)] || "",
+        车型信息: 车型Map[String(wo.vehicles?.vehicle_model_id)] ||
+          [wo.vehicles?.brand, wo.vehicles?.model].filter(Boolean).join(" "),
         项目名: b.work_order_items?.name || "-",
       });
     }
@@ -339,25 +340,27 @@ export default async function PickingManagePage({
       <StickyPageHeader>
         <PageHeader title="领料管理" description="工单配件的领料 / 退料集中处理" />
 
-        {/* 顶部按钮区：与采购看板互跳 + 快捷开单 */}
+        {/* 顶部按钮区：左侧开单操作，右上角放采购看板互跳入口（与采购管理页对称、高亮） */}
         <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="flex flex-wrap gap-2 flex-1">
+            <Link
+              href="/picking-orders/new"
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              + 开领料单
+            </Link>
+            <Link
+              href="/material-returns/new"
+              className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors"
+            >
+              + 开退料单
+            </Link>
+          </div>
           <Link
             href="/procurement?tab=pending_storage"
-            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors"
           >
             采购看板 →
-          </Link>
-          <Link
-            href="/picking-orders/new"
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            + 开领料单
-          </Link>
-          <Link
-            href="/material-returns/new"
-            className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors"
-          >
-            + 开退料单
           </Link>
         </div>
 
