@@ -10,7 +10,7 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
-import { 生成批次入库确认单, 生成采购入库确认单, 退回待收货, 保存批次配件排序, 移动配件到批次 } from "@/app/procurement/actions";
+import { 生成批次入库确认单, 生成采购入库确认单, 退回待收货, 保存批次配件排序, 移动配件到批次, 变更批次运单 } from "@/app/procurement/actions";
 import { 确认到货入库 } from "@/app/arrivals/actions";
 import { 查询批次卡片, type 批次卡片 } from "@/lib/batchCards";
 import { useToast } from "@/components/Toast";
@@ -98,6 +98,15 @@ interface Warehouse {
   name: string;
 }
 
+/* 待签收运单（变更批次运单弹窗用，2026-09-09 批次卡单运单） */
+interface 待签收运单 {
+  id: string;
+  tracking_no: string | null;
+  logistics_company_name: string | null;
+  supplier_name: string | null;
+  freight_amount: number | null;
+}
+
 interface InboundItemForm {
   id: string;
   item: PurchaseOrderItem;
@@ -173,6 +182,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
   /* 卡片拖拽（2026-09-07）：卡内=排序，跨卡=移动归属 */
   const [拖拽配件, set拖拽配件] = useState<{ 配件id: string; 批次id: string } | null>(null);
   const [拖拽目标, set拖拽目标] = useState<string | null>(null);
+  /* 变更批次运单弹窗（2026-09-09 批次卡单运单）：一张卡只挂一张运单，可从全部待签收运单换选 */
+  const [变更运单卡, set变更运单卡] = useState<批次卡片 | null>(null);
+  const [待签收运单们, set待签收运单们] = useState<待签收运单[]>([]);
+  const [选中运单id, set选中运单id] = useState<string>("");
+  const [运单加载中, set运单加载中] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -323,6 +337,47 @@ export function PendingStorageList(props: PendingStorageListProps) {
     setInboundModalOrder(null);
     setInboundItems(forms);
     setInboundModalOpen(true);
+  }
+
+  /* 打开变更运单弹窗（2026-09-09）：查全部待签收运单，与卡同供应商的排前面
+     （与待收货环节同口径，不限供应商——用户拍板） */
+  async function 打开变更运单(卡: 批次卡片) {
+    set变更运单卡(卡);
+    set选中运单id(卡.waybill_id || "");
+    set待签收运单们([]);
+    set运单加载中(true);
+    const { data } = await supabase
+      .from("logistics_waybills")
+      .select("id, tracking_no, logistics_company_name, supplier_name, freight_amount")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+    const 列表 = (data || []) as 待签收运单[];
+    if (卡.supplier_name) {
+      const 目标 = 卡.supplier_name;
+      列表.sort((a, b) => (b.supplier_name === 目标 ? 1 : 0) - (a.supplier_name === 目标 ? 1 : 0));
+    }
+    set待签收运单们(列表);
+    set运单加载中(false);
+  }
+
+  /* 确认变更：调 Server Action（已生成确认单的批次会被服务端拦截），成功后刷新 */
+  async function 确认变更运单() {
+    if (!变更运单卡) return;
+    const 批次id = 变更运单卡.id;
+    setSubmitting(`waybill-${批次id}`);
+    try {
+      const res = await 变更批次运单(批次id, 选中运单id || null);
+      if (!res.success) {
+        alert(res.error || "变更运单失败");
+        return;
+      }
+      set变更运单卡(null);
+      await loadData();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "变更运单失败，请重试");
+    } finally {
+      setSubmitting(null);
+    }
   }
 
   /* 批次入库提交（2026-09-08 两阶段）：先生成入库确认单（draft 不动库存），
@@ -876,16 +931,19 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   <button
                     type="button"
                     onClick={() => openBatchInboundModal(卡)}
-                    className="px-3 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600"
+                    disabled={缺编码数 > 0}
+                    title={缺编码数 > 0 ? "有配件缺零件编码，请先在卡内补全" : ""}
+                    className="px-3 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     生成入库单
                   </button>
                 )}
               </div>
-              {/* 关联运单（2026-09-07）：运费分摊进度，多张销售单可分次摊同一张运单 */}
-              {卡.waybills.length > 0 && (
-                <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-                  {卡.waybills.map((w) => (
+              {/* 关联运单（2026-09-09 批次卡单运单）：一张卡只挂一张，可变更；
+                  已生成入库确认单的卡不可变（先确认或作废），按钮隐藏 */}
+              <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                {卡.waybills.length > 0 ? (
+                  卡.waybills.map((w) => (
                     <span
                       key={w.id}
                       className="inline-flex items-center gap-1 text-[11px] bg-blue-50 border border-blue-100 text-blue-800 rounded px-2 py-0.5"
@@ -897,9 +955,20 @@ export function PendingStorageList(props: PendingStorageListProps) {
                         剩余 ¥{Math.max(0, w.剩余).toFixed(2)}
                       </span>
                     </span>
-                  ))}
-                </div>
-              )}
+                  ))
+                ) : (
+                  <span className="text-[11px] text-gray-400">未关联运单</span>
+                )}
+                {!卡.draft_inbound_id && (
+                  <button
+                    type="button"
+                    onClick={() => 打开变更运单(卡)}
+                    className="text-[11px] text-blue-600 hover:text-blue-800 underline underline-offset-2"
+                  >
+                    {卡.waybills.length > 0 ? "变更" : "关联运单"}
+                  </button>
+                )}
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1770,6 +1839,85 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 {submitting === `arrival-${到货入库弹窗.id}` ? "处理中..." : "确认入库"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 变更批次运单弹窗（2026-09-09 批次卡单运单）：一张卡只挂一张，
+          从全部待签收运单中单选（同供应商排前面），选「不关联运单」可解除 */}
+      {变更运单卡 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-md">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">
+                变更运单 — {变更运单卡.batch_no}
+              </h3>
+              <button
+                type="button"
+                onClick={() => set变更运单卡(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-xs text-gray-500 mb-3">
+                供应商：{变更运单卡.supplier_name || "-"}，一张清单只关联一张运单。
+              </p>
+              {运单加载中 ? (
+                <p className="text-sm text-gray-400 text-center py-6">运单加载中...</p>
+              ) : (
+                <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-lg">
+                  <label className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="批次运单"
+                      checked={选中运单id === ""}
+                      onChange={() => set选中运单id("")}
+                      className="accent-blue-600"
+                    />
+                    <span className="text-sm text-gray-500">不关联运单</span>
+                  </label>
+                  {待签收运单们.map((w) => (
+                    <label key={w.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                      <input
+                        type="radio"
+                        name="批次运单"
+                        checked={选中运单id === w.id}
+                        onChange={() => set选中运单id(w.id)}
+                        className="accent-blue-600"
+                      />
+                      <span className="text-sm text-gray-900">
+                        {w.tracking_no || "-"}
+                        {w.logistics_company_name ? ` · ${w.logistics_company_name}` : ""}
+                        {w.supplier_name ? ` · ${w.supplier_name}` : ""}
+                        {w.freight_amount != null ? ` · 运费 ¥${w.freight_amount}` : ""}
+                      </span>
+                    </label>
+                  ))}
+                  {待签收运单们.length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-4">暂无待签收运单</p>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => set变更运单卡(null)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={确认变更运单}
+                disabled={submitting === `waybill-${变更运单卡.id}`}
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {submitting === `waybill-${变更运单卡.id}` ? "保存中..." : "确定"}
               </button>
             </div>
           </div>

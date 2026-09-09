@@ -60,28 +60,59 @@ export interface 批次卡片 {
   created_at: string;
   items: 批次配件行[];
   waybills: 批次运单[];
+  /* 批次关联运单（2026-09-09 批次卡单运单）：一张卡只挂一张，卡片上可变更；
+     NULL 时 waybills 回退配件行派生（旧数据/行运单不一致兜底） */
+  waybill_id: string | null;
   /* 入库确认单（2026-09-08 两阶段入库）：已生成 draft 时带出，卡片按钮变「待确认 →」 */
   draft_inbound_id: string | null;
   draft_inbound_no: string | null;
 }
 
+/* 把单张运单组装成 批次运单（带分摊进度）；运单不存在时返回 null */
+function 组装批次运单(
+  运单id: string,
+  运单映射: Map<string, { tracking_no: string | null; logistics_company_name: string | null; freight_amount: number | null }>,
+  已分摊映射: Map<string, number>
+): 批次运单 | null {
+  const 运单 = 运单映射.get(运单id);
+  if (!运单) return null;
+  const 已分摊 = Math.round((已分摊映射.get(运单id) || 0) * 100) / 100;
+  const 剩余 = Math.round(((运单.freight_amount || 0) - 已分摊) * 100) / 100;
+  return { id: 运单id, ...运单, 已分摊, 剩余 };
+}
+
 /* 查单个批次的关联运单（入库确认单编辑页换分摊运单用）：
-   与 查询批次卡片 同口径——配件级 waybill 优先、空则回退采购单单头，
+   批次级 waybill_id 优先（2026-09-09 批次卡单运单），NULL 时回退配件行派生——
+   配件级 waybill 优先、空则回退采购单单头，
    剩余 = 运单总运费 − 已完成入库单已分摊之和（不含 draft 占用，与确认时 RPC 口径一致） */
 export async function 查询批次运单(supabase: SupabaseClient, 批次id: string): Promise<批次运单[]> {
-  const { data: 行们 } = await supabase
-    .from("purchase_order_items")
-    .select("waybill_id, purchase_orders:order_id(waybill_id)")
-    .eq("receiving_batch_id", 批次id);
-  const 运单id集合 = new Set<string>();
-  /* postgrest 联表按数组形态返回，取 [0] 兜底（与详情页查询同写法） */
-  const 行列表 = ((行们 || []) as unknown) as { waybill_id: string | null; purchase_orders: { waybill_id: string | null }[] | { waybill_id: string | null } | null }[];
-  for (const 行 of 行列表) {
-    const 单头 = Array.isArray(行.purchase_orders) ? 行.purchase_orders[0] : 行.purchase_orders;
-    const 运单id = 行.waybill_id || 单头?.waybill_id;
-    if (运单id) 运单id集合.add(运单id);
+  /* 先查批次级关联运单 */
+  const { data: 批次 } = await supabase
+    .from("receiving_batches")
+    .select("waybill_id")
+    .eq("id", 批次id)
+    .maybeSingle();
+  const 批次运单id = (批次 as { waybill_id: string | null } | null)?.waybill_id || null;
+
+  let 运单id数组: string[];
+  if (批次运单id) {
+    运单id数组 = [批次运单id];
+  } else {
+    /* 批次未指定：回退配件行派生（配件级优先，空则回退采购单单头） */
+    const { data: 行们 } = await supabase
+      .from("purchase_order_items")
+      .select("waybill_id, purchase_orders:order_id(waybill_id)")
+      .eq("receiving_batch_id", 批次id);
+    const 运单id集合 = new Set<string>();
+    /* postgrest 联表按数组形态返回，取 [0] 兜底（与详情页查询同写法） */
+    const 行列表 = ((行们 || []) as unknown) as { waybill_id: string | null; purchase_orders: { waybill_id: string | null }[] | { waybill_id: string | null } | null }[];
+    for (const 行 of 行列表) {
+      const 单头 = Array.isArray(行.purchase_orders) ? 行.purchase_orders[0] : 行.purchase_orders;
+      const 运单id = 行.waybill_id || 单头?.waybill_id;
+      if (运单id) 运单id集合.add(运单id);
+    }
+    运单id数组 = Array.from(运单id集合);
   }
-  const 运单id数组 = Array.from(运单id集合);
   if (运单id数组.length === 0) return [];
 
   const { data: 运单们 } = await supabase
@@ -109,7 +140,7 @@ export async function 查询批次运单(supabase: SupabaseClient, 批次id: str
 /* 查所有待入库批次卡片；失败或没有批次时返回空数组（调用方按空列表渲染即可） */export async function 查询批次卡片(supabase: SupabaseClient): Promise<批次卡片[]> {
   const { data: 批次们, error } = await supabase
     .from("receiving_batches")
-    .select("id, batch_no, supplier_id, supplier_name, supplier_order_no, status, created_at")
+    .select("id, batch_no, supplier_id, supplier_name, supplier_order_no, status, created_at, waybill_id")
     .eq("status", "pending_storage")
     .order("created_at", { ascending: false });
   if (error || !批次们 || 批次们.length === 0) return [];
@@ -141,8 +172,11 @@ export async function 查询批次运单(supabase: SupabaseClient, 批次id: str
     .order("sort_order", { ascending: true });
   const 配件行们 = ((行们 || []) as unknown) as 批次配件行[];
 
-  /* 收集关联运单（配件级优先，空则回退采购单单头），去重后一次查运单 + 一次查已分摊 */
+  /* 收集关联运单（批次级 + 配件级优先/单头回退），去重后一次查运单 + 一次查已分摊 */
   const 运单id集合 = new Set<string>();
+  for (const 批 of (批次们 as { waybill_id: string | null }[])) {
+    if (批.waybill_id) 运单id集合.add(批.waybill_id);
+  }
   for (const 行 of 配件行们) {
     const 运单id = 行.waybill_id || 行.purchase_orders?.waybill_id;
     if (运单id) 运单id集合.add(运单id);
@@ -172,16 +206,19 @@ export async function 查询批次运单(supabase: SupabaseClient, 批次id: str
 
   return (批次们 as Omit<批次卡片, "items" | "waybills" | "draft_inbound_id" | "draft_inbound_no">[]).map((批) => {
     const items = 配件行们.filter((行) => 行.receiving_batch_id === 批.id);
-    /* 本批次涉及的运单去重，保持配件行里出现的先后顺序 */
+    /* 批次级关联运单优先（2026-09-09 批次卡单运单）：已指定时只显示它；
+       未指定（NULL）时回退配件行派生，保持配件行里出现的先后顺序 */
     const 本批运单 = new Map<string, 批次运单>();
-    for (const 行 of items) {
-      const 运单id = 行.waybill_id || 行.purchase_orders?.waybill_id;
-      if (!运单id || 本批运单.has(运单id)) continue;
-      const 运单 = 运单映射.get(运单id);
-      if (!运单) continue;
-      const 已分摊 = Math.round((已分摊映射.get(运单id) || 0) * 100) / 100;
-      const 剩余 = Math.round(((运单.freight_amount || 0) - 已分摊) * 100) / 100;
-      本批运单.set(运单id, { id: 运单id, ...运单, 已分摊, 剩余 });
+    if (批.waybill_id) {
+      const 运单 = 组装批次运单(批.waybill_id, 运单映射, 已分摊映射);
+      if (运单) 本批运单.set(运单.id, 运单);
+    } else {
+      for (const 行 of items) {
+        const 运单id = 行.waybill_id || 行.purchase_orders?.waybill_id;
+        if (!运单id || 本批运单.has(运单id)) continue;
+        const 运单 = 组装批次运单(运单id, 运单映射, 已分摊映射);
+        if (运单) 本批运单.set(运单id, 运单);
+      }
     }
     const 确认单 = 确认单映射.get(批.id) || null;
     return {
