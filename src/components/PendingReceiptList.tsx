@@ -817,10 +817,10 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     const map = new Map<string, number>();
     for (const o of orders) {
       const name = o.suppliers?.name || "未指定供应商";
-      const qty = (o.purchase_order_items || [])
-        .filter((it) => !it.handle_action)
-        .reduce((sum, it) => sum + it.quantity, 0);
-      map.set(name, (map.get(name) || 0) + qty);
+      /* 角标口径（2026-09-09 用户拍板）：与左侧列表一致——只数"未处理且未暂存"的
+         待收行条数；不按订购数加总、不把已暂存的行算进去（否则角标和列表对不上） */
+      const 待收行数 = (o.purchase_order_items || []).filter((it) => !it.handle_action && !it.staged_at).length;
+      map.set(name, (map.get(name) || 0) + 待收行数);
     }
     return map;
   }, [orders]);
