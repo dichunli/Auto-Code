@@ -98,6 +98,10 @@ interface Warehouse {
   name: string;
 }
 
+/* 数字输入框去掉浏览器自带的上下加减按钮（2026-09-09 用户要求）：
+   WebKit 隐藏箭头 + Firefox appearance:textfield */
+const 无加减按钮 = "[&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [appearance:textfield]";
+
 /* 待签收运单（变更批次运单弹窗用，2026-09-09 批次卡单运单） */
 interface 待签收运单 {
   id: string;
@@ -166,6 +170,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
   const [slipAmount, setSlipAmount] = useState("");
   const [slipPhotos, setSlipPhotos] = useState<string[]>([]);
   const [discountAmount, setDiscountAmount] = useState("");
+  /* 批量设置仓库（2026-09-09）：入库弹窗里一次把所有行改到同一仓库 */
+  const [批量仓库id, set批量仓库id] = useState("");
 
   /* 到货确认单（二期新流程）：已确认到货、待账务入库 */
   const [到货单列表, set到货单列表] = useState<到货单[]>(props.initialArrivalReceipts ?? []);
@@ -333,6 +339,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
         : null
     );
     setFreightAmount(首选运单 ? String(Math.max(0, 首选运单.剩余)) : "");
+    set批量仓库id("");
     setBatchModal(批);
     setInboundModalOrder(null);
     setInboundItems(forms);
@@ -397,6 +404,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
       return;
     }
 
+    /* 总金额必填（2026-09-09）：未填直接拦截（按钮禁用为主，这里兜底） */
+    if (slipAmount.trim() === "") {
+      alert("供应商销售单总金额必填，请填写后再提交");
+      return;
+    }
     const 销售单金额 = slipAmount.trim() === "" ? null : parseFloat(slipAmount);
     const 抹零 = discountAmount.trim() === "" ? 0 : parseFloat(discountAmount);
     if (销售单金额 !== null && (isNaN(销售单金额) || 销售单金额 < 0)) {
@@ -537,6 +549,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
     setSlipAmount(order.supplier_order_amount != null ? String(order.supplier_order_amount) : "");
     setSlipPhotos(order.supplier_slip_photos || []);
     setDiscountAmount("");
+    set批量仓库id("");
     setInboundItems(forms);
     setInboundModalOpen(true);
   }
@@ -553,6 +566,18 @@ export function PendingStorageList(props: PendingStorageListProps) {
     setSlipAmount("");
     setSlipPhotos([]);
     setDiscountAmount("");
+    set批量仓库id("");
+  }
+
+  /* 批量设置仓库（2026-09-09）：把选中的仓库应用到所有非退货行 */
+  function 应用批量仓库() {
+    if (!批量仓库id) {
+      alert("请先选择仓库");
+      return;
+    }
+    const 行数 = inboundItems.filter((f) => !f.isExcess).length;
+    setInboundItems((prev) => prev.map((p) => (p.isExcess ? p : { ...p, warehouseId: 批量仓库id })));
+    showToast(`已把 ${行数} 行的仓库改为所选仓库`);
   }
 
   /* 计算分摊后的成本（2026-08-21 新口径）：
@@ -579,6 +604,23 @@ export function PendingStorageList(props: PendingStorageListProps) {
     });
   }, [inboundItems, freightAmount]);
 
+  /* 销售单对平状态（2026-09-09）：总金额必填，未填/不平时「生成入库确认单」按钮禁用 */
+  const 货款合计数 = useMemo(
+    () =>
+      inboundItems
+        .filter((f) => !f.isExcess)
+        .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0), 0),
+    [inboundItems]
+  );
+  const 销售单金额数 = slipAmount.trim() === "" ? null : parseFloat(slipAmount);
+  const 抹零数值 = discountAmount.trim() === "" ? 0 : parseFloat(discountAmount) || 0;
+  const 对平差异 =
+    销售单金额数 !== null && !isNaN(销售单金额数)
+      ? Math.round((货款合计数 - 抹零数值 - 销售单金额数) * 100) / 100
+      : null;
+  const 销售单未填 = slipAmount.trim() === "";
+  const 销售单不平 = 对平差异 !== null && Math.abs(对平差异) > 0.01;
+
   async function handleConfirmInbound() {
     if (!inboundModalOrder) return;
     const orderId = inboundModalOrder.id;
@@ -595,6 +637,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
     }
 
     /* 销售单口径（2026-08-21）：填了总金额时前端先自检，不平给出明确提示（服务端还会再拦一次） */
+    /* 总金额必填（2026-09-09）：未填直接拦截（按钮禁用为主，这里兜底） */
+    if (slipAmount.trim() === "") {
+      alert("供应商销售单总金额必填，请填写后再提交");
+      return;
+    }
     const 销售单金额 = slipAmount.trim() === "" ? null : parseFloat(slipAmount);
     const 抹零 = discountAmount.trim() === "" ? 0 : parseFloat(discountAmount);
     if (销售单金额 !== null && (isNaN(销售单金额) || 销售单金额 < 0)) {
@@ -1332,74 +1379,6 @@ export function PendingStorageList(props: PendingStorageListProps) {
               </button>
             </div>
             <div className="p-8 space-y-5">
-              {/* 供应商销售单对照区（2026-08-21 按销售单执行入库）：
-                  填了总金额后，货款合计−抹零≠总金额 会被前后端双重拦截 */}
-              <div className="bg-blue-50/60 border border-blue-100 rounded-lg p-3 space-y-3">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-sm font-medium text-blue-800">供应商销售单</span>
-                  <input
-                    type="text"
-                    value={slipNo}
-                    onChange={(e) => setSlipNo(e.target.value)}
-                    placeholder="销售单号"
-                    className="w-44 px-3 py-1.5 text-sm rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
-                  />
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm text-gray-600">总金额(¥):</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={slipAmount}
-                      onChange={(e) => setSlipAmount(e.target.value)}
-                      placeholder="不填不校验"
-                      className="w-32 px-3 py-1.5 text-sm text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm text-gray-600">优惠抹零(¥):</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={discountAmount}
-                      onChange={(e) => setDiscountAmount(e.target.value)}
-                      placeholder="0.00"
-                      title="供应商少收的钱（减项）：明细合计−抹零=销售单总金额"
-                      className="w-28 px-3 py-1.5 text-sm text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
-                    />
-                  </div>
-                </div>
-                <ImageUploader
-                  onUpload={setSlipPhotos}
-                  existingImages={slipPhotos}
-                  maxImages={3}
-                  bucket="work-order-media"
-                  folder="supplier-slips"
-                />
-                {/* 金额校验条：实时显示 货款合计−抹零 与 销售单总金额 是否对平 */}
-                {slipAmount.trim() !== "" && (
-                  (() => {
-                    const 货款 = inboundItems
-                      .filter((f) => !f.isExcess)
-                      .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0), 0);
-                    const 抹零数 = parseFloat(discountAmount) || 0;
-                    const 单额 = parseFloat(slipAmount) || 0;
-                    const 差 = Math.round((货款 - 抹零数 - 单额) * 100) / 100;
-                    return Math.abs(差) <= 0.01 ? (
-                      <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1">
-                        ✓ 对平：货款 ¥{货款.toFixed(2)} − 抹零 ¥{抹零数.toFixed(2)} = 销售单 ¥{单额.toFixed(2)}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">
-                        ✗ 不平：货款 ¥{货款.toFixed(2)} − 抹零 ¥{抹零数.toFixed(2)} = ¥{(货款 - 抹零数).toFixed(2)}，
-                        与销售单 ¥{单额.toFixed(2)} 差 ¥{差.toFixed(2)}（{差 > 0 ? "货款多" : "货款少"}）——请改入库单价或填抹零
-                      </p>
-                    );
-                  })()
-                )}
-              </div>
-
               {/* 运费信息（2026-09-07 批次流程可选分摊运单，自动带出剩余未分摊额度） */}
               <div className="bg-gray-50 rounded-lg p-4 flex items-center gap-4 flex-wrap">
                 {batchModal ? (
@@ -1448,9 +1427,31 @@ export function PendingStorageList(props: PendingStorageListProps) {
                     value={freightAmount}
                     onChange={(e) => setFreightAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-32 px-3 py-1.5 text-sm text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                    className={`w-32 px-3 py-1.5 text-sm text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400 ${无加减按钮}`}
                   />
                 </div>
+              </div>
+
+              {/* 批量设置仓库（2026-09-09）：一次把所有行改到同一仓库 */}
+              <div className="flex items-center justify-end gap-2">
+                <span className="text-sm text-gray-500">批量设置仓库:</span>
+                <select
+                  value={批量仓库id}
+                  onChange={(e) => set批量仓库id(e.target.value)}
+                  className="px-3 py-1.5 text-sm rounded border border-gray-200 bg-white focus:outline-none focus:border-blue-400"
+                >
+                  <option value="">选择仓库</option>
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={应用批量仓库}
+                  className="px-3 py-1.5 text-sm text-blue-600 border border-blue-200 bg-blue-50 rounded-lg hover:bg-blue-100"
+                >
+                  应用到所有行
+                </button>
               </div>
 
               <div className="overflow-x-auto">
@@ -1468,6 +1469,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-32">仓库</th>
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-28">仓位</th>
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-32">备注</th>
+                      <th className="px-3 py-2.5 text-left font-medium text-gray-500">图片</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1482,6 +1484,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
                       const 单位成本 = qty > 0 ? Math.round((入库单价 + alloc / qty) * 100) / 100 : 0;
                       /* 编码必填（2026-09-07）：缺编码行红底，提交时拦截 */
                       const 缺编码 = !f.isExcess && (!f.item.part_id || !f.item.part_number);
+                      /* 配件图片（2026-09-09）：收货照片+凭证照片全部显示，去重 */
+                      const 图片们 = [...new Set([...(f.item.photos || []), ...(f.item.evidence_photos || [])])];
                       return (
                         <tr key={f.id} className={缺编码 ? "bg-red-50" : f.isExcess ? "bg-gray-50" : "hover:bg-gray-50"}>
                           <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
@@ -1511,7 +1515,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                                     )
                                   );
                                 }}
-                                className="w-full px-2 py-1.5 text-sm text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                                className={`w-full px-2 py-1.5 text-sm text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400 ${无加减按钮}`}
                               />
                             )}
                           </td>
@@ -1533,7 +1537,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                                   );
                                 }}
                                 title="默认采购价；供应商销售单价格不同时改这里"
-                                className={`w-full px-2 py-1.5 text-sm text-right rounded border focus:outline-none focus:border-blue-400 ${
+                                className={`w-full px-2 py-1.5 text-sm text-right rounded border focus:outline-none focus:border-blue-400 ${无加减按钮} ${
                                   f.unitCost !== (f.item.unit_cost != null ? String(f.item.unit_cost) : "")
                                     ? "border-amber-400 bg-amber-50"
                                     : "border-gray-200"
@@ -1560,7 +1564,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                                 }}
                                 placeholder={alloc > 0 ? alloc.toFixed(2) : "0"}
                                 title="默认按金额占比自动分摊；手动输入金额可锁定该行运费，其余行分摊剩余"
-                                className={`w-full px-2 py-1.5 text-sm text-right rounded border focus:outline-none focus:border-blue-400 ${
+                                className={`w-full px-2 py-1.5 text-sm text-right rounded border focus:outline-none focus:border-blue-400 ${无加减按钮} ${
                                   f.freightManual.trim() !== ""
                                     ? "border-amber-400 bg-amber-50 text-gray-900"
                                     : "border-gray-200 text-gray-500"
@@ -1661,6 +1665,25 @@ export function PendingStorageList(props: PendingStorageListProps) {
                               />
                             )}
                           </td>
+                          {/* 配件图片（2026-09-09）：缩略图全部显示，点击新标签页看大图 */}
+                          <td className="px-3 py-2">
+                            {图片们.length === 0 ? (
+                              <span className="text-gray-300 text-xs">-</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {图片们.map((url) => (
+                                  <a key={url} href={url} target="_blank" rel="noreferrer">
+                                    <img
+                                      src={url}
+                                      alt="配件图片"
+                                      loading="lazy"
+                                      className="h-10 w-10 object-cover rounded border border-gray-200 hover:border-blue-400"
+                                    />
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
@@ -1701,7 +1724,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                             ) + allocatedCosts.reduce((sum, a) => sum + a, 0)
                         ).toFixed(2)}
                       </td>
-                      <td colSpan={4} />
+                      <td colSpan={5} />
                     </tr>
                   </tfoot>
                 </table>
@@ -1715,6 +1738,70 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   条待退货记录
                 </div>
               )}
+              {/* 供应商销售单对照区（2026-09-09 移到弹窗最下边）：
+                  总金额必填，未填红框提醒；不平不能提交（按钮禁用+提交拦截双保险） */}
+              <div className="bg-blue-50/60 border border-blue-100 rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-sm font-medium text-blue-800">供应商销售单</span>
+                  <input
+                    type="text"
+                    value={slipNo}
+                    onChange={(e) => setSlipNo(e.target.value)}
+                    placeholder="销售单号"
+                    className="w-44 px-3 py-1.5 text-sm rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-gray-600">总金额(¥)<span className="text-red-500">*</span>:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={slipAmount}
+                      onChange={(e) => setSlipAmount(e.target.value)}
+                      placeholder="必填"
+                      className={`w-32 px-3 py-1.5 text-sm text-right rounded border focus:outline-none focus:border-blue-400 ${无加减按钮} ${
+                        slipAmount.trim() === ""
+                          ? "border-red-300 bg-red-50 text-red-600 placeholder-red-400"
+                          : "border-blue-200 bg-white"
+                      }`}
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-gray-600">优惠抹零(¥):</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={discountAmount}
+                      onChange={(e) => setDiscountAmount(e.target.value)}
+                      placeholder="0.00"
+                      title="供应商少收的钱（减项）：明细合计−抹零=销售单总金额"
+                      className={`w-28 px-3 py-1.5 text-sm text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400 ${无加减按钮}`}
+                    />
+                  </div>
+                </div>
+                <ImageUploader
+                  onUpload={setSlipPhotos}
+                  existingImages={slipPhotos}
+                  maxImages={3}
+                  bucket="work-order-media"
+                  folder="supplier-slips"
+                />
+                {/* 金额校验条：实时显示 货款合计−抹零 与 销售单总金额 是否对平 */}
+                {销售单金额数 !== null && !isNaN(销售单金额数) && (
+                  !销售单不平 ? (
+                    <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-1.5">
+                      ✓ 对平：货款 ¥{货款合计数.toFixed(2)} − 抹零 ¥{抹零数值.toFixed(2)} = 销售单 ¥{销售单金额数.toFixed(2)}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-1.5">
+                      ✗ 不平：货款 ¥{货款合计数.toFixed(2)} − 抹零 ¥{抹零数值.toFixed(2)} = ¥{(货款合计数 - 抹零数值).toFixed(2)}，
+                      与销售单 ¥{销售单金额数.toFixed(2)} 差 ¥{(对平差异 ?? 0).toFixed(2)}（{(对平差异 ?? 0) > 0 ? "货款多" : "货款少"}）——请改入库单价或填抹零
+                    </p>
+                  )
+                )}
+              </div>
+
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
@@ -1726,8 +1813,14 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 <button
                   type="button"
                   onClick={batchModal ? handleConfirmBatchInbound : handleConfirmInbound}
-                  disabled={submitting === `complete-${inboundModalOrder?.id}` || submitting === `batch-${batchModal?.id}`}
-                  className="px-6 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                  disabled={
+                    submitting === `complete-${inboundModalOrder?.id}` ||
+                    submitting === `batch-${batchModal?.id}` ||
+                    销售单未填 ||
+                    销售单不平
+                  }
+                  title={销售单未填 ? "请先填写供应商销售单总金额" : 销售单不平 ? "总金额与货款对不平，请核对后再提交" : ""}
+                  className="px-6 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {(batchModal ? submitting === `batch-${batchModal.id}` : submitting === `complete-${inboundModalOrder?.id}`) ? "处理中..." : "生成入库确认单"}
                 </button>
