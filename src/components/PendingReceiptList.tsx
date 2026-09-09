@@ -1553,15 +1553,22 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       })}
         </div>
 
-        {/* 右列：已暂存待提交（2026-09-06 分栏）：收一件自动移到这里，核对清单+提交 */}
-        {stagedGroups.length > 0 && (
-          <div className="w-full lg:w-[400px] lg:shrink-0 lg:sticky lg:top-4 space-y-3">
-            <div className="bg-yellow-50 rounded-xl border border-yellow-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-yellow-200 bg-yellow-100/60">
-                <h3 className="text-sm font-bold text-yellow-800">已暂存 · 待提交</h3>
-                <p className="text-xs text-yellow-700 mt-0.5">收完的货自动归到这里，核对销售单后统一提交入账</p>
+        {/* 右列：已暂存待提交（2026-09-09 用户拍板）：区域常驻+加宽到480px，
+            没有暂存时显示空态提示；收一件自动归到这里，核对清单+提交 */}
+        <div className="w-full lg:w-[480px] lg:shrink-0 lg:sticky lg:top-4 space-y-3">
+          <div className="bg-yellow-50 rounded-xl border border-yellow-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-yellow-200 bg-yellow-100/60">
+              <h3 className="text-sm font-bold text-yellow-800">已暂存 · 待提交</h3>
+              <p className="text-xs text-yellow-700 mt-0.5">收完的货自动归到这里，核对销售单后统一提交入账</p>
+            </div>
+            {stagedGroups.length === 0 ? (
+              <div className="px-4 py-10 text-center text-yellow-700/60 text-sm">
+                暂无暂存收货
+                <br />
+                <span className="text-xs">点左侧「收货」后自动归到这里</span>
               </div>
-              <div className="divide-y divide-yellow-100">
+            ) : (
+            <div className="divide-y divide-yellow-100">
                 {stagedGroups.map((g) => {
                   const 组供应商id = g.list[0]?.order.supplier_id || null;
                   /* 关联运单（2026-09-07 用户需求）：单头关联 + 配件级关联去重后显示在暂存清单顶部 */
@@ -1643,9 +1650,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                   );
                 })}
               </div>
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* 运单处理弹窗（2026-08-21）：外阜单未关联运单时点收货弹出，关联运单或豁免 */}
