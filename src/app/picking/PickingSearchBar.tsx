@@ -23,7 +23,7 @@ export function PickingSearchBar({ 初始值 }: { 初始值: string }) {
       type="text"
       value={关键词}
       onChange={(e) => set关键词(e.target.value)}
-      placeholder="搜索工单号 / 车牌 / 客户 / 配件名 / 编码"
+      placeholder="搜索工单号 / 车牌 / 厂家品牌车型 / 车主姓名电话"
       className="w-full max-w-md px-3 py-2 mb-4 text-sm rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-blue-400"
     />
   );

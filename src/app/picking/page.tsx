@@ -34,10 +34,19 @@ interface 分支联查行 {
       status: string;
       order_type: string | null;
       settled_at: string | null;
-      vehicles: { plate_number: string } | null;
-      customers: { name: string } | null;
+      vehicles: { plate_number: string; vehicle_model_id: number | null } | null;
+      customers: { name: string; phone: string | null } | null;
     } | null;
   } | null;
+}
+
+/* 车型库行（vehicle_models 中文列，select 中文名会返回 ParserError 类型，统一断言） */
+interface 车型库行 {
+  id: number;
+  厂商?: string | null;
+  品牌?: string | null;
+  车系?: string | null;
+  车型?: string | null;
 }
 
 /* 待入库检测：采购行联查返回形状 */
@@ -78,7 +87,7 @@ export default async function PickingManagePage({
         parts(quantity),
         work_order_items!inner(
           name,
-          work_orders!inner(id, order_no, status, order_type, settled_at, vehicles(plate_number), customers(name))
+          work_orders!inner(id, order_no, status, order_type, settled_at, vehicles(plate_number, vehicle_model_id), customers(name, phone))
         )
       `)
       .eq("is_selected", true)
@@ -88,6 +97,25 @@ export default async function PickingManagePage({
 
     const 所有分支 = (分支数据 || []) as unknown as 分支联查行[];
     const 分支ids = 所有分支.map((b) => b.id);
+
+    /* 车型信息（2026-09-09 需求）：vehicle_models 中文列查厂家/品牌/车系/车型，按工单拼装成一段可搜索文本 */
+    const 车型modelIds = [
+      ...new Set(
+        所有分支
+          .map((b) => b.work_order_items?.work_orders?.vehicles?.vehicle_model_id)
+          .filter((v): v is number => v != null)
+      ),
+    ];
+    const 车型Map: Record<string, string> = {};
+    if (车型modelIds.length > 0) {
+      const { data: 车型数据 } = await supabase
+        .from("vehicle_models")
+        .select("id, 厂商, 品牌, 车系, 车型")
+        .in("id", 车型modelIds);
+      for (const v of (车型数据 || []) as unknown as 车型库行[]) {
+        车型Map[String(v.id)] = [v.厂商, v.品牌, v.车系, v.车型].filter(Boolean).join(" ");
+      }
+    }
 
     /* 净领（领-退）、待出库申领数、待入库检测 三批并行 */
     const [
@@ -161,7 +189,7 @@ export default async function PickingManagePage({
       申领数: number;
       可领: boolean;
     }
-    const 行列表: (待领行 & { 工单id: string; 工单号: string; 车牌: string; 客户: string; 项目名: string })[] = [];
+    const 行列表: (待领行 & { 工单id: string; 工单号: string; 车牌: string; 客户: string; 车主电话: string; 车型信息: string; 项目名: string })[] = [];
     for (const b of 所有分支) {
       const wo = b.work_order_items?.work_orders;
       if (!wo) continue;
@@ -193,19 +221,21 @@ export default async function PickingManagePage({
         工单号: wo.order_no,
         车牌: wo.vehicles?.plate_number || "-",
         客户: wo.customers?.name || "-",
+        车主电话: wo.customers?.phone || "",
+        车型信息: 车型Map[String(wo.vehicles?.vehicle_model_id)] || "",
         项目名: b.work_order_items?.name || "-",
       });
     }
 
-    /* 搜索过滤（2026-09-09 需求）：工单号/车牌/客户/配件名/编码，不区分大小写 */
+    /* 搜索过滤（2026-09-09 需求）：工单号/车牌/车主（姓名/电话）/车辆厂家品牌车型，不区分大小写 */
     const 关键词 = 搜索词.toLowerCase();
     const 过滤后行列表 = 关键词
       ? 行列表.filter((r) =>
           r.工单号.toLowerCase().includes(关键词) ||
           r.车牌.toLowerCase().includes(关键词) ||
           r.客户.toLowerCase().includes(关键词) ||
-          r.名称.toLowerCase().includes(关键词) ||
-          (r.part_number || "").toLowerCase().includes(关键词)
+          r.车主电话.toLowerCase().includes(关键词) ||
+          r.车型信息.toLowerCase().includes(关键词)
         )
       : 行列表;
 
@@ -239,6 +269,8 @@ export default async function PickingManagePage({
           工单号: r.工单号,
           车牌: r.车牌,
           客户: r.客户,
+          车主电话: r.车主电话,
+          车型信息: r.车型信息,
           行列表: [行],
         });
       }

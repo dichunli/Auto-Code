@@ -14,7 +14,7 @@ export interface 待领行 {
   已领: number;
   库存: number;
   申领数: number;
-  /* true=有库存可立即领；false=已进入待入库流程但未入账（一期只读展示） */
+  /* true=有库存可立即领；false=已进入待入库流程但未入账（可急件直领） */
   可领: boolean;
 }
 
@@ -24,6 +24,8 @@ export interface 待领工单组 {
   工单号: string;
   车牌: string;
   客户: string;
+  车主电话: string;
+  车型信息: string;
   行列表: 待领行[];
 }
 
@@ -38,7 +40,8 @@ interface Props {
   搜索词: string;
 }
 
-/* 待领料列表：服务端渲染（纯展示 + 跳开单页链接 + 直领按钮） */
+/* 待领料列表：服务端渲染（纯展示 + 跳开单页链接 + 直领按钮）。
+   各卡片列宽用 table-fixed + colgroup 钉死，保证多张卡片的列上下对齐 */
 export function PendingPickList({ 组列表, 当前页, 总条数, 每页, 员工列表, 搜索词 }: Props) {
   const 总页数 = Math.ceil(总条数 / 每页) || 1;
   /* 分页链接带上搜索词 */
@@ -58,29 +61,42 @@ export function PendingPickList({ 组列表, 当前页, 总条数, 每页, 员�
     <div className="space-y-4">
       {组列表.map((组) => (
         <div key={组.工单id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          {/* 工单卡片头：单号 + 车牌/客户 + 去领料 */}
-          <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-100">
-            <div className="flex items-center gap-3 min-w-0">
+          {/* 工单卡片头：工单号 + 大车牌 + 车型 + 车主 + 去领料 */}
+          <div className="flex items-center justify-between gap-3 px-5 py-3 bg-gray-50 border-b border-gray-100">
+            <div className="flex items-center gap-x-4 gap-y-1 flex-wrap min-w-0">
               <Link
                 href={`/work-orders/${组.工单id}`}
-                className="font-medium text-blue-600 hover:text-blue-700"
+                className="text-sm text-blue-600 hover:text-blue-700"
               >
                 {组.工单号}
               </Link>
-              <span className="text-sm text-gray-500 truncate">
-                {组.车牌} · {组.客户}
+              <span className="text-lg font-bold text-gray-900 tracking-wide">{组.车牌}</span>
+              {组.车型信息 && (
+                <span className="text-sm text-gray-500">{组.车型信息}</span>
+              )}
+              <span className="text-sm text-gray-500">
+                车主：{组.客户}{组.车主电话 ? ` ${组.车主电话}` : ""}
               </span>
             </div>
             <Link
               href={`/picking-orders/new?work_order_id=${组.工单id}`}
-              className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 whitespace-nowrap"
+              className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 whitespace-nowrap shrink-0"
             >
               去领料
             </Link>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm table-fixed">
+              {/* 列宽钉死：多张卡片的列才能上下对齐 */}
+              <colgroup>
+                <col />
+                <col className="w-36" />
+                <col className="w-20" />
+                <col className="w-16" />
+                <col className="w-16" />
+                <col className="w-44" />
+              </colgroup>
               <thead>
                 <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
                   <th className="px-5 py-2 font-medium">配件</th>
@@ -103,12 +119,12 @@ export function PendingPickList({ 组列表, 当前页, 总条数, 每页, 员�
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-gray-400 mt-0.5">
+                      <div className="text-xs text-gray-400 mt-0.5 truncate">
                         {[行.brand, 行.specification].filter(Boolean).join(" / ")}
                         {行.part_number && ` · ${行.part_number}`}
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-gray-500 text-xs">{行.项目名}</td>
+                    <td className="px-3 py-3 text-gray-500 text-xs truncate">{行.项目名}</td>
                     <td className="px-3 py-3 text-right text-gray-900">
                       {行.需求数量} {行.unit}
                     </td>
