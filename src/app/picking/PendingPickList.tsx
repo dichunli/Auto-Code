@@ -13,6 +13,8 @@ export interface 待领行 {
   需求数量: number;
   已领: number;
   库存: number;
+  /* 仓库·仓位×数量 拼装文本（如"主仓库·A-01×3；二仓×1"），无分仓数据时空串 */
+  仓位信息: string;
   申领数: number;
   /* true=有库存可立即领；false=已进入待入库流程但未入账（可急件直领） */
   可领: boolean;
@@ -96,6 +98,7 @@ export function PendingPickList({ 组列表, 当前页, 总条数, 每页, 员�
                 <col className="w-16" />
                 <col className="w-16" />
                 <col className="w-44" />
+                <col className="w-44" />
               </colgroup>
               <thead>
                 <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
@@ -104,6 +107,7 @@ export function PendingPickList({ 组列表, 当前页, 总条数, 每页, 员�
                   <th className="px-3 py-2 font-medium text-right">需求</th>
                   <th className="px-3 py-2 font-medium text-right">已领</th>
                   <th className="px-3 py-2 font-medium text-right">库存</th>
+                  <th className="px-3 py-2 font-medium">仓库/仓位</th>
                   <th className="px-3 py-2 font-medium">状态</th>
                 </tr>
               </thead>
@@ -130,6 +134,9 @@ export function PendingPickList({ 组列表, 当前页, 总条数, 每页, 员�
                     </td>
                     <td className="px-3 py-3 text-right text-gray-600">{行.已领}</td>
                     <td className="px-3 py-3 text-right text-gray-600">{行.库存}</td>
+                    <td className="px-3 py-3 text-xs text-gray-600">
+                      {行.仓位信息 || "-"}
+                    </td>
                     <td className="px-3 py-3">
                       {行.可领 ? (
                         <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">
