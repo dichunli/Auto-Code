@@ -1310,14 +1310,14 @@ export function PendingStorageList(props: PendingStorageListProps) {
         </div>
       ))}
 
-      {/* 入库单确认弹窗 */}
+      {/* 入库单确认弹窗（2026-09-09 加大美化：更宽窗口+更大输入框） */}
       {inboundModalOpen && (inboundModalOrder || batchModal) && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-5xl my-8 relative">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-7xl my-6 relative">
+            <div className="px-8 py-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl z-10">
               <div>
-                <h3 className="text-base font-semibold text-gray-900">生成入库确认单</h3>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <h3 className="text-lg font-semibold text-gray-900">生成入库确认单</h3>
+                <p className="text-sm text-gray-500 mt-1">
                   {batchModal
                     ? `收货批次: ${batchModal.batch_no} · 供应商: ${batchModal.supplier_name || "-"}${batchModal.supplier_order_no ? ` · 销售单: ${batchModal.supplier_order_no}` : ""}`
                     : `采购单: ${inboundModalOrder!.order_no || inboundModalOrder!.id.slice(0, 8)} · 供应商: ${inboundModalOrder!.suppliers?.name || "-"}`}
@@ -1326,26 +1326,26 @@ export function PendingStorageList(props: PendingStorageListProps) {
               <button
                 type="button"
                 onClick={closeInboundModal}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
               >
                 ×
               </button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-8 space-y-5">
               {/* 供应商销售单对照区（2026-08-21 按销售单执行入库）：
                   填了总金额后，货款合计−抹零≠总金额 会被前后端双重拦截 */}
               <div className="bg-blue-50/60 border border-blue-100 rounded-lg p-3 space-y-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-medium text-blue-800">供应商销售单</span>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-sm font-medium text-blue-800">供应商销售单</span>
                   <input
                     type="text"
                     value={slipNo}
                     onChange={(e) => setSlipNo(e.target.value)}
                     placeholder="销售单号"
-                    className="w-36 px-2 py-1 text-xs rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
+                    className="w-44 px-3 py-1.5 text-sm rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
                   />
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-gray-600">总金额(¥):</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-gray-600">总金额(¥):</span>
                     <input
                       type="number"
                       min={0}
@@ -1353,11 +1353,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
                       value={slipAmount}
                       onChange={(e) => setSlipAmount(e.target.value)}
                       placeholder="不填不校验"
-                      className="w-24 px-2 py-1 text-xs text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
+                      className="w-32 px-3 py-1.5 text-sm text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
                     />
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-gray-600">优惠抹零(¥):</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-gray-600">优惠抹零(¥):</span>
                     <input
                       type="number"
                       min={0}
@@ -1366,7 +1366,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                       onChange={(e) => setDiscountAmount(e.target.value)}
                       placeholder="0.00"
                       title="供应商少收的钱（减项）：明细合计−抹零=销售单总金额"
-                      className="w-20 px-2 py-1 text-xs text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
+                      className="w-28 px-3 py-1.5 text-sm text-right rounded border border-blue-200 bg-white focus:outline-none focus:border-blue-400"
                     />
                   </div>
                 </div>
@@ -1401,11 +1401,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
               </div>
 
               {/* 运费信息（2026-09-07 批次流程可选分摊运单，自动带出剩余未分摊额度） */}
-              <div className="bg-gray-50 rounded-lg p-3 flex items-center gap-4 flex-wrap">
+              <div className="bg-gray-50 rounded-lg p-4 flex items-center gap-4 flex-wrap">
                 {batchModal ? (
                   batchModal.waybills.length > 0 ? (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-gray-500">分摊运单:</span>
+                      <span className="text-sm text-gray-500">分摊运单:</span>
                       <select
                         value={batchWaybillId || ""}
                         onChange={(e) => {
@@ -1415,7 +1415,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                           const w = batchModal.waybills.find((x) => x.id === id);
                           if (w) setFreightAmount(String(Math.max(0, w.剩余)));
                         }}
-                        className="px-2 py-1 text-xs rounded border border-gray-200 bg-white focus:outline-none focus:border-blue-400"
+                        className="px-3 py-1.5 text-sm rounded border border-gray-200 bg-white focus:outline-none focus:border-blue-400"
                       >
                         {batchModal.waybills.map((w) => (
                           <option key={w.id} value={w.id}>
@@ -1424,23 +1424,23 @@ export function PendingStorageList(props: PendingStorageListProps) {
                           </option>
                         ))}
                       </select>
-                      <span className="text-[11px] text-gray-400">
+                      <span className="text-xs text-gray-400">
                         默认带出剩余未分摊，可改；多张销售单可分多次摊完同一张运单
                         {batchModal.waybills.find((x) => x.id === batchWaybillId && x.剩余 <= 0) ? "（该运单运费已摊完）" : ""}
                       </span>
                     </div>
                   ) : (
-                    <span className="text-xs text-gray-500">无关联运单，可手工填运费</span>
+                    <span className="text-sm text-gray-500">无关联运单，可手工填运费</span>
                   )
                 ) : waybillInfo ? (
-                  <span className="text-xs text-gray-500">
+                  <span className="text-sm text-gray-500">
                     关联运单: {waybillInfo.logistics_company_name || "-"} / {waybillInfo.tracking_no || "-"}
                   </span>
                 ) : (
-                  <span className="text-xs text-gray-500">无关联运单</span>
+                  <span className="text-sm text-gray-500">无关联运单</span>
                 )}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">运费金额(¥):</span>
+                  <span className="text-sm text-gray-500">运费金额(¥):</span>
                   <input
                     type="number"
                     min={0}
@@ -1448,7 +1448,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                     value={freightAmount}
                     onChange={(e) => setFreightAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-24 px-2 py-1 text-xs text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                    className="w-32 px-3 py-1.5 text-sm text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400"
                   />
                 </div>
               </div>
@@ -1457,17 +1457,17 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 <table className="w-full text-sm border border-gray-100 rounded-lg">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-10">序号</th>
-                      <th className="px-3 py-2 text-left font-medium text-gray-500">商品名称</th>
-                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">编码</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-16">数量</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">入库价</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-24">分摊运费</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">成本价</th>
-                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">批次号</th>
-                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">仓库</th>
-                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">仓位</th>
-                      <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">备注</th>
+                      <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-10">序号</th>
+                      <th className="px-3 py-2.5 text-left font-medium text-gray-500">商品名称</th>
+                      <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-28">编码</th>
+                      <th className="px-3 py-2.5 text-right font-medium text-gray-500 w-20">数量</th>
+                      <th className="px-3 py-2.5 text-right font-medium text-gray-500 w-24">入库价</th>
+                      <th className="px-3 py-2.5 text-right font-medium text-gray-500 w-28">分摊运费</th>
+                      <th className="px-3 py-2.5 text-right font-medium text-gray-500 w-24">成本价</th>
+                      <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-32">批次号</th>
+                      <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-32">仓库</th>
+                      <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-28">仓位</th>
+                      <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-32">备注</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1511,7 +1511,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                                     )
                                   );
                                 }}
-                                className="w-full px-2 py-1 text-xs text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                                className="w-full px-2 py-1.5 text-sm text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400"
                               />
                             )}
                           </td>
@@ -1533,7 +1533,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                                   );
                                 }}
                                 title="默认采购价；供应商销售单价格不同时改这里"
-                                className={`w-full px-2 py-1 text-xs text-right rounded border focus:outline-none focus:border-blue-400 ${
+                                className={`w-full px-2 py-1.5 text-sm text-right rounded border focus:outline-none focus:border-blue-400 ${
                                   f.unitCost !== (f.item.unit_cost != null ? String(f.item.unit_cost) : "")
                                     ? "border-amber-400 bg-amber-50"
                                     : "border-gray-200"
@@ -1560,7 +1560,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                                 }}
                                 placeholder={alloc > 0 ? alloc.toFixed(2) : "0"}
                                 title="默认按金额占比自动分摊；手动输入金额可锁定该行运费，其余行分摊剩余"
-                                className={`w-full px-2 py-1 text-xs text-right rounded border focus:outline-none focus:border-blue-400 ${
+                                className={`w-full px-2 py-1.5 text-sm text-right rounded border focus:outline-none focus:border-blue-400 ${
                                   f.freightManual.trim() !== ""
                                     ? "border-amber-400 bg-amber-50 text-gray-900"
                                     : "border-gray-200 text-gray-500"
@@ -1597,7 +1597,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                                   );
                                 }}
                                 placeholder="批次号"
-                                className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                                className="w-full px-2 py-1.5 text-sm rounded border border-gray-200 focus:outline-none focus:border-blue-400"
                               />
                             )}
                           </td>
@@ -1614,7 +1614,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                                     )
                                   );
                                 }}
-                                className="w-full px-1 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                                className="w-full px-2 py-1.5 text-sm rounded border border-gray-200 focus:outline-none focus:border-blue-400"
                               >
                                 <option value="">选择仓库</option>
                                 {warehouses.map((w) => (
@@ -1638,7 +1638,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                                   );
                                 }}
                                 placeholder="仓位"
-                                className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                                className="w-full px-2 py-1.5 text-sm rounded border border-gray-200 focus:outline-none focus:border-blue-400"
                               />
                             )}
                           </td>
@@ -1657,7 +1657,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                                   );
                                 }}
                                 placeholder="备注"
-                                className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                                className="w-full px-2 py-1.5 text-sm rounded border border-gray-200 focus:outline-none focus:border-blue-400"
                               />
                             )}
                           </td>
@@ -1715,11 +1715,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   条待退货记录
                 </div>
               )}
-              <div className="flex justify-end gap-3">
+              <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={closeInboundModal}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50"
+                  className="px-5 py-2.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50"
                 >
                   取消
                 </button>
@@ -1727,13 +1727,13 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   type="button"
                   onClick={batchModal ? handleConfirmBatchInbound : handleConfirmInbound}
                   disabled={submitting === `complete-${inboundModalOrder?.id}` || submitting === `batch-${batchModal?.id}`}
-                  className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                  className="px-6 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
                   {(batchModal ? submitting === `batch-${batchModal.id}` : submitting === `complete-${inboundModalOrder?.id}`) ? "处理中..." : "生成入库确认单"}
                 </button>
               </div>
               {/* 两阶段入库提示（2026-09-08）：生成确认单后库存还不会变，确认入库才变 */}
-              <p className="text-xs text-gray-400 text-right mt-2">
+              <p className="text-sm text-gray-400 text-right mt-1">
                 生成确认单后库存不变，可在下一页打印入库单/条形码、修改内容，确认入库后才加库存
               </p>
             </div>
