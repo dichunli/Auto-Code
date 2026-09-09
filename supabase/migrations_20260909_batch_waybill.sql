@@ -42,7 +42,8 @@ CREATE INDEX IF NOT EXISTS ix_receiving_batches_waybill
 UPDATE public.receiving_batches b
 SET waybill_id = t.waybill_id
 FROM (
-  SELECT receiving_batch_id, MIN(waybill_id) AS waybill_id
+  /* 注意：PostgreSQL 没有 min(uuid)，用 ARRAY_AGG 取第一个值（HAVING 已保证全组同值） */
+  SELECT receiving_batch_id, (ARRAY_AGG(waybill_id))[1] AS waybill_id
   FROM (
     SELECT poi.receiving_batch_id,
            COALESCE(poi.waybill_id, o.waybill_id) AS waybill_id
@@ -146,8 +147,9 @@ BEGIN
   END IF;
 
   /* 批次关联运单初始值（2026-09-09）：卡内配件行运单（行级优先、回退采购单单头）
-     去重后恰好一张才带入；多张或没有则留 NULL，由待入库卡片「变更运单」指定 */
-  SELECT COUNT(DISTINCT w), MIN(w) INTO v_waybill_count, v_waybill_id
+     去重后恰好一张才带入；多张或没有则留 NULL，由待入库卡片「变更运单」指定。
+     注意：PostgreSQL 没有 min(uuid)，用 ARRAY_AGG 取第一个值（COUNT 已保证全组同值） */
+  SELECT COUNT(DISTINCT w), (ARRAY_AGG(w))[1] INTO v_waybill_count, v_waybill_id
   FROM (
     SELECT COALESCE(poi.waybill_id, o.waybill_id) AS w
     FROM public.purchase_order_items poi
