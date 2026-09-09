@@ -1164,9 +1164,9 @@ export default function MobileItemEditor({
     (async () => {
       const { data: 领料们 } = await supabase
         .from("part_picking_records")
-        .select("id, quantity, created_at, picking_orders(picking_no)")
+        .select("id, quantity, picked_at, picking_orders(picking_no)")
         .eq("work_order_item_part_id", branch.id)
-        .order("created_at", { ascending: false });
+        .order("picked_at", { ascending: false });
       const 记录们 = (领料们 || []) as unknown as 可退领料行[];
       const 记录ids = 记录们.map((r) => r.id);
       const [{ data: 退库们 }, { data: 申请们 }] = await Promise.all([
