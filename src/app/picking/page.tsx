@@ -6,10 +6,9 @@ import { PickingTabBar, type PickingTab } from "./PickingTabBar";
 import { PendingPickList, type 待领工单组 } from "./PendingPickList";
 import { PendingReturnRequestList, type 退料申请行 } from "./PendingReturnRequestList";
 import { PickingSearchBar } from "./PickingSearchBar";
+import { PickedOrdersGrouped, type 已领料单, type 领料明细行 } from "./PickedOrdersGrouped";
 import type { 员工选项 } from "./DirectPickButton";
-import PickingOrdersContent from "../picking-orders/PickingOrdersContent";
 import MaterialReturnsContent from "../material-returns/MaterialReturnsContent";
-import type { 领料单 } from "../picking-orders/page";
 import type { 退料单 } from "../material-returns/page";
 
 /* 待领料分支的联查返回形状 */
@@ -178,6 +177,7 @@ export default async function PickingManagePage({
     /* 过滤 + 分类 */
     interface 待领行 {
       id: string;
+      part_id: string | null;
       名称: string;
       brand: string | null;
       specification: string | null;
@@ -207,6 +207,7 @@ export default async function PickingManagePage({
       if (!有库存 && !在待入库) continue;
       行列表.push({
         id: b.id,
+        part_id: b.part_id,
         名称: b.alias_name || b.name || b.part_names?.name || "未命名配件",
         brand: b.brand,
         specification: b.specification,
@@ -240,6 +241,33 @@ export default async function PickingManagePage({
         )
       : 行列表;
 
+    /* 仓库仓位（2026-09-09 需求）：按配件查分仓库存，拼成"仓库·仓位×数量"文本 */
+    const 有档案配件ids = [...new Set(过滤后行列表.map((r) => r.part_id).filter((v): v is string => !!v))];
+    const 仓位Map: Record<string, string> = {};
+    if (有档案配件ids.length > 0) {
+      const { data: 仓位数据 } = await supabase
+        .from("part_stock_locations")
+        .select("part_id, location, quantity, warehouses(name)")
+        .in("part_id", 有档案配件ids)
+        .gt("quantity", 0);
+      interface 仓位行 {
+        part_id: string;
+        location: string | null;
+        quantity: number;
+        warehouses: { name: string } | null;
+      }
+      const 按配件 = new Map<string, string[]>();
+      for (const r of (仓位数据 || []) as unknown as 仓位行[]) {
+        const 段 = `${r.warehouses?.name || "未分仓"}${r.location ? `·${r.location}` : ""}×${r.quantity}`;
+        const arr = 按配件.get(r.part_id) || [];
+        arr.push(段);
+        按配件.set(r.part_id, arr);
+      }
+      for (const [pid, arr] of 按配件) {
+        仓位Map[pid] = arr.join("；");
+      }
+    }
+
     /* 分页（按分支行 50 条/页） */
     待领总分支数 = 过滤后行列表.length;
     const 页内行 = 过滤后行列表.slice((当前页 - 1) * 每页分支数, 当前页 * 每页分支数);
@@ -259,6 +287,7 @@ export default async function PickingManagePage({
         需求数量: r.需求数量,
         已领: r.已领,
         库存: r.库存,
+        仓位信息: r.part_id ? 仓位Map[r.part_id] || "" : "",
         申领数: r.申领数,
         可领: r.可领,
       };
@@ -287,14 +316,53 @@ export default async function PickingManagePage({
     员工列表 = (员工数据 || []) as 员工选项[];
   }
 
-  /* ═══ 已领料：领料单列表（与 /picking-orders 同口径，嵌入模式复用组件） ═══ */
-  let 领料单们: 领料单[] = [];
+  /* ═══ 已领料：三级层级（工单→领料单→明细），2026-09-09 用户拍板 ═══ */
+  let 领料单们: 已领料单[] = [];
+  let 领料明细们: 领料明细行[] = [];
+  const 车型By工单: Record<string, string> = {};
   if (currentTab === "picked") {
     const { data } = await supabase
       .from("picking_orders")
-      .select("id, picking_no, status, total_quantity, receiver_name, notes, created_at, work_orders(id, order_no), profiles(full_name)")
-      .order("created_at", { ascending: false });
-    领料单们 = (data as unknown as 领料单[]) || [];
+      .select("id, picking_no, status, total_quantity, receiver_name, created_at, work_orders(id, order_no, vehicles(plate_number, vehicle_model_id, brand, model)), profiles(full_name)")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    领料单们 = (data as unknown as 已领料单[]) || [];
+
+    /* 三级明细：一次性查出这些单的配件行 */
+    const 单ids = 领料单们.map((o) => o.id);
+    if (单ids.length > 0) {
+      const { data: 明细数据 } = await supabase
+        .from("picking_order_items")
+        .select("id, picking_order_id, name, part_number, brand, specification, unit, batch_no, quantity")
+        .in("picking_order_id", 单ids)
+        .order("created_at", { ascending: true });
+      领料明细们 = (明细数据 || []) as unknown as 领料明细行[];
+    }
+
+    /* 车型信息：车型库优先，车辆档案 brand/model 兜底（与待领料同口径） */
+    const modelIds = [
+      ...new Set(
+        领料单们
+          .map((o) => o.work_orders?.vehicles?.vehicle_model_id)
+          .filter((v): v is number => v != null)
+      ),
+    ];
+    const 车型Map: Record<string, string> = {};
+    if (modelIds.length > 0) {
+      const { data: 车型数据 } = await supabase
+        .from("vehicle_models")
+        .select("id, 厂商, 品牌, 车系, 车型")
+        .in("id", modelIds);
+      for (const v of (车型数据 || []) as unknown as 车型库行[]) {
+        车型Map[String(v.id)] = [v.厂商, v.品牌, v.车系, v.车型].filter(Boolean).join(" ");
+      }
+    }
+    for (const o of 领料单们) {
+      const wo = o.work_orders;
+      if (!wo) continue;
+      车型By工单[wo.id] = 车型Map[String(wo.vehicles?.vehicle_model_id)] ||
+        [wo.vehicles?.brand, wo.vehicles?.model].filter(Boolean).join(" ");
+    }
   }
 
   /* ═══ 待退料：退料申请 pending 列表（师傅手机端发起，库管确认后开退料单） ═══ */
@@ -382,7 +450,12 @@ export default async function PickingManagePage({
         </>
       )}
       {currentTab === "picked" && (
-        <PickingOrdersContent key={currentTab} initialRecords={领料单们} 嵌入模式 />
+        <PickedOrdersGrouped
+          key={currentTab}
+          initialRecords={领料单们}
+          明细列表={领料明细们}
+          车型By工单={车型By工单}
+        />
       )}
       {currentTab === "pending_return" && (
         <PendingReturnRequestList key={currentTab} initialRequests={退料申请们} 申请人姓名={申请人姓名} />
