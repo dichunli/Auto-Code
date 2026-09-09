@@ -1283,6 +1283,70 @@ export async function 生成批次入库确认单(
   return { success: true, draft_id: 结果.draft_id, inbound_no: 结果.inbound_no };
 }
 
+/* ─── 变更批次关联运单（2026-09-09 批次卡单运单）───
+ * 黄卡一张卡只挂一张运单，可从全部待签收运单中换选（不限供应商）；
+ * 已生成入库确认单（draft）的批次禁止变更——draft 的分摊运单已按旧值建单
+ * 并占用运单额度，变更会造成卡片显示与确认单账务口径不一致。
+ * 运单id 传 null 表示解除关联。 */
+export async function 变更批次运单(
+  批次id: string,
+  运单id: string | null
+): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 批次必须存在且仍在待入库（已入库的历史卡不允许改） */
+  const { data: 批次 } = await supabase
+    .from("receiving_batches")
+    .select("id, status")
+    .eq("id", 批次id)
+    .maybeSingle();
+  if (!批次) return { success: false, error: "收货批次不存在" };
+  if ((批次 as { status: string }).status !== "pending_storage") {
+    return { success: false, error: "该批次已入库，不能再变更运单" };
+  }
+
+  /* 已生成入库确认单的批次禁止变更（先确认或作废后再变） */
+  const { data: 草稿 } = await supabase
+    .from("inbound_orders")
+    .select("id, inbound_no")
+    .eq("receiving_batch_id", 批次id)
+    .eq("status", "draft")
+    .maybeSingle();
+  if (草稿) {
+    return {
+      success: false,
+      error: `该批次已生成入库确认单 ${(草稿 as { inbound_no: string }).inbound_no}，请先确认或作废后再变更运单`,
+    };
+  }
+
+  /* 运单非空时校验存在且待签收（已签收/已作废不能再关联，与待收货环节口径一致） */
+  if (运单id) {
+    const { data: 运单 } = await supabase
+      .from("logistics_waybills")
+      .select("id, status")
+      .eq("id", 运单id)
+      .maybeSingle();
+    if (!运单) return { success: false, error: "运单不存在" };
+    if ((运单 as { status: string }).status !== "pending") {
+      return { success: false, error: "该运单已签收或已作废，不能关联" };
+    }
+  }
+
+  const { error: 更新错误 } = await supabase
+    .from("receiving_batches")
+    .update({ waybill_id: 运单id })
+    .eq("id", 批次id);
+  if (更新错误) return { success: false, error: 更新错误.message };
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
+
 /* ─── 生成采购入库确认单（蓝卡）：建 draft，返回确认单 id 供跳转 ─── */
 export async function 生成采购入库确认单(
   采购单id: string,

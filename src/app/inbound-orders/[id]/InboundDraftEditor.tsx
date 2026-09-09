@@ -197,6 +197,11 @@ export function InboundDraftEditor({ 单头, 明细, 仓库列表, 运单列表 
 
   /* 保存修改 */
   async function 保存修改() {
+    /* 销售单总金额必填（2026-09-09）：未填直接拦截 */
+    if (销售单金额.trim() === "") {
+      alert("供应商销售单总金额必填，请填写后再保存");
+      return;
+    }
     if (销售单金额.trim() !== "" && (isNaN(销售单金额数!) || 销售单金额数! < 0)) {
       alert("销售单总金额无效");
       return;
@@ -248,6 +253,16 @@ export function InboundDraftEditor({ 单头, 明细, 仓库列表, 运单列表 
 
   /* 确认入库：服务端从 draft 读数据执行，本函数只传 id */
   async function 执行确认入库() {
+    /* 销售单总金额必填（2026-09-09）：表单没填或已存数据缺金额都先拦，
+       服务端 确认入库单 对存量 NULL 金额旧单还有第二道拦截 */
+    if (销售单金额.trim() === "" || 单头.supplier_order_amount == null) {
+      alert("请先填写供应商销售单总金额并保存，再确认入库");
+      return;
+    }
+    if (Math.abs(对平差异) > 0.01) {
+      alert("销售单总金额与货款对不平，请先修正并保存，再确认入库");
+      return;
+    }
     const 确认 = await 请求确认({
       title: "确认入库",
       message: `确认后库存立即增加、生成应付款，确认单 ${单头.inbound_no} 转为正式入库单。\n确认前请先保存修改（未保存的改动不会生效）。是否继续？`,
@@ -329,13 +344,23 @@ export function InboundDraftEditor({ 单头, 明细, 仓库列表, 运单列表 
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">销售单总金额</label>
+            <label className="block text-xs text-gray-500 mb-1">
+              销售单总金额 <span className="text-red-500">*</span>
+            </label>
+            {/* 必填三态样式（2026-09-09，同待询价口径）：
+                未填红框提醒 / 已改未保存黄底 / 正常灰框 */}
             <input
               type="number"
               value={销售单金额}
               onChange={(e) => set销售单金额(e.target.value)}
-              placeholder="选填，填了会校验对平"
-              className="w-32 px-2 py-1 text-sm text-right border border-gray-300 rounded bg-white focus:outline-none focus:border-blue-400"
+              placeholder="必填，填了校验对平"
+              className={`w-32 px-2 py-1 text-sm text-right rounded focus:outline-none focus:border-blue-400 ${
+                销售单金额.trim() === ""
+                  ? "border border-red-300 bg-red-50 text-red-600 placeholder-red-400"
+                  : 销售单金额 !== (单头.supplier_order_amount != null ? String(单头.supplier_order_amount) : "")
+                    ? "border border-yellow-400 bg-yellow-50"
+                    : "border border-gray-300 bg-white"
+              }`}
             />
           </div>
           {运单列表.length > 0 && (
@@ -528,7 +553,7 @@ export function InboundDraftEditor({ 单头, 明细, 仓库列表, 运单列表 
         <button
           type="button"
           onClick={执行确认入库}
-          disabled={submitting !== null || 明细.some((行) => !行.part_id || !行.part_number)}
+          disabled={submitting !== null || 明细.some((行) => !行.part_id || !行.part_number) || 单头.supplier_order_amount == null}
           className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
         >
           {submitting === "confirm" ? "入库中..." : "确认入库"}
@@ -536,6 +561,9 @@ export function InboundDraftEditor({ 单头, 明细, 仓库列表, 运单列表 
       </div>
       {明细.some((行) => !行.part_id || !行.part_number) && (
         <p className="text-xs text-red-500 text-right">有行缺少零件编码，补全后才能确认入库</p>
+      )}
+      {单头.supplier_order_amount == null && (
+        <p className="text-xs text-red-500 text-right">未填写供应商销售单总金额，填写并保存后才能确认入库</p>
       )}
 
       {/* 新建/编辑配件弹窗（行内编码「新建」入口） */}

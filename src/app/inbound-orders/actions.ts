@@ -144,6 +144,12 @@ export async function 确认入库单(
     return { success: false, error: "该单已确认入库，请勿重复操作" };
   }
 
+  /* 销售单总金额必填（2026-09-09）：存量 NULL 金额的旧确认单先补填保存再确认，
+     否则 complete RPC 的「填了才校验对平」会跳过对账直接入账 */
+  if (单头.supplier_order_amount == null) {
+    return { success: false, error: "请先填写供应商销售单总金额并保存，再确认入库" };
+  }
+
   /* 读确认单明细 */
   const { data: 明细行, error: 明细错误 } = await supabase
     .from("inbound_order_items")
