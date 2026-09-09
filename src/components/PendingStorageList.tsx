@@ -74,6 +74,12 @@ export interface PurchaseOrder {
   purchase_order_items: PurchaseOrderItem[];
 }
 
+/* 缺编码行数（2026-09-09 统一口径）：除「错发丢弃」外，没填零件编码的行都算缺编码——
+   不再按"是否要入库"豁免（用户拍板：少发补货等 0 数量的行也要先补编码，卡片按钮统一禁用） */
+function 缺编码行数(items: { handle_action: string | null; part_id: string | null; part_number: string | null }[]): number {
+  return items.filter((it) => it.handle_action !== "wrong_discard" && (!it.part_id || !it.part_number)).length;
+}
+
 /* 收货批次卡片（2026-09-07 卡片化）：一张供应商销售单一张卡片，
    类型和查询统一放在 @/lib/batchCards（客户端刷新与服务端首屏共用） */
 
@@ -98,6 +104,13 @@ interface Warehouse {
   name: string;
 }
 
+/* 仓库排序（2026-09-09 用户拍板）：「主仓库」固定排在最上面，其余按名称排序 */
+function 排序仓库(list: Warehouse[]): Warehouse[] {
+  return [...list].sort(
+    (a, b) => (b.name === "主仓库" ? 1 : 0) - (a.name === "主仓库" ? 1 : 0) || a.name.localeCompare(b.name, "zh-CN")
+  );
+}
+
 /* 数字输入框去掉浏览器自带的上下加减按钮（2026-09-09 用户要求）：
    WebKit 隐藏箭头 + Firefox appearance:textfield */
 const 无加减按钮 = "[&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [appearance:textfield]";
@@ -120,6 +133,8 @@ interface InboundItemForm {
   warehouseId: string;
   location: string;
   isExcess: boolean;
+  /* 批量设置仓库的勾选（2026-09-09 选择型批量）：默认勾选，退货行不勾选 */
+  checked: boolean;
   /* 入库价（2026-08-21 销售单口径）：字符串存储提交时转 number，默认采购价可对销售单改 */
   unitCost: string;
   /* 手动指定该行运费（大件低值商品）；空字符串=参与按金额占比自动分摊 */
@@ -298,14 +313,14 @@ export function PendingStorageList(props: PendingStorageListProps) {
             {
               id: `form-${formIdCounter++}`, item: it, quantity: String(it.quantity),
               batchNo: "", notes: it.notes || "", warehouseId: "", location: "",
-              isExcess: false,
+              isExcess: false, checked: true,
               unitCost: it.unit_cost != null ? String(it.unit_cost) : "", freightManual: "",
             },
             {
               id: `form-${formIdCounter++}`, item: it,
               quantity: String(Math.max(0, (it.received_qty ?? 0) - it.quantity)),
               batchNo: "", notes: "多发退货", warehouseId: "", location: "",
-              isExcess: true,
+              isExcess: true, checked: false,
               unitCost: it.unit_cost != null ? String(it.unit_cost) : "", freightManual: "",
             },
           ];
@@ -315,7 +330,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
             id: `form-${formIdCounter++}`, item: it,
             quantity: String(getStorageQty(it)),
             batchNo: "", notes: it.notes || "", warehouseId: "", location: "",
-            isExcess: false,
+            isExcess: false, checked: true,
             unitCost: it.unit_cost != null ? String(it.unit_cost) : "", freightManual: "",
           },
         ];
@@ -323,7 +338,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
 
     /* 加载仓库列表（与按单弹窗共用） */
     const { data: whData } = await supabase.from("warehouses").select("id, name").order("name");
-    setWarehouses(whData || []);
+    setWarehouses(排序仓库(whData || []));
 
     /* 销售单信息从批次带出（单号只读显示，金额可在弹窗改） */
     setSlipNo(批.supplier_order_no || "");
@@ -487,6 +502,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
               warehouseId: "",
               location: "",
               isExcess: false,
+              checked: true,
               unitCost: it.unit_cost != null ? String(it.unit_cost) : "",
               freightManual: "",
             },
@@ -499,6 +515,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
               warehouseId: "",
               location: "",
               isExcess: true,
+              checked: false,
               unitCost: it.unit_cost != null ? String(it.unit_cost) : "",
               freightManual: "",
             },
@@ -514,6 +531,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
             warehouseId: "",
             location: "",
             isExcess: false,
+            checked: true,
             unitCost: it.unit_cost != null ? String(it.unit_cost) : "",
             freightManual: "",
           },
@@ -522,7 +540,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
 
     /* 加载仓库列表 */
     const { data: whData } = await supabase.from("warehouses").select("id, name").order("name");
-    setWarehouses(whData || []);
+    setWarehouses(排序仓库(whData || []));
 
     /* 加载关联运单信息 */
     if (order.waybill_id) {
@@ -569,15 +587,21 @@ export function PendingStorageList(props: PendingStorageListProps) {
     set批量仓库id("");
   }
 
-  /* 批量设置仓库（2026-09-09）：把选中的仓库应用到所有非退货行 */
+  /* 批量设置仓库（2026-09-09 选择型）：只应用到勾选的非退货行 */
   function 应用批量仓库() {
     if (!批量仓库id) {
       alert("请先选择仓库");
       return;
     }
-    const 行数 = inboundItems.filter((f) => !f.isExcess).length;
-    setInboundItems((prev) => prev.map((p) => (p.isExcess ? p : { ...p, warehouseId: 批量仓库id })));
-    showToast(`已把 ${行数} 行的仓库改为所选仓库`);
+    const 目标行数 = inboundItems.filter((f) => !f.isExcess && f.checked).length;
+    if (目标行数 === 0) {
+      alert("请先勾选要设置的行");
+      return;
+    }
+    setInboundItems((prev) =>
+      prev.map((p) => (!p.isExcess && p.checked ? { ...p, warehouseId: 批量仓库id } : p))
+    );
+    showToast(`已把 ${目标行数} 行的仓库改为所选仓库`);
   }
 
   /* 计算分摊后的成本（2026-08-21 新口径）：
@@ -933,9 +957,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
       {/* 收货批次卡片（2026-09-07 卡片化）：一张供应商销售单一张卡片，
           卡片内可拖拽排序对照纸质销售单，跨卡拖动=移动配件归属（限同供应商） */}
       {批次列表.map((卡) => {
-        const 缺编码数 = 卡.items.filter(
-          (it) => it.handle_action !== "wrong_discard" && getStorageQty(it) > 0 && (!it.part_id || !it.part_number)
-        ).length;
+        const 缺编码数 = 缺编码行数(卡.items);
         return (
           <div
             key={卡.id}
@@ -964,26 +986,6 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-bold">
                     {缺编码数} 行缺编码
                   </span>
-                )}
-                <div className="flex-1" />
-                {/* 入库确认单（2026-09-08 两阶段）：已生成确认单的批次跳详情页，防重复生成 */}
-                {卡.draft_inbound_id ? (
-                  <Link
-                    href={`/inbound-orders/${卡.draft_inbound_id}`}
-                    className="px-3 py-1 bg-orange-500 text-white text-xs rounded hover:bg-orange-600 font-medium"
-                  >
-                    待确认 {卡.draft_inbound_no} →
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openBatchInboundModal(卡)}
-                    disabled={缺编码数 > 0}
-                    title={缺编码数 > 0 ? "有配件缺零件编码，请先在卡内补全" : ""}
-                    className="px-3 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    生成入库单
-                  </button>
                 )}
               </div>
               {/* 关联运单（2026-09-09 批次卡单运单）：一张卡只挂一张，可变更；
@@ -1027,6 +1029,10 @@ export function PendingStorageList(props: PendingStorageListProps) {
                     <th className="px-3 py-2 text-left font-medium text-gray-500">商品名称</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500">单据名称</th>
                     <th className="px-3 py-2 text-right font-medium text-gray-500 w-14">数量</th>
+                    {/* 备注/图片/车牌（2026-09-09）：与蓝卡对齐，黄卡也显示 */}
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">备注</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">图片</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">车牌</th>
                     <th className="px-3 py-2 text-center font-medium text-gray-500 w-36">处理结果</th>
                     <th className="px-3 py-2 text-center font-medium text-gray-500 w-28">操作</th>
                   </tr>
@@ -1036,8 +1042,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
                     const actionInfo = item.handle_action ? ACTION_LABELS[item.handle_action] : null;
                     const storageQty = getStorageQty(item);
                     const skipStorage = item.handle_action === "wrong_discard" || storageQty <= 0;
-                    /* 编码必填（2026-09-07）：需要入库但没编码的行红底高亮 */
-                    const 缺编码 = !skipStorage && (!item.part_id || !item.part_number);
+                    /* 编码必填（2026-09-09 统一口径）：除错发丢弃外，没编码的行都红底高亮 */
+                    const 缺编码 = item.handle_action !== "wrong_discard" && (!item.part_id || !item.part_number);
                     return (
                       <tr
                         key={item.id}
@@ -1085,6 +1091,30 @@ export function PendingStorageList(props: PendingStorageListProps) {
                           <DocumentNameInput 采购明细id={item.id} 初始值={item.supplier_part_name || ""} 保存后={loadData} />
                         </td>
                         <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
+                        {/* 备注/图片/车牌（2026-09-09）：收货照片+凭证照片全部显示 */}
+                        <td className="px-3 py-2 text-gray-500">{item.notes || "-"}</td>
+                        <td className="px-3 py-2">
+                          {(() => {
+                            const 图们 = [...new Set([...(item.photos || []), ...(item.evidence_photos || [])])];
+                            return 图们.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {图们.map((url) => (
+                                  <a key={url} href={url} target="_blank" rel="noreferrer">
+                                    <img
+                                      src={url}
+                                      alt=""
+                                      loading="lazy"
+                                      className="w-8 h-8 rounded object-cover border border-gray-200 hover:border-blue-400"
+                                    />
+                                  </a>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-gray-300">-</span>
+                            );
+                          })()}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500">{item.license_plate || "-"}</td>
                         <td className="px-3 py-2 text-center">
                           {actionInfo ? (
                             <span className={`text-xs px-2 py-0.5 rounded ${actionInfo.color}`}>
@@ -1129,6 +1159,28 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   })}
                 </tbody>
               </table>
+            </div>
+            {/* 生成入库单按钮（2026-09-09 用户拍板）：黄卡蓝卡统一放卡片右下角；
+                有缺编码行时禁用（弹窗和 RPC 还有兜底拦截） */}
+            <div className="px-6 py-3 border-t border-gray-100 flex justify-end">
+              {卡.draft_inbound_id ? (
+                <Link
+                  href={`/inbound-orders/${卡.draft_inbound_id}`}
+                  className="px-4 py-1.5 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 font-medium"
+                >
+                  待确认 {卡.draft_inbound_no} →
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openBatchInboundModal(卡)}
+                  disabled={缺编码数 > 0}
+                  title={缺编码数 > 0 ? "有配件缺零件编码，请先在卡内补全" : ""}
+                  className="px-4 py-1.5 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  生成入库单
+                </button>
+              )}
             </div>
           </div>
         );
@@ -1223,8 +1275,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
                         const actionInfo = item.handle_action ? ACTION_LABELS[item.handle_action] : null;
                         const storageQty = getStorageQty(item);
                         const skipStorage = item.handle_action === "wrong_discard" || storageQty <= 0;
-                        /* 编码必填（2026-09-07）：需要入库但没编码的行红底高亮 */
-                        const 缺编码 = !skipStorage && (!item.part_id || !item.part_number);
+                        /* 编码必填（2026-09-09 统一口径）：除错发丢弃外，没编码的行都红底高亮 */
+                        const 缺编码 = item.handle_action !== "wrong_discard" && (!item.part_id || !item.part_number);
                         return (
                           <tr key={item.id} className={缺编码 ? "bg-red-50" : "hover:bg-gray-50"}>
                             <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
@@ -1344,8 +1396,15 @@ export function PendingStorageList(props: PendingStorageListProps) {
                     <button
                       type="button"
                       onClick={() => openInboundModal(order)}
-                      disabled={submitting === `complete-${order.id}`}
-                      className="px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                      disabled={
+                        submitting === `complete-${order.id}` || 缺编码行数(order.purchase_order_items) > 0
+                      }
+                      title={
+                        缺编码行数(order.purchase_order_items) > 0
+                          ? "有配件缺零件编码，请先在上方补全"
+                          : ""
+                      }
+                      className="px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {submitting === `complete-${order.id}` ? "处理中..." : "生成入库单"}
                     </button>
@@ -1450,7 +1509,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   onClick={应用批量仓库}
                   className="px-3 py-1.5 text-sm text-blue-600 border border-blue-200 bg-blue-50 rounded-lg hover:bg-blue-100"
                 >
-                  应用到所有行
+                  应用到选中行
                 </button>
               </div>
 
@@ -1458,6 +1517,23 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 <table className="w-full text-sm border border-gray-100 rounded-lg">
                   <thead className="bg-gray-50">
                     <tr>
+                      {/* 勾选列（2026-09-09 选择型批量设置仓库）：表头=全选/全不选 */}
+                      <th className="px-2 py-2.5 w-8">
+                        <input
+                          type="checkbox"
+                          checked={
+                            inboundItems.some((f) => !f.isExcess) &&
+                            inboundItems.filter((f) => !f.isExcess).every((f) => f.checked)
+                          }
+                          onChange={(e) =>
+                            setInboundItems((prev) =>
+                              prev.map((p) => (p.isExcess ? p : { ...p, checked: e.target.checked }))
+                            )
+                          }
+                          className="h-4 w-4 accent-blue-600 align-middle"
+                          title="全选/全不选"
+                        />
+                      </th>
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-10">序号</th>
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500">商品名称</th>
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-28">编码</th>
@@ -1469,6 +1545,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-32">仓库</th>
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-28">仓位</th>
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-32">备注</th>
+                      <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-24">车牌</th>
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500">图片</th>
                     </tr>
                   </thead>
@@ -1488,6 +1565,20 @@ export function PendingStorageList(props: PendingStorageListProps) {
                       const 图片们 = [...new Set([...(f.item.photos || []), ...(f.item.evidence_photos || [])])];
                       return (
                         <tr key={f.id} className={缺编码 ? "bg-red-50" : f.isExcess ? "bg-gray-50" : "hover:bg-gray-50"}>
+                          <td className="px-2 py-2">
+                            {!f.isExcess && (
+                              <input
+                                type="checkbox"
+                                checked={f.checked}
+                                onChange={(e) =>
+                                  setInboundItems((prev) =>
+                                    prev.map((p) => (p.id === f.id ? { ...p, checked: e.target.checked } : p))
+                                  )
+                                }
+                                className="h-4 w-4 accent-blue-600 align-middle"
+                              />
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                           <td className="px-3 py-2 text-gray-900 font-medium">
                             {f.item.name}
@@ -1665,6 +1756,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
                               />
                             )}
                           </td>
+                          {/* 车牌（2026-09-09）：与待入库卡片列对齐，只读展示 */}
+                          <td className="px-3 py-2 text-gray-500">{f.item.license_plate || "-"}</td>
                           {/* 配件图片（2026-09-09）：缩略图全部显示，点击新标签页看大图 */}
                           <td className="px-3 py-2">
                             {图片们.length === 0 ? (
@@ -1690,7 +1783,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   </tbody>
                   <tfoot className="bg-gray-50">
                     <tr>
-                      <td colSpan={3} className="px-3 py-2 text-right font-medium text-gray-700">
+                      <td colSpan={4} className="px-3 py-2 text-right font-medium text-gray-700">
                         合计
                       </td>
                       <td className="px-3 py-2 text-right font-medium text-gray-900">
@@ -1724,7 +1817,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                             ) + allocatedCosts.reduce((sum, a) => sum + a, 0)
                         ).toFixed(2)}
                       </td>
-                      <td colSpan={5} />
+                      <td colSpan={6} />
                     </tr>
                   </tfoot>
                 </table>
