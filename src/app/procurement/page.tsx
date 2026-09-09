@@ -495,6 +495,12 @@ export default async function ProcurementPage({
       <div className="hidden md:flex flex-wrap items-center gap-2 mb-4">
         <div className="flex flex-wrap gap-2 flex-1">
         <Link
+          href="/picking"
+          className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          领料管理
+        </Link>
+        <Link
           href="/procurement/orders"
           className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
         >
