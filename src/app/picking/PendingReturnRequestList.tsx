@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 退料类型标签 } from "@/lib/returnTypes";
+import { useToast } from "@/components/Toast";
 import { 确认退料申请, 取消退料申请 } from "@/app/material-returns/actions";
 
 /* 待退料申请行（page.tsx 首屏查询注入） */
@@ -44,6 +45,7 @@ interface Props {
 /* 待退料列表：库管勾选申请 → 确认生成退料单（TL-）；也可驳回 */
 export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: Props) {
   const router = useRouter();
+  const { showToast } = useToast();
   const [勾选, set勾选] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
 
@@ -64,10 +66,10 @@ export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: P
     }
   }
 
-  /* 确认退料：生成退料单（触发器加回库存），申请标 done */
+  /* 确认退料：生成退料单（触发器加回库存），申请标 done。提示走全局轻提示条 */
   async function 确认退料() {
     if (勾选.size === 0) {
-      alert("请先勾选要确认的退料申请");
+      showToast("请先勾选要确认的退料申请", "warning");
       return;
     }
     const 数量合计 = initialRequests
@@ -80,13 +82,14 @@ export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: P
     try {
       const r = await 确认退料申请(Array.from(勾选));
       if (!r.success) {
-        alert("确认退料失败: " + (r.error || "未知错误"));
+        showToast("确认退料失败: " + (r.error || "未知错误"), "error");
         return;
       }
       set勾选(new Set());
+      showToast(`退料单已生成${r.退料单号?.length ? `（${r.退料单号.join("、")}）` : ""}，库存已加回`, "success");
       router.refresh();
     } catch (err: unknown) {
-      alert("确认退料失败: " + (err instanceof Error ? err.message : "网络异常"));
+      showToast("确认退料失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -99,7 +102,7 @@ export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: P
     try {
       const r = await 取消退料申请(id);
       if (!r.success) {
-        alert("驳回失败: " + (r.error || "未知错误"));
+        showToast("驳回失败: " + (r.error || "未知错误"), "error");
         return;
       }
       set勾选((prev) => {
@@ -109,7 +112,7 @@ export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: P
       });
       router.refresh();
     } catch (err: unknown) {
-      alert("驳回失败: " + (err instanceof Error ? err.message : "网络异常"));
+      showToast("驳回失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }

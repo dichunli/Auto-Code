@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DirectPickButton } from "./DirectPickButton";
+import { DirectPickButton, type 员工选项 } from "./DirectPickButton";
 
 /* 待领料行（一个工单配件分支） */
 export interface 待领行 {
@@ -32,16 +32,24 @@ interface Props {
   当前页: number;
   总条数: number;
   每页: number;
+  /* 在职员工列表（直领弹窗点选领料人用） */
+  员工列表: 员工选项[];
+  /* 当前搜索词（分页链接要带上，防止翻页丢搜索） */
+  搜索词: string;
 }
 
-/* 待领料列表：服务端渲染（纯展示 + 跳开单页链接，无交互） */
-export function PendingPickList({ 组列表, 当前页, 总条数, 每页 }: Props) {
+/* 待领料列表：服务端渲染（纯展示 + 跳开单页链接 + 直领按钮） */
+export function PendingPickList({ 组列表, 当前页, 总条数, 每页, 员工列表, 搜索词 }: Props) {
   const 总页数 = Math.ceil(总条数 / 每页) || 1;
+  /* 分页链接带上搜索词 */
+  const 搜索参数 = 搜索词 ? `&q=${encodeURIComponent(搜索词)}` : "";
 
   if (组列表.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
-        暂无待领料配件（配件有库存或到货进入待入库后会出现在这里）
+        {搜索词
+          ? `没有找到匹配「${搜索词}」的待领料配件`
+          : "暂无待领料配件（配件有库存或到货进入待入库后会出现在这里）"}
       </div>
     );
   }
@@ -118,6 +126,7 @@ export function PendingPickList({ 组列表, 当前页, 总条数, 每页 }: Pro
                             分支id={行.id}
                             名称={行.名称}
                             剩余需领={行.需求数量 - 行.已领}
+                            员工列表={员工列表}
                           />
                           <span className="text-[10px] text-gray-400">待入库</span>
                         </div>
@@ -140,7 +149,7 @@ export function PendingPickList({ 组列表, 当前页, 总条数, 每页 }: Pro
           <div className="flex items-center gap-2">
             {当前页 > 1 && (
               <Link
-                href={`/picking?tab=pending_pick&page=${当前页 - 1}`}
+                href={`/picking?tab=pending_pick&page=${当前页 - 1}${搜索参数}`}
                 className="px-3 py-1 text-xs rounded border border-gray-200 bg-white hover:bg-gray-50"
               >
                 上一页
@@ -148,7 +157,7 @@ export function PendingPickList({ 组列表, 当前页, 总条数, 每页 }: Pro
             )}
             {当前页 < 总页数 && (
               <Link
-                href={`/picking?tab=pending_pick&page=${当前页 + 1}`}
+                href={`/picking?tab=pending_pick&page=${当前页 + 1}${搜索参数}`}
                 className="px-3 py-1 text-xs rounded border border-gray-200 bg-white hover:bg-gray-50"
               >
                 下一页
