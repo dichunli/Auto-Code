@@ -21,8 +21,9 @@ export interface 待领行 {
   项目名: string;
   需求数量: number;
   已领: number;
+  /* 展示用库存：关联配件档案的库存；未挂档案但编码能匹配到档案时取匹配档案的库存 */
   库存: number;
-  /* 仓库·仓位×数量 拼装文本（如"主仓库·A-01×3；二仓×1"），无分仓数据时空串 */
+  /* 仓库·仓位拼装文本（有货"主仓库·A-01×3"，无货仅标"主仓库·A-01"），无分仓数据时空串 */
   仓位信息: string;
   申领数: number;
   /* true=有库存可立即领；false=已进入待入库流程但未入账（可急件直领） */
@@ -140,8 +141,13 @@ function 待领工单卡片({
                     <span className="text-gray-900">需 {行.需求数量}</span>
                     <span className="text-gray-400"> / 已领 {行.已领}</span>
                   </div>
-                  <div className="w-14 shrink-0 text-right text-sm text-gray-600">
-                    {行.可领 ? `存 ${行.库存}` : "-"}
+                  {/* 库存列：所有行都显示库存数，无货用浅灰（待入库的件也能一眼看到当前存货） */}
+                  <div
+                    className={`w-14 shrink-0 text-right text-sm ${
+                      行.库存 > 0 ? "text-gray-600" : "text-gray-300"
+                    }`}
+                  >
+                    存 {行.库存}
                   </div>
                   {/* 操作列：未加入显示领料按钮，已加入显示标记（点击移出） */}
                   <div className="w-24 shrink-0 text-right">
