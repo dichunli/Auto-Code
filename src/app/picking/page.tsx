@@ -168,10 +168,32 @@ export default async function PickingManagePage({
       }
     }
 
+    /* 兜底匹配（2026-09-10 需求）：part_id 为空但填了编码的分支，按 part_number 找配件档案，
+       仅用于展示库存数量和仓库仓位，不改变"可领/急件直领"判断 */
+    const 兜底编码们 = [
+      ...new Set(
+        所有分支
+          .filter((b) => !b.part_id && b.part_number)
+          .map((b) => b.part_number as string)
+      ),
+    ];
+    const 兜底档案Map: Record<string, { id: string; quantity: number }> = {};
+    if (兜底编码们.length > 0) {
+      const { data: 兜底配件 } = await supabase
+        .from("parts")
+        .select("id, part_number, quantity")
+        .in("part_number", 兜底编码们);
+      for (const p of (兜底配件 || []) as { id: string; part_number: string; quantity: number | null }[]) {
+        兜底档案Map[p.part_number] = { id: p.id, quantity: p.quantity || 0 };
+      }
+    }
+
     /* 过滤 + 分类 */
     interface 待领行 {
       id: string;
       part_id: string | null;
+      /* 展示用有效档案id：part_id 优先，为空时取编码兜底匹配到的配件档案id */
+      有效配件id: string | null;
       名称: string;
       brand: string | null;
       specification: string | null;
@@ -194,7 +216,9 @@ export default async function PickingManagePage({
       const 需求 = b.quantity || 0;
       const 已领 = Math.max(0, 净领Map[b.id] || 0);
       if (需求 - 已领 <= 0) continue;
-      const 库存 = b.part_id ? Number(b.parts?.quantity || 0) : 0;
+      const 兜底 = !b.part_id && b.part_number ? 兜底档案Map[b.part_number] : undefined;
+      const 有效配件id = b.part_id || 兜底?.id || null;
+      const 库存 = b.part_id ? Number(b.parts?.quantity || 0) : Number(兜底?.quantity || 0);
       const 有库存 = !!b.part_id && 库存 > 0;
       const 在待入库 = 待入库分支.has(b.id);
       /* 既无库存也没进入待入库流程的件还在采购/收货阶段，不算待领料 */
@@ -202,6 +226,7 @@ export default async function PickingManagePage({
       行列表.push({
         id: b.id,
         part_id: b.part_id,
+        有效配件id,
         名称: b.alias_name || b.name || b.part_names?.name || "未命名配件",
         brand: b.brand,
         specification: b.specification,
@@ -223,30 +248,31 @@ export default async function PickingManagePage({
       });
     }
 
-    /* 仓库仓位（2026-09-09 需求）：按配件查分仓库存，拼成"仓库·仓位×数量"文本 */
-    const 有档案配件ids = [...new Set(行列表.map((r) => r.part_id).filter((v): v is string => !!v))];
+    /* 仓库仓位：按有效配件id查分仓记录。有货显示"仓库·仓位×数量"；无货仅标"仓库·仓位"（方便急件直领时找惯用仓位） */
+    const 有档案配件ids = [...new Set(行列表.map((r) => r.有效配件id).filter((v): v is string => !!v))];
     const 仓位Map: Record<string, string> = {};
     if (有档案配件ids.length > 0) {
       const { data: 仓位数据 } = await supabase
         .from("part_stock_locations")
         .select("part_id, location, quantity, warehouses(name)")
-        .in("part_id", 有档案配件ids)
-        .gt("quantity", 0);
+        .in("part_id", 有档案配件ids);
       interface 仓位行 {
         part_id: string;
         location: string | null;
         quantity: number;
         warehouses: { name: string } | null;
       }
-      const 按配件 = new Map<string, string[]>();
+      const 按配件 = new Map<string, { 段: string; quantity: number }[]>();
       for (const r of (仓位数据 || []) as unknown as 仓位行[]) {
-        const 段 = `${r.warehouses?.name || "未分仓"}${r.location ? `·${r.location}` : ""}×${r.quantity}`;
+        const 位置 = `${r.warehouses?.name || "未分仓"}${r.location ? `·${r.location}` : ""}`;
+        const 段 = { 段: r.quantity > 0 ? `${位置}×${r.quantity}` : 位置, quantity: r.quantity };
         const arr = 按配件.get(r.part_id) || [];
         arr.push(段);
         按配件.set(r.part_id, arr);
       }
       for (const [pid, arr] of 按配件) {
-        仓位Map[pid] = arr.join("；");
+        /* 有货的排前面 */
+        仓位Map[pid] = arr.sort((a, b) => b.quantity - a.quantity).map((x) => x.段).join("；");
       }
     }
 
@@ -265,7 +291,7 @@ export default async function PickingManagePage({
         需求数量: r.需求数量,
         已领: r.已领,
         库存: r.库存,
-        仓位信息: r.part_id ? 仓位Map[r.part_id] || "" : "",
+        仓位信息: r.有效配件id ? 仓位Map[r.有效配件id] || "" : "",
         申领数: r.申领数,
         可领: r.可领,
       };
