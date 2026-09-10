@@ -6,6 +6,7 @@ export interface CommissionFormData {
   is_consumable: boolean;
   require_scan_check: boolean;
   require_location_check: boolean;
+  require_confirm: boolean;
   sales_type: "" | "revenue_pct" | "profit_pct" | "fixed";
   sales_value: string;
   diagnosis_type: "" | "revenue_pct" | "profit_pct" | "fixed";
@@ -114,6 +115,15 @@ export default function CommissionSection({ data, onChange }: CommissionSectionP
             className="w-4 h-4"
           />
           <span className="text-sm text-gray-700">入库仓位确认</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer" title="勾选后，含该配件的领料单需库管确认后才扣库存（待确认单可在领料单详情页确认/作废）">
+          <input
+            type="checkbox"
+            checked={data.require_confirm}
+            onChange={(e) => onChange({ require_confirm: e.target.checked })}
+            className="w-4 h-4"
+          />
+          <span className="text-sm text-gray-700">出库需库管确认</span>
         </label>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

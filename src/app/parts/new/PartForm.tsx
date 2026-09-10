@@ -134,6 +134,7 @@ export default function PartForm({
     is_consumable: false,
     require_scan_check: false,
     require_location_check: false,
+    require_confirm: false,
     sales_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     sales_value: "",
     diagnosis_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",

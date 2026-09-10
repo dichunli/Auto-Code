@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDebounce } from "@/lib/useDebounce";
 import { useToast } from "@/components/Toast";
+import PickingScanCheckModal, { type 待核配件 } from "@/components/PickingScanCheckModal";
 import {
   统一确认领料,
   type 统一领料工单组,
@@ -28,6 +29,12 @@ export interface 待领行 {
   申领数: number;
   /* true=有库存可立即领；false=已进入待入库流程但未入账（可急件直领） */
   可领: boolean;
+  /* 出库管控（三级 OR 判定后的最终值；无配件档案的行不参与管控） */
+  有效配件id: string | null;
+  需扫码: boolean;
+  需确认: boolean;
+  barcode: string | null;
+  档案编码: string | null;
 }
 
 /* 按工单分组的待领料卡片 */
@@ -60,6 +67,12 @@ interface 篮子项 {
   工单id: string;
   工单号: string;
   车牌: string;
+  /* 出库管控（有效配件id 为扫码核对的 key；无档案的件不参与管控） */
+  有效配件id: string | null;
+  需扫码: boolean;
+  需确认: boolean;
+  barcode: string | null;
+  档案编码: string | null;
 }
 
 const 每页分支数 = 50;
@@ -128,6 +141,16 @@ function 待领工单卡片({
                       {!行.可领 && (
                         <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded border bg-gray-50 text-gray-500 border-gray-200">
                           待入库
+                        </span>
+                      )}
+                      {行.需扫码 && (
+                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded border bg-indigo-50 text-indigo-700 border-indigo-200" title="该配件出库时必须扫码核对">
+                          需扫码
+                        </span>
+                      )}
+                      {行.需确认 && (
+                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded border bg-yellow-50 text-yellow-700 border-yellow-200" title="含该配件的领料单需库管确认后才扣库存">
+                          需确认
                         </span>
                       )}
                     </div>
@@ -279,6 +302,16 @@ function 篮子面板({
                           急件
                         </span>
                       )}
+                      {项.需扫码 && (
+                        <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-indigo-100 text-indigo-700">
+                          需扫码
+                        </span>
+                      )}
+                      {项.需确认 && (
+                        <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded bg-yellow-100 text-yellow-700">
+                          需确认
+                        </span>
+                      )}
                     </div>
                     <div className="text-[10px] text-gray-400">剩余需领 {项.剩余需领}</div>
                   </div>
@@ -376,6 +409,7 @@ export function PendingPickBoard({
   const [备注, 设备注] = useState("");
   const [提交中, 设提交中] = useState(false);
   const [抽屉打开, 设抽屉打开] = useState(false);
+  const [扫码窗开, 设扫码窗开] = useState(false);
 
   /* 搜索变化回到第一页 */
   useEffect(() => {
@@ -433,6 +467,11 @@ export function PendingPickBoard({
         工单id: 组.工单id,
         工单号: 组.工单号,
         车牌: 组.车牌,
+        有效配件id: 行.有效配件id,
+        需扫码: 行.需扫码,
+        需确认: 行.需确认,
+        barcode: 行.barcode,
+        档案编码: 行.档案编码,
       },
     }));
   }
@@ -455,6 +494,29 @@ export function PendingPickBoard({
 
   const 已选数量 = Object.keys(已选).length;
 
+  /* 篮子里的需扫码配件（按有效配件id 去重合并数量，扫码窗用） */
+  const 需扫码清单: 待核配件[] = useMemo(() => {
+    const map = new Map<string, 待核配件>();
+    for (const 项 of Object.values(已选)) {
+      if (!项.需扫码 || !项.有效配件id) continue;
+      const 已有 = map.get(项.有效配件id);
+      const n = parseInt(项.数量) || 0;
+      if (已有) {
+        已有.数量 += n;
+      } else {
+        map.set(项.有效配件id, {
+          part_id: 项.有效配件id,
+          名称: 项.名称,
+          part_number: 项.档案编码,
+          barcode: 项.barcode,
+          数量: n,
+        });
+      }
+    }
+    return [...map.values()];
+  }, [已选]);
+
+  /* 第 1 步：校验 + 二次确认；含需扫码配件时先弹扫码核对窗，扫完才走真正提交 */
   async function 提交统一确认() {
     const 项列表 = Object.values(已选);
     if (项列表.length === 0 || 提交中) return;
@@ -473,6 +535,26 @@ export function PendingPickBoard({
       showToast("请选择领料人", "warning");
       return;
     }
+
+    /* 敏感操作二次确认 */
+    const 需确认数 = 项列表.filter((x) => x.需确认).length;
+    const 确认文案 = `统一确认领料：共 ${项列表.length} 个配件、${new Set(项列表.map((x) => x.工单id)).size} 个工单。` +
+      (需确认数 > 0 ? `\n其中 ${需确认数} 个配件需库管确认，将生成待确认单，库管确认后才扣库存。` : "\n确认后立即扣库存 / 登记急件直领。") +
+      "\n是否继续？";
+    if (!confirm(确认文案)) {
+      return;
+    }
+
+    if (需扫码清单.length > 0) {
+      设扫码窗开(true);
+      return;
+    }
+    await 执行提交(undefined);
+  }
+
+  /* 第 2 步：真正提交（扫码核对完成后带上扫码记录） */
+  async function 执行提交(扫码记录: Record<string, string> | undefined) {
+    const 项列表 = Object.values(已选);
     const 领料人姓名 = 员工列表.find((p) => p.id === 领料人id)?.full_name || "";
 
     /* 按工单分组：有库存的走普通领料（FIFO 自动分配批次），待入库的走急件直领 */
@@ -491,14 +573,9 @@ export function PendingPickBoard({
       }
     }
 
-    /* 敏感操作二次确认 */
-    if (!confirm(`统一确认领料：共 ${项列表.length} 个配件、${组Map.size} 个工单。\n确认后立即扣库存 / 登记急件直领，是否继续？`)) {
-      return;
-    }
-
     设提交中(true);
     try {
-      const r = await 统一确认领料([...组Map.values()], 领料人姓名, 备注);
+      const r = await 统一确认领料([...组Map.values()], 领料人姓名, 备注, 扫码记录);
       if (!r.success) {
         showToast("领料失败: " + (r.error || "未知错误"), "error");
         return;
@@ -506,13 +583,14 @@ export function PendingPickBoard({
 
       /* 逐工单处理结果：成功的项移出篮子，失败的保留并提示 */
       const 成功单号: string[] = [];
+      const 待确认单号: string[] = [];
       const 失败消息: string[] = [];
       const 成功分支ids = new Set<string>();
       const 车牌By工单 = new Map(项列表.map((x) => [x.工单id, x.车牌]));
       for (const 单组 of r.结果 || []) {
         const 车牌 = 车牌By工单.get(单组.工单id) || "";
         if (单组.普通单号) {
-          成功单号.push(单组.普通单号);
+          (单组.普通状态 === "draft" ? 待确认单号 : 成功单号).push(单组.普通单号);
           项列表
             .filter((x) => x.工单id === 单组.工单id && x.类型 === "normal")
             .forEach((x) => 成功分支ids.add(x.分支id));
@@ -521,7 +599,7 @@ export function PendingPickBoard({
           失败消息.push(`${车牌} 普通领料：${单组.普通错误}`);
         }
         if (单组.直领单号) {
-          成功单号.push(单组.直领单号);
+          (单组.直领状态 === "draft" ? 待确认单号 : 成功单号).push(单组.直领单号);
           项列表
             .filter((x) => x.工单id === 单组.工单id && x.类型 === "direct")
             .forEach((x) => 成功分支ids.add(x.分支id));
@@ -537,9 +615,12 @@ export function PendingPickBoard({
 
       if (失败消息.length > 0) {
         alert("以下项目领料失败（已保留在待确认区）：\n\n" + 失败消息.join("\n"));
-        if (成功单号.length > 0) {
-          showToast(`部分成功：已开 ${成功单号.length} 张单，${失败消息.length} 项失败`, "warning");
+        if (成功单号.length > 0 || 待确认单号.length > 0) {
+          showToast(`部分成功：已开 ${成功单号.length + 待确认单号.length} 张单，${失败消息.length} 项失败`, "warning");
         }
+      } else if (待确认单号.length > 0) {
+        alert(`已生成待确认领料单：${待确认单号.join("、")}\n\n这些单含「需库管确认」配件，库管在领料单详情页点「确认出库」后才真正扣库存。`);
+        设备注("");
       } else {
         showToast(`领料成功，共开 ${成功单号.length} 张领料单`, "success");
         设备注("");
@@ -672,6 +753,17 @@ export function PendingPickBoard({
           </div>
         </div>
       )}
+
+      {/* 扫码核对窗：含需扫码配件时提交前强制核对 */}
+      <PickingScanCheckModal
+        open={扫码窗开}
+        待核清单={需扫码清单}
+        on完成={(记录) => {
+          设扫码窗开(false);
+          执行提交(记录);
+        }}
+        onClose={() => 设扫码窗开(false)}
+      />
     </div>
   );
 }

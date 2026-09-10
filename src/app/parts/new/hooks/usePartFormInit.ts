@@ -48,6 +48,7 @@ interface FormState {
   is_consumable: boolean;
   require_scan_check: boolean;
   require_location_check: boolean;
+  require_confirm: boolean;
   sales_type: "" | "revenue_pct" | "profit_pct" | "fixed";
   sales_value: string;
   diagnosis_type: "" | "revenue_pct" | "profit_pct" | "fixed";
@@ -249,6 +250,7 @@ export default function usePartFormInit(
         is_consumable: part.is_consumable || false,
         require_scan_check: part.require_scan_check || false,
         require_location_check: part.require_location_check || false,
+        require_confirm: part.require_confirm || false,
         sales_type: part.sales_commission_type || "",
         sales_value: part.sales_commission_value ? String(part.sales_commission_value) : "",
         diagnosis_type: part.diagnosis_commission_type || "",
@@ -478,6 +480,7 @@ export default function usePartFormInit(
           is_consumable: part.is_consumable || false,
           require_scan_check: part.require_scan_check || false,
           require_location_check: part.require_location_check || false,
+          require_confirm: part.require_confirm || false,
           sales_type: part.sales_commission_type || "",
           sales_value: part.sales_commission_value ? String(part.sales_commission_value) : "",
           diagnosis_type: part.diagnosis_commission_type || "",
@@ -633,7 +636,7 @@ export default function usePartFormInit(
       const { data } = await supabase
         .from("parts")
         .select(
-          "id, part_number, name, unit, purchase_price, notes, document_name, barcode, interchange_code, min_stock, unit_price, standard_price, vip_price, wholesale_price, supplier_id, brand_id, part_brands(id, name), specification_id, part_specifications(id, name), category_id, part_categories(id, name), part_images(image_path), part_stock_locations(warehouse_id, warehouses(name), location, quantity, min_stock, max_stock), auto_link_vehicle_model, auto_match_17vin_models, is_consumable, require_scan_check, require_location_check, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value"
+          "id, part_number, name, unit, purchase_price, notes, document_name, barcode, interchange_code, min_stock, unit_price, standard_price, vip_price, wholesale_price, supplier_id, brand_id, part_brands(id, name), specification_id, part_specifications(id, name), category_id, part_categories(id, name), part_images(image_path), part_stock_locations(warehouse_id, warehouses(name), location, quantity, min_stock, max_stock), auto_link_vehicle_model, auto_match_17vin_models, is_consumable, require_scan_check, require_location_check, require_confirm, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value"
         )
         .eq("part_number", debouncedPartNumber.trim().toUpperCase())
         .single();
@@ -659,6 +662,7 @@ export default function usePartFormInit(
         is_consumable: data.is_consumable || false,
         require_scan_check: data.require_scan_check || false,
         require_location_check: data.require_location_check || false,
+        require_confirm: data.require_confirm || false,
         sales_type: (data.sales_commission_type as "" | "revenue_pct" | "profit_pct" | "fixed") || "",
         sales_value: data.sales_commission_value != null ? String(data.sales_commission_value) : "",
         diagnosis_type: (data.diagnosis_commission_type as "" | "revenue_pct" | "profit_pct" | "fixed") || "",

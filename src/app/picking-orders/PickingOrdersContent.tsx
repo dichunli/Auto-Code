@@ -133,10 +133,12 @@ export default function PickingOrdersContent({
                         className={`text-xs px-2 py-0.5 rounded ${
                           o.status === "confirmed"
                             ? "bg-green-50 text-green-700"
-                            : "bg-gray-100 text-gray-500"
+                            : o.status === "draft"
+                              ? "bg-yellow-50 text-yellow-700"
+                              : "bg-gray-100 text-gray-500"
                         }`}
                       >
-                        {o.status === "confirmed" ? "已出库" : "已作废"}
+                        {o.status === "confirmed" ? "已出库" : o.status === "draft" ? "待确认" : "已作废"}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-gray-500 text-xs">

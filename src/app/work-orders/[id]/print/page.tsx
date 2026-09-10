@@ -144,6 +144,8 @@ interface PartPickingRecord {
   quantity: number;
   created_at: string;
   profiles: Profile | null;
+  /* 联查领料单状态：待确认（draft）单的占位记录未出库，不打印 */
+  picking_orders: { status: string } | null;
 }
 
 interface PartReturnRecord {
@@ -475,12 +477,15 @@ async function PickingDoc({ order }: { order: WorkOrder }) {
   const { data: pickingRecords }: { data: unknown[] | null } = partIds.length > 0
     ? await supabase
         .from("part_picking_records")
-        .select("*, profiles(full_name)")
+        .select("*, profiles(full_name), picking_orders(status)")
         .in("work_order_item_part_id", partIds)
         .order("created_at", { ascending: true })
     : { data: [] };
 
-  const typedPickingRecords = (pickingRecords || []) as unknown as PartPickingRecord[];
+  /* 过滤待确认（draft）单的占位记录：未确认出库的件不打印 */
+  const typedPickingRecords = ((pickingRecords || []) as unknown as PartPickingRecord[]).filter(
+    (r) => r.picking_orders?.status !== "draft"
+  );
 
   const pickingByPart: Record<string, PartPickingRecord[]> = {};
   typedPickingRecords.forEach((r) => {

@@ -48,6 +48,8 @@ export interface 配件名称表单 {
   is_consumable: boolean;
   require_scan_check?: boolean;
   require_location_check?: boolean;
+  /* 出库需库管确认（含该名称配件的领料单整单待确认，库管确认后才扣库存） */
+  require_confirm?: boolean;
   sales_type: string;
   sales_value: string;
   diagnosis_type: string;
@@ -72,6 +74,7 @@ function 表单转写库(表单: 配件名称表单) {
     is_consumable: 表单.is_consumable,
     require_scan_check: 表单.require_scan_check ?? false,
     require_location_check: 表单.require_location_check ?? false,
+    require_confirm: 表单.require_confirm ?? false,
     sales_commission_type: 表单.sales_type || null,
     sales_commission_value: 表单.sales_value ? parseFloat(表单.sales_value) : null,
     diagnosis_commission_type: 表单.diagnosis_type || null,

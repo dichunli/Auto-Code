@@ -123,14 +123,21 @@ export async function 申请退料(
     return { success: false, error: 登录错误 || "登录已失效，请重新登录" };
   }
 
-  /* 服务端校验可退数量：已领 - 已退 - 申请中（防止与库管确认并发超退） */
+  /* 服务端校验可退数量：已领 - 已退 - 申请中（防止与库管确认并发超退）。
+     顺带联查所属领料单状态：待确认（draft）单的占位记录库存从未扣过，不能申请退料 */
   const { data: 领料记录 } = await supabase
     .from("part_picking_records")
-    .select("id, work_order_item_part_id, quantity")
+    .select("id, work_order_item_part_id, quantity, picking_orders(status)")
     .eq("id", 领料记录id)
     .single();
   if (!领料记录) {
     return { success: false, error: "领料记录不存在" };
+  }
+  interface 单状态联查 {
+    picking_orders: { status: string } | null;
+  }
+  if ((领料记录 as unknown as 单状态联查).picking_orders?.status === "draft") {
+    return { success: false, error: "该领料单还在待确认（未出库），不能申请退料" };
   }
   const [{ data: 已退记录 }, { data: 申请中记录 }] = await Promise.all([
     supabase.from("part_return_records").select("quantity").eq("picking_record_id", 领料记录id),

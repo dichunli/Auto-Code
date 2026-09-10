@@ -1164,10 +1164,13 @@ export default function MobileItemEditor({
     (async () => {
       const { data: 领料们 } = await supabase
         .from("part_picking_records")
-        .select("id, quantity, picked_at, picking_orders(picking_no)")
+        .select("id, quantity, picked_at, picking_orders(picking_no, status)")
         .eq("work_order_item_part_id", branch.id)
         .order("picked_at", { ascending: false });
-      const 记录们 = (领料们 || []) as unknown as 可退领料行[];
+      /* 过滤待确认（draft）单的占位记录：库存从未扣过，不能退 */
+      const 记录们 = ((领料们 || []) as unknown as 可退领料行[]).filter(
+        (r) => r.picking_orders?.status !== "draft"
+      );
       const 记录ids = 记录们.map((r) => r.id);
       const [{ data: 退库们 }, { data: 申请们 }] = await Promise.all([
         记录ids.length > 0

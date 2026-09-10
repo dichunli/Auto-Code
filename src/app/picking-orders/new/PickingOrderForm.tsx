@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 创建领料单, type 领料明细输入 } from "@/app/picking-orders/actions";
+import PickingScanCheckModal, { type 待核配件 } from "@/components/PickingScanCheckModal";
 import type { 待领料分支, 可用批次, 工单概要 } from "./page";
 
 interface Props {
@@ -20,6 +21,7 @@ export default function PickingOrderForm({ 工单, 分支列表, 批次列表 }:
   const [领料人, 设领料人] = useState("");
   const [备注, 设备注] = useState("");
   const [提交中, 设提交中] = useState(false);
+  const [扫码窗开, 设扫码窗开] = useState(false);
 
   const 批次按配件 = useMemo(() => {
     const map: Record<string, 可用批次[]> = {};
@@ -84,7 +86,42 @@ export default function PickingOrderForm({ 工单, 分支列表, 批次列表 }:
       return 已配 > 0 && 已配 <= b.剩余需领;
     });
 
-  async function 提交() {
+  /* 勾选分支里的需扫码配件（按配件去重合并数量，扫码窗清单）。数据量小，直接普通计算不用 useMemo */
+  const 需扫码清单: 待核配件[] = [];
+  {
+    const map = new Map<string, 待核配件>();
+    for (const b of 勾选分支) {
+      if (!b.需扫码) continue;
+      const 已有 = map.get(b.part_id);
+      const n = 分支已配数量(b.id);
+      if (已有) {
+        已有.数量 += n;
+      } else {
+        map.set(b.part_id, {
+          part_id: b.part_id,
+          名称: b.name || "-",
+          part_number: b.档案编码,
+          barcode: b.barcode,
+          数量: n,
+        });
+      }
+    }
+    需扫码清单.push(...map.values());
+  }
+
+  const 含需确认件 = 勾选分支.some((b) => b.需确认);
+
+  /* 提交：校验 → 含需扫码件先弹扫码核对窗 → 扫完执行开单 */
+  function 提交() {
+    if (!可提交 || 提交中) return;
+    if (需扫码清单.length > 0) {
+      设扫码窗开(true);
+      return;
+    }
+    执行开单(undefined);
+  }
+
+  async function 执行开单(扫码记录: Record<string, string> | undefined) {
     if (!可提交 || 提交中) return;
     设提交中(true);
     try {
@@ -110,10 +147,13 @@ export default function PickingOrderForm({ 工单, 分支列表, 批次列表 }:
         }
       }
 
-      const 结果 = await 创建领料单(工单?.id || null, 明细, 领料人, 备注);
+      const 结果 = await 创建领料单(工单?.id || null, 明细, 领料人, 备注, 扫码记录);
       if (!结果.success) {
         alert("开单失败: " + (结果.error || "未知错误"));
         return;
+      }
+      if (结果.data && 含需确认件) {
+        alert(`领料单 ${结果.data.no} 已生成（待确认）。\n\n含「需库管确认」配件，库管在领料单详情页点「确认出库」后才真正扣库存。`);
       }
       router.push(`/picking-orders/${结果.data!.id}`);
     } catch (err: unknown) {
@@ -172,6 +212,16 @@ export default function PickingOrderForm({ 工单, 分支列表, 批次列表 }:
                   />
                   <div className="flex-1">
                     <span className="font-medium text-gray-900">{b.name || "-"}</span>
+                    {b.需扫码 && (
+                      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded border bg-indigo-50 text-indigo-700 border-indigo-200" title="该配件出库时必须扫码核对">
+                        需扫码
+                      </span>
+                    )}
+                    {b.需确认 && (
+                      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded border bg-yellow-50 text-yellow-700 border-yellow-200" title="含该配件的领料单需库管确认后才扣库存">
+                        需确认
+                      </span>
+                    )}
                     <span className="text-xs text-gray-500 ml-2">
                       {b.brand || ""} {b.specification || ""}
                     </span>
@@ -280,6 +330,17 @@ export default function PickingOrderForm({ 工单, 分支列表, 批次列表 }:
           </div>
         </div>
       )}
+
+      {/* 扫码核对窗：含需扫码配件时提交前强制核对 */}
+      <PickingScanCheckModal
+        open={扫码窗开}
+        待核清单={需扫码清单}
+        on完成={(记录) => {
+          设扫码窗开(false);
+          执行开单(记录);
+        }}
+        onClose={() => 设扫码窗开(false)}
+      />
     </div>
   );
 }

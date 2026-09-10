@@ -13,6 +13,11 @@ export interface 待领料分支 {
   quantity: number;
   已领数量: number;
   剩余需领: number;
+  /* 出库管控（三级 OR 判定后的最终值） */
+  需扫码: boolean;
+  需确认: boolean;
+  barcode: string | null;
+  档案编码: string | null;
 }
 
 export interface 可用批次 {
@@ -175,6 +180,47 @@ export default async function NewPickingOrderPage({
     批次 = (批次数据 || []) as unknown as 可用批次[];
   }
 
+  /* 出库管控（2026-09-11）：三级 OR（配件/名称/分类任一级勾了即生效）+ 扫码比对用条码 */
+  interface 管控配件行 {
+    id: string;
+    barcode: string | null;
+    part_number: string | null;
+    require_scan_check: boolean | null;
+    require_confirm: boolean | null;
+    category_id: string | null;
+    part_names: { require_scan_check: boolean | null; require_confirm: boolean | null; category_id: string | null } | null;
+  }
+  const 管控Map: Record<string, { 需扫码: boolean; 需确认: boolean; barcode: string | null; 档案编码: string | null }> = {};
+  if (配件ids.length > 0) {
+    const { data: 管控配件 } = await supabase
+      .from("parts")
+      .select("id, barcode, part_number, require_scan_check, require_confirm, category_id, part_names(require_scan_check, require_confirm, category_id)")
+      .in("id", 配件ids);
+    const 管控行们 = (管控配件 || []) as unknown as 管控配件行[];
+    const 分类ids = [
+      ...new Set(管控行们.map((p) => p.part_names?.category_id || p.category_id).filter((v): v is string => !!v)),
+    ];
+    const 分类管控Map: Record<string, { 需扫码: boolean; 需确认: boolean }> = {};
+    if (分类ids.length > 0) {
+      const { data: 管控分类 } = await supabase
+        .from("part_categories")
+        .select("id, require_scan_check, require_confirm")
+        .in("id", 分类ids);
+      for (const c of (管控分类 || []) as { id: string; require_scan_check: boolean | null; require_confirm: boolean | null }[]) {
+        分类管控Map[c.id] = { 需扫码: !!c.require_scan_check, 需确认: !!c.require_confirm };
+      }
+    }
+    for (const p of 管控行们) {
+      const 分类 = 分类管控Map[p.part_names?.category_id || p.category_id || ""] || { 需扫码: false, 需确认: false };
+      管控Map[p.id] = {
+        需扫码: !!p.require_scan_check || !!p.part_names?.require_scan_check || 分类.需扫码,
+        需确认: !!p.require_confirm || !!p.part_names?.require_confirm || 分类.需确认,
+        barcode: p.barcode,
+        档案编码: p.part_number,
+      };
+    }
+  }
+
   const 分支列表: 待领料分支[] = 本单分支.map((b) => ({
     id: b.id,
     part_id: b.part_id,
@@ -186,6 +232,10 @@ export default async function NewPickingOrderPage({
     quantity: b.quantity,
     已领数量: b.净领,
     剩余需领: b.quantity - b.净领,
+    需扫码: 管控Map[b.part_id]?.需扫码 || false,
+    需确认: 管控Map[b.part_id]?.需确认 || false,
+    barcode: 管控Map[b.part_id]?.barcode || null,
+    档案编码: 管控Map[b.part_id]?.档案编码 || null,
   }));
 
   return <PickingOrderForm 工单={工单} 分支列表={分支列表} 批次列表={批次} />;

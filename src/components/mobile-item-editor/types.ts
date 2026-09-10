@@ -212,7 +212,8 @@ export interface 可退领料行 {
   id: string;
   quantity: number;
   picked_at: string;
-  picking_orders: { picking_no: string } | null;
+  /* status 用于过滤待确认（draft）单的占位记录：库存从未扣过，不能退 */
+  picking_orders: { picking_no: string; status: string } | null;
 }
 
 /* 退料申请：该分支待确认退料申请行（面板展开时拉取） */

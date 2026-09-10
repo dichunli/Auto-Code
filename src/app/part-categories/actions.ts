@@ -43,6 +43,8 @@ interface 配件分类表单 {
   auto_match_17vin_models?: boolean;
   require_scan_check?: boolean;
   require_location_check?: boolean;
+  /* 出库需库管确认（含该分类配件的领料单整单待确认，库管确认后才扣库存） */
+  require_confirm?: boolean;
   sales_type: string;
   sales_value: string;
   diagnosis_type: string;
@@ -64,6 +66,7 @@ function 组装分类字段(form: 配件分类表单) {
     is_consumable: form.is_consumable,
     require_scan_check: form.require_scan_check ?? false,
     require_location_check: form.require_location_check ?? false,
+    require_confirm: form.require_confirm ?? false,
     sales_commission_type: form.sales_type || null,
     sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
     diagnosis_commission_type: form.diagnosis_type || null,

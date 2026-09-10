@@ -20,6 +20,8 @@ export interface SubmitPartFormData {
   is_consumable: boolean;
   require_scan_check: boolean;
   require_location_check: boolean;
+  /* 出库需库管确认（含该配件的领料单整单待确认，库管确认后才扣库存） */
+  require_confirm: boolean;
   sales_type: string;
   sales_value: string;
   diagnosis_type: string;
@@ -122,6 +124,7 @@ export default async function submitPart(params: SubmitPartParams): Promise<Subm
     is_consumable: form.is_consumable,
     require_scan_check: form.require_scan_check,
     require_location_check: form.require_location_check,
+    require_confirm: form.require_confirm,
     sales_commission_type: form.sales_type || null,
     sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
     diagnosis_commission_type: form.diagnosis_type || null,

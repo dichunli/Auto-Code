@@ -66,6 +66,7 @@ export default function EditPartCategoryPage() {
     is_consumable: false,
     require_scan_check: false,
     require_location_check: false,
+    require_confirm: false,
     sales_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     sales_value: "",
     diagnosis_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
@@ -97,6 +98,7 @@ export default function EditPartCategoryPage() {
           is_consumable: data.is_consumable || false,
           require_scan_check: data.require_scan_check || false,
           require_location_check: data.require_location_check || false,
+          require_confirm: data.require_confirm || false,
           sales_type: data.sales_commission_type || "",
           sales_value: data.sales_commission_value?.toString() || "",
           diagnosis_type: data.diagnosis_commission_type || "",
@@ -223,6 +225,15 @@ export default function EditPartCategoryPage() {
                 className="w-4 h-4"
               />
               <span className="text-sm text-gray-700">入库仓位确认</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer" title="勾选后，含该分类配件的领料单需库管确认后才扣库存">
+              <input
+                type="checkbox"
+                checked={form.require_confirm}
+                onChange={(e) => setForm({ ...form, require_confirm: e.target.checked })}
+                className="w-4 h-4"
+              />
+              <span className="text-sm text-gray-700">出库需库管确认</span>
             </label>
           </div>
 
