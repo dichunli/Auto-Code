@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { 解绑钉钉账号, 保存员工档案 } from "../../actions";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { ImageUploader } from "@/components/ImageUploader";
 
 const GENDERS = [
@@ -107,6 +108,7 @@ export function EmployeeEditForm({
   );
   const [dingtalkUserid, setDingtalkUserid] = useState(employee.dingtalk_userid || "");
   const [解绑中, set解绑中] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const [contacts, setContacts] = useState<Contact[]>(initialContacts);
   const [originalContactIds] = useState<Set<string>>(
@@ -121,7 +123,7 @@ export function EmployeeEditForm({
 
   /* 解除钉钉绑定（写库走 Server Action，解绑后该员工不再参与考勤同步） */
   async function 解绑钉钉() {
-    if (!confirm("确定解除钉钉绑定吗？解绑后该员工不再参与考勤同步，可之后重新匹配。")) return;
+    if (!(await 请求确认("确定解除钉钉绑定吗？解绑后该员工不再参与考勤同步，可之后重新匹配。"))) return;
     set解绑中(true);
     try {
       const result = await 解绑钉钉账号(employeeId);
@@ -206,6 +208,7 @@ export function EmployeeEditForm({
 
   return (
     <div className="max-w-2xl mx-auto">
+      {确认弹窗}
       <PageHeader title="编辑员工" description="修改员工档案信息" />
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">

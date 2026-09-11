@@ -5,6 +5,7 @@ import { 按编码查配件, 按编码搜配件, 提交报价, 更新报价图�
 import { 压缩图片 } from "@/lib/imageCompress";
 import { useDebounce } from "@/lib/useDebounce";
 import { copyText } from "@/lib/copyText";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 /* 供应商报价表单（桌面表格样式，与采购管理"待询价"列表同格式）
  * 所有行一直保持可编辑，供应商填完直接提交；"+分支"给同一配件加备选报价（多品牌/多价格），
@@ -52,6 +53,7 @@ interface Props {
 
 export default function QuoteForm({ token, 初始数据 }: Props) {
   const 只读 = 初始数据.status === "adopted";
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [行列表, set行列表] = useState<行状态[]>(
     初始数据.items.map((i) => ({
       itemId: i.itemId,
@@ -137,7 +139,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
 
   /* 删除供应商自己加的分支 */
   async function 删分支(itemId: string) {
-    if (!confirm("确定删除这条备选报价吗？")) return;
+    if (!(await 请求确认("确定删除这条备选报价吗？"))) return;
     const r = await 删除供应商分支(token, itemId);
     if (!r.success) {
       alert("删除失败: " + (r.error || "未知错误"));
@@ -310,6 +312,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
+      {确认弹窗}
       <div className="max-w-6xl mx-auto">
         {/* 头部：供应商称呼醒目大字 */}
         <div className="bg-blue-600 text-white px-5 py-6">

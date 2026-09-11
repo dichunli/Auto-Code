@@ -14,8 +14,8 @@
 
 客户端侧配合：
 
-- 保留必填校验、`alert()`、`loading` 状态和 `router.push/refresh`
-- 调用 action 必须包 `try/catch` 兜底网络异常，出错 `alert()` 提示
+- 保留必填校验、轻提示（`useToast`）、`loading` 状态和 `router.push/refresh`
+- 调用 action 必须包 `try/catch` 兜底网络异常，出错用 `showToast(..., "error")` 提示（禁用原生 `alert()`，见 03-coding-style.md）
 - 只读查询（搜索联想、下拉加载）仍可走客户端
 
 参考实现：`src/app/customers/actions.ts`、`src/app/work-orders/actions.ts`、`src/app/inventory/actions.ts`、`src/app/parts/actions.ts`

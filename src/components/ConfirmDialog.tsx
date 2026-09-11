@@ -91,3 +91,65 @@ export function useConfirm() {
 
   return { 请求确认, 确认弹窗 };
 }
+
+/* 居中提示弹窗 Hook：替代浏览器原生 alert()（重要提示必须让用户看完、点"确定"才关闭）。
+ * 用法：
+ *   const { 请求提示, 提示弹窗 } = useAlert();
+ *   await 请求提示("以下项目操作失败：...");
+ *   return (<> ...{提示弹窗} </>);
+ * 只有"确定"一个按钮；轻量通知（几秒可消失）请用 Toast，不要用这个。 */
+export function useAlert() {
+  const [选项, 设置选项] = useState<确认选项 | null>(null);
+  const resolveRef = useRef<(() => void) | null>(null);
+
+  const 请求提示 = useCallback((参数: string | 确认选项) => {
+    return new Promise<void>((resolve) => {
+      resolveRef.current = resolve;
+      设置选项(typeof 参数 === "string" ? { message: 参数 } : 参数);
+    });
+  }, []);
+
+  const 关闭 = useCallback(() => {
+    resolveRef.current?.();
+    resolveRef.current = null;
+    设置选项(null);
+  }, []);
+
+  /* 用 Portal 渲染到 body，z-[120] 与确认弹窗同层 */
+  const 提示弹窗: ReactNode =
+    选项 && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[120] p-4"
+            onClick={关闭}
+          >
+            <div
+              className="bg-white rounded-xl shadow-2xl w-full max-w-sm"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-5 pt-4 pb-2">
+                <h3 className="text-base font-semibold text-gray-900">
+                  {选项.title ?? "提示"}
+                </h3>
+              </div>
+              <div className="px-5 pb-4">
+                <p className="text-sm text-gray-600 whitespace-pre-line">{选项.message}</p>
+              </div>
+              <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={关闭}
+                  className="px-4 py-2 text-sm text-white rounded-lg bg-blue-600 hover:bg-blue-700"
+                >
+                  {选项.confirmText ?? "确定"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
+  return { 请求提示, 提示弹窗 };
+}

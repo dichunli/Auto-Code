@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 手动同步考勤, 自动匹配钉钉账号, 保存考勤扣款设置 } from "./actions";
 import { 有效出勤天数, 是有效打卡 } from "@/lib/attendanceDays";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // ============================================================
 // 类型定义
@@ -289,6 +290,7 @@ export function AttendanceClient({
   const [显示同步弹窗, set显示同步弹窗] = useState(false);
   const [显示设置弹窗, set显示设置弹窗] = useState(false);
   const [匹配中, set匹配中] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   /* 按员工聚合汇总（记录变化时才重算） */
   const 汇总 = useMemo<员工汇总[]>(() => {
@@ -337,7 +339,7 @@ export function AttendanceClient({
   }
 
   async function 执行匹配() {
-    if (!confirm("将按员工档案里的手机号自动匹配钉钉账号（已绑定的不动）。继续？")) return;
+    if (!(await 请求确认({ message: "将按员工档案里的手机号自动匹配钉钉账号（已绑定的不动）。继续？", danger: false }))) return;
     set匹配中(true);
     try {
       const res = await 自动匹配钉钉账号();
@@ -362,6 +364,7 @@ export function AttendanceClient({
 
   return (
     <div className="space-y-6">
+      {确认弹窗}
       {/* 工具条 */}
       <div className="flex flex-wrap items-center gap-2">
         <button

@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { 配件入库, 新建配件品牌, 新建配件规格 } from "../actions";
 
 interface Part {
@@ -60,6 +61,7 @@ export default function InventoryInForm() {
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [parts, setParts] = useState<Part[]>([]);
   const [partNames, setPartNames] = useState<PartName[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -218,7 +220,7 @@ export default function InventoryInForm() {
     /* 软拦截（2026-08-16 双入库防重）：配件在未完成采购单上，
        用户确认"这是另一批货"后带 force 重发 */
     if (!result.success && result.code === "PO_IN_FLIGHT") {
-      if (!confirm(result.error || "该配件有在途采购单，仍要入库吗？")) {
+      if (!(await 请求确认(result.error || "该配件有在途采购单，仍要入库吗？"))) {
         setLoading(false);
         return;
       }
@@ -243,6 +245,7 @@ export default function InventoryInForm() {
 
   return (
     <div>
+      {确认弹窗}
       <PageHeader title="入库登记" description="新增配件或给现有配件补货" />
 
       {branchId && (

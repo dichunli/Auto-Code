@@ -41,8 +41,12 @@
 
 ## 交互与错误处理
 
-- 用户操作失败（如保存、删除）使用 `alert()` 提示错误信息
-- 删除操作前必须弹出 `confirm()` 确认
+- **禁用浏览器原生弹窗（`alert()` / `confirm()` / `prompt()`）**，一律用自定义 React 弹窗（2026-09-11 用户拍板，原生弹窗位置丑、样式不可控）：
+  - 操作确认（删除、作废、出库等）→ `useConfirm()`：`const { 请求确认, 确认弹窗 } = useConfirm()`，`if (!(await 请求确认("确定删除吗？"))) return;`，JSX 里渲染 `{确认弹窗}`
+  - 必须让用户看完点"确定"的重要提示（失败清单等长文本）→ `useAlert()`（同文件，`await 请求提示(...)` + `{提示弹窗}`）
+  - 轻量成功/失败提示（几秒可消失）→ `useToast()`（`showToast("...", "error")`）
+  - 以上组件都在 `src/components/ConfirmDialog.tsx` / `src/components/Toast.tsx`，禁止再写原生弹窗
+- 删除操作前必须弹确认（`useConfirm`），敏感操作（金额、批量删除、导出）同样要二次确认
 - 加载状态使用 `disabled:opacity-50` 和按钮文字变化（如"保存中..."）提示
 
 ## 表单校验规则
