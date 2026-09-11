@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { 确认领料出库, 作废领料单 } from "@/app/picking-orders/actions";
 
 /* 待确认领料单操作（2026-09-11 出库管控）：仅 draft 单 + 库管角色显示。
@@ -10,11 +11,12 @@ import { 确认领料出库, 作废领料单 } from "@/app/picking-orders/action
 export function PickingDraftActions({ 领料单id, 单号 }: { 领料单id: string; 单号: string }) {
   const router = useRouter();
   const { showToast } = useToast();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [确认中, 设确认中] = useState(false);
   const [作废中, 设作废中] = useState(false);
 
   async function 处理确认() {
-    if (!confirm(`确认出库 ${单号}？\n确认后立即扣库存，不可撤销。`)) return;
+    if (!(await 请求确认({ message: `确认出库 ${单号}？\n确认后立即扣库存，不可撤销。`, danger: false }))) return;
     设确认中(true);
     try {
       const r = await 确认领料出库(领料单id);
@@ -32,7 +34,7 @@ export function PickingDraftActions({ 领料单id, 单号 }: { 领料单id: stri
   }
 
   async function 处理作废() {
-    if (!confirm(`作废待确认领料单 ${单号}？\n作废后单据删除，配件重新出现在待领料列表，可重新开单。`)) return;
+    if (!(await 请求确认(`作废待确认领料单 ${单号}？\n作废后单据删除，配件重新出现在待领料列表，可重新开单。`))) return;
     设作废中(true);
     try {
       const r = await 作废领料单(领料单id);
@@ -68,6 +70,7 @@ export function PickingDraftActions({ 领料单id, 单号 }: { 领料单id: stri
       >
         {作废中 ? "作废中..." : "作废"}
       </button>
+      {确认弹窗}
     </>
   );
 }

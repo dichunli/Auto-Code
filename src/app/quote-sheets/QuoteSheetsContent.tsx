@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { 作废询价单, 采用询价单, type 询价单列表项 } from "../quote/actions";
 import { copyText } from "@/lib/copyText";
 import { 是内网地址 } from "@/lib/isInternalHost";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 /* 询价单列表（客户端交互部分）：复制链接 / 采用锁死 / 作废 */
 
@@ -28,6 +29,7 @@ export default function QuoteSheetsContent({ 初始列表, 当前时间戳 }: { 
   const router = useRouter();
   const [操作中, set操作中] = useState<string | null>(null);
   const [复制的id, set复制的id] = useState<string | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   function 已过期(s: 询价单列表项) {
     /* 当前时间由服务端传入：渲染期不调 Date.now()（react-hooks 纯度规则） */
@@ -50,7 +52,7 @@ export default function QuoteSheetsContent({ 初始列表, 当前时间戳 }: { 
   }
 
   async function 采用(s: 询价单列表项) {
-    if (!confirm(`确定采用「${s.supplier_name}」的报价吗？\n采用后供应商不能再修改。`)) return;
+    if (!(await 请求确认({ message: `确定采用「${s.supplier_name}」的报价吗？\n采用后供应商不能再修改。`, danger: false }))) return;
     set操作中(s.id);
     try {
       const 结果 = await 采用询价单(s.id);
@@ -67,7 +69,7 @@ export default function QuoteSheetsContent({ 初始列表, 当前时间戳 }: { 
   }
 
   async function 作废(s: 询价单列表项) {
-    if (!confirm(`确定作废发给「${s.supplier_name}」的询价单吗？\n作废后链接立即失效。`)) return;
+    if (!(await 请求确认(`确定作废发给「${s.supplier_name}」的询价单吗？\n作废后链接立即失效。`))) return;
     set操作中(s.id);
     try {
       const 结果 = await 作废询价单(s.id);
@@ -93,6 +95,7 @@ export default function QuoteSheetsContent({ 初始列表, 当前时间戳 }: { 
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {确认弹窗}
       <table className="w-full text-sm">
         <thead className="bg-gray-50">
           <tr>

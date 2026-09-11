@@ -4,6 +4,7 @@ import {useState, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { PriceValue } from "@/components/PriceVisibilityContext";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { 部分收货登记, 撤销作废采购单 } from "@/app/procurement/actions";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -84,6 +85,7 @@ export default function PurchaseOrderDetailContent({
   const [loading, setLoading] = useState(false);
   const [receiveForm, setReceiveForm] = useState<Record<string, string>>({});
   const [cancelling, setCancelling] = useState(false);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   const fetchOrder = useCallback(async () => {
     if (!orderId) return;
@@ -113,7 +115,7 @@ export default function PurchaseOrderDetailContent({
     const 文案 = mode === "revoke"
       ? "撤销整单：该采购单将作废留档，明细配件【退回】待采购列表，是否继续？"
       : "作废整单：该采购单将作废留档，明细配件【不】退回待采购，是否继续？";
-    if (!confirm(文案)) return;
+    if (!(await 请求确认(文案))) return;
     setCancelling(true);
     try {
       const res = await 撤销作废采购单(order.id, mode);
@@ -173,6 +175,7 @@ export default function PurchaseOrderDetailContent({
 
   return (
     <div className="space-y-6">
+      {确认弹窗}
       <PageHeader
         title={`采购订单 ${order.order_no || orderId.slice(0, 8)}`}
         action={{ href: "/procurement", label: "返回列表" }}

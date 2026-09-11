@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDebounce } from "@/lib/useDebounce";
 import { useToast } from "@/components/Toast";
+import { useAlert, useConfirm } from "@/components/ConfirmDialog";
 import PickingScanCheckModal, { type 待核配件 } from "@/components/PickingScanCheckModal";
 import {
   统一确认领料,
@@ -400,6 +401,8 @@ export function PendingPickBoard({
 }) {
   const router = useRouter();
   const { showToast } = useToast();
+  const { 请求确认, 确认弹窗 } = useConfirm();
+  const { 请求提示, 提示弹窗 } = useAlert();
   const [搜索词, 设搜索词] = useState("");
   const 防抖词 = useDebounce(搜索词, 300);
   const [当前页, 设当前页] = useState(1);
@@ -541,7 +544,7 @@ export function PendingPickBoard({
     const 确认文案 = `统一确认领料：共 ${项列表.length} 个配件、${new Set(项列表.map((x) => x.工单id)).size} 个工单。` +
       (需确认数 > 0 ? `\n其中 ${需确认数} 个配件需库管确认，将生成待确认单，库管确认后才扣库存。` : "\n确认后立即扣库存 / 登记急件直领。") +
       "\n是否继续？";
-    if (!confirm(确认文案)) {
+    if (!(await 请求确认({ message: 确认文案, danger: false }))) {
       return;
     }
 
@@ -614,12 +617,12 @@ export function PendingPickBoard({
       );
 
       if (失败消息.length > 0) {
-        alert("以下项目领料失败（已保留在待确认区）：\n\n" + 失败消息.join("\n"));
+        await 请求提示("以下项目领料失败（已保留在待确认区）：\n\n" + 失败消息.join("\n"));
         if (成功单号.length > 0 || 待确认单号.length > 0) {
           showToast(`部分成功：已开 ${成功单号.length + 待确认单号.length} 张单，${失败消息.length} 项失败`, "warning");
         }
       } else if (待确认单号.length > 0) {
-        alert(`已生成待确认领料单：${待确认单号.join("、")}\n\n这些单含「需库管确认」配件，库管在领料单详情页点「确认出库」后才真正扣库存。`);
+        await 请求提示(`已生成待确认领料单：${待确认单号.join("、")}\n\n这些单含「需库管确认」配件，库管在领料单详情页点「确认出库」后才真正扣库存。`);
         设备注("");
       } else {
         showToast(`领料成功，共开 ${成功单号.length} 张领料单`, "success");
@@ -764,6 +767,8 @@ export function PendingPickBoard({
         }}
         onClose={() => 设扫码窗开(false)}
       />
+      {确认弹窗}
+      {提示弹窗}
     </div>
   );
 }

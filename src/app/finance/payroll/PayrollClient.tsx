@@ -11,6 +11,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { 生成工资单, 更新工资单, 变更工资单状态, type 工资单编辑数据 } from "./actions";
 import { formatCurrency } from "@/lib/utils";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // ============================================================
 // 类型定义
@@ -280,9 +281,10 @@ export function PayrollClient({ 记录们 }: { 记录们: 工资记录[] }) {
   const [显示生成弹窗, set显示生成弹窗] = useState(false);
   const [编辑目标, set编辑目标] = useState<工资记录 | null>(null);
   const [操作中id, set操作中id] = useState<string | null>(null);
+  const { 请求确认, 确认弹窗 } = useConfirm();
 
   async function 执行状态变更(id: string, 动作: "approve" | "pay" | "reopen", 提示语: string) {
-    if (!confirm(提示语)) return;
+    if (!(await 请求确认(提示语))) return;
     set操作中id(id);
     try {
       const res = await 变更工资单状态(id, 动作);
@@ -300,6 +302,7 @@ export function PayrollClient({ 记录们 }: { 记录们: 工资记录[] }) {
 
   return (
     <div className="space-y-4">
+      {确认弹窗}
       <div className="flex justify-end">
         <button
           onClick={() => set显示生成弹窗(true)}

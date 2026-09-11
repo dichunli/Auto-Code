@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 退料类型标签 } from "@/lib/returnTypes";
 import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { 确认退料申请, 取消退料申请 } from "@/app/material-returns/actions";
 
 /* 待退料申请行（page.tsx 首屏查询注入） */
@@ -46,6 +47,7 @@ interface Props {
 export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: Props) {
   const router = useRouter();
   const { showToast } = useToast();
+  const { 请求确认, 确认弹窗 } = useConfirm();
   const [勾选, set勾选] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
 
@@ -75,7 +77,7 @@ export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: P
     const 数量合计 = initialRequests
       .filter((r) => 勾选.has(r.id))
       .reduce((s, r) => s + r.quantity, 0);
-    if (!confirm(`确认这 ${勾选.size} 条退料申请（共 ${数量合计} 件）？将生成退料单并加回库存`)) {
+    if (!(await 请求确认({ message: `确认这 ${勾选.size} 条退料申请（共 ${数量合计} 件）？将生成退料单并加回库存`, danger: false }))) {
       return;
     }
     setLoading(true);
@@ -97,7 +99,7 @@ export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: P
 
   /* 驳回申请（标 cancelled，师傅端可重新发起） */
   async function 驳回(id: string) {
-    if (!confirm("驳回这条退料申请？")) return;
+    if (!(await 请求确认("驳回这条退料申请？"))) return;
     setLoading(true);
     try {
       const r = await 取消退料申请(id);
@@ -256,6 +258,7 @@ export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: P
           </table>
         </div>
       </div>
+      {确认弹窗}
     </div>
   );
 }
