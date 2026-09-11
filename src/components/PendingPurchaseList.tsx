@@ -325,7 +325,8 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
     弹窗规格来源: "join",
     取弹前行: (r) => r,
     setSubmitting: (key) => setEditingId(key ? key.replace(/^(edit|inline)-/, "") : null),
-    reload: loadData,
+    /* TODO(批3局部更新)：此处暂保持整表重查，本批只改公共层 */
+    保存后: () => loadData(),
   });
   const {
     editRow,

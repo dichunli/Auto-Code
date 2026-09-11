@@ -288,7 +288,8 @@ export function PendingReturnList(props: PendingReturnListProps) {
     弹窗规格来源: "specification_text",
     取弹前行: (r) => r.work_order_item_parts || {},
     setSubmitting,
-    reload: loadData,
+    /* 待退货不在局部更新范围内，保持整表重查 */
+    保存后: () => loadData(),
   });
   const {
     editRow: editItem,

@@ -699,7 +699,8 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     弹窗规格来源: "specification_text",
     取弹前行: (item) => item,
     setSubmitting,
-    reload: loadData,
+    /* TODO(批4局部更新)：此处暂保持整表重查，本批只改公共层 */
+    保存后: () => loadData(),
   });
   const {
     editRow: editItem,

@@ -85,7 +85,9 @@ export interface PartLinking配置<T> {
   /* 弹窗预填取值器（退货从 row.work_order_item_parts 取，采购/收货/入库从行本身取） */
   取弹前行: (row: T) => 弹前行视图;
   setSubmitting: (key: string | null) => void;
-  reload: () => void;
+  /* 保存成功后回调：带出主表行 id 和实际写入的字段（"为空才填"合并结果只有服务端知道），
+     调用方据此局部 patch 列表行；暂时不想局部化的列表可传 () => loadData() 保持旧行为 */
+  保存后: (rowId: string, 写入字段: Record<string, unknown>) => void;
 }
 
 export function usePartLinking<T>(配置: PartLinking配置<T>) {
@@ -114,11 +116,12 @@ export function usePartLinking<T>(配置: PartLinking配置<T>) {
    * 写库走 Server Action：配件信息在服务端读，主表+副表一次完成 */
   async function handlePartSaved(partId: string) {
     if (!editRow) return;
-    配置.setSubmitting(busyKeyOf("edit", 配置.getRowId(editRow)));
+    const rowId = 配置.getRowId(editRow);
+    配置.setSubmitting(busyKeyOf("edit", rowId));
     try {
       const result = await 行内配件关联({
         主表: 配置.主表,
-        主表行id: 配置.getRowId(editRow),
+        主表行id: rowId,
         副表行id: 配置.getWoiId(editRow),
         双写WOI: 配置.双写WOI,
         写WoiPartId: 配置.写WoiPartId,
@@ -133,7 +136,7 @@ export function usePartLinking<T>(配置: PartLinking配置<T>) {
       if (!result.success) throw new Error(result.error || "同步失败");
 
       closeEditModal();
-      配置.reload();
+      配置.保存后(rowId, result.字段 ?? {});
     } catch (err: unknown) {
       const e = err as Error;
       alert("同步配件信息失败: " + (e.message || String(err)));
@@ -164,7 +167,7 @@ export function usePartLinking<T>(配置: PartLinking配置<T>) {
       });
       if (!result.success) throw new Error(result.error || "更新失败");
 
-      配置.reload();
+      配置.保存后(rowId, result.字段 ?? {});
     } catch (err: unknown) {
       const e = err as Error;
       alert("更新配件信息失败: " + (e.message || String(err)));
@@ -194,7 +197,7 @@ export function usePartLinking<T>(配置: PartLinking配置<T>) {
       });
       if (!result.success) throw new Error(result.error || "清除失败");
 
-      配置.reload();
+      配置.保存后(rowId, result.字段 ?? {});
     } catch (err: unknown) {
       const e = err as Error;
       alert("清除配件关联失败: " + (e.message || String(err)));

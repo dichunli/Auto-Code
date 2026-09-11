@@ -44,6 +44,12 @@ export interface 行内配件快照 {
   part_specifications?: { name?: string | null } | null;
 }
 
+/* 行内配件关联返回：成功后带出实际写入主表的字段（局部更新用，
+   "为空才填"合并结果只有服务端知道，前端靠它直接 patch 列表行） */
+export interface 行内配件关联结果 extends 操作结果 {
+  字段?: Record<string, unknown>;
+}
+
 export async function 行内配件关联(参数: {
   主表: "purchase_order_items" | "work_order_item_parts";
   主表行id: string;
@@ -58,7 +64,7 @@ export async function 行内配件关联(参数: {
   模式: "弹窗保存" | "行内选中" | "行内清除";
   partId?: string;
   行内配件?: 行内配件快照;
-}): Promise<操作结果> {
+}): Promise<行内配件关联结果> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
     return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
@@ -84,7 +90,7 @@ export async function 行内配件关联(参数: {
       if (woiErr) console.warn("同步清除工单配件信息失败:", woiErr);
     }
     revalidatePath("/procurement");
-    return { success: true };
+    return { success: true, 字段: { part_id: null, part_number: null } };
   }
 
   /* ── 弹窗保存：服务端读配件全量信息，写主表 + 双写副表 ── */
@@ -156,7 +162,7 @@ export async function 行内配件关联(参数: {
     }
 
     revalidatePath("/procurement");
-    return { success: true };
+    return { success: true, 字段: 主表Updates };
   }
 
   /* ── 行内选中：客户端传入配件快照，"为空才填"的当前值在服务端读最新 ── */
@@ -251,7 +257,7 @@ export async function 行内配件关联(参数: {
   }
 
   revalidatePath("/procurement");
-  return { success: true };
+  return { success: true, 字段: 主表Updates };
 }
 
 
@@ -507,7 +513,14 @@ export interface 采购暂存输入 {
   source: "safety_stock" | "custom";
 }
 
-export async function 添加采购暂存(行列表: 采购暂存输入[]): Promise<操作结果 & { count?: number }> {
+/* 暂存行（局部更新用：插入后 select 原样带回，客户端直接 append 到列表） */
+export interface 采购暂存行 extends 采购暂存输入 {
+  id: string;
+  supplier_name: string | null;
+  created_at: string;
+}
+
+export async function 添加采购暂存(行列表: 采购暂存输入[]): Promise<操作结果 & { count?: number; rows?: 采购暂存行[] }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
     return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
@@ -534,7 +547,7 @@ export async function 添加采购暂存(行列表: 采购暂存输入[]): Promi
     if (!供应商名Map.has(r.supplier_id)) return { success: false, error: "供应商不存在，请刷新后重试" };
   }
 
-  const { error } = await supabase.from("custom_purchase_staging").insert(
+  const { data: 插入行, error } = await supabase.from("custom_purchase_staging").insert(
     行列表.map((r) => ({
       part_id: r.part_id || null,
       part_number: r.part_number?.trim() || null,
@@ -550,11 +563,11 @@ export async function 添加采购暂存(行列表: 采购暂存输入[]): Promi
       source: r.source,
       created_by: user.id,
     }))
-  );
+  ).select("id, part_id, part_number, name, brand, specification, document_name, unit, unit_cost, quantity, supplier_id, supplier_name, source, created_at");
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/procurement");
-  return { success: true, count: 行列表.length };
+  return { success: true, count: 行列表.length, rows: (插入行 || []) as 采购暂存行[] };
 }
 
 /* ═══ 收货处理 ═══ */

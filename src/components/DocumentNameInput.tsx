@@ -8,7 +8,8 @@ interface Props {
   工单配件行id?: string | null;
   采购明细id?: string | null;
   初始值: string;
-  保存后?: () => void;
+  /* 保存成功后回调并带出新值（局部更新用）；传无参函数（如旧的 loadData）也兼容 */
+  保存后?: (新值: string) => void;
   样式类名?: string;
 }
 
@@ -33,7 +34,7 @@ export function DocumentNameInput({ 工单配件行id, 采购明细id, 初始值
         e.target.value = 初始值 || ""; /* 失败回滚显示 */
         return;
       }
-      保存后?.();
+      保存后?.(新值);
     } catch (err: unknown) {
       alert("单据名称保存失败: " + (err instanceof Error ? err.message : String(err)));
       e.target.value = 初始值 || "";
