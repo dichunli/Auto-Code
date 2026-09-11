@@ -45,6 +45,7 @@ export default function EditPartNamePage() {
     is_consumable?: boolean;
     require_scan_check?: boolean;
     require_location_check?: boolean;
+    require_confirm?: boolean;
     sales_commission_type?: string | null;
     sales_commission_value?: number | null;
     diagnosis_commission_type?: string | null;
@@ -69,6 +70,7 @@ export default function EditPartNamePage() {
     is_consumable: false,
     require_scan_check: false,
     require_location_check: false,
+    require_confirm: false,
     sales_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
     sales_value: "",
     diagnosis_type: "" as "" | "revenue_pct" | "profit_pct" | "fixed",
@@ -102,7 +104,7 @@ export default function EditPartNamePage() {
         supabase.from("part_names").select("*").eq("id", id).single(),
         supabase
           .from("part_categories")
-          .select("id, name, auto_link_vehicle_model, auto_match_17vin_models, is_consumable, require_scan_check, require_location_check, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value")
+          .select("id, name, auto_link_vehicle_model, auto_match_17vin_models, is_consumable, require_scan_check, require_location_check, require_confirm, sales_commission_type, sales_commission_value, diagnosis_commission_type, diagnosis_commission_value, repair_commission_type, repair_commission_value, qc_commission_type, qc_commission_value, picking_commission_type, picking_commission_value")
           .order("name"),
         supabase.from("part_name_brands").select("brand_id, part_brands(id, name)").eq("part_name_id", id),
         supabase.from("part_name_specifications").select("specification_id, part_specifications(id, name)").eq("part_name_id", id),
@@ -122,6 +124,7 @@ export default function EditPartNamePage() {
         is_consumable: part.is_consumable || false,
         require_scan_check: part.require_scan_check || false,
         require_location_check: part.require_location_check || false,
+        require_confirm: part.require_confirm || false,
         sales_type: part.sales_commission_type || "",
         sales_value: part.sales_commission_value?.toString() || "",
         diagnosis_type: part.diagnosis_commission_type || "",
@@ -169,6 +172,7 @@ export default function EditPartNamePage() {
         is_consumable: cat.is_consumable || false,
         require_scan_check: cat.require_scan_check || false,
         require_location_check: cat.require_location_check || false,
+        require_confirm: cat.require_confirm || false,
         sales_type: (cat.sales_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed", sales_value: cat.sales_commission_value?.toString() || "",
         diagnosis_type: (cat.diagnosis_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed", diagnosis_value: cat.diagnosis_commission_value?.toString() || "",
         repair_type: (cat.repair_commission_type || "") as "" | "revenue_pct" | "profit_pct" | "fixed", repair_value: cat.repair_commission_value?.toString() || "",
@@ -317,6 +321,10 @@ export default function EditPartNamePage() {
             <label className="flex items-center gap-2 cursor-pointer" title="勾选后，该配件入库时必须填写/确认存放位置">
               <input type="checkbox" checked={form.require_location_check} onChange={(e) => setForm({ ...form, require_location_check: e.target.checked })} className="w-4 h-4" />
               <span className="text-sm text-gray-700">入库仓位确认</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer" title="勾选后，含该名称配件的领料单需库管确认后才扣库存">
+              <input type="checkbox" checked={form.require_confirm} onChange={(e) => setForm({ ...form, require_confirm: e.target.checked })} className="w-4 h-4" />
+              <span className="text-sm text-gray-700">出库需库管确认</span>
             </label>
           </div>
           <div className="space-y-4">

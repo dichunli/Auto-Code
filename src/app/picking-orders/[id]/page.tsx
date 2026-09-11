@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { PrintButton } from "@/components/PrintButton";
 import { CancelDirectButton } from "./CancelDirectButton";
+import { PickingDraftActions } from "./PickingDraftActions";
 
 interface 领料单明细 {
   id: string;
@@ -63,6 +64,24 @@ export default async function PickingOrderDetailPage({
   const 领料单 = order as unknown as 领料单;
   const 明细 = (items || []) as unknown as 领料单明细[];
 
+  /* 待确认单（draft）：查当前用户角色，仅管理员/老板/库管显示确认出库/作废按钮
+     （按钮只是展示层，RPC 里还有 has_role 门禁兜底） */
+  let 可确认出库 = false;
+  if (领料单.status === "draft") {
+    const { data: 当前用户 } = await supabase.auth.getUser();
+    if (当前用户.user) {
+      const { data: 角色行 } = await supabase
+        .from("profile_roles")
+        .select("roles(name)")
+        .eq("profile_id", 当前用户.user.id);
+      interface 角色联查 {
+        roles: { name: string } | null;
+      }
+      const 角色们 = ((角色行 || []) as unknown as 角色联查[]).map((r) => r.roles?.name);
+      可确认出库 = 角色们.some((r) => r === "admin" || r === "boss" || r === "warehouse");
+    }
+  }
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-6 flex items-center justify-between print:hidden">
@@ -70,15 +89,29 @@ export default async function PickingOrderDetailPage({
           ← 返回领料单列表
         </Link>
         <div className="flex items-center gap-2">
-          <Link
-            href={`/material-returns/new?picking_order_id=${领料单.id}`}
-            className="px-3 py-1.5 text-xs rounded border border-red-300 text-red-600 hover:bg-red-50"
-          >
-            开退料单
-          </Link>
+          {/* 待确认单：库管确认出库/作废；未出库不能开退料单 */}
+          {领料单.status === "draft" && 可确认出库 && (
+            <PickingDraftActions 领料单id={领料单.id} 单号={领料单.picking_no} />
+          )}
+          {领料单.status === "confirmed" && (
+            <Link
+              href={`/material-returns/new?picking_order_id=${领料单.id}`}
+              className="px-3 py-1.5 text-xs rounded border border-red-300 text-red-600 hover:bg-red-50"
+            >
+              开退料单
+            </Link>
+          )}
           <PrintButton />
         </div>
       </div>
+
+      {/* 待确认提示条 */}
+      {领料单.status === "draft" && (
+        <div className="mb-6 rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 print:hidden">
+          本单含「需库管确认」配件，当前为待确认状态，<b>尚未扣减库存</b>。
+          库管核对无误后点右上角「确认出库」才正式扣库存；开错了可「作废」，配件会回到待领料列表。
+        </div>
+      )}
 
       {/* 打印专用页头 */}
       <div className="hidden print:block text-center mb-6">
@@ -133,10 +166,12 @@ export default async function PickingOrderDetailPage({
                 className={`text-xs px-2 py-0.5 rounded ${
                   领料单.status === "confirmed"
                     ? "bg-green-50 text-green-700"
-                    : "bg-gray-100 text-gray-500"
+                    : 领料单.status === "draft"
+                      ? "bg-yellow-50 text-yellow-700"
+                      : "bg-gray-100 text-gray-500"
                 }`}
               >
-                {领料单.status === "confirmed" ? "已出库" : "已作废"}
+                {领料单.status === "confirmed" ? "已出库" : 领料单.status === "draft" ? "待确认" : "已作废"}
               </span>
             </div>
           </div>
@@ -210,7 +245,8 @@ export default async function PickingOrderDetailPage({
                     {it.unit_cost != null ? `¥${it.unit_cost.toFixed(2)}` : "-"}
                   </td>
                   <td className="px-6 py-4 print:hidden">
-                    {待冲账直领 && it.picking_record_id && (
+                    {/* draft 单不显示行级取消直领，统一用顶部整单作废 */}
+                    {待冲账直领 && it.picking_record_id && 领料单.status !== "draft" && (
                       <CancelDirectButton 领料记录id={it.picking_record_id} />
                     )}
                   </td>

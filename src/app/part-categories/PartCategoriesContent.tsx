@@ -25,6 +25,7 @@ interface 配件分类 {
   picking_commission_value: number | null;
   require_scan_check: boolean;
   require_location_check: boolean;
+  require_confirm: boolean;
   sort_order: number;
   created_at: string;
 }
@@ -101,6 +102,7 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
     picking_value: "",
     require_scan_check: false,
     require_location_check: false,
+    require_confirm: false,
   });
 
   async function loadCategories(search?: string) {
@@ -223,6 +225,7 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
       is_consumable: false,
       require_scan_check: false,
       require_location_check: false,
+      require_confirm: false,
       sales_type: "",
       sales_value: "",
       diagnosis_type: "",
@@ -272,6 +275,7 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
                 <th className="px-6 py-3 text-left font-medium text-gray-500">耗材</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">扫码出库</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">入库仓位</th>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">出库确认</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">销售提成</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">诊断提成</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">施工提成</th>
@@ -307,6 +311,7 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
                   <td className="px-6 py-4 text-gray-600">{c.is_consumable ? "是" : "否"}</td>
                   <td className="px-6 py-4 text-gray-600">{c.require_scan_check ? "是" : "否"}</td>
                   <td className="px-6 py-4 text-gray-600">{c.require_location_check ? "是" : "否"}</td>
+                  <td className="px-6 py-4 text-gray-600">{c.require_confirm ? "是" : "否"}</td>
                   <td className="px-6 py-4 text-gray-600">{formatCommission(c.sales_commission_type, c.sales_commission_value)}</td>
                   <td className="px-6 py-4 text-gray-600">{formatCommission(c.diagnosis_commission_type, c.diagnosis_commission_value)}</td>
                   <td className="px-6 py-4 text-gray-600">{formatCommission(c.repair_commission_type, c.repair_commission_value)}</td>
@@ -322,7 +327,7 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
               ))}
               {(!categories || categories.length === 0) && !showForm && (
                 <tr>
-                  <td colSpan={10} className="px-6 py-12 text-center">
+                  <td colSpan={11} className="px-6 py-12 text-center">
                     <div className="text-gray-400 mb-4">
                       {searching ? "搜索中..." : query.trim() ? "未找到匹配的分类" : "暂无分类"}
                     </div>
@@ -390,6 +395,15 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
                   className="w-4 h-4"
                 />
                 <span className="text-sm text-gray-700">入库仓位确认</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer" title="勾选后，含该分类配件的领料单需库管确认后才扣库存">
+                <input
+                  type="checkbox"
+                  checked={form.require_confirm}
+                  onChange={(e) => setForm({ ...form, require_confirm: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">出库需库管确认</span>
               </label>
             </div>
 

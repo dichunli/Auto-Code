@@ -10,6 +10,8 @@ interface PickingRecord {
   quantity: number;
   picking_order_id: string | null;
   part_batches: { id: string; batch_no: string; unit_cost: number } | null;
+  /* 联查领料单状态：待确认（draft）单的占位记录不能退（库存从未扣过） */
+  picking_orders: { status: string } | null;
 }
 
 /* 工单配件分支快照（生成退料单明细时冗余保存） */
@@ -48,7 +50,7 @@ export function PartReturnModal({ open, partName, workOrderItemPartId, onClose, 
     Promise.all([
       supabase
         .from("part_picking_records")
-        .select("id, quantity, picking_order_id, part_batches(id, batch_no, unit_cost)")
+        .select("id, quantity, picking_order_id, part_batches(id, batch_no, unit_cost), picking_orders(status)")
         .eq("work_order_item_part_id", workOrderItemPartId)
         .order("picked_at", { ascending: true }),
       supabase
@@ -62,7 +64,12 @@ export function PartReturnModal({ open, partName, workOrderItemPartId, onClose, 
         .single(),
     ]).then(([领料结果, 退料结果, 快照结果]) => {
       if (领料结果.error) console.error(领料结果.error);
-      setRecords((领料结果.data || []) as unknown as PickingRecord[]);
+      /* 过滤待确认（draft）单的占位记录：库存从未扣过，不能退 */
+      setRecords(
+        ((领料结果.data || []) as unknown as PickingRecord[]).filter(
+          (r) => r.picking_orders?.status !== "draft"
+        )
+      );
       /* 统计每条领料记录已退数量，避免超退 */
       const map: Record<string, number> = {};
       for (const r of 退料结果.data || []) {

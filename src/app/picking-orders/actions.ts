@@ -35,17 +35,23 @@ interface RPC返回 {
   error?: string;
   picking_order_id?: string;
   picking_no?: string;
+  /* draft=待确认（含需库管确认配件，未扣库存）；confirmed=已确认 */
+  status?: string;
+  need_confirm?: boolean;
 }
 
 /**
  * 创建领料单（原子操作：建单 + 逐条扣库存 + 写明细，任一步失败整体回滚）
- * 库存扣减由数据库触发器完成，批次剩余不足或总库存不足会直接报错
+ * 库存扣减由数据库触发器完成，批次剩余不足或总库存不足会直接报错。
+ * 含需库管确认配件时建为 draft 待确认单（不扣库存），库管确认出库时才扣；
+ * 含需扫码配件时必须在 扫码记录 里带上扫到的码（RPC 层权威校验）。
  */
 export async function 创建领料单(
   工单id: string | null,
   明细: 领料明细输入[],
   领料人: string,
-  备注: string
+  备注: string,
+  扫码记录?: Record<string, string>
 ): Promise<开单结果> {
   if (!明细 || 明细.length === 0) {
     return { success: false, error: "领料明细不能为空" };
@@ -71,6 +77,7 @@ export async function 创建领料单(
     p_receiver_name: 领料人,
     p_notes: 备注,
     p_operator_id: user.id,
+    p_scan_codes: 扫码记录 ?? null,
   });
   if (error) {
     return { success: false, error: error.message };
@@ -142,16 +149,20 @@ interface 直领RPC返回 {
   error?: string;
   picking_order_id?: string;
   picking_no?: string;
+  status?: string;
+  need_confirm?: boolean;
 }
 
 /**
  * 直领开单：调 create_direct_picking_order RPC（校验+分摊采购行全在数据库事务里）
- * 直领登记算"已领"（结单门禁/申领核销自动兼容），库存账等确认入库时轧平
+ * 直领登记算"已领"（结单门禁/申领核销自动兼容），库存账等确认入库时轧平。
+ * 含需确认配件时建为 draft 待确认单；含需扫码配件时 扫码记录 必填（RPC 层权威校验）。
  */
 export async function 直领开单(
   明细: 直领明细输入[],
   领料人: string,
-  备注: string
+  备注: string,
+  扫码记录?: Record<string, string>
 ): Promise<开单结果> {
   if (!明细 || 明细.length === 0) {
     return { success: false, error: "直领明细不能为空" };
@@ -176,6 +187,7 @@ export async function 直领开单(
     p_receiver_name: 领料人,
     p_notes: 备注,
     p_operator_id: user.id,
+    p_scan_codes: 扫码记录 ?? null,
   });
   if (error) {
     return { success: false, error: error.message };
@@ -317,6 +329,9 @@ export interface 统一领料工单结果 {
   工单id: string;
   普通单号?: string;
   直领单号?: string;
+  /* draft=待确认（库管确认出库后才扣库存/生效）；confirmed=已确认 */
+  普通状态?: string;
+  直领状态?: string;
   普通错误?: string;
   直领错误?: string;
 }
@@ -354,11 +369,13 @@ interface 批次行 {
  * 统一确认领料：按工单分组批量开单
  * 普通部分：服务端重查分支+净领校验数量，批次 FIFO 自动分配后调 create_picking_order
  * 直领部分：直接调 create_direct_picking_order（锁分支校验+采购行分摊全在 RPC 内）
+ * 扫码记录：{part_id: 扫到的码文本}，含需扫码配件时 RPC 层权威校验
  */
 export async function 统一确认领料(
   工单组列表: 统一领料工单组[],
   领料人: string,
-  备注: string
+  备注: string,
+  扫码记录?: Record<string, string>
 ): Promise<统一领料返回> {
   if (!工单组列表 || 工单组列表.length === 0) {
     return { success: false, error: "待确认的配件不能为空" };
@@ -378,8 +395,9 @@ export async function 统一确认领料(
     /* ── 普通领料：重查校验 + FIFO 自动分配 + 开单 ── */
     if (组.普通 && 组.普通.length > 0) {
       try {
-        const 普通单号 = await 处理普通领料(supabase, 组, user.id, 领料人, 备注);
-        单组结果.普通单号 = 普通单号;
+        const r = await 处理普通领料(supabase, 组, user.id, 领料人, 备注, 扫码记录);
+        单组结果.普通单号 = r.单号;
+        单组结果.普通状态 = r.状态;
       } catch (err: unknown) {
         单组结果.普通错误 = err instanceof Error ? err.message : "开单失败";
       }
@@ -396,12 +414,14 @@ export async function 统一确认领料(
           p_receiver_name: 领料人,
           p_notes: 备注,
           p_operator_id: user.id,
+          p_scan_codes: 扫码记录 ?? null,
         });
         const 直领结果 = data as unknown as 直领RPC返回 | null;
         if (error || !直领结果?.success) {
           单组结果.直领错误 = error?.message || 直领结果?.error || "直领开单失败";
         } else {
           单组结果.直领单号 = 直领结果.picking_no;
+          单组结果.直领状态 = 直领结果.status;
           await 核销申领(supabase, 分支ids去重(有效直领.map((m) => m.work_order_item_part_id)), user.id);
         }
       }
@@ -418,14 +438,15 @@ export async function 统一确认领料(
   return { success: true, 结果: 结果列表 };
 }
 
-/* 普通领料单工单处理：校验→分配→开单，返回单号；失败抛错由上层捕获记录 */
+/* 普通领料单工单处理：校验→分配→开单，返回单号+状态；失败抛错由上层捕获记录 */
 async function 处理普通领料(
   supabase: Awaited<ReturnType<typeof createClient>>,
   组: 统一领料工单组,
   操作人id: string,
   领料人: string,
-  备注: string
-): Promise<string> {
+  备注: string,
+  扫码记录?: Record<string, string>
+): Promise<{ 单号: string; 状态?: string }> {
   const 有效项 = 组.普通.filter((m) => Number.isInteger(m.quantity) && m.quantity > 0);
   if (有效项.length === 0) {
     throw new Error("领料数量必须是大于 0 的整数");
@@ -524,6 +545,7 @@ async function 处理普通领料(
     p_receiver_name: 领料人,
     p_notes: 备注,
     p_operator_id: 操作人id,
+    p_scan_codes: 扫码记录 ?? null,
   });
   const 开单结果 = data as unknown as RPC返回 | null;
   if (error || !开单结果?.success) {
@@ -531,5 +553,94 @@ async function 处理普通领料(
   }
 
   await 核销申领(supabase, 分支ids去重(分支ids), 操作人id);
-  return 开单结果.picking_no!;
+  return { 单号: 开单结果.picking_no!, 状态: 开单结果.status };
+}
+
+/* ═══ 待确认领料单（draft）：库管确认出库 / 作废（2026-09-11 出库管控） ═══ */
+
+interface 确认返回 {
+  success: boolean;
+  error?: string;
+  picking_no?: string;
+}
+
+/**
+ * 确认领料出库：draft → confirmed，逐条补扣库存（事务在 RPC 内）。
+ * 客户端只传单 id，业务数据服务端从库里取，防篡改。
+ * 确认时批次库存不足（被其他单领走）会整单回滚保持 draft，引导作废重开。
+ */
+export async function 确认领料出库(领料单id: string): Promise<确认返回> {
+  const supabase = await createClient();
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "登录已失效，请重新登录" };
+  }
+
+  const { data, error } = await supabase.rpc("confirm_picking_order", {
+    p_picking_order_id: 领料单id,
+    p_operator_id: user.id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as unknown as 确认返回;
+  if (!结果?.success) {
+    let 提示 = 结果?.error || "确认出库失败";
+    if (提示.includes("库存不足")) {
+      提示 += "（批次库存可能被其他领料单占用，可作废本单后重新开单）";
+    }
+    return { success: false, error: 提示 };
+  }
+
+  /* 反查工单刷新详情页 */
+  const { data: 单 } = await supabase
+    .from("picking_orders")
+    .select("work_order_id")
+    .eq("id", 领料单id)
+    .single();
+
+  revalidatePath("/picking-orders");
+  revalidatePath("/picking");
+  if (单?.work_order_id) {
+    revalidatePath(`/work-orders/${单.work_order_id}`);
+  }
+  return { success: true, picking_no: 结果.picking_no };
+}
+
+/**
+ * 作废待确认领料单：draft 未动库存，删记录+删单（顺序由 RPC 保证）。
+ * 作废后配件重新出现在待领列表，可重新开单。
+ */
+export async function 作废领料单(领料单id: string): Promise<确认返回> {
+  const supabase = await createClient();
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "登录已失效，请重新登录" };
+  }
+
+  /* 先反查工单 id（删完单就查不到了），用于刷新工单详情页 */
+  const { data: 单 } = await supabase
+    .from("picking_orders")
+    .select("work_order_id")
+    .eq("id", 领料单id)
+    .single();
+
+  const { data, error } = await supabase.rpc("void_picking_draft", {
+    p_picking_order_id: 领料单id,
+    p_operator_id: user.id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as unknown as 确认返回;
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "作废失败" };
+  }
+
+  revalidatePath("/picking-orders");
+  revalidatePath("/picking");
+  if (单?.work_order_id) {
+    revalidatePath(`/work-orders/${单.work_order_id}`);
+  }
+  return { success: true, picking_no: 结果.picking_no };
 }

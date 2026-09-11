@@ -167,10 +167,14 @@ export function PickedOrdersGrouped({ initialRecords, 明细列表, 车型By工�
                       </Link>
                       <span
                         className={`text-xs px-2 py-0.5 rounded ${
-                          o.status === "confirmed" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"
+                          o.status === "confirmed"
+                            ? "bg-green-50 text-green-700"
+                            : o.status === "draft"
+                              ? "bg-yellow-50 text-yellow-700"
+                              : "bg-gray-100 text-gray-500"
                         }`}
                       >
-                        {o.status === "confirmed" ? "已出库" : "已作废"}
+                        {o.status === "confirmed" ? "已出库" : o.status === "draft" ? "待确认" : "已作废"}
                       </span>
                       <span className="text-xs text-gray-500">共 {o.total_quantity} 件</span>
                       <span className="text-xs text-gray-500">领料人：{o.receiver_name || "-"}</span>
@@ -185,13 +189,15 @@ export function PickedOrdersGrouped({ initialRecords, 明细列表, 车型By工�
                       >
                         查看/打印
                       </Link>
-                      {/* 退料入口：按这张领料单开退料单（带参跳开单页） */}
-                      <Link
-                        href={`/material-returns/new?picking_order_id=${o.id}`}
-                        className="px-2.5 py-1 text-xs rounded border border-red-300 text-red-600 hover:bg-red-50"
-                      >
-                        退料
-                      </Link>
+                      {/* 退料入口：按这张领料单开退料单（带参跳开单页）；待确认单未出库不能退料 */}
+                      {o.status === "confirmed" && (
+                        <Link
+                          href={`/material-returns/new?picking_order_id=${o.id}`}
+                          className="px-2.5 py-1 text-xs rounded border border-red-300 text-red-600 hover:bg-red-50"
+                        >
+                          退料
+                        </Link>
+                      )}
                     </div>
 
                     {/* 三级：领料明细 */}

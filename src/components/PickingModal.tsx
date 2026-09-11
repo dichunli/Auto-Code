@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 创建领料单, type 领料明细输入 } from "@/app/picking-orders/actions";
+import PickingScanCheckModal, { type 待核配件 } from "@/components/PickingScanCheckModal";
 
 interface Batch {
   id: string;
@@ -20,6 +21,14 @@ interface 分支快照 {
   specification: string | null;
   unit: string | null;
   part_id: string | null;
+}
+
+/* 配件出库管控（三级 OR 判定后的最终值 + 扫码比对条码） */
+interface 管控信息 {
+  需扫码: boolean;
+  需确认: boolean;
+  barcode: string | null;
+  档案编码: string | null;
 }
 
 interface Props {
@@ -47,11 +56,13 @@ export function PickingModal({
   const [selected, setSelected] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [管控, 设管控] = useState<管控信息 | null>(null);
+  const [扫码窗开, 设扫码窗开] = useState(false);
 
   useEffect(() => {
     if (!open || !partId) return;
     setFetching(true);
-    /* 并行查可用批次和配件分支快照 */
+    /* 并行查可用批次、配件分支快照、配件出库管控（名称+分类三级） */
     Promise.all([
       supabase
         .from("part_batches")
@@ -64,10 +75,47 @@ export function PickingModal({
         .select("part_number, name, brand, specification, unit, part_id")
         .eq("id", workOrderItemPartId)
         .single(),
-    ]).then(([批次结果, 快照结果]) => {
+      supabase
+        .from("parts")
+        .select("barcode, part_number, require_scan_check, require_confirm, category_id, part_names(require_scan_check, require_confirm, category_id)")
+        .eq("id", partId)
+        .single(),
+    ]).then(async ([批次结果, 快照结果, 管控结果]) => {
       if (批次结果.error) console.error(批次结果.error);
       setBatches(批次结果.data || []);
       if (快照结果.data) 设快照(快照结果.data as 分支快照);
+      /* 三级 OR：配件/名称/分类任一级勾了即生效 */
+      interface 管控查询行 {
+        barcode: string | null;
+        part_number: string | null;
+        require_scan_check: boolean | null;
+        require_confirm: boolean | null;
+        category_id: string | null;
+        part_names: { require_scan_check: boolean | null; require_confirm: boolean | null; category_id: string | null } | null;
+      }
+      const p = 管控结果.data as unknown as 管控查询行 | null;
+      if (p) {
+        let 分类管控 = { 需扫码: false, 需确认: false };
+        const 分类id = p.part_names?.category_id || p.category_id;
+        if (分类id) {
+          const { data: c } = await supabase
+            .from("part_categories")
+            .select("require_scan_check, require_confirm")
+            .eq("id", 分类id)
+            .single();
+          if (c) {
+            分类管控 = { 需扫码: !!c.require_scan_check, 需确认: !!c.require_confirm };
+          }
+        }
+        设管控({
+          需扫码: !!p.require_scan_check || !!p.part_names?.require_scan_check || 分类管控.需扫码,
+          需确认: !!p.require_confirm || !!p.part_names?.require_confirm || 分类管控.需确认,
+          barcode: p.barcode,
+          档案编码: p.part_number,
+        });
+      } else {
+        设管控(null);
+      }
       setFetching(false);
     });
   }, [open, partId, workOrderItemPartId, supabase]);
@@ -89,12 +137,21 @@ export function PickingModal({
     });
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  /* 提交：需扫码配件先弹扫码核对窗，扫完才开单 */
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (totalSelected <= 0 || totalSelected > quantityNeeded) {
       alert(`领料数量必须在 1-${quantityNeeded} 之间`);
       return;
     }
+    if (管控?.需扫码) {
+      设扫码窗开(true);
+      return;
+    }
+    执行开单(undefined);
+  }
+
+  async function 执行开单(扫码记录: Record<string, string> | undefined) {
     setLoading(true);
 
     try {
@@ -118,13 +175,17 @@ export function PickingModal({
           };
         });
 
-      const 结果 = await 创建领料单(null, 明细, "", "");
+      const 结果 = await 创建领料单(null, 明细, "", "", 扫码记录);
       if (!结果.success) {
         alert("领料失败: " + (结果.error || "未知错误"));
         return;
       }
 
-      alert(`领料成功，已生成领料单 ${结果.data?.no}`);
+      if (管控?.需确认) {
+        alert(`领料单 ${结果.data?.no} 已生成（待确认）。\n\n该配件需库管确认，库管在领料单详情页点「确认出库」后才真正扣库存。`);
+      } else {
+        alert(`领料成功，已生成领料单 ${结果.data?.no}`);
+      }
       onSuccess();
       onClose();
     } catch (err: unknown) {
@@ -135,6 +196,18 @@ export function PickingModal({
   }
 
   if (!open) return null;
+
+  /* 扫码窗清单（单配件） */
+  const 扫码清单: 待核配件[] =
+    管控?.需扫码 && partId
+      ? [{
+          part_id: partId,
+          名称: partName,
+          part_number: 管控.档案编码,
+          barcode: 管控.barcode,
+          数量: totalSelected,
+        }]
+      : [];
 
   return (
     <dialog open className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -147,6 +220,16 @@ export function PickingModal({
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="text-sm text-gray-600">
             配件: <span className="font-medium text-gray-900">{partName}</span>
+            {管控?.需扫码 && (
+              <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded border bg-indigo-50 text-indigo-700 border-indigo-200">
+                需扫码
+              </span>
+            )}
+            {管控?.需确认 && (
+              <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded border bg-yellow-50 text-yellow-700 border-yellow-200">
+                需确认
+              </span>
+            )}
             <span className="ml-3">需领: <span className="font-medium">{quantityNeeded}</span></span>
           </div>
 
@@ -200,6 +283,17 @@ export function PickingModal({
           </div>
         </form>
       </div>
+
+      {/* 扫码核对窗：需扫码配件提交前强制核对 */}
+      <PickingScanCheckModal
+        open={扫码窗开}
+        待核清单={扫码清单}
+        on完成={(记录) => {
+          设扫码窗开(false);
+          执行开单(记录);
+        }}
+        onClose={() => 设扫码窗开(false)}
+      />
     </dialog>
   );
 }

@@ -276,10 +276,64 @@ export default async function PickingManagePage({
       }
     }
 
+    /* 出库管控（2026-09-11）：查配件/名称/分类三级的扫码出库、需库管确认标记（任一级勾了即生效），
+       以及配件档案条码（扫码核对的三值比对：barcode/part_number/part_id） */
+    interface 管控配件行 {
+      id: string;
+      barcode: string | null;
+      part_number: string | null;
+      require_scan_check: boolean | null;
+      require_confirm: boolean | null;
+      category_id: string | null;
+      part_names: { require_scan_check: boolean | null; require_confirm: boolean | null; category_id: string | null } | null;
+    }
+    interface 管控分类行 {
+      id: string;
+      require_scan_check: boolean | null;
+      require_confirm: boolean | null;
+    }
+    const 管控Map: Record<string, { 需扫码: boolean; 需确认: boolean; barcode: string | null; 档案编码: string | null }> = {};
+    if (有档案配件ids.length > 0) {
+      const { data: 管控配件 } = await supabase
+        .from("parts")
+        .select("id, barcode, part_number, require_scan_check, require_confirm, category_id, part_names(require_scan_check, require_confirm, category_id)")
+        .in("id", 有档案配件ids);
+      const 分类ids = [
+        ...new Set(
+          ((管控配件 || []) as unknown as 管控配件行[])
+            .map((p) => p.part_names?.category_id || p.category_id)
+            .filter((v): v is string => !!v)
+        ),
+      ];
+      const 分类管控Map: Record<string, { 需扫码: boolean; 需确认: boolean }> = {};
+      if (分类ids.length > 0) {
+        const { data: 管控分类 } = await supabase
+          .from("part_categories")
+          .select("id, require_scan_check, require_confirm")
+          .in("id", 分类ids);
+        for (const c of (管控分类 || []) as unknown as 管控分类行[]) {
+          分类管控Map[c.id] = {
+            需扫码: !!c.require_scan_check,
+            需确认: !!c.require_confirm,
+          };
+        }
+      }
+      for (const p of (管控配件 || []) as unknown as 管控配件行[]) {
+        const 分类 = 分类管控Map[p.part_names?.category_id || p.category_id || ""] || { 需扫码: false, 需确认: false };
+        管控Map[p.id] = {
+          需扫码: !!p.require_scan_check || !!p.part_names?.require_scan_check || 分类.需扫码,
+          需确认: !!p.require_confirm || !!p.part_names?.require_confirm || 分类.需确认,
+          barcode: p.barcode,
+          档案编码: p.part_number,
+        };
+      }
+    }
+
     /* 按工单分组（全量；搜索/分页由 PendingPickBoard 在前端完成） */
     const 组Map = new Map<string, 待领工单组>();
     for (const r of 行列表) {
       const 已有 = 组Map.get(r.工单id);
+      const 管控 = r.有效配件id ? 管控Map[r.有效配件id] : undefined;
       const 行 = {
         id: r.id,
         名称: r.名称,
@@ -294,6 +348,12 @@ export default async function PickingManagePage({
         仓位信息: r.有效配件id ? 仓位Map[r.有效配件id] || "" : "",
         申领数: r.申领数,
         可领: r.可领,
+        /* 出库管控（扫码核对以有效配件档案为准；无档案的行不参与管控） */
+        有效配件id: r.有效配件id,
+        需扫码: 管控?.需扫码 || false,
+        需确认: 管控?.需确认 || false,
+        barcode: 管控?.barcode || null,
+        档案编码: 管控?.档案编码 || null,
       };
       if (已有) {
         已有.行列表.push(行);
