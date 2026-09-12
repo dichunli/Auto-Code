@@ -1,8 +1,9 @@
 "use client";
 
-import {useState, useEffect, useMemo} from "react";
+import {useState, useEffect, useMemo, useRef} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { 验证主管授权码 } from "@/app/settings/actions";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { useDebounce } from "@/lib/useDebounce";
 import { MobilePageHeader } from "@/components/mobile/MobilePageHeader";
@@ -115,6 +116,8 @@ export default function MobileReceptionNewPage() {
   /* ---------- 接车检查 ---------- */
   const [mileage, setMileage] = useState("");
   const [dashboardPaths, setDashboardPaths] = useState<string[]>([]);
+  /* 照片恢复是否已完成：持久化 effect 以此防挂载瞬间用空数组覆盖备份 */
+  const 照片恢复完毕 = useRef(false);
 
   /* ---------- 选中车辆的照片 ---------- */
   interface 车辆照片 {
@@ -143,8 +146,9 @@ export default function MobileReceptionNewPage() {
     decodeResult: VinDecodeResult | null;
   } | null>(null);
 
-  /* ---------- 草稿恢复 ---------- */
+  /* ---------- 草稿恢复（含 APP 仪表照片：相机返回/WebView 刷新后找回） ---------- */
   useEffect(() => {
+    let 草稿照片数 = 0;
     const draft = sessionStorage.getItem("reception-draft");
     if (draft) {
       try {
@@ -163,35 +167,43 @@ export default function MobileReceptionNewPage() {
         if (data.senderName !== undefined) setSenderName(data.senderName);
         if (data.senderPhone !== undefined) setSenderPhone(data.senderPhone);
         if (data.mileage !== undefined) setMileage(data.mileage);
-        if (data.dashboardPaths !== undefined) setDashboardPaths(data.dashboardPaths);
+        if (data.dashboardPaths !== undefined) {
+          setDashboardPaths(data.dashboardPaths);
+          草稿照片数 = (data.dashboardPaths as string[]).length;
+        }
       } catch {
         /* ignore */
       }
       sessionStorage.removeItem("reception-draft");
     }
+
+    /* 草稿里没有仪表照片时，从专用备份恢复。
+     * 2026-09-12 诊断发现：这段恢复原来放在独立 effect 里且排在持久化 effect 之后，
+     * 持久化 effect 挂载时先拿空数组把备份删了，恢复永远落空——照片一直在丢。 */
+    if (草稿照片数 === 0) {
+      const saved = sessionStorage.getItem("reception-dashboard-paths");
+      if (saved) {
+        try {
+          const paths = JSON.parse(saved) as string[];
+          if (paths.length > 0) setDashboardPaths(paths);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    照片恢复完毕.current = true;
   }, []);
 
-  /* ---------- APP 仪表照片持久化：防止相机返回/WebView 刷新后丢失 ---------- */
+  /* ---------- APP 仪表照片持久化：防止相机返回/WebView 刷新后丢失 ----------
+     恢复完成前不动存储，防止挂载瞬间用空数组覆盖备份 */
   useEffect(() => {
+    if (!照片恢复完毕.current) return;
     if (dashboardPaths.length > 0) {
       sessionStorage.setItem("reception-dashboard-paths", JSON.stringify(dashboardPaths));
     } else {
       sessionStorage.removeItem("reception-dashboard-paths");
     }
   }, [dashboardPaths]);
-
-  /* 草稿恢复后，如果仪表照片仍为空，尝试从专用 sessionStorage 恢复 */
-  useEffect(() => {
-    if (dashboardPaths.length > 0) return;
-    const saved = sessionStorage.getItem("reception-dashboard-paths");
-    if (!saved) return;
-    try {
-      const paths = JSON.parse(saved) as string[];
-      if (paths.length > 0) setDashboardPaths(paths);
-    } catch {
-      /* ignore */
-    }
-  }, []);
 
   /* ============================================================
      车辆搜索
@@ -601,15 +613,11 @@ export default function MobileReceptionNewPage() {
   }
 
   /* ============================================================
-     验证主管授权码
+     验证主管授权码（2026-09-12 起改走服务端比对，授权码明文不再下发浏览器）
      ============================================================ */
   async function verifySupervisorCode(code: string): Promise<boolean> {
-    const { data } = await supabase
-      .from("system_settings")
-      .select("value")
-      .eq("key", "supervisor_code")
-      .single();
-    return data?.value === code.trim();
+    const result = await 验证主管授权码(code);
+    return result.success === true && result.valid === true;
   }
 
   /* ============================================================
