@@ -101,6 +101,8 @@ scripts/*
 !scripts/weekly-stock-check.js
 !scripts/backup-export.js
 !scripts/error-watch.js
+# RLS 巡检同属长期设施（防"建了策略忘开开关"漏开）
+!scripts/check-rls-status.js
 
 certificates
 # 构建产物副本
