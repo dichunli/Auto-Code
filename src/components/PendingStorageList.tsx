@@ -12,7 +12,7 @@ import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 生成批次入库确认单, 生成采购入库确认单, 退回待收货, 保存批次配件排序, 移动配件到批次, 变更批次运单 } from "@/app/procurement/actions";
 import { 确认到货入库 } from "@/app/arrivals/actions";
-import { 查询批次卡片, type 批次卡片 } from "@/lib/batchCards";
+import { 查询批次卡片, 查询批次运单, type 批次卡片 } from "@/lib/batchCards";
 import { useToast } from "@/components/Toast";
 import { ImageUploader } from "@/components/ImageUploader";
 import { DocumentNameInput } from "./DocumentNameInput";
@@ -271,6 +271,33 @@ export function PendingStorageList(props: PendingStorageListProps) {
     setLoading(false);
   }
 
+  /* ─── 局部更新工具（2026-09-12）：改哪条只动哪条，不再整表 loadData ─── */
+
+  /* patch 某条明细——同一明细行可能出现在 orders（蓝卡老流程）或 批次列表（黄卡）
+     之一，两个容器都扫一遍，命中哪个 patch 哪个 */
+  function patch明细(明细id: string, patch: Partial<PurchaseOrderItem>) {
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (!o.purchase_order_items.some((it) => it.id === 明细id)) return o;
+        return {
+          ...o,
+          purchase_order_items: o.purchase_order_items.map((it) =>
+            it.id === 明细id ? { ...it, ...patch } : it
+          ),
+        };
+      })
+    );
+    set批次列表((prev) =>
+      prev.map((b) => {
+        if (!b.items.some((it) => it.id === 明细id)) return b;
+        return {
+          ...b,
+          items: b.items.map((it) => (it.id === 明细id ? { ...it, ...patch } : it)),
+        };
+      })
+    );
+  }
+
   /* 到货单确认入库：纯账务收尾（库存已在确认到货时上好） */
   async function 提交到货入库() {
     if (!到货入库弹窗) return;
@@ -289,10 +316,12 @@ export function PendingStorageList(props: PendingStorageListProps) {
       const res = await 确认到货入库(到货入库弹窗.id, 运费, 抹零);
       if (!res.success) throw new Error(res.error || "确认入库失败");
       showToast(`入库完成，入库单号 ${res.inbound_no}`);
+      const 已入库到货单id = 到货入库弹窗.id;
       set到货入库弹窗(null);
       set到货运费("");
       set到货抹零("");
-      loadData();
+      /* 局部更新：到货单确认入库后 status 变 completed，必然离开本列表，直接移除 */
+      set到货单列表((prev) => prev.filter((x) => x.id !== 已入库到货单id));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("确认入库失败: " + msg, "error");
@@ -382,7 +411,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
     set运单加载中(false);
   }
 
-  /* 确认变更：调 Server Action（已生成确认单的批次会被服务端拦截），成功后刷新 */
+  /* 确认变更：调 Server Action（已生成确认单的批次会被服务端拦截），成功后只重查该卡运单 */
   async function 确认变更运单() {
     if (!变更运单卡) return;
     const 批次id = 变更运单卡.id;
@@ -394,7 +423,12 @@ export function PendingStorageList(props: PendingStorageListProps) {
         return;
       }
       set变更运单卡(null);
-      await loadData();
+      /* 局部更新：批次卡的 waybills（含分摊进度）是服务端算的，
+         用现成的单卡运单查询只刷这一张卡，不整表重查 */
+      const waybills = await 查询批次运单(supabase, 批次id);
+      set批次列表((prev) =>
+        prev.map((b) => (b.id === 批次id ? { ...b, waybill_id: 选中运单id || null, waybills } : b))
+      );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "变更运单失败，请重试");
     } finally {
@@ -741,7 +775,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
         alert("退回失败: " + (res.error || "未知错误"));
         return;
       }
-      loadData();
+      /* 局部更新：整单退回后 status 离开 pending_storage，直接从待入库列表移除 */
+      setOrders((prev) => prev.filter((o) => o.id !== order.id));
     } catch (err: unknown) {
       const e = err as Error;
       alert("退回失败: " + (e.message || String(err)));
@@ -799,6 +834,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
         return;
       }
       showToast(`已移动：${res.source_batch_no || ""} → ${res.target_batch_no || ""}`);
+      /* 保留整表重查：跨卡移动后目标卡的 waybills 派生（配件级→单头回退链）
+         和应付口径都会变，本地算要复制 查询批次卡片 半套逻辑，低频操作不值得 */
       loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -846,7 +883,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
     弹窗规格来源: "specification_text",
     取弹前行: (item) => item,
     setSubmitting,
-    reload: loadData,
+    /* 局部更新：行内改的是配件快照字段，不影响待入库过滤，
+       同一明细可能在蓝卡(orders)或黄卡(批次列表)，双容器 patch */
+    保存后: (rowId, 字段) => patch明细(rowId, 字段 as Partial<PurchaseOrderItem>),
   });
   const {
     editRow: editItem,
@@ -1088,7 +1127,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
                           ) : null}
                         </td>
                         <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                          <DocumentNameInput 采购明细id={item.id} 初始值={item.supplier_part_name || ""} 保存后={loadData} />
+                          <DocumentNameInput
+                            采购明细id={item.id}
+                            初始值={item.supplier_part_name || ""}
+                            保存后={(新值) => patch明细(item.id, { supplier_part_name: 新值 || null })}
+                          />
                         </td>
                         <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
                         {/* 备注/图片/车牌（2026-09-09）：收货照片+凭证照片全部显示 */}
@@ -1301,7 +1344,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
                               ) : null}
                             </td>
                             <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                              <DocumentNameInput 采购明细id={item.id} 初始值={item.supplier_part_name || ""} 保存后={loadData} />
+                              <DocumentNameInput
+                            采购明细id={item.id}
+                            初始值={item.supplier_part_name || ""}
+                            保存后={(新值) => patch明细(item.id, { supplier_part_name: 新值 || null })}
+                          />
                             </td>
                             <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
                             <td className="px-3 py-2 text-gray-500">{item.unit || "-"}</td>

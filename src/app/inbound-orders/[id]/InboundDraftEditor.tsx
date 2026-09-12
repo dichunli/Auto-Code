@@ -138,7 +138,8 @@ export function InboundDraftEditor({ 单头, 明细, 仓库列表, 运单列表 
     弹窗规格来源: "specification_text",
     取弹前行: (行) => 行,
     setSubmitting,
-    reload: () => router.refresh(),
+    /* 入库确认单编辑器不在局部更新范围内，保持整页刷新 */
+    保存后: () => router.refresh(),
   });
   const {
     editRow: 编辑行,

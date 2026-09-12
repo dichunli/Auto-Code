@@ -1411,28 +1411,29 @@ export async function 批量更新配件分支(参数: {
 export async function 添加配件图片记录(参数: {
   partBranchId: string;
   paths: string[];
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{ success: boolean; error?: string; 图片?: { id: string; storage_path: string }[] }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
     return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
   }
   if (参数.paths.length === 0) {
-    return { success: true };
+    return { success: true, 图片: [] };
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("work_order_item_part_media").insert(
+  /* 插入后带回记录行（id + storage_path），客户端局部更新媒体列表用 */
+  const { data: 插入行, error } = await supabase.from("work_order_item_part_media").insert(
     参数.paths.map((path) => ({
       work_order_item_part_id: 参数.partBranchId,
       media_type: "image",
       storage_path: path,
     }))
-  );
+  ).select("id, storage_path");
   if (error) {
     return { success: false, error: error.message };
   }
 
-  return { success: true };
+  return { success: true, 图片: (插入行 || []) as { id: string; storage_path: string }[] };
 }
 
 export async function 删除配件图片记录(参数: {

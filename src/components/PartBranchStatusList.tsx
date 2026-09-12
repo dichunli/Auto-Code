@@ -16,12 +16,37 @@ import { 添加配件图片, 删除配件图片 } from "@/app/parts/actions";
 import { useConfirm } from "./ConfirmDialog";
 import { 添加配件分支, 删除配件分支 } from "@/app/work-orders/parts-actions";
 import { 添加配件图片记录, 分支关联配件并同步采购, 撤销分支价格, 批量保存分支编辑, type 配件分支更新 } from "@/app/work-orders/actions";
+import { 更新列表项, 移除列表项 } from "@/lib/listUpdate";
 
 const STATUS_TITLES: Record<string, string> = {
   pending_inquiry: "待询价",
   pending_quote: "待报价",
   pending_confirm: "待确认",
 };
+
+/* 分支行完整查询字段（2026-09-12 局部更新改造抽出）：
+   loadData 整表查 与 重查单行 必须用同一套 select 保证口径一致，
+   任何调整只能改这里一处 */
+const 分支行查询字段 = `
+  id, name, brand, specification, unit, quantity, unit_cost, unit_price,
+  customer_opinion, supplier_name, is_purchased, is_arrived,
+  work_order_item_id, part_name_id, branch_group_id, part_id, part_number, notes, document_name,
+  part_names(name, category_id, part_categories(name)),
+  parts(
+    id, part_number, name, quantity, unit_cost, unit_price, notes, document_name,
+    part_brands(name),
+    part_specifications(name),
+    part_images(storage_path)
+  ),
+  work_order_items(
+    name,
+    work_orders(
+      id, order_no, settled_at, order_type,
+      customers(id, name, phone, company),
+      vehicles(id, plate_number, vin, vehicle_model_id)
+    )
+  )
+`;
 
 type EditableField = "part_number" | "brand" | "specification" | "cost" | "price" | "supplier" | "notes" | "customer_opinion" | "name" | "unit" | "quantity" | "document_name";
 type GroupBy = "plate" | "category" | "name" | "supplier" | "none";
@@ -261,26 +286,7 @@ export function PartBranchStatusList({
     ] = await Promise.all([
       supabase
         .from("work_order_item_parts")
-        .select(`
-          id, name, brand, specification, unit, quantity, unit_cost, unit_price,
-          customer_opinion, supplier_name, is_purchased, is_arrived,
-          work_order_item_id, part_name_id, branch_group_id, part_id, part_number, notes, document_name,
-          part_names(name, category_id, part_categories(name)),
-          parts(
-            id, part_number, name, quantity, unit_cost, unit_price, notes, document_name,
-            part_brands(name),
-            part_specifications(name),
-            part_images(storage_path)
-          ),
-          work_order_items(
-            name,
-            work_orders(
-              id, order_no, settled_at, order_type,
-              customers(id, name, phone, company),
-              vehicles(id, plate_number, vin, vehicle_model_id)
-            )
-          )
-        `)
+        .select(分支行查询字段)
         .order("created_at", { ascending: true })
         .limit(1000),
       supabase.from("suppliers").select("id, name, recommendation_level").order("name"),
@@ -291,24 +297,7 @@ export function PartBranchStatusList({
       supabase.from("supplier_part_brands").select("supplier_id, part_brand_id"),
     ]);
 
-    const filtered = ((parts || []) as unknown as PartBranchRow[]).filter((r) => {
-      const wo = r.work_order_items?.work_orders;
-      if (!wo) return false;
-      if (wo.settled_at) return false;
-      if (wo.order_type === "cancelled") return false;
-      /* 保养单不走询价/报价等采购流程（用户定的规则） */
-      if (wo.order_type === "maintenance") return false;
-      if (r.is_purchased || r.is_arrived) return false;
-
-      const cost = Number(r.unit_cost || 0);
-      const price = Number(r.unit_price || 0);
-      const opinion = r.customer_opinion || "pending";
-
-      if (status === "pending_inquiry") return cost <= 0;
-      if (status === "pending_quote") return cost > 0 && price <= 0;
-      if (status === "pending_confirm") return cost > 0 && price > 0 && opinion === "pending";
-      return false;
-    });
+    const filtered = ((parts || []) as unknown as PartBranchRow[]).filter(行符合本阶段);
 
     /* 查询配件分支图片 */
     const partIds = (filtered || []).map((p) => p.id);
@@ -385,7 +374,50 @@ export function PartBranchStatusList({
     setLoading(false);
   }
 
-  /* 上传配件信息图片：压缩 → /api/upload → part_images 插行 → 重载 */
+  /* 该行是否属于当前阶段页（2026-09-12 局部更新改造抽出）：
+     loadData 整表过滤与局部 patch 后重判共用——patch 后谓词不通过的行
+     自动离开当前 TAB（原来靠整表重查实现的"推进消失"）。
+     注意：必须放在 loadData 之后声明（useEffect 前置引用 loadData 的
+     函数提升分析会被中间插入的函数声明干扰，react-hooks 编译器规则报错） */
+  function 行符合本阶段(r: PartBranchRow): boolean {
+    const wo = r.work_order_items?.work_orders;
+    if (!wo) return false;
+    if (wo.settled_at) return false;
+    if (wo.order_type === "cancelled") return false;
+    /* 保养单不走询价/报价等采购流程（用户定的规则） */
+    if (wo.order_type === "maintenance") return false;
+    if (r.is_purchased || r.is_arrived) return false;
+
+    const cost = Number(r.unit_cost || 0);
+    const price = Number(r.unit_price || 0);
+    const opinion = r.customer_opinion || "pending";
+
+    if (status === "pending_inquiry") return cost <= 0;
+    if (status === "pending_quote") return cost > 0 && price <= 0;
+    if (status === "pending_confirm") return cost > 0 && price > 0 && opinion === "pending";
+    return false;
+  }
+
+  /* 局部更新：只重查这一行（完整 select 与 loadData 同口径），
+     查到后 replace；谓词不通过（已流转出本阶段）则从列表移除 */
+  async function 重查单行(id: string) {
+    const { data } = await supabase
+      .from("work_order_item_parts")
+      .select(分支行查询字段)
+      .eq("id", id)
+      .single();
+    if (!data) {
+      setRows((prev) => prev.filter((r) => r.id !== id));
+      return;
+    }
+    const 新行 = data as unknown as PartBranchRow;
+    setRows((prev) => {
+      if (!行符合本阶段(新行)) return prev.filter((r) => r.id !== id);
+      return prev.map((r) => (r.id === id ? 新行 : r));
+    });
+  }
+
+  /* 上传配件信息图片：压缩 → /api/upload → part_images 插行 → 局部追加图片 */
   async function 上传目录图片(row: PartBranchRow, file: File) {
     if (!row.parts?.id) return;
     if (!file.type.startsWith("image/")) {
@@ -403,7 +435,16 @@ export function PartBranchStatusList({
       /* 写库走 Server Action（排序号服务端取） */
       const 结果 = await 添加配件图片({ partId: row.parts.id, storagePath: result.path });
       if (!结果.success) throw new Error(结果.error || "保存图片记录失败");
-      await loadData();
+      /* 局部更新：新图片路径前端已知，直接追加到该行的 part_images，不整表重查 */
+      const 新路径 = result.path as string;
+      setRows((prev) =>
+        更新列表项(prev, row.id, (r) => ({
+          ...r,
+          parts: r.parts
+            ? { ...r.parts, part_images: [...(r.parts.part_images ?? []), { storage_path: 新路径 }] }
+            : r.parts,
+        }))
+      );
     } catch (err: unknown) {
       alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -419,7 +460,15 @@ export function PartBranchStatusList({
       alert("删除失败: " + (result.error || "未知错误"));
       return;
     }
-    await loadData();
+    /* 局部更新：从该行的 part_images 里去掉这张，不整表重查 */
+    setRows((prev) =>
+      更新列表项(prev, row.id, (r) => ({
+        ...r,
+        parts: r.parts
+          ? { ...r.parts, part_images: (r.parts.part_images ?? []).filter((img) => img.storage_path !== storagePath) }
+          : r.parts,
+      }))
+    );
   }
 
   /* 上传工单配件图片（未关联库存配件的分支：图片挂到工单配件上） */
@@ -436,10 +485,13 @@ export function PartBranchStatusList({
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "上传失败");
-      /* 写库走 Server Action */
+      /* 写库走 Server Action（返回插入的媒体行，局部追加到媒体 Map） */
       const 结果 = await 添加配件图片记录({ partBranchId: row.id, paths: [result.path] });
       if (!结果.success) throw new Error(结果.error || "保存图片记录失败");
-      await loadData();
+      setPartMediaMap((prev) => ({
+        ...prev,
+        [row.id]: [...(prev[row.id] ?? []), ...(结果.图片 ?? [])],
+      }));
     } catch (err: unknown) {
       alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -543,15 +595,18 @@ export function PartBranchStatusList({
 
   async function handlePartSaved(partId: string) {
     if (!editRow) return;
-    setSavingId(editRow.id);
+    const savedId = editRow.id;
+    setSavingId(savedId);
     try {
       /* 分支行写入配件快照 + 同步采购明细，走 Server Action 一次完成 */
-      const result = await 分支关联配件并同步采购({ branchId: editRow.id, partId });
+      const result = await 分支关联配件并同步采购({ branchId: savedId, partId });
       if (!result.success) throw new Error(result.error || "保存失败");
 
       closeEditModal();
       lastSelfUpdate.current = Date.now();
-      loadData();
+      /* 局部更新：配件 join 快照是服务端合并的，前端不知道新值，
+         只重查这一行（不整表重查）；谓词不通过会自动移出列表 */
+      await 重查单行(savedId);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert("同步配件信息失败: " + msg);
@@ -714,9 +769,22 @@ export function PartBranchStatusList({
       alert("撤销失败: " + (result.error || "未知错误"));
       return;
     }
+    /* 局部更新：撤销（清进价/清销售价）后这些行必然离开当前阶段，
+       直接从列表移除并清掉草稿，不整表重查 */
+    const 撤销ids = new Set(selectedIds);
     setSelectedIds(new Set());
     lastSelfUpdate.current = Date.now();
-    loadData();
+    setRows((prev) => 移除列表项(prev, 撤销ids));
+    setEdits((prev) => {
+      const next = { ...prev };
+      for (const id of 撤销ids) delete next[id];
+      return next;
+    });
+    setReplacePartIds((prev) => {
+      const next = { ...prev };
+      for (const id of 撤销ids) delete next[id];
+      return next;
+    });
   }
 
   async function submitAll() {
@@ -812,7 +880,18 @@ export function PartBranchStatusList({
     setEdits({});
     setReplacePartIds({});
     lastSelfUpdate.current = Date.now();
-    loadData();
+    /* 局部更新：updates 的 data 就是最终写库值（含编码替换联动的 part_id），
+       逐条 merge 进列表后按谓词重判——填齐进价+供应商的行离开待询价、
+       选"同意"的行离开待确认等，自动实现"推进消失"，不整表重查 */
+    const 更新Map = new Map(updates.map((u) => [u.id, u.data]));
+    setRows((prev) =>
+      prev
+        .map((r) => {
+          const data = 更新Map.get(r.id);
+          return data ? ({ ...r, ...data } as PartBranchRow) : r;
+        })
+        .filter(行符合本阶段)
+    );
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>, row: PartBranchRow, field: EditableField) {
@@ -880,7 +959,19 @@ export function PartBranchStatusList({
     setSavingId(null);
     if (!结果.success) { alert("添加失败: " + (结果.error || "未知错误")); return; }
     lastSelfUpdate.current = Date.now();
-    loadData();
+    /* 局部更新：RPC 返回新分支 id，只补查这一行追加到列表末尾
+       （created_at 升序，新行天然在最后），不整表重查 */
+    if (结果.id) {
+      const { data: 新行数据 } = await supabase
+        .from("work_order_item_parts")
+        .select(分支行查询字段)
+        .eq("id", 结果.id)
+        .single();
+      if (新行数据) {
+        const 新行 = 新行数据 as unknown as PartBranchRow;
+        if (行符合本阶段(新行)) setRows((prev) => [...prev, 新行]);
+      }
+    }
   }
 
   /* 删除分支 */
@@ -896,7 +987,23 @@ export function PartBranchStatusList({
     setSavingId(null);
     if (!结果.success) { alert("删除失败: " + (结果.error || "未知错误")); return; }
     lastSelfUpdate.current = Date.now();
-    loadData();
+    /* 局部更新：从列表移除该行并清掉它的草稿/勾选，不整表重查 */
+    setRows((prev) => prev.filter((r) => r.id !== row.id));
+    setEdits((prev) => {
+      const next = { ...prev };
+      delete next[row.id];
+      return next;
+    });
+    setReplacePartIds((prev) => {
+      const next = { ...prev };
+      delete next[row.id];
+      return next;
+    });
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(row.id);
+      return next;
+    });
   }
 
   /* 按当前行配件信息给供应商排序 */

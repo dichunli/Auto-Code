@@ -15,6 +15,7 @@ import { 创建采购单, 更新工单配件客户意见, 添加采购暂存 } f
 import type { 采购明细输入 } from "@/app/procurement/actions";
 import { DocumentNameInput } from "./DocumentNameInput";
 import CustomPurchaseModal from "./CustomPurchaseModal";
+import { 更新列表项 } from "@/lib/listUpdate";
 import PurchaseOrderNotifyModal, { type 采购通知数据, type 采购通知明细 } from "./PurchaseOrderNotifyModal";
 
 /* 行类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
@@ -102,6 +103,77 @@ const BRANCH_BG_COLORS = [
 
 /* 配件需求来源标签 — 由「待收货」流程中的换货/补货动作生成 */
 /* purchase_reason 徽标已抽到 @/lib/purchaseFlowLabels（唯一来源） */
+
+/* 工单配件行完整查询字段（2026-09-12 局部更新改造抽出）：
+   loadData 整表查 与 重查单行 必须用同一套 select 保证口径一致 */
+const 待采购查询字段 = `
+  id, name, brand, specification, unit, quantity, unit_cost, unit_price,
+  customer_opinion, supplier_name, part_id, part_number, part_name_id,
+  alias_name, notes, purchase_reason, work_order_item_id, document_name,
+  work_order_items(
+    name,
+    work_orders(
+      id, order_no, settled_at, order_type,
+      customers(name, phone),
+      vehicles(plate_number, vin)
+    )
+  ),
+  parts(quantity)
+`;
+
+/* 该行是否属于待采购列表（局部更新改造抽出）：
+   loadData 整表过滤与局部 patch 后重判共用。
+   注意：只适用于工单配件行；自定义采购暂存行（无工单）无条件显示，不走此谓词 */
+function 行符合待采购(r: PartBranchRow): boolean {
+  const wo = r.work_order_items?.work_orders;
+  if (!wo) return false;
+  if (wo.settled_at) return false;
+  if (wo.order_type === "cancelled") return false;
+  /* 保养单不走采购流程 */
+  if (wo.order_type === "maintenance") return false;
+  const cost = Number(r.unit_cost || 0);
+  const price = Number(r.unit_price || 0);
+  if (cost <= 0 || price <= 0) return false;
+  const inventoryQty = Number(r.parts?.quantity || 0);
+  if (r.part_id && inventoryQty > 0) return false;
+  return true;
+}
+
+/* 暂存行转统一展示行（局部更新改造抽出）：loadData 与"补货加入/自定义采购"
+   局部 append 共用。库存数量由调用方给（loadData 来自 parts join，局部新增时补查） */
+function 暂存行转展示行(
+  s: {
+    id: string; part_id: string | null; part_number: string | null; name: string;
+    brand: string | null; specification: string | null; document_name: string | null;
+    unit: string | null; unit_cost: number | null; quantity: number;
+    supplier_id: string | null; supplier_name: string | null;
+  },
+  库存数量: number | null
+): PartBranchRow {
+  return {
+    id: s.id,
+    name: s.name,
+    brand: s.brand,
+    specification: s.specification,
+    unit: s.unit,
+    quantity: s.quantity,
+    unit_cost: s.unit_cost,
+    unit_price: null,
+    customer_opinion: null,
+    supplier_name: s.supplier_name,
+    part_id: s.part_id,
+    part_number: s.part_number,
+    part_name_id: null,
+    alias_name: null,
+    document_name: s.document_name,
+    notes: null,
+    purchase_reason: null,
+    work_order_item_id: "",
+    work_order_items: null,
+    parts: 库存数量 != null ? { quantity: 库存数量 } : null,
+    staging: { id: s.id, supplier_id: s.supplier_id },
+  };
+}
 
 function getGroupKey(r: PartBranchRow, groupBy: GroupBy): string {
   switch (groupBy) {
@@ -202,20 +274,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
     const [{ data: parts }, { data: sups }, { data: logistics }, { data: stagingData }] = await Promise.all([
       supabase
         .from("work_order_item_parts")
-        .select(`
-          id, name, brand, specification, unit, quantity, unit_cost, unit_price,
-          customer_opinion, supplier_name, part_id, part_number, part_name_id,
-          alias_name, notes, purchase_reason, work_order_item_id, document_name,
-          work_order_items(
-            name,
-            work_orders(
-              id, order_no, settled_at, order_type,
-              customers(name, phone),
-              vehicles(plate_number, vin)
-            )
-          ),
-          parts(quantity)
-        `)
+        .select(待采购查询字段)
         .eq("customer_opinion", "agree")
         .eq("is_purchased", false)
         .order("created_at", { ascending: true })
@@ -229,20 +288,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
         .order("created_at", { ascending: true }),
     ]);
 
-    const filtered = ((parts || []) as unknown as PartBranchRow[]).filter((r) => {
-      const wo = r.work_order_items?.work_orders;
-      if (!wo) return false;
-      if (wo.settled_at) return false;
-      if (wo.order_type === "cancelled") return false;
-      /* 保养单不走采购流程 */
-      if (wo.order_type === "maintenance") return false;
-      const cost = Number(r.unit_cost || 0);
-      const price = Number(r.unit_price || 0);
-      if (cost <= 0 || price <= 0) return false;
-      const inventoryQty = Number(r.parts?.quantity || 0);
-      if (r.part_id && inventoryQty > 0) return false;
-      return true;
-    });
+    const filtered = ((parts || []) as unknown as PartBranchRow[]).filter(行符合待采购);
 
     /* 查询未到货标记 */
     const { data: markData } = await supabase
@@ -274,37 +320,34 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
       supplier_name: string | null;
       parts: { quantity: number | null } | { quantity: number | null }[] | null;
     }
-    const 暂存行列表: PartBranchRow[] = ((stagingData || []) as unknown as 暂存行[]).map((s): PartBranchRow => {
+    const 暂存行列表: PartBranchRow[] = ((stagingData || []) as unknown as 暂存行[]).map((s) => {
       const p = Array.isArray(s.parts) ? s.parts[0] : s.parts;
-      return {
-        id: s.id,
-        name: s.name,
-        brand: s.brand,
-        specification: s.specification,
-        unit: s.unit,
-        quantity: s.quantity,
-        unit_cost: s.unit_cost,
-        unit_price: null,
-        customer_opinion: null,
-        supplier_name: s.supplier_name,
-        part_id: s.part_id,
-        part_number: s.part_number,
-        part_name_id: null,
-        alias_name: null,
-        document_name: s.document_name,
-        notes: null,
-        purchase_reason: null,
-        work_order_item_id: "",
-        work_order_items: null,
-        parts: p ? { quantity: p.quantity } : null,
-        staging: { id: s.id, supplier_id: s.supplier_id },
-      };
+      return 暂存行转展示行(s, p?.quantity ?? null);
     });
 
     setRows([...filtered, ...暂存行列表]);
     setSuppliers(sups || []);
     setLogisticsCompanies(logistics || []);
     setLoading(false);
+  }
+
+  /* 局部更新：只重查这一行工单配件（完整 select 与 loadData 同口径），
+     查到后按谓词重判——行内选中配件后若有库存，该行自动离开待采购列表 */
+  async function 重查单行(id: string) {
+    const { data } = await supabase
+      .from("work_order_item_parts")
+      .select(待采购查询字段)
+      .eq("id", id)
+      .single();
+    if (!data) {
+      setRows((prev) => prev.filter((r) => r.id !== id));
+      return;
+    }
+    const 新行 = data as unknown as PartBranchRow;
+    setRows((prev) => {
+      if (!行符合待采购(新行)) return prev.filter((r) => r.id !== id);
+      return prev.map((r) => (r.id === id ? 新行 : r));
+    });
   }
 
   /* ========== 配件编辑弹窗 ========== */
@@ -325,7 +368,9 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
     弹窗规格来源: "join",
     取弹前行: (r) => r,
     setSubmitting: (key) => setEditingId(key ? key.replace(/^(edit|inline)-/, "") : null),
-    reload: loadData,
+    /* 局部更新：行内选中/清除配件后该行的库存 join 和"为空才填"合并结果
+       前端都不知道（可能因有库存而离开待采购），只重查这一行 */
+    保存后: (rowId) => { void 重查单行(rowId); },
   });
   const {
     editRow,
@@ -483,7 +528,8 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
         : await 保存待采购配件数量({ partId: row.id, quantity: 新值 });
       if (!result.success) throw new Error(result.error || "保存失败");
       set数量草稿((prev) => { const n = { ...prev }; delete n[row.id]; return n; });
-      loadData();
+      /* 局部更新：数量是前端已知值，直接 patch 该行，不整表重查 */
+      setRows((prev) => 更新列表项(prev, row.id, { quantity: 新值 }));
     } catch (err: unknown) {
       set结果提示({ 类型: "失败", 文字: "数量保存失败: " + (err instanceof Error ? err.message : String(err)) });
     } finally {
@@ -499,7 +545,9 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
     try {
       const result = await 移除采购暂存行(row.staging.id);
       if (!result.success) throw new Error(result.error || "移除失败");
-      loadData();
+      /* 局部更新：暂存行已从库里删除，直接从列表移除，不整表重查 */
+      setRows((prev) => prev.filter((r) => r.id !== row.id));
+      setSelected((prev) => { const n = new Set(prev); n.delete(row.id); return n; });
     } catch (err: unknown) {
       set结果提示({ 类型: "失败", 文字: "移除失败: " + (err instanceof Error ? err.message : String(err)) });
     } finally {
@@ -645,7 +693,10 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
       set结果提示({ 类型: "成功", 文字: "已生成 1 张采购单(已提交),请到「待收货」或「采购订单」中查看。" });
       setShowLogisticsModal(false);
       setSelected(new Set());
-      loadData();
+      /* 局部更新：发起采购后工单行 is_purchased=true、暂存行被事务删除，
+         都必然离开待采购列表，直接移除，不整表重查 */
+      const 已采购ids = new Set(selectedRows.map((r) => r.id));
+      setRows((prev) => prev.filter((r) => !已采购ids.has(r.id)));
     } catch (err: unknown) {
       const e = err as Error;
       set结果提示({ 类型: "失败", 文字: "发起采购失败: " + (e.message || String(err)) });
@@ -851,7 +902,15 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
 
       set结果提示({ 类型: "成功", 文字: `已添加 ${res.count ?? selectedParts.length} 条配件到「待采购」列表，勾选后可统一发起采购。` });
       setShowStockModal(false);
-      loadData();
+      /* 局部更新：action 已返回插入的暂存行，直接 append 到列表末尾；
+         库存数量本地就有（lowStockParts 弹窗数据），不用再查 */
+      if (res.rows && res.rows.length > 0) {
+        const 库存Map = new Map(selectedParts.map((p) => [p.id, p.quantity]));
+        const 新行们 = res.rows.map((s) =>
+          暂存行转展示行(s, s.part_id ? 库存Map.get(s.part_id) ?? null : null)
+        );
+        setRows((prev) => [...prev, ...新行们]);
+      }
     } catch (err: unknown) {
       const e = err as Error;
       set结果提示({ 类型: "失败", 文字: "添加失败: " + (e.message || String(err)) });
@@ -872,7 +931,10 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
     try {
       const res = await 更新工单配件客户意见(row.id, 意见);
       if (!res.success) throw new Error(res.error || "更新失败");
-      loadData();
+      /* 局部更新：改"未确定"退回待确认、改"否决"不再显示，
+         该行必然离开待采购列表，直接移除，不整表重查 */
+      setRows((prev) => prev.filter((r) => r.id !== row.id));
+      setSelected((prev) => { const n = new Set(prev); n.delete(row.id); return n; });
     } catch (err: unknown) {
       alert("修改客户意见失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -911,7 +973,9 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
       alert("已撤销");
       setShowRevokeModal(false);
       setSelected(new Set());
-      loadData();
+      /* 局部更新：撤销后客户意见变为未确定/否决，行必然离开待采购，直接移除 */
+      const 撤销ids = new Set(ids);
+      setRows((prev) => prev.filter((r) => !撤销ids.has(r.id)));
     } catch (err: unknown) {
       const e = err as Error;
       alert("撤销失败: " + (e.message || String(err)));
@@ -1126,7 +1190,14 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
                           {r.staging ? (
                             <span>{r.document_name || "-"}</span>
                           ) : (
-                            <DocumentNameInput 工单配件行id={r.id} 初始值={r.document_name || ""} 保存后={loadData} />
+                            <DocumentNameInput
+                              工单配件行id={r.id}
+                              初始值={r.document_name || ""}
+                              保存后={(新值) =>
+                                /* 局部更新：单据名称是前端已知值，直接 patch 该行 */
+                                setRows((prev) => 更新列表项(prev, r.id, { document_name: 新值 || null }))
+                              }
+                            />
                           )}
                         </td>
                         <td className="px-3 py-3">
@@ -1617,12 +1688,26 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
 
       {确认弹窗}
 
-      {/* 自定义采购弹窗：采购与工单无关的配件；关闭时刷新列表（添加的暂存行立即显示） */}
+      {/* 自定义采购弹窗：采购与工单无关的配件；添加成功走 on新增 局部 append（不再整表重查） */}
       <CustomPurchaseModal
         open={showCustomModal}
-        onClose={() => { setShowCustomModal(false); loadData(); }}
+        onClose={() => setShowCustomModal(false)}
         suppliers={suppliers}
         on成功={(文字) => set结果提示({ 类型: "成功", 文字 })}
+        on新增={async (新暂存行) => {
+          if (新暂存行.length === 0) return;
+          /* 库存数量影响"有库存不显示"的展示，对关联了库存配件的行补查一次 */
+          const 关联ids = 新暂存行.map((s) => s.part_id).filter((x): x is string => !!x);
+          let 库存Map = new Map<string, number | null>();
+          if (关联ids.length > 0) {
+            const { data: 库存行 } = await supabase.from("parts").select("id, quantity").in("id", 关联ids);
+            库存Map = new Map(((库存行 || []) as { id: string; quantity: number | null }[]).map((p) => [p.id, p.quantity]));
+          }
+          const 新行们 = 新暂存行.map((s) =>
+            暂存行转展示行(s, s.part_id ? 库存Map.get(s.part_id) ?? null : null)
+          );
+          setRows((prev) => [...prev, ...新行们]);
+        }}
       />
 
       {/* 通知供应商弹窗：发起采购成功后弹出，采购单文本一键复制发微信 */}
