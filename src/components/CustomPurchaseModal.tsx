@@ -14,7 +14,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
-import { 添加采购暂存 } from "@/app/procurement/actions";
+import { 添加采购暂存, type 采购暂存行 } from "@/app/procurement/actions";
 
 interface 搜索结果 {
   id: string;
@@ -55,9 +55,11 @@ interface Props {
   suppliers: 供应商[];
   /* 成功后由父级显示内联提示条（不用系统 alert 弹窗） */
   on成功?: (文字: string) => void;
+  /* 添加成功后回带新插入的暂存行，父级据此局部 append 列表（2026-09-12 局部更新改造） */
+  on新增?: (行: 采购暂存行[]) => void;
 }
 
-export default function CustomPurchaseModal({ open, onClose, suppliers, on成功 }: Props) {
+export default function CustomPurchaseModal({ open, onClose, suppliers, on成功, on新增 }: Props) {
   const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
 
@@ -202,6 +204,8 @@ export default function CustomPurchaseModal({ open, onClose, suppliers, on成功
       );
       if (!res.success) throw new Error(res.error || "添加失败");
       on成功?.(`已添加 ${res.count ?? 清单.length} 条配件到「待采购」列表，勾选后可统一发起采购。`);
+      /* 局部更新：把新插入的暂存行回带给父级 append（action 已返回行数据） */
+      on新增?.(res.rows ?? []);
       onClose();
     } catch (err: unknown) {
       set错误提示("添加失败: " + (err instanceof Error ? err.message : String(err)));
