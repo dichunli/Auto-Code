@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { type User } from "@supabase/supabase-js";
+import { cookies, headers } from "next/headers";
+import { createClient as 创建一次性客户端, type User } from "@supabase/supabase-js";
 
 /* 从 Supabase URL 中提取项目引用 ID，确保服务端 cookie 名称与客户端一致 */
 function 获取项目引用(): string {
@@ -74,6 +74,45 @@ export async function 验证用户已登录(): Promise<{ user: User | null; erro
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "未知错误";
     return { user: null, error: "验证登录状态失败: " + msg };
+  }
+}
+
+/*
+ * 验证接口调用者已登录（cookie 会话 或 Bearer token 二选一）。
+ * 用途：「"use server" 的付费接口文件」（17VIN、百度OCR 等）的统一门禁——
+ * 2026-09-12 诊断发现这些文件所有导出函数零鉴权，任何人可匿名盗刷付费额度。
+ *
+ * 两条路径都要的原因：
+ * - 浏览器 / APP WebView 直接调 Server Action → 带 cookie（APP 有镜像 cookie，见 clientCore.ts）
+ * - APP 走 API 路由（如 /api/vin-ocr）用 Bearer 认证后，路由内部转调 action → 只有 Bearer
+ */
+export async function 验证接口调用者已登录(): Promise<{ user: User | null; error?: string }> {
+  /* 先走 cookie 会话（覆盖浏览器和 APP WebView） */
+  const cookie结果 = await 验证用户已登录();
+  if (cookie结果.user) return cookie结果;
+
+  /* 再走 Bearer token（API 路由内部转调场景） */
+  try {
+    const h = await headers();
+    const auth = h.get("authorization") || "";
+    if (!auth.startsWith("Bearer ")) {
+      return { user: null, error: cookie结果.error || "未登录或登录已过期，请重新登录" };
+    }
+    const token = auth.slice(7);
+    if (!token || token === "undefined" || token === "null") {
+      return { user: null, error: "未登录或登录已过期，请重新登录" };
+    }
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) return { user: null, error: "服务端缺少 Supabase 配置" };
+    const 一次性 = 创建一次性客户端(url, key, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data, error } = await 一次性.auth.getUser(token);
+    if (error || !data.user) return { user: null, error: "登录已过期，请重新登录" };
+    return { user: data.user };
+  } catch {
+    return { user: null, error: cookie结果.error || "未登录或登录已过期，请重新登录" };
   }
 }
 
