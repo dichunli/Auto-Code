@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
@@ -10,7 +9,7 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { ACTION_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
-import { 生成批次入库确认单, 生成采购入库确认单, 退回待收货, 保存批次配件排序, 移动配件到批次, 变更批次运单 } from "@/app/procurement/actions";
+import { 直接批次入库, 确认采购入库, 退回待收货, 保存批次配件排序, 移动配件到批次, 变更批次运单 } from "@/app/procurement/actions";
 import { 确认到货入库 } from "@/app/arrivals/actions";
 import { 查询批次卡片, 查询批次运单, type 批次卡片 } from "@/lib/batchCards";
 import { useToast } from "@/components/Toast";
@@ -155,7 +154,6 @@ interface PendingStorageListProps {
 
 export function PendingStorageList(props: PendingStorageListProps) {
   const supabase = createClient();
-  const router = useRouter();
   const { 请求确认, 确认弹窗 } = useConfirm();
   const { showToast } = useToast();
   const [orders, setOrders] = useState<PurchaseOrder[]>(props.initialOrders ?? []);
@@ -436,8 +434,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
     }
   }
 
-  /* 批次入库提交（2026-09-08 两阶段）：先生成入库确认单（draft 不动库存），
-     跳转到入库单详情页，在那里打印/修改/确认入库 */
+  /* 批次入库提交（2026-09-12 用户拍板改一步流程）：弹窗提交即完成入库加库存，
+     不再先生成 draft 确认单再跳详情页二次确认。
+     打印入库单/条形码到「入库单」列表进详情页（completed 也支持打印） */
   async function handleConfirmBatchInbound() {
     if (!batchModal) return;
     const 批次id = batchModal.id;
@@ -492,19 +491,15 @@ export function PendingStorageList(props: PendingStorageListProps) {
         unit_cost: f.unitCost.trim() === "" ? null : parseFloat(f.unitCost),
         freight_alloc: f.freightManual.trim() === "" ? null : parseFloat(f.freightManual),
       }));
-      const res = await 生成批次入库确认单(批次id, 明细, parseFloat(freightAmount) || 0, 抹零 || null, 销售单金额, batchWaybillId);
-      if (!res.success) throw new Error(res.error || "生成确认单失败");
-      showToast(`已生成入库确认单 ${res.inbound_no}，请核对后确认入库`);
+      const res = await 直接批次入库(批次id, 明细, parseFloat(freightAmount) || 0, 抹零 || null, 销售单金额, batchWaybillId);
+      if (!res.success) throw new Error(res.error || "入库失败");
+      showToast(`入库完成，入库单号 ${res.inbound_no}（可到「入库单」打印）`);
       closeInboundModal();
-      /* 跳转入库单详情页：打印入库单/条形码、修改、确认入库都在那里操作 */
-      if (res.draft_id) {
-        router.push(`/inbound-orders/${res.draft_id}`);
-      } else {
-        loadData();
-      }
+      /* 局部更新：批次入库后 status 变 completed，卡片直接移出待入库列表 */
+      set批次列表((prev) => prev.filter((b) => b.id !== 批次id));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("生成入库确认单失败: " + msg);
+      alert("入库失败: " + msg);
     } finally {
       setSubmitting(null);
     }
@@ -723,9 +718,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
 
     setSubmitting(`complete-${orderId}`);
     try {
-      /* 2026-09-08 两阶段入库：先生成入库确认单（draft 不动库存），
-         跳转到入库单详情页打印/修改/确认入库；
-         确认后由 complete_purchase_inbound 一个事务落账，任一失败整体回滚 */
+      /* 2026-09-12 用户拍板改一步流程：弹窗提交即完成入库加库存，
+         由 complete_purchase_inbound 一个事务落账，任一失败整体回滚；
+         不再先生成 draft 确认单再跳详情页二次确认 */
       const 明细 = inboundItems.map((f) => ({
         purchase_order_item_id: f.item.id,
         quantity: parseInt(f.quantity, 10) || 0,
@@ -738,7 +733,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
         unit_cost: f.unitCost.trim() === "" ? null : parseFloat(f.unitCost),
         freight_alloc: f.freightManual.trim() === "" ? null : parseFloat(f.freightManual),
       }));
-      const res = await 生成采购入库确认单(
+      const res = await 确认采购入库(
         orderId,
         明细,
         parseFloat(freightAmount) || 0,
@@ -747,16 +742,13 @@ export function PendingStorageList(props: PendingStorageListProps) {
         销售单金额
       );
       if (!res.success) {
-        alert("生成入库确认单失败: " + (res.error || "未知错误"));
+        alert("入库失败: " + (res.error || "未知错误"));
         return;
       }
-      showToast(`已生成入库确认单 ${res.inbound_no}，请核对后确认入库`);
+      showToast(`入库完成，入库单号 ${res.inbound_no}（可到「入库单」打印）`);
       closeInboundModal();
-      if (res.draft_id) {
-        router.push(`/inbound-orders/${res.draft_id}`);
-      } else {
-        loadData();
-      }
+      /* 局部更新：采购单入库后 status 离开 pending_storage，直接移出待入库列表 */
+      setOrders((prev) => prev.filter((o) => o.id !== orderId));
     } catch (err: unknown) {
       const e = err as Error;
       alert("操作失败: " + (e.message || String(err)));
@@ -1059,20 +1051,25 @@ export function PendingStorageList(props: PendingStorageListProps) {
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              {/* table-fixed + 统一列宽（2026-09-12 用户要求）：黄卡蓝卡所有卡片列严格对齐，
+                 不再按内容自动分配列宽；商品名称列弹性占剩余空间 */}
+              <table className="w-full text-sm table-fixed">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-2 py-2 w-8" />
+                    <th className="px-2 py-2 w-6" />
                     <th className="px-3 py-2 text-left font-medium text-gray-500 w-10">序号</th>
-                    <th className="px-3 py-2 text-left font-medium text-gray-500">零件编码</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">零件编码</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500">商品名称</th>
-                    <th className="px-3 py-2 text-left font-medium text-gray-500">单据名称</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-32">单据名称</th>
                     <th className="px-3 py-2 text-right font-medium text-gray-500 w-14">数量</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-12">单位</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-20">分类</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">采购价</th>
                     {/* 备注/图片/车牌（2026-09-09）：与蓝卡对齐，黄卡也显示 */}
-                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">备注</th>
-                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">图片</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">备注</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-20">图片</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">车牌</th>
-                    <th className="px-3 py-2 text-center font-medium text-gray-500 w-36">处理结果</th>
+                    <th className="px-3 py-2 text-center font-medium text-gray-500 w-32">处理结果</th>
                     <th className="px-3 py-2 text-center font-medium text-gray-500 w-28">操作</th>
                   </tr>
                 </thead>
@@ -1134,6 +1131,10 @@ export function PendingStorageList(props: PendingStorageListProps) {
                           />
                         </td>
                         <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
+                        {/* 单位/分类/采购价（2026-09-12 列对齐+采购价列）：与蓝卡同结构 */}
+                        <td className="px-3 py-2 text-gray-500">{item.unit || "-"}</td>
+                        <td className="px-3 py-2 text-gray-500">{item.category || "-"}</td>
+                        <td className="px-3 py-2 text-right text-gray-700"><PriceValue value={item.unit_cost} /></td>
                         {/* 备注/图片/车牌（2026-09-09）：收货照片+凭证照片全部显示 */}
                         <td className="px-3 py-2 text-gray-500">{item.notes || "-"}</td>
                         <td className="px-3 py-2">
@@ -1221,7 +1222,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   title={缺编码数 > 0 ? "有配件缺零件编码，请先在卡内补全" : ""}
                   className="px-4 py-1.5 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  生成入库单
+                  确认入库
                 </button>
               )}
             </div>
@@ -1296,20 +1297,24 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm border border-gray-100 rounded-lg">
+                  {/* table-fixed + 统一列宽（2026-09-12 用户要求）：与黄卡完全同列结构，
+                     首列为占位（黄卡是拖拽柄），保证所有卡片列严格对齐 */}
+                  <table className="w-full text-sm border border-gray-100 rounded-lg table-fixed">
                     <thead className="bg-gray-50">
                       <tr>
+                        <th className="px-2 py-2 w-6" />
                         <th className="px-3 py-2 text-left font-medium text-gray-500 w-10">序号</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500">零件编码</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">零件编码</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500">商品名称</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500">单据名称</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-32">单据名称</th>
                         <th className="px-3 py-2 text-right font-medium text-gray-500 w-14">数量</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500 w-12">单位</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500">分类</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500">备注</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-16">图片</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500">车牌</th>
-                        <th className="px-3 py-2 text-center font-medium text-gray-500 w-36">处理结果</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-20">分类</th>
+                        <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">采购价</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">备注</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-20">图片</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">车牌</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-500 w-32">处理结果</th>
                         <th className="px-3 py-2 text-center font-medium text-gray-500 w-28">操作</th>
                       </tr>
                     </thead>
@@ -1322,6 +1327,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
                         const 缺编码 = item.handle_action !== "wrong_discard" && (!item.part_id || !item.part_number);
                         return (
                           <tr key={item.id} className={缺编码 ? "bg-red-50" : "hover:bg-gray-50"}>
+                            {/* 首列占位：与黄卡拖拽柄列对齐 */}
+                            <td className="px-2 py-2" />
                             <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                             <td className="px-3 py-2">
                               <PartSearchDropdown
@@ -1353,6 +1360,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
                             <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
                             <td className="px-3 py-2 text-gray-500">{item.unit || "-"}</td>
                             <td className="px-3 py-2 text-gray-500">{item.category || "-"}</td>
+                            {/* 采购价列（2026-09-12 用户要求）：PriceValue 内置价格可见性控制 */}
+                            <td className="px-3 py-2 text-right text-gray-700"><PriceValue value={item.unit_cost} /></td>
                             <td className="px-3 py-2 text-gray-500">{item.notes || "-"}</td>
                             <td className="px-3 py-2">
                               {item.photos && item.photos.length > 0 ? (
@@ -1453,7 +1462,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                       }
                       className="px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {submitting === `complete-${order.id}` ? "处理中..." : "生成入库单"}
+                      {submitting === `complete-${order.id}` ? "处理中..." : "确认入库"}
                     </button>
                   )}
                 </div>
@@ -1469,7 +1478,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
           <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-7xl my-6 relative">
             <div className="px-8 py-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl z-10">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">生成入库确认单</h3>
+                <h3 className="text-lg font-semibold text-gray-900">确认入库</h3>
                 <p className="text-sm text-gray-500 mt-1">
                   {batchModal
                     ? `收货批次: ${batchModal.batch_no} · 供应商: ${batchModal.supplier_name || "-"}${batchModal.supplier_order_no ? ` · 销售单: ${batchModal.supplier_order_no}` : ""}`
@@ -1962,12 +1971,13 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   title={销售单未填 ? "请先填写供应商销售单总金额" : 销售单不平 ? "总金额与货款对不平，请核对后再提交" : ""}
                   className="px-6 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {(batchModal ? submitting === `batch-${batchModal.id}` : submitting === `complete-${inboundModalOrder?.id}`) ? "处理中..." : "生成入库确认单"}
+                  {(batchModal ? submitting === `batch-${batchModal.id}` : submitting === `complete-${inboundModalOrder?.id}`) ? "处理中..." : "确认入库"}
                 </button>
               </div>
-              {/* 两阶段入库提示（2026-09-08）：生成确认单后库存还不会变，确认入库才变 */}
+              {/* 一步入库（2026-09-12 用户拍板）：点确认入库立即加库存、记应付款；
+                 打印入库单/条形码到「入库单」列表进详情页 */}
               <p className="text-sm text-gray-400 text-right mt-1">
-                生成确认单后库存不变，可在下一页打印入库单/条形码、修改内容，确认入库后才加库存
+                确认后立即完成入库并加库存；打印入库单/条形码请到「入库单」列表打开详情页
               </p>
             </div>
           </div>

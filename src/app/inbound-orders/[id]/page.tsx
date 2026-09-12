@@ -68,7 +68,7 @@ export default async function InboundOrderDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: order } = await supabase
+  const { data: order, error: 查询错误 } = await supabase
     .from("inbound_orders")
     .select(
       "id, inbound_no, supplier_name, total_quantity, total_amount, freight_amount, status, notes, created_at, receiving_batch_id, purchase_order_id, waybill_id, supplier_order_no, supplier_order_amount, discount_amount, purchase_orders(id, order_no), receiving_batches(batch_no), profiles(full_name)"
@@ -76,7 +76,29 @@ export default async function InboundOrderDetailPage({
     .eq("id", id)
     .single();
 
-  if (!order) notFound();
+  /* 2026-09-12 事故修复：区分"单不存在"和"查询失败"——
+     网络抖动/临时故障时 supabase 也返回 data=null，此前一律 notFound()，
+     把"网络卡了"误显示成 404"页面不存在"（蓝天汽配 RK-20260912-001 事故）。
+     PGRST116 = .single() 恰好 0 行（真的不存在/无权限）→ 404；
+     其它错误（超时、连接失败等）→ 显示可重试的提示页 */
+  if (!order) {
+    if (查询错误 && 查询错误.code !== "PGRST116") {
+      return (
+        <div className="p-6 max-w-5xl mx-auto">
+          <div className="bg-white rounded-xl border border-orange-200 p-12 text-center">
+            <div className="text-4xl mb-4">📶</div>
+            <h1 className="text-lg font-semibold text-gray-900 mb-2">加载失败，请刷新重试</h1>
+            <p className="text-sm text-gray-500">
+              查询入库单时网络异常（{查询错误.message || "连接超时"}）。
+              <br />
+              单据数据没有丢失，网络恢复后刷新本页即可打开。
+            </p>
+          </div>
+        </div>
+      );
+    }
+    notFound();
+  }
 
   const { data: items } = await supabase
     .from("inbound_order_items")

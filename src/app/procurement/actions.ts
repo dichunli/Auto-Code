@@ -1296,6 +1296,54 @@ export async function 生成批次入库确认单(
   return { success: true, draft_id: 结果.draft_id, inbound_no: 结果.inbound_no };
 }
 
+/* ─── 批次直接入库（2026-09-12 用户拍板：不要 draft 二次确认，弹窗提交即入库）───
+ * 与 生成批次入库确认单 同参数同校验，但走 complete_batch_inbound 一步到位：
+ * 库存立即增加、批次置 completed、应付款按批次入账，一个事务失败整体回滚。
+ * 打印入库单/条形码到「入库单」列表进详情页（completed 也支持打印）。 */
+export async function 直接批次入库(
+  批次id: string,
+  明细: 入库明细输入[],
+  运费: number,
+  抹零: number | null = null,
+  销售单金额: number | null = null,
+  运单id: string | null = null
+): Promise<操作结果 & { inbound_no?: string; inbound_id?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  if (!明细 || 明细.length === 0) {
+    return { success: false, error: "入库明细不能为空" };
+  }
+  for (const m of 明细) {
+    if (!m.purchase_order_item_id) {
+      return { success: false, error: "入库明细缺少采购明细信息" };
+    }
+    if (!m.is_excess && (!Number.isInteger(m.quantity) || m.quantity <= 0)) {
+      return { success: false, error: "入库数量必须是大于 0 的整数" };
+    }
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("complete_batch_inbound", {
+    p_batch_id: 批次id,
+    p_items: 明细,
+    p_freight_amount: 运费 || 0,
+    p_operator_id: user.id,
+    p_discount_amount: 抹零,
+    p_supplier_order_amount: 销售单金额,
+    p_waybill_id: 运单id,
+  });
+  if (error) return { success: false, error: error.message };
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) return { success: false, error: 结果?.error || "入库失败" };
+
+  revalidatePath("/procurement");
+  revalidatePath("/inbound-orders");
+  return { success: true, inbound_no: 结果.inbound_no, inbound_id: 结果.inbound_order_id };
+}
+
 /* ─── 变更批次关联运单（2026-09-09 批次卡单运单）───
  * 黄卡一张卡只挂一张运单，可从全部待签收运单中换选（不限供应商）；
  * 已生成入库确认单（draft）的批次禁止变更——draft 的分摊运单已按旧值建单
