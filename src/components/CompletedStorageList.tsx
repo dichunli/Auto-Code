@@ -99,64 +99,68 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
 
   }, []);
 
-  /* 已入库退回待收货（2026-08-16 批次1 错账收口）：
-     原为客户端 10 步连环写（无事务、库存先读再写、非 admin 删单被 RLS 静默拦→错账），
-     现收编为 RPC 整单回滚；此处只保留只读预查用于组装确认文案。 */
+  /* 撤销已入库→退回待入库（2026-09-13 用户拍板新语义）：
+     只倒退一步——扣回库存、删除入库单，收货处理结果全部保留；
+     蓝卡流程单单回滚，黄卡流程整批回滚（RPC revoke_completed_inbound 新语义） */
   async function handleRevokeCompleted(orderId: string) {
     setSubmitting(`revoke-${orderId}`);
     try {
-      /* 1. 查询关联的入库单（只读：入库单表登录即可读；
-            2026-09-08 两阶段入库：只查正式单，draft 确认单不参与退回已入库） */
+      /* 1. 只读预查：明细是否挂批次（黄卡=整批回滚）+ 入库单号（文案展示） */
+      const { data: 明细们 } = await supabase
+        .from("purchase_order_items")
+        .select("receiving_batch_id")
+        .eq("order_id", orderId);
+      const 批次ids = [...new Set(
+        ((明细们 || []) as { receiving_batch_id: string | null }[])
+          .map((m) => m.receiving_batch_id)
+          .filter((x): x is string => !!x)
+      )];
+
+      let 批次文案 = "";
+      let 涉及单数 = 1;
+      if (批次ids.length > 0) {
+        const { data: 批次们 } = await supabase
+          .from("receiving_batches")
+          .select("id, batch_no")
+          .in("id", 批次ids);
+        const { data: 涉及明细 } = await supabase
+          .from("purchase_order_items")
+          .select("order_id")
+          .in("receiving_batch_id", 批次ids);
+        涉及单数 = new Set(((涉及明细 || []) as { order_id: string }[]).map((m) => m.order_id)).size;
+        批次文案 = ((批次们 || []) as { batch_no: string }[]).map((b) => b.batch_no).join("、");
+      }
+
       const { data: inboundOrderList } = await supabase
         .from("inbound_orders")
         .select("id, inbound_no")
         .eq("purchase_order_id", orderId)
         .eq("status", "completed");
 
-      /* 2. 查询关联的待退货记录（只读，用于提示将被一并删除的条数） */
-      const { data: poiList } = await supabase
-        .from("purchase_order_items")
-        .select("work_order_item_part_id")
-        .eq("order_id", orderId);
-      const workOrderItemPartIds = (poiList || [])
-        .map((p: { work_order_item_part_id: string | null }) => p.work_order_item_part_id)
-        .filter(Boolean);
-
-      let returnCount = 0;
-      if (workOrderItemPartIds.length > 0) {
-        const { count } = await supabase
-          .from("supplier_return_records")
-          .select("id", { count: "exact", head: true })
-          .in("work_order_item_part_id", workOrderItemPartIds)
-          .eq("status", "pending");
-        returnCount = count || 0;
-      }
-
-      /* 3. 组装确认文案 */
-      const parts: string[] = [];
-      if (inboundOrderList && inboundOrderList.length > 0) {
-        parts.push(`入库单 ${inboundOrderList.map((o) => o.inbound_no).join("、")}`);
-      }
-      if (returnCount > 0) {
-        parts.push(`${returnCount} 条待退货记录`);
-      }
-      const msg =
-        parts.length > 0
-          ? `该采购单已生成 ${parts.join(" 和 ")}，退回将同时删除这些数据并回退库存，是否继续？`
-          : "确认退回待收货？这将清空所有处理结果。";
+      /* 2. 组装确认文案（新语义：只删入库单和库存，收货结果保留，不删待退货记录） */
+      const 入库单文案 = inboundOrderList && inboundOrderList.length > 0
+        ? `（${inboundOrderList.map((o) => o.inbound_no).join("、")}）`
+        : "";
+      const msg = 批次ids.length > 0
+        ? `该单随批次 ${批次文案} 一起入库（共 ${涉及单数} 张采购单）。\n` +
+          `撤销将【整批回滚】：扣回库存、删除入库单${入库单文案}，` +
+          `${涉及单数 > 1 ? `全部 ${涉及单数} 张采购单` : "该单"}退回「待入库」。\n` +
+          `收货结果（处理动作/数量）全部保留，是否继续？`
+        : `撤销后将扣回库存、删除入库单${入库单文案}，该单退回「待入库」。\n` +
+          `收货结果（处理动作/数量）全部保留，是否继续？`;
       if (!(await 请求确认(msg))) {
         setSubmitting(null);
         return;
       }
 
-      /* 4. 整单回滚由数据库事务完成：扣回库存/仓位+回补退库、删入库单/批次/流水/应付款/
-         待退货记录、清空处理结果、状态回 submitted、回退到货标记；任一失败整体回滚 */
+      /* 3. 回滚由数据库事务完成：扣回库存/仓位、删入库单/库存批次/流水/应付款，
+         采购单（黄卡含整批）回 pending_storage；任一失败整体回滚 */
       const res = await 退回已入库(orderId);
-      if (!res.success) throw new Error(res.error || "退回失败");
+      if (!res.success) throw new Error(res.error || "撤销失败");
 
       loadData();
     } catch (err: unknown) {
-      alert("退回失败: " + (err instanceof Error ? err.message : String(err)));
+      alert("撤销失败: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSubmitting(null);
     }
