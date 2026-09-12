@@ -2,22 +2,24 @@
 
 import {useState} from "react";
 import { PageHeader } from "@/components/PageHeader";
+import { useToast } from "@/components/Toast";
 import { 保存主管授权码 } from "./actions";
 
 /* 系统设置 — 客户端交互组件
- * 首屏授权码由服务端 page.tsx 查询后传入 */
-export default function SettingsContent({ initialCode }: { initialCode: string }) {
-  const [code, setCode] = useState(initialCode);
-  const [loading] = useState(false);
+ * 2026-09-12 起授权码明文不再下发浏览器：输入框永远空值起步，
+ * 只能"输入新码覆盖"，和改密码一个道理。 */
+export default function SettingsContent({ 显示授权码设置 }: { 显示授权码设置: boolean }) {
+  const [code, setCode] = useState("");
   const [saving, setSaving] = useState(false);
+  const { showToast } = useToast();
 
   async function handleSave() {
     if (!code.trim()) {
-      alert("授权码不能为空");
+      showToast("授权码不能为空", "error");
       return;
     }
     if (!/^\d{4,8}$/.test(code.trim())) {
-      alert("授权码必须是 4~8 位数字");
+      showToast("授权码必须是 4~8 位数字", "error");
       return;
     }
     setSaving(true);
@@ -25,9 +27,10 @@ export default function SettingsContent({ initialCode }: { initialCode: string }
     const result = await 保存主管授权码(code);
     setSaving(false);
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      showToast("保存失败: " + (result.error || "未知错误"), "error");
     } else {
-      alert("保存成功");
+      showToast("保存成功", "success");
+      setCode("");
     }
   }
 
@@ -112,33 +115,34 @@ export default function SettingsContent({ initialCode }: { initialCode: string }
           </a>
         </div>
 
+        {显示授权码设置 && (
         <div>
           <h2 className="text-base font-semibold text-gray-900 mb-4">重复开单授权码</h2>
           <p className="text-sm text-gray-500 mb-4">
-            当同一车牌已有未完成工单时，输入此授权码可继续开单。
+            当同一车牌已有未完成工单时，输入此授权码可继续开单。授权码不可查看，只能输入新码覆盖。
           </p>
           <div className="flex gap-3">
             <input
               type="text"
               inputMode="numeric"
-              placeholder="请输入授权码"
+              placeholder="已设置，输入新码可覆盖"
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
               maxLength={8}
-              disabled={loading}
+              disabled={saving}
             />
             <button
               type="button"
               onClick={handleSave}
-              disabled={loading || saving}
+              disabled={saving}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               {saving ? "保存中..." : "保存"}
             </button>
           </div>
-          {loading && <p className="text-xs text-gray-400 mt-2">加载中...</p>}
         </div>
+        )}
       </div>
     </div>
   );
