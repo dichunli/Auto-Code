@@ -351,6 +351,29 @@ export async function 新建采购退货(参数: {
 /* ═══ Excel 批量导入配件 Server Action ═══
  * 导入的写库阶段（建缺失名称/品牌/规格 → 分批插配件 → 建规格关联）收口到服务端。
  * 解析 Excel、编号查重等只读步骤仍留在客户端。 */
+
+interface 字典行 {
+  id: string;
+  name: string;
+}
+
+/* 分页取全量字典（2026-09-12 诊断发现：原来 limit(100)，
+   字典超过 100 条后新导入的配件会静默丢名称/品牌/规格关联且不报错） */
+async function 取全量字典(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  表名: string
+): Promise<字典行[]> {
+  const 全部: 字典行[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from(表名).select("id, name").range(from, from + 999);
+    if (error) throw new Error(`读取字典 ${表名} 失败: ${error.message}`);
+    if (!data || data.length === 0) break;
+    全部.push(...(data as 字典行[]));
+    if (data.length < 1000) break;
+  }
+  return 全部;
+}
+
 export async function 批量导入配件(参数: {
   /* 客户端比对后确认缺失、需要新建的名称 */
   newPartNames: string[];
@@ -388,14 +411,10 @@ export async function 批量导入配件(参数: {
   }
 
   /* 服务端自建名称→ID 映射（与客户端查询口径一致，不信任客户端传入的映射） */
-  const [
-    { data: partNames },
-    { data: brands },
-    { data: specs },
-  ] = await Promise.all([
-    supabase.from("part_names").select("id, name").limit(100),
-    supabase.from("part_brands").select("id, name").limit(100),
-    supabase.from("part_specifications").select("id, name").limit(100),
+  const [partNames, brands, specs] = await Promise.all([
+    取全量字典(supabase, "part_names"),
+    取全量字典(supabase, "part_brands"),
+    取全量字典(supabase, "part_specifications"),
   ]);
 
   const partNameMap = new Map((partNames || []).map((p: NamedRow) => [p.name, p.id]));
