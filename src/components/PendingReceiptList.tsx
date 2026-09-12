@@ -110,6 +110,33 @@ const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
    补货动作映射已下沉到数据库函数 receive_purchase_item:
    broken_exchange→broken_resupply / wrong_exchange→wrong_exchange / short_repurchase→short_resupply */
 
+/* 采购明细完整查询字段（2026-09-12 局部更新改造抽出）：
+   loadData 整表查 与 撤销收货后单条重查 必须用同一套 select 保证口径一致 */
+const 明细查询字段 = `
+  id, name, brand, specification, quantity, unit_cost, received_qty,
+  part_id, work_order_item_part_id, part_number, supplier_part_name,
+  unit, category, license_plate, photos, notes, handle_action,
+  discount_amount, evidence_photos, return_reason, waybill_id, waybill_exempt,
+  staged_qty, staged_action, staged_at, staged_by,
+  logistics_waybills:waybill_id(
+    id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
+    logistics_companies(name)
+  )
+`;
+
+/* 采购单完整查询字段（含明细嵌套）：loadData 与 重查单张订单 同口径 */
+const 待收货查询字段 = `
+  id, order_no, supplier_id, status, total_amount, notes, waybill_id, waybill_exempt, created_at, logistics_company_id,
+  supplier_order_no, supplier_order_amount, supplier_slip_photos,
+  suppliers(id, name, region, phone),
+  logistics_companies:logistics_company_id(name),
+  purchase_order_items(${明细查询字段}),
+  logistics_waybills:waybill_id(
+    id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
+    logistics_companies(name)
+  )
+`;
+
 function resolveImageUrl(path: string): string {
   if (!path) return "";
   if (path.startsWith("http")) return path;
@@ -236,27 +263,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     setLoading(true);
     const { data, error } = await supabase
       .from("purchase_orders")
-      .select(`
-        id, order_no, supplier_id, status, total_amount, notes, waybill_id, waybill_exempt, created_at, logistics_company_id,
-        supplier_order_no, supplier_order_amount, supplier_slip_photos,
-        suppliers(id, name, region, phone),
-        logistics_companies:logistics_company_id(name),
-        purchase_order_items(
-          id, name, brand, specification, quantity, unit_cost, received_qty,
-          part_id, work_order_item_part_id, part_number, supplier_part_name,
-          unit, category, license_plate, photos, notes, handle_action,
-          discount_amount, evidence_photos, return_reason, waybill_id, waybill_exempt,
-          staged_qty, staged_action, staged_at, staged_by,
-          logistics_waybills:waybill_id(
-            id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
-            logistics_companies(name)
-          )
-        ),
-        logistics_waybills:waybill_id(
-          id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
-          logistics_companies(name)
-        )
-      `)
+      .select(待收货查询字段)
       .in("status", ["submitted", "approved", "partial_received"])
       .order("created_at", { ascending: false });
 
@@ -268,12 +275,80 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
 
     const rawOrders = (data || []) as unknown as PurchaseOrder[];
     /* 只显示还有未处理明细的订单 */
-    const filtered = rawOrders.filter((order) => {
-      const items = order.purchase_order_items || [];
-      return items.some((it) => !it.handle_action);
-    });
-    setOrders(filtered);
+    setOrders(rawOrders.filter(单还有未处理));
     setLoading(false);
+  }
+
+  /* ─── 局部更新工具（2026-09-12）：改哪条只动哪条，不再整表 loadData ─── */
+
+  /* 该单是否还有未处理明细（loadData 过滤与局部 patch 后重判共用） */
+  function 单还有未处理(order: PurchaseOrder): boolean {
+    return (order.purchase_order_items || []).some((it) => !it.handle_action);
+  }
+
+  /* patch 某张订单的头字段（运单关联/豁免等） */
+  function patch订单(订单id: string, patch: Partial<PurchaseOrder>) {
+    setOrders((prev) => prev.map((o) => (o.id === 订单id ? { ...o, ...patch } : o)));
+  }
+
+  /* patch 某张订单里的某条明细（staged 四字段 / waybill / 配件信息快照等） */
+  function patch明细(订单id: string, 明细id: string, patch: Partial<PurchaseOrderItem>) {
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== 订单id) return o;
+        return {
+          ...o,
+          purchase_order_items: o.purchase_order_items.map((it) =>
+            it.id === 明细id ? { ...it, ...patch } : it
+          ),
+        };
+      })
+    );
+  }
+
+  /* 只重查这一张订单（完整 select 与 loadData 同口径）：
+     用于"明细删除/作废后 total_amount 等 RPC 维护字段前端算不出来"的场景；
+     查到后 replace；若该单已无未处理明细则从列表移除 */
+  async function 重查单张订单(orderId: string) {
+    const { data } = await supabase
+      .from("purchase_orders")
+      .select(待收货查询字段)
+      .eq("id", orderId)
+      .single();
+    if (!data) {
+      setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      return;
+    }
+    const 新单 = data as unknown as PurchaseOrder;
+    setOrders((prev) => {
+      /* 整单被 RPC 置 cancelled 或已无未处理明细 → 移出待收货列表 */
+      if (!单还有未处理(新单) || 新单.status === "cancelled") {
+        return prev.filter((o) => o.id !== orderId);
+      }
+      return prev.map((o) => (o.id === orderId ? 新单 : o));
+    });
+  }
+
+  /* 只重查这一条明细（撤销收货后 RPC 清了哪些字段前端猜不全，单条重查最稳） */
+  async function 重查单条明细(订单id: string, 明细id: string) {
+    const { data } = await supabase
+      .from("purchase_order_items")
+      .select(明细查询字段)
+      .eq("id", 明细id)
+      .single();
+    if (!data) return;
+    const 新明细 = data as unknown as PurchaseOrderItem;
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== 订单id) return o;
+        return {
+          ...o,
+          purchase_order_items: o.purchase_order_items.map((it) =>
+            it.id === 明细id ? 新明细 : it
+          ),
+        };
+      })
+    );
   }
 
   function orderNeedsWaybill(order: PurchaseOrder): boolean {
@@ -437,7 +512,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
             /* 删明细+删工单配件行+整单状态处理已收编进数据库事务函数 delete_purchase_item */
             const res = await 删除采购明细(receiveOrder.id, receiveItem.id);
             if (!res.success) throw new Error(res.error || "删除失败");
-            loadData();
+            /* 局部更新：total_amount 和"明细删空整单 cancelled"都是 RPC 行为，
+               前端算不出来，只重查这一张订单 */
+            await 重查单张订单(receiveOrder.id);
           } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
             alert("删除失败: " + msg);
@@ -483,7 +560,16 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
         payload.evidence_photos ?? null
       );
       if (!res.success) throw new Error(res.error || "暂存失败");
-      loadData();
+      /* 局部更新：暂存四字段都是前端已知值，直接 patch 该行
+         （行随即从待收区移到已暂存区，由 useMemo 分组自动重算），不整表重查。
+         staged_evidence 凭证不影响列表显示，不同步 patch */
+      const { data: sessionData } = await supabase.auth.getSession(); /* getSession 本地读不联网 */
+      patch明细(order.id, item.id, {
+        staged_qty: payload.received_qty,
+        staged_action: payload.handle_action,
+        staged_at: new Date().toISOString(),
+        staged_by: sessionData.session?.user?.id ?? null,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert("收货暂存失败: " + msg);
@@ -559,13 +645,19 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
   }
 
   /* 撤销暂存（收错了重收） */
-  async function handleUnstage(item: PurchaseOrderItem) {
+  async function handleUnstage(orderId: string, item: PurchaseOrderItem) {
     if (!(await 请求确认("确认撤销该配件的收货暂存？撤销后可重新收货。"))) return;
     setSubmitting(`unstage-${item.id}`);
     try {
       const res = await 撤销暂存收货(item.id);
       if (!res.success) throw new Error(res.error || "撤销失败");
-      loadData();
+      /* 局部更新：RPC 撤销暂存即清空 staged_* 五字段，直接 patch 回可收状态 */
+      patch明细(orderId, item.id, {
+        staged_qty: null,
+        staged_action: null,
+        staged_at: null,
+        staged_by: null,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert("撤销失败: " + msg);
@@ -582,6 +674,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       const res = await 提交暂存收货(供应商id, 销售单号);
       if (!res.success) throw new Error(res.error || "提交失败");
       alert(`提交成功，已入账 ${res.count} 件`);
+      /* 保留整表重查（局部更新不兜底此操作）：跨多订单批量入账，
+         receive_purchase_item 逐行有补货克隆/状态重算/运单联动，
+         行去留和单去留都要服务端重算后才知道；一次一批的低频操作，整刷可接受 */
       loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -608,7 +703,10 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       /* 清空处理结果+删补货分支+状态回退+运单回退已收编进数据库事务函数 revoke_purchase_receipt */
       const res = await 撤销收货处理(order.id, item.id);
       if (!res.success) throw new Error(res.error || "撤销失败");
-      loadData();
+      /* 局部更新：revoke 清哪些字段（discount/return_reason/evidence 等）是 RPC 内部行为，
+         前端猜不全，只重查这一条明细；订单本身必然还在列表（全部处理完的单不显示，
+         撤销入口够不到），不用重查单头 */
+      await 重查单条明细(order.id, item.id);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert("撤销失败: " + msg);
@@ -630,7 +728,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     try {
       const res = await 撤销作废采购单(orderId, mode);
       if (!res.success) throw new Error(res.error || "操作失败");
-      loadData();
+      /* 局部更新：整单已标 cancelled 留档，必然离开待收货列表，直接移除 */
+      setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      setSelectedOrderIds((prev) => { const n = new Set(prev); n.delete(orderId); return n; });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert((mode === "revoke" ? "撤销失败: " : "作废失败: ") + msg);
@@ -649,7 +749,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     try {
       const res = await 撤销采购明细退回待采购(order.id, item.id);
       if (!res.success) throw new Error(res.error || "撤销失败");
-      loadData();
+      /* 局部更新：明细被移除后 total_amount 变、明细删空可能整单 cancelled，
+         都是 RPC 行为前端算不出来，只重查这一张订单 */
+      await 重查单张订单(order.id);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert("撤销失败: " + msg);
@@ -664,7 +766,8 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     try {
       const res = await 删除采购明细(order.id, item.id);
       if (!res.success) throw new Error(res.error || "作废失败");
-      loadData();
+      /* 局部更新：同"少发弃货删行"——total_amount/整单去留由 RPC 决定，只重查这张订单 */
+      await 重查单张订单(order.id);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert("作废失败: " + msg);
@@ -699,8 +802,21 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     弹窗规格来源: "specification_text",
     取弹前行: (item) => item,
     setSubmitting,
-    /* TODO(批4局部更新)：此处暂保持整表重查，本批只改公共层 */
-    保存后: () => loadData(),
+    /* 局部更新：行内改的是 name/unit/brand/spec/unit_cost/category 等快照字段，
+       不影响"是否有未处理明细"的过滤，遍历找到该明细所在单后直接 patch */
+    保存后: (rowId, 字段) => {
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (!o.purchase_order_items.some((it) => it.id === rowId)) return o;
+          return {
+            ...o,
+            purchase_order_items: o.purchase_order_items.map((it) =>
+              it.id === rowId ? ({ ...it, ...字段 } as PurchaseOrderItem) : it
+            ),
+          };
+        })
+      );
+    },
   });
   const {
     editRow: editItem,
@@ -773,7 +889,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     }
     setSubmitting("gate");
     try {
-      /* 先在本地对象上打补丁，确认后收货弹窗立即放行，不必等 loadData 往返 */
+      /* 先在本地对象上打补丁，确认后收货弹窗立即放行，不必等查询往返 */
       const 单 = { ...gateOrder };
       const 件 = { ...gateItem };
       if (gateTab === "link") {
@@ -792,8 +908,23 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
         if (gateScope === "order") 单.waybill_exempt = true;
         else 件.waybill_exempt = true;
       }
+      /* 局部更新：运单关联/豁免是前端已知值，直接写进列表 state
+         （运单显示对象从已查到的 gateWaybills 里取），不整表重查 */
+      if (gateTab === "link") {
+        const 选中运单 = gateWaybills.find((w) => w.id === gateWaybillId) ?? null;
+        if (gateScope === "order") {
+          patch订单(gateOrder.id, { waybill_id: gateWaybillId, logistics_waybills: 选中运单 });
+        } else {
+          patch明细(gateOrder.id, gateItem.id, { waybill_id: gateWaybillId, logistics_waybills: 选中运单 });
+        }
+      } else {
+        if (gateScope === "order") {
+          patch订单(gateOrder.id, { waybill_exempt: true });
+        } else {
+          patch明细(gateOrder.id, gateItem.id, { waybill_exempt: true });
+        }
+      }
       closeGateModal();
-      loadData();
       /* 处理完直接进收货弹窗，动线连贯 */
       openReceiveModal(单, 件);
     } catch (err: unknown) {
@@ -969,12 +1100,28 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
         throw new Error(创建结果.error || "创建运单失败");
       }
       const waybillId = 创建结果.waybillId;
+      /* 局部更新用的运单显示对象：用表单值本地组装（结构与 loadData join 出的一致） */
+      const 新运单: Waybill = {
+        id: waybillId,
+        tracking_no: wbTrackingNo.trim(),
+        logistics_company_name: company?.name || null,
+        supplier_name: wbSupplierName.trim() || null,
+        freight_amount: parseFloat(wbFreight) || 0,
+        cod_amount: parseFloat(wbCod) || 0,
+        status: "pending",
+        logistics_companies: company ? { name: company.name } : null,
+      };
 
       if (isBatch) {
         /* 批量创建运单后自动关联到选中的采购单（走 Server Action） */
         const res = await 关联运单到采购单(waybillId, Array.from(selectedOrderIds));
         if (!res.success) throw new Error(res.error || "关联采购单失败");
         alert(`运单创建成功，已自动关联 ${selectedOrderIds.size} 张采购单`);
+        /* 局部更新：命中单前端已知，直接 patch 各单运单 */
+        const 命中ids = new Set(selectedOrderIds);
+        setOrders((prev) =>
+          prev.map((o) => (命中ids.has(o.id) ? { ...o, waybill_id: waybillId, logistics_waybills: 新运单 } : o))
+        );
         setSelectedOrderIds(new Set());
         setBatchWaybillMode(false);
       } else if (isStandalone) {
@@ -988,6 +1135,10 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
             const res = await 关联运单到供应商待收货单(waybillId, 创建结果.命中供应商id);
             if (!res.success) throw new Error(res.error || "关联采购单失败");
             alert(`运单创建成功，已关联 ${res.count} 张待收货采购单`);
+            /* 保留整表重查：命中哪些单是服务端按供应商名匹配出来的，前端口径容易漂 */
+            closeCreateWaybillModal();
+            loadData();
+            return;
           } else {
             alert("运单创建成功");
           }
@@ -999,10 +1150,11 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
         const res = await 关联运单到采购单(waybillId, [createWaybillOrder!.id]);
         if (!res.success) throw new Error(res.error || "关联采购单失败");
         alert("运单创建成功");
+        /* 局部更新：patch 该单运单 */
+        patch订单(createWaybillOrder!.id, { waybill_id: waybillId, logistics_waybills: 新运单 });
       }
 
       closeCreateWaybillModal();
-      loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       alert("创建运单失败: " + msg);
@@ -1012,6 +1164,8 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
   }
 
   async function handleAssignWaybill(waybillId: string) {
+    /* 局部更新：运单对象从弹窗已查到的 pendingWaybills 里取，直接 patch 目标单 */
+    const 选中运单 = pendingWaybills.find((w) => w.id === waybillId) ?? null;
     if (batchWaybillMode && selectedOrderIds.size > 0) {
       /* 批量关联（走 Server Action） */
       const res = await 关联运单到采购单(waybillId, Array.from(selectedOrderIds));
@@ -1019,10 +1173,13 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
         alert("批量关联运单失败: " + (res.error || "未知错误"));
         return;
       }
+      const 命中ids = new Set(selectedOrderIds);
+      setOrders((prev) =>
+        prev.map((o) => (命中ids.has(o.id) ? { ...o, waybill_id: waybillId, logistics_waybills: 选中运单 } : o))
+      );
       setSelectedOrderIds(new Set());
       setBatchWaybillMode(false);
       closeWaybillModal();
-      loadData();
       return;
     }
     if (!waybillModalFor) return;
@@ -1033,8 +1190,8 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       alert("关联运单失败: " + (res.error || "未知错误"));
       return;
     }
+    patch订单(orderId, { waybill_id: waybillId, logistics_waybills: 选中运单 });
     closeWaybillModal();
-    loadData();
   }
 
   /* 批量运单弹窗 */
@@ -1412,7 +1569,15 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                                 ) : null}
                               </td>
                               <td className="px-2 py-2 whitespace-nowrap">
-                                <DocumentNameInput 采购明细id={item.id} 初始值={item.supplier_part_name || ""} 保存后={loadData} 样式类名="w-24 px-2 py-1 text-xs rounded border border-gray-200 bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50" />
+                                <DocumentNameInput
+                                  采购明细id={item.id}
+                                  初始值={item.supplier_part_name || ""}
+                                  保存后={(新值) =>
+                                    /* 局部更新：单据名称前端已知，直接 patch 该明细 */
+                                    patch明细(order.id, item.id, { supplier_part_name: 新值 || null })
+                                  }
+                                  样式类名="w-24 px-2 py-1 text-xs rounded border border-gray-200 bg-white placeholder:text-gray-400 hover:border-blue-400 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+                                />
                               </td>
                               <td className="px-2 py-2 text-right text-gray-700">{item.quantity}</td>
                               <td className="px-2 py-2 text-gray-700">{item.unit || "-"}</td>
@@ -1479,7 +1644,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                                     /* 已暂存（2026-09-04）：可撤销重收 */
                                     <button
                                       type="button"
-                                      onClick={() => handleUnstage(item)}
+                                      onClick={() => handleUnstage(order.id, item)}
                                       disabled={submitting === `unstage-${item.id}`}
                                       title="撤销这次暂存的收货，重新收货"
                                       className="px-2 py-1 text-xs rounded border border-yellow-300 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 disabled:opacity-50 whitespace-nowrap"
@@ -1606,7 +1771,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                             <div key={it.id} className={`flex items-center gap-2 text-xs rounded-lg px-2 py-1.5 ${不符 ? "bg-red-50 border border-red-200" : "bg-white border border-yellow-100"}`}>
                               <button
                                 type="button"
-                                onClick={() => handleUnstage(it)}
+                                onClick={() => handleUnstage(o.id, it)}
                                 disabled={submitting === `unstage-${it.id}`}
                                 title="撤销暂存，重新收货"
                                 className="text-yellow-600 hover:text-yellow-800 shrink-0 disabled:opacity-50 font-medium"
@@ -2219,6 +2384,8 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                 公司列表={wbCompanies}
                 提交完成后={() => {
                   setBatchModalOpen(false);
+                  /* 保留整表重查：批量分步表单一次创建多张运单并逐单关联，
+                     低频操作，局部化收益小 */
                   loadData();
                 }}
               />
