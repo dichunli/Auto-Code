@@ -193,45 +193,23 @@ export async function 配件入库(参数: {
       }
     }
 
-    const { data: 当前配件, error: 查询错误 } = await supabase
-      .from("parts")
-      .select("id, quantity")
-      .eq("id", selectedPartId)
-      .single();
-
-    if (查询错误 || !当前配件) {
-      return { success: false, error: "配件不存在" };
-    }
-
-    const beforeQty = 当前配件.quantity || 0;
-    const afterQty = beforeQty + qty;
-
-    const { error: updateError } = await supabase
-      .from("parts")
-      .update({ quantity: afterQty })
-      .eq("id", selectedPartId);
-
-    if (updateError) return { success: false, error: updateError.message };
-
-    if (form.batch_no) {
-      await supabase.from("part_batches").insert({
-        part_id: selectedPartId,
-        batch_no: form.batch_no,
-        quantity: qty,
-        remaining: qty,
-        unit_cost: parseFloat(form.unit_cost) || 0,
-      });
-    }
-
-    await supabase.from("inventory_logs").insert({
-      part_id: selectedPartId,
-      type: "inbound",
-      change_qty: qty,
-      before_qty: beforeQty,
-      after_qty: afterQty,
-      waybill_id: waybillId,
-      notes: logNotes,
+    /* 入库三步（加库存→批次→流水）收编进 manual_part_inbound 事务（2026-09-12 诊断 P0）：
+       原来"读数量→内存加→写回绝对值"，两人同时入库会互相覆盖丢库存；
+       批次/流水散写，中途失败留半账。现在数据库一个事务原子完成。
+       仓位账待业务拍板后补（手工入库表单暂无仓库/仓位字段）。 */
+    const { data: rpc结果, error: rpc错误 } = await supabase.rpc("manual_part_inbound", {
+      p_part_id: selectedPartId,
+      p_qty: qty,
+      p_unit_cost: parseFloat(form.unit_cost) || 0,
+      p_batch_no: form.batch_no || null,
+      p_waybill_id: waybillId,
+      p_log_notes: logNotes,
     });
+    if (rpc错误) return { success: false, error: rpc错误.message };
+    const 入库事务结果 = rpc结果 as { success: boolean; error?: string } | null;
+    if (!入库事务结果?.success) {
+      return { success: false, error: 入库事务结果?.error || "入库失败" };
+    }
 
     if (branchId) {
       await supabase.from("work_order_item_parts").update({ part_id: selectedPartId }).eq("id", branchId);
