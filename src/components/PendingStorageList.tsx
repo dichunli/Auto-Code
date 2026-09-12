@@ -1059,20 +1059,25 @@ export function PendingStorageList(props: PendingStorageListProps) {
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              {/* table-fixed + 统一列宽（2026-09-12 用户要求）：黄卡蓝卡所有卡片列严格对齐，
+                 不再按内容自动分配列宽；商品名称列弹性占剩余空间 */}
+              <table className="w-full text-sm table-fixed">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-2 py-2 w-8" />
+                    <th className="px-2 py-2 w-6" />
                     <th className="px-3 py-2 text-left font-medium text-gray-500 w-10">序号</th>
-                    <th className="px-3 py-2 text-left font-medium text-gray-500">零件编码</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">零件编码</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500">商品名称</th>
-                    <th className="px-3 py-2 text-left font-medium text-gray-500">单据名称</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-32">单据名称</th>
                     <th className="px-3 py-2 text-right font-medium text-gray-500 w-14">数量</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-12">单位</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-20">分类</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">采购价</th>
                     {/* 备注/图片/车牌（2026-09-09）：与蓝卡对齐，黄卡也显示 */}
-                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">备注</th>
-                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">图片</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">备注</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500 w-20">图片</th>
                     <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">车牌</th>
-                    <th className="px-3 py-2 text-center font-medium text-gray-500 w-36">处理结果</th>
+                    <th className="px-3 py-2 text-center font-medium text-gray-500 w-32">处理结果</th>
                     <th className="px-3 py-2 text-center font-medium text-gray-500 w-28">操作</th>
                   </tr>
                 </thead>
@@ -1134,6 +1139,10 @@ export function PendingStorageList(props: PendingStorageListProps) {
                           />
                         </td>
                         <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
+                        {/* 单位/分类/采购价（2026-09-12 列对齐+采购价列）：与蓝卡同结构 */}
+                        <td className="px-3 py-2 text-gray-500">{item.unit || "-"}</td>
+                        <td className="px-3 py-2 text-gray-500">{item.category || "-"}</td>
+                        <td className="px-3 py-2 text-right text-gray-700"><PriceValue value={item.unit_cost} /></td>
                         {/* 备注/图片/车牌（2026-09-09）：收货照片+凭证照片全部显示 */}
                         <td className="px-3 py-2 text-gray-500">{item.notes || "-"}</td>
                         <td className="px-3 py-2">
@@ -1296,20 +1305,24 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm border border-gray-100 rounded-lg">
+                  {/* table-fixed + 统一列宽（2026-09-12 用户要求）：与黄卡完全同列结构，
+                     首列为占位（黄卡是拖拽柄），保证所有卡片列严格对齐 */}
+                  <table className="w-full text-sm border border-gray-100 rounded-lg table-fixed">
                     <thead className="bg-gray-50">
                       <tr>
+                        <th className="px-2 py-2 w-6" />
                         <th className="px-3 py-2 text-left font-medium text-gray-500 w-10">序号</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500">零件编码</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-28">零件编码</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500">商品名称</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500">单据名称</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-32">单据名称</th>
                         <th className="px-3 py-2 text-right font-medium text-gray-500 w-14">数量</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500 w-12">单位</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500">分类</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500">备注</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-16">图片</th>
-                        <th className="px-3 py-2 text-left font-medium text-gray-500">车牌</th>
-                        <th className="px-3 py-2 text-center font-medium text-gray-500 w-36">处理结果</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-20">分类</th>
+                        <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">采购价</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">备注</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-20">图片</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 w-24">车牌</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-500 w-32">处理结果</th>
                         <th className="px-3 py-2 text-center font-medium text-gray-500 w-28">操作</th>
                       </tr>
                     </thead>
@@ -1322,6 +1335,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
                         const 缺编码 = item.handle_action !== "wrong_discard" && (!item.part_id || !item.part_number);
                         return (
                           <tr key={item.id} className={缺编码 ? "bg-red-50" : "hover:bg-gray-50"}>
+                            {/* 首列占位：与黄卡拖拽柄列对齐 */}
+                            <td className="px-2 py-2" />
                             <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                             <td className="px-3 py-2">
                               <PartSearchDropdown
@@ -1353,6 +1368,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
                             <td className="px-3 py-2 text-right text-gray-700">{item.quantity}</td>
                             <td className="px-3 py-2 text-gray-500">{item.unit || "-"}</td>
                             <td className="px-3 py-2 text-gray-500">{item.category || "-"}</td>
+                            {/* 采购价列（2026-09-12 用户要求）：PriceValue 内置价格可见性控制 */}
+                            <td className="px-3 py-2 text-right text-gray-700"><PriceValue value={item.unit_cost} /></td>
                             <td className="px-3 py-2 text-gray-500">{item.notes || "-"}</td>
                             <td className="px-3 py-2">
                               {item.photos && item.photos.length > 0 ? (
