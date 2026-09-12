@@ -16,6 +16,7 @@ import { WaybillBatchForm } from "@/components/WaybillBatchForm";
 import { SupplierPhoneInput } from "@/components/SupplierPhoneInput";
 import { useDebounce } from "@/lib/useDebounce";
 import { DocumentNameInput } from "./DocumentNameInput";
+import { useToast } from "@/components/Toast";
 
 interface PurchaseOrderItem {
   id: string;
@@ -155,6 +156,7 @@ interface PendingReceiptListProps {
 export function PendingReceiptList(props: PendingReceiptListProps) {
   const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
+  const { showToast } = useToast();
   /* 价格显示开关：仅 admin/boss/warehouse 可见可用（其余角色 Context 层面已强制隐藏价格） */
   const { showPrices, canTogglePrices, togglePrices } = usePriceVisibility();
   /* 运单管理权限（待办清单第8项）：仅 admin/boss/warehouse 可关联/创建运单，
@@ -673,14 +675,15 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     try {
       const res = await 提交暂存收货(供应商id, 销售单号);
       if (!res.success) throw new Error(res.error || "提交失败");
-      alert(`提交成功，已入账 ${res.count} 件`);
+      /* 成功提示用轻量 Toast（几秒自动消失），不用浏览器原生弹窗（2026-09-13 用户要求） */
+      showToast(`提交成功，已入账 ${res.count} 件`);
       /* 保留整表重查（局部更新不兜底此操作）：跨多订单批量入账，
          receive_purchase_item 逐行有补货克隆/状态重算/运单联动，
          行去留和单去留都要服务端重算后才知道；一次一批的低频操作，整刷可接受 */
       loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("提交失败: " + msg);
+      showToast("提交失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }
