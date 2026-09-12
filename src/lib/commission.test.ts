@@ -143,8 +143,12 @@ describe("calculateDispatchClaimCommission", () => {
     expect(calculateDispatchClaimCommission("revenue_pct", 10, 1000)).toBe(100);
   });
 
-  it("利润百分比按营收计算（无成本参数）", () => {
-    expect(calculateDispatchClaimCommission("profit_pct", 10, 1000)).toBe(100);
+  it("利润百分比按（营收-成本）计算", () => {
+    expect(calculateDispatchClaimCommission("profit_pct", 10, 1000, 800)).toBe(20);
+  });
+
+  it("利润为负时按 0 计算，不提成", () => {
+    expect(calculateDispatchClaimCommission("profit_pct", 10, 1000, 1200)).toBe(0);
   });
 
   it("固定金额直接返回", () => {
