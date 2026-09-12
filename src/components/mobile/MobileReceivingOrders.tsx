@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
@@ -107,7 +106,16 @@ function ReceiveModal({
   /* 扫码收货：弹窗里点「继续扫码」重新打开扫码 */
   on请求扫码?: () => void;
   onClose: () => void;
-  onSubmit: (参数: { 动作: string; 数量: number; 凭证: string[] | null; 更新凭证: boolean; 弃货删行?: boolean }) => void;
+  onSubmit: (参数: {
+    动作: string;
+    数量: number;
+    凭证: string[] | null;
+    更新凭证: boolean;
+    弃货删行?: boolean;
+    /* 顺带保存成功的销售单/配件图（本弹窗内已落库），回带给父组件同步本地 state（2026-09-12 局部更新） */
+    销售单?: { no: string | null; amount: number | null; photos: string[] };
+    图片?: string[];
+  }) => void;
 }) {
   const { showToast } = useToast();
   const { 请求确认, 确认弹窗 } = useConfirm();
@@ -156,21 +164,30 @@ function ReceiveModal({
       return;
     }
 
-    /* 销售单顺带保存（2026-08-21，选填不阻塞收货） */
+    /* 销售单顺带保存（2026-08-21，选填不阻塞收货）；
+       保存成功才回带给父组件同步本地 state（失败则本地不同步，与库一致） */
     const 新金额 = slipAmount.trim() === "" ? null : parseFloat(slipAmount);
     if (slipAmount.trim() !== "" && (isNaN(新金额 as number) || (新金额 as number) < 0)) {
       showToast("销售单总金额无效", "warning");
       return;
     }
+    let 销售单参数: { no: string | null; amount: number | null; photos: string[] } | undefined;
     if (slipNo.trim() || 新金额 !== null || slipPhotos.length > 0) {
       /* 销售单顺带保存走 Server Action（选填不阻塞收货） */
-      await 保存供应商销售单({
+      const 保存结果 = await 保存供应商销售单({
         orderId: 订单.id,
         slipNo,
         slipAmount: 新金额,
         slipPhotos,
       });
+      if (保存结果.success) {
+        销售单参数 = { no: slipNo.trim() || null, amount: 新金额, photos: slipPhotos };
+      } else {
+        showToast("销售单保存失败: " + (保存结果.error || "未知错误") + "（收货不受影响）", "warning");
+      }
     }
+    /* 配件图在弹窗里上传即落库，回带给父组件同步明细 photos */
+    const 图片参数 = 配件图;
 
     if (qty === 订购) {
       if (问题 === "broken") {
@@ -178,34 +195,36 @@ function ReceiveModal({
         onSubmit({
           动作: 破损选项 === "exchange" ? "broken_exchange" : "broken_discard",
           数量: qty, 凭证: 凭证.length > 0 ? 凭证 : null, 更新凭证: true,
+          销售单: 销售单参数, 图片: 图片参数,
         });
       } else if (问题 === "wrong") {
         if (!错发选项) { showToast("请选择错发处理方式", "warning"); return; }
         onSubmit({
           动作: 错发选项 === "exchange" ? "wrong_exchange" : "wrong_discard",
           数量: 错发选项 === "exchange" ? qty : 0, 凭证: 凭证.length > 0 ? 凭证 : null, 更新凭证: 凭证.length > 0,
+          销售单: 销售单参数, 图片: 图片参数,
         });
       } else {
-        onSubmit({ 动作: "normal", 数量: qty, 凭证: null, 更新凭证: false });
+        onSubmit({ 动作: "normal", 数量: qty, 凭证: null, 更新凭证: false, 销售单: 销售单参数, 图片: 图片参数 });
       }
     } else if (qty > 订购) {
       if (!多发选项) { showToast("请选择多发处理方式", "warning"); return; }
       if (多发选项 === "keep" && !多发付款) { showToast("请选择是否对供应商付款", "warning"); return; }
       const 动作 = 多发选项 === "return" ? "excess_return" : 多发付款 === "paid" ? "excess_paid" : "excess_free";
-      onSubmit({ 动作, 数量: qty, 凭证: null, 更新凭证: false });
+      onSubmit({ 动作, 数量: qty, 凭证: null, 更新凭证: false, 销售单: 销售单参数, 图片: 图片参数 });
     } else {
       if (!少发选项) { showToast("请选择少发处理方式", "warning"); return; }
       if (少发选项 === "repurchase") {
-        onSubmit({ 动作: "short_repurchase", 数量: qty, 凭证: null, 更新凭证: false });
+        onSubmit({ 动作: "short_repurchase", 数量: qty, 凭证: null, 更新凭证: false, 销售单: 销售单参数, 图片: 图片参数 });
       } else {
         if (凭证.length === 0) {
           if (!(await 请求确认("少发弃货建议上传聊天截图作为凭证,确定不上传吗?"))) return;
         }
         if (qty === 0) {
           if (!(await 请求确认("确认删除该配件?这会同时清除采购流程和工单中的记录。"))) return;
-          onSubmit({ 动作: "short_discard", 数量: 0, 凭证: null, 更新凭证: false, 弃货删行: true });
+          onSubmit({ 动作: "short_discard", 数量: 0, 凭证: null, 更新凭证: false, 弃货删行: true, 销售单: 销售单参数 });
         } else {
-          onSubmit({ 动作: "short_discard", 数量: qty, 凭证, 更新凭证: true });
+          onSubmit({ 动作: "short_discard", 数量: qty, 凭证, 更新凭证: true, 销售单: 销售单参数, 图片: 图片参数 });
         }
       }
     }
@@ -414,10 +433,12 @@ export function MobileReceivingOrders({
   订单列表: 待收订单[];
   待签收运单: 待签收运单[];
 }) {
-  const router = useRouter();
   const supabase = createClient();
   const { 请求确认, 确认弹窗 } = useConfirm();
   const { showToast } = useToast();
+  /* 2026-09-12 局部更新改造：首屏 props 落进 state，后续操作全部局部 patch，
+     不再 router.refresh() 整页重取（手机上网慢，整页闪感最明显） */
+  const [订单们, set订单们] = useState<待收订单[]>(订单列表);
   const [提交中, set提交中] = useState<string | null>(null);
   const [勾选, set勾选] = useState<Set<string>>(new Set());
   const [运单弹窗目标, set运单弹窗目标] = useState<string | "batch" | null>(null);
@@ -438,27 +459,60 @@ export function MobileReceivingOrders({
   const [扫码数量, set扫码数量] = useState<number | null>(null);
   const 扫码计数Ref = useRef<Record<string, number>>({});
 
+  /* ─── 局部更新工具：改哪条只动哪条 ─── */
+
+  /* patch 某张订单头字段（运单关联/豁免/销售单等） */
+  function patch订单(订单id: string, patch: Partial<待收订单>) {
+    set订单们((prev) => prev.map((o) => (o.id === 订单id ? { ...o, ...patch } : o)));
+  }
+
+  /* patch 某张订单里的某条明细（暂存/撤销/运单/图片等） */
+  function patch明细(订单id: string, 明细id: string, patch: Partial<待收明细>) {
+    set订单们((prev) =>
+      prev.map((o) => {
+        if (o.id !== 订单id) return o;
+        return {
+          ...o,
+          purchase_order_items: o.purchase_order_items.map((it) =>
+            it.id === 明细id ? { ...it, ...patch } : it
+          ),
+        };
+      })
+    );
+  }
+
+  /* 删除某条明细（少发弃货删行）；单去留由 显示订单 的谓词自动重算 */
+  function 删明细(订单id: string, 明细id: string) {
+    set订单们((prev) =>
+      prev.map((o) =>
+        o.id !== 订单id
+          ? o
+          : { ...o, purchase_order_items: o.purchase_order_items.filter((it) => it.id !== 明细id) }
+      )
+    );
+  }
+
   /* 只显示还有未处理明细的订单 + 供应商筛选（需求3） */
   const 显示订单 = useMemo(
     () =>
-      订单列表.filter(
+      订单们.filter(
         (o) =>
           (o.purchase_order_items || []).some((it) => !it.handle_action) &&
           (!供应商筛选 || (o.suppliers?.name || "未指定供应商") === 供应商筛选)
       ),
-    [订单列表, 供应商筛选]
+    [订单们, 供应商筛选]
   );
 
   /* 供应商筛选 chips 选项（按待收货数排序，多的在前） */
   const 供应商选项 = useMemo(() => {
     const map = new Map<string, number>();
-    for (const o of 订单列表) {
+    for (const o of 订单们) {
       if (!(o.purchase_order_items || []).some((it) => !it.handle_action)) continue;
       const 名 = o.suppliers?.name || "未指定供应商";
       map.set(名, (map.get(名) || 0) + 1);
     }
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-  }, [订单列表]);
+  }, [订单们]);
 
   const 分组 = useMemo(() => {
     const map = new Map<string, 待收订单[]>();
@@ -479,7 +533,16 @@ export function MobileReceivingOrders({
     });
   }
 
-  async function 提交收货(参数: { 动作: string; 数量: number; 凭证: string[] | null; 更新凭证: boolean; 弃货删行?: boolean }) {
+  async function 提交收货(参数: {
+    动作: string;
+    数量: number;
+    凭证: string[] | null;
+    更新凭证: boolean;
+    弃货删行?: boolean;
+    /* 弹窗里顺带保存成功的销售单/配件图（已落库），回带同步本地 state */
+    销售单?: { no: string | null; amount: number | null; photos: string[] };
+    图片?: string[];
+  }) {
     if (!收货目标) return;
     const { 订单, 明细 } = 收货目标;
     set提交中(`item-${明细.id}`);
@@ -488,15 +551,34 @@ export function MobileReceivingOrders({
         /* 少发完全没到：直接删除（不走暂存） */
         const res = await 删除采购明细(订单.id, 明细.id);
         if (!res.success) throw new Error(res.error || "删除失败");
+        删明细(订单.id, 明细.id);
       } else {
         /* 2026-09-04 口径：确认收货先写暂存不入账，手动「提交收货」统一入账 */
         const res = await 暂存收货(明细.id, 参数.数量, 参数.动作, 参数.凭证);
         if (!res.success) throw new Error(res.error || "暂存失败");
+        /* 局部更新：暂存四字段前端已知，直接 patch（行随即进已暂存区） */
+        const { data: sessionData } = await supabase.auth.getSession(); /* getSession 本地读不联网 */
+        patch明细(订单.id, 明细.id, {
+          staged_qty: 参数.数量,
+          staged_action: 参数.动作,
+          staged_at: new Date().toISOString(),
+          staged_by: sessionData.session?.user?.id ?? null,
+        });
+      }
+      /* 销售单/配件图在弹窗里已落库成功，同步进本地 state */
+      if (参数.销售单) {
+        patch订单(订单.id, {
+          supplier_order_no: 参数.销售单.no,
+          supplier_order_amount: 参数.销售单.amount,
+          supplier_slip_photos: 参数.销售单.photos,
+        });
+      }
+      if (参数.图片 && !参数.弃货删行) {
+        patch明细(订单.id, 明细.id, { photos: 参数.图片 });
       }
       set收货目标(null);
       set扫码数量(null);
       delete 扫码计数Ref.current[明细.id];
-      router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("收货失败: " + msg, "error");
@@ -570,13 +652,19 @@ export function MobileReceivingOrders({
   }
 
   /* 撤销暂存（2026-09-04）：收错了重收 */
-  async function 撤销暂存(明细: 待收明细) {
+  async function 撤销暂存(订单id: string, 明细: 待收明细) {
     if (!(await 请求确认(`确认撤销「${明细.name}」的收货暂存？撤销后可重新收货。`))) return;
     set提交中(`unstage-${明细.id}`);
     try {
       const res = await 撤销暂存收货(明细.id);
       if (!res.success) throw new Error(res.error || "撤销失败");
-      router.refresh();
+      /* 局部更新：撤销暂存即清空 staged_* 字段，patch 回可收状态 */
+      patch明细(订单id, 明细.id, {
+        staged_qty: null,
+        staged_action: null,
+        staged_at: null,
+        staged_by: null,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("撤销失败: " + msg, "error");
@@ -592,7 +680,29 @@ export function MobileReceivingOrders({
       const res = await 提交暂存收货(供应商id, 销售单号);
       if (!res.success) throw new Error(res.error || "提交失败");
       showToast(`提交成功，已入账 ${res.count} 件`);
-      router.refresh();
+      /* 局部更新：该供应商所有已暂存行入账——handle_action 落为暂存动作、staged_* 清空。
+         手机端明细类型没有 received_qty 等 RPC 可能改的字段（不显示价格/数量差异），
+         patch 无遗漏；订单去留由 显示订单 谓词自动重算（全部收完的整单消失） */
+      set订单们((prev) =>
+        prev.map((o) => {
+          if (o.supplier_id !== 供应商id) return o;
+          return {
+            ...o,
+            purchase_order_items: o.purchase_order_items.map((it) =>
+              it.staged_at && !it.handle_action
+                ? {
+                    ...it,
+                    handle_action: it.staged_action,
+                    staged_qty: null,
+                    staged_action: null,
+                    staged_at: null,
+                    staged_by: null,
+                  }
+                : it
+            ),
+          };
+        })
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("提交失败: " + msg, "error");
@@ -615,7 +725,8 @@ export function MobileReceivingOrders({
     try {
       const res = await 撤销收货处理(订单.id, 明细.id);
       if (!res.success) throw new Error(res.error || "撤销失败");
-      router.refresh();
+      /* 局部更新：手机端只显示 handle_action（无价格/凭证字段），patch 回未处理即可 */
+      patch明细(订单.id, 明细.id, { handle_action: null });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("撤销失败: " + msg, "error");
@@ -633,7 +744,9 @@ export function MobileReceivingOrders({
     try {
       const res = await 撤销作废采购单(订单id, 模式);
       if (!res.success) throw new Error(res.error || "操作失败");
-      router.refresh();
+      /* 局部更新：整单已标 cancelled 留档，必然离开待收货列表，直接移除 */
+      set订单们((prev) => prev.filter((o) => o.id !== 订单id));
+      set勾选((prev) => { const n = new Set(prev); n.delete(订单id); return n; });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("操作失败: " + msg, "error");
@@ -650,9 +763,22 @@ export function MobileReceivingOrders({
       const res = await 关联运单到采购单(运单id, 目标ids);
       if (!res.success) throw new Error(res.error || "关联失败");
       showToast(`已关联 ${res.count} 张采购单`);
+      /* 局部更新：运单显示对象从 props 待签收运单里取（结构与订单的 logistics_waybills 对齐） */
+      const 运单 = 待签收运单.find((w) => w.id === 运单id) ?? null;
+      const 运单对象 = 运单
+        ? {
+            id: 运单.id,
+            tracking_no: 运单.tracking_no,
+            logistics_company_name: 运单.logistics_company_name,
+            logistics_companies: 运单.logistics_companies,
+          }
+        : null;
+      const 命中集 = new Set(目标ids);
+      set订单们((prev) =>
+        prev.map((o) => (命中集.has(o.id) ? { ...o, waybill_id: 运单id, logistics_waybills: 运单对象 } : o))
+      );
       set勾选(new Set());
       set运单弹窗目标(null);
-      router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("关联运单失败: " + msg, "error");
@@ -688,6 +814,21 @@ export function MobileReceivingOrders({
         if (!res.success) throw new Error(res.error || "关联失败");
         if (gateScope === "order") 单.waybill_id = gate运单id;
         else 明细.waybill_id = gate运单id;
+        /* 局部更新：写进列表 state（运单显示对象从 props 待签收运单里取） */
+        const 运单 = 待签收运单.find((w) => w.id === gate运单id) ?? null;
+        const 运单对象 = 运单
+          ? {
+              id: 运单.id,
+              tracking_no: 运单.tracking_no,
+              logistics_company_name: 运单.logistics_company_name,
+              logistics_companies: 运单.logistics_companies,
+            }
+          : null;
+        if (gateScope === "order") {
+          patch订单(gate目标.订单.id, { waybill_id: gate运单id, logistics_waybills: 运单对象 });
+        } else {
+          patch明细(gate目标.订单.id, gate目标.明细.id, { waybill_id: gate运单id });
+        }
       } else {
         const 运费 = gate运费.trim() === "" ? null : parseFloat(gate运费);
         if (运费 !== null && (isNaN(运费) || 运费 < 0)) {
@@ -698,9 +839,13 @@ export function MobileReceivingOrders({
         if (!res.success) throw new Error(res.error || "保存失败");
         if (gateScope === "order") 单.waybill_exempt = true;
         else 明细.waybill_exempt = true;
+        if (gateScope === "order") {
+          patch订单(gate目标.订单.id, { waybill_exempt: true });
+        } else {
+          patch明细(gate目标.订单.id, gate目标.明细.id, { waybill_exempt: true });
+        }
       }
       setGate目标(null);
-      router.refresh();
       set收货目标({ 订单: 单, 明细 });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -985,7 +1130,7 @@ export function MobileReceivingOrders({
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() => 撤销暂存(明细)}
+                                  onClick={() => 撤销暂存(单.id, 明细)}
                                   disabled={提交中 === `unstage-${明细.id}`}
                                   className="px-2.5 py-1 text-xs rounded border border-yellow-300 text-yellow-700 bg-yellow-50 disabled:opacity-50"
                                 >
@@ -1045,7 +1190,7 @@ export function MobileReceivingOrders({
                       <div key={it.id} className={`flex items-center gap-2 text-xs rounded-lg px-2 py-1.5 ${不符 ? "bg-red-50 border border-red-200" : "bg-white border border-yellow-100"}`}>
                         <button
                           type="button"
-                          onClick={() => 撤销暂存(it)}
+                          onClick={() => 撤销暂存(o.id, it)}
                           disabled={提交中 === `unstage-${it.id}`}
                           title="撤销暂存，重新收货"
                           className="text-yellow-600 shrink-0 disabled:opacity-50"
