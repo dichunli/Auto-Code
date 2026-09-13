@@ -15,6 +15,7 @@ import { 查询批次卡片, 查询批次运单, type 批次卡片 } from "@/lib
 import { useToast } from "@/components/Toast";
 import { ImageUploader } from "@/components/ImageUploader";
 import { DocumentNameInput } from "./DocumentNameInput";
+import { InboundBarcodePrint, type 条码打印行 } from "@/components/InboundBarcodePrint";
 
 interface PurchaseOrderItem {
   id: string;
@@ -185,6 +186,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
   const [discountAmount, setDiscountAmount] = useState("");
   /* 批量设置仓库（2026-09-09）：入库弹窗里一次把所有行改到同一仓库 */
   const [批量仓库id, set批量仓库id] = useState("");
+  /* 弹窗商品行拖动排序（2026-09-13）：HTML5 原生拖拽，只调弹窗内行顺序 */
+  const [拖拽行id, set拖拽行id] = useState<string | null>(null);
+  const [拖过行id, set拖过行id] = useState<string | null>(null);
+  /* 配件条码缓存（part_id → barcode）：弹窗内打印条码/二维码用，口径与入库单详情页一致（barcode || part_number） */
+  const [配件条码, set配件条码] = useState<Map<string, string>>(new Map());
 
   /* 到货确认单（二期新流程）：已确认到货、待账务入库 */
   const [到货单列表, set到货单列表] = useState<到货单[]>(props.initialArrivalReceipts ?? []);
@@ -328,6 +334,33 @@ export function PendingStorageList(props: PendingStorageListProps) {
     }
   }
 
+  /* 批量查配件条码（弹窗内打印用）：只取有 barcode 的行，打印编码口径 = barcode || part_number */
+  async function 加载配件条码(forms: InboundItemForm[]) {
+    const ids = [...new Set(forms.map((f) => f.item.part_id).filter((x): x is string => !!x))];
+    if (ids.length === 0) {
+      set配件条码(new Map());
+      return;
+    }
+    const { data } = await supabase.from("parts").select("id, barcode").in("id", ids);
+    const 行们 = (data || []) as { id: string; barcode: string | null }[];
+    set配件条码(new Map(行们.filter((p) => !!p.barcode).map((p) => [p.id, p.barcode as string])));
+  }
+
+  /* 弹窗商品行拖动排序：把源行挪到目标行位置，序号随渲染自动更新；
+     allocatedCosts 是依赖 inboundItems 的 useMemo，重排后自动按新顺序重算，无需额外处理 */
+  function 移动行(源id: string, 目标id: string) {
+    if (源id === 目标id) return;
+    setInboundItems((prev) => {
+      const 源idx = prev.findIndex((p) => p.id === 源id);
+      const 目idx = prev.findIndex((p) => p.id === 目标id);
+      if (源idx < 0 || 目idx < 0) return prev;
+      const next = [...prev];
+      const [行] = next.splice(源idx, 1);
+      next.splice(目idx, 0, 行);
+      return next;
+    });
+  }
+
   /* 打开批次入库弹窗（2026-09-07 卡片化）：直接用卡片已加载的明细组装，不再单独查库 */
   async function openBatchInboundModal(批: 批次卡片) {
     const 行们 = 批.items;
@@ -366,6 +399,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
     /* 加载仓库列表（与按单弹窗共用） */
     const { data: whData } = await supabase.from("warehouses").select("id, name").order("name");
     setWarehouses(排序仓库(whData || []));
+
+    /* 加载配件条码（弹窗内打印用） */
+    await 加载配件条码(forms);
 
     /* 销售单信息从批次带出（单号只读显示，金额可在弹窗改） */
     setSlipNo(批.supplier_order_no || "");
@@ -571,6 +607,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
     const { data: whData } = await supabase.from("warehouses").select("id, name").order("name");
     setWarehouses(排序仓库(whData || []));
 
+    /* 加载配件条码（弹窗内打印用） */
+    await 加载配件条码(forms);
+
     /* 加载关联运单信息 */
     if (order.waybill_id) {
       const { data: wb } = await supabase
@@ -607,6 +646,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
     setBatchModal(null);
     setBatchWaybillId(null);
     setInboundItems([]);
+    set拖拽行id(null);
+    set拖过行id(null);
+    set配件条码(new Map());
     setWaybillInfo(null);
     setFreightAmount("");
     setSlipNo("");
@@ -673,6 +715,22 @@ export function PendingStorageList(props: PendingStorageListProps) {
       : null;
   const 销售单未填 = slipAmount.trim() === "";
   const 销售单不平 = 对平差异 !== null && Math.abs(对平差异) > 0.01;
+
+  /* 弹窗内打印条码/二维码（2026-09-13）：编码口径与入库单详情页一致（barcode || part_number）；
+     退货行（isExcess）不入库不打码；缺编码行打印意义不大，过滤掉 */
+  const 打印行们: 条码打印行[] = inboundItems
+    .filter((f) => !f.isExcess)
+    .map((f) => {
+      const code = (f.item.part_id ? 配件条码.get(f.item.part_id) : null) || f.item.part_number || "";
+      return {
+        name: f.item.name,
+        code,
+        quantity: parseInt(f.quantity, 10) || 0,
+        photo: [...(f.item.photos || []), ...(f.item.evidence_photos || [])][0] ?? null,
+        plate: f.item.license_plate,
+      };
+    })
+    .filter((r) => r.code !== "");
 
   async function handleConfirmInbound() {
     if (!inboundModalOrder) return;
@@ -1499,7 +1557,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 {batchModal ? (
                   batchModal.waybills.length > 0 ? (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm text-gray-500">分摊运单:</span>
+                      <span className="text-sm text-gray-500">关联运单:</span>
                       <select
                         value={batchWaybillId || ""}
                         onChange={(e) => {
@@ -1534,7 +1592,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   <span className="text-sm text-gray-500">无关联运单</span>
                 )}
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">运费金额(¥):</span>
+                  <span className="text-sm text-gray-500">分摊运费金额:</span>
                   <input
                     type="number"
                     min={0}
@@ -1573,6 +1631,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 <table className="w-full text-sm border border-gray-100 rounded-lg">
                   <thead className="bg-gray-50">
                     <tr>
+                      {/* 排序手柄列（2026-09-13 拖动排序）：按住 ⠿ 拖动调整行顺序 */}
+                      <th className="px-1 py-2.5 w-8" title="按住手柄拖动可调整行顺序" />
                       {/* 勾选列（2026-09-09 选择型批量设置仓库）：表头=全选/全不选 */}
                       <th className="px-2 py-2.5 w-8">
                         <input
@@ -1620,7 +1680,40 @@ export function PendingStorageList(props: PendingStorageListProps) {
                       /* 配件图片（2026-09-09）：收货照片+凭证照片全部显示，去重 */
                       const 图片们 = [...new Set([...(f.item.photos || []), ...(f.item.evidence_photos || [])])];
                       return (
-                        <tr key={f.id} className={缺编码 ? "bg-red-50" : f.isExcess ? "bg-gray-50" : "hover:bg-gray-50"}>
+                        <tr
+                          key={f.id}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            if (拖拽行id && 拖过行id !== f.id) set拖过行id(f.id);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (拖拽行id) 移动行(拖拽行id, f.id);
+                            set拖拽行id(null);
+                            set拖过行id(null);
+                          }}
+                          className={`${缺编码 ? "bg-red-50" : f.isExcess ? "bg-gray-50" : "hover:bg-gray-50"} ${
+                            拖拽行id && 拖过行id === f.id && 拖拽行id !== f.id ? "border-t-2 border-blue-400" : ""
+                          }`}
+                        >
+                          {/* 拖动手柄：只在手柄上 draggable，避免干扰行内输入框的文字选择 */}
+                          <td className="px-1 py-2 text-center">
+                            <span
+                              draggable
+                              onDragStart={(e) => {
+                                set拖拽行id(f.id);
+                                e.dataTransfer.effectAllowed = "move";
+                              }}
+                              onDragEnd={() => {
+                                set拖拽行id(null);
+                                set拖过行id(null);
+                              }}
+                              className="inline-block cursor-grab active:cursor-grabbing select-none text-gray-300 hover:text-gray-500"
+                              title="按住拖动调整顺序"
+                            >
+                              ⠿
+                            </span>
+                          </td>
                           <td className="px-2 py-2">
                             {!f.isExcess && (
                               <input
@@ -1839,7 +1932,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   </tbody>
                   <tfoot className="bg-gray-50">
                     <tr>
-                      <td colSpan={4} className="px-3 py-2 text-right font-medium text-gray-700">
+                      <td colSpan={5} className="px-3 py-2 text-right font-medium text-gray-700">
                         合计
                       </td>
                       <td className="px-3 py-2 text-right font-medium text-gray-900">
@@ -1952,6 +2045,13 @@ export function PendingStorageList(props: PendingStorageListProps) {
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
+                {/* 弹窗内打印条码/二维码（2026-09-13）：入库前提前贴码，内容与详情页同口径 */}
+                {打印行们.length > 0 && (
+                  <InboundBarcodePrint
+                    items={打印行们}
+                    className="mr-auto px-5 py-2.5 border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50"
+                  />
+                )}
                 <button
                   type="button"
                   onClick={closeInboundModal}
@@ -1975,9 +2075,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 </button>
               </div>
               {/* 一步入库（2026-09-12 用户拍板）：点确认入库立即加库存、记应付款；
-                 打印入库单/条形码到「入库单」列表进详情页 */}
+                 条码/二维码可在本弹窗左下角直接打印（提前贴码），入库单打印到详情页 */}
               <p className="text-sm text-gray-400 text-right mt-1">
-                确认后立即完成入库并加库存；打印入库单/条形码请到「入库单」列表打开详情页
+                确认后立即完成入库并加库存；左下角可直接打印条码/二维码，打印入库单请到「入库单」详情页
               </p>
             </div>
           </div>

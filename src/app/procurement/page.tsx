@@ -438,7 +438,7 @@ export default async function ProcurementPage({
         purchase_order_items(
           id, name, brand, specification, quantity, unit_cost, received_qty,
           part_id, work_order_item_part_id, part_number, supplier_part_name,
-          unit, category, license_plate, photos, notes
+          unit, category, license_plate, photos, notes, parts(barcode)
         ),
         inbound_orders(id, inbound_no, total_quantity, total_amount, created_at)
       `)
