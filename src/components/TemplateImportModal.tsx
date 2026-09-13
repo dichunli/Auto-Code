@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { 导入保养模板 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   vehicleId: string;
@@ -108,13 +109,13 @@ export function TemplateImportModal({ vehicleId, orderId, onClose, onSuccess }: 
         })),
       });
       if (!result.success) {
-        alert("导入失败: " + (result.error || "未知错误"));
+        toast("导入失败: " + (result.error || "未知错误"), "error");
         setImporting(false);
         return;
       }
       onSuccess();
     } catch (err: unknown) {
-      alert("导入失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("导入失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setImporting(false);
     }
   }

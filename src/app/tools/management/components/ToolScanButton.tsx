@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import BarcodeScanModal from "@/components/BarcodeScanModal";
+import { toast } from "@/lib/globalToast";
 
 export default function ToolScanButton() {
   const router = useRouter();
@@ -11,12 +12,12 @@ export default function ToolScanButton() {
   function handleScan(code: string) {
     const trimmed = code.trim();
     if (!trimmed.startsWith("tool:")) {
-      alert("未识别为工具二维码，请扫描正确的工具标签");
+      toast("未识别为工具二维码，请扫描正确的工具标签", "warning");
       return;
     }
     const toolId = trimmed.slice(5);
     if (!toolId) {
-      alert("二维码内容无效");
+      toast("二维码内容无效", "error");
       return;
     }
     router.push(`/tools/borrow-scan?id=${encodeURIComponent(toolId)}`);

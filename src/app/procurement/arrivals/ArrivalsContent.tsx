@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { toast } from "@/lib/globalToast";
 
 /* 2026-08-20 待收货改造二期：电脑端到货确认单列表（客户端翻页） */
 
@@ -44,7 +45,7 @@ export default function ArrivalsContent({ initialList, initialCount }: { initial
       .range(from, from + pageSize - 1);
     if (error) {
       console.error("到货单加载失败:", error);
-      alert("加载失败: " + error.message);
+      toast("加载失败: " + error.message, "error");
     } else {
       set列表((data || []) as unknown as 到货单[]);
       setTotal(count || 0);

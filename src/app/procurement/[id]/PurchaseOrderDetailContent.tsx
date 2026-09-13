@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 部分收货登记, 撤销作废采购单 } from "@/app/procurement/actions";
+import { toast } from "@/lib/globalToast";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
@@ -122,7 +123,7 @@ export default function PurchaseOrderDetailContent({
       if (!res.success) throw new Error(res.error || "操作失败");
       fetchOrder();
     } catch (err: unknown) {
-      alert((mode === "revoke" ? "撤销失败: " : "作废失败: ") + (err instanceof Error ? err.message : String(err)));
+      toast((mode === "revoke" ? "撤销失败: " : "作废失败: ") + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setCancelling(false);
     }
@@ -131,7 +132,7 @@ export default function PurchaseOrderDetailContent({
   async function handleReceiveItem(itemId: string) {
     const qty = parseInt(receiveForm[itemId] || "0");
     if (qty <= 0) {
-      alert("请输入有效的收货数量");
+      toast("请输入有效的收货数量", "warning");
       return;
     }
 
@@ -141,7 +142,7 @@ export default function PurchaseOrderDetailContent({
 
     const remainingToReceive = item.quantity - (item.received_qty || 0);
     if (qty > remainingToReceive) {
-      alert(`该 item 最多还能收 ${remainingToReceive} 件`);
+      toast(`该 item 最多还能收 ${remainingToReceive} 件`, "warning");
       return;
     }
 
@@ -158,7 +159,7 @@ export default function PurchaseOrderDetailContent({
       fetchOrder();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("收货失败: " + msg);
+      toast("收货失败: " + msg, "error");
     } finally {
       setLoading(false);
     }

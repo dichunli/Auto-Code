@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 批量添加工单项目 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   open: boolean;
@@ -74,13 +75,13 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
           `)
           .order("name");
         if (error) {
-          alert("加载项目失败: " + error.message);
+          toast("加载项目失败: " + error.message, "error");
           setAllServiceItems([]);
           return;
         }
         setAllServiceItems((items as unknown as ServiceItem[]) || []);
       } catch (err: unknown) {
-        alert("加载项目失败: " + (err instanceof Error ? err.message : String(err)));
+        toast("加载项目失败: " + (err instanceof Error ? err.message : String(err)), "error");
       } finally {
         setLoading(false);
       }
@@ -150,7 +151,7 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
 
   async function handleBatchAdd() {
     if (selectedIds.length === 0) {
-      alert("请至少勾选一个项目");
+      toast("请至少勾选一个项目", "warning");
       return;
     }
 
@@ -175,7 +176,7 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
       });
 
       if (!result.success) {
-        alert("批量添加失败: " + (result.error || "未知错误"));
+        toast("批量添加失败: " + (result.error || "未知错误"), "error");
         return;
       }
 
@@ -183,12 +184,12 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
       const skippedNames = result.skippedNames || [];
 
       if (新项目们.length === 0) {
-        alert("勾选的项目都已存在于当前工单，无需重复添加");
+        toast("勾选的项目都已存在于当前工单，无需重复添加", "error");
         return;
       }
 
       if (skippedNames.length > 0) {
-        alert(`已添加 ${新项目们.length} 项；跳过 ${skippedNames.length} 个重复项目：${skippedNames.join("、")}`);
+        toast(`已添加 ${新项目们.length} 项；跳过 ${skippedNames.length} 个重复项目：${skippedNames.join("、")}`, "error");
       }
 
       /* 局部更新：广播"wo-items-added"事件，需求下的 LiveItemsList 立即追加项目行、
@@ -203,7 +204,7 @@ export default function ItemBatchPickerModal({ open, onClose, orderId, requireme
         );
       }
     } catch (err: unknown) {
-      alert("批量添加失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("批量添加失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }

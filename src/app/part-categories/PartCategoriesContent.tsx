@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
 import { 新建配件分类, 保存配件分类排序 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface 配件分类 {
   id: string;
@@ -198,7 +199,7 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) {
-      alert("请输入分类名称");
+      toast("请输入分类名称", "warning");
       return;
     }
     setSaving(true);
@@ -207,12 +208,12 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
     try {
       const result = await 新建配件分类(form);
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("保存失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
       setSaving(false);
       return;
     }

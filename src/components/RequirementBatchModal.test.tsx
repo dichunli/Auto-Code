@@ -43,6 +43,12 @@ vi.mock("@/app/work-orders/actions", () => ({
   刷新工单详情: (...args: unknown[]) => mock刷新工单详情(...args),
 }));
 
+/* 弹窗治理后组件用全局 toast 提示失败（不再走 window.alert） */
+const mockToast = vi.fn();
+vi.mock("@/lib/globalToast", () => ({
+  toast: (...args: unknown[]) => mockToast(...args),
+}));
+
 /* 只读查询（角色、当前用户）仍走客户端 supabase */
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
@@ -129,7 +135,6 @@ describe("RequirementBatchModal - 删除防误删保护", () => {
   const 编辑用需求 = { id: "req-1", seq: 1, description: "刹车异响" };
 
   it("服务端校验需求下有项目 → 点删除弹出提示，且不广播删除事件", async () => {
-    const alert提示 = vi.spyOn(window, "alert").mockImplementation(() => {});
     /* 模拟服务端返回"需求下有 2 个项目" */
     模拟删除结果 = { success: false, error: "该需求下有 2 个维修项目，无法删除。请先删除这些维修项目，再删除需求。" };
     const 事件监听 = vi.fn();
@@ -155,9 +160,9 @@ describe("RequirementBatchModal - 删除防误删保护", () => {
     const 确定按钮 = await screen.findByRole("button", { name: "确定" });
     await user.click(确定按钮);
 
-    /* 应弹出提示说明原因，且不广播删除事件 */
+    /* 应弹出提示说明原因（toast error），且不广播删除事件 */
     await waitFor(() => {
-      expect(alert提示).toHaveBeenCalled();
+      expect(mockToast).toHaveBeenCalledWith(expect.stringContaining("无法删除"), "error");
     });
     expect(mock删除需求).toHaveBeenCalled();
     expect(事件监听).not.toHaveBeenCalled();

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 更新服务分类, 同步分类提成到项目 } from "../../actions";
+import { toast } from "@/lib/globalToast";
 
 function CommissionField({
   label,
@@ -83,7 +84,7 @@ export default function EditServiceCategoryPage() {
       .single()
       .then(({ data, error }) => {
         if (error || !data) {
-          alert("加载失败: " + (error?.message || "分类不存在"));
+          toast("加载失败: " + (error?.message || "分类不存在"), "error");
           router.push("/service-categories");
           return;
         }
@@ -114,12 +115,12 @@ export default function EditServiceCategoryPage() {
     try {
       const result = await 更新服务分类(id, form);
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("保存失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
       setSaving(false);
       return;
     }
@@ -136,14 +137,14 @@ export default function EditServiceCategoryPage() {
     try {
       const result = await 同步分类提成到项目(id, form);
       if (!result.success) {
-        alert(result.error || "同步失败");
+        toast(result.error || "同步失败", "error");
         setSyncing(false);
         return;
       }
-      alert(`同步成功：已更新 ${result.nameCount ?? 0} 个项目名称，${result.itemCount ?? 0} 个维修项目`);
+      toast(`同步成功：已更新 ${result.nameCount ?? 0} 个项目名称，${result.itemCount ?? 0} 个维修项目`, "success");
       setSyncing(false);
     } catch (err: unknown) {
-      alert("同步失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("同步失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
       setSyncing(false);
     }
   }

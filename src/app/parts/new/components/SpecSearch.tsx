@@ -6,6 +6,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { LinkedItem } from "@/components/VehicleModelSelector";
 import { PartNameItem } from "./PartNameSearch";
 import { 新建规格, 关联名称规格 } from "../../actions";
+import { toast } from "@/lib/globalToast";
 
 interface SpecSearchProps {
   selectedSpecs: LinkedItem[];
@@ -72,7 +73,7 @@ export default function SpecSearch({
     /* 新建规格收口到服务端 */
     const result = await 新建规格(name);
     if (!result.success || !result.id) {
-      alert("创建规格失败: " + (result.error || "未知错误"));
+      toast("创建规格失败: " + (result.error || "未知错误"), "error");
       return;
     }
     addSpec({ id: result.id, name });

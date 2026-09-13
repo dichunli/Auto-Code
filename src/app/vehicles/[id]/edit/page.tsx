@@ -11,6 +11,7 @@ import { ImageUploader } from "@/components/ImageUploader";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 import { 更新车辆 } from "../../actions";
+import { toast } from "@/lib/globalToast";
 
 type OwnerMode = "existing" | "new";
 
@@ -248,7 +249,7 @@ export default function EditVehiclePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.plate_number.trim()) { alert("请填写车牌号"); return; }
+    if (!form.plate_number.trim()) { toast("请填写车牌号", "warning"); return; }
 
     /* 组装照片清单 */
     const photos: { category: string; url: string }[] = [];
@@ -269,12 +270,12 @@ export default function EditVehiclePage() {
         photos,
       });
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
     } catch {
-      alert("保存失败：网络异常，请重试");
+      toast("保存失败：网络异常，请重试", "error");
       setSaving(false);
       return;
     }

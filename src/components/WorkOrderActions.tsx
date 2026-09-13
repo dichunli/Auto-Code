@@ -12,6 +12,7 @@ interface WorkOrderActionsProps {
 }
 
 import Link from "next/link";
+import { toast } from "@/lib/globalToast";
 
 /* 状态按钮流：质检已下沉到项目级（项目行质检单），工单级不再有"提交质检/质检通过/返工"。
  * repairing/pending_quality_check 无按钮——等项目完工/质检；满足待结单条件时出现"确认结单"。 */
@@ -42,12 +43,12 @@ export function WorkOrderActions({ orderId, status, 待结单就绪 }: WorkOrder
       p_notes: null,
     });
     if (rpcErr) {
-      alert("操作失败: " + rpcErr.message);
+      toast("操作失败: " + rpcErr.message, "error");
       return false;
     }
     const rpcResult = result as { success: boolean; error?: string };
     if (!rpcResult?.success) {
-      alert("操作失败: " + (rpcResult?.error || "状态流转被拒绝"));
+      toast("操作失败: " + (rpcResult?.error || "状态流转被拒绝"), "error");
       return false;
     }
     return true;

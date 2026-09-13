@@ -13,6 +13,7 @@ import Link from "next/link";
 import { 手动同步考勤, 自动匹配钉钉账号, 保存考勤扣款设置 } from "./actions";
 import { 有效出勤天数, 是有效打卡 } from "@/lib/attendanceDays";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 // ============================================================
 // 类型定义
@@ -112,14 +113,14 @@ function SyncModal({ on关闭 }: { on关闭: () => void }) {
     try {
       const res = await 手动同步考勤(开始, 结束);
       if (res.success && res.data) {
-        alert(`同步完成：${res.data.天数} 天、${res.data.员工数} 名员工、写入 ${res.data.写入条数} 条记录`);
+        toast(`同步完成：${res.data.天数} 天、${res.data.员工数} 名员工、写入 ${res.data.写入条数} 条记录`, "warning");
         on关闭();
         router.refresh();
       } else {
-        alert("同步失败：" + (res.error || "未知错误"));
+        toast("同步失败：" + (res.error || "未知错误"), "error");
       }
     } catch {
-      alert("同步失败：网络异常，请稍后再试");
+      toast("同步失败：网络异常，请稍后再试", "error");
     } finally {
       set同步中(false);
     }
@@ -188,21 +189,21 @@ function SettingsModal({ 初始, on关闭 }: { 初始: 扣款设置; on关闭: (
     const 缺卡数 = Number(缺卡) || 0;
     const 缺勤数 = Number(缺勤) || 0;
     if (迟到数 < 0 || 缺卡数 < 0 || 缺勤数 < 0) {
-      alert("扣款金额不能是负数");
+      toast("扣款金额不能是负数", "error");
       return;
     }
     set保存中(true);
     try {
       const res = await 保存考勤扣款设置(迟到数, 缺卡数, 缺勤数);
       if (res.success) {
-        alert("保存成功");
+        toast("保存成功", "success");
         on关闭();
         router.refresh();
       } else {
-        alert("保存失败：" + (res.error || "未知错误"));
+        toast("保存失败：" + (res.error || "未知错误"), "error");
       }
     } catch {
-      alert("保存失败：网络异常，请稍后再试");
+      toast("保存失败：网络异常，请稍后再试", "error");
     } finally {
       set保存中(false);
     }
@@ -350,13 +351,13 @@ export function AttendanceClient({
         if (失败.length > 0) {
           消息 += `\n\n失败 ${失败.length} 人：\n` + 失败.map((f) => `${f.姓名}：${f.原因}`).join("\n");
         }
-        alert(消息);
+        toast(消息, "warning");
         router.refresh();
       } else {
-        alert("匹配失败：" + (res.error || "未知错误"));
+        toast("匹配失败：" + (res.error || "未知错误"), "error");
       }
     } catch {
-      alert("匹配失败：网络异常，请稍后再试");
+      toast("匹配失败：网络异常，请稍后再试", "error");
     } finally {
       set匹配中(false);
     }

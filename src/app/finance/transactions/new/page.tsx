@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 import { 记一笔 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 interface 账户 {
   id: string;
@@ -61,12 +62,12 @@ export default function NewTransactionPage() {
       });
       setLoading(false);
       if (!result.success) {
-        alert("保存失败：" + (result.error || "未知错误"));
+        toast("保存失败：" + (result.error || "未知错误"), "error");
         return;
       }
     } catch {
       setLoading(false);
-      alert("保存失败：网络异常，请重试");
+      toast("保存失败：网络异常，请重试", "error");
       return;
     }
 

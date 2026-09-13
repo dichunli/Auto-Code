@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 提交考试 } from "../../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 interface 考题 {
   id: string;
@@ -46,7 +47,7 @@ export default function ExamPage() {
       const { data: sessionData } = await supabase.auth.getSession();
     const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
       if (!userData.user) {
-        alert("请先登录");
+        toast("请先登录", "warning");
         router.push("/login");
         return;
       }
@@ -59,7 +60,7 @@ export default function ExamPage() {
         .single();
 
       if (!course) {
-        alert("课程不存在");
+        toast("课程不存在", "error");
         router.push("/training");
         return;
       }
@@ -68,13 +69,13 @@ export default function ExamPage() {
       if (course.passing_score) setPassingScore(course.passing_score);
 
       if (!course.has_exam) {
-        alert("该课程不包含考试");
+        toast("该课程不包含考试", "warning");
         router.push(`/training/${courseId}`);
         return;
       }
 
       if (course.exam_mode === "offline") {
-        alert("该课程为线下考试，请在课程详情页查看考试安排");
+        toast("该课程为线下考试，请在课程详情页查看考试安排", "warning");
         router.push(`/training/${courseId}`);
         return;
       }
@@ -88,7 +89,7 @@ export default function ExamPage() {
         .single();
 
       if (!assignData) {
-        alert("您未被分配该课程，无法参加考试");
+        toast("您未被分配该课程，无法参加考试", "error");
         router.push(`/training/${courseId}`);
         return;
       }
@@ -103,7 +104,7 @@ export default function ExamPage() {
         .order("sort_order", { ascending: true });
 
       if (!questionData || questionData.length === 0) {
-        alert("该课程暂未添加考题");
+        toast("该课程暂未添加考题", "warning");
         router.push(`/training/${courseId}`);
         return;
       }
@@ -212,17 +213,17 @@ export default function ExamPage() {
       const status = 提交结果.status || "pending";
 
       if (hasEssay) {
-        alert(`试卷已提交，包含简答题待人工判卷。客观题得分: ${totalScore}/${maxScore}`);
+        toast(`试卷已提交，包含简答题待人工判卷。客观题得分: ${totalScore}/${maxScore}`, "success");
       } else if (status === "passed") {
-        alert(`恭喜通过考试！得分: ${totalScore}/${maxScore}`);
+        toast(`恭喜通过考试！得分: ${totalScore}/${maxScore}`, "warning");
       } else {
-        alert(`未通过考试，得分: ${totalScore}/${maxScore}，通过分数: ${passingScore}`);
+        toast(`未通过考试，得分: ${totalScore}/${maxScore}，通过分数: ${passingScore}`, "warning");
       }
 
       router.push(`/training/${courseId}`);
       router.refresh();
     } catch (err: unknown) {
-      alert("提交失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("提交失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setSubmitting(false);
     }
   }

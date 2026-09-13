@@ -9,6 +9,7 @@ import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import { SearchDropdown } from "@/components/SearchDropdown";
 import { QRCodeSVG } from "qrcode.react";
+import { toast } from "@/lib/globalToast";
 
 interface Contact {
   id?: string;
@@ -260,13 +261,13 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
       setWechatGroupQr(result.path);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "未知错误";
-      alert("上传失败: " + msg);
+      toast("上传失败: " + msg, "error");
     }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) { alert("请输入供应商名称"); return; }
+    if (!form.name.trim()) { toast("请输入供应商名称", "warning"); return; }
     setSaving(true);
 
     try {
@@ -296,7 +297,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
         linkedVehicles.map((v) => v.id)
       );
       if (!res.success) {
-        alert("保存失败: " + (res.error || "未知错误"));
+        toast("保存失败: " + (res.error || "未知错误"), "error");
         return;
       }
 
@@ -304,7 +305,7 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
       router.push("/suppliers");
       router.refresh();
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }

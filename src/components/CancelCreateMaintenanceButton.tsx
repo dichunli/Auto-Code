@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { 取消创建保养单 } from "@/app/vehicles/actions";
 import { useConfirm } from "./ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   orderId: string;
@@ -20,7 +21,7 @@ export function CancelCreateMaintenanceButton({ orderId }: Props) {
       const result = await 取消创建保养单(orderId);
 
       if (!result.success) {
-        alert("取消失败: " + (result.error || "未知错误"));
+        toast("取消失败: " + (result.error || "未知错误"), "error");
         设置处理中(false);
         return;
       }
@@ -31,7 +32,7 @@ export function CancelCreateMaintenanceButton({ orderId }: Props) {
       }
       window.close();
     } catch (err: unknown) {
-      alert("取消失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("取消失败: " + (err instanceof Error ? err.message : String(err)), "error");
       设置处理中(false);
     }
   }

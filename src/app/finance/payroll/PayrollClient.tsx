@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { 生成工资单, 更新工资单, 变更工资单状态, type 工资单编辑数据 } from "./actions";
 import { formatCurrency } from "@/lib/utils";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 // ============================================================
 // 类型定义
@@ -65,7 +66,7 @@ function GenerateModal({ on关闭 }: { on关闭: () => void }) {
 
   async function 执行生成() {
     if (!月份) {
-      alert("请选择月份");
+      toast("请选择月份", "warning");
       return;
     }
     set生成中(true);
@@ -77,14 +78,14 @@ function GenerateModal({ on关闭 }: { on关闭: () => void }) {
           消息 += `\n\n以下员工本月已有工资单，未重复生成：\n${res.data.跳过名单.join("、")}`;
         }
         消息 += `\n\n注意：提成列为 0，请核对业绩后点「编辑」手工填写；底薪和考勤扣款已自动算好。`;
-        alert(消息);
+        toast(消息, "warning");
         on关闭();
         router.refresh();
       } else {
-        alert("生成失败：" + (res.error || "未知错误"));
+        toast("生成失败：" + (res.error || "未知错误"), "error");
       }
     } catch {
-      alert("生成失败：网络异常，请稍后再试");
+      toast("生成失败：网络异常，请稍后再试", "error");
     } finally {
       set生成中(false);
     }
@@ -175,14 +176,14 @@ function EditModal({ 记录, on关闭 }: { 记录: 工资记录; on关闭: () =>
     try {
       const res = await 更新工资单(记录.id, 数据);
       if (res.success) {
-        alert("保存成功");
+        toast("保存成功", "success");
         on关闭();
         router.refresh();
       } else {
-        alert("保存失败：" + (res.error || "未知错误"));
+        toast("保存失败：" + (res.error || "未知错误"), "error");
       }
     } catch {
-      alert("保存失败：网络异常，请稍后再试");
+      toast("保存失败：网络异常，请稍后再试", "error");
     } finally {
       set保存中(false);
     }
@@ -291,10 +292,10 @@ export function PayrollClient({ 记录们 }: { 记录们: 工资记录[] }) {
       if (res.success) {
         router.refresh();
       } else {
-        alert("操作失败：" + (res.error || "未知错误"));
+        toast("操作失败：" + (res.error || "未知错误"), "error");
       }
     } catch {
-      alert("操作失败：网络异常，请稍后再试");
+      toast("操作失败：网络异常，请稍后再试", "error");
     } finally {
       set操作中id(null);
     }

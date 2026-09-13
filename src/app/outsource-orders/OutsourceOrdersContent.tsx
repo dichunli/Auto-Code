@@ -6,6 +6,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
+import { toast } from "@/lib/globalToast";
 
 interface OutsourceOrderItem {
   id: string;
@@ -84,7 +85,7 @@ export default function OutsourceOrdersContent({ initialOrders, initialCount }: 
 
     const { data, count, error } = await q;
     if (error) {
-      alert("加载失败: " + error.message);
+      toast("加载失败: " + error.message, "error");
       setLoading(false);
       return;
     }

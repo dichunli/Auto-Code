@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 import Link from "next/link";
 import { 更新客户 } from "../../actions";
+import { toast } from "@/lib/globalToast";
 
 export default function EditCustomerPage() {
   const router = useRouter();
@@ -121,11 +122,11 @@ export default function EditCustomerPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) {
-      alert("请填写客户姓名");
+      toast("请填写客户姓名", "warning");
       return;
     }
     if (hasPhone && !form.phone.trim()) {
-      alert("请填写手机号");
+      toast("请填写手机号", "warning");
       return;
     }
 
@@ -147,13 +148,13 @@ export default function EditCustomerPage() {
         selectedTagIds,
       });
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setSaving(false);
       return;
     }
 
     if (!result.success) {
-      alert(result.error);
+      toast(result.error, "warning");
       setSaving(false);
       return;
     }

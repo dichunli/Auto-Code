@@ -19,6 +19,8 @@ import { 分片上传文件, 需要分片上传 } from "@/lib/chunkedUpload";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 import BlockPermissionModal from "./BlockPermissionModal";
+import { toast } from "@/lib/globalToast";
+import { 全局输入 } from "@/components/GlobalDialogs";
 
 /* 扩展 BlockNote 默认 block schema，增加 allowedGroups 自定义属性 */
 /* BlockNote 的 block render 函数闭包引用的是原始 config.propSchema， */
@@ -311,7 +313,7 @@ function CustomToolbarButtons({
       const result = await 启动原生录像();
       if (result.cancelled) return;
       if (result.error || !result.filePath) {
-        alert("录像失败: " + (result.error || "原生录像不可用，请重新安装最新版APP"));
+        toast("录像失败: " + (result.error || "原生录像不可用，请重新安装最新版APP"), "error");
         return;
       }
       const fileUrl = 本地文件路径转URL(result.filePath);
@@ -332,7 +334,7 @@ function CustomToolbarButtons({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancelled")) return;
-      alert("录像上传失败: " + msg);
+      toast("录像上传失败: " + msg, "error");
     }
   }
 
@@ -342,7 +344,7 @@ function CustomToolbarButtons({
       const result = await 启动原生视频选择();
       if (result.cancelled) return;
       if (result.error || !result.filePath) {
-        alert("选择视频失败: " + (result.error || "原生视频选择不可用，请重新安装最新版APP"));
+        toast("选择视频失败: " + (result.error || "原生视频选择不可用，请重新安装最新版APP"), "error");
         return;
       }
       const fileUrl = 本地文件路径转URL(result.filePath);
@@ -362,7 +364,7 @@ function CustomToolbarButtons({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancelled")) return;
-      alert("视频上传失败: " + msg);
+      toast("视频上传失败: " + msg, "error");
     }
   }
 
@@ -386,7 +388,7 @@ function CustomToolbarButtons({
     try {
       await insertFileToEditor(file);
     } catch (err: unknown) {
-      alert("图片插入失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("图片插入失败: " + (err instanceof Error ? err.message : String(err)), "error");
     }
     e.target.value = "";
   }
@@ -401,7 +403,7 @@ function CustomToolbarButtons({
         source,
       });
       if (!photo.base64String) {
-        alert("未获取到图片");
+        toast("未获取到图片", "warning");
         return;
       }
       const base64 = `data:image/jpeg;base64,${photo.base64String}`;
@@ -411,7 +413,7 @@ function CustomToolbarButtons({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
-      alert("图片获取失败: " + msg);
+      toast("图片获取失败: " + msg, "error");
     }
   }
 
@@ -456,8 +458,8 @@ function CustomToolbarButtons({
     );
   }
 
-  function handleInsertVideo() {
-    const url = prompt("输入视频链接地址:");
+  async function handleInsertVideo() {
+    const url = await 全局输入("输入视频链接地址:");
     if (!url) return;
     editor.insertBlocks(
       [{ type: "video", props: { url, caption: "" } }],
@@ -466,13 +468,13 @@ function CustomToolbarButtons({
     );
   }
 
-  function handleInsertDouyinVideo() {
-    const url = prompt("输入抖音视频分享链接（如 https://v.douyin.com/xxxxx）:");
+  async function handleInsertDouyinVideo() {
+    const url = await 全局输入("输入抖音视频分享链接（如 https://v.douyin.com/xxxxx）:");
     if (!url) return;
     /* 简单校验 */
     const trimmed = url.trim();
     if (!trimmed.startsWith("http")) {
-      alert("请输入以 http:// 或 https:// 开头的链接");
+      toast("请输入以 http:// 或 https:// 开头的链接", "warning");
       return;
     }
     editor.insertBlocks(
@@ -488,7 +490,7 @@ function CustomToolbarButtons({
 
     /* 视频大小上限 4GB */
     if (file.size > 4096 * 1024 * 1024) {
-      alert(`视频不能超过 4GB（当前 ${Math.round(file.size / 1024 / 1024)}MB）`);
+      toast(`视频不能超过 4GB（当前 ${Math.round(file.size / 1024 / 1024)}MB）`, "error");
       e.target.value = "";
       return;
     }
@@ -536,13 +538,13 @@ function CustomToolbarButtons({
         "after"
       );
     } catch (err: unknown) {
-      alert("视频上传失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("视频上传失败: " + (err instanceof Error ? err.message : String(err)), "error");
     }
     e.target.value = "";
   }
 
-  function handleInsertFile() {
-    const url = prompt("输入文件链接地址:");
+  async function handleInsertFile() {
+    const url = await 全局输入("输入文件链接地址:");
     if (!url) return;
     editor.insertBlocks(
       [{ type: "file", props: { url, name: "文件" } }],
@@ -554,7 +556,7 @@ function CustomToolbarButtons({
   function handleOpenPermissionModal() {
     let block = editor.getTextCursorPosition().block;
     if (!block) {
-      alert("请先点击选中要设置权限的段落");
+      toast("请先点击选中要设置权限的段落", "warning");
       return;
     }
     /* 如果光标在表格单元格内，向上查找到表格块本身 */
@@ -586,7 +588,7 @@ function CustomToolbarButtons({
     const allowed = [".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".pdf"];
     const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
     if (!allowed.includes(ext)) {
-      alert("仅支持 Word、Excel、PPT、PDF 文件");
+      toast("仅支持 Word、Excel、PPT、PDF 文件", "warning");
       e.target.value = "";
       return;
     }
@@ -614,7 +616,7 @@ function CustomToolbarButtons({
         "after"
       );
     } catch (err: unknown) {
-      alert("文件上传失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("文件上传失败: " + (err instanceof Error ? err.message : String(err)), "error");
     }
     e.target.value = "";
   }

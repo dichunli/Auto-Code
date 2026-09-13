@@ -3,6 +3,7 @@
 import {useState} from "react";
 import { useRouter } from "next/navigation";
 import { 完成回访 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 const METHOD_OPTIONS = [
   { value: "phone", label: "电话" },
@@ -20,7 +21,7 @@ export function FollowUpForm({ followUpId }: { followUpId: string }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!result.trim()) {
-      alert("请填写回访结果");
+      toast("请填写回访结果", "warning");
       return;
     }
 
@@ -28,12 +29,12 @@ export function FollowUpForm({ followUpId }: { followUpId: string }) {
     try {
       const res = await 完成回访({ followUpId, method, result, notes });
       if (!res.success) {
-        alert("保存失败: " + (res.error || "未知错误"));
+        toast("保存失败: " + (res.error || "未知错误"), "error");
         setLoading(false);
         return;
       }
     } catch {
-      alert("保存失败: 网络异常，请重试");
+      toast("保存失败: 网络异常，请重试", "error");
       setLoading(false);
       return;
     }

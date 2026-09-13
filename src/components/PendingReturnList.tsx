@@ -9,6 +9,7 @@ import { RETURN_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 完成退货记录, 批量撤销退货, 生成采退单 } from "@/app/procurement/actions";
 import { DocumentNameInput } from "./DocumentNameInput";
+import { toast } from "@/lib/globalToast";
 
 /* 退货原因中文化：保持原变量名，引用处零改动 */
 const returnReasonMap = RETURN_REASON_LABELS;
@@ -128,11 +129,11 @@ export function PendingReturnList(props: PendingReturnListProps) {
     if (!(await 请求确认("确认标记为已完成？（将按 数量×采购价 记一条退货冲减往来账）"))) return;
     const res = await 完成退货记录(id);
     if (!res.success) {
-      alert("更新失败: " + (res.error || "未知错误"));
+      toast("更新失败: " + (res.error || "未知错误"), "error");
       return;
     }
     if (res.accounted === false) {
-      alert("已标记完成，但未记往来账（未匹配到供应商或配件无采购价），请到「往来款项」手工补记");
+      toast("已标记完成，但未记往来账（未匹配到供应商或配件无采购价），请到「往来款项」手工补记", "warning");
     }
     loadData();
   }
@@ -141,7 +142,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
      已入库的整单回滚入库,弃货类加回库存,任一失败整体回滚) */
   async function handleBatchRevoke() {
     if (selectedIds.size === 0) {
-      alert("请先选择要撤销的记录");
+      toast("请先选择要撤销的记录", "warning");
       return;
     }
     setSubmitting("batch-revoke");
@@ -189,7 +190,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
       setSelectedIds(new Set());
       loadData();
     } catch (err: unknown) {
-      alert("批量撤销失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("批量撤销失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSubmitting(null);
     }
@@ -198,7 +199,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
   /* 打开采退单确认弹窗 */
   function openReturnModal() {
     if (selectedIds.size === 0) {
-      alert("请先选择要提交的记录");
+      toast("请先选择要提交的记录", "warning");
       return;
     }
     const items = records.filter((r) => selectedIds.has(r.id));
@@ -266,7 +267,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
       closeReturnModal();
       loadData();
     } catch (err: unknown) {
-      alert("批量提交失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("批量提交失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSubmitting(null);
     }

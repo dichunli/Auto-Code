@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 借用工具, 归还工具 } from "@/app/tools/actions";
+import { toast } from "@/lib/globalToast";
 
 interface 工具 {
   id: string;
@@ -108,7 +109,7 @@ export default function ToolBorrowReturnModal({
   async function 提交借用() {
     const operatorId = 是App ? 当前用户ID : 选中员工;
     if (!operatorId) {
-      alert("请选择借用人");
+      toast("请选择借用人", "warning");
       return;
     }
     set提交中(true);
@@ -121,7 +122,7 @@ export default function ToolBorrowReturnModal({
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("借用失败: " + msg);
+      toast("借用失败: " + msg, "error");
     } finally {
       set提交中(false);
     }
@@ -131,7 +132,7 @@ export default function ToolBorrowReturnModal({
     if (!未归还记录) return;
     const operatorId = 是App ? 当前用户ID : 选中员工;
     if (!operatorId) {
-      alert("请选择归还人");
+      toast("请选择归还人", "warning");
       return;
     }
     set提交中(true);
@@ -153,7 +154,7 @@ export default function ToolBorrowReturnModal({
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("归还失败: " + msg);
+      toast("归还失败: " + msg, "error");
     } finally {
       set提交中(false);
     }

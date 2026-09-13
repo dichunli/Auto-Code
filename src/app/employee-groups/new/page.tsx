@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import { 新建员工分组 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
+import { toast } from "@/lib/globalToast";
 
 export default function NewEmployeeGroupPage() {
   const router = useRouter();
@@ -16,7 +17,7 @@ export default function NewEmployeeGroupPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name) {
-      alert("请填写分组名称");
+      toast("请填写分组名称", "warning");
       return;
     }
 
@@ -30,7 +31,7 @@ export default function NewEmployeeGroupPage() {
     setLoading(false);
 
     if (!result.success) {
-      alert("保存失败：" + (result.error || "未知错误"));
+      toast("保存失败：" + (result.error || "未知错误"), "error");
       return;
     }
 

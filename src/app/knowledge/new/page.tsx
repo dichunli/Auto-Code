@@ -10,6 +10,7 @@ import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelec
 import { 处理外部图片 } from "@/lib/processExternalImages";
 import { syncKnowledgeModelsFromVin, 新建知识文章 } from "../actions";
 import { 生成知识库搜索文本 } from "@/lib/knowledgeSearch";
+import { toast } from "@/lib/globalToast";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
@@ -102,7 +103,7 @@ export default function NewKnowledgePage() {
   async function handleSyncVin() {
     const vin = syncVin.trim().toUpperCase();
     if (vin.length !== 17) {
-      alert("VIN码必须为17位");
+      toast("VIN码必须为17位", "warning");
       return;
     }
     setSyncLoading(true);
@@ -137,12 +138,12 @@ export default function NewKnowledgePage() {
         });
         setSyncOpen(false);
         setSyncVin("");
-        alert(`已同步${res.matchedModels.length}个车型`);
+        toast(`已同步${res.matchedModels.length}个车型`, "warning");
       } else {
-        alert(res.error || "未找到匹配车型");
+        toast(res.error || "未找到匹配车型", "error");
       }
     } catch (err: unknown) {
-      alert("同步出错：" + (err instanceof Error ? err.message : String(err)));
+      toast("同步出错：" + (err instanceof Error ? err.message : String(err)), "warning");
     } finally {
       setSyncLoading(false);
     }
@@ -157,12 +158,12 @@ export default function NewKnowledgePage() {
       const 维修指导分类ID = categories.find((c) => c.name === "维修指导")?.id;
       const is维修指导 = form.type === "guide" || form.category_id === 维修指导分类ID;
       if (is维修指导 && linkedNames.length === 0) {
-        alert("维修指导文章必须至少关联一个维修项目");
+        toast("维修指导文章必须至少关联一个维修项目", "warning");
         setLoading(false);
         return;
       }
       if (is维修指导 && linkedVehicles.length === 0 && !是移动端()) {
-        alert("维修指导文章必须至少关联一个适用车型");
+        toast("维修指导文章必须至少关联一个适用车型", "warning");
         setLoading(false);
         return;
       }
@@ -203,7 +204,7 @@ export default function NewKnowledgePage() {
       router.refresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      alert("保存失败: " + message);
+      toast("保存失败: " + message, "error");
       setLoading(false);
     }
   }

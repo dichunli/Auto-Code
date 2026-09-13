@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { 全局输入 } from "@/components/GlobalDialogs";
 
 interface Props {
   value: string;
@@ -38,13 +39,13 @@ export function SimpleRichEditor({ value, onChange, placeholder = "请输入内�
     updateActiveCommands();
   }
 
-  function insertLink() {
-    const url = prompt("输入链接地址:");
+  async function insertLink() {
+    const url = await 全局输入("输入链接地址:");
     if (url) exec("createLink", url);
   }
 
-  function insertVideo() {
-    const url = prompt("输入视频链接（支持 B站、抖音、快手等）:\n也可以直接粘贴 <iframe> 嵌入代码");
+  async function insertVideo() {
+    const url = await 全局输入("输入视频链接（支持 B站、抖音、快手等）:\n也可以直接粘贴 <iframe> 嵌入代码");
     if (!url) return;
     let embedHtml = "";
     // B站
@@ -63,8 +64,8 @@ export function SimpleRichEditor({ value, onChange, placeholder = "请输入内�
     }
   }
 
-  function insertImage() {
-    const url = prompt("输入图片地址:");
+  async function insertImage() {
+    const url = await 全局输入("输入图片地址:");
     if (url) exec("insertImage", url);
   }
 

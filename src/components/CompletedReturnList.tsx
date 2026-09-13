@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 撤销已退货记录 } from "@/app/procurement/actions";
 import { useConfirm } from "./ConfirmDialog";
 import { DocumentNameInput } from "./DocumentNameInput";
+import { toast } from "@/lib/globalToast";
 
 const returnReasonMap: Record<string, string> = {
   wrong_ship: "错发",
@@ -103,7 +104,7 @@ export function CompletedReturnList(props: CompletedReturnListProps) {
 
       loadData();
     } catch (err: unknown) {
-      alert("退回失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("退回失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSubmitting(null);
     }

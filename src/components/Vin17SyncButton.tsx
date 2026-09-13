@@ -4,6 +4,7 @@ import { useState } from "react";
 import { syncPartVin17Models } from "@/app/parts/actions";
 import { useRouter } from "next/navigation";
 import { 标准化VIN } from "@/lib/vinValidator";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   partId: string;
@@ -19,12 +20,12 @@ export default function Vin17SyncButton({ partId, oeNumber, vin17GroupId }: Prop
 
   async function handleSync() {
     if (!oeNumber) {
-      alert("该配件没有OE号，无法同步17VIN车型");
+      toast("该配件没有OE号，无法同步17VIN车型", "error");
       return;
     }
     const trimmedVin = 标准化VIN(vin);
     if (trimmedVin.length !== 17) {
-      alert("VIN码必须为17位");
+      toast("VIN码必须为17位", "warning");
       return;
     }
 

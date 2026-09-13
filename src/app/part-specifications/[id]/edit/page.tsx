@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { 更新配件规格 } from "../../actions";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { SearchDropdown } from "@/components/SearchDropdown";
+import { toast } from "@/lib/globalToast";
 
 export default function EditPartSpecificationPage() {
   const router = useRouter();
@@ -38,7 +39,7 @@ export default function EditPartSpecificationPage() {
       ]);
 
       if (!spec) {
-        alert("规格不存在");
+        toast("规格不存在", "error");
         router.push("/part-specifications");
         return;
       }
@@ -87,7 +88,7 @@ export default function EditPartSpecificationPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      alert("请输入规格名称");
+      toast("请输入规格名称", "warning");
       return;
     }
     setSaving(true);
@@ -99,7 +100,7 @@ export default function EditPartSpecificationPage() {
       linkedPartNameIds: linkedNames.map((n) => n.id),
     });
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       setSaving(false);
       return;
     }

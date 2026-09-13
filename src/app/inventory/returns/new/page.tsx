@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { usePriceVisibility } from "@/components/PriceVisibilityContext";
 import { 新建采购退货 } from "../../actions";
+import { toast } from "@/lib/globalToast";
 
 export default function NewPurchaseReturnPage() {
   const router = useRouter();
@@ -75,11 +76,11 @@ export default function NewPurchaseReturnPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.part_id) {
-      alert("请选择配件");
+      toast("请选择配件", "warning");
       return;
     }
     if (!form.batch_id) {
-      alert("请选择批次（按先进先出退最早批次）");
+      toast("请选择批次（按先进先出退最早批次）", "warning");
       return;
     }
 
@@ -105,7 +106,7 @@ export default function NewPurchaseReturnPage() {
       router.refresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      alert("保存失败: " + message);
+      toast("保存失败: " + message, "error");
       setLoading(false);
     }
   }

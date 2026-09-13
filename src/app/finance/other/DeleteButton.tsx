@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 删除其它收支 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 export function DeleteButton({ id }: { id: string }) {
   const router = useRouter();
@@ -16,7 +17,7 @@ export function DeleteButton({ id }: { id: string }) {
     const result = await 删除其它收支(id);
     setDeleting(false);
     if (!result.success) {
-      alert(result.error || "删除失败");
+      toast(result.error || "删除失败", "error");
       return;
     }
     router.refresh();

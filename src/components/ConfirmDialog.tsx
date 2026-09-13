@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "@/lib/globalToast";
 
 /* 居中确认弹窗 Hook：替代浏览器原生 confirm()（原生弹窗固定在页面顶部，位置无法修改）。
  * 用法：
@@ -92,7 +93,7 @@ export function useConfirm() {
   return { 请求确认, 确认弹窗 };
 }
 
-/* 居中提示弹窗 Hook：替代浏览器原生 alert()（重要提示必须让用户看完、点"确定"才关闭）。
+/* 居中提示弹窗 Hook：替代浏览器原生 toast(, "warning")（重要提示必须让用户看完、点"确定"才关闭）。
  * 用法：
  *   const { 请求提示, 提示弹窗 } = useAlert();
  *   await 请求提示("以下项目操作失败：...");

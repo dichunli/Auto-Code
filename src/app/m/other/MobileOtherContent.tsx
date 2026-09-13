@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 删除其它收支 } from "@/app/finance/other/actions";
+import { toast } from "@/lib/globalToast";
 
 export interface 记录 {
   id: string;
@@ -93,7 +94,7 @@ export default function MobileOtherContent({
     if (!(await 请求确认("确定删除这条记录？"))) return;
     const result = await 删除其它收支(id);
     if (!result.success) {
-      alert("删除失败：" + (result.error || "未知错误"));
+      toast("删除失败：" + (result.error || "未知错误"), "error");
       return;
     }
     loadRecords();

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { DeleteButton } from "./DeleteButton";
 import { 新建服务分类, 保存服务分类排序 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface 维修分类 {
   id: string;
@@ -167,12 +168,12 @@ export default function ServiceCategoriesContent({ initialCategories }: { initia
         list.map((item, index) => ({ id: item.id, sort_order: index }))
       );
       if (!result.success) {
-        alert("排序保存失败: " + (result.error || "未知错误"));
+        toast("排序保存失败: " + (result.error || "未知错误"), "error");
         await load();
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "未知错误";
-      alert("排序保存失败: " + msg);
+      toast("排序保存失败: " + msg, "error");
       await load();
     } finally {
       setSavingOrder(false);
@@ -182,7 +183,7 @@ export default function ServiceCategoriesContent({ initialCategories }: { initia
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) {
-      alert("请填写分类名称");
+      toast("请填写分类名称", "warning");
       return;
     }
     setSaving(true);
@@ -191,12 +192,12 @@ export default function ServiceCategoriesContent({ initialCategories }: { initia
     try {
       const result = await 新建服务分类(form);
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("保存失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
       setSaving(false);
       return;
     }

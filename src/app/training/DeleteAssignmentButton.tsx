@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 删除学员分配 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface 删除学员按钮属性 {
   assignmentId: string;
@@ -23,7 +24,7 @@ export default function DeleteAssignmentButton({ assignmentId, 学员姓名 }: �
     setDeleting(false);
 
     if (!result.success) {
-      alert("移除失败: " + (result.error || "未知错误"));
+      toast("移除失败: " + (result.error || "未知错误"), "error");
       return;
     }
 

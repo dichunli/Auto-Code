@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { toast } from "@/lib/globalToast";
 
 /* 状态操作图标：质检已下沉到项目级（项目行质检单），工单级不再有"质检/通过/返工"。
  * repairing/pending_quality_check 无图标——满足待结单条件时出现"结单"（快速通道）。 */
@@ -67,9 +68,9 @@ export default function WorkOrderFloatingSidebar({
       p_next_status: nextStatus,
       p_notes: null,
     });
-    if (rpcErr) { alert("操作失败: " + rpcErr.message); return; }
+    if (rpcErr) { toast("操作失败: " + rpcErr.message, "error"); return; }
     const rpcResult = result as { success: boolean; error?: string };
-    if (!rpcResult?.success) { alert("操作失败: " + (rpcResult?.error || "状态流转被拒绝")); return; }
+    if (!rpcResult?.success) { toast("操作失败: " + (rpcResult?.error || "状态流转被拒绝"), "error"); return; }
     router.refresh();
   }
 
@@ -79,14 +80,14 @@ export default function WorkOrderFloatingSidebar({
       p_order_id: orderId, p_next_status: "pending_close", p_notes: null,
     });
     if (r1.error || !(r1.data as { success: boolean } | null)?.success) {
-      alert("操作失败: " + (r1.error?.message || (r1.data as { error?: string } | null)?.error || "状态流转被拒绝"));
+      toast("操作失败: " + (r1.error?.message || (r1.data as { error?: string } | null)?.error || "状态流转被拒绝"), "error");
       return;
     }
     const r2 = await supabase.rpc("transition_work_order", {
       p_order_id: orderId, p_next_status: "pending_settlement", p_notes: null,
     });
     if (r2.error || !(r2.data as { success: boolean } | null)?.success) {
-      alert("操作失败: " + (r2.error?.message || (r2.data as { error?: string } | null)?.error || "状态流转被拒绝"));
+      toast("操作失败: " + (r2.error?.message || (r2.data as { error?: string } | null)?.error || "状态流转被拒绝"), "error");
       return;
     }
     router.refresh();

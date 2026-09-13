@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 新建知识分类, 更新知识分类, 删除知识分类 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 export interface 分类 {
   id: string;
@@ -61,7 +62,7 @@ export default function KnowledgeCategoriesContent({
   async function handleSave() {
     const name = formName.trim();
     if (!name) {
-      alert("分类名称不能为空");
+      toast("分类名称不能为空", "error");
       return;
     }
     setSaving(true);
@@ -81,7 +82,7 @@ export default function KnowledgeCategoriesContent({
       cancelEdit();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      alert("保存失败: " + message);
+      toast("保存失败: " + message, "error");
     } finally {
       setSaving(false);
     }
@@ -97,7 +98,7 @@ export default function KnowledgeCategoriesContent({
       await loadCategories();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      alert("删除失败: " + message);
+      toast("删除失败: " + message, "error");
     }
   }
 

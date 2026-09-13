@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 保存培训分类 } from "../../../actions";
+import { toast } from "@/lib/globalToast";
 
 interface 课程分类 {
   id: string;
@@ -35,7 +36,7 @@ export default function EditTrainingCategoryPage() {
       supabase.from("training_categories").select("id, name, parent_id").neq("id", id).order("sort_order"),
     ]).then(([detail, all]) => {
       if (detail.error || !detail.data) {
-        alert("加载失败: " + (detail.error?.message || "分类不存在"));
+        toast("加载失败: " + (detail.error?.message || "分类不存在"), "error");
         router.push("/training/categories");
         return;
       }
@@ -59,13 +60,13 @@ export default function EditTrainingCategoryPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) {
-      alert("请填写分类名称");
+      toast("请填写分类名称", "warning");
       return;
     }
     /* 不能把自己设为自己的父分类 */
     const parentId = form.parent_id || null;
     if (parentId === id) {
-      alert("不能将自己设为父分类");
+      toast("不能将自己设为父分类", "error");
       return;
     }
     setSaving(true);
@@ -80,7 +81,7 @@ export default function EditTrainingCategoryPage() {
       isActive: form.is_active,
     });
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       setSaving(false);
       return;
     }

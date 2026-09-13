@@ -4,6 +4,7 @@ import {useState} from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 import { 新建仓库 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 export default function NewWarehousePage() {
   const router = useRouter();
@@ -21,12 +22,12 @@ export default function NewWarehousePage() {
       setSaving(false);
 
       if (!result.success) {
-        alert("保存失败：" + (result.error || "未知错误"));
+        toast("保存失败：" + (result.error || "未知错误"), "error");
         return;
       }
     } catch (err: unknown) {
       setSaving(false);
-      alert("保存失败：" + (err instanceof Error ? err.message : "未知错误"));
+      toast("保存失败：" + (err instanceof Error ? err.message : "未知错误"), "error");
       return;
     }
 

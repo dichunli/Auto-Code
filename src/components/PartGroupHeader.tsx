@@ -12,6 +12,8 @@ import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localE
 import { useConfirm } from "./ConfirmDialog";
 import { 添加配件分支, 删除配件目录 } from "@/app/work-orders/parts-actions";
 import { 批量更新配件分支, 更新配件分支, 添加配件图片记录, 删除配件图片记录 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 interface PartBranch {
   id: string;
@@ -210,7 +212,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     const 结果 = await 添加配件分支(parts[0].id);
     if (!结果.success || !结果.id) {
       setSaving(false);
-      alert("添加失败: " + (结果.error || "未知错误"));
+      toast("添加失败: " + (结果.error || "未知错误"), "error");
       return;
     }
     // RPC 只返回新行 id，按原 insert 后的 select 语句只读补查新行完整数据
@@ -222,7 +224,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       `).eq("id", 结果.id).single();
     setSaving(false);
     if (error || !inserted) {
-      alert("添加失败: " + (error?.message || "未知错误"));
+      toast("添加失败: " + (error?.message || "未知错误"), "error");
       return;
     }
     // 标记本地结构编辑，避免实时同步把整页刷掉
@@ -259,7 +261,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     const 结果 = await 删除配件目录(parts[0].id);
     setSaving(false);
     if (!结果.success) {
-      alert("删除失败: " + (结果.error || "未知错误"));
+      toast("删除失败: " + (结果.error || "未知错误"), "error");
       return;
     }
     标记本地结构编辑(itemId || "");
@@ -289,7 +291,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       const result = await 批量更新配件分支({ partIds: ids, updates: { quantity: val } });
       setSaving(false);
       if (!result.success) {
-        alert("保存数量失败: " + (result.error || "未知错误"));
+        toast("保存数量失败: " + (result.error || "未知错误"), "error");
         return;
       }
       // 广播给小计/费用合计组件：同组每个分支都通知，局部更新不刷整页
@@ -311,7 +313,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     标记本地编辑配件(parts[0].id);
     const result = await 更新配件分支({ partId: parts[0].id, updates: { notes } });
     if (!result.success) {
-      alert("保存备注失败: " + (result.error || "未知错误"));
+      toast("保存备注失败: " + (result.error || "未知错误"), "error");
     }
   }
 
@@ -319,11 +321,11 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     async (fileList: FileList) => {
       const remaining = 5 - images.length;
       if (remaining <= 0) {
-        alert("最多上传 5 张图片");
+        toast("最多上传 5 张图片", "warning");
         return;
       }
       if (!parts[0]?.id) {
-        alert("无法获取配件分支ID，请刷新页面后重试");
+        toast("无法获取配件分支ID，请刷新页面后重试", "error");
         return;
       }
 
@@ -334,7 +336,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
         .eq("id", parts[0].id)
         .maybeSingle();
       if (checkError || !branchCheck) {
-        alert(`找不到对应的配件分支记录(ID: ${parts[0].id})，可能已被删除，请刷新页面后重试`);
+        toast(`找不到对应的配件分支记录(ID: ${parts[0].id})，可能已被删除，请刷新页面后重试`, "warning");
         return;
       }
 
@@ -358,7 +360,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
 
       if (errors.length > 0) {
         const msg = errors.map((e) => `${e.file}: ${e.error}`).join("\n");
-        alert("图片上传失败:\n" + msg);
+        await 全局提示("图片上传失败:\n" + msg);
       }
     },
     [images, parts, 上传, supabase]
@@ -370,7 +372,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
     if (!parts[0]) return;
     const result = await 删除配件图片记录({ partBranchId: parts[0].id, path });
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     /* 同步删除服务端文件 */
@@ -439,7 +441,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
       });
       if (!result.success) {
         setSaving(false);
-        alert("替换配件名称失败: " + (result.error || "未知错误"));
+        toast("替换配件名称失败: " + (result.error || "未知错误"), "error");
         return;
       }
     }
@@ -463,7 +465,7 @@ export default function PartGroupHeader({ seqLabel, name, parts, isLocked, itemI
 
       if (!result.success) {
         setSaving(false);
-        alert("关联库存配件失败: " + (result.error || "未知错误"));
+        toast("关联库存配件失败: " + (result.error || "未知错误"), "error");
         return;
       }
     }

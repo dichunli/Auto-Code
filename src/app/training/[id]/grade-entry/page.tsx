@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 录入成绩 } from "../../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 interface 考题 {
   id: string;
@@ -55,13 +56,13 @@ export default function GradeEntryPage() {
         .single();
 
       if (!course) {
-        alert("课程不存在");
+        toast("课程不存在", "error");
         router.push("/training");
         return;
       }
 
       if (course.exam_mode !== "offline") {
-        alert("该课程不是线下考试");
+        toast("该课程不是线下考试", "warning");
         router.push(`/training/${courseId}`);
         return;
       }
@@ -191,13 +192,13 @@ export default function GradeEntryPage() {
 
   async function handleSubmit() {
     if (!selectedStudentId) {
-      alert("请选择学员");
+      toast("请选择学员", "warning");
       return;
     }
 
     const student = students.find((s) => s.id === selectedStudentId);
     if (!student) {
-      alert("学员信息错误");
+      toast("学员信息错误", "error");
       return;
     }
 
@@ -245,11 +246,11 @@ export default function GradeEntryPage() {
       if (!录入结果.success) throw new Error(录入结果.error || "录入失败");
       const status = 录入结果.status || "failed";
 
-      alert(`成绩录入完成！${student.profiles?.full_name}: ${totalScore}/${maxScore} 分，${status === "passed" ? "通过" : "未通过"}`);
+      toast(`成绩录入完成！${student.profiles?.full_name}: ${totalScore}/${maxScore} 分，${status === "passed" ? "通过" : "未通过"}`, "warning");
       router.push(`/training/${courseId}`);
       router.refresh();
     } catch (err: unknown) {
-      alert("提交失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("提交失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setSubmitting(false);
     }
   }

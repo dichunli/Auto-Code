@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { toast } from "@/lib/globalToast";
 
 interface 操作日志 {
   id: string;
@@ -99,7 +100,7 @@ export default function OperationLogsContent({ initialLogs, initialCount, action
     const { data, count, error } = await q;
     if (error) {
       console.error("操作日志加载失败:", error);
-      alert("加载失败: " + error.message);
+      toast("加载失败: " + error.message, "error");
     } else {
       setLogs((data as unknown as 操作日志[]) || []);
       setTotal(count || 0);

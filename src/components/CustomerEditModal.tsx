@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { 快速更新客户 } from "@/app/customers/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   open: boolean;
@@ -20,11 +21,11 @@ export default function CustomerEditModal({ open, onClose, customer, onSaved }: 
 
   async function handleSave() {
     if (!name.trim()) {
-      alert("姓名不能为空");
+      toast("姓名不能为空", "error");
       return;
     }
     if (hasPhone && !phone.trim()) {
-      alert("请输入手机号");
+      toast("请输入手机号", "warning");
       return;
     }
     setSaving(true);
@@ -33,14 +34,14 @@ export default function CustomerEditModal({ open, onClose, customer, onSaved }: 
       const result = await 快速更新客户({ id: cid, name, phone, hasPhone });
       setSaving(false);
       if (!result.success || !result.data) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         return;
       }
       onSaved({ id: result.data.id, name: result.data.name, phone: result.data.phone || "" });
       onClose();
     } catch {
       setSaving(false);
-      alert("保存失败: 网络异常，请重试");
+      toast("保存失败: 网络异常，请重试", "error");
     }
   }
 

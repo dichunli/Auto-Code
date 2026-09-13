@@ -6,6 +6,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { LinkedItem } from "@/components/VehicleModelSelector";
 import { PartNameItem } from "./PartNameSearch";
 import { 新建品牌, 关联名称品牌 } from "../../actions";
+import { toast } from "@/lib/globalToast";
 
 interface IdNameItem {
   id: string;
@@ -102,7 +103,7 @@ export default function BrandSearch({
     /* 新建品牌收口到服务端 */
     const result = await 新建品牌(name);
     if (!result.success || !result.id) {
-      alert("创建品牌失败: " + (result.error || "未知错误"));
+      toast("创建品牌失败: " + (result.error || "未知错误"), "error");
       return;
     }
     onSelectBrand({ id: result.id, name });

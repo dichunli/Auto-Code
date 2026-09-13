@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 import { 新建预约 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 export default function NewAppointmentPage() {
   const router = useRouter();
@@ -29,7 +30,7 @@ export default function NewAppointmentPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.customer_name || !form.customer_phone || !form.appointment_date) {
-      alert("请填写客户姓名、电话和预约日期");
+      toast("请填写客户姓名、电话和预约日期", "warning");
       return;
     }
 
@@ -37,12 +38,12 @@ export default function NewAppointmentPage() {
     try {
       const result = await 新建预约(form);
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         setLoading(false);
         return;
       }
     } catch {
-      alert("保存失败: 网络异常，请重试");
+      toast("保存失败: 网络异常，请重试", "error");
       setLoading(false);
       return;
     }

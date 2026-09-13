@@ -17,6 +17,7 @@ import { SupplierPhoneInput } from "@/components/SupplierPhoneInput";
 import { useDebounce } from "@/lib/useDebounce";
 import { DocumentNameInput } from "./DocumentNameInput";
 import { useToast } from "@/components/Toast";
+import { toast } from "@/lib/globalToast";
 
 interface PurchaseOrderItem {
   id: string;
@@ -429,12 +430,12 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
 
     const qtyRaw = receiveQty.trim();
     if (!qtyRaw) {
-      alert("请填写实际到货数量(没到货请填 0)");
+      toast("请填写实际到货数量(没到货请填 0)", "warning");
       return;
     }
     const qty = parseInt(qtyRaw, 10);
     if (isNaN(qty) || qty < 0) {
-      alert("到货数量必须 ≥ 0");
+      toast("到货数量必须 ≥ 0", "warning");
       return;
     }
     const ordered = receiveItem.quantity;
@@ -443,7 +444,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       /* 数量正常 → 看是否有问题反馈 */
       if (receiveProblem === "broken") {
         if (!brokenChoice) {
-          alert("请选择破损处理方式");
+          toast("请选择破损处理方式", "warning");
           return;
         }
         const action = brokenChoice === "exchange" ? "broken_exchange" : "broken_discard";
@@ -454,7 +455,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
         });
       } else if (receiveProblem === "wrong") {
         if (!wrongChoice) {
-          alert("请选择错发处理方式");
+          toast("请选择错发处理方式", "warning");
           return;
         }
         const action = wrongChoice === "exchange" ? "wrong_exchange" : "wrong_discard";
@@ -474,11 +475,11 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     } else if (qty > ordered) {
       /* 多发 */
       if (!excessChoice) {
-        alert("请选择多发处理方式");
+        toast("请选择多发处理方式", "warning");
         return;
       }
       if (excessChoice === "keep" && !excessKeepPaid) {
-        alert("请选择是否对供应商付款");
+        toast("请选择是否对供应商付款", "warning");
         return;
       }
       const action =
@@ -491,7 +492,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     } else {
       /* 少发 */
       if (!shortChoice) {
-        alert("请选择少发处理方式");
+        toast("请选择少发处理方式", "warning");
         return;
       }
 
@@ -519,7 +520,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
             await 重查单张订单(receiveOrder.id);
           } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
-            alert("删除失败: " + msg);
+            toast("删除失败: " + msg, "error");
           } finally {
             setSubmitting(null);
           }
@@ -574,7 +575,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("收货暂存失败: " + msg);
+      toast("收货暂存失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }
@@ -662,7 +663,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("撤销失败: " + msg);
+      toast("撤销失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }
@@ -712,7 +713,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       await 重查单条明细(order.id, item.id);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("撤销失败: " + msg);
+      toast("撤销失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }
@@ -736,7 +737,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       setSelectedOrderIds((prev) => { const n = new Set(prev); n.delete(orderId); return n; });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert((mode === "revoke" ? "撤销失败: " : "作废失败: ") + msg);
+      toast((mode === "revoke" ? "撤销失败: " : "作废失败: ") + msg, "error");
     } finally {
       setSubmitting(null);
     }
@@ -757,7 +758,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       await 重查单张订单(order.id);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("撤销失败: " + msg);
+      toast("撤销失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }
@@ -773,7 +774,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       await 重查单张订单(order.id);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("作废失败: " + msg);
+      toast("作废失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }
@@ -887,7 +888,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     if (!gateOrder || !gateItem) return;
     const 明细id = gateScope === "item" ? gateItem.id : null;
     if (gateTab === "link" && !gateWaybillId) {
-      alert("请选择运单");
+      toast("请选择运单", "warning");
       return;
     }
     setSubmitting("gate");
@@ -903,7 +904,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       } else {
         const 运费 = gateFreight.trim() === "" ? null : parseFloat(gateFreight);
         if (运费 !== null && (isNaN(运费) || 运费 < 0)) {
-          alert("运费必须是非负数字");
+          toast("运费必须是非负数字", "warning");
           return;
         }
         const res = await 设置运单豁免(gateOrder.id, 明细id, 运费, gateNote);
@@ -932,7 +933,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       openReceiveModal(单, 件);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("操作失败: " + msg);
+      toast("操作失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }
@@ -1063,7 +1064,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
 
   async function handleCreateWaybill() {
     if (!wbTrackingNo.trim()) {
-      alert("请填写运单号");
+      toast("请填写运单号", "warning");
       return;
     }
     /* 模式识别: 批量 / 独立(不关联采购单) / 单张 */
@@ -1072,15 +1073,15 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     if (!isBatch && !isStandalone && !createWaybillOrder) return;
 
     if (!wbPackageCount.trim() || isNaN(parseInt(wbPackageCount)) || parseInt(wbPackageCount) <= 0) {
-      alert("请填写件数");
+      toast("请填写件数", "warning");
       return;
     }
     if (wbFreight.trim() === "" || isNaN(parseFloat(wbFreight))) {
-      alert("请填写运费金额");
+      toast("请填写运费金额", "warning");
       return;
     }
     if (wbCod.trim() === "" || isNaN(parseFloat(wbCod))) {
-      alert("请填写代收金额");
+      toast("请填写代收金额", "warning");
       return;
     }
 
@@ -1119,7 +1120,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
         /* 批量创建运单后自动关联到选中的采购单（走 Server Action） */
         const res = await 关联运单到采购单(waybillId, Array.from(selectedOrderIds));
         if (!res.success) throw new Error(res.error || "关联采购单失败");
-        alert(`运单创建成功，已自动关联 ${selectedOrderIds.size} 张采购单`);
+        toast(`运单创建成功，已自动关联 ${selectedOrderIds.size} 张采购单`, "success");
         /* 局部更新：命中单前端已知，直接 patch 各单运单 */
         const 命中ids = new Set(selectedOrderIds);
         setOrders((prev) =>
@@ -1137,22 +1138,22 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
           if (同意) {
             const res = await 关联运单到供应商待收货单(waybillId, 创建结果.命中供应商id);
             if (!res.success) throw new Error(res.error || "关联采购单失败");
-            alert(`运单创建成功，已关联 ${res.count} 张待收货采购单`);
+            toast(`运单创建成功，已关联 ${res.count} 张待收货采购单`, "success");
             /* 保留整表重查：命中哪些单是服务端按供应商名匹配出来的，前端口径容易漂 */
             closeCreateWaybillModal();
             loadData();
             return;
           } else {
-            alert("运单创建成功");
+            toast("运单创建成功", "success");
           }
         } else {
-          alert("运单创建成功,请用「批量关联运单」或各单「选择已有运单」进行关联");
+          toast("运单创建成功,请用「批量关联运单」或各单「选择已有运单」进行关联", "success");
         }
       } else {
         /* 单张关联（走 Server Action） */
         const res = await 关联运单到采购单(waybillId, [createWaybillOrder!.id]);
         if (!res.success) throw new Error(res.error || "关联采购单失败");
-        alert("运单创建成功");
+        toast("运单创建成功", "success");
         /* 局部更新：patch 该单运单 */
         patch订单(createWaybillOrder!.id, { waybill_id: waybillId, logistics_waybills: 新运单 });
       }
@@ -1160,7 +1161,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       closeCreateWaybillModal();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("创建运单失败: " + msg);
+      toast("创建运单失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }
@@ -1173,7 +1174,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       /* 批量关联（走 Server Action） */
       const res = await 关联运单到采购单(waybillId, Array.from(selectedOrderIds));
       if (!res.success) {
-        alert("批量关联运单失败: " + (res.error || "未知错误"));
+        toast("批量关联运单失败: " + (res.error || "未知错误"), "error");
         return;
       }
       const 命中ids = new Set(selectedOrderIds);
@@ -1190,7 +1191,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     /* 单张关联（走 Server Action） */
     const res = await 关联运单到采购单(waybillId, [orderId]);
     if (!res.success) {
-      alert("关联运单失败: " + (res.error || "未知错误"));
+      toast("关联运单失败: " + (res.error || "未知错误"), "error");
       return;
     }
     patch订单(orderId, { waybill_id: waybillId, logistics_waybills: 选中运单 });
@@ -1200,7 +1201,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
   /* 批量运单弹窗 */
   async function openBatchWaybillModal() {
     if (selectedOrderIds.size === 0) {
-      alert("请先勾选需要关联运单的采购单");
+      toast("请先勾选需要关联运单的采购单", "warning");
       return;
     }
     setBatchWaybillMode(true);

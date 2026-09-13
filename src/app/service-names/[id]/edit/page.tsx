@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 更新维修项目名称, 同步提成到维修项目 } from "../../actions";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { toast } from "@/lib/globalToast";
 
 interface LinkedItem {
   id: string;
@@ -120,7 +121,7 @@ export default function EditServiceNamePage() {
         ]);
 
         if (!name) {
-          alert("项目名称不存在");
+          toast("项目名称不存在", "error");
           router.push("/service-names");
           return;
         }
@@ -164,7 +165,7 @@ export default function EditServiceNamePage() {
       } catch (err: unknown) {
         console.error("加载失败:", err);
         const msg = err instanceof Error ? err.message : "未知错误";
-        alert("加载数据失败: " + msg);
+        toast("加载数据失败: " + msg, "error");
       } finally {
         setLoading(false);
       }
@@ -218,7 +219,7 @@ export default function EditServiceNamePage() {
 
   function addPart(p: { id: string; name: string; default_quantity?: number | null }) {
     if (linkedParts.some((x) => x.id === p.id)) {
-      alert("该配件已关联");
+      toast("该配件已关联", "warning");
       return;
     }
     setLinkedParts((prev) => [...prev, { id: p.id, name: p.name, quantity: p.default_quantity ?? null }]);
@@ -256,13 +257,13 @@ export default function EditServiceNamePage() {
       /* 写库走 Server Action */
       const result = await 同步提成到维修项目({ id, form });
       if (!result.success) {
-        alert(result.error || "同步失败");
+        toast(result.error || "同步失败", "error");
         return;
       }
-      alert(`已成功同步到 ${result.count} 个维修项目`);
+      toast(`已成功同步到 ${result.count} 个维修项目`, "success");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("同步异常: " + msg);
+      toast("同步异常: " + msg, "error");
     } finally {
       setSyncing(false);
     }
@@ -271,7 +272,7 @@ export default function EditServiceNamePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim() || !form.category_id) {
-      alert("请填写项目名称和所属分类");
+      toast("请填写项目名称和所属分类", "warning");
       return;
     }
     setSaving(true);
@@ -283,7 +284,7 @@ export default function EditServiceNamePage() {
       linkedParts: linkedParts.map((p) => ({ id: p.id, quantity: p.quantity })),
     });
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       setSaving(false);
       return;
     }

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 更新配件分类, 同步分类属性到配件 } from "../../actions";
+import { toast } from "@/lib/globalToast";
 
 function CommissionField({
   label,
@@ -87,7 +88,7 @@ export default function EditPartCategoryPage() {
       .single()
       .then(({ data, error }) => {
         if (error || !data) {
-          alert("加载失败: " + (error?.message || "分类不存在"));
+          toast("加载失败: " + (error?.message || "分类不存在"), "error");
           router.push("/part-categories");
           return;
         }
@@ -122,12 +123,12 @@ export default function EditPartCategoryPage() {
     try {
       const result = await 更新配件分类(id, form);
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("保存失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
       setSaving(false);
       return;
     }
@@ -144,14 +145,14 @@ export default function EditPartCategoryPage() {
     try {
       const result = await 同步分类属性到配件(id, form);
       if (!result.success) {
-        alert(result.error || "同步失败");
+        toast(result.error || "同步失败", "error");
         setSyncing(false);
         return;
       }
-      alert("同步成功");
+      toast("同步成功", "success");
       setSyncing(false);
     } catch (err: unknown) {
-      alert("同步失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("同步失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
       setSyncing(false);
     }
   }

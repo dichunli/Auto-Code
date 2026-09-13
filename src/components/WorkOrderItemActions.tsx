@@ -4,6 +4,7 @@ import { useState } from "react";
 import { EditWorkOrderItemModal } from "./EditWorkOrderItemModal";
 import { useConfirm } from "./ConfirmDialog";
 import { 删除工单项目 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   itemId: string;
@@ -27,7 +28,7 @@ export function WorkOrderItemActions({ itemId, itemName, aliasName, quantity, un
     const result = await 删除工单项目(itemId);
     setDeleting(false);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     /* 局部更新：广播删除事件，项目行（ItemRowWrapper）立即隐藏、

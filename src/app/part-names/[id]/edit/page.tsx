@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { SearchLinkSection } from "../../SearchLinkSection";
 import { 更新配件名称 } from "../../actions";
 import { 新建配件品牌, 新建配件规格 } from "@/app/inventory/actions";
+import { toast } from "@/lib/globalToast";
 
 interface LinkedItem {
   id: string;
@@ -110,7 +111,7 @@ export default function EditPartNamePage() {
         supabase.from("part_name_specifications").select("specification_id, part_specifications(id, name)").eq("part_name_id", id),
       ]);
 
-      if (!part) { alert("配件名称不存在"); router.push("/part-names"); return; }
+      if (!part) { toast("配件名称不存在", "error"); router.push("/part-names"); return; }
 
       setCategories(cats || []);
       setForm({
@@ -188,7 +189,7 @@ export default function EditPartNamePage() {
     if (!brandQuery.trim()) return;
     /* 写库走 Server Action */
     const result = await 新建配件品牌(brandQuery.trim());
-    if (!result.success || !result.id) { alert("创建品牌失败: " + (result.error || "未知错误")); return; }
+    if (!result.success || !result.id) { toast("创建品牌失败: " + (result.error || "未知错误"), "error"); return; }
     addBrand({ id: result.id, name: brandQuery.trim() });
     setBrandQuery("");
   }
@@ -196,7 +197,7 @@ export default function EditPartNamePage() {
   async function createSpecAndLink() {
     if (!specQuery.trim()) return;
     const result = await 新建配件规格(specQuery.trim());
-    if (!result.success || !result.id) { alert("创建规格失败: " + (result.error || "未知错误")); return; }
+    if (!result.success || !result.id) { toast("创建规格失败: " + (result.error || "未知错误"), "error"); return; }
     addSpec({ id: result.id, name: specQuery.trim() });
     setSpecQuery("");
   }
@@ -223,7 +224,7 @@ export default function EditPartNamePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim() || !form.category_id) { alert("请填写配件名称和所属分类"); return; }
+    if (!form.name.trim() || !form.category_id) { toast("请填写配件名称和所属分类", "warning"); return; }
     setSaving(true);
 
     /* 写库走 Server Action（重名检查 + 更新 + 品牌/规格关联差量同步，服务端一次完成） */
@@ -233,7 +234,7 @@ export default function EditPartNamePage() {
       linkedBrandIds: linkedBrands.map((b) => b.id),
       linkedSpecIds: linkedSpecs.map((s) => s.id),
     });
-    if (!result.success) { alert("保存失败: " + (result.error || "未知错误")); setSaving(false); return; }
+    if (!result.success) { toast("保存失败: " + (result.error || "未知错误"), "error"); setSaving(false); return; }
 
     router.push("/part-names");
     router.refresh();

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { 指派需求, 领取需求, 取消需求指派 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Requirement {
   id: string;
@@ -41,7 +42,7 @@ export default function RequirementActions({
     }
 
     if (!result.success) {
-      alert("操作失败: " + (result.error || "未知错误"));
+      toast("操作失败: " + (result.error || "未知错误"), "error");
       return;
     }
 

@@ -9,6 +9,7 @@ import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
 import { ImageAnnotator } from "@/components/ImageAnnotator";
 import OilLevelGauge from "@/components/OilLevelGauge";
+import { toast } from "@/lib/globalToast";
 
 interface Line {
   x1: number;
@@ -311,7 +312,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
     setLoading(true);
 
     const timeoutId = setTimeout(() => {
-      alert("保存超时，请检查网络连接后重试");
+      toast("保存超时，请检查网络连接后重试", "error");
       setLoading(false);
     }, 15000);
 
@@ -369,7 +370,7 @@ export default function NewInspectionPage({ params }: { params: Promise<{ id: st
     } catch (err: unknown) {
       clearTimeout(timeoutId);
       const msg = err instanceof Error ? err.message : "未知错误";
-      alert("保存失败: " + msg);
+      toast("保存失败: " + msg, "error");
       setLoading(false);
     }
   }

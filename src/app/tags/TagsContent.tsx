@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { DeleteButton } from "./DeleteButton";
 import { 新建标签, 更新标签 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 const PRESET_COLORS = [
   { value: "#3b82f6", label: "蓝色" },
@@ -49,19 +50,19 @@ export default function TagsContent({ initialTags }: { initialTags: Tag[] }) {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!newName.trim()) {
-      alert("请输入标签名称");
+      toast("请输入标签名称", "warning");
       return;
     }
     setSaving(true);
     try {
       const result = await 新建标签({ name: newName, color: newColor });
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("保存失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
       setSaving(false);
       return;
     }
@@ -81,19 +82,19 @@ export default function TagsContent({ initialTags }: { initialTags: Tag[] }) {
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editingId || !editName.trim()) {
-      alert("请输入标签名称");
+      toast("请输入标签名称", "warning");
       return;
     }
     setSaving(true);
     try {
       const result = await 更新标签({ id: editingId, name: editName, color: editColor });
       if (!result.success) {
-        alert("更新失败: " + (result.error || "未知错误"));
+        toast("更新失败: " + (result.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
     } catch (err: unknown) {
-      alert("更新失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("更新失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
       setSaving(false);
       return;
     }

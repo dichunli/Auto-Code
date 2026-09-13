@@ -56,6 +56,7 @@ import {
   转命中配件,
 } from "./mobile-item-editor/utils";
 import { useItemTimer } from "./mobile-item-editor/useItemTimer";
+import { toast } from "@/lib/globalToast";
 
 /* ==================== 主组件 ==================== */
 
@@ -488,7 +489,7 @@ export default function MobileItemEditor({
     setLoading(false);
 
     if (!保存结果.success) {
-      alert("保存失败: " + (保存结果.error || "未知错误"));
+      toast("保存失败: " + (保存结果.error || "未知错误"), "error");
       return;
     }
 
@@ -515,7 +516,7 @@ export default function MobileItemEditor({
         total += val;
       });
       if (Math.abs(total - 100) > 0.01) {
-        alert(`分成比例合计为 ${total.toFixed(2)}%，必须为 100%`);
+        toast(`分成比例合计为 ${total.toFixed(2)}%，必须为 100%`, "warning");
         return null;
       }
     } else {
@@ -545,7 +546,7 @@ export default function MobileItemEditor({
     if (loading) return;
     const ids = mechanicIds;
     if (ids.length === 0) {
-      alert("请选择施工人");
+      toast("请选择施工人", "warning");
       return;
     }
 
@@ -561,7 +562,7 @@ export default function MobileItemEditor({
     setLoading(false);
 
     if (!指派结果.success) {
-      alert("保存失败: " + (指派结果.error || "未知错误"));
+      toast("保存失败: " + (指派结果.error || "未知错误"), "error");
       return;
     }
 
@@ -576,7 +577,7 @@ export default function MobileItemEditor({
     const 清除结果 = await 删除项目施工人(item.id);
     setLoading(false);
     if (!清除结果.success) {
-      alert("取消失败: " + (清除结果.error || "未知错误"));
+      toast("取消失败: " + (清除结果.error || "未知错误"), "error");
       return;
     }
     setShowMechanicModal(false);
@@ -589,7 +590,7 @@ export default function MobileItemEditor({
     const 领单结果 = await 单人领单(item.id);
     setLoading(false);
     if (!领单结果.success) {
-      alert("领单失败: " + (领单结果.error || "未知错误"));
+      toast("领单失败: " + (领单结果.error || "未知错误"), "error");
       return;
     }
     setShowMechanicModal(false);
@@ -601,7 +602,7 @@ export default function MobileItemEditor({
     const { data: { session } } = await supabase.auth.getSession();
     const user = session?.user ?? null; /* getSession本地读不联网（2026-09-03） */
     if (!user) {
-      alert("未登录，无法领单");
+      toast("未登录，无法领单", "error");
       return;
     }
     setMechanicMode("person");
@@ -620,7 +621,7 @@ export default function MobileItemEditor({
     const 放弃结果 = await 放弃领单(item.id);
     setLoading(false);
     if (!放弃结果.success) {
-      alert("放弃领单失败: " + (放弃结果.error || "未知错误"));
+      toast("放弃领单失败: " + (放弃结果.error || "未知错误"), "error");
       return;
     }
     refresh();
@@ -836,7 +837,7 @@ export default function MobileItemEditor({
       if (同目录剩余.length === 0) {
         const 整组结果 = await 删除配件目录(partId);
         if (!整组结果.success) {
-          alert("删除失败: " + (整组结果.error || "未知错误"));
+          toast("删除失败: " + (整组结果.error || "未知错误"), "error");
           return;
         }
         setSelectedPartForDetail(null);
@@ -847,7 +848,7 @@ export default function MobileItemEditor({
          删的若是选中分支，服务端自动把同目录下一条设为选中并返回 new_selected_id */
       const 结果 = await 删除配件分支(partId);
       if (!结果.success) {
-        alert("删除失败: " + (结果.error || "未知错误"));
+        toast("删除失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       /* 服务端递补的新选中分支同步进本地覆盖，避免整页刷新前界面短暂显示无人选中 */
@@ -858,7 +859,7 @@ export default function MobileItemEditor({
       setSelectedPartForDetail(null);
       refresh();
     } catch (err: unknown) {
-      alert("删除失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("删除失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -877,13 +878,13 @@ export default function MobileItemEditor({
          函数内部自己算目录键整组事务删除；组内有已采购/已到货分支则整组拒删 */
       const 结果 = await 删除配件目录(target.id);
       if (!结果.success) {
-        alert("删除失败: " + (结果.error || "未知错误"));
+        toast("删除失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       setSelectedPartForDetail(null);
       refresh();
     } catch (err: unknown) {
-      alert("删除失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("删除失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -892,7 +893,7 @@ export default function MobileItemEditor({
   /* 保存配件数量 */
   async function savePartQuantity(partId: string, qty: number) {
     if (qty < 1) {
-      alert("数量至少为 1");
+      toast("数量至少为 1", "warning");
       return;
     }
     setLoading(true);
@@ -904,7 +905,7 @@ export default function MobileItemEditor({
     const 数量结果 = await 批量更新配件分支({ partIds: 目标ids, updates: { quantity: qty } });
     setLoading(false);
     if (!数量结果.success) {
-      alert("保存失败: " + (数量结果.error || "未知错误"));
+      toast("保存失败: " + (数量结果.error || "未知错误"), "error");
       return;
     }
     /* 函数式更新：等待保存期间用户可能已关闭抽屉，prev 为 null 时不得"复活"抽屉 */
@@ -918,7 +919,7 @@ export default function MobileItemEditor({
     const 意见结果 = await 更新配件分支({ partId, updates: { customer_opinion: opinion } });
     setLoading(false);
     if (!意见结果.success) {
-      alert("保存失败: " + (意见结果.error || "未知错误"));
+      toast("保存失败: " + (意见结果.error || "未知错误"), "error");
       return;
     }
     setSelectedPartForDetail((prev) => (prev ? { ...prev, customer_opinion: opinion } : prev));
@@ -932,7 +933,7 @@ export default function MobileItemEditor({
     const 备注结果 = await 更新配件分支({ partId, updates: { notes: notes.trim() || null } });
     setLoading(false);
     if (!备注结果.success) {
-      alert("保存失败: " + (备注结果.error || "未知错误"));
+      toast("保存失败: " + (备注结果.error || "未知错误"), "error");
       return;
     }
     setSelectedPartForDetail((prev) => (prev ? { ...prev, notes: notes.trim() || null } : prev));
@@ -945,14 +946,14 @@ export default function MobileItemEditor({
     type 字段名 = typeof 白名单[number];
     if (!白名单.includes(field as 字段名)) {
       setLoading(false);
-      alert("不支持保存该字段");
+      toast("不支持保存该字段", "warning");
       return;
     }
     const 更新 = { [field as 字段名]: value } as 配件分支更新;
     const 字段结果 = await 更新配件分支({ partId, updates: 更新 });
     setLoading(false);
     if (!字段结果.success) {
-      alert("保存失败: " + (字段结果.error || "未知错误"));
+      toast("保存失败: " + (字段结果.error || "未知错误"), "error");
       return;
     }
     setSelectedPartForDetail((prev) => (prev ? { ...prev, [field]: value } : prev));
@@ -1014,7 +1015,7 @@ export default function MobileItemEditor({
     });
     setLoading(false);
     if (!带回结果.success) {
-      alert("带回配件信息失败: " + (带回结果.error || "未知错误"));
+      toast("带回配件信息失败: " + (带回结果.error || "未知错误"), "error");
       return;
     }
     /* 库存配件可能未设价（可空），而 ItemPart 声明必填；
@@ -1051,11 +1052,11 @@ export default function MobileItemEditor({
       .limit(2);
     const rows = (data || []) as 配件库行[];
     if (rows.length === 0) {
-      alert(`未找到编码「${kw}」对应的配件`);
+      toast(`未找到编码「${kw}」对应的配件`, "error");
       return;
     }
     if (rows.length > 1) {
-      alert(`编码「${kw}」对应多个配件，请手动输入编码从候选中选择`);
+      toast(`编码「${kw}」对应多个配件，请手动输入编码从候选中选择`, "warning");
       return;
     }
     await 应用命中配件到分支(branch.id, 转命中配件(rows[0]));
@@ -1064,12 +1065,12 @@ export default function MobileItemEditor({
   /* 采购/到货标记（守卫逻辑同桌面端 PartBranchEditor） */
   async function 切换采购(part: ItemPart) {
     if ((part.customer_opinion || "pending") !== "agree") {
-      alert("需客户同意后才能采购");
+      toast("需客户同意后才能采购", "warning");
       return;
     }
     const 库存数 = (part.part_id && partInventory) ? (partInventory[part.part_id] || 0) : 0;
     if (!part.is_purchased && 库存数 > 0) {
-      alert("库存不为0，无需采购");
+      toast("库存不为0，无需采购", "warning");
       return;
     }
     const next = !part.is_purchased;
@@ -1079,13 +1080,13 @@ export default function MobileItemEditor({
          前端守卫保留做提前提示；失败时不改本地态（维持原值即回滚） */
       const 结果 = await 标记采购到货(part.id, "is_purchased", next);
       if (!结果.success) {
-        alert("操作失败: " + (结果.error || "未知错误"));
+        toast("操作失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       setSelectedPartForDetail((prev) => (prev ? { ...prev, is_purchased: next } : prev));
       refresh();
     } catch (err: unknown) {
-      alert("操作失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("操作失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -1093,7 +1094,7 @@ export default function MobileItemEditor({
 
   async function 切换到货(part: ItemPart) {
     if (!part.is_purchased) {
-      alert("需先采购后才能标记到货");
+      toast("需先采购后才能标记到货", "warning");
       return;
     }
     const next = !part.is_arrived;
@@ -1103,13 +1104,13 @@ export default function MobileItemEditor({
          前端守卫保留做提前提示；失败时不改本地态（维持原值即回滚） */
       const 结果 = await 标记采购到货(part.id, "is_arrived", next);
       if (!结果.success) {
-        alert("操作失败: " + (结果.error || "未知错误"));
+        toast("操作失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       setSelectedPartForDetail((prev) => (prev ? { ...prev, is_arrived: next } : prev));
       refresh();
     } catch (err: unknown) {
-      alert("操作失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("操作失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -1138,21 +1139,21 @@ export default function MobileItemEditor({
     if (!branch) return;
     const 数量 = parseInt(申领数量);
     if (!Number.isInteger(数量) || 数量 <= 0) {
-      alert("申领数量必须是大于 0 的整数");
+      toast("申领数量必须是大于 0 的整数", "warning");
       return;
     }
     setLoading(true);
     try {
       const r = await 申领配件(branch.id, 数量, "");
       if (!r.success) {
-        alert("申领失败: " + (r.error || "未知错误"));
+        toast("申领失败: " + (r.error || "未知错误"), "error");
         return;
       }
       set申领展开(false);
       set申领数量("1");
       refresh();
     } catch (err: unknown) {
-      alert("申领失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("申领失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -1164,13 +1165,13 @@ export default function MobileItemEditor({
     try {
       const r = await 取消申领(申领id);
       if (!r.success) {
-        alert("取消失败: " + (r.error || "未知错误"));
+        toast("取消失败: " + (r.error || "未知错误"), "error");
         return;
       }
       set申领列表((prev) => prev.filter((x) => x.id !== 申领id));
       refresh();
     } catch (err: unknown) {
-      alert("取消失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("取消失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -1226,24 +1227,24 @@ export default function MobileItemEditor({
     const branch = 当前详情分支();
     if (!branch) return;
     if (!选中领料记录id) {
-      alert("请选择退哪一笔领料");
+      toast("请选择退哪一笔领料", "warning");
       return;
     }
     const 数量 = parseInt(退料数量);
     if (!Number.isInteger(数量) || 数量 <= 0) {
-      alert("退料数量必须是大于 0 的整数");
+      toast("退料数量必须是大于 0 的整数", "warning");
       return;
     }
     const 记录 = 可退领料列表.find((r) => r.id === 选中领料记录id);
     if (记录 && 数量 > 记录.可退) {
-      alert(`该笔最多还能退 ${记录.可退} 件`);
+      toast(`该笔最多还能退 ${记录.可退} 件`, "warning");
       return;
     }
     setLoading(true);
     try {
       const r = await 申请退料(选中领料记录id, 数量, 退料类型, "");
       if (!r.success) {
-        alert("申请退料失败: " + (r.error || "未知错误"));
+        toast("申请退料失败: " + (r.error || "未知错误"), "error");
         return;
       }
       set退料展开(false);
@@ -1251,7 +1252,7 @@ export default function MobileItemEditor({
       set选中领料记录id("");
       refresh();
     } catch (err: unknown) {
-      alert("申请退料失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("申请退料失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -1263,13 +1264,13 @@ export default function MobileItemEditor({
     try {
       const r = await 取消退料申请(申请id);
       if (!r.success) {
-        alert("取消失败: " + (r.error || "未知错误"));
+        toast("取消失败: " + (r.error || "未知错误"), "error");
         return;
       }
       set退申请列表((prev) => prev.filter((x) => x.id !== 申请id));
       refresh();
     } catch (err: unknown) {
-      alert("取消失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("取消失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -1303,7 +1304,7 @@ export default function MobileItemEditor({
     setReplacePartTarget(null);
 
     if (!替换结果.success) {
-      alert("替换失败: " + (替换结果.error || "未知错误"));
+      toast("替换失败: " + (替换结果.error || "未知错误"), "error");
       return;
     }
 
@@ -1346,12 +1347,12 @@ export default function MobileItemEditor({
       const 结果 = await 添加工单配件(item.id, 配件列表);
       setAddBranchTarget(null);
       if (!结果.success) {
-        alert("添加分支失败: " + (结果.error || "未知错误"));
+        toast("添加分支失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       refresh();
     } catch (err: unknown) {
-      alert("添加分支失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("添加分支失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -1360,7 +1361,7 @@ export default function MobileItemEditor({
   /* 添加空分支：归入当前目录，其余信息后续手动填写 */
   async function handleAddEmptyBranch(target: ItemPart) {
     if (!target.branch_group_id) {
-      alert("当前配件没有目录信息，无法添加分支");
+      toast("当前配件没有目录信息，无法添加分支", "error");
       return;
     }
     setLoading(true);
@@ -1370,12 +1371,12 @@ export default function MobileItemEditor({
          给已有目录加分支时目录必然已有选中分支）；数量为 NULL 时留空不兜底成 1 */
       const 结果 = await 添加配件分支(target.id);
       if (!结果.success) {
-        alert("添加空分支失败: " + (结果.error || "未知错误"));
+        toast("添加空分支失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       refresh();
     } catch (err: unknown) {
-      alert("添加空分支失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("添加空分支失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -1388,12 +1389,12 @@ export default function MobileItemEditor({
     try {
       const 结果 = await 选中配件分支(branchId);
       if (!结果.success) {
-        alert("设置默认分支失败: " + (结果.error || "未知错误"));
+        toast("设置默认分支失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       refresh();
     } catch (err: unknown) {
-      alert("设置默认分支失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("设置默认分支失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -1409,7 +1410,7 @@ export default function MobileItemEditor({
         source: CameraSource.Camera,
       });
       if (!photo.base64String) {
-        alert("拍照未获取到图片");
+        toast("拍照未获取到图片", "warning");
         return;
       }
       const base64 = `data:image/jpeg;base64,${photo.base64String}`;
@@ -1419,14 +1420,14 @@ export default function MobileItemEditor({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
-      alert("拍照失败: " + msg);
+      toast("拍照失败: " + msg, "error");
     }
   }
 
   /* 上传配件图片 */
   async function uploadPartImage(file: File, branchId: string) {
     if (!file.type.startsWith("image/")) {
-      alert("请选择图片文件");
+      toast("请选择图片文件", "warning");
       return;
     }
     setLoading(true);
@@ -1454,7 +1455,7 @@ export default function MobileItemEditor({
         }));
       }
     } catch (err: unknown) {
-      alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("图片上传失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setLoading(false);
     }
@@ -1466,7 +1467,7 @@ export default function MobileItemEditor({
     const 删除结果 = await 删除配件图片记录({ partBranchId: branchId, path: storagePath });
     setLoading(false);
     if (!删除结果.success) {
-      alert("删除失败: " + (删除结果.error || "未知错误"));
+      toast("删除失败: " + (删除结果.error || "未知错误"), "error");
       return;
     }
     /* 立即从抽屉显示中移除（本地覆盖） */
@@ -1479,7 +1480,7 @@ export default function MobileItemEditor({
   async function saveParts() {
     const totalCount = selectedPartNames.length + selectedRealParts.length;
     if (totalCount === 0) {
-      alert("请至少选择一个配件");
+      toast("请至少选择一个配件", "warning");
       return;
     }
     setLoading(true);
@@ -1528,14 +1529,14 @@ export default function MobileItemEditor({
     try {
       const 结果 = await 添加工单配件(item.id, inserts);
       if (!结果.success) {
-        alert("添加失败: " + (结果.error || "未知错误"));
+        toast("添加失败: " + (结果.error || "未知错误"), "error");
         return;
       }
 
       setShowPartModal(false);
       refresh();
     } catch (err: unknown) {
-      alert("添加失败: " + (err instanceof Error ? err.message : "网络异常"));
+      toast("添加失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
     } finally {
       setLoading(false);
     }
@@ -1551,7 +1552,7 @@ export default function MobileItemEditor({
     const result = await 删除工单项目(item.id);
     setLoading(false);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     refresh();
@@ -1580,7 +1581,7 @@ export default function MobileItemEditor({
 
       refresh();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "操作失败");
+      toast(err instanceof Error ? err.message : "操作失败", "error");
     } finally {
       setLoading(false);
     }
@@ -1645,7 +1646,7 @@ export default function MobileItemEditor({
                   e.stopPropagation();
                   const hasPicked = parts.some((p) => (p.pickedQty || 0) > 0);
                   if (hasPicked) {
-                    alert("该项目已有出库配件，不能删除");
+                    toast("该项目已有出库配件，不能删除", "error");
                     return;
                   }
                   handleDeleteItem();
@@ -1808,7 +1809,7 @@ export default function MobileItemEditor({
                     onClick={() => {
                       const hasPicked = parts.some((p) => (p.pickedQty || 0) > 0);
                       if (hasPicked) {
-                        alert("该项目已有出库配件，不能删除");
+                        toast("该项目已有出库配件，不能删除", "error");
                         return;
                       }
                       handleDeleteItem();

@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 创建领料单, type 领料明细输入 } from "@/app/picking-orders/actions";
 import PickingScanCheckModal, { type 待核配件 } from "@/components/PickingScanCheckModal";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 interface Batch {
   id: string;
@@ -141,7 +143,7 @@ export function PickingModal({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (totalSelected <= 0 || totalSelected > quantityNeeded) {
-      alert(`领料数量必须在 1-${quantityNeeded} 之间`);
+      toast(`领料数量必须在 1-${quantityNeeded} 之间`, "warning");
       return;
     }
     if (管控?.需扫码) {
@@ -177,19 +179,19 @@ export function PickingModal({
 
       const 结果 = await 创建领料单(null, 明细, "", "", 扫码记录);
       if (!结果.success) {
-        alert("领料失败: " + (结果.error || "未知错误"));
+        toast("领料失败: " + (结果.error || "未知错误"), "error");
         return;
       }
 
       if (管控?.需确认) {
-        alert(`领料单 ${结果.data?.no} 已生成（待确认）。\n\n该配件需库管确认，库管在领料单详情页点「确认出库」后才真正扣库存。`);
+        await 全局提示(`领料单 ${结果.data?.no} 已生成（待确认）。\n\n该配件需库管确认，库管在领料单详情页点「确认出库」后才真正扣库存。`);
       } else {
-        alert(`领料成功，已生成领料单 ${结果.data?.no}`);
+        toast(`领料成功，已生成领料单 ${结果.data?.no}`, "success");
       }
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      alert("领料失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("领料失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
     } finally {
       setLoading(false);
     }

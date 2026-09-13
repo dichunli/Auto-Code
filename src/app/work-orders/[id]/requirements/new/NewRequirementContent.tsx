@@ -11,6 +11,7 @@ import { PriceValue } from "@/components/PriceVisibilityContext";
 import { calculateItemCommission, calculatePartCommission, type CommissionSource } from "@/lib/commission";
 import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
 import { 保存工单需求, 新建维修项目, 解锁工单 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 /* ==================== 类型定义 ==================== */
 
@@ -546,7 +547,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     if (!next[itemIndex].parts[partIndex].is_purchased) {
       // 要打开采购，必须客户已同意
       if (next[itemIndex].parts[partIndex].customer_opinion !== "agree") {
-        alert("请先确认客户同意后再标记已采购");
+        toast("请先确认客户同意后再标记已采购", "warning");
         return;
       }
     }
@@ -564,7 +565,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     if (!next[itemIndex].parts[partIndex].is_arrived) {
       // 要打开到货，必须已采购
       if (!next[itemIndex].parts[partIndex].is_purchased) {
-        alert("请先标记已采购后再标记已到货");
+        toast("请先标记已采购后再标记已到货", "warning");
         return;
       }
     }
@@ -766,7 +767,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     if (!bulkPickerModal) return;
     const { itemIndex, selectedIds, defaultType } = bulkPickerModal;
     if (selectedIds.length === 0) {
-      alert("请至少勾选一个项目");
+      toast("请至少勾选一个项目", "warning");
       return;
     }
 
@@ -780,7 +781,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     const duplicates = picked.filter((si) => existingNames.has(si.name) && !(items[itemIndex]?.name === "" && items[itemIndex]?.service_item_id === ""));
 
     if (filtered.length === 0) {
-      alert("勾选的项目都已存在于当前表单，无需重复添加");
+      toast("勾选的项目都已存在于当前表单，无需重复添加", "error");
       return;
     }
 
@@ -831,7 +832,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
 
     if (duplicates.length > 0) {
       setTimeout(() => {
-        alert(`已跳过 ${duplicates.length} 个重复项目：${duplicates.map((d) => d.name).join("、")}`);
+        toast(`已跳过 ${duplicates.length} 个重复项目：${duplicates.map((d) => d.name).join("、")}`, "error");
       }, 50);
     }
   }
@@ -841,7 +842,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
     if (!newItemModal) return;
     const m = newItemModal;
     if (!m.name.trim()) {
-      alert("请输入项目名称");
+      toast("请输入项目名称", "warning");
       return;
     }
 
@@ -866,12 +867,12 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
         qc_value: m.qc_value,
       });
     } catch (err: unknown) {
-      alert("新建项目失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("新建项目失败: " + (err instanceof Error ? err.message : String(err)), "error");
       return;
     }
 
     if (!result.success || !result.item) {
-      alert(result.error || "新建项目失败");
+      toast(result.error || "新建项目失败", "error");
       return;
     }
 
@@ -910,7 +911,7 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
 
     /* 前端先校验：新建需求时客户需求不能为空（与服务端一致，避免白跑一趟） */
     if (!existingRequirementId && !requirement.description.trim()) {
-      alert("客户需求不能为空");
+      toast("客户需求不能为空", "error");
       return;
     }
 
@@ -929,13 +930,13 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
         items,
       });
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setLoading(false);
       return;
     }
 
     if (!result.success) {
-      alert(result.error);
+      toast(result.error, "warning");
       setLoading(false);
       return;
     }

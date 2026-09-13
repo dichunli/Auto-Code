@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 新建收款方式, 更新收款方式, 删除收款方式, 保存收款方式排序 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 export interface 操作员 {
   id: string;
@@ -78,7 +79,7 @@ export default function PaymentMethodsContent({
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!newName.trim()) {
-      alert("请输入收款方式名称");
+      toast("请输入收款方式名称", "warning");
       return;
     }
 
@@ -91,12 +92,12 @@ export default function PaymentMethodsContent({
       });
       setSaving(false);
       if (!result.success) {
-        alert("保存失败：" + (result.error || "未知错误"));
+        toast("保存失败：" + (result.error || "未知错误"), "error");
         return;
       }
     } catch {
       setSaving(false);
-      alert("保存失败：网络异常，请重试");
+      toast("保存失败：网络异常，请重试", "error");
       return;
     }
 
@@ -109,7 +110,7 @@ export default function PaymentMethodsContent({
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editingId || !editName.trim()) {
-      alert("请输入名称");
+      toast("请输入名称", "warning");
       return;
     }
 
@@ -123,12 +124,12 @@ export default function PaymentMethodsContent({
       });
       setSaving(false);
       if (!result.success) {
-        alert("保存失败：" + (result.error || "未知错误"));
+        toast("保存失败：" + (result.error || "未知错误"), "error");
         return;
       }
     } catch {
       setSaving(false);
-      alert("保存失败：网络异常，请重试");
+      toast("保存失败：网络异常，请重试", "error");
       return;
     }
 
@@ -143,11 +144,11 @@ export default function PaymentMethodsContent({
     try {
       const result = await 删除收款方式(id);
       if (!result.success) {
-        alert("删除失败：" + (result.error || "未知错误"));
+        toast("删除失败：" + (result.error || "未知错误"), "error");
         return;
       }
     } catch {
-      alert("删除失败：网络异常，请重试");
+      toast("删除失败：网络异常，请重试", "error");
       return;
     }
     loadData();
@@ -192,10 +193,10 @@ export default function PaymentMethodsContent({
         items: reordered.map((item) => ({ id: item.id, sort_order: item.sort_order })),
       });
       if (!result.success) {
-        alert("排序保存失败：" + (result.error || "未知错误"));
+        toast("排序保存失败：" + (result.error || "未知错误"), "error");
       }
     } catch {
-      alert("排序保存失败：网络异常，请重试");
+      toast("排序保存失败：网络异常，请重试", "error");
     }
     setSaving(false);
   }

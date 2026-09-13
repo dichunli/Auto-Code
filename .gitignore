@@ -154,3 +154,6 @@ smoke-test-failure.png
 !scripts/realtime-test.mjs
 !scripts/permission-test.mjs
 .playwright-mcp/
+
+# 弹窗治理 codemod（一次性工具，留存备查）
+!scripts/replace-alerts.js

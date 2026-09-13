@@ -10,6 +10,7 @@ import { 转义HTML } from "@/lib/escapeHtml";
 import DeletePartButton from "./DeletePartButton";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import PartMergeDialog from "@/components/PartMergeDialog";
+import { toast } from "@/lib/globalToast";
 
 interface ColumnDef {
   key: string;
@@ -494,12 +495,12 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
         fontSize: 14,
       });
     } catch {
-      alert("生成条形码失败");
+      toast("生成条形码失败", "error");
       return;
     }
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("请允许弹出窗口以打印条形码");
+      toast("请允许弹出窗口以打印条形码", "warning");
       return;
     }
     const imgData = canvasRef.current.toDataURL("image/png");
@@ -519,12 +520,12 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
   function printBatch() {
     const selected = items.filter((i) => selectedIds.has(i.id));
     if (selected.length === 0) {
-      alert("请先选择要打印的配件");
+      toast("请先选择要打印的配件", "warning");
       return;
     }
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("请允许弹出窗口以打印条形码");
+      toast("请允许弹出窗口以打印条形码", "warning");
       return;
     }
     const canvas = document.createElement("canvas");

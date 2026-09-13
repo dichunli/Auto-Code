@@ -2,6 +2,7 @@
 
 import {useState, useRef} from "react";
 import { 解析Word文档, 生成Word文档, 导入Word文章 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 /* ========== 类型定义 ========== */
 
@@ -102,7 +103,7 @@ export default function KnowledgeImportExport({ articles, onSuccess }: Props) {
   async function 导出Word(articleId: string) {
     const article = articles.find((a) => a.id === articleId);
     if (!article) {
-      alert("未找到文章");
+      toast("未找到文章", "error");
       return;
     }
 
@@ -118,7 +119,7 @@ export default function KnowledgeImportExport({ articles, onSuccess }: Props) {
       });
 
       if (!result.success || !result.base64) {
-        alert(result.error || "导出失败");
+        toast(result.error || "导出失败", "error");
         return;
       }
 
@@ -141,7 +142,7 @@ export default function KnowledgeImportExport({ articles, onSuccess }: Props) {
       URL.revokeObjectURL(url);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("导出 Word 失败: " + msg);
+      toast("导出 Word 失败: " + msg, "error");
     }
   }
 

@@ -7,6 +7,8 @@ import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { ImageViewer } from "./ImageViewer";
 import { useUpload } from "@/hooks/useUpload";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 interface Props {
   itemId: string;
@@ -43,7 +45,7 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
     async (files: FileList) => {
       const remaining = 5 - images.length;
       if (remaining <= 0) {
-        alert("最多上传 5 张图片");
+        toast("最多上传 5 张图片", "warning");
         return;
       }
 
@@ -64,7 +66,7 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
 
       if (errors.length > 0) {
         const msg = errors.map((e) => `${e.file}: ${e.error}`).join("\n");
-        alert("图片上传失败:\n" + msg);
+        await 全局提示("图片上传失败:\n" + msg);
       }
     },
     [images, itemId, 上传]
@@ -79,7 +81,7 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
     /* 删除数据库记录（写库走 Server Action） */
     const result = await 删除项目图片记录({ itemId, path });
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       setImages(existingImages);
       return;
     }
@@ -92,7 +94,7 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
 
   async function handleAppCamera() {
     if (images.length >= 5) {
-      alert("最多上传 5 张图片");
+      toast("最多上传 5 张图片", "warning");
       return;
     }
     try {
@@ -103,7 +105,7 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
         source: CameraSource.Camera,
       });
       if (!photo.base64String) {
-        alert("拍照未获取到图片");
+        toast("拍照未获取到图片", "warning");
         return;
       }
       const base64 = `data:image/jpeg;base64,${photo.base64String}`;
@@ -115,7 +117,7 @@ export default function ItemImageUploader({ itemId, existingImages, isLocked }: 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
-      alert("拍照失败: " + msg);
+      toast("拍照失败: " + msg, "error");
     }
   }
 

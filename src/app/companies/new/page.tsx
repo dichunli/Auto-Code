@@ -4,6 +4,7 @@ import {useState} from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 import { 新建单位 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 export default function NewCompanyPage() {
   const router = useRouter();
@@ -29,18 +30,18 @@ export default function NewCompanyPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) { alert("请填写单位名称"); return; }
+    if (!form.name.trim()) { toast("请填写单位名称", "warning"); return; }
     setLoading(true);
 
     try {
       const result = await 新建单位({ form, contacts });
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         setLoading(false);
         return;
       }
     } catch {
-      alert("保存失败: 网络异常，请重试");
+      toast("保存失败: 网络异常，请重试", "error");
       setLoading(false);
       return;
     }

@@ -11,6 +11,7 @@ import { 阶段文案, type 阶段key } from "@/lib/orderStage";
 import { 读本地工单标签 } from "@/lib/orderTabs";
 import StageOrderCard from "@/components/StageOrderCard";
 import type { Order } from "./page";
+import { toast } from "@/lib/globalToast";
 
 /* ═════════════════════════════════════════════════════════════════
  * 工单列表内容 — Client Component（纯展示 + 交互）
@@ -89,7 +90,7 @@ export default function WorkOrdersContent({
     const result = await 删除工单(deleteTarget.id, deleteTarget.orderNo, deleteReason);
     setDeleteLoading(false);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
 

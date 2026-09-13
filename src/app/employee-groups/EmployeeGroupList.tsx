@@ -6,6 +6,7 @@ import { 删除员工分组, 交换员工分组排序, 保存员工分组排序�
 import { useRouter } from "next/navigation";
 import {useState} from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 interface Group {
   id: string;
@@ -26,7 +27,7 @@ export function EmployeeGroupList({ groups }: Props) {
 
   async function handleDelete(id: string, name: string, memberCount: number) {
     if (memberCount > 0) {
-      alert(`「${name}」下还有 ${memberCount} 名员工，请先移走员工再删除分组。`);
+      toast(`「${name}」下还有 ${memberCount} 名员工，请先移走员工再删除分组。`, "warning");
       return;
     }
 
@@ -36,7 +37,7 @@ export function EmployeeGroupList({ groups }: Props) {
 
     const result = await 删除员工分组(id);
     if (!result.success) {
-      alert("删除失败：" + (result.error || "未知错误"));
+      toast("删除失败：" + (result.error || "未知错误"), "error");
       return;
     }
 
@@ -60,7 +61,7 @@ export function EmployeeGroupList({ groups }: Props) {
       if (!result.success) throw new Error(result.error || "未知错误");
       router.refresh();
     } catch (err: unknown) {
-      alert("排序失败：" + (err instanceof Error ? err.message : String(err)));
+      toast("排序失败：" + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setBusy(null);
     }
@@ -76,7 +77,7 @@ export function EmployeeGroupList({ groups }: Props) {
       if (!result.success) throw new Error(result.error || "未知错误");
       router.refresh();
     } catch (err: unknown) {
-      alert("排序失败：" + (err instanceof Error ? err.message : String(err)));
+      toast("排序失败：" + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setBusy(null);
     }

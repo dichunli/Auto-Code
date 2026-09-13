@@ -4,6 +4,7 @@ import {useState} from "react";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 更新提醒状态 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 interface 提醒 {
   id: string;
@@ -28,7 +29,7 @@ export function ReminderActions({ reminder }: { reminder: 提醒 }) {
     /* 写库走 Server Action（状态 + 通知记录一次完成） */
     const result = await 更新提醒状态({ reminderId: reminder.id, action: "notified", notes });
     if (!result.success) {
-      alert("操作失败: " + (result.error || "未知错误"));
+      toast("操作失败: " + (result.error || "未知错误"), "error");
     } else {
       router.refresh();
     }
@@ -39,7 +40,7 @@ export function ReminderActions({ reminder }: { reminder: 提醒 }) {
     setLoading(true);
     const result = await 更新提醒状态({ reminderId: reminder.id, action: "completed", notes });
     if (!result.success) {
-      alert("操作失败: " + (result.error || "未知错误"));
+      toast("操作失败: " + (result.error || "未知错误"), "error");
     } else {
       router.push("/reminders");
       router.refresh();
@@ -52,7 +53,7 @@ export function ReminderActions({ reminder }: { reminder: 提醒 }) {
     setLoading(true);
     const result = await 更新提醒状态({ reminderId: reminder.id, action: "cancelled" });
     if (!result.success) {
-      alert("操作失败: " + (result.error || "未知错误"));
+      toast("操作失败: " + (result.error || "未知错误"), "error");
     } else {
       router.push("/reminders");
       router.refresh();

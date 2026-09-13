@@ -6,6 +6,8 @@ import { 作废询价单, 采用询价单, type 询价单列表项 } from "../qu
 import { copyText } from "@/lib/copyText";
 import { 是内网地址 } from "@/lib/isInternalHost";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 /* 询价单列表（客户端交互部分）：复制链接 / 采用锁死 / 作废 */
 
@@ -40,7 +42,7 @@ export default function QuoteSheetsContent({ 初始列表, 当前时间戳 }: { 
     const 链接 = `${window.location.origin}/quote/${s.token}`;
     /* 公网提示（2026-08-19）：内网地址拼出的链接供应商手机打不开，提示但不阻断 */
     if (是内网地址(window.location.hostname)) {
-      alert("提醒：当前是内网/本机地址，这样复制出的链接供应商打不开！\n请改用公网域名（www.atsg.cn）打开系统后重新复制。");
+      await 全局提示("提醒：当前是内网/本机地址，这样复制出的链接供应商打不开！\n请改用公网域名（www.atsg.cn）打开系统后重新复制。");
     }
     /* copyText 内部已带 execCommand 老式兜底，http 页面也能复制成功 */
     if (await copyText(链接)) {
@@ -48,7 +50,7 @@ export default function QuoteSheetsContent({ 初始列表, 当前时间戳 }: { 
       setTimeout(() => set复制的id(null), 2000);
       return;
     }
-    alert("自动复制失败，请手动复制：\n" + 链接);
+    await 全局提示("自动复制失败，请手动复制：\n" + 链接);
   }
 
   async function 采用(s: 询价单列表项) {
@@ -58,13 +60,13 @@ export default function QuoteSheetsContent({ 初始列表, 当前时间戳 }: { 
       const 结果 = await 采用询价单(s.id);
       set操作中(null);
       if (!结果.success) {
-        alert("操作失败: " + (结果.error || "未知错误"));
+        toast("操作失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       router.refresh();
     } catch (err: unknown) {
       set操作中(null);
-      alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
     }
   }
 
@@ -75,13 +77,13 @@ export default function QuoteSheetsContent({ 初始列表, 当前时间戳 }: { 
       const 结果 = await 作废询价单(s.id);
       set操作中(null);
       if (!结果.success) {
-        alert("操作失败: " + (结果.error || "未知错误"));
+        toast("操作失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       router.refresh();
     } catch (err: unknown) {
       set操作中(null);
-      alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
     }
   }
 

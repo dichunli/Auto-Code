@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 保存晋级规则, 删除晋级规则 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 export interface 技师等级 {
   id: string;
@@ -147,7 +148,7 @@ export default function PromotionRulesContent({
 
   async function handleSave() {
     if (!form.to_level_id) {
-      alert("请选择目标等级");
+      toast("请选择目标等级", "warning");
       return;
     }
 
@@ -176,7 +177,7 @@ export default function PromotionRulesContent({
       setModalOpen(false);
       fetchData();
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }
@@ -186,7 +187,7 @@ export default function PromotionRulesContent({
     if (!(await 请求确认("确定删除这条晋级规则吗？"))) return;
     const result = await 删除晋级规则(id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     fetchData();

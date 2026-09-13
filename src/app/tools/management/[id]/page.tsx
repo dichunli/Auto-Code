@@ -8,6 +8,7 @@ import ToolBorrowReturnModal from "../components/ToolBorrowReturnModal";
 import LocationQrCode from "../components/LocationQrCode";
 import { ImageViewer } from "@/components/ImageViewer";
 import { BlockNoteRenderer } from "@/components/BlockNoteRenderer";
+import { toast } from "@/lib/globalToast";
 
 interface 工具 {
   id: string;
@@ -69,7 +70,7 @@ export default function ToolDetailPage() {
           .single();
 
         if (error || !data) {
-          alert("工具不存在");
+          toast("工具不存在", "error");
           router.push("/tools/management");
           return;
         }
@@ -132,7 +133,7 @@ export default function ToolDetailPage() {
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        alert("加载失败: " + msg);
+        toast("加载失败: " + msg, "error");
       } finally {
         set加载中(false);
       }

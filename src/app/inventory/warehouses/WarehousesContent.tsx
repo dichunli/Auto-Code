@@ -14,6 +14,7 @@ import {
   删除仓位,
   更新仓位,
 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface 仓库 {
   id: string;
@@ -73,7 +74,7 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
     if (!(await 请求确认("确定删除该仓库？关联的库存分布将一并清除。"))) return;
     const res = await 删除仓库(id);
     if (!res.success) {
-      alert(res.error || "删除失败");
+      toast(res.error || "删除失败", "error");
       return;
     }
     await 刷新仓库列表();
@@ -99,7 +100,7 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
       address: editWhAddress.trim() || null,
     });
     if (!res.success) {
-      alert(res.error || "保存失败");
+      toast(res.error || "保存失败", "error");
       return;
     }
     setEditingWh(null);
@@ -121,7 +122,7 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
     setLocLoading(false);
 
     if (!res.success) {
-      alert(res.error || "加载仓位失败");
+      toast(res.error || "加载仓位失败", "error");
       return;
     }
 
@@ -132,12 +133,12 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
     if (!locationModal || !newLocation.trim()) return;
     const name = normalizeLocationName(newLocation.trim());
     if (!name) {
-      alert("仓位名称只能包含中文、英文、数字和-");
+      toast("仓位名称只能包含中文、英文、数字和-", "warning");
       return;
     }
     const res = await 新增仓位({ warehouse_id: locationModal.warehouseId, name });
     if (!res.success) {
-      alert(res.error || "添加失败");
+      toast(res.error || "添加失败", "error");
       return;
     }
     setNewLocation("");
@@ -152,7 +153,7 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
       .filter(Boolean);
     const uniqueNames = Array.from(new Set(names));
     if (uniqueNames.length === 0) {
-      alert("没有有效的仓位名称（仅支持中文、英文、数字和-）");
+      toast("没有有效的仓位名称（仅支持中文、英文、数字和-）", "warning");
       return;
     }
     const res = await 批量新增仓位({
@@ -160,7 +161,7 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
       names: uniqueNames,
     });
     if (!res.success) {
-      alert(res.error || "批量添加失败");
+      toast(res.error || "批量添加失败", "error");
       return;
     }
     setBatchText("");
@@ -171,7 +172,7 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
     if (!(await 请求确认("确定删除该仓位？"))) return;
     const res = await 删除仓位(id);
     if (!res.success) {
-      alert(res.error || "删除失败");
+      toast(res.error || "删除失败", "error");
       return;
     }
     if (locationModal) {
@@ -192,12 +193,12 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
   async function saveLoc(id: string) {
     const name = normalizeLocationName(editLocName.trim());
     if (!name) {
-      alert("仓位名称只能包含中文、英文、数字和-");
+      toast("仓位名称只能包含中文、英文、数字和-", "warning");
       return;
     }
     const res = await 更新仓位({ id, name });
     if (!res.success) {
-      alert(res.error || "保存失败");
+      toast(res.error || "保存失败", "error");
       return;
     }
     setEditingLoc(null);

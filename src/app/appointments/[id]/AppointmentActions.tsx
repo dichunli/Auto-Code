@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 更新预约状态, 预约转工单 } from "../actions";
 import Link from "next/link";
+import { toast } from "@/lib/globalToast";
 
 interface Appointment {
   id: string;
@@ -30,10 +31,10 @@ export function AppointmentActions({ appointment }: { appointment: Appointment }
     try {
       const result = await 更新预约状态({ appointmentId: appointment.id, status });
       if (!result.success) {
-        alert("操作失败: " + (result.error || "未知错误"));
+        toast("操作失败: " + (result.error || "未知错误"), "error");
       }
     } catch {
-      alert("操作失败：网络异常，请重试");
+      toast("操作失败：网络异常，请重试", "error");
     }
     router.refresh();
     setLoading(false);
@@ -45,14 +46,14 @@ export function AppointmentActions({ appointment }: { appointment: Appointment }
     try {
       const result = await 预约转工单({ appointmentId: appointment.id });
       if (!result.success || !result.workOrderId) {
-        alert("转工单失败: " + (result.error || "未知错误"));
+        toast("转工单失败: " + (result.error || "未知错误"), "error");
         setLoading(false);
         return;
       }
       router.push(`/work-orders/${result.workOrderId}`);
       router.refresh();
     } catch {
-      alert("转工单失败：网络异常，请重试");
+      toast("转工单失败：网络异常，请重试", "error");
       setLoading(false);
     }
   }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "./ImageUploader";
 import { VideoUploader } from "./VideoUploader";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   itemId: string;
@@ -102,7 +103,7 @@ export default function ItemQcActions({ itemId, itemName, requireQc, 实际锁�
 
   async function 提交质检() {
     if (result === "failed" && !notes.trim()) {
-      alert("质检不合格必须填写原因");
+      toast("质检不合格必须填写原因", "warning");
       return;
     }
     setSaving(true);
@@ -119,11 +120,11 @@ export default function ItemQcActions({ itemId, itemName, requireQc, 实际锁�
     setSaving(false);
     const res = data as Rpc结果 | null;
     if (error) {
-      alert("质检提交失败: " + error.message);
+      toast("质检提交失败: " + error.message, "error");
       return;
     }
     if (!res?.success) {
-      alert(res?.error || "质检提交失败");
+      toast(res?.error || "质检提交失败", "error");
       return;
     }
     setOpen(false);

@@ -10,6 +10,7 @@ import Link from "next/link";
 import * as XLSX from "xlsx";
 import { 批量更新维修项目, 批量导入维修项目 } from "./actions";
 import ServiceItemMergeDialog from "@/components/ServiceItemMergeDialog";
+import { toast } from "@/lib/globalToast";
 
 interface ServiceItem {
   id: string;
@@ -131,7 +132,7 @@ export default function ServiceItemsContent({ items, categories }: Props) {
 
   async function handleBatchSave() {
     if (selectedIds.size === 0) {
-      alert("请先选择要修改的项目");
+      toast("请先选择要修改的项目", "warning");
       return;
     }
     const ids = Array.from(selectedIds);
@@ -158,7 +159,7 @@ export default function ServiceItemsContent({ items, categories }: Props) {
       updates.company_price = val === "" ? null : parseFloat(val);
     }
     if (Object.keys(updates).length === 0) {
-      alert("请至少选择一项要修改的内容");
+      toast("请至少选择一项要修改的内容", "warning");
       return;
     }
     setBatchSaving(true);
@@ -166,7 +167,7 @@ export default function ServiceItemsContent({ items, categories }: Props) {
     const result = await 批量更新维修项目({ ids, updates: updates as Parameters<typeof 批量更新维修项目>[0]["updates"] });
     setBatchSaving(false);
     if (!result.success) {
-      alert("批量修改失败: " + (result.error || "未知错误"));
+      toast("批量修改失败: " + (result.error || "未知错误"), "error");
       return;
     }
     setBatchOpen(false);

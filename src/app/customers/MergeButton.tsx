@@ -4,6 +4,7 @@ import {useState} from "react";
 import { CustomerSearchDropdown, Customer } from "@/components/CustomerSearchDropdown";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 合并客户 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 export function MergeButton() {
   const [open, setOpen] = useState(false);
@@ -22,11 +23,11 @@ export function MergeButton() {
 
   async function handleMerge() {
     if (!sourceCustomer || !targetCustomer) {
-      alert("请同时选择被合并客户和保留客户");
+      toast("请同时选择被合并客户和保留客户", "warning");
       return;
     }
     if (sourceCustomer.id === targetCustomer.id) {
-      alert("不能选择同一个客户");
+      toast("不能选择同一个客户", "error");
       return;
     }
 
@@ -47,16 +48,16 @@ export function MergeButton() {
             : null,
       });
       if (!result.success) {
-        alert("合并失败: " + (result.error || "未知错误"));
+        toast("合并失败: " + (result.error || "未知错误"), "error");
         setMerging(false);
         return;
       }
     } catch {
-      alert("合并失败: 网络异常，请重试");
+      toast("合并失败: 网络异常，请重试", "error");
       setMerging(false);
       return;
     }
-    alert("合并成功");
+    toast("合并成功", "success");
     setOpen(false);
     setSourceCustomer(null);
     setTargetCustomer(null);

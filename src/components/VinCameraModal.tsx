@@ -7,6 +7,7 @@ import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 启动原生VIN拍照 } from "@/lib/androidVinCapture";
 import { VinDecodeResult } from "./VinDecodeInput";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   open: boolean;
@@ -355,12 +356,12 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
             onClose();
           } else {
             /* 拍照本身失败（相机硬件问题等）：APP端弹窗不渲染，用alert提示后关闭 */
-            alert(结果.error || "拍照失败");
+            toast(结果.error || "拍照失败", "error");
             onClose();
           }
         } catch (err: unknown) {
           if (已取消Ref.current) return;
-          alert(err instanceof Error ? err.message : "拍照失败");
+          toast(err instanceof Error ? err.message : "拍照失败", "error");
           onClose();
         }
       })();
@@ -413,12 +414,12 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
           } else if (结果.cancelled) {
             onClose();
           } else {
-            alert(结果.error || "拍照失败");
+            toast(结果.error || "拍照失败", "error");
             onClose();
           }
         } catch (err: unknown) {
           if (已取消Ref.current) return;
-          alert(err instanceof Error ? err.message : "拍照失败");
+          toast(err instanceof Error ? err.message : "拍照失败", "error");
           onClose();
         }
       })();

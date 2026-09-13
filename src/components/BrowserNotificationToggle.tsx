@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "@/lib/globalToast";
 
 export function BrowserNotificationToggle() {
   const [permission, setPermission] = useState<NotificationPermission | "unknown">("unknown");
@@ -13,7 +14,7 @@ export function BrowserNotificationToggle() {
 
   async function handleEnable() {
     if (typeof window === "undefined" || !("Notification" in window)) {
-      alert("当前浏览器不支持桌面通知");
+      toast("当前浏览器不支持桌面通知", "warning");
       return;
     }
     const result = await Notification.requestPermission();
@@ -23,7 +24,7 @@ export function BrowserNotificationToggle() {
         body: "当有采购状态变动时，您将收到桌面提醒",
       });
     } else if (result === "denied") {
-      alert("通知权限被拒绝。如需开启，请点击地址栏左侧的锁形图标，将通知权限改为「允许」。");
+      toast("通知权限被拒绝。如需开启，请点击地址栏左侧的锁形图标，将通知权限改为「允许」。", "error");
     }
   }
 

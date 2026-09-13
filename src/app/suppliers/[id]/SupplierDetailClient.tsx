@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { QRCodeSVG } from "qrcode.react";
 import { formatCurrency } from "@/lib/utils";
 import { 记供应商往来账 } from "@/app/supplier-transactions/actions";
+import { toast } from "@/lib/globalToast";
 
 interface TransactionForm {
   transaction_type: "payment" | "refund" | "credit" | "debit";
@@ -132,7 +133,7 @@ export default function SupplierDetailClient({
     e.preventDefault();
     const amount = parseFloat(transactionForm.amount);
     if (!amount || amount <= 0) {
-      alert("请输入有效的金额");
+      toast("请输入有效的金额", "warning");
       return;
     }
     setSavingTransaction(true);
@@ -145,7 +146,7 @@ export default function SupplierDetailClient({
     });
     setSavingTransaction(false);
     if (!res.success) {
-      alert("保存失败: " + (res.error || "未知错误"));
+      toast("保存失败: " + (res.error || "未知错误"), "error");
       return;
     }
     setTransactionForm({ transaction_type: "payment", amount: "", description: "" });

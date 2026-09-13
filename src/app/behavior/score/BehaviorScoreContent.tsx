@@ -8,6 +8,7 @@ import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { base64转Blob } from "@/lib/imageCompress";
 import { 提交行为记分 } from "./actions";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import { toast } from "@/lib/globalToast";
 
 interface 员工 {
   id: string;
@@ -144,7 +145,7 @@ export default function BehaviorScoreContent({
       }
       setCameraOpen(true);
     } catch (err: unknown) {
-      alert("无法打开摄像头: " + (err instanceof Error ? err.message : "请检查摄像头权限"));
+      toast("无法打开摄像头: " + (err instanceof Error ? err.message : "请检查摄像头权限"), "error");
     }
   }, []);
 
@@ -185,7 +186,7 @@ export default function BehaviorScoreContent({
         source: CameraSource.Camera,
       });
       if (!photo.base64String) {
-        alert("拍照未获取到图片");
+        toast("拍照未获取到图片", "warning");
         return;
       }
       const base64 = `data:image/jpeg;base64,${photo.base64String}`;
@@ -195,7 +196,7 @@ export default function BehaviorScoreContent({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
-      alert("拍照失败: " + msg);
+      toast("拍照失败: " + msg, "error");
     }
   }, []);
 
@@ -207,7 +208,7 @@ export default function BehaviorScoreContent({
     if (!files || files.length === 0) return;
     for (const file of Array.from(files)) {
       if (file.size > 100 * 1024 * 1024) {
-        alert(`视频 ${file.name} 超过 100MB 限制`);
+        toast(`视频 ${file.name} 超过 100MB 限制`, "warning");
         continue;
       }
       const preview = URL.createObjectURL(file);
@@ -248,15 +249,15 @@ export default function BehaviorScoreContent({
 
   async function handleSubmit() {
     if (!selectedEmployee) {
-      alert("请选择员工");
+      toast("请选择员工", "warning");
       return;
     }
     if (!selectedItem) {
-      alert("请选择评分项目");
+      toast("请选择评分项目", "warning");
       return;
     }
     if (!actualScore || parseInt(actualScore) <= 0) {
-      alert("请输入有效分数");
+      toast("请输入有效分数", "warning");
       return;
     }
 
@@ -291,9 +292,9 @@ export default function BehaviorScoreContent({
 
       /* 新记录按打分时间倒序在第 1 页，重查回第 1 页 */
       fetchData(1);
-      alert("打分成功");
+      toast("打分成功", "success");
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }

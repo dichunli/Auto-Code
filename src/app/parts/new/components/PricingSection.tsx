@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
+import { toast } from "@/lib/globalToast";
 
 interface SupplierItem {
   id: string;
@@ -162,7 +163,7 @@ export default function PricingSection({
         <div>
           <button
             type="button"
-            onClick={() => alert("采购记录功能开发中")}
+            onClick={() => toast("采购记录功能开发中", "warning")}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             查看采购记录

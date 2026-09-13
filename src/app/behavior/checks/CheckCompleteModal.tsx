@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ImageUploader } from "@/components/ImageUploader";
 import { 核查打分, type 细节作答项 } from "./actions";
 import type { 考核记录视图 } from "./BehaviorChecksContent";
+import { toast } from "@/lib/globalToast";
 
 /* 每条细节的作答：得分(字符串)、照片、备注 */
 interface 细节作答 {
@@ -66,24 +67,24 @@ export default function CheckCompleteModal({ record, onClose, onCompleted, 未�
         const a = 作答[d.id];
         const v = parseInt(a.given || "0");
         if (isNaN(v) || v < 0 || v > d.score_value) {
-          alert(`「${d.name}」的分值要在 0 ~ ${d.score_value} 之间`);
+          toast(`「${d.name}」的分值要在 0 ~ ${d.score_value} 之间`, "warning");
           return;
         }
         const 不合格 = 是扣分 ? v > 0 : v < d.score_value;
         if (不合格 && a.photos.length === 0) {
-          alert(`「${d.name}」判定不合格，请先拍现场照片再提交`);
+          toast(`「${d.name}」判定不合格，请先拍现场照片再提交`, "warning");
           return;
         }
       }
     } else {
       const v = parseInt(整体分数);
       if (isNaN(v) || v < 0) {
-        alert("请输入有效分数");
+        toast("请输入有效分数", "warning");
         return;
       }
       const 不合格 = 是扣分 ? v > 0 : v < record.item_score;
       if (不合格 && 整体照片.length === 0) {
-        alert("判定不合格，请先拍现场照片再提交");
+        toast("判定不合格，请先拍现场照片再提交", "warning");
         return;
       }
     }
@@ -109,7 +110,7 @@ export default function CheckCompleteModal({ record, onClose, onCompleted, 未�
         评论: 首条评论,
       });
       if (!结果.success) {
-        alert("提交失败: " + 结果.error);
+        toast("提交失败: " + 结果.error, "error");
         /* 状态类错误说明页面数据已过期，关掉弹窗刷新列表 */
         if (结果.error?.includes("刷新") || 结果.error?.includes("已完成") || 结果.error?.includes("已关闭")) {
           onCompleted();
@@ -120,7 +121,7 @@ export default function CheckCompleteModal({ record, onClose, onCompleted, 未�
       onCompleted();
       onClose();
     } catch (err: unknown) {
-      alert("提交失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("提交失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }

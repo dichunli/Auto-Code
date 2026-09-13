@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
 import { 合并配件 } from "@/app/parts/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   open: boolean;
@@ -81,15 +82,15 @@ export default function PartMergeDialog({ open, selectedItems, onClose, onSucces
 
   async function handleMerge() {
     if (!targetId) {
-      alert("请选择要保留的配件");
+      toast("请选择要保留的配件", "warning");
       return;
     }
     if (!finalName.trim()) {
-      alert("请输入合并后的名称");
+      toast("请输入合并后的名称", "warning");
       return;
     }
     if (!finalPartNumber.trim()) {
-      alert("请输入合并后的配件编号");
+      toast("请输入合并后的配件编号", "warning");
       return;
     }
 
@@ -115,11 +116,11 @@ export default function PartMergeDialog({ open, selectedItems, onClose, onSucces
     });
     setMerging(false);
     if (!result.success) {
-      alert("合并失败: " + (result.error || "未知错误"));
+      toast("合并失败: " + (result.error || "未知错误"), "error");
       return;
     }
 
-    alert("合并成功");
+    toast("合并成功", "success");
     onSuccess();
     onClose();
   }

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
 import { 合并维修项目 } from "@/app/service-items/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   open: boolean;
@@ -90,11 +91,11 @@ export default function ServiceItemMergeDialog({ open, selectedItems, onClose, o
 
   async function handleMerge() {
     if (!targetId) {
-      alert("请选择要保留的维修项目");
+      toast("请选择要保留的维修项目", "warning");
       return;
     }
     if (!finalName.trim()) {
-      alert("请输入合并后的名称");
+      toast("请输入合并后的名称", "warning");
       return;
     }
 
@@ -120,11 +121,11 @@ export default function ServiceItemMergeDialog({ open, selectedItems, onClose, o
     });
     setMerging(false);
     if (!result.success) {
-      alert("合并失败: " + (result.error || "未知错误"));
+      toast("合并失败: " + (result.error || "未知错误"), "error");
       return;
     }
 
-    alert("合并成功");
+    toast("合并成功", "success");
     onSuccess();
     onClose();
   }

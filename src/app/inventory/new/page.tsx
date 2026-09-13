@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 新增配件, 新建配件品牌, 新建配件规格 } from "../actions";
+import { toast } from "@/lib/globalToast";
+import { 全局输入 } from "@/components/GlobalDialogs";
 
 interface PartName {
   id: string;
@@ -69,11 +71,11 @@ export default function NewPartPage() {
   }
 
   async function handleCreateBrand() {
-    const brandName = prompt("请输入新品牌名称:");
+    const brandName = await 全局输入("请输入新品牌名称:");
     if (!brandName) return;
     const result = await 新建配件品牌(brandName);
     if (!result.success || !result.id) {
-      alert("创建失败: " + (result.error || "未知错误"));
+      toast("创建失败: " + (result.error || "未知错误"), "error");
       return;
     }
     setBrands((prev) => [...prev, { id: result.id!, name: brandName, usage_count: 0 }]);
@@ -81,11 +83,11 @@ export default function NewPartPage() {
   }
 
   async function handleCreateSpec() {
-    const specName = prompt("请输入新规格名称:");
+    const specName = await 全局输入("请输入新规格名称:");
     if (!specName) return;
     const result = await 新建配件规格(specName);
     if (!result.success || !result.id) {
-      alert("创建失败: " + (result.error || "未知错误"));
+      toast("创建失败: " + (result.error || "未知错误"), "error");
       return;
     }
     setSpecifications((prev) => [...prev, { id: result.id!, name: specName, usage_count: 0 }]);
@@ -95,7 +97,7 @@ export default function NewPartPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.part_name_id) {
-      alert("请选择配件名称");
+      toast("请选择配件名称", "warning");
       return;
     }
     setLoading(true);
@@ -105,13 +107,13 @@ export default function NewPartPage() {
     try {
       result = await 新增配件(form);
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setLoading(false);
       return;
     }
 
     if (!result.success) {
-      alert("保存失败: " + result.error);
+      toast("保存失败: " + result.error, "error");
       setLoading(false);
       return;
     }

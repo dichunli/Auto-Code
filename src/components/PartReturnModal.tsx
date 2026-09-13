@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 创建退料单, type 退料明细输入 } from "@/app/material-returns/actions";
 import { 退料类型选项 as RETURN_TYPES } from "@/lib/returnTypes";
+import { toast } from "@/lib/globalToast";
 
 interface PickingRecord {
   id: string;
@@ -93,11 +94,11 @@ export function PartReturnModal({ open, partName, workOrderItemPartId, onClose, 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedId || !selectedRecord) {
-      alert("请选择要退的领料记录");
+      toast("请选择要退的领料记录", "warning");
       return;
     }
     if (quantity <= 0 || quantity > maxQty) {
-      alert(`退库数量必须在 1-${maxQty} 之间`);
+      toast(`退库数量必须在 1-${maxQty} 之间`, "warning");
       return;
     }
     setLoading(true);
@@ -123,15 +124,15 @@ export function PartReturnModal({ open, partName, workOrderItemPartId, onClose, 
 
       const 结果 = await 创建退料单(null, selectedRecord.picking_order_id, 明细, returnType, notes, "");
       if (!结果.success) {
-        alert("退库失败: " + (结果.error || "未知错误"));
+        toast("退库失败: " + (结果.error || "未知错误"), "error");
         return;
       }
 
-      alert(`退库成功，已生成退料单 ${结果.data?.no}`);
+      toast(`退库成功，已生成退料单 ${结果.data?.no}`, "success");
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      alert("退库失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("退库失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setLoading(false);
     }

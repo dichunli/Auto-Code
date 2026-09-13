@@ -9,6 +9,7 @@ import { SpecialPriceItem, VehicleModelPriceItem } from "../components/SpecialPr
 import { PartNameItem } from "../components/PartNameSearch";
 import { 补写配件分组ID } from "../../actions";
 import { useDebounce } from "@/lib/useDebounce";
+import { toast } from "@/lib/globalToast";
 
 interface SupplierItem {
   id: string;
@@ -330,7 +331,7 @@ export default function usePartFormInit(
       try {
         const { data: part } = await supabase.from("parts").select("*").eq("id", editId).single();
         if (!part) {
-          alert("配件不存在");
+          toast("配件不存在", "error");
           router.push("/inventory");
           return;
         }
@@ -540,7 +541,7 @@ export default function usePartFormInit(
           );
         }
       } catch (err: unknown) {
-        alert("加载配件数据失败: " + ((err as Error).message || "未知错误"));
+        toast("加载配件数据失败: " + ((err as Error).message || "未知错误"), "error");
       } finally {
         setLoading(false);
       }

@@ -4,6 +4,7 @@ import {useState} from "react";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 合并配件名称 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 export function MergeButton({ id, name, allNames }: { id: string; name: string; allNames: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -16,7 +17,7 @@ export function MergeButton({ id, name, allNames }: { id: string; name: string; 
 
   async function handleMerge() {
     if (!targetId) {
-      alert("请选择要合并到的目标配件名称");
+      toast("请选择要合并到的目标配件名称", "warning");
       return;
     }
     const targetName = candidates.find((n) => n.id === targetId)?.name;
@@ -28,7 +29,7 @@ export function MergeButton({ id, name, allNames }: { id: string; name: string; 
     /* 合并走 Server Action + RPC merge_part_names 一个事务（不改名） */
     const result = await 合并配件名称({ targetId, sourceIds: [id] });
     if (!result.success) {
-      alert("合并失败: " + (result.error || "未知错误"));
+      toast("合并失败: " + (result.error || "未知错误"), "error");
       setMerging(false);
       return;
     }

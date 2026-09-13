@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 删除技师等级, 交换等级排序 } from "./actions";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 interface Level {
   id: string;
@@ -29,7 +30,7 @@ export function MechanicLevelList({ levels }: Props) {
 
     const result = await 删除技师等级(id);
     if (!result.success) {
-      alert("删除失败：" + (result.error || "未知错误"));
+      toast("删除失败：" + (result.error || "未知错误"), "error");
       return;
     }
 

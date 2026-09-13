@@ -11,6 +11,7 @@ import { useConfirm, useAlert } from "./ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { DocumentNameInput } from "./DocumentNameInput";
 import { useDebounce } from "@/lib/useDebounce";
+import { toast } from "@/lib/globalToast";
 
 interface PurchaseOrderItem {
   id: string;
@@ -419,7 +420,7 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
 
       loadData();
     } catch (err: unknown) {
-      alert("撤销失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("撤销失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSubmitting(null);
     }

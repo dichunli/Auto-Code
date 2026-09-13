@@ -3,6 +3,7 @@
 import {useState} from "react";
 import { 判卷打分 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
+import { toast } from "@/lib/globalToast";
 
 interface 待判卷答题 {
   id: string;
@@ -23,7 +24,7 @@ export default function ExamGradeContent({ initialPending }: { initialPending: �
 
   async function handleGrade(item: 待判卷答题, gradedScore: number) {
     if (gradedScore < 0 || gradedScore > item.max_score) {
-      alert(`分数必须在 0-${item.max_score} 之间`);
+      toast(`分数必须在 0-${item.max_score} 之间`, "warning");
       return;
     }
 
@@ -41,7 +42,7 @@ export default function ExamGradeContent({ initialPending }: { initialPending: �
       /* 刷新列表 */
       setPendingList(pendingList.filter((p) => p.id !== item.id));
     } catch (err: unknown) {
-      alert("判卷失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("判卷失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSavingId(null);
     }

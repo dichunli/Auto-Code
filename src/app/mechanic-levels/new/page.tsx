@@ -4,6 +4,7 @@ import {useState} from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 import { 保存技师等级 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 export default function NewMechanicLevelPage() {
   const router = useRouter();
@@ -17,18 +18,18 @@ export default function NewMechanicLevelPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name) {
-      alert("请填写等级名称");
+      toast("请填写等级名称", "warning");
       return;
     }
 
     const numCoefficient = parseFloat(coefficient);
     if (isNaN(numCoefficient) || numCoefficient <= 0) {
-      alert("个人分成系数必须大于 0");
+      toast("个人分成系数必须大于 0", "warning");
       return;
     }
     const numWeight = parseFloat(commissionWeight);
     if (isNaN(numWeight) || numWeight < 0) {
-      alert("团队分配权重不能为负数");
+      toast("团队分配权重不能为负数", "error");
       return;
     }
 
@@ -55,7 +56,7 @@ export default function NewMechanicLevelPage() {
       } else if (raw.includes("mechanic_levels_name_key") || raw.toLowerCase().includes("duplicate") && raw.includes("name")) {
         msg = `等级名称「${name}」已存在，请换一个`;
       }
-      alert("保存失败：" + msg);
+      toast("保存失败：" + msg, "error");
       setLoading(false);
     }
   }

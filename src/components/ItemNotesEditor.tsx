@@ -2,6 +2,7 @@
 
 import { 保存工单项目字段 } from "@/app/work-orders/actions";
 import { useState } from "react";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   itemId: string;
@@ -41,7 +42,7 @@ export function ItemNotesEditor({ itemId, description, disabled = false }: Props
     });
     setSaving(false);
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       return;
     }
     setOpen(false);

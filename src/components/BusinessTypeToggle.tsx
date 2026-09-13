@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { 保存工单项目字段 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   itemId: string;
@@ -66,7 +67,7 @@ export function BusinessTypeToggle({ itemId, businessType, disabled }: Props) {
     setUpdating(false);
     setOpen(false);
     if (!result.success) {
-      alert("切换失败: " + (result.error || "未知错误"));
+      toast("切换失败: " + (result.error || "未知错误"), "error");
       return;
     }
     // 局部更新：只更新本标签，不整页刷新（业务类型不影响金额合计）

@@ -11,6 +11,7 @@ import { ImageUploader } from "@/components/ImageUploader";
 import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 import { 变更车主, 新建车辆 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 type OwnerMode = "existing" | "new";
 
@@ -140,14 +141,14 @@ export default function VehicleForm() {
   async function handleDirectLink(vehicleId: string) {
     const targetCustomerId = queryCustomerId || existingCustomerId;
     if (!targetCustomerId) {
-      alert("请先选择车主");
+      toast("请先选择车主", "warning");
       return;
     }
     setSavingTransfer(true);
     /* 写库走 Server Action */
     const result = await 变更车主({ vehicleId, customerId: targetCustomerId });
     if (!result.success) {
-      alert("关联车辆失败: " + (result.error || "未知错误"));
+      toast("关联车辆失败: " + (result.error || "未知错误"), "error");
       setSavingTransfer(false);
       return;
     }
@@ -158,13 +159,13 @@ export default function VehicleForm() {
   async function handleTransfer(vehicleId: string) {
     const targetCustomerId = queryCustomerId || existingCustomerId;
     if (!targetCustomerId) {
-      alert("请先选择车主");
+      toast("请先选择车主", "warning");
       return;
     }
     setSavingTransfer(true);
     const result = await 变更车主({ vehicleId, customerId: targetCustomerId });
     if (!result.success) {
-      alert("变更车主失败: " + (result.error || "未知错误"));
+      toast("变更车主失败: " + (result.error || "未知错误"), "error");
       setSavingTransfer(false);
       return;
     }
@@ -210,7 +211,7 @@ export default function VehicleForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.plate_number.trim()) {
-      alert("请填写车牌号");
+      toast("请填写车牌号", "warning");
       return;
     }
 
@@ -232,12 +233,12 @@ export default function VehicleForm() {
         photos,
       });
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         setLoading(false);
         return;
       }
     } catch {
-      alert("保存失败：网络异常，请重试");
+      toast("保存失败：网络异常，请重试", "error");
       setLoading(false);
       return;
     }

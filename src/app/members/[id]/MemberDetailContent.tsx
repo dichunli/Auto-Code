@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { 更新会员 } from "../actions";
 import Link from "next/link";
+import { toast } from "@/lib/globalToast";
 
 interface CustomerInfo {
   name: string;
@@ -93,7 +94,7 @@ export default function MemberDetailContent({
   async function handleRecharge() {
     const amount = parseFloat(rechargeAmount);
     if (!amount || amount <= 0) {
-      alert("请输入有效金额");
+      toast("请输入有效金额", "warning");
       return;
     }
     setRechargeLoading(true);
@@ -118,7 +119,7 @@ export default function MemberDetailContent({
       setRechargeNotes("");
       loadData();
     } catch (err: unknown) {
-      alert("充值失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("充值失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setRechargeLoading(false);
     }
@@ -135,11 +136,11 @@ export default function MemberDetailContent({
         notes: editForm.notes || "",
       });
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         return;
       }
     } catch {
-      alert("保存失败: 网络异常，请重试");
+      toast("保存失败: 网络异常，请重试", "error");
       return;
     }
     setEditing(false);

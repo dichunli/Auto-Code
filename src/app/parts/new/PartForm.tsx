@@ -21,6 +21,7 @@ import FormActions from "./components/FormActions";
 import { syncOeFromVin, syncModelsFromVin, syncModelsByGroupId, 保存配件 } from "../actions";
 import { 标准化VIN } from "@/lib/vinValidator";
 import type { 车型库行 } from "@/lib/vehicleModelFields";
+import { toast } from "@/lib/globalToast";
 
 /* 供应商查询结果 */
 interface SupplierItem {
@@ -228,19 +229,19 @@ export default function PartForm({
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
     if (!partNumber.trim()) {
-      alert("请填写配件编码");
+      toast("请填写配件编码", "warning");
       return;
     }
     if (!selectedPartName) {
-      alert("请选择配件名称");
+      toast("请选择配件名称", "warning");
       return;
     }
     if (!form.unit_price.trim()) {
-      alert("请填写销售价");
+      toast("请填写销售价", "warning");
       return;
     }
     if (hasDuplicatePartNumber) {
-      alert("该配件编码已存在，请更换");
+      toast("该配件编码已存在，请更换", "error");
       return;
     }
 
@@ -272,14 +273,14 @@ export default function PartForm({
         supplierId: selectedSupplier?.id || null,
       });
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setLoading(false);
       return;
     }
     setLoading(false);
 
     if (!result.success) {
-      alert(result.error);
+      toast(result.error, "warning");
       return;
     }
 
@@ -369,12 +370,12 @@ export default function PartForm({
       const res = await syncModelsByGroupId(oeNumber.trim(), vin17GroupId);
       if (res.success && res.matchedModelIds && res.matchedModelIds.length > 0) {
         await addMatchedModels(res.matchedModelIds);
-        alert(`已同步车型，关联${res.matchedModelIds.length}个车型`);
+        toast(`已同步车型，关联${res.matchedModelIds.length}个车型`, "warning");
       } else {
-        alert(res.error || "未找到该OE号对应的适配车型");
+        toast(res.error || "未找到该OE号对应的适配车型", "error");
       }
     } catch (err: unknown) {
-      alert("同步出错：" + (err instanceof Error ? err.message : String(err)));
+      toast("同步出错：" + (err instanceof Error ? err.message : String(err)), "warning");
     } finally {
       setSyncLoading(false);
     }
@@ -384,7 +385,7 @@ export default function PartForm({
   async function handleSyncOe() {
     const vin = 标准化VIN(syncVin);
     if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) {
-      alert("VIN码必须为17位");
+      toast("VIN码必须为17位", "warning");
       return;
     }
     setSyncLoading(true);
@@ -396,9 +397,9 @@ export default function PartForm({
           await addMatchedModels(res.matchedModelIds);
           setSyncOpen(false);
           setSyncVin("");
-          alert(`已同步车型，关联${res.matchedModelIds.length}个车型`);
+          toast(`已同步车型，关联${res.matchedModelIds.length}个车型`, "warning");
         } else {
-          alert(res.error || "未找到该OE号对应的适配车型");
+          toast(res.error || "未找到该OE号对应的适配车型", "error");
         }
         return;
       }
@@ -406,7 +407,7 @@ export default function PartForm({
       /* 没有OE号，查OE号+车型 */
       const partName = selectedPartName?.name || form.name;
       if (!partName) {
-        alert("请先选择配件名称");
+        toast("请先选择配件名称", "warning");
         return;
       }
       const res = await syncOeFromVin(vin, partName);
@@ -420,12 +421,12 @@ export default function PartForm({
         }
         setSyncOpen(false);
         setSyncVin("");
-        alert(`已同步OE号：${res.oeNumber}${res.matchedModelIds ? `，关联${res.matchedModelIds.length}个车型` : ""}`);
+        toast(`已同步OE号：${res.oeNumber}${res.matchedModelIds ? `，关联${res.matchedModelIds.length}个车型` : ""}`, "warning");
       } else {
-        alert(res.error || "同步失败");
+        toast(res.error || "同步失败", "error");
       }
     } catch (err: unknown) {
-      alert("同步出错：" + (err instanceof Error ? err.message : String(err)));
+      toast("同步出错：" + (err instanceof Error ? err.message : String(err)), "warning");
     } finally {
       setSyncLoading(false);
     }

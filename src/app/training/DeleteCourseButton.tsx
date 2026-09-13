@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 删除课程 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface 删除课程按钮属性 {
   id: string;
@@ -32,7 +33,7 @@ export default function DeleteCourseButton({
     setDeleting(false);
 
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
 

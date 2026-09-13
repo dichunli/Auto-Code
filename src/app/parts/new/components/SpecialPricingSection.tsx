@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { useDebounce } from "@/lib/useDebounce";
+import { toast } from "@/lib/globalToast";
 
 export interface SpecialPriceItem {
   id: string;
@@ -207,11 +208,11 @@ export default function SpecialPricingSection({
     const price = parseFloat(spNewPrice);
 
     if (!company && !customer && !vehicle) {
-      alert("请至少选择单位、客户或车辆中的一个");
+      toast("请至少选择单位、客户或车辆中的一个", "warning");
       return;
     }
     if (!price || price <= 0) {
-      alert("请输入有效的价格");
+      toast("请输入有效的价格", "warning");
       return;
     }
     const duplicate = specialPrices.some(
@@ -221,7 +222,7 @@ export default function SpecialPricingSection({
         p.vehicle_id === (vehicle?.id || undefined)
     );
     if (duplicate) {
-      alert("该组合已存在");
+      toast("该组合已存在", "error");
       return;
     }
 
@@ -258,16 +259,16 @@ export default function SpecialPricingSection({
 
   function addVehicleModelPrice() {
     if (!vmPriceSelected) {
-      alert("请选择车型");
+      toast("请选择车型", "warning");
       return;
     }
     const salesVal = parseFloat(vmNewSalesPrice);
     if (!vmNewSalesPrice || isNaN(salesVal) || salesVal <= 0) {
-      alert("销售价为必填项，请输入有效的价格");
+      toast("销售价为必填项，请输入有效的价格", "warning");
       return;
     }
     if (vehicleModelPrices.some((p) => p.vehicle_model_id === vmPriceSelected.id)) {
-      alert("该车型已存在");
+      toast("该车型已存在", "error");
       return;
     }
     onVehicleModelPricesChange([

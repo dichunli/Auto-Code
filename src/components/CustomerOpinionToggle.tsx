@@ -2,6 +2,7 @@
 
 import { 保存工单项目字段 } from "@/app/work-orders/actions";
 import { useState, useCallback } from "react";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   itemId: string;
@@ -25,7 +26,7 @@ export function CustomerOpinionToggle({ itemId, opinion, disabled = false }: Pro
     });
     setUpdating(false);
     if (!result.success) {
-      alert("更新失败: " + (result.error || "未知错误"));
+      toast("更新失败: " + (result.error || "未知错误"), "error");
       return;
     }
     // 写库成功后才更新本地显示，保证数据正确性

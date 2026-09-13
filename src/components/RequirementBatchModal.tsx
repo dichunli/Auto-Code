@@ -6,6 +6,7 @@ import { ImageUploader } from "@/components/ImageUploader";
 import { VideoUploader } from "@/components/VideoUploader";
 import { useConfirm } from "./ConfirmDialog";
 import { 保存需求, 指派需求, 领取需求, 取消需求指派, 删除需求 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface MediaItem {
   id?: string;
@@ -141,7 +142,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
   async function handleSubmit() {
     if (saving) return; // 防止重复提交：正在保存时再次点击直接忽略
     if (!description.trim() && images.length === 0 && videos.length === 0) {
-      alert("请至少填写客户需求描述或上传媒体文件");
+      toast("请至少填写客户需求描述或上传媒体文件", "warning");
       return;
     }
 
@@ -162,7 +163,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
         const isOwnerOrAdmin = isAdmin || userId === requirement?.submitted_by;
         if (!isOwnerOrAdmin) {
           if (description.trim() !== (requirement.description || "").trim()) {
-            alert("您没有权限修改客户需求描述");
+            toast("您没有权限修改客户需求描述", "warning");
             setSaving(false);
             return;
           }
@@ -173,7 +174,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
             (path) => !initialMedia.some((m) => m.media_type === "video" && m.storage_path === path)
           );
           if (deletedMediaIds.length > 0 || hasNewImage || hasNewVideo) {
-            alert("您没有权限修改需求图片/视频");
+            toast("您没有权限修改需求图片/视频", "warning");
             setSaving(false);
             return;
           }
@@ -306,7 +307,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
         msg = String(err);
       }
       console.error("保存需求弹窗异常:", err);
-      alert("保存失败: " + msg);
+      toast("保存失败: " + msg, "error");
     } finally {
       setSaving(false);
     }
@@ -453,7 +454,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                       /* 写库走 Server Action，指派人取服务端登录用户 */
                       const result = await 指派需求({ requirementId: requirement.id, assigneeId: val });
                       if (!result.success) {
-                        alert("指派失败: " + (result.error || "未知错误"));
+                        toast("指派失败: " + (result.error || "未知错误"), "error");
                         e.target.value = "";
                       } else {
                         设置当前指派({ id: val, type: "assigned", name });
@@ -474,13 +475,13 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                     type="button"
                     onClick={async () => {
                       if (!currentUserId) {
-                        alert("未登录，无法领单");
+                        toast("未登录，无法领单", "error");
                         return;
                       }
                       /* 写库走 Server Action，领单人取服务端登录用户 */
                       const result = await 领取需求(requirement.id);
                       if (!result.success) {
-                        alert("领单失败: " + (result.error || "未知错误"));
+                        toast("领单失败: " + (result.error || "未知错误"), "error");
                       } else {
                         const 我的姓名 = profiles.find((p) => p.id === currentUserId)?.full_name || "";
                         设置当前指派({ id: currentUserId, type: "claimed", name: 我的姓名 });
@@ -509,7 +510,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                       if (!(await 请求确认("确定取消指派吗？"))) return;
                       const result = await 取消需求指派(requirement.id);
                       if (!result.success) {
-                        alert("取消失败: " + (result.error || "未知错误"));
+                        toast("取消失败: " + (result.error || "未知错误"), "error");
                       } else {
                         设置当前指派(null);
                         window.dispatchEvent(
@@ -543,7 +544,7 @@ export default function RequirementBatchModal({ open, onClose, orderId, requirem
                   setSaving(true);
                   const result = await 删除需求(requirement!.id);
                   if (!result.success) {
-                    alert(result.error || "删除失败");
+                    toast(result.error || "删除失败", "error");
                     setSaving(false);
                   } else {
                     /* 删除需求：局部更新，卡片立即消失，不整页刷新。

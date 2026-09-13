@@ -5,6 +5,7 @@ import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 保存培训专题, 删除培训专题 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 interface 专题 {
   id: string;
@@ -62,7 +63,7 @@ export default function TopicsContent({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) {
-      alert("请填写专题名称");
+      toast("请填写专题名称", "warning");
       return;
     }
     setSaving(true);
@@ -70,7 +71,7 @@ export default function TopicsContent({
     /* 写库走 Server Action（查重在服务端） */
     const result = await 保存培训专题({ id: editingId, name: form.name, isActive: form.is_active });
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       setSaving(false);
       return;
     }
@@ -88,7 +89,7 @@ export default function TopicsContent({
     /* 关联清理 + 删除走 Server Action */
     const result = await 删除培训专题(id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     await load();

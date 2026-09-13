@@ -5,6 +5,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "./ConfirmDialog";
 import { 预收款退款 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface AdvancePaymentRecord {
   id: string;
@@ -57,11 +58,11 @@ export default function AdvancePaymentList({
     const val = parseFloat(refundAmount);
     const maxRefund = (record.amount || 0) - (record.refunded_amount || 0);
     if (isNaN(val) || val <= 0) {
-      alert("请输入有效退款金额");
+      toast("请输入有效退款金额", "warning");
       return;
     }
     if (val > maxRefund) {
-      alert(`最多可退 ${formatCurrency(maxRefund)}`);
+      toast(`最多可退 ${formatCurrency(maxRefund)}`, "warning");
       return;
     }
     if (!(await 请求确认(`确认退款 ${formatCurrency(val)}？`))) return;
@@ -78,12 +79,12 @@ export default function AdvancePaymentList({
       });
       setLoading(false);
       if (!result.success) {
-        alert("退款失败：" + (result.error || "未知错误"));
+        toast("退款失败：" + (result.error || "未知错误"), "error");
         return;
       }
     } catch {
       setLoading(false);
-      alert("退款失败：网络异常，请重试");
+      toast("退款失败：网络异常，请重试", "error");
       return;
     }
 

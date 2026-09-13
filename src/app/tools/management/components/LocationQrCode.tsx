@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import { 转义HTML } from "@/lib/escapeHtml";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   location: string;
@@ -21,7 +22,7 @@ export default function LocationQrCode({ location }: Props) {
     const dataUrl = canvas.toDataURL("image/png");
     const 打印窗口 = window.open("", "_blank", "width=700,height=500");
     if (!打印窗口) {
-      alert("请允许浏览器打开弹窗，否则无法打印");
+      toast("请允许浏览器打开弹窗，否则无法打印", "error");
       return;
     }
 

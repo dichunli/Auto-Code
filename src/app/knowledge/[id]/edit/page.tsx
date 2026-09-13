@@ -10,6 +10,7 @@ import VehicleModelSelector, { LinkedItem } from "@/components/VehicleModelSelec
 import { 处理外部图片 } from "@/lib/processExternalImages";
 import { syncKnowledgeModelsFromVin, 更新知识文章 } from "../../actions";
 import { 生成知识库搜索文本 } from "@/lib/knowledgeSearch";
+import { toast } from "@/lib/globalToast";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
@@ -101,7 +102,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       setRoles((rolesData || []) as 岗位[]);
 
       if (!article) {
-        alert("文章不存在");
+        toast("文章不存在", "error");
         router.push("/knowledge");
         return;
       }
@@ -134,7 +135,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       setCheckingPermission(false);
 
       if (!hasEditPermission) {
-        alert("您没有权限编辑这篇文章");
+        toast("您没有权限编辑这篇文章", "warning");
         router.push(`/knowledge/${id}`);
         return;
       }
@@ -225,7 +226,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
   async function handleSyncVin() {
     const vin = syncVin.trim().toUpperCase();
     if (vin.length !== 17) {
-      alert("VIN码必须为17位");
+      toast("VIN码必须为17位", "warning");
       return;
     }
     setSyncLoading(true);
@@ -260,12 +261,12 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
         });
         setSyncOpen(false);
         setSyncVin("");
-        alert(`已同步${res.matchedModels.length}个车型`);
+        toast(`已同步${res.matchedModels.length}个车型`, "warning");
       } else {
-        alert(res.error || "未找到匹配车型");
+        toast(res.error || "未找到匹配车型", "error");
       }
     } catch (err: unknown) {
-      alert("同步出错：" + (err instanceof Error ? err.message : String(err)));
+      toast("同步出错：" + (err instanceof Error ? err.message : String(err)), "warning");
     } finally {
       setSyncLoading(false);
     }
@@ -281,12 +282,12 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       const 维修指导分类ID = categories.find((c) => c.name === "维修指导")?.id;
       const is维修指导 = form.type === "guide" || form.category_id === 维修指导分类ID;
       if (is维修指导 && linkedNames.length === 0) {
-        alert("维修指导文章必须至少关联一个维修项目");
+        toast("维修指导文章必须至少关联一个维修项目", "warning");
         setLoading(false);
         return;
       }
       if (is维修指导 && linkedVehicles.length === 0 && !是移动端()) {
-        alert("维修指导文章必须至少关联一个适用车型");
+        toast("维修指导文章必须至少关联一个适用车型", "warning");
         setLoading(false);
         return;
       }
@@ -327,7 +328,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       if (!result.success) throw new Error(result.error || "保存失败");
 
       if (result.roleWarning) {
-        alert("文章已保存，但岗位权限更新失败：" + result.roleWarning);
+        toast("文章已保存，但岗位权限更新失败：" + result.roleWarning, "error");
       }
       /* 保存成功后软跳转到详情页 */
       router.push(`/knowledge/${articleId}`);
@@ -344,7 +345,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       } else {
         message = String(err);
       }
-      alert("保存失败: " + message);
+      toast("保存失败: " + message, "error");
       setLoading(false);
     }
   }

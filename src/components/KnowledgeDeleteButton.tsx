@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
 import { 删除知识文章 } from "@/app/knowledge/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   articleId: string;
@@ -64,7 +65,7 @@ export function KnowledgeDeleteButton({ articleId, canDelete: serverCanDelete }:
       router.refresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      alert("删除失败: " + message);
+      toast("删除失败: " + message, "error");
       setDeleting(false);
     }
   }

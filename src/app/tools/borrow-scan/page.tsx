@@ -8,6 +8,8 @@ import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import BarcodeScanModal from "@/components/BarcodeScanModal";
 import { ImageUploader } from "@/components/ImageUploader";
 import { 借用工具, 归还工具 } from "@/app/tools/actions";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 interface 工具 {
   id: string;
@@ -141,7 +143,7 @@ export default function ToolBorrowScanPage() {
     if (!工具) return;
     const operatorId = 是App ? 当前用户ID : 选中员工;
     if (!operatorId) {
-      alert("请选择借用人");
+      toast("请选择借用人", "warning");
       return;
     }
     set提交中(true);
@@ -154,7 +156,7 @@ export default function ToolBorrowScanPage() {
       setTimeout(() => router.push("/tools/management"), 1200);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("借用失败: " + msg);
+      toast("借用失败: " + msg, "error");
     } finally {
       set提交中(false);
     }
@@ -177,22 +179,22 @@ export default function ToolBorrowScanPage() {
     }, 1000);
   }
 
-  function 处理仓位扫码(code: string) {
+  async function 处理仓位扫码(code: string) {
     /* 仓位扫码发生在工具识别成功之后，此处 工具 必存在 */
     if (!工具) return;
     const trimmed = code.trim();
     if (!trimmed.startsWith("location:")) {
-      alert("未识别为仓位二维码，请扫描存放位置标签");
+      toast("未识别为仓位二维码，请扫描存放位置标签", "warning");
       return;
     }
     const loc = trimmed.slice(9);
     if (!loc) {
-      alert("仓位二维码内容无效");
+      toast("仓位二维码内容无效", "error");
       return;
     }
     /* 校验扫描的仓位与工具的存放位置是否一致 */
     if (工具.location && loc !== 工具.location) {
-      alert(`仓位不匹配！\n扫描位置：${loc}\n工具存放位置：${工具.location}\n请扫描正确的仓位码`);
+      await 全局提示(`仓位不匹配！\n扫描位置：${loc}\n工具存放位置：${工具.location}\n请扫描正确的仓位码`);
       return;
     }
     if (仓位计时器.current) clearInterval(仓位计时器.current);
@@ -205,17 +207,17 @@ export default function ToolBorrowScanPage() {
     if (!工具 || !未归还记录) return;
     const operatorId = 是App ? 当前用户ID : 选中员工;
     if (!operatorId) {
-      alert("请选择归还人");
+      toast("请选择归还人", "warning");
       return;
     }
     /* 需要仓位扫码 */
     if (工具.require_location_scan && !已扫仓位) {
-      alert("请先扫描存放位置二维码（10秒内完成）");
+      toast("请先扫描存放位置二维码（10秒内完成）", "warning");
       return;
     }
     /* 需要拍照 */
     if (工具.require_return_photos && 归还照片.length === 0) {
-      alert("请先拍摄归还验收照片");
+      toast("请先拍摄归还验收照片", "warning");
       return;
     }
     set提交中(true);
@@ -237,7 +239,7 @@ export default function ToolBorrowScanPage() {
       setTimeout(() => router.push("/tools/management"), 1200);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("归还失败: " + msg);
+      toast("归还失败: " + msg, "error");
     } finally {
       set提交中(false);
     }

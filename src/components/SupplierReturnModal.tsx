@@ -4,6 +4,7 @@ import { useState } from "react";
 import { 创建供应商退货记录 } from "@/app/supplier-returns/actions";
 import { ImageUploader } from "./ImageUploader";
 import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
+import { toast } from "@/lib/globalToast";
 
 const RETURN_REASONS = [
   { key: "wrong_ship", label: "错发" },
@@ -46,11 +47,11 @@ export function SupplierReturnModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (quantity <= 0 || quantity > maxQty) {
-      alert(`退货数量必须在 1-${maxQty} 之间`);
+      toast(`退货数量必须在 1-${maxQty} 之间`, "warning");
       return;
     }
     if (photos.length === 0) {
-      alert("请至少上传一张退货商品照片");
+      toast("请至少上传一张退货商品照片", "warning");
       return;
     }
     setLoading(true);
@@ -71,7 +72,7 @@ export function SupplierReturnModal({
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      alert("退货失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("退货失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
     } finally {
       setLoading(false);
     }

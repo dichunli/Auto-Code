@@ -14,6 +14,7 @@ import { useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
 import { QRCodeCanvas } from "qrcode.react";
 import { 转义HTML } from "@/lib/escapeHtml";
+import { toast } from "@/lib/globalToast";
 
 export interface 条码打印行 {
   name: string;
@@ -60,13 +61,13 @@ export function InboundBarcodePrint({ items, className }: Props) {
       }
     });
     if (待打.length === 0) {
-      alert("没有需要打印的条码（张数都为 0）");
+      toast("没有需要打印的条码（张数都为 0）", "warning");
       return;
     }
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("请允许弹出窗口以打印条形码");
+      toast("请允许弹出窗口以打印条形码", "warning");
       return;
     }
 

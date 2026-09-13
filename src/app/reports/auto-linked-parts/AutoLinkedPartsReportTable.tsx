@@ -4,6 +4,7 @@ import {useState} from "react";
 import Link from "next/link";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 删除自动关联, 更新自动关联备注 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface AutoLinkedRow {
   id: string;
@@ -73,7 +74,7 @@ export default function AutoLinkedPartsReportTable({ rows: initialRows }: { rows
     const result = await 更新自动关联备注(id, notes);
     setSavingId(null);
     if (!result.success) {
-      alert("保存失败：" + (result.error || "未知错误"));
+      toast("保存失败：" + (result.error || "未知错误"), "error");
       return;
     }
     setRows((current) => current.map((row) => (row.id === id ? { ...row, notes } : row)));
@@ -87,7 +88,7 @@ export default function AutoLinkedPartsReportTable({ rows: initialRows }: { rows
     const result = await 删除自动关联(id);
     setDeletingId(null);
     if (!result.success) {
-      alert("删除失败：" + (result.error || "未知错误"));
+      toast("删除失败：" + (result.error || "未知错误"), "error");
       return;
     }
     setRows((current) => current.filter((row) => row.id !== id));

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 新建维修项目名称 } from "../actions";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { toast } from "@/lib/globalToast";
 
 interface LinkedItem {
   id: string;
@@ -197,7 +198,7 @@ export default function NewServiceNamePage() {
 
   function addPart(p: { id: string; name: string; default_quantity?: number | null }) {
     if (linkedParts.some((x) => x.id === p.id)) {
-      alert("该配件已关联");
+      toast("该配件已关联", "warning");
       return;
     }
     setLinkedParts((prev) => [...prev, { id: p.id, name: p.name, quantity: p.default_quantity ?? null }]);
@@ -230,7 +231,7 @@ export default function NewServiceNamePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim() || !form.category_id) {
-      alert("请填写项目名称和所属分类");
+      toast("请填写项目名称和所属分类", "warning");
       return;
     }
     setLoading(true);
@@ -241,7 +242,7 @@ export default function NewServiceNamePage() {
       .ilike("name", form.name.trim())
       .maybeSingle();
     if (dup) {
-      alert("该项目名称已存在，请更换");
+      toast("该项目名称已存在，请更换", "error");
       setLoading(false);
       return;
     }
@@ -253,7 +254,7 @@ export default function NewServiceNamePage() {
     });
 
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       setLoading(false);
       return;
     }
