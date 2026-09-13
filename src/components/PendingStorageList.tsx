@@ -1530,10 +1530,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
         </div>
       ))}
 
-      {/* 入库单确认弹窗（2026-09-09 加大美化：更宽窗口+更大输入框） */}
+      {/* 入库单确认弹窗（2026-09-09 加大美化：更宽窗口+更大输入框；
+          2026-09-14 再加宽到 1500px，表格 nowrap 防逐字竖排） */}
       {inboundModalOpen && (inboundModalOrder || batchModal) && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-7xl my-6 relative">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-[1500px] my-6 relative">
             <div className="px-8 py-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl z-10">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">确认入库</h3>
@@ -1628,7 +1629,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-sm border border-gray-100 rounded-lg">
+                {/* whitespace-nowrap：列多时文字不逐字竖排（序号/商品名称/图片曾被挤成一列一字），
+                    超出时表格容器横向滚动兜底 */}
+                <table className="w-full text-sm border border-gray-100 rounded-lg whitespace-nowrap">
                   <thead className="bg-gray-50">
                     <tr>
                       {/* 排序手柄列（2026-09-13 拖动排序）：按住 ⠿ 拖动调整行顺序 */}
@@ -1651,7 +1654,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                         />
                       </th>
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-10">序号</th>
-                      <th className="px-3 py-2.5 text-left font-medium text-gray-500">商品名称</th>
+                      <th className="px-3 py-2.5 text-left font-medium text-gray-500 min-w-[100px]">商品名称</th>
                       <th className="px-3 py-2.5 text-left font-medium text-gray-500 w-28">编码</th>
                       <th className="px-3 py-2.5 text-right font-medium text-gray-500 w-20">数量</th>
                       <th className="px-3 py-2.5 text-right font-medium text-gray-500 w-24">入库价</th>
