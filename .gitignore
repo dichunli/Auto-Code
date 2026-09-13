@@ -101,6 +101,14 @@ scripts/*
 !scripts/weekly-stock-check.js
 !scripts/backup-export.js
 !scripts/error-watch.js
+# RLS 巡检同属长期设施（防"建了策略忘开开关"漏开）
+!scripts/check-rls-status.js
+# 迁移对账同属长期设施（部署前自查"文件写了没执行"）
+!scripts/check-migrations.js
+# 重复数据查重同属长期设施（建唯一索引前的必备步骤）
+!scripts/find-duplicates.js
+# 查重报告含真实姓名/手机号，禁止提交
+查重报告.md
 
 certificates
 # 构建产物副本

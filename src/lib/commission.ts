@@ -115,14 +115,18 @@ export function calculatePartCommission(
 export function calculateDispatchClaimCommission(
   commissionType: string | null | undefined,
   commissionValue: number | null | undefined,
-  revenue: number
+  revenue: number,
+  cost: number = 0
 ): number {
   if (!commissionType || commissionValue == null) return 0;
   switch (commissionType) {
     case "revenue_pct":
       return Math.round(revenue * (commissionValue / 100) * 100) / 100;
     case "profit_pct":
-      return Math.round(revenue * (commissionValue / 100) * 100) / 100;
+      /* 2026-09-12 修复：原来直接拿营收算，与 calculateCommission 口径不一致，
+         利润提成必须用「营收 − 成本」 */
+      const profit = Math.max(0, revenue - cost);
+      return Math.round(profit * (commissionValue / 100) * 100) / 100;
     case "fixed":
       return commissionValue;
     default:
@@ -134,11 +138,12 @@ export function calculateDispatchClaimCommission(
 export function getDispatchClaimCommission(
   obj: CommissionSource | null | undefined,
   prefix: string,
-  revenue: number
+  revenue: number,
+  cost: number = 0
 ): number {
   const data = extractCommission(obj, prefix);
   if (data) {
-    return calculateDispatchClaimCommission(data.type, data.value, revenue);
+    return calculateDispatchClaimCommission(data.type, data.value, revenue, cost);
   }
   return 0;
 }

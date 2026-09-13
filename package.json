@@ -16,7 +16,9 @@
     "test:patrol": "node scripts/patrol-pages.mjs",
     "test:flows": "node scripts/flow-tests.mjs",
     "test:realtime": "node scripts/realtime-test.mjs",
-    "test:perm": "node scripts/permission-test.mjs"
+    "test:perm": "node scripts/permission-test.mjs",
+    "db:check": "node scripts/check-migrations.js",
+    "db:rls": "node scripts/check-rls-status.js"
   },
   "dependencies": {
     "@blocknote/core": "^0.51.2",
