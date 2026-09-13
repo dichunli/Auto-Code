@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 import { 新建独立运单 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 function generateTrackingNo(): string {
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -42,7 +43,7 @@ export default function NewWaybillPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!trackingNo.trim()) {
-      alert("请填写物流单号");
+      toast("请填写物流单号", "warning");
       return;
     }
 
@@ -64,7 +65,7 @@ export default function NewWaybillPage() {
       });
 
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         setLoading(false);
         return;
       }
@@ -72,7 +73,7 @@ export default function NewWaybillPage() {
       router.refresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "未知错误";
-      alert("保存失败: " + message);
+      toast("保存失败: " + message, "error");
       setLoading(false);
     }
   }

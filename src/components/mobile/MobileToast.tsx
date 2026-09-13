@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, createContext, useContext } from "react";
+import { useState, useCallback, useEffect, createContext, useContext } from "react";
+import { 注册全局Toast } from "@/lib/globalToast";
 
 interface ToastItem {
   id: string;
@@ -30,6 +31,9 @@ export function MobileToastProvider({ children }: { children: React.ReactNode })
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3000);
   }, []);
+
+  /* 注册到全局桥：让不经过 Hook 的 toast() 也走这条渲染通道（alert 治理） */
+  useEffect(() => 注册全局Toast(showToast), [showToast]);
 
   return (
     <ToastContext.Provider value={{ showToast }}>

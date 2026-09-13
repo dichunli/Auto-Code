@@ -7,6 +7,7 @@ import { 变更车主 } from "@/app/vehicles/actions";
 import { 为客户新建车辆 } from "@/app/customers/actions";
 import Link from "next/link";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
+import { toast } from "@/lib/globalToast";
 
 interface Vehicle {
   id: string;
@@ -90,12 +91,12 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
     try {
       const result = await 变更车主({ vehicleId, customerId });
       if (!result.success) {
-        alert("关联车辆失败: " + (result.error || "未知错误"));
+        toast("关联车辆失败: " + (result.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
     } catch {
-      alert("关联车辆失败: 网络异常，请重试");
+      toast("关联车辆失败: 网络异常，请重试", "error");
       setSaving(false);
       return;
     }
@@ -109,12 +110,12 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
     try {
       const result = await 变更车主({ vehicleId, customerId });
       if (!result.success) {
-        alert("变更车主失败: " + (result.error || "未知错误"));
+        toast("变更车主失败: " + (result.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
     } catch {
-      alert("变更车主失败: 网络异常，请重试");
+      toast("变更车主失败: 网络异常，请重试", "error");
       setSaving(false);
       return;
     }
@@ -126,7 +127,7 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
 
   async function handleCreateVehicle() {
     if (!newVehicle.plate_number.trim()) {
-      alert("请填写车牌号");
+      toast("请填写车牌号", "warning");
       return;
     }
     setSaving(true);
@@ -142,12 +143,12 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
         mileage: newVehicle.mileage,
       });
       if (!result.success) {
-        alert("创建车辆失败: " + (result.error || "未知错误"));
+        toast("创建车辆失败: " + (result.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
     } catch {
-      alert("创建车辆失败: 网络异常，请重试");
+      toast("创建车辆失败: 网络异常，请重试", "error");
       setSaving(false);
       return;
     }

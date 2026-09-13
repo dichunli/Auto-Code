@@ -17,6 +17,8 @@ import { useConfirm } from "./ConfirmDialog";
 import { 添加配件分支, 删除配件分支 } from "@/app/work-orders/parts-actions";
 import { 添加配件图片记录, 分支关联配件并同步采购, 撤销分支价格, 批量保存分支编辑, type 配件分支更新 } from "@/app/work-orders/actions";
 import { 更新列表项, 移除列表项 } from "@/lib/listUpdate";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 const STATUS_TITLES: Record<string, string> = {
   pending_inquiry: "待询价",
@@ -421,7 +423,7 @@ export function PartBranchStatusList({
   async function 上传目录图片(row: PartBranchRow, file: File) {
     if (!row.parts?.id) return;
     if (!file.type.startsWith("image/")) {
-      alert("请选择图片文件");
+      toast("请选择图片文件", "warning");
       return;
     }
     set图片上传中(row.id);
@@ -446,7 +448,7 @@ export function PartBranchStatusList({
         }))
       );
     } catch (err: unknown) {
-      alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("图片上传失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       set图片上传中(null);
     }
@@ -457,7 +459,7 @@ export function PartBranchStatusList({
     if (!row.parts?.id) return;
     const result = await 删除配件图片({ partId: row.parts.id, storagePath });
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     /* 局部更新：从该行的 part_images 里去掉这张，不整表重查 */
@@ -474,7 +476,7 @@ export function PartBranchStatusList({
   /* 上传工单配件图片（未关联库存配件的分支：图片挂到工单配件上） */
   async function 上传分支图片(row: PartBranchRow, file: File) {
     if (!file.type.startsWith("image/")) {
-      alert("请选择图片文件");
+      toast("请选择图片文件", "warning");
       return;
     }
     set图片上传中(row.id);
@@ -493,7 +495,7 @@ export function PartBranchStatusList({
         [row.id]: [...(prev[row.id] ?? []), ...(结果.图片 ?? [])],
       }));
     } catch (err: unknown) {
-      alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("图片上传失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       set图片上传中(null);
     }
@@ -609,7 +611,7 @@ export function PartBranchStatusList({
       await 重查单行(savedId);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("同步配件信息失败: " + msg);
+      toast("同步配件信息失败: " + msg, "error");
     } finally {
       setSavingId(null);
     }
@@ -766,7 +768,7 @@ export function PartBranchStatusList({
 
     setSubmitting(false);
     if (!result.success) {
-      alert("撤销失败: " + (result.error || "未知错误"));
+      toast("撤销失败: " + (result.error || "未知错误"), "error");
       return;
     }
     /* 局部更新：撤销（清进价/清销售价）后这些行必然离开当前阶段，
@@ -818,7 +820,7 @@ export function PartBranchStatusList({
         const 有采购价 = newCost > 0;
         const 有供应商 = !!(newSupplier && newSupplier.trim() !== "");
         if (有采购价 !== 有供应商) {
-          alert(
+          await 全局提示(
             `「${row.name || "未命名配件"}」${有采购价 ? "已填采购价，但还没选供应商" : "已选供应商，但还没填采购价"}。\n供应商和采购价必须同时填写。`
           );
           return;
@@ -832,11 +834,11 @@ export function PartBranchStatusList({
 
       if (willAdvance) {
         if (newCost <= 0) {
-          alert(`「${row.name || "未命名配件"}」推进到下阶段必须填写采购价`);
+          toast(`「${row.name || "未命名配件"}」推进到下阶段必须填写采购价`, "warning");
           return;
         }
         if (!newSupplier || newSupplier.trim() === "") {
-          alert(`「${row.name || "未命名配件"}」推进到下阶段必须填写供应商`);
+          toast(`「${row.name || "未命名配件"}」推进到下阶段必须填写供应商`, "warning");
           return;
         }
       }
@@ -873,7 +875,7 @@ export function PartBranchStatusList({
     setSubmitting(false);
 
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       return;
     }
 
@@ -957,7 +959,7 @@ export function PartBranchStatusList({
     // 维持"每目录仅一个选中"
     const 结果 = await 添加配件分支(row.id);
     setSavingId(null);
-    if (!结果.success) { alert("添加失败: " + (结果.error || "未知错误")); return; }
+    if (!结果.success) { toast("添加失败: " + (结果.error || "未知错误"), "error"); return; }
     lastSelfUpdate.current = Date.now();
     /* 局部更新：RPC 返回新分支 id，只补查这一行追加到列表末尾
        （created_at 升序，新行天然在最后），不整表重查 */
@@ -977,7 +979,7 @@ export function PartBranchStatusList({
   /* 删除分支 */
   async function handleDeleteBranch(row: PartBranchRow) {
     if (row.is_purchased || row.is_arrived) {
-      alert("已采购或已到货的配件不能删除");
+      toast("已采购或已到货的配件不能删除", "error");
       return;
     }
     if (!(await 请求确认("确定删除该配件分支吗？"))) return;
@@ -985,7 +987,7 @@ export function PartBranchStatusList({
     // 写库收编为 Server Action（RPC delete_part_branch）：上面的守卫在函数里有同款双保险
     const 结果 = await 删除配件分支(row.id);
     setSavingId(null);
-    if (!结果.success) { alert("删除失败: " + (结果.error || "未知错误")); return; }
+    if (!结果.success) { toast("删除失败: " + (结果.error || "未知错误"), "error"); return; }
     lastSelfUpdate.current = Date.now();
     /* 局部更新：从列表移除该行并清掉它的草稿/勾选，不整表重查 */
     setRows((prev) => prev.filter((r) => r.id !== row.id));

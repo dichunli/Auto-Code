@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { OutsourceModal } from "./OutsourceModal";
 import { 切换项目标记 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface ExistingOrder {
   id: string;
@@ -86,7 +87,7 @@ export function ItemFlagsToggle({
     const result = await 切换项目标记({ itemId, updates: updateData });
     setUpdating(false);
     if (!result.success) {
-      alert("更新失败: " + (result.error || "未知错误"));
+      toast("更新失败: " + (result.error || "未知错误"), "error");
       return;
     }
     router.refresh();

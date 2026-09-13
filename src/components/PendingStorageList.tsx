@@ -16,6 +16,8 @@ import { useToast } from "@/components/Toast";
 import { ImageUploader } from "@/components/ImageUploader";
 import { DocumentNameInput } from "./DocumentNameInput";
 import { InboundBarcodePrint, type 条码打印行 } from "@/components/InboundBarcodePrint";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 interface PurchaseOrderItem {
   id: string;
@@ -453,7 +455,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
     try {
       const res = await 变更批次运单(批次id, 选中运单id || null);
       if (!res.success) {
-        alert(res.error || "变更运单失败");
+        toast(res.error || "变更运单失败", "error");
         return;
       }
       set变更运单卡(null);
@@ -464,7 +466,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
         prev.map((b) => (b.id === 批次id ? { ...b, waybill_id: 选中运单id || null, waybills } : b))
       );
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "变更运单失败，请重试");
+      toast(err instanceof Error ? err.message : "变更运单失败，请重试", "error");
     } finally {
       setSubmitting(null);
     }
@@ -480,7 +482,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
     /* 编码必填（2026-09-07 拍板）：缺编码的行前端先拦，RPC 还有第二道 */
     const 缺编码行 = inboundItems.filter((f) => !f.isExcess && (!f.item.part_id || !f.item.part_number));
     if (缺编码行.length > 0) {
-      alert(
+      await 全局提示(
         `以下 ${缺编码行.length} 行缺少零件编码，不能提交入库：\n` +
         缺编码行.map((f, i) => `${i + 1}. ${f.item.name}`).join("\n") +
         `\n\n请返回待入库卡片，用编码搜索框补全后再提交。`
@@ -490,24 +492,24 @@ export function PendingStorageList(props: PendingStorageListProps) {
 
     /* 总金额必填（2026-09-09）：未填直接拦截（按钮禁用为主，这里兜底） */
     if (slipAmount.trim() === "") {
-      alert("供应商销售单总金额必填，请填写后再提交");
+      toast("供应商销售单总金额必填，请填写后再提交", "warning");
       return;
     }
     const 销售单金额 = slipAmount.trim() === "" ? null : parseFloat(slipAmount);
     const 抹零 = discountAmount.trim() === "" ? 0 : parseFloat(discountAmount);
     if (销售单金额 !== null && (isNaN(销售单金额) || 销售单金额 < 0)) {
-      alert("销售单总金额无效");
+      toast("销售单总金额无效", "error");
       return;
     }
     if (discountAmount.trim() !== "" && (isNaN(抹零) || 抹零 < 0)) {
-      alert("优惠抹零必须是非负数字");
+      toast("优惠抹零必须是非负数字", "warning");
       return;
     }
     const 货款合计 = inboundItems
       .filter((f) => !f.isExcess)
       .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0), 0);
     if (销售单金额 !== null && Math.abs(货款合计 - 抹零 - 销售单金额) > 0.01) {
-      alert(
+      await 全局提示(
         `入库货款合计 ¥${货款合计.toFixed(2)} − 抹零 ¥${抹零.toFixed(2)} ≠ 销售单总金额 ¥${销售单金额.toFixed(2)}，` +
         `差 ¥${(货款合计 - 抹零 - 销售单金额).toFixed(2)}。\n请逐行核对入库单价，或在「优惠抹零」填入差额。`
       );
@@ -535,7 +537,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
       set批次列表((prev) => prev.filter((b) => b.id !== 批次id));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("入库失败: " + msg);
+      toast("入库失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }
@@ -661,12 +663,12 @@ export function PendingStorageList(props: PendingStorageListProps) {
   /* 批量设置仓库（2026-09-09 选择型）：只应用到勾选的非退货行 */
   function 应用批量仓库() {
     if (!批量仓库id) {
-      alert("请先选择仓库");
+      toast("请先选择仓库", "warning");
       return;
     }
     const 目标行数 = inboundItems.filter((f) => !f.isExcess && f.checked).length;
     if (目标行数 === 0) {
-      alert("请先勾选要设置的行");
+      toast("请先勾选要设置的行", "warning");
       return;
     }
     setInboundItems((prev) =>
@@ -739,7 +741,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
     /* 编码必填（2026-09-07 拍板·全部入库入口强制）：缺编码的行前端先拦，RPC 还有第二道 */
     const 缺编码行 = inboundItems.filter((f) => !f.isExcess && (!f.item.part_id || !f.item.part_number));
     if (缺编码行.length > 0) {
-      alert(
+      await 全局提示(
         `以下 ${缺编码行.length} 行缺少零件编码，不能提交入库：\n` +
         缺编码行.map((f, i) => `${i + 1}. ${f.item.name}`).join("\n") +
         `\n\n请返回列表，用编码搜索框补全后再提交。`
@@ -750,24 +752,24 @@ export function PendingStorageList(props: PendingStorageListProps) {
     /* 销售单口径（2026-08-21）：填了总金额时前端先自检，不平给出明确提示（服务端还会再拦一次） */
     /* 总金额必填（2026-09-09）：未填直接拦截（按钮禁用为主，这里兜底） */
     if (slipAmount.trim() === "") {
-      alert("供应商销售单总金额必填，请填写后再提交");
+      toast("供应商销售单总金额必填，请填写后再提交", "warning");
       return;
     }
     const 销售单金额 = slipAmount.trim() === "" ? null : parseFloat(slipAmount);
     const 抹零 = discountAmount.trim() === "" ? 0 : parseFloat(discountAmount);
     if (销售单金额 !== null && (isNaN(销售单金额) || 销售单金额 < 0)) {
-      alert("销售单总金额无效");
+      toast("销售单总金额无效", "error");
       return;
     }
     if (discountAmount.trim() !== "" && (isNaN(抹零) || 抹零 < 0)) {
-      alert("优惠抹零必须是非负数字");
+      toast("优惠抹零必须是非负数字", "warning");
       return;
     }
     const 货款合计 = inboundItems
       .filter((f) => !f.isExcess)
       .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0), 0);
     if (销售单金额 !== null && Math.abs(货款合计 - 抹零 - 销售单金额) > 0.01) {
-      alert(
+      await 全局提示(
         `入库货款合计 ¥${货款合计.toFixed(2)} − 抹零 ¥${抹零.toFixed(2)} ≠ 销售单总金额 ¥${销售单金额.toFixed(2)}，` +
         `差 ¥${(货款合计 - 抹零 - 销售单金额).toFixed(2)}。\n请逐行核对入库单价，或在「优惠抹零」填入差额。`
       );
@@ -800,7 +802,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
         销售单金额
       );
       if (!res.success) {
-        alert("入库失败: " + (res.error || "未知错误"));
+        toast("入库失败: " + (res.error || "未知错误"), "error");
         return;
       }
       showToast(`入库完成，入库单号 ${res.inbound_no}（可到「入库单」打印）`);
@@ -809,7 +811,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
       setOrders((prev) => prev.filter((o) => o.id !== orderId));
     } catch (err: unknown) {
       const e = err as Error;
-      alert("操作失败: " + (e.message || String(err)));
+      toast("操作失败: " + (e.message || String(err)), "error");
     } finally {
       setSubmitting(null);
     }
@@ -822,14 +824,14 @@ export function PendingStorageList(props: PendingStorageListProps) {
       /* 回退的多表写入已收编进数据库事务函数 revoke_pending_storage */
       const res = await 退回待收货(order.id);
       if (!res.success) {
-        alert("退回失败: " + (res.error || "未知错误"));
+        toast("退回失败: " + (res.error || "未知错误"), "error");
         return;
       }
       /* 局部更新：整单退回后 status 离开 pending_storage，直接从待入库列表移除 */
       setOrders((prev) => prev.filter((o) => o.id !== order.id));
     } catch (err: unknown) {
       const e = err as Error;
-      alert("退回失败: " + (e.message || String(err)));
+      toast("退回失败: " + (e.message || String(err)), "error");
     } finally {
       setSubmitting(null);
     }

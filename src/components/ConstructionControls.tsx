@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "@/lib/globalToast";
 
 interface Log {
   id: string;
@@ -206,7 +207,7 @@ export function ConstructionControls({
       await fetchLogs();
       onStatusChange?.();
     } catch (err: unknown) {
-      alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setLoading(false);
     }

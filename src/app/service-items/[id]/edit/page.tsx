@@ -12,6 +12,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import VehiclePriceEditModal from "@/components/VehiclePriceEditModal";
 import VehicleDeleteModal from "@/components/VehicleDeleteModal";
 import VehiclePriceViewModal from "@/components/VehiclePriceViewModal";
+import { toast } from "@/lib/globalToast";
 
 function CommissionField({
   label,
@@ -211,13 +212,13 @@ export default function EditServiceItemPage() {
         })),
       });
       if (!result.success) {
-        alert("保存车型定价失败: " + (result.error || "未知错误"));
+        toast("保存车型定价失败: " + (result.error || "未知错误"), "error");
         setSavingPrices(false);
         return;
       }
-      alert("车型定价已保存");
+      toast("车型定价已保存", "success");
     } catch (err: unknown) {
-      alert("保存车型定价异常: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存车型定价异常: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSavingPrices(false);
     }
@@ -291,12 +292,12 @@ export default function EditServiceItemPage() {
 
   function addSpecialPrice() {
     const priceVal = parseFloat(spNewPrice);
-    if (!priceVal || priceVal <= 0) { alert("请输入有效的价格"); return; }
+    if (!priceVal || priceVal <= 0) { toast("请输入有效的价格", "warning"); return; }
     const hasCompany = !!spSelectedCompany;
     const hasCustomer = !!spSelectedCustomer;
     const hasVehicle = !!spSelectedVehicle;
-    if (!hasCompany && !hasCustomer && !hasVehicle) { alert("请至少指定单位、客户或车辆中的一项"); return; }
-    if (hasVehicle && !hasCustomer) { alert("指定车辆时必须先指定客户"); return; }
+    if (!hasCompany && !hasCustomer && !hasVehicle) { toast("请至少指定单位、客户或车辆中的一项", "warning"); return; }
+    if (hasVehicle && !hasCustomer) { toast("指定车辆时必须先指定客户", "warning"); return; }
 
     const entry: SpecialPrice = { price: priceVal };
     if (hasCompany) { entry.company_id = spSelectedCompany.id; entry.company_name = spSelectedCompany.name; }
@@ -328,7 +329,7 @@ export default function EditServiceItemPage() {
     async function load() {
       try {
         const { data: item } = await supabase.from("service_items").select("*").eq("id", id).single();
-        if (!item) { alert("维修项目不存在"); router.push("/service-items"); return; }
+        if (!item) { toast("维修项目不存在", "error"); router.push("/service-items"); return; }
         const { data: vehicleData } = await supabase
           .from("service_item_prices")
           .select("id, vehicle_model_id, price, vip_price, customer_parts_price, company_price, group_key, vehicle_models(品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号)")
@@ -438,7 +439,7 @@ export default function EditServiceItemPage() {
         } else {
           setLinkedParts([]);
         }
-      } catch (err: unknown) { console.error("加载失败:", err); alert("加载数据失败: " + (err instanceof Error ? err.message : "未知错误")); }
+      } catch (err: unknown) { console.error("加载失败:", err); toast("加载数据失败: " + (err instanceof Error ? err.message : "未知错误"), "error"); }
       finally { setLoading(false); }
     }
     load();
@@ -483,7 +484,7 @@ export default function EditServiceItemPage() {
   }
 
   function addPart(p: { id: string; name: string; default_quantity?: number | null }) {
-    if (linkedParts.some((x) => x.id === p.id)) { alert("该配件已关联"); return; }
+    if (linkedParts.some((x) => x.id === p.id)) { toast("该配件已关联", "warning"); return; }
     setLinkedParts((prev) => [...prev, { id: p.id, name: p.name, quantity: p.default_quantity ?? null }]);
     setPartQuery("");
     setPartResults(null);
@@ -569,11 +570,11 @@ export default function EditServiceItemPage() {
         } else {
           const { data, error } = await supabase.from("vehicle_models").select("id,品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号").in("id", vehicleIds);
           if (error) {
-            alert("加载车型信息失败: " + error.message);
+            toast("加载车型信息失败: " + error.message, "error");
             return;
           }
           if (!data || data.length === 0) {
-            alert("未找到所选车型信息");
+            toast("未找到所选车型信息", "error");
             return;
           }
           const groupPrice = appendMode && pendingGroupPrices ? pendingGroupPrices : { price: basePrice, vip_price: baseVip, customer_parts_price: baseCp, company_price: baseCo };
@@ -609,11 +610,11 @@ export default function EditServiceItemPage() {
         if (vehicleIds.length === 0) return;
         const { data, error } = await supabase.from("vehicle_models").select("id,品牌,车系,车型,年款,排量,发动机型号,底盘型号,变速箱型号").in("id", vehicleIds);
         if (error) {
-          alert("加载车型信息失败: " + error.message);
+          toast("加载车型信息失败: " + error.message, "error");
           return;
         }
         if (!data || data.length === 0) {
-          alert("未找到所选车型信息");
+          toast("未找到所选车型信息", "error");
           return;
         }
         const newGroupKey = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -640,14 +641,14 @@ export default function EditServiceItemPage() {
       setPendingGroupPrices(null);
     } catch (err: unknown) {
       console.error("handleModalConfirm 异常:", err);
-      alert("添加车型定价时出错: " + (err instanceof Error ? err.message : String(err)));
+      toast("添加车型定价时出错: " + (err instanceof Error ? err.message : String(err)), "warning");
     }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim() || !form.category_id) {
-      alert("请填写项目名称和所属分类");
+      toast("请填写项目名称和所属分类", "warning");
       return;
     }
     setSaving(true);
@@ -674,7 +675,7 @@ export default function EditServiceItemPage() {
     });
 
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       setSaving(false);
       return;
     }

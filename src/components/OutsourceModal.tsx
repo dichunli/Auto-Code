@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 保存外包单, 移除外包明细 } from "@/app/outsource-orders/actions";
 import { useConfirm } from "./ConfirmDialog";
 import { useDebounce } from "@/lib/useDebounce";
+import { toast } from "@/lib/globalToast";
 
 interface Supplier {
   id: string;
@@ -139,20 +140,20 @@ export function OutsourceModal({
   async function handleSubmit() {
     // 校验
     if (!serviceItemId) {
-      alert("当前项目未关联服务项目，无法创建外包单");
+      toast("当前项目未关联服务项目，无法创建外包单", "error");
       return;
     }
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
-      alert("外包金额必须大于 0");
+      toast("外包金额必须大于 0", "warning");
       return;
     }
     if (!selectedSupplier) {
-      alert("请选择外包供应商");
+      toast("请选择外包供应商", "warning");
       return;
     }
     if (isPaid && !paymentMethod) {
-      alert("请选择支付方式");
+      toast("请选择支付方式", "warning");
       return;
     }
 
@@ -195,7 +196,7 @@ export function OutsourceModal({
       onSuccess();
     } catch (err: unknown) {
       setLoading(false);
-      alert(err instanceof Error ? err.message : "操作失败");
+      toast(err instanceof Error ? err.message : "操作失败", "error");
     }
   }
 
@@ -226,7 +227,7 @@ export function OutsourceModal({
       onSuccess();
     } catch (err: unknown) {
       setCancelLoading(false);
-      alert(err instanceof Error ? err.message : "操作失败");
+      toast(err instanceof Error ? err.message : "操作失败", "error");
     }
   }
 

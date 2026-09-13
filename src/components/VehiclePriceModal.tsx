@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "@/lib/globalToast";
 
 interface VehicleModel {
   id: number;
@@ -197,7 +198,7 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
 
       const { data, error } = await query;
       if (error) {
-        alert("查询失败: " + error.message);
+        toast("查询失败: " + error.message, "error");
         setSelectingAll(false);
         return;
       }
@@ -209,7 +210,7 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
       }
 
       if (ids.length > 5000) {
-        alert(`符合条件的车型有 ${ids.length} 条，一次最多全选 5000 条，请增加筛选条件缩小范围`);
+        toast(`符合条件的车型有 ${ids.length} 条，一次最多全选 5000 条，请增加筛选条件缩小范围`, "warning");
         setSelectingAll(false);
         return;
       }
@@ -219,9 +220,9 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
         ids.forEach((id: number) => next.add(id));
         return next;
       });
-      alert(`已全选 ${ids.length} 个车型`);
+      toast(`已全选 ${ids.length} 个车型`, "warning");
     } catch (err: unknown) {
-      alert("全选失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("全选失败: " + (err instanceof Error ? err.message : String(err)), "error");
     }
     setSelectingAll(false);
   }
@@ -233,11 +234,11 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
     const cpVal = customerPartsPrice === "" ? null : parseFloat(customerPartsPrice);
     const coVal = companyPrice === "" ? null : parseFloat(companyPrice);
     if (Number.isNaN(priceVal)) {
-      alert("请输入有效的销售价");
+      toast("请输入有效的销售价", "warning");
       return;
     }
     if (selectedIds.size === 0 && !preSelectedIds) {
-      alert("请至少选择一个车型");
+      toast("请至少选择一个车型", "warning");
       return;
     }
     setConfirming(true);

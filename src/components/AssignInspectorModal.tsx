@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
 import { 领取质检, 保存质检人 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Profile {
   id: string;
@@ -63,7 +64,7 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
       .single();
     const 最新 = (data as { inspector_id: string | null } | null)?.inspector_id || null;
     if (最新 === 打开时inspectorId) return true;
-    alert("质检人刚被其他人修改，已为你刷新为最新，请确认后再操作");
+    toast("质检人刚被其他人修改，已为你刷新为最新，请确认后再操作", "warning");
     setSelected(最新 || "");
     set打开时inspectorId(最新);
     return false;
@@ -79,7 +80,7 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
     const result = await 保存质检人({ itemId, inspectorId: selected || null });
     setLoading(false);
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       return;
     }
     // 写库成功后才通知父组件更新显示，保证数据正确性
@@ -92,7 +93,7 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
     const { data: { session } } = await supabase.auth.getSession();
     const user = session?.user ?? null; /* getSession本地读不联网（2026-09-03） */
     if (!user) {
-      alert("未登录，无法领单");
+      toast("未登录，无法领单", "error");
       setLoading(false);
       return;
     }
@@ -105,7 +106,7 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
     const result = await 领取质检(itemId);
     setLoading(false);
     if (!result.success) {
-      alert("领单失败: " + (result.error || "未知错误"));
+      toast("领单失败: " + (result.error || "未知错误"), "error");
       return;
     }
     onSaved?.(user.id);
@@ -123,7 +124,7 @@ export function AssignInspectorModal({ open, itemId, profiles, inspectorId, onCl
     const result = await 保存质检人({ itemId, inspectorId: null });
     setLoading(false);
     if (!result.success) {
-      alert("取消失败: " + (result.error || "未知错误"));
+      toast("取消失败: " + (result.error || "未知错误"), "error");
       return;
     }
     onSaved?.(null);

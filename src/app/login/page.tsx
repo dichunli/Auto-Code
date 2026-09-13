@@ -30,6 +30,7 @@ import { createClient, 获取当前环境 } from "@/lib/supabase/client";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { logLogin } from "@/lib/operationLog";
 import { 账号转邮箱 } from "@/lib/loginCredentials";
+import { toast } from "@/lib/globalToast";
 
 export default function LoginPage() {
   const [account, setAccount] = useState("");
@@ -155,7 +156,7 @@ export default function LoginPage() {
               var password = passwordEl ? passwordEl.value : '';
 
               if (!account || !password) {
-                alert('请输入账号和密码');
+                toast('请输入账号和密码', "warning");
                 return;
               }
 
@@ -176,7 +177,7 @@ export default function LoginPage() {
               .then(function(r) { return r.json(); })
               .then(function(data) {
                 if (data.error) {
-                  alert('登录失败: ' + (data.error_description || data.error || '未知错误'));
+                  toast('登录失败: ' + (data.error_description || data.error || '未知错误'), "error");
                   return;
                 }
                 if (data.access_token) {
@@ -185,14 +186,14 @@ export default function LoginPage() {
                   /* 同时写入cookie，让服务端也能识别 */
                   var maxAge = 400 * 24 * 60 * 60;
                   document.cookie = tokenKey + '=' + encodeURIComponent(JSON.stringify(data)) + '; path=/; max-age=' + maxAge + '; SameSite=Lax';
-                  alert('✅ 登录成功！正在跳转...');
+                  toast('✅ 登录成功！正在跳转...', "success");
                   window.location.href = '/m';
                 } else {
-                  alert('登录响应异常，没有获取到token');
+                  toast('登录响应异常，没有获取到token', "error");
                 }
               })
               .catch(function(err) {
-                alert('登录请求失败: ' + (err.message || String(err)));
+                toast('登录请求失败: ' + (err.message || String(err)), "error");
               });
             };
           })();
@@ -297,7 +298,7 @@ export default function LoginPage() {
             {/* 移动端（屏幕宽度≤767px）自动隐藏此按钮，因为现代手机浏览器和APP的WebView都支持React 19 */}
             <div className="login-compat-btn" dangerouslySetInnerHTML={{ __html: `
               <button type="button"
-                onclick="if(window._nativeLoginInit){window._nativeLoginInit();}else{alert('登录脚本加载中，请稍后再试');}"
+                onclick="if(window._nativeLoginInit){window._nativeLoginInit();}else{toast('登录脚本加载中，请稍后再试', "warning");}"
                 style="margin-top:8px;padding:12px;font-size:14px;font-weight:500;color:#fff;background:#2563eb;border:none;border-radius:8px;cursor:pointer;width:100%;"
               >
                 登录（兼容模式）

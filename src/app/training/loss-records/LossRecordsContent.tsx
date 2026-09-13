@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 录入日常损失, 删除日常损失 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 interface 员工 {
   id: string;
@@ -86,11 +87,11 @@ export default function LossRecordsContent({
 
   async function handleSave() {
     if (!form.employee_id) {
-      alert("请选择责任人");
+      toast("请选择责任人", "warning");
       return;
     }
     if (!form.description.trim()) {
-      alert("请输入损失描述");
+      toast("请输入损失描述", "warning");
       return;
     }
 
@@ -108,9 +109,9 @@ export default function LossRecordsContent({
       setModalOpen(false);
       setForm({ employee_id: "", loss_type: "工具损坏", description: "", loss_amount: "" });
       fetchData();
-      alert("记录成功");
+      toast("记录成功", "success");
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }
@@ -120,7 +121,7 @@ export default function LossRecordsContent({
     if (!(await 请求确认("确定删除这条损失记录吗？"))) return;
     const result = await 删除日常损失(id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     fetchData();

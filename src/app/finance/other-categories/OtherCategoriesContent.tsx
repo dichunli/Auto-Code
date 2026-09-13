@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 获取收支分类列表, 删除收支分类, 更新收支分类排序 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface 分类 {
   id: string;
@@ -141,7 +142,7 @@ export default function OtherCategoriesContent({ 初始数据 }: OtherCategories
     setDeletingId(null);
 
     if (!res.success) {
-      alert(res.error || "删除失败");
+      toast(res.error || "删除失败", "error");
       return;
     }
 
@@ -172,7 +173,7 @@ export default function OtherCategoriesContent({ 初始数据 }: OtherCategories
     setSavingOrder(false);
 
     if (!res.success) {
-      alert(res.error || "排序保存失败");
+      toast(res.error || "排序保存失败", "error");
       await 刷新列表();
     }
   }

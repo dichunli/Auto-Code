@@ -4,6 +4,7 @@ import { useState } from "react";
 import { 标记本地结构编辑 } from "@/lib/localEditSignal";
 import { useConfirm } from "./ConfirmDialog";
 import { 删除配件分支, 添加配件分支 } from "@/app/work-orders/parts-actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   partId: string;
@@ -18,7 +19,7 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
 
   async function handleDelete() {
     if (!canDelete) {
-      alert("至少需要保留一个配件分支");
+      toast("至少需要保留一个配件分支", "warning");
       return;
     }
     if (!(await 请求确认("确定删除此配件分支吗？"))) return;
@@ -28,7 +29,7 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
     const 结果 = await 删除配件分支(partId);
     setDeleting(false);
     if (!结果.success) {
-      alert("删除失败: " + (结果.error || "未知错误"));
+      toast("删除失败: " + (结果.error || "未知错误"), "error");
       return;
     }
     标记本地结构编辑(itemId);
@@ -51,7 +52,7 @@ export default function WorkOrderItemPartBranchActions({ partId, itemId, canDele
     const 结果 = await 添加配件分支(partId);
     setAdding(false);
     if (!结果.success) {
-      alert("添加失败: " + (结果.error || "未知错误"));
+      toast("添加失败: " + (结果.error || "未知错误"), "error");
       return;
     }
     标记本地结构编辑(itemId);

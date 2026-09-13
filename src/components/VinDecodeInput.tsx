@@ -7,6 +7,7 @@ import { 获取访问令牌 } from "@/lib/supabase/client";
 import { 压缩图片为Base64, 文件转Base64 } from "@/lib/imageCompress";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import VinKeyboard from "./VinKeyboard";
+import { toast } from "@/lib/globalToast";
 
 /* VIN 内联键盘常量 */
 const VIN_NUMBERS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
@@ -198,7 +199,7 @@ export default function VinDecodeInput({
       setEditingVin(upperVin);
       if (decodeResult) setDecodeResult(decodeResult);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "识别失败");
+      toast(err instanceof Error ? err.message : "识别失败", "error");
       setPreviewOpen(false);
     } finally {
       setOcrLoading(false);
@@ -211,12 +212,12 @@ export default function VinDecodeInput({
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("请选择图片文件");
+      toast("请选择图片文件", "warning");
       e.target.value = "";
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      alert("图片大小不能超过 10MB");
+      toast("图片大小不能超过 10MB", "error");
       e.target.value = "";
       return;
     }
@@ -229,7 +230,7 @@ export default function VinDecodeInput({
           : await 文件转Base64(file);
       await processBase64Image(base64);
     } catch (err: unknown) {
-      alert("图片识别失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("图片识别失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       e.target.value = "";
     }
@@ -255,7 +256,7 @@ export default function VinDecodeInput({
       if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User cancelled")) {
         return;
       }
-      alert("相机调用失败: " + msg);
+      toast("相机调用失败: " + msg, "error");
     }
   }
 

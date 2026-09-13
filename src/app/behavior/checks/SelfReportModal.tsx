@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ImageUploader } from "@/components/ImageUploader";
 import { 自检上报计分 } from "./actions";
 import type { 考核记录视图 } from "./BehaviorChecksContent";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   record: 考核记录视图;
@@ -21,14 +22,14 @@ export default function SelfReportModal({ record, onClose, onReported }: Props) 
 
   async function handleSubmit() {
     if (photos.length === 0) {
-      alert("请先拍现场照片再上报");
+      toast("请先拍现场照片再上报", "warning");
       return;
     }
     setSaving(true);
     try {
       const 结果 = await 自检上报计分({ recordId: record.id, photos, note });
       if (!结果.success) {
-        alert("上报失败: " + 结果.error);
+        toast("上报失败: " + 结果.error, "error");
         /* 状态类错误说明页面数据已过期，关掉弹窗刷新列表 */
         if (结果.error?.includes("刷新") || 结果.error?.includes("已完成") || 结果.error?.includes("已上报")) {
           onReported();
@@ -39,7 +40,7 @@ export default function SelfReportModal({ record, onClose, onReported }: Props) 
       onReported();
       onClose();
     } catch (err: unknown) {
-      alert("上报失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("上报失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }

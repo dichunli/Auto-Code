@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 配件入库, 新建配件品牌, 新建配件规格 } from "../actions";
+import { toast } from "@/lib/globalToast";
+import { 全局输入 } from "@/components/GlobalDialogs";
 
 interface Part {
   id: string;
@@ -151,11 +153,11 @@ export default function InventoryInForm() {
   }, [searchParams, partNames, brands]);
 
   async function handleCreateBrand() {
-    const brandName = prompt("请输入新品牌名称:");
+    const brandName = await 全局输入("请输入新品牌名称:");
     if (!brandName) return;
     const result = await 新建配件品牌(brandName);
     if (!result.success || !result.id) {
-      alert("创建失败: " + (result.error || "未知错误"));
+      toast("创建失败: " + (result.error || "未知错误"), "error");
       return;
     }
     setBrands((prev) => [...prev, { id: result.id!, name: brandName }]);
@@ -163,11 +165,11 @@ export default function InventoryInForm() {
   }
 
   async function handleCreateSpec() {
-    const specName = prompt("请输入新规格名称:");
+    const specName = await 全局输入("请输入新规格名称:");
     if (!specName) return;
     const result = await 新建配件规格(specName);
     if (!result.success || !result.id) {
-      alert("创建失败: " + (result.error || "未知错误"));
+      toast("创建失败: " + (result.error || "未知错误"), "error");
       return;
     }
     setSpecifications((prev) => [...prev, { id: result.id!, name: specName }]);
@@ -180,15 +182,15 @@ export default function InventoryInForm() {
     /* 前端先做基本校验（与服务端一致，避免白跑一趟） */
     const qty = parseInt(form.quantity) || 0;
     if (qty <= 0) {
-      alert("入库数量必须大于0");
+      toast("入库数量必须大于0", "warning");
       return;
     }
     if (newPartMode && !form.part_name_id) {
-      alert("请选择配件名称");
+      toast("请选择配件名称", "warning");
       return;
     }
     if (!newPartMode && !selectedPartId) {
-      alert("请选择配件");
+      toast("请选择配件", "warning");
       return;
     }
 
@@ -212,7 +214,7 @@ export default function InventoryInForm() {
     try {
       result = await 调用入库(false);
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setLoading(false);
       return;
     }
@@ -227,14 +229,14 @@ export default function InventoryInForm() {
       try {
         result = await 调用入库(true);
       } catch (err: unknown) {
-        alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+        toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
         setLoading(false);
         return;
       }
     }
 
     if (!result.success) {
-      alert("保存失败: " + result.error);
+      toast("保存失败: " + result.error, "error");
       setLoading(false);
       return;
     }

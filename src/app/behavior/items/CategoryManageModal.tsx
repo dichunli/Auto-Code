@@ -4,6 +4,8 @@ import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 删除行为分类, 新建行为分类, 更新行为分类, 切换行为分类启用 } from "./actions";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 export interface 行为分类 {
   id: string;
@@ -33,7 +35,7 @@ export default function CategoryManageModal({ categories, onClose, onChanged }: 
   async function handleAdd() {
     const name = newName.trim();
     if (!name) {
-      alert("请输入分类名称");
+      toast("请输入分类名称", "warning");
       return;
     }
     setSaving(true);
@@ -41,7 +43,7 @@ export default function CategoryManageModal({ categories, onClose, onChanged }: 
     const result = await 新建行为分类(name);
     setSaving(false);
     if (!result.success) {
-      alert(result.error || "新增失败");
+      toast(result.error || "新增失败", "error");
       return;
     }
     setNewName("");
@@ -58,14 +60,14 @@ export default function CategoryManageModal({ categories, onClose, onChanged }: 
     if (!editingId) return;
     const name = editName.trim();
     if (!name) {
-      alert("分类名称不能为空");
+      toast("分类名称不能为空", "error");
       return;
     }
     setSaving(true);
     const result = await 更新行为分类({ id: editingId, name, sortOrder: parseInt(editSort) || 0 });
     setSaving(false);
     if (!result.success) {
-      alert(result.error || "保存失败");
+      toast(result.error || "保存失败", "error");
       return;
     }
     setEditingId(null);
@@ -75,7 +77,7 @@ export default function CategoryManageModal({ categories, onClose, onChanged }: 
   async function toggleActive(c: 行为分类) {
     const result = await 切换行为分类启用({ id: c.id, isActive: !c.is_active });
     if (!result.success) {
-      alert("操作失败: " + (result.error || "未知错误"));
+      toast("操作失败: " + (result.error || "未知错误"), "error");
       return;
     }
     onChanged();
@@ -88,13 +90,13 @@ export default function CategoryManageModal({ categories, onClose, onChanged }: 
       .select("id", { count: "exact", head: true })
       .eq("category_id", c.id);
     if (count && count > 0) {
-      alert(`该分类下还有 ${count} 个行为项目，删除后这些项目会变成"未分类"。\n如不再使用，建议改为"停用"。`);
+      await 全局提示(`该分类下还有 ${count} 个行为项目，删除后这些项目会变成"未分类"。\n如不再使用，建议改为"停用"。`);
       return;
     }
     if (!(await 请求确认(`确定删除分类「${c.name}」吗？`))) return;
     const result = await 删除行为分类(c.id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     onChanged();

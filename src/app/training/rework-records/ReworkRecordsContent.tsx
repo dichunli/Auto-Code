@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 录入返工记录, 删除返工记录 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 interface 员工 {
   id: string;
@@ -85,11 +86,11 @@ export default function ReworkRecordsContent({
 
   async function handleSave() {
     if (!form.employee_id) {
-      alert("请选择责任人");
+      toast("请选择责任人", "warning");
       return;
     }
     if (!form.description.trim()) {
-      alert("请输入返工原因");
+      toast("请输入返工原因", "warning");
       return;
     }
 
@@ -107,9 +108,9 @@ export default function ReworkRecordsContent({
       setModalOpen(false);
       setForm({ employee_id: "", work_order_no: "", description: "", loss_amount: "" });
       fetchData();
-      alert("记录成功");
+      toast("记录成功", "success");
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }
@@ -119,7 +120,7 @@ export default function ReworkRecordsContent({
     if (!(await 请求确认("确定删除这条返工记录吗？"))) return;
     const result = await 删除返工记录(id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     fetchData();

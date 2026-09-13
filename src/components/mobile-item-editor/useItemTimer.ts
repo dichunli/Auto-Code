@@ -5,6 +5,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { createClient } from "@/lib/supabase/client";
 import { calculateTotalSeconds, getConstructionStatus } from "./utils";
 import type { ConstructionLog } from "./types";
+import { toast } from "@/lib/globalToast";
 
 type Supabase客户端 = ReturnType<typeof createClient>;
 
@@ -75,11 +76,11 @@ export function useItemTimer({ open, itemId, itemType, supabase, loading, setLoa
     setLoading(false);
     const res = rpcData as { success: boolean; error?: string } | null;
     if (error) {
-      alert("操作失败: " + error.message);
+      toast("操作失败: " + error.message, "error");
       return;
     }
     if (!res?.success) {
-      alert(res?.error || "操作失败");
+      toast(res?.error || "操作失败", "error");
       return;
     }
 
@@ -107,11 +108,11 @@ export function useItemTimer({ open, itemId, itemType, supabase, loading, setLoa
     setLoading(false);
     const res = rpcData as { success: boolean; error?: string } | null;
     if (error) {
-      alert("取消失败: " + error.message);
+      toast("取消失败: " + error.message, "error");
       return;
     }
     if (!res?.success) {
-      alert(res?.error || "取消失败");
+      toast(res?.error || "取消失败", "error");
       return;
     }
 

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { logAction } from "@/lib/operationLog";
 import { 转换工单类型 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   workOrderId: string;
@@ -71,7 +72,7 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
     setOpen(false);
 
     if (!result.success) {
-      alert("操作失败: " + (result.error || "未知错误"));
+      toast("操作失败: " + (result.error || "未知错误"), "error");
       return;
     }
 
@@ -103,7 +104,7 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
 
   async function handleCancelConfirm() {
     if (!reason.trim()) {
-      alert("请填写作废原因");
+      toast("请填写作废原因", "warning");
       return;
     }
     setLoading(true);
@@ -112,7 +113,7 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
     setModalOpen(false);
 
     if (!result.success) {
-      alert("操作失败: " + (result.error || "未知错误"));
+      toast("操作失败: " + (result.error || "未知错误"), "error");
       return;
     }
 

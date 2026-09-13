@@ -13,6 +13,7 @@ import { BatchMergeDialog } from "./BatchMergeDialog";
 import { SearchLinkSection } from "./SearchLinkSection";
 import { 新建配件名称, 批量导入配件名称 } from "./actions";
 import { 新建配件品牌, 新建配件规格 } from "@/app/inventory/actions";
+import { toast } from "@/lib/globalToast";
 
 interface LinkedItem {
   id: string;
@@ -421,7 +422,7 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
     if (!brandQuery.trim()) return;
     /* 写库走 Server Action */
     const result = await 新建配件品牌(brandQuery.trim());
-    if (!result.success || !result.id) { alert("创建品牌失败: " + (result.error || "未知错误")); return; }
+    if (!result.success || !result.id) { toast("创建品牌失败: " + (result.error || "未知错误"), "error"); return; }
     addBrand({ id: result.id, name: brandQuery.trim() });
     setBrandQuery("");
   }
@@ -429,7 +430,7 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
   async function createSpecAndLink() {
     if (!specQuery.trim()) return;
     const result = await 新建配件规格(specQuery.trim());
-    if (!result.success || !result.id) { alert("创建规格失败: " + (result.error || "未知错误")); return; }
+    if (!result.success || !result.id) { toast("创建规格失败: " + (result.error || "未知错误"), "error"); return; }
     addSpec({ id: result.id, name: specQuery.trim() });
     setSpecQuery("");
   }
@@ -457,7 +458,7 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim() || !form.category_id) {
-      alert("请填写配件名称和所属分类");
+      toast("请填写配件名称和所属分类", "warning");
       return;
     }
     setSaving(true);
@@ -470,7 +471,7 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
     });
 
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       setSaving(false);
       return;
     }

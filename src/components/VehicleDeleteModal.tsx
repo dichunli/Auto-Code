@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { toast } from "@/lib/globalToast";
 
 interface VehicleItem {
   vehicle_model_id: number;
@@ -117,7 +118,7 @@ export default function VehicleDeleteModal({ open, onClose, onConfirm, vehicles,
 
   function handleConfirm() {
     if (selectedIds.size === 0) {
-      alert("请至少选择一个车型");
+      toast("请至少选择一个车型", "warning");
       return;
     }
     setConfirming(true);

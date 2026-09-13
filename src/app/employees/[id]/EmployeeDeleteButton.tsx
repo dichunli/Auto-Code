@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   employeeId: string;
@@ -23,11 +24,11 @@ export function EmployeeDeleteButton({ employeeId, employeeName }: Props) {
       const res = await fetch(`/api/employees/${employeeId}`, { method: "DELETE" });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "删除失败");
-      alert("已删除");
+      toast("已删除", "success");
       router.push("/employees");
       router.refresh();
     } catch (err: unknown) {
-      alert("删除失败：" + (err instanceof Error ? err.message : String(err)));
+      toast("删除失败：" + (err instanceof Error ? err.message : String(err)), "error");
       setLoading(false);
     }
   }

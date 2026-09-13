@@ -4,6 +4,7 @@ import {useState, useEffect} from "react";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 合并配件名称 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   open: boolean;
@@ -35,11 +36,11 @@ export function BatchMergeDialog({ open, selectedNames, onClose, onSuccess }: Pr
 
   async function handleMerge() {
     if (!targetId) {
-      alert("请选择要保留的配件名称");
+      toast("请选择要保留的配件名称", "warning");
       return;
     }
     if (!finalName.trim()) {
-      alert("请输入合并后的名称");
+      toast("请输入合并后的名称", "warning");
       return;
     }
 
@@ -68,7 +69,7 @@ export function BatchMergeDialog({ open, selectedNames, onClose, onSuccess }: Pr
     });
     setMerging(false);
     if (!result.success) {
-      alert("合并失败: " + (result.error || "未知错误"));
+      toast("合并失败: " + (result.error || "未知错误"), "error");
       return;
     }
 

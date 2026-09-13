@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
+import { toast } from "@/lib/globalToast";
 
 export interface 回访记录 {
   id: string;
@@ -63,7 +64,7 @@ export default function FollowUpsContent({ status, initialFollowUps, initialCoun
     const { data, count, error } = await q.range(from, from + pageSize - 1);
     if (error) {
       console.error("回访记录加载失败:", error);
-      alert("加载失败: " + error.message);
+      toast("加载失败: " + error.message, "error");
     } else {
       setFollowUps((data || []) as unknown as 回访记录[]);
       setTotal(count || 0);

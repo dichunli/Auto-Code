@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
 import { PasswordChangeModal } from "./PasswordChangeModal";
 import { 保存个人信息 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 const GENDERS = [
   { value: "male", label: "男" },
@@ -91,7 +92,7 @@ export default function ProfilePage() {
 
   async function handleSave() {
     if (!fullName.trim()) {
-      alert("请填写姓名");
+      toast("请填写姓名", "warning");
       return;
     }
 
@@ -109,7 +110,7 @@ export default function ProfilePage() {
       });
 
       if (!result.success) {
-        alert("保存失败：" + (result.error || "未知错误"));
+        toast("保存失败：" + (result.error || "未知错误"), "error");
         return;
       }
 
@@ -126,10 +127,10 @@ export default function ProfilePage() {
         });
       }
 
-      alert("保存成功");
+      toast("保存成功", "success");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("保存失败：" + msg);
+      toast("保存失败：" + msg, "error");
     } finally {
       setSaving(false);
     }

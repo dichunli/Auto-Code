@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 新建品牌并关联 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 interface 品牌搜索结果 {
   id: string;
@@ -68,7 +69,7 @@ export default function NewPartBrandPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) { alert("请输入品牌名称"); return; }
+    if (!name.trim()) { toast("请输入品牌名称", "warning"); return; }
     setLoading(true);
 
     /* 写库走 Server Action（建品牌 + 关联配件名称，服务端一次完成） */
@@ -77,7 +78,7 @@ export default function NewPartBrandPage() {
       partNameIds: Array.from(selectedIds),
     });
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       setLoading(false);
       return;
     }

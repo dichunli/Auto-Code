@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 中文分词 } from "@/lib/chineseSegmenter";
 import { 添加分词, 删除分词 } from "@/app/knowledge/actions";
+import { toast } from "@/lib/globalToast";
 
 /* 搜索分词词典 — 客户端交互组件
  * 首屏分词列表由服务端 page.tsx 查询后传入 */
@@ -26,11 +27,11 @@ export default function SegmentDictionaryContent({
   async function handleAdd() {
     const word = newWord.trim();
     if (!word) {
-      alert("请输入要添加的分词");
+      toast("请输入要添加的分词", "warning");
       return;
     }
     if (words.includes(word)) {
-      alert("该分词已存在");
+      toast("该分词已存在", "error");
       return;
     }
 
@@ -39,7 +40,7 @@ export default function SegmentDictionaryContent({
     setSaving(false);
 
     if (!result.success) {
-      alert("添加失败: " + (result.error || "未知错误"));
+      toast("添加失败: " + (result.error || "未知错误"), "error");
       return;
     }
 
@@ -55,7 +56,7 @@ export default function SegmentDictionaryContent({
     setSaving(false);
 
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
 

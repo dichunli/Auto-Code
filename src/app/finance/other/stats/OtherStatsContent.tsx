@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
+import { toast } from "@/lib/globalToast";
 
 interface 分类 {
   id: string;
@@ -68,7 +69,7 @@ export default function OtherStatsContent({
 
   async function handleSearch() {
     if (!startDate || !endDate) {
-      alert("请选择开始和结束日期");
+      toast("请选择开始和结束日期", "warning");
       return;
     }
 

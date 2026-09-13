@@ -10,6 +10,7 @@ import { 阶段文案, 阶段颜色, type 阶段key } from "@/lib/orderStage";
 import LiveTimer from "./LiveTimer";
 import { formatCurrency } from "@/lib/utils";
 import type { Order } from "@/app/work-orders/page";
+import { toast } from "@/lib/globalToast";
 
 /* 阶段卡片（可操作版）：
  * 工单列表分栏视图的单个工单卡片。按"当前阶段"渲染项目行+操作区：
@@ -79,11 +80,11 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
     set操作中(null);
     const res = data as { success: boolean; error?: string } | null;
     if (error) {
-      alert("操作失败: " + error.message);
+      toast("操作失败: " + error.message, "error");
       return;
     }
     if (!res?.success) {
-      alert(res?.error || "操作失败");
+      toast(res?.error || "操作失败", "error");
       return;
     }
     /* 不自动刷新：按钮置灰标记已操作（按项目+阶段），等用户点右下角"立即刷新"统一挪列 */
@@ -100,7 +101,7 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
     const res1 = r1.data as { success: boolean; error?: string } | null;
     if (r1.error || !res1?.success) {
       set操作中(null);
-      alert("操作失败: " + (r1.error?.message || res1?.error || "状态流转被拒绝"));
+      toast("操作失败: " + (r1.error?.message || res1?.error || "状态流转被拒绝"), "error");
       return;
     }
     const r2 = await supabase.rpc("transition_work_order", {
@@ -109,7 +110,7 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
     set操作中(null);
     const res2 = r2.data as { success: boolean; error?: string } | null;
     if (r2.error || !res2?.success) {
-      alert("操作失败: " + (r2.error?.message || res2?.error || "状态流转被拒绝"));
+      toast("操作失败: " + (r2.error?.message || res2?.error || "状态流转被拒绝"), "error");
       return;
     }
     set已操作((prev) => new Set(prev).add("close"));

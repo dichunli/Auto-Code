@@ -10,6 +10,7 @@ import { useConfirm } from "./ConfirmDialog";
 import { 选中配件分支, 标记采购到货 } from "@/app/work-orders/parts-actions";
 import { 更新配件分支, 按组更新分支目录, 同步分支图片到配件, 配件分支更新 } from "@/app/work-orders/actions";
 import { useDebounce } from "@/lib/useDebounce";
+import { toast } from "@/lib/globalToast";
 
 function toFixed2(val: string | number | null | undefined): string {
   if (val === "" || val === null || val === undefined) return "";
@@ -467,7 +468,7 @@ export default function PartBranchEditor({
 
     setSaving(false);
     if (error) {
-      alert("保存失败: " + error.message);
+      toast("保存失败: " + error.message, "error");
       return;
     }
 
@@ -520,7 +521,7 @@ export default function PartBranchEditor({
     if (覆盖?.is_selected !== undefined) 更新.is_selected = 覆盖.is_selected;
     const 结果 = await 更新配件分支({ partId: part.id, updates: 更新 });
     setSaving(false);
-    if (!结果.success) { alert("补齐配件失败: " + (结果.error || "未知错误")); return; }
+    if (!结果.success) { toast("补齐配件失败: " + (结果.error || "未知错误"), "error"); return; }
     if (hit.unit_price != null) {
       window.dispatchEvent(new CustomEvent("wo-part-update", { detail: { itemId, partId: part.id, unit_price: hit.unit_price } }));
     }
@@ -585,7 +586,7 @@ export default function PartBranchEditor({
     // 叶子目录：新建配件带了配件名称，且本分支还没归属名称时，一并写入
     if (data.part_name_id && !part.part_name_id) 更新.part_name_id = data.part_name_id;
     const 关联结果 = await 更新配件分支({ partId: part.id, updates: 更新 });
-    if (!关联结果.success) { alert("补齐配件失败: " + (关联结果.error || "未知错误")); return; }
+    if (!关联结果.success) { toast("补齐配件失败: " + (关联结果.error || "未知错误"), "error"); return; }
 
     /* 分支图片同步到新配件的"配件信息图片"（用户拍板 2026-08-06：
      * 通过分支信息新建配件时，分支里的图片就是这个配件信息中的图片）。
@@ -631,7 +632,7 @@ export default function PartBranchEditor({
     if (单据名) 更新.document_name = 单据名;
     if (Object.keys(更新).length === 0) return;
     const 带回结果 = await 更新配件分支({ partId: part.id, updates: 更新 });
-    if (!带回结果.success) { alert("带回信息失败: " + (带回结果.error || "未知错误")); return; }
+    if (!带回结果.success) { toast("带回信息失败: " + (带回结果.error || "未知错误"), "error"); return; }
     if (销售价) {
       window.dispatchEvent(new CustomEvent("wo-part-update", { detail: { itemId, partId: part.id, unit_price: parseFloat(销售价) } }));
     }
@@ -648,7 +649,7 @@ export default function PartBranchEditor({
       .eq("part_number", kw)
       .limit(2);
     if (!data || data.length === 0) return; // 系统无此编码：保留编码，留待"创建配件"(后续步骤)
-    if (data.length > 1) { alert(`编码「${kw}」对应多个配件，请用编码后的候选或搜索精确选择`); return; }
+    if (data.length > 1) { toast(`编码「${kw}」对应多个配件，请用编码后的候选或搜索精确选择`, "warning"); return; }
 
     const d = data[0];
     const pb = d.part_brands as { name: string } | { name: string }[] | null;
@@ -699,7 +700,7 @@ export default function PartBranchEditor({
       /* 组内所有分支一起改，走 Server Action */
       const 改组结果 = await 按组更新分支目录({ branchGroupId: part.branch_group_id, partNameId: q.hit.part_name_id });
       if (!改组结果.success) {
-        alert("替换分组名失败: " + (改组结果.error || "未知错误"));
+        toast("替换分组名失败: " + (改组结果.error || "未知错误"), "error");
         return;
       }
     }
@@ -721,7 +722,7 @@ export default function PartBranchEditor({
         // 语义=组内切换选中：RPC 一个事务完成"兄弟 true + 其余 false"，避免中间态
         const 结果 = await 选中配件分支(兄弟[0].id);
         if (!结果.success) {
-          alert("切换原组选中分支失败: " + (结果.error || "未知错误"));
+          toast("切换原组选中分支失败: " + (结果.error || "未知错误"), "error");
         }
       }
     }
@@ -801,7 +802,7 @@ export default function PartBranchEditor({
         });
         setSaving(false);
         if (!关联结果.success) {
-          alert("关联失败: " + (关联结果.error || "未知错误"));
+          toast("关联失败: " + (关联结果.error || "未知错误"), "error");
           return;
         }
         // 自动填充价格和编码
@@ -815,11 +816,11 @@ export default function PartBranchEditor({
 
   async function togglePurchase() {
     if (!localOpinion || localOpinion !== "agree") {
-      alert("需客户同意后才能采购");
+      toast("需客户同意后才能采购", "warning");
       return;
     }
     if (!localPurchased && inventoryQty > 0) {
-      alert("库存不为0，无需采购");
+      toast("库存不为0，无需采购", "warning");
       return;
     }
     const next = !localPurchased;
@@ -830,12 +831,12 @@ export default function PartBranchEditor({
       // 写库收编为 Server Action（守卫内置在 RPC 函数里，前端守卫保留做提示）
       const 结果 = await 标记采购到货(part.id, "is_purchased", next);
       if (!结果.success) {
-        alert("操作失败: " + (结果.error || "未知错误"));
+        toast("操作失败: " + (结果.error || "未知错误"), "error");
         setLocalPurchased(!next);
         return;
       }
     } catch (err: unknown) {
-      alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setLocalPurchased(!next);
       return;
     } finally {
@@ -845,7 +846,7 @@ export default function PartBranchEditor({
 
   async function toggleArrived() {
     if (!localPurchased) {
-      alert("需先采购后才能标记到货");
+      toast("需先采购后才能标记到货", "warning");
       return;
     }
     const next = !localArrived;
@@ -856,12 +857,12 @@ export default function PartBranchEditor({
       // 写库收编为 Server Action（守卫内置在 RPC 函数里，前端守卫保留做提示）
       const 结果 = await 标记采购到货(part.id, "is_arrived", next);
       if (!结果.success) {
-        alert("操作失败: " + (结果.error || "未知错误"));
+        toast("操作失败: " + (结果.error || "未知错误"), "error");
         setLocalArrived(!next);
         return;
       }
     } catch (err: unknown) {
-      alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setLocalArrived(!next);
       return;
     } finally {
@@ -873,7 +874,7 @@ export default function PartBranchEditor({
     // 选中分支不可删除：保证每个目录始终有且仅有一个选中分支，
     // 也免去"删了选中分支后由谁替补"的随机问题。要删它，先选中别的分支。
     if (localSelected) {
-      alert("选中的分支不能删除。如需删除，请先选中其它分支作为默认，再删除本条。");
+      toast("选中的分支不能删除。如需删除，请先选中其它分支作为默认，再删除本条。", "error");
       return;
     }
     if (!(await 请求确认("确定删除此配件分支吗？"))) return;
@@ -885,12 +886,12 @@ export default function PartBranchEditor({
     setSaving(false);
 
     if (error) {
-      alert("删除失败: " + error.message);
+      toast("删除失败: " + error.message, "error");
       return;
     }
     const result = data as { success: boolean; error?: string; new_selected_id?: string | null };
     if (!result?.success) {
-      alert(result?.error || "删除失败");
+      toast(result?.error || "删除失败", "error");
       return;
     }
 
@@ -1018,12 +1019,12 @@ export default function PartBranchEditor({
               try {
                 const 结果 = await 选中配件分支(part.id);
                 if (!结果.success) {
-                  alert("操作失败: " + (结果.error || "未知错误"));
+                  toast("操作失败: " + (结果.error || "未知错误"), "error");
                   setLocalSelected(false);
                   return;
                 }
               } catch (err: unknown) {
-                alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
+                toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
                 setLocalSelected(false);
                 return;
               }
@@ -1327,7 +1328,7 @@ export default function PartBranchEditor({
                 更新配件分支({ partId: part.id, updates: { customer_opinion: next } }).then((结果) => {
                   setSaving(false);
                   if (!结果.success) {
-                    alert("保存失败: " + (结果.error || "未知错误"));
+                    toast("保存失败: " + (结果.error || "未知错误"), "error");
                     setLocalOpinion(part.customer_opinion || "pending");
                   }
                 });
@@ -1346,7 +1347,7 @@ export default function PartBranchEditor({
               更新配件分支({ partId: part.id, updates: { customer_opinion: next } }).then((结果) => {
                 setSaving(false);
                 if (!结果.success) {
-                  alert("保存失败: " + (结果.error || "未知错误"));
+                  toast("保存失败: " + (结果.error || "未知错误"), "error");
                   setLocalOpinion(part.customer_opinion || "pending");
                 }
               });

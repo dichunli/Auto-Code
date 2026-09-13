@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
 import { 新增其它收支 } from "@/app/finance/other/actions";
+import { toast } from "@/lib/globalToast";
 
 interface 账户 {
   id: string;
@@ -82,15 +83,15 @@ export default function MobileNewOtherPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!categoryId) {
-      alert(`请选择${type === "income" ? "收入原因" : "支出原因"}`);
+      toast(`请选择${type === "income" ? "收入原因" : "支出原因"}`, "warning");
       return;
     }
     if (!amount || Number(amount) <= 0) {
-      alert("请填写金额");
+      toast("请填写金额", "warning");
       return;
     }
     if (!accountId) {
-      alert("请选择账户");
+      toast("请选择账户", "warning");
       return;
     }
 
@@ -109,7 +110,7 @@ export default function MobileNewOtherPage() {
 
     setLoading(false);
     if (!result.success) {
-      alert("保存失败：" + (result.error || "未知错误"));
+      toast("保存失败：" + (result.error || "未知错误"), "error");
       return;
     }
 

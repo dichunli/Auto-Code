@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "@/components/ImageUploader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 保存行为明细 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 /* 检查细节编辑行：真实行用数据库 id，新增行用 new-序号 临时 id */
 interface 细节行 {
@@ -85,12 +86,12 @@ export default function DetailManageModal({ itemId, itemName, onClose, onSaved }
   async function handleSave() {
     for (const d of details) {
       if (!d.name.trim()) {
-        alert("每条细节都要填名称");
+        toast("每条细节都要填名称", "warning");
         return;
       }
       const v = parseInt(d.score_value);
       if (!v || v <= 0) {
-        alert(`细节「${d.name}」的分值要大于 0`);
+        toast(`细节「${d.name}」的分值要大于 0`, "warning");
         return;
       }
     }
@@ -115,7 +116,7 @@ export default function DetailManageModal({ itemId, itemName, onClose, onSaved }
       onSaved();
       onClose();
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }

@@ -7,6 +7,7 @@ import { 解绑钉钉账号, 保存员工档案 } from "../../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { ImageUploader } from "@/components/ImageUploader";
+import { toast } from "@/lib/globalToast";
 
 const GENDERS = [
   { value: "male", label: "男" },
@@ -128,13 +129,13 @@ export function EmployeeEditForm({
     try {
       const result = await 解绑钉钉账号(employeeId);
       if (!result.success) {
-        alert("解绑失败：" + (result.error || "未知错误"));
+        toast("解绑失败：" + (result.error || "未知错误"), "error");
         return;
       }
       setDingtalkUserid("");
-      alert("已解绑");
+      toast("已解绑", "warning");
     } catch (err: unknown) {
-      alert("解绑失败：" + (err instanceof Error ? err.message : String(err)));
+      toast("解绑失败：" + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       set解绑中(false);
     }
@@ -165,7 +166,7 @@ export function EmployeeEditForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!fullName) {
-      alert("请填写姓名");
+      toast("请填写姓名", "warning");
       return;
     }
 
@@ -192,7 +193,7 @@ export function EmployeeEditForm({
         originalContactIds: [...originalContactIds],
       });
       if (!result.success) {
-        alert("保存失败：" + (result.error || "未知错误"));
+        toast("保存失败：" + (result.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
@@ -201,7 +202,7 @@ export function EmployeeEditForm({
       await router.push(`/employees/${employeeId}`);
       router.refresh();
     } catch (err: unknown) {
-      alert("保存失败：" + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败：" + (err instanceof Error ? err.message : String(err)), "error");
       setSaving(false);
     }
   }

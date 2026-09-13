@@ -1,6 +1,7 @@
 /* ========== Capacitor APP 环境相关工具函数 ========== */
 
 import { Capacitor } from "@capacitor/core";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 /**
  * 检测是否在 Capacitor APP 环境中（真·原生 WebView）
@@ -34,11 +35,11 @@ export function 获取当前环境(): "APP" | "浏览器" | "服务端" {
 
 /**
  * 在 APP 中打开系统设置页面的应用详情页
- * 非 APP 环境则弹出 alert 提示
+ * 非 APP 环境则弹提示
  */
-export function 打开APP设置(): void {
+export async function 打开APP设置(): Promise<void> {
   if (!是Capacitor环境()) {
-    alert("请手动前往手机设置 → 应用 → 汽修管家 → 权限 → 相机，开启相机权限");
+    await 全局提示("请手动前往手机设置 → 应用 → 汽修管家 → 权限 → 相机，开启相机权限");
     return;
   }
 
@@ -50,5 +51,5 @@ export function 打开APP设置(): void {
     }
   } catch { /* 忽略 */ }
 
-  alert("请手动前往手机设置 → 应用 → 汽修管家 → 权限 → 相机，开启相机权限");
+  await 全局提示("请手动前往手机设置 → 应用 → 汽修管家 → 权限 → 相机，开启相机权限");
 }

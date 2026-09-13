@@ -12,6 +12,7 @@ import ToolQrCode from "./components/ToolQrCode";
 import ToolScanButton from "./components/ToolScanButton";
 import ToolBorrowReturnModal from "./components/ToolBorrowReturnModal";
 import LocationQrCode from "./components/LocationQrCode";
+import { toast } from "@/lib/globalToast";
 
 export interface 工具 {
   id: string;
@@ -206,7 +207,7 @@ export default function ToolManagementContent({
       set工具列表((prev) => prev.filter((t) => t.id !== id));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("删除失败: " + msg);
+      toast("删除失败: " + msg, "error");
     } finally {
       set删除中(null);
     }

@@ -8,6 +8,7 @@ import { 标记本机操作 } from "@/lib/localEditSignal";
 import { 保养单草稿前缀, 找重复项目名 } from "@/lib/maintenance";
 import { 导入保养单到工单 } from "@/app/vehicles/actions";
 import type { 保养导入项目, 保养导入配件 } from "@/app/vehicles/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   vehicleId: string;
@@ -306,16 +307,16 @@ function MaintenanceImportModal({ vehicleId, orderId, onClose }: Props & { onClo
       }
 
       if (处理模式 === "跳过" && (result.跳过数量 || 0) > 0) {
-        alert(`导入完成。${result.跳过数量} 个项目因名称重复已跳过。`);
+        toast(`导入完成。${result.跳过数量} 个项目因名称重复已跳过。`, "error");
       }
       if (处理模式 === "覆盖" && 重复项目名.length > 0) {
-        alert(`导入完成。${重复项目名.length} 个重复项目已覆盖更新。`);
+        toast(`导入完成。${重复项目名.length} 个重复项目已覆盖更新。`, "error");
       }
 
       onClose();
       router.refresh();
     } catch (err: unknown) {
-      alert("导入失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("导入失败: " + (err instanceof Error ? err.message : String(err)), "error");
       设置导入中(false);
     }
   }

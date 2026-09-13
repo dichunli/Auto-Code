@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 新建会员 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 export default function NewMemberForm() {
   const router = useRouter();
@@ -56,7 +57,7 @@ export default function NewMemberForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!cardNo || !name) {
-      alert("请填写卡号和姓名");
+      toast("请填写卡号和姓名", "warning");
       return;
     }
 
@@ -73,7 +74,7 @@ export default function NewMemberForm() {
         notes,
       });
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         setLoading(false);
         return;
       }
@@ -81,7 +82,7 @@ export default function NewMemberForm() {
       router.push("/members");
       router.refresh();
     } catch {
-      alert("保存失败: 网络异常，请重试");
+      toast("保存失败: 网络异常，请重试", "error");
       setLoading(false);
     }
   }

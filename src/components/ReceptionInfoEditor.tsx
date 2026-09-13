@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { 保存接车信息 } from "@/app/work-orders/actions";
 import { ImageUploader } from "./ImageUploader";
+import { toast } from "@/lib/globalToast";
 
 function toDatetimeLocal(isoString: string | null | undefined): string {
   if (!isoString) return "";
@@ -65,7 +66,7 @@ export function ReceptionInfoEditor({
     });
     setSaving(false);
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       return;
     }
     setOpen(false);

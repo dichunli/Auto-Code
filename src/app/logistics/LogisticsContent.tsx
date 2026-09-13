@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { ImageUploader } from "@/components/ImageUploader";
+import { toast } from "@/lib/globalToast";
 
 type Tab = "waybills" | "companies";
 
@@ -270,7 +271,7 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
     const { data, error } = await query;
     if (error) {
       console.error("物流公司加载失败:", error);
-      alert("加载失败: " + error.message);
+      toast("加载失败: " + error.message, "error");
     }
     setCompanies((data as LogisticsCompany[]) || []);
 
@@ -302,7 +303,7 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
 
     const result = await 删除物流公司(company.id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     await 刷新基础数据缓存();
@@ -313,7 +314,7 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
     if (!(await 请求确认(`确定删除运单「${w.tracking_no}」吗？`))) return;
     const result = await 删除运单(w.id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     /* 若删的是当前页最后一条且不在第 1 页，退到上一页，避免停在空页 */
@@ -393,39 +394,39 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
 
   async function handleAttachPhone() {
     if (!attachSupplierId) {
-      alert("请先选择供应商");
+      toast("请先选择供应商", "warning");
       return;
     }
     const supplier = suppliersList.find((s) => s.id === attachSupplierId);
     if (!supplier) {
-      alert("供应商选择无效");
+      toast("供应商选择无效", "error");
       return;
     }
     /* 2026-08-16 RLS 收紧收编：suppliers 写已限 admin/boss/warehouse，改走 Server Action */
     const res = await 更新供应商电话(attachSupplierId, singlePhone);
     if (!res.success) {
-      alert("补充电话失败: " + (res.error || "未知错误"));
+      toast("补充电话失败: " + (res.error || "未知错误"), "error");
       return;
     }
     setSingleSupplierName(supplier.name);
-    alert(`已将电话 ${singlePhone.trim()} 补充到供应商「${supplier.name}」`);
+    toast(`已将电话 ${singlePhone.trim()} 补充到供应商「${supplier.name}」`, "warning");
   }
 
   async function handleSingleCreate() {
     if (!singleTrackingNo.trim()) {
-      alert("请填写运单号");
+      toast("请填写运单号", "warning");
       return;
     }
     if (!singlePackageCount.trim() || isNaN(parseInt(singlePackageCount)) || parseInt(singlePackageCount) <= 0) {
-      alert("请填写件数");
+      toast("请填写件数", "warning");
       return;
     }
     if (singleFreight.trim() === "" || isNaN(parseFloat(singleFreight))) {
-      alert("请填写运费金额");
+      toast("请填写运费金额", "warning");
       return;
     }
     if (singleCod.trim() === "" || isNaN(parseFloat(singleCod))) {
-      alert("请填写代收金额");
+      toast("请填写代收金额", "warning");
       return;
     }
     setSingleSaving(true);
@@ -452,7 +453,7 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
       loadWaybills(是编辑 ? waybillPage : 1);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      alert((editingWaybill ? "保存" : "创建") + "运单失败: " + message);
+      toast((editingWaybill ? "保存" : "创建") + "运单失败: " + message, "error");
     } finally {
       setSingleSaving(false);
     }
@@ -460,7 +461,7 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
 
   async function handleBatchCreate() {
     if (!batchCompanyId) {
-      alert("请选择物流公司");
+      toast("请选择物流公司", "warning");
       return;
     }
 
@@ -476,7 +477,7 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
     } else {
       const count = parseInt(batchCount, 10);
       if (isNaN(count) || count <= 0) {
-        alert("请至少输入一个物流单号，或填写创建数量");
+        toast("请至少输入一个物流单号，或填写创建数量", "warning");
         return;
       }
       for (let i = 0; i < count; i++) {
@@ -495,7 +496,7 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
     });
     setBatchSaving(false);
     if (!result.success) {
-      alert("批量创建失败: " + (result.error || "未知错误"));
+      toast("批量创建失败: " + (result.error || "未知错误"), "error");
       return;
     }
     setBatchModalOpen(false);
@@ -512,7 +513,7 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
 
     const result = await 保存运单行内字段({ waybillId, field, value });
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       /* 保存失败刷新当前页，回滚本地编辑状态 */
       loadWaybills(waybillPage);
       return;
@@ -1418,11 +1419,11 @@ function CompanyEditModal({ company, onClose, onSaved }: CompanyEditModalProps) 
 
   async function handleSave() {
     if (!name.trim()) {
-      alert("请填写物流公司名称");
+      toast("请填写物流公司名称", "warning");
       return;
     }
     if (scopes.length === 0) {
-      alert("请至少选择一个服务范围");
+      toast("请至少选择一个服务范围", "warning");
       return;
     }
     setSaving(true);
@@ -1439,7 +1440,7 @@ function CompanyEditModal({ company, onClose, onSaved }: CompanyEditModalProps) 
     });
     setSaving(false);
     if (!result.success) {
-      alert((company ? "保存" : "新增") + "失败: " + (result.error || "未知错误"));
+      toast((company ? "保存" : "新增") + "失败: " + (result.error || "未知错误"), "error");
       return;
     }
     await 刷新基础数据缓存();

@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import { 保存报销单 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 export default function ReimbursementPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -155,7 +156,7 @@ export default function ReimbursementPage({ params }: { params: Promise<{ id: st
     if (!orderId) return;
     const validItems = items.filter((it) => it.name.trim() !== "");
     if (validItems.length === 0) {
-      alert("请至少填写一条项目");
+      toast("请至少填写一条项目", "warning");
       return;
     }
 
@@ -175,7 +176,7 @@ export default function ReimbursementPage({ params }: { params: Promise<{ id: st
 
       router.push(`/work-orders/${orderId}/print?type=reimbursement`);
     } catch (err: unknown) {
-      alert("保存失败：" + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败：" + (err instanceof Error ? err.message : String(err)), "error");
       setSaving(false);
     }
   }

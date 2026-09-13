@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { 标记本机操作 } from "@/lib/localEditSignal";
 import { 创建保养单 } from "@/app/vehicles/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   vehicleId: string;
@@ -30,7 +31,7 @@ export function CreateMaintenanceWrapper({
     // 必须在用户点击的同步上下文中打开窗口，否则会被浏览器拦截
     const 新窗口 = window.open("", "_blank");
     if (!新窗口) {
-      alert("浏览器拦截了新窗口，请允许本站弹窗后重试");
+      toast("浏览器拦截了新窗口，请允许本站弹窗后重试", "warning");
       return;
     }
 
@@ -44,7 +45,7 @@ export function CreateMaintenanceWrapper({
 
       if (!result.success) {
         新窗口.close();
-        alert("创建失败: " + (result.error || "未知错误"));
+        toast("创建失败: " + (result.error || "未知错误"), "error");
         设置处理中(false);
         return;
       }
@@ -62,7 +63,7 @@ export function CreateMaintenanceWrapper({
       设置处理中(false);
     } catch (err: unknown) {
       新窗口.close();
-      alert("创建失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("创建失败: " + (err instanceof Error ? err.message : String(err)), "error");
       设置处理中(false);
     }
   }

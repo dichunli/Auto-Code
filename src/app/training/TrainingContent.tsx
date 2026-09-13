@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useDebounce } from "@/lib/useDebounce";
 import Link from "next/link";
 import DeleteCourseButton from "./DeleteCourseButton";
+import { toast } from "@/lib/globalToast";
 
 export interface 课程 {
   id: string;
@@ -229,7 +230,7 @@ export default function TrainingContent({
     /* 写库走 Server Action */
     const result = await 保存课程排序(updates);
     if (!result.success) {
-      alert("排序保存失败: " + (result.error || "未知错误"));
+      toast("排序保存失败: " + (result.error || "未知错误"), "error");
     }
   }
 

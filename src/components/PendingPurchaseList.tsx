@@ -17,6 +17,7 @@ import { DocumentNameInput } from "./DocumentNameInput";
 import CustomPurchaseModal from "./CustomPurchaseModal";
 import { 更新列表项 } from "@/lib/listUpdate";
 import PurchaseOrderNotifyModal, { type 采购通知数据, type 采购通知明细 } from "./PurchaseOrderNotifyModal";
+import { toast } from "@/lib/globalToast";
 
 /* 行类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
 export interface PartBranchRow {
@@ -444,7 +445,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
         const selectedRows = rows.filter((r) => next.has(r.id));
         const existingSupplier = selectedRows.length > 0 ? getRowSupplierId(selectedRows[0]) : "";
         if (existingSupplier && existingSupplier !== targetSupplier) {
-          alert("每次只能发起同一供应商的采购清单");
+          toast("每次只能发起同一供应商的采购清单", "warning");
           return prev;
         }
         next.add(id);
@@ -471,12 +472,12 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
   function openLogisticsModal() {
     const selectedRows = rows.filter((r) => selected.has(r.id));
     if (selectedRows.length === 0) {
-      alert("请先勾选要采购的配件");
+      toast("请先勾选要采购的配件", "warning");
       return;
     }
     const missingSupplier = selectedRows.find((r) => !getRowSupplierId(r));
     if (missingSupplier) {
-      alert(`请为每一条选中行选择供应商(配件: ${missingSupplier.name})`);
+      toast(`请为每一条选中行选择供应商(配件: ${missingSupplier.name})`, "warning");
       return;
     }
 
@@ -567,7 +568,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
     }
 
     if (region === "harbin" && !finalLogisticsId) {
-      alert("哈市供应商必须选择物流公司");
+      toast("哈市供应商必须选择物流公司", "warning");
       return;
     }
 
@@ -936,7 +937,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
       setRows((prev) => prev.filter((r) => r.id !== row.id));
       setSelected((prev) => { const n = new Set(prev); n.delete(row.id); return n; });
     } catch (err: unknown) {
-      alert("修改客户意见失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("修改客户意见失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSubmitting(false);
     }
@@ -945,7 +946,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
   function openRevokeModal() {
     const selectedRows = rows.filter((r) => selected.has(r.id));
     if (selectedRows.length === 0) {
-      alert("请先勾选要撤销的配件");
+      toast("请先勾选要撤销的配件", "warning");
       return;
     }
     setRevokeOpinion("pending");
@@ -958,7 +959,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
     const selectedRows = rows.filter((r) => selected.has(r.id));
     const finalReason = revokeReason === "其他" ? revokeCustomReason.trim() : revokeReason;
     if (!finalReason) {
-      alert("请填写撤销原因");
+      toast("请填写撤销原因", "warning");
       return;
     }
     if (!(await 请求确认(`确认撤销 ${selectedRows.length} 条配件?\n客户意见将变更为「${revokeOpinion === "reject" ? "否决" : "未确定"}」`))) {
@@ -970,7 +971,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
       /* 写库走 Server Action */
       const result = await 批量撤销配件意见({ ids, opinion: revokeOpinion, reason: finalReason });
       if (!result.success) throw new Error(result.error || "撤销失败");
-      alert("已撤销");
+      toast("已撤销", "warning");
       setShowRevokeModal(false);
       setSelected(new Set());
       /* 局部更新：撤销后客户意见变为未确定/否决，行必然离开待采购，直接移除 */
@@ -978,7 +979,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
       setRows((prev) => prev.filter((r) => !撤销ids.has(r.id)));
     } catch (err: unknown) {
       const e = err as Error;
-      alert("撤销失败: " + (e.message || String(err)));
+      toast("撤销失败: " + (e.message || String(err)), "error");
     } finally {
       setSubmitting(false);
     }

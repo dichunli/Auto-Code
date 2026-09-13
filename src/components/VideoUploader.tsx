@@ -6,6 +6,8 @@ import { useUpload } from "@/hooks/useUpload";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 import { useConfirm } from "./ConfirmDialog";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -153,7 +155,7 @@ export function VideoUploader({
         .slice(0, maxVideos - videosRef.current.length);
 
       if (fileArray.length === 0) {
-        alert("未检测到视频文件，请重新选择");
+        toast("未检测到视频文件，请重新选择", "warning");
         return;
       }
 
@@ -167,7 +169,7 @@ export function VideoUploader({
 
       if (errors.length > 0) {
         const msg = errors.map((e) => `${e.file}: ${e.error}`).join("\n");
-        alert("视频上传失败:\n" + msg);
+        await 全局提示("视频上传失败:\n" + msg);
       }
     },
     [maxVideos, 上传, onUpload]
@@ -195,14 +197,14 @@ export function VideoUploader({
     来源名称: string
   ) {
     if (videosRef.current.length >= maxVideos) {
-      alert(`最多上传 ${maxVideos} 个视频`);
+      toast(`最多上传 ${maxVideos} 个视频`, "warning");
       return;
     }
     try {
       const result = await 获取结果();
       if (result.cancelled) return;
       if (result.error || !result.filePath) {
-        alert(`${来源名称}失败: ` + (result.error || "原生视频功能不可用，请重新安装最新版APP"));
+        toast(`${来源名称}失败: ` + (result.error || "原生视频功能不可用，请重新安装最新版APP"), "error");
         return;
       }
 
@@ -212,7 +214,7 @@ export function VideoUploader({
       const blob = await response.blob();
 
       if (maxFileSizeMB > 0 && blob.size > maxFileSizeMB * 1024 * 1024) {
-        alert(`视频大小不能超过 ${maxFileSizeMB}MB`);
+        toast(`视频大小不能超过 ${maxFileSizeMB}MB`, "error");
         return;
       }
 
@@ -226,7 +228,7 @@ export function VideoUploader({
       await handleFiles(dt.files);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("视频上传失败: " + msg);
+      toast("视频上传失败: " + msg, "error");
     }
   }
 

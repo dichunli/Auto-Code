@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { ImageUploader } from "@/components/ImageUploader";
+import { toast } from "@/lib/globalToast";
 
 const GENDERS = [
   { value: "male", label: "男" },
@@ -111,15 +112,15 @@ export default function NewEmployeePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!accountPhone || !password || !fullName) {
-      alert("请填写手机号、密码和姓名");
+      toast("请填写手机号、密码和姓名", "warning");
       return;
     }
     if (!/^1[3-9]\d{9}$/.test(accountPhone)) {
-      alert("请输入正确的11位手机号码");
+      toast("请输入正确的11位手机号码", "warning");
       return;
     }
     if (password.length < 6) {
-      alert("密码至少6位");
+      toast("密码至少6位", "warning");
       return;
     }
 
@@ -154,7 +155,7 @@ export default function NewEmployeePage() {
       router.push("/employees");
       router.refresh();
     } catch (err: unknown) {
-      alert("保存失败：" + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败：" + (err instanceof Error ? err.message : String(err)), "error");
       setLoading(false);
     }
   }

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
 import { 单人领单, 保存施工指派, 删除项目施工人 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Profile {
   id: string;
@@ -110,7 +111,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
       .eq("work_order_item_id", itemId);
     const 最新 = (data || []) as { mechanic_id: string; share_pct: number | null }[];
     if (名单指纹(最新) === 打开时指纹) return true;
-    alert("施工名单刚被其他人修改，已为你刷新为最新名单，请确认后再保存");
+    toast("施工名单刚被其他人修改，已为你刷新为最新名单，请确认后再保存", "warning");
     初始化选中与分成(最新);
     set打开时指纹(名单指纹(最新));
     return false;
@@ -237,7 +238,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
     const { data: { session } } = await supabase.auth.getSession();
     const user = session?.user ?? null; /* getSession本地读不联网（2026-09-03） */
     if (!user) {
-      alert("未登录，无法领单");
+      toast("未登录，无法领单", "error");
       setLoading(false);
       return;
     }
@@ -250,7 +251,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
     const result = await 单人领单(itemId);
     setLoading(false);
     if (!result.success) {
-      alert("领单失败: " + (result.error || "未知错误"));
+      toast("领单失败: " + (result.error || "未知错误"), "error");
       return;
     }
     // 写库成功后才通知父组件更新显示
@@ -264,7 +265,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
     const { data: { session } } = await supabase.auth.getSession();
     const user = session?.user ?? null; /* getSession本地读不联网（2026-09-03） */
     if (!user) {
-      alert("未登录，无法领单");
+      toast("未登录，无法领单", "error");
       setLoading(false);
       return;
     }
@@ -288,7 +289,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
     const result = await 删除项目施工人(itemId);
     setLoading(false);
     if (!result.success) {
-      alert("取消失败: " + (result.error || "未知错误"));
+      toast("取消失败: " + (result.error || "未知错误"), "error");
       return;
     }
     onSaved?.([]);
@@ -314,7 +315,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
     }
 
     if (mechanicIds.length === 0) {
-      alert("请选择施工人");
+      toast("请选择施工人", "warning");
       setLoading(false);
       return;
     }
@@ -334,7 +335,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
         .slice(0, -1)
         .reduce((sum, id) => sum + (parseFloat(manualRatios[id]) || 0), 0);
       if (前几人之和 > 100 + 0.01) {
-        alert(`前几人分成合计已达 ${前几人之和.toFixed(2)}%，超过 100%，请调整`);
+        toast(`前几人分成合计已达 ${前几人之和.toFixed(2)}%，超过 100%，请调整`, "warning");
         setLoading(false);
         return;
       }
@@ -380,7 +381,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
     setLoading(false);
 
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       return;
     }
 

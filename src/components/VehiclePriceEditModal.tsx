@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { toast } from "@/lib/globalToast";
 
 interface VehiclePrice {
   id?: string;
@@ -121,7 +122,7 @@ export default function VehiclePriceEditModal({ open, onClose, onConfirm, prices
     const cpVal = newCustomerPartsPrice === "" ? null : parseFloat(newCustomerPartsPrice);
     const coVal = newCompanyPrice === "" ? null : parseFloat(newCompanyPrice);
     if (Number.isNaN(priceVal)) {
-      alert("请输入有效的销售价");
+      toast("请输入有效的销售价", "warning");
       return;
     }
     onAddVehicles({

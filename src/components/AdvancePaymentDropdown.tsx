@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
 import { 登记预收款, 预收款退款 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface PaymentMethod {
   code: string;
@@ -93,11 +94,11 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
     const val = parseFloat(refundAmount);
     const maxRefund = (record.amount || 0) - (record.refunded_amount || 0);
     if (isNaN(val) || val <= 0) {
-      alert("请输入有效退款金额");
+      toast("请输入有效退款金额", "warning");
       return;
     }
     if (val > maxRefund) {
-      alert(`最多可退 ${formatCurrency(maxRefund)}`);
+      toast(`最多可退 ${formatCurrency(maxRefund)}`, "warning");
       return;
     }
     if (!(await 请求确认(`确认退款 ${formatCurrency(val)}？`))) return;
@@ -114,12 +115,12 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
       });
       setLoading(false);
       if (!result.success) {
-        alert("退款失败：" + (result.error || "未知错误"));
+        toast("退款失败：" + (result.error || "未知错误"), "error");
         return;
       }
     } catch {
       setLoading(false);
-      alert("退款失败：网络异常，请重试");
+      toast("退款失败：网络异常，请重试", "error");
       return;
     }
 
@@ -132,11 +133,11 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
   async function handleSave() {
     const val = parseFloat(amount);
     if (isNaN(val) || val <= 0) {
-      alert("请输入有效金额");
+      toast("请输入有效金额", "warning");
       return;
     }
     if (!method) {
-      alert("请选择收款方式");
+      toast("请选择收款方式", "warning");
       return;
     }
     setLoading(true);
@@ -151,12 +152,12 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
       });
       setLoading(false);
       if (!result.success) {
-        alert("保存失败：" + (result.error || "未知错误"));
+        toast("保存失败：" + (result.error || "未知错误"), "error");
         return;
       }
     } catch {
       setLoading(false);
-      alert("保存失败：网络异常，请重试");
+      toast("保存失败：网络异常，请重试", "error");
       return;
     }
 

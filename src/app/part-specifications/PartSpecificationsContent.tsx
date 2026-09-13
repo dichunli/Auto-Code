@@ -9,6 +9,7 @@ import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
 import { BatchLinkDialog } from "./BatchLinkDialog";
 import { 新建规格并关联, 批量导入配件规格 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 function normalize(str: string) {
   return str.toLowerCase().replace(/[\s\p{P}]/gu, "");
@@ -126,7 +127,7 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      alert("请输入规格名称");
+      toast("请输入规格名称", "warning");
       return;
     }
     setSaving(true);
@@ -137,7 +138,7 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
       partNameIds: linkedNames.map((n) => n.id),
     });
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       setSaving(false);
       return;
     }
@@ -189,7 +190,7 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
     const text = await file.text();
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
     if (lines.length <= 1) {
-      alert("CSV 文件为空或只有表头");
+      toast("CSV 文件为空或只有表头", "warning");
       setImportLoading(false);
       return;
     }
@@ -203,12 +204,12 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
     /* 逐条插入走 Server Action（允许部分失败，与原逻辑一致） */
     const result = await 批量导入配件规格({ names: namesToInsert });
     if (!result.success) {
-      alert("导入失败: " + (result.error || "未知错误"));
+      toast("导入失败: " + (result.error || "未知错误"), "error");
       setImportLoading(false);
       return;
     }
 
-    alert(`导入完成：成功 ${result.成功 ?? 0} 条，失败 ${result.失败 ?? 0} 条`);
+    toast(`导入完成：成功 ${result.成功 ?? 0} 条，失败 ${result.失败 ?? 0} 条`, "error");
     setImportOpen(false);
     setImportLoading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";

@@ -9,6 +9,7 @@ import {
   更新收款方式排序,
   获取收款方式列表,
 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface 收款方式 {
   id: string;
@@ -46,7 +47,7 @@ export default function PaymentMethodsContent({ 初始数据 }: PaymentMethodsCo
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!newCode.trim() || !newName.trim()) {
-      alert("请输入编码和名称");
+      toast("请输入编码和名称", "warning");
       return;
     }
     setSaving(true);
@@ -58,7 +59,7 @@ export default function PaymentMethodsContent({ 初始数据 }: PaymentMethodsCo
     setSaving(false);
 
     if (!res.success) {
-      alert(res.error || "保存失败");
+      toast(res.error || "保存失败", "error");
       return;
     }
 
@@ -71,7 +72,7 @@ export default function PaymentMethodsContent({ 初始数据 }: PaymentMethodsCo
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editingId || !editName.trim()) {
-      alert("请输入名称");
+      toast("请输入名称", "warning");
       return;
     }
     setSaving(true);
@@ -84,7 +85,7 @@ export default function PaymentMethodsContent({ 初始数据 }: PaymentMethodsCo
     setSaving(false);
 
     if (!res.success) {
-      alert(res.error || "更新失败");
+      toast(res.error || "更新失败", "error");
       return;
     }
 
@@ -96,7 +97,7 @@ export default function PaymentMethodsContent({ 初始数据 }: PaymentMethodsCo
     if (!(await 请求确认(`确定删除「${name}」吗？`))) return;
     const res = await 删除收款方式(id);
     if (!res.success) {
-      alert(res.error || "删除失败");
+      toast(res.error || "删除失败", "error");
       return;
     }
     await 刷新列表();
@@ -108,7 +109,7 @@ export default function PaymentMethodsContent({ 初始数据 }: PaymentMethodsCo
     setSaving(false);
 
     if (!res.success) {
-      alert(res.error || "排序保存失败");
+      toast(res.error || "排序保存失败", "error");
       return;
     }
     await 刷新列表();

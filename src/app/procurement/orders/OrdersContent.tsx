@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
+import { toast } from "@/lib/globalToast";
 
 interface 采购订单 {
   id: string;
@@ -61,7 +62,7 @@ export default function OrdersContent({ initialOrders, initialCount }: { initial
       .range(from, from + pageSize - 1);
     if (error) {
       console.error("采购订单加载失败:", error);
-      alert("加载失败: " + error.message);
+      toast("加载失败: " + error.message, "error");
     } else {
       setOrders((data as unknown as 采购订单[]) || []);
       setTotal(count || 0);

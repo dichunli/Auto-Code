@@ -4,6 +4,7 @@ import {useState, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 批量关联配件名称 } from "./actions";
 import { SearchDropdown } from "@/components/SearchDropdown";
+import { toast } from "@/lib/globalToast";
 
 interface 关联项 {
   id: string;
@@ -50,7 +51,7 @@ export function BatchLinkDialog({ open, type, selectedIds, onClose, onSuccess }:
       targetId,
     });
     if (!result.success) {
-      alert(`关联失败: ${result.error || "未知错误"}`);
+      toast(`关联失败: ${result.error || "未知错误"}`, "error");
       setLinking(false);
       return;
     }

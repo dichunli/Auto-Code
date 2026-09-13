@@ -9,6 +9,7 @@ import { SearchDropdown } from "@/components/SearchDropdown";
 import Link from "next/link";
 import { DeleteButton } from "./DeleteButton";
 import { 新建品牌并关联 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface PartBrand {
   id: string;
@@ -102,7 +103,7 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      alert("请输入品牌名称");
+      toast("请输入品牌名称", "warning");
       return;
     }
     setSaving(true);
@@ -113,7 +114,7 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
       partNameIds: linkedNames.map((n) => n.id),
     });
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       setSaving(false);
       return;
     }

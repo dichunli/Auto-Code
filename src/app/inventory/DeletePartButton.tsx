@@ -4,6 +4,7 @@ import { useState } from "react";
 import { deletePart } from "@/app/parts/actions";
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 export default function DeletePartButton({ partId }: { partId: string }) {
   const [deleting, setDeleting] = useState(false);
@@ -17,7 +18,7 @@ export default function DeletePartButton({ partId }: { partId: string }) {
     if (result.success) {
       router.refresh();
     } else {
-      alert(result.error || "删除失败");
+      toast(result.error || "删除失败", "error");
     }
     setDeleting(false);
   }

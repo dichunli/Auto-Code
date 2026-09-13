@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { 获取访问令牌 } from "@/lib/supabase/client";
+import { toast } from "@/lib/globalToast";
 
 export default function VinTestPage() {
   const [loading, setLoading] = useState(false);
@@ -22,7 +23,7 @@ export default function VinTestPage() {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("请选择图片文件");
+      toast("请选择图片文件", "warning");
       return;
     }
 

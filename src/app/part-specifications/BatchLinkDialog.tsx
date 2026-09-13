@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 批量关联规格到名称 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   open: boolean;
@@ -69,7 +70,7 @@ export function BatchLinkDialog({ open, selectedSpecIds, onClose, onSuccess }: P
 
     setLinking(false);
     if (!result.success) {
-      alert("关联失败: " + (result.error || "未知错误"));
+      toast("关联失败: " + (result.error || "未知错误"), "error");
       return;
     }
     setResultText(`关联完成：成功 ${result.成功 ?? 0} 条，跳过 ${result.跳过 ?? 0} 条，失败 ${result.失败 ?? 0} 条`);

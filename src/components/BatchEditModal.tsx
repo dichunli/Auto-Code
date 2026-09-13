@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
 import { 批量修改工单明细 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface BatchEditModalProps {
   orderId: string;
@@ -85,7 +86,7 @@ export function BatchEditModal({ items, itemParts, suppliers, logisticsCompanies
 
   async function handleSubmit() {
     if (selectedIds.size === 0) {
-      alert("请至少选择一项");
+      toast("请至少选择一项", "warning");
       return;
     }
     setLoading(true);
@@ -126,7 +127,7 @@ export function BatchEditModal({ items, itemParts, suppliers, logisticsCompanies
 
       onSuccess();
     } catch (err: unknown) {
-      alert("批量更新失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("批量更新失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setLoading(false);
     }
   }

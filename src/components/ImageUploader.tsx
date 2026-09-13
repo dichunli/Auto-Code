@@ -6,6 +6,8 @@ import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { useUpload } from "@/hooks/useUpload";
 import { ImageViewer } from "./ImageViewer";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -47,7 +49,7 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
     async (fileList: FileList) => {
       const fileArray = Array.from(fileList).slice(0, maxImages - images.length);
       if (fileArray.length === 0) {
-        alert(`最多上传 ${maxImages} 张图片`);
+        toast(`最多上传 ${maxImages} 张图片`, "warning");
         return;
       }
 
@@ -61,7 +63,7 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
 
       if (errors.length > 0) {
         const msg = errors.map((e) => `${e.file}: ${e.error}`).join("\n");
-        alert("图片上传失败:\n" + msg);
+        await 全局提示("图片上传失败:\n" + msg);
       }
     },
     [images, maxImages, 上传, onUpload]
@@ -113,7 +115,7 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
 
   async function handleAppCamera() {
     if (images.length >= maxImages) {
-      alert(`最多上传 ${maxImages} 张图片`);
+      toast(`最多上传 ${maxImages} 张图片`, "warning");
       return;
     }
     try {
@@ -124,7 +126,7 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
         source: CameraSource.Camera,
       });
       if (!photo.base64String) {
-        alert("拍照未获取到图片");
+        toast("拍照未获取到图片", "warning");
         return;
       }
       const base64 = `data:image/jpeg;base64,${photo.base64String}`;
@@ -136,7 +138,7 @@ export function ImageUploader({ onUpload, onDelete, existingImages = [], maxImag
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancel") || msg.includes("denied") || msg.includes("User denied")) return;
-      alert("拍照失败: " + msg);
+      toast("拍照失败: " + msg, "error");
     }
   }
 

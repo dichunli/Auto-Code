@@ -6,6 +6,7 @@ import { 压缩图片 } from "@/lib/imageCompress";
 import { useDebounce } from "@/lib/useDebounce";
 import { copyText } from "@/lib/copyText";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 /* 供应商报价表单（桌面表格样式，与采购管理"待询价"列表同格式）
  * 所有行一直保持可编辑，供应商填完直接提交；"+分支"给同一配件加备选报价（多品牌/多价格），
@@ -112,7 +113,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
   async function 加分支(源行: 行状态) {
     const r = await 添加供应商分支(token, 源行.itemId);
     if (!r.success || !r.item) {
-      alert("添加分支失败: " + (r.error || "未知错误"));
+      toast("添加分支失败: " + (r.error || "未知错误"), "error");
       return;
     }
     const 新行: 行状态 = {
@@ -142,7 +143,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
     if (!(await 请求确认("确定删除这条备选报价吗？"))) return;
     const r = await 删除供应商分支(token, itemId);
     if (!r.success) {
-      alert("删除失败: " + (r.error || "未知错误"));
+      toast("删除失败: " + (r.error || "未知错误"), "error");
       return;
     }
     set行列表((prev) => prev.filter((x) => x.itemId !== itemId));
@@ -160,7 +161,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
       set复制成功(vin);
       setTimeout(() => set复制成功(null), 1500);
     } else {
-      alert("复制失败，请手动长按复制：" + vin);
+      toast("复制失败，请手动长按复制：" + vin, "error");
     }
   }
 
@@ -214,7 +215,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
   /* 上传图片：压缩 → 凭 token 走 /api/upload（存 quote/ 目录）→ 立即保存到明细 */
   async function 上传图片(itemId: string, file: File) {
     if (!file.type.startsWith("image/")) {
-      alert("请选择图片文件");
+      toast("请选择图片文件", "warning");
       return;
     }
     set上传中(itemId);
@@ -234,9 +235,9 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
       const 新图片 = [...(行?.images || []), 新路径];
       set行列表((prev) => prev.map((r) => (r.itemId === itemId ? { ...r, images: 新图片 } : r)));
       const 保存 = await 更新报价图片(token, itemId, 新图片);
-      if (!保存.success) alert("图片保存失败: " + (保存.error || "未知错误"));
+      if (!保存.success) toast("图片保存失败: " + (保存.error || "未知错误"), "error");
     } catch (err: unknown) {
-      alert("图片上传失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("图片上传失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       set上传中(null);
     }
@@ -249,7 +250,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
     const 新图片 = 行.images.filter((_, i) => i !== idx);
     set行列表((prev) => prev.map((r) => (r.itemId === itemId ? { ...r, images: 新图片 } : r)));
     const 保存 = await 更新报价图片(token, itemId, 新图片);
-    if (!保存.success) alert("删除失败: " + (保存.error || "未知错误"));
+    if (!保存.success) toast("删除失败: " + (保存.error || "未知错误"), "error");
   }
 
   async function 提交() {
@@ -257,7 +258,7 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
     for (const r of 行列表) {
       const 价 = Number(r.price);
       if (!r.price.trim() || !Number.isFinite(价) || 价 <= 0) {
-        alert(`「${r.partName}」还没填采购价，每行都要填`);
+        toast(`「${r.partName}」还没填采购价，每行都要填`, "warning");
         return;
       }
     }
@@ -277,14 +278,14 @@ export default function QuoteForm({ token, 初始数据 }: Props) {
       );
       set提交中(false);
       if (!结果.success) {
-        alert("提交失败: " + (结果.error || "未知错误"));
+        toast("提交失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       set提交成功(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: unknown) {
       set提交中(false);
-      alert("提交失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("提交失败: " + (err instanceof Error ? err.message : String(err)), "error");
     }
   }
 

@@ -21,6 +21,7 @@ import VinCameraModal from "@/components/VinCameraModal";
 import type { VinDecodeResult } from "@/components/VinDecodeInput";
 import { 手机接车登记 } from "@/app/work-orders/actions";
 import { 替换车牌 } from "@/app/vehicles/actions";
+import { toast } from "@/lib/globalToast";
 
 /* ============================================================
    接车登记 — 手机端新建工单（一步提交）
@@ -515,7 +516,7 @@ export default function MobileReceptionNewPage() {
   function handleVinRecognize(vin: string, decodeResult: VinDecodeResult | null) {
     const upperVin = 标准化VIN(vin);
     if (!upperVin || upperVin.length !== 17) {
-      alert("VIN 码无效，请重新识别");
+      toast("VIN 码无效，请重新识别", "error");
       return;
     }
     /* 弹出确认弹窗 */
@@ -748,7 +749,7 @@ export default function MobileReceptionNewPage() {
                     } else {
                       /* 没有该车辆，直接进入新建 */
                       if (!isValidPlate(upperPlate)) {
-                        alert("车牌格式不正确，请检查");
+                        toast("车牌格式不正确，请检查", "error");
                         setVehicleQuery(upperPlate);
                         return;
                       }
@@ -807,7 +808,7 @@ export default function MobileReceptionNewPage() {
                   onClick={() => {
                     const plate = vehicleQuery.trim().toUpperCase();
                     if (!isValidPlate(plate)) {
-                      alert("车牌格式不正确，请检查");
+                      toast("车牌格式不正确，请检查", "error");
                       return;
                     }
                     setIsNewVehicle(true);

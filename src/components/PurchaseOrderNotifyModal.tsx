@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { copyText } from "@/lib/copyText";
+import { toast } from "@/lib/globalToast";
 
 export interface 采购通知明细 {
   name: string;
@@ -74,7 +75,7 @@ export default function PurchaseOrderNotifyModal({ data, onClose }: Props) {
       set复制成功(true);
       return;
     }
-    alert("自动复制失败，请手动复制文本框内容");
+    toast("自动复制失败，请手动复制文本框内容", "error");
   }
 
   return createPortal(

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 新建工具 } from "@/app/tools/actions";
+import { toast } from "@/lib/globalToast";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
@@ -74,7 +75,7 @@ export default function NewToolPage() {
     const code = 表单.code.trim();
     const name = 表单.name.trim();
     if (!code || !name) {
-      alert("请填写工具编码和名称");
+      toast("请填写工具编码和名称", "warning");
       return;
     }
 
@@ -95,7 +96,7 @@ export default function NewToolPage() {
       });
 
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         set保存中(false);
         return;
       }
@@ -103,7 +104,7 @@ export default function NewToolPage() {
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("保存失败: " + msg);
+      toast("保存失败: " + msg, "error");
       set保存中(false);
     }
   }

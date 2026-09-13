@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { 更新配件单据名称 } from "@/app/procurement/actions";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   /* 二选一:工单配件行(待询价/待采购/退货等)或采购明细(待收货/待入库/已入库) */
@@ -30,13 +31,13 @@ export function DocumentNameInput({ 工单配件行id, 采购明细id, 初始值
         单据名称: 新值,
       });
       if (!res.success) {
-        alert("单据名称保存失败: " + (res.error || "未知错误"));
+        toast("单据名称保存失败: " + (res.error || "未知错误"), "error");
         e.target.value = 初始值 || ""; /* 失败回滚显示 */
         return;
       }
       保存后?.(新值);
     } catch (err: unknown) {
-      alert("单据名称保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("单据名称保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
       e.target.value = 初始值 || "";
     } finally {
       set保存中(false);

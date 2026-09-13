@@ -3,6 +3,7 @@
 import { Children, useEffect, useState } from "react";
 import { 保存排序 } from "@/app/work-orders/actions";
 import { ItemLevelSortContext, PartLevelSortContext } from "@/lib/sortOrderContext";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   ids: string[];
@@ -65,7 +66,7 @@ export default function SortableList({ ids, tableName, extraIdMap, children }: P
     const 结果 = await 保存排序({ tableName, updates: updateMap });
     if (!结果.success) {
       console.error("排序保存失败:", 结果.error);
-      alert("排序保存失败，请检查网络或刷新后重试");
+      toast("排序保存失败，请检查网络或刷新后重试", "error");
       return;
     }
 

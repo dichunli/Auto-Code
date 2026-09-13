@@ -9,6 +9,7 @@ import { 删除供应商 } from "./actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import Link from "next/link";
+import { toast } from "@/lib/globalToast";
 
 interface Supplier {
   id: string;
@@ -68,7 +69,7 @@ export default function SuppliersContent({ initialSuppliers, initialCount }: { i
     const { data, count, error } = await q;
     if (error) {
       console.error("供应商加载失败:", error);
-      alert("加载失败: " + error.message);
+      toast("加载失败: " + error.message, "error");
     } else {
       setSuppliers((data as unknown as Supplier[]) || []);
       setTotal(count || 0);
@@ -98,14 +99,14 @@ export default function SuppliersContent({ initialSuppliers, initialCount }: { i
 
   async function handleDelete(id: string, name: string, hasParts: boolean) {
     if (hasParts) {
-      alert("该供应商有关联的配件信息，无法删除");
+      toast("该供应商有关联的配件信息，无法删除", "error");
       return;
     }
     if (!(await 请求确认(`确定删除供应商「${name}」吗？`))) return;
 
     const result = await 删除供应商(id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     await 刷新基础数据缓存();

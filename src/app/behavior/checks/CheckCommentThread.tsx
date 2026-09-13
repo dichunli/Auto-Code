@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 提交考核评论 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface 评论 {
   id: string;
@@ -63,7 +64,7 @@ export default function CheckCommentThread({ checkRecordId, initialCount, onPost
       await loadComments();
       onPosted?.();
     } catch (err: unknown) {
-      alert("评论失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("评论失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSending(false);
     }

@@ -7,6 +7,7 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 更新工具 } from "@/app/tools/actions";
+import { toast } from "@/lib/globalToast";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
@@ -51,7 +52,7 @@ export default function EditToolPage() {
         ]);
 
         const { data: tool } = toolRes;
-        if (!tool) { alert("工具不存在"); router.push("/tools/management"); return; }
+        if (!tool) { toast("工具不存在", "error"); router.push("/tools/management"); return; }
 
         set表单({
           code: tool.code || "",
@@ -82,7 +83,7 @@ export default function EditToolPage() {
     e.preventDefault();
     const code = 表单.code.trim();
     const name = 表单.name.trim();
-    if (!code || !name) { alert("请填写工具编码和名称"); return; }
+    if (!code || !name) { toast("请填写工具编码和名称", "warning"); return; }
 
     set保存中(true);
     const finalLocation = 使用新位置 ? 新位置.trim() : 表单.location.trim();
@@ -101,14 +102,14 @@ export default function EditToolPage() {
       });
 
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         set保存中(false);
         return;
       }
       router.push(`/tools/management/${id}`);
       router.refresh();
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
       set保存中(false);
     }
   }

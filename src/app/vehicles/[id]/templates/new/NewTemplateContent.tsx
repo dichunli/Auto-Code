@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { 新建保养模板 } from "@/app/vehicles/actions";
+import { toast } from "@/lib/globalToast";
 
 interface ServiceCategory {
   id: string;
@@ -261,7 +262,7 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!vehicleId || !name.trim()) {
-      alert("请输入模板名称");
+      toast("请输入模板名称", "warning");
       return;
     }
     setLoading(true);
@@ -290,7 +291,7 @@ export default function NewTemplateContent({ params }: { params: Promise<{ id: s
       router.refresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      alert("保存失败: " + message);
+      toast("保存失败: " + message, "error");
       setLoading(false);
     }
   }

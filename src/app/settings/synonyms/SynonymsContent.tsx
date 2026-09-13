@@ -4,6 +4,7 @@ import { useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 删除同义词, 新增同义词, 更新同义词 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 export interface 同义词记录 {
   id: string;
@@ -38,11 +39,11 @@ export default function SynonymsContent({
       .filter(Boolean);
 
     if (!原词) {
-      alert("请输入原词");
+      toast("请输入原词", "warning");
       return;
     }
     if (同义词组.length === 0) {
-      alert("请输入至少一个同义词（用逗号分隔）");
+      toast("请输入至少一个同义词（用逗号分隔）", "warning");
       return;
     }
 
@@ -50,7 +51,7 @@ export default function SynonymsContent({
     if (editingId) {
       /* 检查是否与其他记录重名 */
       if (synonyms.some((s) => s.id !== editingId && s.term === 原词)) {
-        alert(`原词「${原词}」已存在，请勿重复`);
+        toast(`原词「${原词}」已存在，请勿重复`, "error");
         return;
       }
 
@@ -60,7 +61,7 @@ export default function SynonymsContent({
       setSaving(false);
 
       if (!result.success) {
-        alert("更新失败: " + (result.error || "未知错误"));
+        toast("更新失败: " + (result.error || "未知错误"), "error");
         return;
       }
 
@@ -75,7 +76,7 @@ export default function SynonymsContent({
 
     /* 新增模式 */
     if (synonyms.some((s) => s.term === 原词)) {
-      alert(`原词「${原词}」已存在，请勿重复添加`);
+      toast(`原词「${原词}」已存在，请勿重复添加`, "error");
       return;
     }
 
@@ -85,7 +86,7 @@ export default function SynonymsContent({
     setSaving(false);
 
     if (!result.success) {
-      alert("添加失败: " + (result.error || "未知错误"));
+      toast("添加失败: " + (result.error || "未知错误"), "error");
       return;
     }
 
@@ -118,7 +119,7 @@ export default function SynonymsContent({
     setSaving(false);
 
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
 

@@ -8,6 +8,7 @@ import { ImageUploader } from "@/components/ImageUploader";
 import CategoryManageModal, { 行为分类 } from "./CategoryManageModal";
 import DetailManageModal from "./DetailManageModal";
 import { 删除行为项目, 保存行为项目 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface 行为项目 {
   id: string;
@@ -138,11 +139,11 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
 
   async function handleSave() {
     if (!form.name.trim()) {
-      alert("请输入项目名称");
+      toast("请输入项目名称", "warning");
       return;
     }
     if (!form.score_value || parseInt(form.score_value) <= 0) {
-      alert("请输入有效分值");
+      toast("请输入有效分值", "warning");
       return;
     }
 
@@ -167,7 +168,7 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
       setModalOpen(false);
       fetchItems();
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }
@@ -185,7 +186,7 @@ export default function BehaviorItemsContent({ initialItems, initialCategories, 
     if (!(await 请求确认(`确定删除项目「${item.name}」吗？已有的打分流水保留，但无法再使用此项目。${cascadeTip}`))) return;
     const result = await 删除行为项目(item.id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     fetchItems();

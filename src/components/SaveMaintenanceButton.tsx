@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { 保存保养单 } from "@/app/vehicles/actions";
 import { 标记本机操作 } from "@/lib/localEditSignal";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   orderId: string;
@@ -27,7 +28,7 @@ export function SaveMaintenanceButton({ orderId, label }: Props) {
        * 普通编辑场景数据已实时保存，服务端只更新时间戳表示确认保存 */
       const result = await 保存保养单({ orderId, 创建模式 });
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        toast("保存失败: " + (result.error || "未知错误"), "error");
         设置保存中(false);
         return;
       }
@@ -49,7 +50,7 @@ export function SaveMaintenanceButton({ orderId, label }: Props) {
         router.push(`/work-orders/${orderId}`);
       }
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
       设置保存中(false);
     }
   }

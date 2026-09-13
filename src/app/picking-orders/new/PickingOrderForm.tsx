@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { 创建领料单, type 领料明细输入 } from "@/app/picking-orders/actions";
 import PickingScanCheckModal, { type 待核配件 } from "@/components/PickingScanCheckModal";
 import type { 待领料分支, 可用批次, 工单概要 } from "./page";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 interface Props {
   工单: 工单概要 | null;
@@ -149,15 +151,15 @@ export default function PickingOrderForm({ 工单, 分支列表, 批次列表 }:
 
       const 结果 = await 创建领料单(工单?.id || null, 明细, 领料人, 备注, 扫码记录);
       if (!结果.success) {
-        alert("开单失败: " + (结果.error || "未知错误"));
+        toast("开单失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       if (结果.data && 含需确认件) {
-        alert(`领料单 ${结果.data.no} 已生成（待确认）。\n\n含「需库管确认」配件，库管在领料单详情页点「确认出库」后才真正扣库存。`);
+        await 全局提示(`领料单 ${结果.data.no} 已生成（待确认）。\n\n含「需库管确认」配件，库管在领料单详情页点「确认出库」后才真正扣库存。`);
       }
       router.push(`/picking-orders/${结果.data!.id}`);
     } catch (err: unknown) {
-      alert("开单失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("开单失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
     } finally {
       设提交中(false);
     }

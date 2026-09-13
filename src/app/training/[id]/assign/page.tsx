@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 分配培训课程 } from "../../actions";
 import { PageHeader } from "@/components/PageHeader";
 import AssignByGroupModal from "./AssignByGroupModal";
+import { toast } from "@/lib/globalToast";
 
 interface 员工 {
   id: string;
@@ -72,7 +73,7 @@ export default function AssignCoursePage({ params }: { params: Promise<{ id: str
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (selectedEmployees.length === 0) {
-      alert("请至少选择一位学员");
+      toast("请至少选择一位学员", "warning");
       return;
     }
     setLoading(true);
@@ -90,7 +91,7 @@ export default function AssignCoursePage({ params }: { params: Promise<{ id: str
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "未知错误";
-      alert("分配失败: " + msg);
+      toast("分配失败: " + msg, "error");
       setLoading(false);
     }
   }

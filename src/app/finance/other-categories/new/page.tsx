@@ -4,6 +4,7 @@ import {useState} from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 import { 新建收支分类 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 export default function NewOtherCategoryPage() {
   const router = useRouter();
@@ -15,7 +16,7 @@ export default function NewOtherCategoryPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      alert("请填写分类名称");
+      toast("请填写分类名称", "warning");
       return;
     }
 
@@ -26,12 +27,12 @@ export default function NewOtherCategoryPage() {
       const result = await 新建收支分类({ name, type });
       setLoading(false);
       if (!result.success) {
-        alert("保存失败：" + (result.error || "未知错误"));
+        toast("保存失败：" + (result.error || "未知错误"), "error");
         return;
       }
     } catch {
       setLoading(false);
-      alert("保存失败：网络异常，请重试");
+      toast("保存失败：网络异常，请重试", "error");
       return;
     }
 

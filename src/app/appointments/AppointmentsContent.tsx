@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
+import { toast } from "@/lib/globalToast";
 
 interface Appointment {
   id: string;
@@ -73,7 +74,7 @@ export default function AppointmentsContent({ initialAppointments, initialCount,
     const { data, count, error } = await q;
     if (error) {
       console.error("预约加载失败:", error);
-      alert("加载失败: " + error.message);
+      toast("加载失败: " + error.message, "error");
     } else {
       setAppointments((data as unknown as Appointment[]) || []);
       setTotal(count || 0);

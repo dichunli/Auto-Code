@@ -8,6 +8,7 @@ import { SearchDropdown } from "./SearchDropdown";
 import { 标记本地结构编辑 } from "@/lib/localEditSignal";
 import { 添加工单配件 } from "@/app/work-orders/parts-actions";
 import { 解析工单配件价格 } from "@/app/work-orders/actions";
+import { toast } from "@/lib/globalToast";
 
 interface PartName {
   id: string;
@@ -222,12 +223,12 @@ export function AddWorkOrderItemPartModal({
   function pickFromSearch(part: PartName) {
     const exists = selectedPartNames.find((sp) => sp.part_name_id === part.id);
     if (exists) {
-      alert("该配件已选择");
+      toast("该配件已选择", "warning");
       return;
     }
     /* 原手写下拉里"已添加"项是禁用不可点的；收敛后下拉项都能点，这里拦截提示 */
     if (existingPartNameIds.has(part.id)) {
-      alert("该配件已在本项目中，无需重复添加");
+      toast("该配件已在本项目中，无需重复添加", "error");
       return;
     }
     setPickedName(part);
@@ -319,7 +320,7 @@ export function AddWorkOrderItemPartModal({
   async function handleSave() {
     const totalCount = selectedPartNames.length + selectedRealParts.length;
     if (totalCount === 0) {
-      alert("请至少选择一个配件");
+      toast("请至少选择一个配件", "warning");
       return;
     }
 
@@ -367,13 +368,13 @@ export function AddWorkOrderItemPartModal({
     try {
       const 结果 = await 添加工单配件(itemId, inserts as unknown as Record<string, unknown>[]);
       if (!结果.success) {
-        alert("添加失败: " + (结果.error || "未知错误"));
+        toast("添加失败: " + (结果.error || "未知错误"), "error");
         setSaving(false);
         return;
       }
       新id列表 = 结果.ids || [];
     } catch (err: unknown) {
-      alert("添加失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("添加失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setSaving(false);
       return;
     }

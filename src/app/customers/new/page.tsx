@@ -9,6 +9,7 @@ import { VehicleModelSearch } from "@/components/VehicleModelSearch";
 import { ImageUploader } from "@/components/ImageUploader";
 import LicensePlateOcrButton from "@/components/LicensePlateOcrButton";
 import { 新建客户 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 interface VehicleForm {
   id: string;
@@ -191,11 +192,11 @@ export default function NewCustomerPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!customer.name.trim()) {
-      alert("请填写客户姓名");
+      toast("请填写客户姓名", "warning");
       return;
     }
     if (hasPhone && !customer.phone.trim()) {
-      alert("请填写手机号");
+      toast("请填写手机号", "warning");
       return;
     }
     setLoading(true);
@@ -213,13 +214,13 @@ export default function NewCustomerPage() {
         vehicles,
       });
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setLoading(false);
       return;
     }
 
     if (!result.success) {
-      alert(result.error);
+      toast(result.error, "warning");
       setLoading(false);
       return;
     }

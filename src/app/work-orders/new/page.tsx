@@ -11,6 +11,7 @@ import VinDecodeInput from "@/components/VinDecodeInput";
 import LicensePlateKeyboard from "@/components/LicensePlateKeyboard";
 import { CustomerSearchDropdown, Customer, StarDisplay, TagDisplay } from "@/components/CustomerSearchDropdown";
 import { 创建工单 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 export default function NewWorkOrderPage() {
   const router = useRouter();
@@ -226,7 +227,7 @@ export default function NewWorkOrderPage() {
     e.preventDefault();
 
     if (!selectedVehicle && !isNewVehicle) {
-      alert("请先搜索并选择车辆");
+      toast("请先搜索并选择车辆", "warning");
       return;
     }
 
@@ -260,13 +261,13 @@ export default function NewWorkOrderPage() {
         senderPhone,
       });
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
       setLoading(false);
       return;
     }
 
     if (!result.success) {
-      alert("保存失败: " + result.error);
+      toast("保存失败: " + result.error, "error");
       setLoading(false);
       return;
     }
@@ -648,7 +649,7 @@ export default function NewWorkOrderPage() {
                 type="button"
                 onClick={async () => {
                   if (!authCode.trim()) {
-                    alert("请输入授权码");
+                    toast("请输入授权码", "warning");
                     return;
                   }
                   setAuthVerifying(true);
@@ -660,7 +661,7 @@ export default function NewWorkOrderPage() {
                     const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
                     handleSubmit(fakeEvent, true);
                   } else {
-                    alert("授权码错误");
+                    toast("授权码错误", "error");
                   }
                   setAuthVerifying(false);
                 }}

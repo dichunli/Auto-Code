@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { 创建课程 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { VideoUploader } from "@/components/VideoUploader";
+import { toast } from "@/lib/globalToast";
 
 const BlockNoteEditor = dynamic(
   () => import("@/components/BlockNoteEditor").then((mod) => mod.BlockNoteEditor),
@@ -112,13 +113,13 @@ export default function CourseForm({
       ]);
 
       if (!result.success) {
-        alert("保存失败: " + result.error);
+        toast("保存失败: " + result.error, "error");
         setLoading(false);
         return;
       }
       router.push("/training");
     } catch (err: unknown) {
-      alert("保存异常: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存异常: " + (err instanceof Error ? err.message : String(err)), "error");
       setLoading(false);
     }
   }

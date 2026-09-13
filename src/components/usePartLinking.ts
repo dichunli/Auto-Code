@@ -18,6 +18,7 @@
 import { useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { 行内配件关联, type 行内配件快照 } from "@/app/procurement/actions";
+import { toast } from "@/lib/globalToast";
 
 /* 行内下拉选中的配件（PartSearchDropdown 的 MatchedPart 结构） */
 export interface 行内配件 {
@@ -139,7 +140,7 @@ export function usePartLinking<T>(配置: PartLinking配置<T>) {
       配置.保存后(rowId, result.字段 ?? {});
     } catch (err: unknown) {
       const e = err as Error;
-      alert("同步配件信息失败: " + (e.message || String(err)));
+      toast("同步配件信息失败: " + (e.message || String(err)), "error");
     } finally {
       配置.setSubmitting(null);
     }
@@ -170,7 +171,7 @@ export function usePartLinking<T>(配置: PartLinking配置<T>) {
       配置.保存后(rowId, result.字段 ?? {});
     } catch (err: unknown) {
       const e = err as Error;
-      alert("更新配件信息失败: " + (e.message || String(err)));
+      toast("更新配件信息失败: " + (e.message || String(err)), "error");
     } finally {
       配置.setSubmitting(null);
     }
@@ -200,7 +201,7 @@ export function usePartLinking<T>(配置: PartLinking配置<T>) {
       配置.保存后(rowId, result.字段 ?? {});
     } catch (err: unknown) {
       const e = err as Error;
-      alert("清除配件关联失败: " + (e.message || String(err)));
+      toast("清除配件关联失败: " + (e.message || String(err)), "error");
     } finally {
       配置.setSubmitting(null);
     }

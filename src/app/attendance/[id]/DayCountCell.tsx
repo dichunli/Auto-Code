@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { 修改出勤天数 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 export function DayCountCell({
   profileId,
@@ -49,10 +50,10 @@ export function DayCountCell({
         set显示弹窗(false);
         router.refresh();
       } else {
-        alert("保存失败：" + (res.error || "未知错误"));
+        toast("保存失败：" + (res.error || "未知错误"), "error");
       }
     } catch {
-      alert("保存失败：网络异常，请稍后再试");
+      toast("保存失败：网络异常，请稍后再试", "error");
     } finally {
       set保存中(false);
     }
@@ -61,7 +62,7 @@ export function DayCountCell({
   function 执行提交() {
     const n = Number(输入值);
     if (输入值.trim() === "" || isNaN(n) || n < 0 || n > 1 || (n * 2) % 1 !== 0) {
-      alert("出勤天数只能填 0、0.5 或 1");
+      toast("出勤天数只能填 0、0.5 或 1", "warning");
       return;
     }
     void 执行保存(n);

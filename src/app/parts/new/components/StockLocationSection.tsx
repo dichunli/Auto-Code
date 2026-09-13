@@ -3,6 +3,7 @@
 import {useState, useEffect, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 新增仓位 } from "@/app/inventory/warehouses/actions";
+import { toast } from "@/lib/globalToast";
 
 export interface StockLocationRow {
   id: string;
@@ -63,19 +64,19 @@ export default function StockLocationSection({ value, onChange }: StockLocationS
   async function createNewLocation(warehouseName: string, locationName: string) {
     const wh = allWarehouses.find((w) => w.name === warehouseName);
     if (!wh) {
-      alert("请先选择仓库");
+      toast("请先选择仓库", "warning");
       return;
     }
     if (!locationName.trim()) return;
     const name = locationName.trim().toUpperCase().replace(/[^一-龥A-Z0-9-]/g, "");
     if (!name) {
-      alert("仓位名称只能包含中文、英文、数字和-");
+      toast("仓位名称只能包含中文、英文、数字和-", "warning");
       return;
     }
     /* 新建仓位收口到服务端 */
     const result = await 新增仓位({ warehouse_id: wh.id, name });
     if (!result.success) {
-      alert("创建仓位失败：" + (result.error || "未知错误"));
+      toast("创建仓位失败：" + (result.error || "未知错误"), "error");
       return;
     }
     await loadLocationsForWarehouse(warehouseName);

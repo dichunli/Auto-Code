@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 删除配件品牌 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 export function DeleteButton({ id, name }: { id: string; name: string }) {
   const router = useRouter();
@@ -12,7 +13,7 @@ export function DeleteButton({ id, name }: { id: string; name: string }) {
     if (!(await 请求确认(`确定要删除品牌「${name}」吗？`))) return;
     const result = await 删除配件品牌(id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     router.refresh();

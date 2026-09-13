@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 保存考题, 删除考题 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 interface 考题 {
   id: string;
@@ -128,7 +129,7 @@ export default function ExamManageContent({
 
   function removeOption(index: number) {
     if (questionForm.options.length <= 2) {
-      alert("至少需要两个选项");
+      toast("至少需要两个选项", "warning");
       return;
     }
     const newOptions = questionForm.options.filter((_, i) => i !== index);
@@ -147,7 +148,7 @@ export default function ExamManageContent({
   async function handleSaveQuestion() {
     if (!selectedCourseId) return;
     if (!questionForm.question_text.trim()) {
-      alert("请输入题目内容");
+      toast("请输入题目内容", "warning");
       return;
     }
 
@@ -176,7 +177,7 @@ export default function ExamManageContent({
         .order("sort_order", { ascending: true });
       setQuestions((data as 考题[] || []).map((q: 考题) => ({ ...q, options: (q.options as { label: string; text: string }[]) || [] })));
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }
@@ -186,7 +187,7 @@ export default function ExamManageContent({
     if (!(await 请求确认("确定删除这道题吗？"))) return;
     const result = await 删除考题(id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     setQuestions(questions.filter((q) => q.id !== id));

@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { MobileToastProvider } from "@/components/mobile/MobileToast";
+import { GlobalDialogsProvider } from "@/components/GlobalDialogs";
 import { MobileBottomNav } from "@/components/mobile/MobileBottomNav";
 import { AppAuthGuard } from "@/components/mobile/AppAuthGuard";
 
@@ -34,6 +35,7 @@ export default async function MobileLayout({
 
   return (
     <MobileToastProvider>
+      <GlobalDialogsProvider>
       <div className="flex flex-col h-[100dvh] bg-gray-50">
         <main className="flex-1 overflow-y-auto overflow-x-hidden pb-20">
           {children}
@@ -41,6 +43,7 @@ export default async function MobileLayout({
         <MobileBottomNav />
         {是APP环境(userAgent) && <AppAuthGuard />}
       </div>
+      </GlobalDialogsProvider>
     </MobileToastProvider>
   );
 }

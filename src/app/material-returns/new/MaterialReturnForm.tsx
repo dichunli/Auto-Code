@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { 创建退料单, type 退料明细输入 } from "@/app/material-returns/actions";
 import { 退料类型选项 } from "@/lib/returnTypes";
 import type { 可退记录, 领料单概要 } from "./page";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   领料单: (领料单概要 & { 工单id: string | null }) | null;
@@ -61,12 +62,12 @@ export default function MaterialReturnForm({ 领料单, 记录列表 }: Props) {
 
       const 结果 = await 创建退料单(领料单.工单id, 领料单.id, 明细, 退料类型, 原因, 备注);
       if (!结果.success) {
-        alert("开单失败: " + (结果.error || "未知错误"));
+        toast("开单失败: " + (结果.error || "未知错误"), "error");
         return;
       }
       router.push(`/material-returns/${结果.data!.id}`);
     } catch (err: unknown) {
-      alert("开单失败: " + (err instanceof Error ? err.message : "未知错误"));
+      toast("开单失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
     } finally {
       设提交中(false);
     }

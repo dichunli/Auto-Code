@@ -6,6 +6,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import { 记供应商往来账 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 const transactionTypeMap: Record<string, string> = {
   payment: "付款",
@@ -151,7 +152,7 @@ export default function SupplierTransactionsContent({
 
     const { data, error } = await q;
     if (error) {
-      alert("加载失败: " + error.message);
+      toast("加载失败: " + error.message, "error");
       setLoading(false);
       return;
     }
@@ -199,12 +200,12 @@ export default function SupplierTransactionsContent({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.supplier_id) {
-      alert("请选择供应商");
+      toast("请选择供应商", "warning");
       return;
     }
     const amount = parseFloat(form.amount);
     if (!amount || amount <= 0) {
-      alert("请输入有效的金额");
+      toast("请输入有效的金额", "warning");
       return;
     }
 
@@ -219,7 +220,7 @@ export default function SupplierTransactionsContent({
     setSaving(false);
 
     if (!res.success) {
-      alert("保存失败: " + (res.error || "未知错误"));
+      toast("保存失败: " + (res.error || "未知错误"), "error");
       return;
     }
 

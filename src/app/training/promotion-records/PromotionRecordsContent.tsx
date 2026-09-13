@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { 审核晋级 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
+import { 全局输入 } from "@/components/GlobalDialogs";
 
 export interface 晋级记录 {
   id: string;
@@ -86,7 +88,7 @@ export default function PromotionRecordsContent({ initialRecords }: { initialRec
 
   async function handleApprove(record: 晋级记录) {
     if (!record.to_level_id) {
-      alert("目标等级不存在");
+      toast("目标等级不存在", "error");
       return;
     }
     if (!(await 请求确认("确定批准该晋级申请吗？批准后员工等级将更新。"))) return;
@@ -97,27 +99,27 @@ export default function PromotionRecordsContent({ initialRecords }: { initialRec
       const result = await 审核晋级({ recordId: record.id, approve: true });
       if (!result.success) throw new Error(result.error || "操作失败");
 
-      alert("已批准");
+      toast("已批准", "warning");
       fetchData();
     } catch (err: unknown) {
-      alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setProcessingId(null);
     }
   }
 
   async function handleReject(record: 晋级记录) {
-    const reason = prompt("请输入拒绝原因：");
+    const reason = await 全局输入("请输入拒绝原因：");
     if (!reason) return;
 
     setProcessingId(record.id);
     try {
       const result = await 审核晋级({ recordId: record.id, approve: false, reason });
       if (!result.success) throw new Error(result.error || "操作失败");
-      alert("已拒绝");
+      toast("已拒绝", "error");
       fetchData();
     } catch (err: unknown) {
-      alert("操作失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setProcessingId(null);
     }

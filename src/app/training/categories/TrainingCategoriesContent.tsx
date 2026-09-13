@@ -5,6 +5,7 @@ import { createClient, 确保有session } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 保存培训分类, 删除培训分类 } from "../actions";
+import { toast } from "@/lib/globalToast";
 
 interface 课程分类 {
   id: string;
@@ -168,7 +169,7 @@ export default function TrainingCategoriesContent({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) {
-      alert("请填写分类名称");
+      toast("请填写分类名称", "warning");
       return;
     }
     setSaving(true);
@@ -182,7 +183,7 @@ export default function TrainingCategoriesContent({
       isActive: form.is_active,
     });
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       setSaving(false);
       return;
     }
@@ -200,7 +201,7 @@ export default function TrainingCategoriesContent({
     /* 子分类/课程检查和删除都在服务端做 */
     const result = await 删除培训分类(id);
     if (!result.success) {
-      alert(result.error || "删除失败");
+      toast(result.error || "删除失败", "error");
       return;
     }
     await load();

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { 保存工单项目字段 } from "@/app/work-orders/actions";
 import { useDebounce } from "@/lib/useDebounce";
+import { toast } from "@/lib/globalToast";
 
 interface ServiceItem {
   id: string;
@@ -136,7 +137,7 @@ export function EditWorkOrderItemModal({
 
     setLoading(false);
     if (!result.success) {
-      alert("保存失败: " + (result.error || "未知错误"));
+      toast("保存失败: " + (result.error || "未知错误"), "error");
       return;
     }
 

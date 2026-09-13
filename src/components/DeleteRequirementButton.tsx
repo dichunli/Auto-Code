@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { 删除需求 } from "@/app/work-orders/actions";
 import { useConfirm } from "./ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 interface Props {
   requirementId: string;
@@ -20,7 +21,7 @@ export default function DeleteRequirementButton({ requirementId, className = "" 
     const result = await 删除需求(requirementId);
 
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
     } else {
       router.refresh();
     }

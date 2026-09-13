@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 完成退货记录 } from "@/app/procurement/actions";
 import Link from "next/link";
+import { toast } from "@/lib/globalToast";
 
 const returnReasonMap: Record<string, string> = {
   wrong_ship: "错发",
@@ -77,7 +78,7 @@ export default function SupplierReturnsContent({ initialRecords, initialCount }:
 
     const { data, count, error } = await q;
     if (error) {
-      alert("加载失败: " + error.message);
+      toast("加载失败: " + error.message, "error");
       setLoading(false);
       return;
     }
@@ -102,11 +103,11 @@ export default function SupplierReturnsContent({ initialRecords, initialCount }:
   async function handleComplete(id: string) {
     const res = await 完成退货记录(id);
     if (!res.success) {
-      alert("更新失败: " + (res.error || "未知错误"));
+      toast("更新失败: " + (res.error || "未知错误"), "error");
       return;
     }
     if (res.accounted === false) {
-      alert("已标记完成，但未记往来账（未匹配到供应商或配件无采购价），请到「往来款项」手工补记");
+      toast("已标记完成，但未记往来账（未匹配到供应商或配件无采购价），请到「往来款项」手工补记", "warning");
     }
     /* 刷新当前页；状态筛选下标记完成后该条会移出列表，
        若删的是当前页最后一条且不在第 1 页，退到上一页，避免停在空页 */

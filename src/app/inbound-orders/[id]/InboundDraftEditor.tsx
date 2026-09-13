@@ -19,6 +19,8 @@ import { usePartLinking } from "@/components/usePartLinking";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { 更新入库确认单, 作废入库确认单, 确认入库单 } from "@/app/inbound-orders/actions";
+import { toast } from "@/lib/globalToast";
+import { 全局提示 } from "@/components/GlobalDialogs";
 
 /* 确认单明细编辑行（draft 快照 + 采购明细关联字段） */
 export interface 确认单编辑行 {
@@ -200,19 +202,19 @@ export function InboundDraftEditor({ 单头, 明细, 仓库列表, 运单列表 
   async function 保存修改() {
     /* 销售单总金额必填（2026-09-09）：未填直接拦截 */
     if (销售单金额.trim() === "") {
-      alert("供应商销售单总金额必填，请填写后再保存");
+      toast("供应商销售单总金额必填，请填写后再保存", "warning");
       return;
     }
     if (销售单金额.trim() !== "" && (isNaN(销售单金额数!) || 销售单金额数! < 0)) {
-      alert("销售单总金额无效");
+      toast("销售单总金额无效", "error");
       return;
     }
     if (抹零.trim() !== "" && (isNaN(抹零数) || 抹零数 < 0)) {
-      alert("优惠抹零必须是非负数字");
+      toast("优惠抹零必须是非负数字", "warning");
       return;
     }
     if (销售单金额数 !== null && Math.abs(对平差异) > 0.01) {
-      alert(
+      await 全局提示(
         `入库货款合计 ¥${货款合计.toFixed(2)} − 抹零 ¥${抹零数.toFixed(2)} ≠ 销售单总金额 ¥${销售单金额数.toFixed(2)}，` +
         `差 ¥${对平差异.toFixed(2)}。\n请逐行核对入库单价，或在「优惠抹零」填入差额。`
       );
@@ -246,7 +248,7 @@ export function InboundDraftEditor({ 单头, 明细, 仓库列表, 运单列表 
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("保存失败: " + msg);
+      toast("保存失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }
@@ -257,11 +259,11 @@ export function InboundDraftEditor({ 单头, 明细, 仓库列表, 运单列表 
     /* 销售单总金额必填（2026-09-09）：表单没填或已存数据缺金额都先拦，
        服务端 确认入库单 对存量 NULL 金额旧单还有第二道拦截 */
     if (销售单金额.trim() === "" || 单头.supplier_order_amount == null) {
-      alert("请先填写供应商销售单总金额并保存，再确认入库");
+      toast("请先填写供应商销售单总金额并保存，再确认入库", "warning");
       return;
     }
     if (Math.abs(对平差异) > 0.01) {
-      alert("销售单总金额与货款对不平，请先修正并保存，再确认入库");
+      toast("销售单总金额与货款对不平，请先修正并保存，再确认入库", "warning");
       return;
     }
     const 确认 = await 请求确认({
@@ -280,7 +282,7 @@ export function InboundDraftEditor({ 单头, 明细, 仓库列表, 运单列表 
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("确认入库失败: " + msg);
+      toast("确认入库失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }
@@ -303,7 +305,7 @@ export function InboundDraftEditor({ 单头, 明细, 仓库列表, 运单列表 
       router.push("/procurement?tab=pending_storage");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("作废失败: " + msg);
+      toast("作废失败: " + msg, "error");
     } finally {
       setSubmitting(null);
     }

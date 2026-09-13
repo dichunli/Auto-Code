@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 发起晋级申请 } from "../actions";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "@/lib/globalToast";
 
 export interface 员工 {
   id: string;
@@ -186,10 +187,10 @@ export default function PromotionOverviewContent({ initialStatusList }: { initia
       });
 
       if (!result.success) throw new Error(result.error || "申请失败");
-      alert("晋级申请已提交，等待审核");
+      toast("晋级申请已提交，等待审核", "success");
       fetchData();
     } catch (err: unknown) {
-      alert("申请失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("申请失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setPromotingId(null);
     }

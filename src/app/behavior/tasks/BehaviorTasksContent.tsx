@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 删除考核任务, 保存考核任务 } from "./actions";
+import { toast } from "@/lib/globalToast";
 
 interface 行为项目 {
   id: string;
@@ -152,15 +153,15 @@ export default function BehaviorTasksContent({
 
   async function handleSave() {
     if (!form.name.trim()) {
-      alert("请输入任务名称");
+      toast("请输入任务名称", "warning");
       return;
     }
     if (!form.item_id) {
-      alert("请选择关联的行为项目");
+      toast("请选择关联的行为项目", "warning");
       return;
     }
     if (form.end_time <= form.execute_time) {
-      alert("结束时间必须晚于开始时间");
+      toast("结束时间必须晚于开始时间", "warning");
       return;
     }
 
@@ -186,7 +187,7 @@ export default function BehaviorTasksContent({
       /* 新增任务按创建时间倒序在第 1 页；编辑停留在当前页 */
       fetchData(editingTask ? page : 1);
     } catch (err: unknown) {
-      alert("保存失败: " + (err instanceof Error ? err.message : String(err)));
+      toast("保存失败: " + (err instanceof Error ? err.message : String(err)), "error");
     } finally {
       setSaving(false);
     }
@@ -196,7 +197,7 @@ export default function BehaviorTasksContent({
     if (!(await 请求确认("确定删除这条考核任务吗？"))) return;
     const result = await 删除考核任务(id);
     if (!result.success) {
-      alert("删除失败: " + (result.error || "未知错误"));
+      toast("删除失败: " + (result.error || "未知错误"), "error");
       return;
     }
     /* 若删的是当前页最后一条且不在第 1 页，退到上一页，避免停在空页 */
