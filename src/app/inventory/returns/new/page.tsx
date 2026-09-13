@@ -44,6 +44,20 @@ export default function NewPurchaseReturnPage() {
       .then(({ data }) => setParts(data || []));
   }, [supabase]);
 
+  /* 从已入库列表带参跳入（2026-09-13 发起退货）：?partId=xxx&qty=n 预填配件和数量，
+     批次仍需手选（要看各批次剩余量）。用 window.location 读参，避开 useSearchParams 的 Suspense 要求 */
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const partId = sp.get("partId");
+    const qty = sp.get("qty");
+    if (!partId && !qty) return;
+    setForm((prev) => ({
+      ...prev,
+      part_id: partId || prev.part_id,
+      quantity: qty && parseInt(qty, 10) > 0 ? qty : prev.quantity,
+    }));
+  }, []);
+
   useEffect(() => {
     if (form.part_id) {
       supabase
