@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Navbar } from "./Navbar";
 import { PriceVisibilityProvider, usePriceVisibility } from "./PriceVisibilityContext";
 import { ToastProvider } from "./Toast";
+import { GlobalDialogsProvider } from "./GlobalDialogs";
 import { 确保会话就绪, 记录登录健康检查 } from "@/lib/supabase/client";
 import { 挂载错误上报 } from "@/lib/errorReporter";
 
@@ -70,6 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <PriceVisibilityProvider>
       <ToastProvider>
+        <GlobalDialogsProvider>
         <KeyboardHandler />
         <Suspense fallback={null}>
           {!isLogin && <Navbar />}
@@ -88,6 +90,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
         </main>
+        </GlobalDialogsProvider>
       </ToastProvider>
     </PriceVisibilityProvider>
   );

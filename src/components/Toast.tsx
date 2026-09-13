@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, createContext, useContext } from "react";
+import { useState, useCallback, useEffect, createContext, useContext } from "react";
+import { 注册全局Toast } from "@/lib/globalToast";
 
 /* 全局轻提示（2026-08-20）：替代浏览器 alert 的自定义弹窗
    挂在 AppShell 根部，电脑端手机端都能用；
@@ -40,6 +41,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 消失时长[type]);
   }, []);
+
+  /* 注册到全局桥：让不经过 Hook 的 toast() 也走这条渲染通道（alert 治理） */
+  useEffect(() => 注册全局Toast(showToast), [showToast]);
 
   return (
     <ToastContext.Provider value={{ showToast }}>
