@@ -4,7 +4,9 @@ export interface WorkOrderPriceContext {
   vehicleId?: string;
   customerId?: string;
   companyName?: string;
-  vehicleModelId?: string;
+  /* vehicle_models.id 是 INTEGER（migrations_fix_vehicle_model_id_type.sql 已把
+     各关联表从 UUID 纠正为 INTEGER），此处兼容数字与数字字符串 */
+  vehicleModelId?: number | string;
 }
 
 export interface ResolvedPrice {

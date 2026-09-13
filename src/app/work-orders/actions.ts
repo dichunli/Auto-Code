@@ -2127,3 +2127,55 @@ export async function 导入保养模板(参数: {
   revalidatePath(`/work-orders/${参数.orderId}`);
   return { success: true };
 }
+
+/* ═══ 解析工单配件销售价（十级价格优先级，2026-09-13 接入工单开配件） ═══
+ * 从项目反查工单上下文（车辆/客户/单位/车型），走 resolvePartSellingPrice 十级规则。
+ * 只算价不写库；老数据不动，只影响新加配件的默认单价（前端仍可人工改价）。 */
+export async function 解析工单配件价格(参数: {
+  itemId: string;
+  partId: string;
+}): Promise<{ success: boolean; price?: number; source?: string; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 项目 → 工单 → 车辆/客户 上下文 */
+  const { data: 项目行, error: 项目错误 } = await supabase
+    .from("work_order_items")
+    .select("work_order_id")
+    .eq("id", 参数.itemId)
+    .maybeSingle();
+  if (项目错误 || !项目行) {
+    return { success: false, error: 项目错误?.message || "项目不存在" };
+  }
+
+  const { data: 工单行, error: 工单错误 } = await supabase
+    .from("work_orders")
+    .select("vehicle_id, customer_id, vehicles(vehicle_model_id), customers(company)")
+    .eq("id", 项目行.work_order_id)
+    .maybeSingle();
+  if (工单错误 || !工单行) {
+    return { success: false, error: 工单错误?.message || "工单不存在" };
+  }
+
+  interface 工单上下文行 {
+    vehicle_id: string | null;
+    customer_id: string | null;
+    vehicles: { vehicle_model_id: number | null } | null;
+    customers: { company: string | null } | null;
+  }
+  const 工单 = 工单行 as unknown as 工单上下文行;
+
+  const { resolvePartSellingPrice } = await import("@/lib/partPriceResolver");
+  const 结果 = await resolvePartSellingPrice(supabase, 参数.partId, {
+    vehicleId: 工单.vehicle_id || undefined,
+    customerId: 工单.customer_id || undefined,
+    companyName: 工单.customers?.company || undefined,
+    vehicleModelId: 工单.vehicles?.vehicle_model_id ?? undefined,
+  });
+
+  return { success: true, price: 结果.price ?? undefined, source: 结果.source };
+}

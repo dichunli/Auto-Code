@@ -59,9 +59,17 @@ if not exist "%BACKUP_BASE%" (
 :: 步骤1：导出数据库
 echo [1/5] 正在导出数据库...
 set "DB_BACKUP_DIR=%TEMP%\db_backup_%RANDOM%"
-node "%PROJECT_DIR%scripts\backup-db.js" "%DB_BACKUP_DIR%"
+node "%PROJECT_DIR%scripts\backup-export.js" "%DB_BACKUP_DIR%"
 if errorlevel 1 (
-    echo       数据库导出失败，继续代码备份...
+    echo.
+    echo ========================================
+    echo  [严重] 数据库导出失败，备份已中止！
+    echo  没有数据备份的压缩包等于没备份。
+    echo  请把上方红色错误截图发给技术处理。
+    echo ========================================
+    rmdir /S /Q "%DB_BACKUP_DIR%" >nul 2>&1
+    pause
+    exit /b 1
 )
 
 :: 步骤2：复制代码文件到临时目录

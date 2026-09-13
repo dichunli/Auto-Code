@@ -23,7 +23,9 @@ function base64url解码(str: string): string {
 export function 写入Session到Cookie(key: string, value: string): void {
   清除Session的Cookie(key);
   const 编码值 = "base64-" + stringToBase64URL(value);
-  const maxAge = 400 * 24 * 60 * 60;
+  /* 有效期 30 天（2026-09-13 从 400 天收窄，诊断 P1：
+     凭证被盗的风险窗口与有效期成正比；到期重新登录即可） */
+  const maxAge = 30 * 24 * 60 * 60;
   const chunks = createChunks(key, 编码值, COOKIE最大段大小);
   for (const chunk of chunks) {
     document.cookie = `${chunk.name}=${encodeURIComponent(chunk.value)}; path=/; max-age=${maxAge}; SameSite=Lax`;

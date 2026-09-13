@@ -193,45 +193,23 @@ export async function 配件入库(参数: {
       }
     }
 
-    const { data: 当前配件, error: 查询错误 } = await supabase
-      .from("parts")
-      .select("id, quantity")
-      .eq("id", selectedPartId)
-      .single();
-
-    if (查询错误 || !当前配件) {
-      return { success: false, error: "配件不存在" };
-    }
-
-    const beforeQty = 当前配件.quantity || 0;
-    const afterQty = beforeQty + qty;
-
-    const { error: updateError } = await supabase
-      .from("parts")
-      .update({ quantity: afterQty })
-      .eq("id", selectedPartId);
-
-    if (updateError) return { success: false, error: updateError.message };
-
-    if (form.batch_no) {
-      await supabase.from("part_batches").insert({
-        part_id: selectedPartId,
-        batch_no: form.batch_no,
-        quantity: qty,
-        remaining: qty,
-        unit_cost: parseFloat(form.unit_cost) || 0,
-      });
-    }
-
-    await supabase.from("inventory_logs").insert({
-      part_id: selectedPartId,
-      type: "inbound",
-      change_qty: qty,
-      before_qty: beforeQty,
-      after_qty: afterQty,
-      waybill_id: waybillId,
-      notes: logNotes,
+    /* 入库三步（加库存→批次→流水）收编进 manual_part_inbound 事务（2026-09-12 诊断 P0）：
+       原来"读数量→内存加→写回绝对值"，两人同时入库会互相覆盖丢库存；
+       批次/流水散写，中途失败留半账。现在数据库一个事务原子完成。
+       仓位账待业务拍板后补（手工入库表单暂无仓库/仓位字段）。 */
+    const { data: rpc结果, error: rpc错误 } = await supabase.rpc("manual_part_inbound", {
+      p_part_id: selectedPartId,
+      p_qty: qty,
+      p_unit_cost: parseFloat(form.unit_cost) || 0,
+      p_batch_no: form.batch_no || null,
+      p_waybill_id: waybillId,
+      p_log_notes: logNotes,
     });
+    if (rpc错误) return { success: false, error: rpc错误.message };
+    const 入库事务结果 = rpc结果 as { success: boolean; error?: string } | null;
+    if (!入库事务结果?.success) {
+      return { success: false, error: 入库事务结果?.error || "入库失败" };
+    }
 
     if (branchId) {
       await supabase.from("work_order_item_parts").update({ part_id: selectedPartId }).eq("id", branchId);
@@ -373,6 +351,29 @@ export async function 新建采购退货(参数: {
 /* ═══ Excel 批量导入配件 Server Action ═══
  * 导入的写库阶段（建缺失名称/品牌/规格 → 分批插配件 → 建规格关联）收口到服务端。
  * 解析 Excel、编号查重等只读步骤仍留在客户端。 */
+
+interface 字典行 {
+  id: string;
+  name: string;
+}
+
+/* 分页取全量字典（2026-09-12 诊断发现：原来 limit(100)，
+   字典超过 100 条后新导入的配件会静默丢名称/品牌/规格关联且不报错） */
+async function 取全量字典(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  表名: string
+): Promise<字典行[]> {
+  const 全部: 字典行[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from(表名).select("id, name").range(from, from + 999);
+    if (error) throw new Error(`读取字典 ${表名} 失败: ${error.message}`);
+    if (!data || data.length === 0) break;
+    全部.push(...(data as 字典行[]));
+    if (data.length < 1000) break;
+  }
+  return 全部;
+}
+
 export async function 批量导入配件(参数: {
   /* 客户端比对后确认缺失、需要新建的名称 */
   newPartNames: string[];
@@ -410,14 +411,10 @@ export async function 批量导入配件(参数: {
   }
 
   /* 服务端自建名称→ID 映射（与客户端查询口径一致，不信任客户端传入的映射） */
-  const [
-    { data: partNames },
-    { data: brands },
-    { data: specs },
-  ] = await Promise.all([
-    supabase.from("part_names").select("id, name").limit(100),
-    supabase.from("part_brands").select("id, name").limit(100),
-    supabase.from("part_specifications").select("id, name").limit(100),
+  const [partNames, brands, specs] = await Promise.all([
+    取全量字典(supabase, "part_names"),
+    取全量字典(supabase, "part_brands"),
+    取全量字典(supabase, "part_specifications"),
   ]);
 
   const partNameMap = new Map((partNames || []).map((p: NamedRow) => [p.name, p.id]));
@@ -600,4 +597,28 @@ export async function 新建盘点单(参数: {
 
   revalidatePath("/inventory/checks");
   return { success: true };
+}
+
+/* ═══ 完成盘点 Server Action ═══
+ * 2026-09-13 盘点闭环：按实盘数校准库存 + 写流水 + 单据状态闭环，
+ * 全部收在 complete_inventory_check 一个事务里（锁单防重复完成）。 */
+export async function 完成盘点(盘点单id: string): Promise<{ success: boolean; 调整条数?: number; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data: result, error: rpcError } = await supabase.rpc("complete_inventory_check", {
+    p_check_id: 盘点单id,
+  });
+  if (rpcError) return { success: false, error: rpcError.message };
+  const 事务结果 = result as { success: boolean; adjusted?: number; error?: string } | null;
+  if (!事务结果?.success) {
+    return { success: false, error: 事务结果?.error || "完成盘点失败" };
+  }
+
+  revalidatePath("/inventory");
+  revalidatePath("/inventory/checks");
+  return { success: true, 调整条数: 事务结果.adjusted ?? 0 };
 }

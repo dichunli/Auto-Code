@@ -7,6 +7,7 @@ import { PartPickerModal } from "./PartPickerModal";
 import { SearchDropdown } from "./SearchDropdown";
 import { 标记本地结构编辑 } from "@/lib/localEditSignal";
 import { 添加工单配件 } from "@/app/work-orders/parts-actions";
+import { 解析工单配件价格 } from "@/app/work-orders/actions";
 
 interface PartName {
   id: string;
@@ -257,12 +258,24 @@ export function AddWorkOrderItemPartModal({
   }
 
   // 处理从配件选择器返回的配件
-  function handlePickerConfirm(parts: PickerPart[]) {
+  async function handlePickerConfirm(parts: PickerPart[]) {
+    /* 十级价格（2026-09-13 接入）：按工单上下文（车辆/客户/单位/车型）解析
+       最优销售价作为默认单价；解析失败或无结果用配件标准价兜底，单价仍可人工改 */
+    const 价格们 = await Promise.all(
+      parts.map(async (part) => {
+        try {
+          const r = await 解析工单配件价格({ itemId, partId: part.id });
+          return r.success && r.price != null ? r.price : null;
+        } catch {
+          return null;
+        }
+      })
+    );
     setSelectedRealParts((prev) => {
       const next = [...prev];
-      for (const part of parts) {
-        if (next.some((p) => p.part_id === part.id)) continue;
-        if (existingPartIds.has(part.id)) continue;
+      parts.forEach((part, 序号) => {
+        if (next.some((p) => p.part_id === part.id)) return;
+        if (existingPartIds.has(part.id)) return;
         const pb = part.part_brands;
         const brandName = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
         next.push({
@@ -274,10 +287,10 @@ export function AddWorkOrderItemPartModal({
           brand: brandName,
           specification: part.specification_text || part.part_specifications?.name || "",
           unit_cost: part.unit_cost,
-          unit_price: part.unit_price,
+          unit_price: 价格们[序号] ?? part.unit_price,
           quantity: part.selectedQuantity ?? null,
         });
-      }
+      });
       return next;
     });
     setPickerOpen(false);

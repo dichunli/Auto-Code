@@ -4,6 +4,7 @@ import {useState, useEffect, useCallback, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { 验证主管授权码 } from "@/app/settings/actions";
 import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import VinDecodeInput from "@/components/VinDecodeInput";
@@ -215,14 +216,10 @@ export default function NewWorkOrderPage() {
     return { hasDuplicate: false };
   }
 
-  /* 验证主管授权码 */
+  /* 验证主管授权码（2026-09-12 起改走服务端比对，授权码明文不再下发浏览器） */
   async function verifySupervisorCode(code: string): Promise<boolean> {
-    const { data } = await supabase
-      .from("system_settings")
-      .select("value")
-      .eq("key", "supervisor_code")
-      .single();
-    return data?.value === code.trim();
+    const result = await 验证主管授权码(code);
+    return result.success === true && result.valid === true;
   }
 
   async function handleSubmit(e: React.FormEvent, skipDuplicateCheck = false) {

@@ -2,9 +2,14 @@
 
 import { getToken } from "./auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { 验证接口调用者已登录 } from "@/lib/supabase/server";
 
 const BASE_URL = "http://api.17vin.com:8080";
 const USERNAME = process.env.VIN17_USERNAME || "";
+
+/* 本文件所有导出函数都是公开的 Server Action，且每次都消耗 17VIN 付费额度。
+ * 2026-09-12 诊断发现全文件零鉴权（任何人可匿名调用甚至查账户余额），
+ * 鉴权统一收敛在 vin17Request / vin17OcrRequest 两个入口，所有导出函数必经其一。 */
 
 /* 记录17VIN API调用日志 */
 async function 记录调用日志(
@@ -29,6 +34,9 @@ async function 记录调用日志(
 }
 
 async function vin17Request(path: string, params: Record<string, string>): Promise<unknown> {
+  const { user, error: 鉴权错误 } = await 验证接口调用者已登录();
+  if (!user) throw new Error(鉴权错误 || "未登录");
+
   if (!USERNAME) {
     throw new Error("缺少环境变量 VIN17_USERNAME");
   }
@@ -124,6 +132,9 @@ export async function vin17SearchPartNumber(
  * 故 OCR 接口改用 GET 方式，参数放在 URL 查询字符串中。
  */
 async function vin17OcrRequest(action: string, base64UrlencodeImage: string): Promise<unknown> {
+  const { user, error: 鉴权错误 } = await 验证接口调用者已登录();
+  if (!user) throw new Error(鉴权错误 || "未登录");
+
   if (!USERNAME) {
     throw new Error("缺少环境变量 VIN17_USERNAME");
   }

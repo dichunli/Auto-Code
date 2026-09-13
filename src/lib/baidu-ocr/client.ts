@@ -1,7 +1,12 @@
 "use server";
 
+import { 验证接口调用者已登录 } from "@/lib/supabase/server";
+
 const BAIDU_API_KEY = process.env.BAIDU_API_KEY || "";
 const BAIDU_SECRET_KEY = process.env.BAIDU_SECRET_KEY || "";
+
+/* 本文件导出函数是公开的 Server Action，每次调用消耗百度 AI 付费额度。
+ * 2026-09-12 诊断发现零鉴权（任何人可匿名盗刷），导出函数必须先过登录门禁。 */
 
 interface AccessTokenResponse {
   access_token: string;
@@ -43,6 +48,9 @@ async function getAccessToken(): Promise<string> {
 
 /* 车牌识别 */
 export async function recognizeLicensePlate(base64Image: string): Promise<string> {
+  const { user, error: 鉴权错误 } = await 验证接口调用者已登录();
+  if (!user) throw new Error(鉴权错误 || "未登录");
+
   const accessToken = await getAccessToken();
 
   /* 去掉 data:image/xxx;base64, 前缀 */
