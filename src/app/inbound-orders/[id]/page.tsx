@@ -24,8 +24,15 @@ interface InboundOrderItem {
   warehouse_id: string | null;
   location: string | null;
   warehouses: { name: string } | null;
-  /* 联采购明细：双写 WOI / 弹窗预填用（draft 编辑器改编码） */
-  purchase_orders_items_join: { work_order_item_part_id: string | null; supplier_part_name: string | null } | null;
+  /* 联采购明细：双写 WOI / 弹窗预填用（draft 编辑器改编码）；
+     license_plate/photos/evidence_photos（2026-09-13）：明细表车牌列+图片列+打印贴纸 */
+  purchase_orders_items_join: {
+    work_order_item_part_id: string | null;
+    supplier_part_name: string | null;
+    license_plate: string | null;
+    photos: string[] | null;
+    evidence_photos: string[] | null;
+  } | null;
   /* 联配件档案：条码打印内容（barcode || part_number || part_id，与库存页同口径） */
   parts: { barcode: string | null } | null;
 }
@@ -84,7 +91,7 @@ export default async function InboundOrderDetailPage({
   if (!order) {
     if (查询错误 && 查询错误.code !== "PGRST116") {
       return (
-        <div className="p-6 max-w-5xl mx-auto">
+        <div className="p-6 max-w-[1500px] mx-auto">
           <div className="bg-white rounded-xl border border-orange-200 p-12 text-center">
             <div className="text-4xl mb-4">📶</div>
             <h1 className="text-lg font-semibold text-gray-900 mb-2">加载失败，请刷新重试</h1>
@@ -102,7 +109,7 @@ export default async function InboundOrderDetailPage({
 
   const { data: items } = await supabase
     .from("inbound_order_items")
-    .select("id, purchase_order_item_id, part_id, part_number, name, brand, specification, unit, quantity, unit_cost, allocated_cost, freight_manual, batch_no, notes, warehouse_id, location, warehouses(name), purchase_order_items(work_order_item_part_id, supplier_part_name), parts(barcode)")
+    .select("id, purchase_order_item_id, part_id, part_number, name, brand, specification, unit, quantity, unit_cost, allocated_cost, freight_manual, batch_no, notes, warehouse_id, location, warehouses(name), purchase_order_items(work_order_item_part_id, supplier_part_name, license_plate, photos, evidence_photos), parts(barcode)")
     .eq("inbound_order_id", id)
     .order("created_at", { ascending: true });
 
@@ -118,7 +125,7 @@ export default async function InboundOrderDetailPage({
 
   /* 明细行适配：postgrest 联表键名按关系名返回（purchase_order_items/parts） */
   const 原始行们 = (items || []) as unknown as (Omit<InboundOrderItem, "purchase_orders_items_join"> & {
-    purchase_order_items: { work_order_item_part_id: string | null; supplier_part_name: string | null } | { work_order_item_part_id: string | null; supplier_part_name: string | null }[] | null;
+    purchase_order_items: InboundOrderItem["purchase_orders_items_join"] | NonNullable<InboundOrderItem["purchase_orders_items_join"]>[] | null;
   })[];
   const inboundItems: InboundOrderItem[] = 原始行们.map((行) => ({
     ...行,
@@ -127,11 +134,14 @@ export default async function InboundOrderDetailPage({
       : 行.purchase_order_items ?? null,
   }));
 
-  /* 条码打印行（draft/completed 都能打：确认前提前贴码，确认后补打） */
+  /* 条码/二维码打印行（draft/completed 都能打：确认前提前贴码，确认后补打）；
+     贴纸带图片（收货照片第一张）和关联车牌（2026-09-13） */
   const 条码行们 = inboundItems.map((行) => ({
     name: 行.name || "-",
     code: 行.parts?.barcode || 行.part_number || 行.part_id || "-",
     quantity: 行.quantity,
+    photo: [...(行.purchase_orders_items_join?.photos || []), ...(行.purchase_orders_items_join?.evidence_photos || [])][0] ?? null,
+    plate: 行.purchase_orders_items_join?.license_plate ?? null,
   }));
 
   const inventoryLogs = (logs || []) as unknown as InventoryLog[];
@@ -170,7 +180,7 @@ export default async function InboundOrderDetailPage({
   }));
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6 max-w-[1500px] mx-auto">
       <div className="mb-6 flex items-center justify-between print:hidden">
         <Link href="/inbound-orders" className="text-sm text-blue-600 hover:text-blue-700">
           ← 返回入库单列表
@@ -374,7 +384,8 @@ export default async function InboundOrderDetailPage({
 }
 
 /* 只读入库明细表（completed 页面主体 + draft 的打印件）：
-   子组件定义在页面组件外部，遵守「禁止组件内定义组件」规范 */
+   子组件定义在页面组件外部，遵守「禁止组件内定义组件」规范；
+   2026-09-13 美化：单元格 whitespace-nowrap 防止文字逐字竖排，新增车牌/图片两列 */
 function 入库明细只读表({ inboundItems }: { inboundItems: InboundOrderItem[] }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden print:border-black print:rounded-none">
@@ -382,23 +393,25 @@ function 入库明细只读表({ inboundItems }: { inboundItems: InboundOrderIte
         <h3 className="text-sm font-semibold text-gray-900">入库明细</h3>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm whitespace-nowrap">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left font-medium text-gray-500 w-10">序号</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">商品名称</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">零件编码</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">品牌</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">规格</th>
-              <th className="px-6 py-3 text-right font-medium text-gray-500">数量</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">单位</th>
-              <th className="px-6 py-3 text-right font-medium text-gray-500">单价</th>
-              <th className="px-6 py-3 text-right font-medium text-gray-500">分摊运费</th>
-              <th className="px-6 py-3 text-right font-medium text-gray-500">成本价</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">批次号</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">仓库</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">仓位</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">备注</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 w-10">序号</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 min-w-[110px]">商品名称</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">零件编码</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">品牌</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">规格</th>
+              <th className="px-4 py-3 text-right font-medium text-gray-500">数量</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">单位</th>
+              <th className="px-4 py-3 text-right font-medium text-gray-500">单价</th>
+              <th className="px-4 py-3 text-right font-medium text-gray-500">分摊运费</th>
+              <th className="px-4 py-3 text-right font-medium text-gray-500">成本价</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">批次号</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">仓库</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">仓位</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">车牌</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">备注</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500 print:hidden">图片</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -406,34 +419,62 @@ function 入库明细只读表({ inboundItems }: { inboundItems: InboundOrderIte
               const unitCost = it.unit_cost || 0;
               const allocCost = it.allocated_cost || 0;
               const finalCost = unitCost + allocCost;
+              /* 图片（2026-09-13）：收货照片+凭证照片去重展示，与确认入库弹窗同口径 */
+              const 图片们 = [
+                ...new Set([
+                  ...(it.purchase_orders_items_join?.photos || []),
+                  ...(it.purchase_orders_items_join?.evidence_photos || []),
+                ]),
+              ];
               return (
                 <tr key={it.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-gray-500">{idx + 1}</td>
-                  <td className="px-6 py-4 text-gray-900 font-medium">{it.name || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{it.part_number || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{it.brand || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{it.specification || "-"}</td>
-                  <td className="px-6 py-4 text-right text-gray-900">{it.quantity}</td>
-                  <td className="px-6 py-4 text-gray-600">{it.unit || "-"}</td>
-                  <td className="px-6 py-4 text-right text-gray-900">
+                  <td className="px-4 py-4 text-gray-500">{idx + 1}</td>
+                  <td className="px-4 py-4 text-gray-900 font-medium min-w-[110px]">{it.name || "-"}</td>
+                  <td className="px-4 py-4 text-gray-600">{it.part_number || "-"}</td>
+                  <td className="px-4 py-4 text-gray-600">{it.brand || "-"}</td>
+                  <td className="px-4 py-4 text-gray-600">{it.specification || "-"}</td>
+                  <td className="px-4 py-4 text-right text-gray-900">{it.quantity}</td>
+                  <td className="px-4 py-4 text-gray-600">{it.unit || "-"}</td>
+                  <td className="px-4 py-4 text-right text-gray-900">
                     {it.unit_cost != null ? `¥${it.unit_cost.toFixed(2)}` : "-"}
                   </td>
-                  <td className="px-6 py-4 text-right text-gray-600">
+                  <td className="px-4 py-4 text-right text-gray-600">
                     {allocCost > 0 ? `¥${allocCost.toFixed(2)}` : "-"}
                   </td>
-                  <td className="px-6 py-4 text-right text-gray-900 font-medium">
+                  <td className="px-4 py-4 text-right text-gray-900 font-medium">
                     {finalCost > 0 ? `¥${finalCost.toFixed(2)}` : "-"}
                   </td>
-                  <td className="px-6 py-4 text-gray-600">{it.batch_no || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{it.warehouses?.name || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{it.location || "-"}</td>
-                  <td className="px-6 py-4 text-gray-600">{it.notes || "-"}</td>
+                  <td className="px-4 py-4 text-gray-600">{it.batch_no || "-"}</td>
+                  <td className="px-4 py-4 text-gray-600">{it.warehouses?.name || "-"}</td>
+                  <td className="px-4 py-4 text-gray-600">{it.location || "-"}</td>
+                  <td className="px-4 py-4 text-gray-600">{it.purchase_orders_items_join?.license_plate || "-"}</td>
+                  <td className="px-4 py-4 text-gray-600">{it.notes || "-"}</td>
+                  {/* 图片列只在屏幕显示，打印件（入库单纸张）不出图 */}
+                  <td className="px-4 py-4 print:hidden">
+                    {图片们.length === 0 ? (
+                      <span className="text-gray-300 text-xs">-</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {图片们.map((url) => (
+                          <a key={url} href={url} target="_blank" rel="noreferrer">
+                            { }
+                            <img
+                              src={url}
+                              alt="配件图片"
+                              loading="lazy"
+                              className="h-10 w-10 object-cover rounded border border-gray-200 hover:border-blue-400"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               );
             })}
             {inboundItems.length === 0 && (
               <tr>
-                <td colSpan={14} className="px-6 py-8 text-center text-gray-400">
+                <td colSpan={16} className="px-6 py-8 text-center text-gray-400">
                   暂无入库明细
                 </td>
               </tr>
