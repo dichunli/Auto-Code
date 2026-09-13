@@ -20,7 +20,7 @@ import { 申领配件, 取消申领 } from "@/app/picking-orders/actions";
 import { 申请退料, 取消退料申请 } from "@/app/material-returns/actions";
 import { 退料类型选项 } from "@/lib/returnTypes";
 import { 移除外包明细 } from "@/app/outsource-orders/actions";
-import { 删除工单项目, 保存工单项目字段, 保存施工指派, 删除项目施工人, 单人领单, 放弃领单, 更新配件分支, 批量更新配件分支, 添加配件图片记录, 删除配件图片记录, type 配件分支更新 } from "@/app/work-orders/actions";
+import { 删除工单项目, 保存工单项目字段, 保存施工指派, 删除项目施工人, 单人领单, 放弃领单, 更新配件分支, 批量更新配件分支, 添加配件图片记录, 删除配件图片记录, 解析工单配件价格, type 配件分支更新 } from "@/app/work-orders/actions";
 import {
   删除配件分支,
   删除配件目录,
@@ -676,28 +676,43 @@ export default function MobileItemEditor({
     );
   }
 
+  /* 十级价格（2026-09-13 接入）：按工单上下文解析最优销售价作为默认单价，
+     失败或无结果返回 null（调用方用配件标准价兜底），单价仍可人工改 */
+  async function 解析默认单价(partId: string): Promise<number | null> {
+    try {
+      const r = await 解析工单配件价格({ itemId: item.id, partId });
+      return r.success && r.price != null ? r.price : null;
+    } catch {
+      return null;
+    }
+  }
+
   function handlePickerConfirm(pickerParts: PickerPart[]) {
-    setSelectedRealParts((prev) => {
-      const next = [...prev];
-      for (const part of pickerParts) {
-        if (next.some((p) => p.part_id === part.id)) continue;
-        const pb = part.part_brands;
-        const brandName = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
-        next.push({
-          part_id: part.id,
-          part_name_id: part.part_name_id,
-          name: part.name,
-          part_number: part.part_number || "",
-          unit: part.unit || "件",
-          brand: brandName,
-          specification: part.specification_text || part.part_specifications?.name || "",
-          unit_cost: part.unit_cost,
-          unit_price: part.unit_price,
-          quantity: part.selectedQuantity ?? 1,
+    /* 先解析价格再入列，避免先入列再改价覆盖用户可能的手动输入 */
+    void (async () => {
+      const 价格们 = await Promise.all(pickerParts.map((p) => 解析默认单价(p.id)));
+      setSelectedRealParts((prev) => {
+        const next = [...prev];
+        pickerParts.forEach((part, 序号) => {
+          if (next.some((p) => p.part_id === part.id)) return;
+          const pb = part.part_brands;
+          const brandName = (Array.isArray(pb) ? pb[0]?.name : pb?.name) || "";
+          next.push({
+            part_id: part.id,
+            part_name_id: part.part_name_id,
+            name: part.name,
+            part_number: part.part_number || "",
+            unit: part.unit || "件",
+            brand: brandName,
+            specification: part.specification_text || part.part_specifications?.name || "",
+            unit_cost: part.unit_cost,
+            unit_price: 价格们[序号] ?? part.unit_price,
+            quantity: part.selectedQuantity ?? 1,
+          });
         });
-      }
-      return next;
-    });
+        return next;
+      });
+    })();
     setPickerOpen(false);
   }
 
@@ -774,23 +789,28 @@ export default function MobileItemEditor({
   }
 
   function addInventoryPart(part: InventoryPart) {
-    const exists = selectedRealParts.some((sp) => sp.part_id === part.id);
-    if (exists) return;
-    setSelectedRealParts((prev) => [
-      ...prev,
-      {
-        part_id: part.id,
-        part_name_id: part.part_name_id,
-        name: part.name,
-        part_number: part.part_number || "",
-        unit: "件",
-        brand: "",
-        specification: "",
-        unit_cost: null,
-        unit_price: part.unit_price,
-        quantity: 1,
-      },
-    ]);
+    /* 先解析十级价格再入列（标准价兜底）；存在性判断放进函数式更新里防竞态 */
+    void (async () => {
+      const 解析价 = await 解析默认单价(part.id);
+      setSelectedRealParts((prev) => {
+        if (prev.some((sp) => sp.part_id === part.id)) return prev;
+        return [
+          ...prev,
+          {
+            part_id: part.id,
+            part_name_id: part.part_name_id,
+            name: part.name,
+            part_number: part.part_number || "",
+            unit: "件",
+            brand: "",
+            specification: "",
+            unit_cost: null,
+            unit_price: 解析价 ?? part.unit_price,
+            quantity: 1,
+          },
+        ];
+      });
+    })();
   }
 
   function updateRealPartQuantity(partId: string, qty: number | null) {
