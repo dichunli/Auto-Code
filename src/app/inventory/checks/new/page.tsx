@@ -4,6 +4,7 @@ import {useState, useEffect, useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
+import { useToast } from "@/components/Toast";
 import { 新建盘点单 } from "../../actions";
 
 interface 盘点项 {
@@ -19,6 +20,7 @@ interface 盘点项 {
 export default function NewInventoryCheckPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [checkItems, setCheckItems] = useState<盘点项[]>([]);
 
@@ -73,7 +75,7 @@ export default function NewInventoryCheckPage() {
         })),
       });
       if (!result.success) {
-        alert("保存失败: " + (result.error || "未知错误"));
+        showToast("保存失败: " + (result.error || "未知错误"), "error");
         setLoading(false);
         return;
       }
@@ -81,14 +83,14 @@ export default function NewInventoryCheckPage() {
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert("保存失败: " + msg);
+      showToast("保存失败: " + msg, "error");
       setLoading(false);
     }
   }
 
   return (
     <div>
-      <PageHeader title="新建盘点单" description="盘点期间系统将冻结出入库操作" />
+      <PageHeader title="新建盘点单" description="盘点期间请暂停出入库操作（系统不做强制锁定，靠人工约定）" />
       <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div>
