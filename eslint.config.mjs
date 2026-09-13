@@ -26,6 +26,14 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-explicit-any": "error",
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/static-components": "error",
+      /* ═══ 禁原生弹窗（2026-09-13 弹窗治理后锁住，防反弹）：
+       * alert→toast(@/lib/globalToast)/全局提示(GlobalDialogs)，
+       * confirm→useConfirm，prompt→全局输入(GlobalDialogs) ═══ */
+      "no-restricted-globals": ["error",
+        { name: "alert", message: "请用 toast()/全局提示()，见 src/lib/globalToast.ts 与 src/components/GlobalDialogs.tsx" },
+        { name: "confirm", message: "请用 useConfirm()（src/components/ConfirmDialog.tsx）" },
+        { name: "prompt", message: "请用 全局输入()（src/components/GlobalDialogs.tsx）" },
+      ],
     },
   },
   // Override default ignores of eslint-config-next.
