@@ -1499,7 +1499,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                 {batchModal ? (
                   batchModal.waybills.length > 0 ? (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm text-gray-500">分摊运单:</span>
+                      <span className="text-sm text-gray-500">关联运单:</span>
                       <select
                         value={batchWaybillId || ""}
                         onChange={(e) => {
@@ -1534,7 +1534,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   <span className="text-sm text-gray-500">无关联运单</span>
                 )}
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">运费金额(¥):</span>
+                  <span className="text-sm text-gray-500">分摊运费金额:</span>
                   <input
                     type="number"
                     min={0}
