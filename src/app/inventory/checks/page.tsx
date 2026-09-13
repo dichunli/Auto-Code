@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -43,7 +44,11 @@ export default async function InventoryChecksPage() {
             <tbody className="divide-y divide-gray-100">
               {checks?.map((c: 盘点单) => (
                 <tr key={c.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium text-gray-900">{c.check_no || "-"}</td>
+                  <td className="px-6 py-4 font-medium text-blue-600">
+                    <Link href={`/inventory/checks/${c.id}`} className="hover:underline">
+                      {c.check_no || "-"}
+                    </Link>
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`text-xs px-2 py-0.5 rounded ${c.status === "completed" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"}`}>
                       {c.status === "completed" ? "已完成" : "待盘点"}

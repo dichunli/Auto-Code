@@ -598,3 +598,27 @@ export async function 新建盘点单(参数: {
   revalidatePath("/inventory/checks");
   return { success: true };
 }
+
+/* ═══ 完成盘点 Server Action ═══
+ * 2026-09-13 盘点闭环：按实盘数校准库存 + 写流水 + 单据状态闭环，
+ * 全部收在 complete_inventory_check 一个事务里（锁单防重复完成）。 */
+export async function 完成盘点(盘点单id: string): Promise<{ success: boolean; 调整条数?: number; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data: result, error: rpcError } = await supabase.rpc("complete_inventory_check", {
+    p_check_id: 盘点单id,
+  });
+  if (rpcError) return { success: false, error: rpcError.message };
+  const 事务结果 = result as { success: boolean; adjusted?: number; error?: string } | null;
+  if (!事务结果?.success) {
+    return { success: false, error: 事务结果?.error || "完成盘点失败" };
+  }
+
+  revalidatePath("/inventory");
+  revalidatePath("/inventory/checks");
+  return { success: true, 调整条数: 事务结果.adjusted ?? 0 };
+}
