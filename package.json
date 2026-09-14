@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:unit": "vitest run src",
-    "test:db": "vitest run supabase/tests",
+    "test:db": "vitest run --config vitest.db.config.ts",
     "test:watch": "vitest",
     "test:smoke": "node scripts/smoke-test.mjs",
     "test:auth": "node scripts/auth-test.mjs",

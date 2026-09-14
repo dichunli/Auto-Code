@@ -107,6 +107,8 @@ scripts/*
 !scripts/check-migrations.js
 # 重复数据查重同属长期设施（建唯一索引前的必备步骤）
 !scripts/find-duplicates.js
+# CI 数据库重建脚本同属长期设施（数据库集成测试的建库步骤）
+!scripts/ci-db-setup.sh
 # 查重报告含真实姓名/手机号，禁止提交
 查重报告.md
 
