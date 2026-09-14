@@ -28,6 +28,13 @@ export interface Supplier {
   notes: string | null;
   wechat_id: string | null;
   wechat_group_qr: string | null;
+  /* 2026-09-15 批次2：财务信息 */
+  settle_type: string | null;
+  credit_days: number | null;
+  payee_name: string | null;
+  bank_name: string | null;
+  bank_account: string | null;
+  payment_note: string | null;
 }
 
 export interface SupplierContact {
@@ -336,6 +343,47 @@ export default function SupplierDetailClient({
                 <div className="col-span-2">
                   <span className="text-gray-500">备注：</span>
                   <span className="text-gray-900">{supplier.notes}</span>
+                </div>
+              )}
+              {/* 财务信息（2026-09-15 批次2）：填了才显示 */}
+              {(supplier.settle_type || supplier.payee_name || supplier.bank_account || supplier.payment_note) && (
+                <div className="col-span-2 border-t border-gray-100 pt-3 mt-1">
+                  <div className="grid grid-cols-2 gap-4">
+                    {supplier.settle_type && (
+                      <div>
+                        <span className="text-gray-500">结算方式：</span>
+                        <span className="text-gray-900">
+                          {supplier.settle_type === "cash" && "现结"}
+                          {supplier.settle_type === "monthly" && "月结"}
+                          {supplier.settle_type === "credit_days" && `账期 ${supplier.credit_days || "?"} 天`}
+                        </span>
+                      </div>
+                    )}
+                    {supplier.payee_name && (
+                      <div>
+                        <span className="text-gray-500">收款户名：</span>
+                        <span className="text-gray-900">{supplier.payee_name}</span>
+                      </div>
+                    )}
+                    {supplier.bank_name && (
+                      <div>
+                        <span className="text-gray-500">开户行：</span>
+                        <span className="text-gray-900">{supplier.bank_name}</span>
+                      </div>
+                    )}
+                    {supplier.bank_account && (
+                      <div>
+                        <span className="text-gray-500">银行账号：</span>
+                        <span className="text-gray-900 font-mono">{supplier.bank_account}</span>
+                      </div>
+                    )}
+                    {supplier.payment_note && (
+                      <div className="col-span-2">
+                        <span className="text-gray-500">收款说明：</span>
+                        <span className="text-gray-900">{supplier.payment_note}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -739,12 +787,20 @@ export default function SupplierDetailClient({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-gray-900">往来款项 ({transactions.length})</h2>
-              <button
-                onClick={() => setShowTransactionForm(!showTransactionForm)}
-                className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
-              >
-                {showTransactionForm ? "取消" : "记一笔"}
-              </button>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/suppliers/${supplierId}/statement`}
+                  className="px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100"
+                >
+                  对账单
+                </Link>
+                <button
+                  onClick={() => setShowTransactionForm(!showTransactionForm)}
+                  className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
+                >
+                  {showTransactionForm ? "取消" : "记一笔"}
+                </button>
+              </div>
             </div>
 
             {showTransactionForm && (

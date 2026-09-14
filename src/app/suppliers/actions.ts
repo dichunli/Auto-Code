@@ -36,6 +36,13 @@ export interface 供应商档案输入 {
   wrong_shipment_count: string;
   quality_return_count: string;
   recommendation_level: string;
+  /* 2026-09-15 批次2：财务信息（全部选填） */
+  settle_type: string;
+  credit_days: string;
+  payee_name: string;
+  bank_name: string;
+  bank_account: string;
+  payment_note: string;
 }
 
 /* ─── 保存供应商档案(新建或编辑):主表+关联表一个事务 ─── */
@@ -70,6 +77,13 @@ export async function 保存供应商档案(
       wrong_shipment_count: parseInt(档案.wrong_shipment_count) || 0,
       quality_return_count: parseInt(档案.quality_return_count) || 0,
       recommendation_level: parseInt(档案.recommendation_level) || 0,
+      /* 财务信息：账期天数仅在选"账期"时传值，其余情况置空由 RPC 清 NULL */
+      settle_type: 档案.settle_type,
+      credit_days: 档案.settle_type === "credit_days" ? parseInt(档案.credit_days) || null : null,
+      payee_name: 档案.payee_name,
+      bank_name: 档案.bank_name,
+      bank_account: 档案.bank_account,
+      payment_note: 档案.payment_note,
     },
     p_contacts: 联系人.filter((c) => c.name.trim()),
     p_category_ids: 分类ids,
