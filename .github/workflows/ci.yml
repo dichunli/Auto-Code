@@ -38,7 +38,10 @@ jobs:
           cache: npm
 
       - name: 安装依赖
-        run: npm ci
+        # --ignore-scripts：ffmpeg-static 的 postinstall 要从 GitHub releases 下载二进制，
+        # 经常 504 拖垮整个 CI；CI 只做 lint/测试/构建，不跑视频转码，不需要这个二进制。
+        # （require("ffmpeg-static") 只是读个路径字符串，不检查二进制存在，构建不受影响）
+        run: npm ci --ignore-scripts
 
       - name: ESLint 检查
         run: npm run lint
