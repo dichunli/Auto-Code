@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import { compressImage, compressImageByDimension, 压缩图片 } from "@/lib/imageCompress";
 import { 获取访问令牌 } from "@/lib/supabase/client";
 import { 分片上传文件, 需要分片上传 } from "@/lib/chunkedUpload";
+import { 视频最大MB } from "@/lib/uploadLimits";
 
 /* ======================== 类型定义 ======================== */
 
@@ -14,9 +15,9 @@ export interface 上传选项 {
   compressMaxKB?: number;
   /* 图片按最大边尺寸压缩（像素），移动端常用 1280 */
   compressMaxDimension?: number;
-  /* 视频最大时长（秒），默认 60 */
+  /* 视频最大时长（秒），默认 0 表示不限制；个别场景（如质检）调用方显式传入 */
   maxDurationSeconds?: number;
-  /* 文件大小上限（MB），0 表示不限，默认 4096（4GB，分片上传支持超大文件） */
+  /* 文件大小上限（MB），0 表示不限，默认取全站统一口径 视频最大MB（4GB，分片上传支持超大文件） */
   maxFileSizeMB?: number;
   /* 上传超时（毫秒），默认 30000 */
   timeoutMs?: number;
@@ -57,7 +58,7 @@ export function useUpload(选项: 上传选项 = {}): UseUploadReturn {
     compressMaxKB,
     compressMaxDimension,
     maxDurationSeconds = 0,
-    maxFileSizeMB = 4096,
+    maxFileSizeMB = 视频最大MB,
     timeoutMs = 30000,
     folder,
     onProgress,
