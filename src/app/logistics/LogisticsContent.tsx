@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 更新供应商电话 } from "@/app/suppliers/actions";
-import { 结清运费, 删除物流公司, 删除运单, 保存运单, 批量建运单, 保存运单行内字段, 保存物流公司, 交换物流公司排序, 保存物流公司排序号 } from "@/app/logistics/actions";
+import { 结清运费, 删除物流公司, 删除运单, 保存运单, 批量建运单, 保存运单行内字段, 保存物流公司, 交换物流公司排序, 保存物流公司排序号, 创建物流结算单, 作废物流结算单 } from "@/app/logistics/actions";
 import { useToast } from "@/components/Toast";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import Link from "next/link";
@@ -13,7 +13,32 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { ImageUploader } from "@/components/ImageUploader";
 import { toast } from "@/lib/globalToast";
 
-type Tab = "waybills" | "companies";
+type Tab = "waybills" | "companies" | "settlements";
+
+/* 物流结算单（2026-09-15 批次3） */
+interface Settlement {
+  id: string;
+  settlement_no: string;
+  logistics_company_id: string;
+  waybill_count: number;
+  total_amount: number;
+  payment_method: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  status: string;
+  note: string | null;
+  created_at: string;
+  logistics_companies: { name: string } | null;
+  profiles: { full_name: string } | null;
+}
+
+/* 结算单明细（展开查看） */
+interface SettlementItemRow {
+  id: string;
+  waybill_id: string;
+  freight_amount: number;
+  logistics_waybills: { tracking_no: string } | null;
+}
 
 interface LogisticsCompany {
   id: string;
@@ -122,6 +147,13 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
   /* 各物流公司未结运费余额（debit 应付 − payment 已付） */
   const [运费余额, set运费余额] = useState<Record<string, number>>({});
 
+  /* 物流结算单（批次3）：页签数据 + 新建结算弹窗 + 作废 */
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [settlementsLoading, setSettlementsLoading] = useState(false);
+  const [settleModalCompany, setSettleModalCompany] = useState<LogisticsCompany | null>(null);
+  const [expandedSettlement, setExpandedSettlement] = useState<string | null>(null);
+  const [settlementItems, setSettlementItems] = useState<Record<string, SettlementItemRow[]>>({});
+
   /* 单个创建运单弹窗 */
   const [singleModalOpen, setSingleModalOpen] = useState(false);
   const [singleTrackingNo, setSingleTrackingNo] = useState("");
@@ -150,6 +182,7 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
   useEffect(() => {
     if (首次挂载.current) return;
     if (activeTab === "companies") loadCompanies();
+    if (activeTab === "settlements") loadSettlements();
   }, [scopeFilter, activeTab]);
 
   /* 初始化标记：在所有 useEffect 之后，用一个 layout 级别标记首次挂载完成 */
@@ -286,6 +319,66 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
     }
     set运费余额(余额);
     setCompanyLoading(false);
+  }
+
+  /* ─── 物流结算单（批次3） ─── */
+  async function loadSettlements() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    setSettlementsLoading(true);
+    const { data, error } = await supabase
+      .from("logistics_settlements")
+      .select("*, logistics_companies(name), profiles!logistics_settlements_created_by_fkey(full_name)")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    setSettlementsLoading(false);
+    if (error) {
+      toast("加载结算单失败: " + error.message, "error");
+      return;
+    }
+    setSettlements((data || []) as Settlement[]);
+    setSettlementItems({});
+    setExpandedSettlement(null);
+  }
+
+  /* 展开/收起结算明细（首次展开时拉取） */
+  async function 切换结算明细(s: Settlement) {
+    if (expandedSettlement === s.id) {
+      setExpandedSettlement(null);
+      return;
+    }
+    setExpandedSettlement(s.id);
+    if (settlementItems[s.id]) return;
+    const { data, error } = await supabase
+      .from("logistics_settlement_items")
+      .select("id, waybill_id, freight_amount, logistics_waybills(tracking_no)")
+      .eq("settlement_id", s.id)
+      .order("created_at");
+    if (error) {
+      toast("加载结算明细失败: " + error.message, "error");
+      return;
+    }
+    setSettlementItems((prev) => ({ ...prev, [s.id]: (data || []) as unknown as SettlementItemRow[] }));
+  }
+
+  async function handleVoidSettlement(s: Settlement) {
+    if (
+      !(await 请求确认({
+        title: "作废结算单",
+        message: `确定作废结算单 ${s.settlement_no}（${s.logistics_companies?.name || ""}，${s.waybill_count} 张运单，${formatCurrency(s.total_amount)}）吗？\n\n作废后：付款流水删除，这批运单恢复未结清状态。`,
+        confirmText: "确定作废",
+      }))
+    )
+      return;
+    const res = await 作废物流结算单(s.id);
+    if (!res.success) {
+      toast("作废失败: " + (res.error || "未知错误"), "error");
+      return;
+    }
+    toast(`结算单 ${s.settlement_no} 已作废`, "success");
+    loadSettlements();
+    /* 余额也可能变了（运单恢复未结） */
+    loadCompanies();
   }
 
   function openAdd() {
@@ -611,6 +704,17 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
             }`}
           >
             物流公司
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("settlements")}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+              activeTab === "settlements"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            结算单
           </button>
         </div>
       </div>
@@ -1065,6 +1169,14 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
                         >
                           编辑
                         </button>
+                        {/* 去结算（批次3）：把该公司未结运的运单批量结掉，出结算单 */}
+                        <button
+                          type="button"
+                          onClick={() => setSettleModalCompany(c)}
+                          className="text-xs text-green-600 hover:text-green-800 hover:underline"
+                        >
+                          去结算
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleDelete(c)}
@@ -1087,6 +1199,105 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
             </table>
           </div>
         </>
+      )}
+
+      {/* 结算单页签（批次3）：一次结一批运单的凭证，可作废 */}
+      {activeTab === "settlements" && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">结算单号</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">物流公司</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">运单数</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">结算金额</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">支付方式</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">覆盖期间</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">状态</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">经办人</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">备注</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {settlements.map((s) => (
+                <Fragment key={s.id}>
+                  <tr className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <button onClick={() => 切换结算明细(s)} className="text-blue-600 hover:underline font-medium">
+                        {s.settlement_no}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-gray-900">{s.logistics_companies?.name || "-"}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{s.waybill_count} 张</td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(s.total_amount)}</td>
+                    <td className="px-4 py-3 text-gray-600">{s.payment_method || "-"}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">
+                      {s.period_start ? `${s.period_start} ~ ${s.period_end}` : "-"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          s.status === "confirmed" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
+                        }`}
+                      >
+                        {s.status === "confirmed" ? "已确认" : "已作废"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{s.profiles?.full_name || "-"}</td>
+                    <td className="px-4 py-3 text-gray-500">{s.note || "-"}</td>
+                    <td className="px-4 py-3 text-right">
+                      {s.status === "confirmed" && (
+                        <button onClick={() => handleVoidSettlement(s)} className="text-xs text-red-600 hover:underline">
+                          作废
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {expandedSettlement === s.id && (
+                    <tr className="bg-gray-50/60">
+                      <td colSpan={10} className="px-8 py-3">
+                        {(settlementItems[s.id] || []).length === 0 ? (
+                          <span className="text-xs text-gray-400">明细加载中...</span>
+                        ) : (
+                          <div className="text-xs text-gray-600 space-y-1">
+                            <div className="font-medium text-gray-700">结算运单：</div>
+                            {(settlementItems[s.id] || []).map((i) => (
+                              <div key={i.id} className="flex gap-4">
+                                <span>{i.logistics_waybills?.tracking_no || i.waybill_id.slice(0, 8)}</span>
+                                <span className="text-blue-700">{formatCurrency(i.freight_amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+              {settlements.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="px-4 py-12 text-center text-gray-400">
+                    {settlementsLoading ? "加载中..." : "暂无结算单，到「物流公司」页签点「去结算」开始"}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 新建结算弹窗（批次3） */}
+      {settleModalCompany && (
+        <SettlementModal
+          company={settleModalCompany}
+          onClose={() => setSettleModalCompany(null)}
+          onSaved={() => {
+            setSettleModalCompany(null);
+            loadCompanies();
+            if (activeTab === "settlements") loadSettlements();
+          }}
+        />
       )}
 
       {/* 单个创建运单弹窗 */}
@@ -1563,6 +1774,223 @@ function CompanyEditModal({ company, onClose, onSaved }: CompanyEditModalProps) 
           >
             {saving ? "保存中..." : "确定"}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ 新建结算弹窗（2026-09-15 批次3，独立组件：放主组件外面） ═══
+ * 选一家物流公司 → 拉出全部"已签收/有运费/未结清"的运单（默认全勾）
+ * → 合计 → 选支付方式 → 确认出一张结算单 */
+
+interface 可结算运单 {
+  id: string;
+  tracking_no: string;
+  freight_amount: number | null;
+  cod_amount: number | null;
+  received_at: string | null;
+  created_at: string;
+}
+
+function SettlementModal({
+  company,
+  onClose,
+  onSaved,
+}: {
+  company: LogisticsCompany;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const supabase = createClient();
+  const [waybills, setWaybills] = useState<可结算运单[]>([]);
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [method, setMethod] = useState("");
+  const [methods, setMethods] = useState<{ code: string; name: string }[]>([]);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  /* 拉该公司可结算运单 + 支付方式字典 */
+  useEffect(() => {
+    let 有效 = true;
+    async function load() {
+      setLoading(true);
+      const [运单Res, 方式Res] = await Promise.all([
+        supabase
+          .from("logistics_waybills")
+          .select("id, tracking_no, freight_amount, cod_amount, received_at, created_at")
+          .eq("logistics_company_id", company.id)
+          .eq("status", "received")
+          .gt("freight_amount", 0)
+          .or("freight_settled.is.null,freight_settled.eq.false")
+          .order("received_at", { ascending: true }),
+        supabase.from("payment_methods").select("code, name").eq("is_active", true).order("sort_order"),
+      ]);
+      if (!有效) return;
+      setLoading(false);
+      if (运单Res.error) {
+        toast("加载运单失败: " + 运单Res.error.message, "error");
+        return;
+      }
+      const 清单 = (运单Res.data || []) as 可结算运单[];
+      setWaybills(清单);
+      /* 默认全勾 */
+      const 勾选: Record<string, boolean> = {};
+      for (const w of 清单) 勾选[w.id] = true;
+      setChecked(勾选);
+      setMethods((方式Res.data || []) as { code: string; name: string }[]);
+    }
+    load();
+    return () => { 有效 = false; };
+    /* company 在弹窗生命周期内不变 */
+  }, [supabase, company.id]);
+
+  const 勾选清单 = waybills.filter((w) => checked[w.id]);
+  /* 金额转分合计，防浮点 */
+  const 合计分 = 勾选清单.reduce((sum, w) => sum + Math.round((w.freight_amount || 0) * 100), 0);
+
+  async function 提交() {
+    if (勾选清单.length === 0) {
+      toast("请至少勾选一张运单", "warning");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await 创建物流结算单({
+        company_id: company.id,
+        waybill_ids: 勾选清单.map((w) => w.id),
+        payment_method: method || undefined,
+        note: note || undefined,
+      });
+      setSaving(false);
+      if (!res.success) {
+        toast("创建结算单失败: " + (res.error || "未知错误"), "error");
+        return;
+      }
+      toast(`结算单 ${res.settlement_no || ""} 已创建`, "success");
+      onSaved();
+    } catch (err: unknown) {
+      setSaving(false);
+      toast("创建结算单失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-900">结算运费 - {company.name}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+        </div>
+
+        <div className="px-6 py-4 overflow-y-auto flex-1 space-y-4">
+          {loading ? (
+            <p className="text-sm text-gray-400 py-8 text-center">运单加载中...</p>
+          ) : waybills.length === 0 ? (
+            <p className="text-sm text-gray-400 py-8 text-center">该公司没有可结算的运单（已签收、有运费、未结清）</p>
+          ) : (
+            <>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 w-10">
+                        <input
+                          type="checkbox"
+                          checked={勾选清单.length === waybills.length && waybills.length > 0}
+                          onChange={(e) => {
+                            const 全选 = e.target.checked;
+                            const 新: Record<string, boolean> = {};
+                            for (const w of waybills) 新[w.id] = 全选;
+                            setChecked(新);
+                          }}
+                        />
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">运单号</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">签收时间</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500">运费</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500">代收货款</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {waybills.map((w) => (
+                      <tr key={w.id} className={checked[w.id] ? "bg-green-50/40" : ""}>
+                        <td className="px-3 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={!!checked[w.id]}
+                            onChange={(e) => setChecked((prev) => ({ ...prev, [w.id]: e.target.checked }))}
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-gray-900">{w.tracking_no}</td>
+                        <td className="px-3 py-2 text-gray-500 text-xs">
+                          {w.received_at ? new Date(w.received_at).toLocaleDateString("zh-CN") : "-"}
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium text-gray-900">{formatCurrency(w.freight_amount || 0)}</td>
+                        <td className="px-3 py-2 text-right text-gray-500">{w.cod_amount ? formatCurrency(w.cod_amount) : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-4 text-sm">
+                <span className="text-gray-600">
+                  已选 <b className="text-gray-900">{勾选清单.length}</b> 张
+                </span>
+                <span className="text-gray-600">
+                  结算合计：<b className="text-green-700 text-base">{formatCurrency(合计分 / 100)}</b>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">支付方式</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    value={method}
+                    onChange={(e) => setMethod(e.target.value)}
+                  >
+                    <option value="">未选</option>
+                    {methods.map((m) => (
+                      <option key={m.code} value={m.name}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">备注</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="选填，如：8月份运费"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            取消
+          </button>
+          {waybills.length > 0 && (
+            <button
+              type="button"
+              onClick={提交}
+              disabled={saving || 勾选清单.length === 0}
+              className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+              {saving ? "结算中..." : `确认结算 ${formatCurrency(合计分 / 100)}`}
+            </button>
+          )}
         </div>
       </div>
     </div>
