@@ -148,7 +148,7 @@ export default function SupplierDetailClient({
   const supabase = useMemo(() => createClient(), []);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
 
-  /* 未付清应付清单（核销视角，2026-09-14 批次1）：挂载时拉一次，付款后可在付款单页看到最新 */
+  /* 未付清应付清单（核销视角，2026-09-14 批次1）：随往来流水刷新（记一笔/付款回来后不过期） */
   const [payables, setPayables] = useState<PayableInfo[] | null>(null);
   useEffect(() => {
     let 有效 = true;
@@ -160,7 +160,7 @@ export default function SupplierDetailClient({
         if (结果?.success) setPayables(结果.payables || []);
       });
     return () => { 有效 = false; };
-  }, [supabase, supplierId]);
+  }, [supabase, supplierId, transactions]);
 
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [transactionForm, setTransactionForm] = useState<TransactionForm>({
