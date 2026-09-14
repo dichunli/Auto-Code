@@ -69,14 +69,22 @@ export async function 生成工资单(月份: string): Promise<{
 
     const admin = createAdminClient();
 
-    // 1. 在职员工（含底薪）
+    // 1. 在职员工（底薪从 profile_privates 读：2026-09-14 起敏感字段从 profiles 拆出）
     const { data: 员工数据, error: 员工错误 } = await admin
       .from("profiles")
-      .select("id, full_name, base_salary")
+      .select("id, full_name")
       .eq("is_active", true);
     if (员工错误) return { success: false, error: "查询员工失败: " + 员工错误.message };
-    const 员工们 = (员工数据 ?? []) as { id: string; full_name: string; base_salary: number | null }[];
-    if (员工们.length === 0) return { success: false, error: "没有在职员工" };
+    const 员工基础 = (员工数据 ?? []) as { id: string; full_name: string }[];
+    if (员工基础.length === 0) return { success: false, error: "没有在职员工" };
+
+    const { data: 敏感数据, error: 敏感错误 } = await admin
+      .from("profile_privates")
+      .select("profile_id, base_salary")
+      .in("profile_id", 员工基础.map((e) => e.id));
+    if (敏感错误) return { success: false, error: "查询员工底薪失败: " + 敏感错误.message };
+    const 底薪表 = new Map(((敏感数据 ?? []) as { profile_id: string; base_salary: number | null }[]).map((r) => [r.profile_id, r.base_salary]));
+    const 员工们 = 员工基础.map((e) => ({ ...e, base_salary: 底薪表.get(e.id) ?? null }));
 
     // 2. 本月已有工资单的员工（跳过，不覆盖人工改过的）
     const { data: 已有数据 } = await admin

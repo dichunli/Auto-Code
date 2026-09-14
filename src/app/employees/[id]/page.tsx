@@ -67,7 +67,19 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
 
   if (!employee) notFound();
 
-  const typedEmployee = employee as unknown as Employee;
+  /* 敏感字段（身份证）从 profile_privates 补读（2026-09-14 起从 profiles 拆出，RLS 限本人/管理员/财务） */
+  const { data: 敏感信息 } = await supabase
+    .from("profile_privates")
+    .select("id_card, id_card_front_url, id_card_back_url")
+    .eq("profile_id", id)
+    .maybeSingle();
+
+  const typedEmployee = {
+    ...(employee as unknown as Employee),
+    id_card: 敏感信息?.id_card ?? null,
+    id_card_front_url: 敏感信息?.id_card_front_url ?? null,
+    id_card_back_url: 敏感信息?.id_card_back_url ?? null,
+  } as Employee;
 
   const [{ data: workOrders }, { data: mechanicItems }, { data: contacts }] = await Promise.all([
     supabase
