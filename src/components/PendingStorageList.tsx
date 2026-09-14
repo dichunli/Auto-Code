@@ -509,9 +509,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
       .filter((f) => !f.isExcess)
       .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0), 0);
     if (销售单金额 !== null && Math.abs(货款合计 - 抹零 - 销售单金额) > 0.01) {
+      /* 2026-09-14 用户拍板：不平时只告知"对不上"，不泄露货款合计/差额，
+         防止操作员不看销售单直接按提示凑数 */
       await 全局提示(
-        `入库货款合计 ¥${货款合计.toFixed(2)} − 抹零 ¥${抹零.toFixed(2)} ≠ 销售单总金额 ¥${销售单金额.toFixed(2)}，` +
-        `差 ¥${(货款合计 - 抹零 - 销售单金额).toFixed(2)}。\n请逐行核对入库单价，或在「优惠抹零」填入差额。`
+        "入库明细与销售单总金额对不上。\n请拿出供应商销售单，逐行核对入库单价和数量；" +
+        "若供应商确实少收了钱，在「优惠抹零」填入差额。"
       );
       return;
     }
@@ -774,9 +776,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
       .filter((f) => !f.isExcess)
       .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0), 0);
     if (销售单金额 !== null && Math.abs(货款合计 - 抹零 - 销售单金额) > 0.01) {
+      /* 2026-09-14 用户拍板：不平时只告知"对不上"，不泄露货款合计/差额，
+         防止操作员不看销售单直接按提示凑数 */
       await 全局提示(
-        `入库货款合计 ¥${货款合计.toFixed(2)} − 抹零 ¥${抹零.toFixed(2)} ≠ 销售单总金额 ¥${销售单金额.toFixed(2)}，` +
-        `差 ¥${(货款合计 - 抹零 - 销售单金额).toFixed(2)}。\n请逐行核对入库单价，或在「优惠抹零」填入差额。`
+        "入库明细与销售单总金额对不上。\n请拿出供应商销售单，逐行核对入库单价和数量；" +
+        "若供应商确实少收了钱，在「优惠抹零」填入差额。"
       );
       return;
     }
@@ -2051,7 +2055,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
                   bucket="work-order-media"
                   folder="supplier-slips"
                 />
-                {/* 金额校验条：实时显示 货款合计−抹零 与 销售单总金额 是否对平 */}
+                {/* 金额校验条：实时显示 货款合计−抹零 与 销售单总金额 是否对平。
+                    2026-09-14 用户拍板：不平提示不带任何金额数字（货款合计/差额都不写），
+                    防止操作员不看销售单、直接按提示反推金额凑数偷懒 */}
                 {销售单金额数 !== null && !isNaN(销售单金额数) && (
                   !销售单不平 ? (
                     <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-1.5">
@@ -2059,8 +2065,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
                     </p>
                   ) : (
                     <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-1.5">
-                      ✗ 不平：货款 ¥{货款合计数.toFixed(2)} − 抹零 ¥{抹零数值.toFixed(2)} = ¥{(货款合计数 - 抹零数值).toFixed(2)}，
-                      与销售单 ¥{销售单金额数.toFixed(2)} 差 ¥{(对平差异 ?? 0).toFixed(2)}（{(对平差异 ?? 0) > 0 ? "货款多" : "货款少"}）——请改入库单价或填抹零
+                      ✗ 与销售单总金额对不上——请拿出销售单逐行核对入库单价和数量；供应商少收的钱填到「优惠抹零」
                     </p>
                   )
                 )}
