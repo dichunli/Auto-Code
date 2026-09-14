@@ -39,8 +39,8 @@ DECLARE
     'revoke_supplier_returns',
     'save_supplier_full'
   ];
-  锚点 TEXT := E'未登录或登录已过期'');\r\n  END IF;\r\n';
-  门禁 TEXT := E'未登录或登录已过期'');\r\n  END IF;\r\n\r\n  /* 权限门禁(2026-08-14 体检整改):采购/供应商写操作仅 管理员/老板/仓管 可执行 */\r\n  IF NOT public.has_role(''admin'', ''boss'', ''warehouse'') THEN\r\n    RETURN jsonb_build_object(''success'', false, ''error'', ''无权限:仅管理员、老板、仓管可操作采购'');\r\n  END IF;\r\n';
+  锚点 TEXT := E'未登录或登录已过期'');\n  END IF;\n';
+  门禁 TEXT := E'未登录或登录已过期'');\n  END IF;\n\n  /* 权限门禁(2026-08-14 体检整改):采购/供应商写操作仅 管理员/老板/仓管 可执行 */\n  IF NOT public.has_role(''admin'', ''boss'', ''warehouse'') THEN\n    RETURN jsonb_build_object(''success'', false, ''error'', ''无权限:仅管理员、老板、仓管可操作采购'');\n  END IF;\n';
   已改数量 INTEGER := 0;
   跳过数量 INTEGER := 0;
 BEGIN
@@ -48,6 +48,10 @@ BEGIN
     SELECT pg_get_functiondef(p.oid) INTO 定义
     FROM pg_proc p
     WHERE p.proname = 函数名 AND p.pronamespace = 'public'::regnamespace;
+
+    /* 换行符正规化：Windows 环境写入的函数体是 CRLF，Linux/CI 检出的是 LF，
+       统一成 LF 再匹配锚点，两种环境都能命中（函数体换行符不影响执行语义） */
+    定义 := replace(定义, E'\r\n', E'\n');
 
     IF 定义 IS NULL THEN
       RAISE EXCEPTION '函数 % 不存在，终止（全部回滚）', 函数名;

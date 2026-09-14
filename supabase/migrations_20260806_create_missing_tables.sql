@@ -29,7 +29,10 @@ CREATE TABLE IF NOT EXISTS payroll_records (
   bonus DECIMAL(12,2) DEFAULT 0,
   deduction DECIMAL(12,2) DEFAULT 0,
   total_amount DECIMAL(12,2) GENERATED ALWAYS AS (
-    COALESCE(base_salary,0) + COALESCE(commission_total,0) + COALESCE(bonus,0) - COALESCE(deduction,0)
+    /* 生成列不能引用另一生成列（PG 限制），commission_total 在此展开，结果等价 */
+    COALESCE(base_salary,0) + COALESCE(commission_diagnosis,0) + COALESCE(commission_repair,0) +
+    COALESCE(commission_sales,0) + COALESCE(commission_qc,0) + COALESCE(commission_picking,0) +
+    COALESCE(bonus,0) - COALESCE(deduction,0)
   ) STORED,
   status TEXT DEFAULT 'draft' CHECK (status IN ('draft','approved','paid')),
   paid_at TIMESTAMPTZ,

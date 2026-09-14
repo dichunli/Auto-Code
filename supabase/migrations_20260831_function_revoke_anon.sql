@@ -83,7 +83,7 @@ END $$;
    WHERE pronamespace='public'::regnamespace
      AND proacl::text LIKE '%anon=X%' AND proname NOT LIKE 'gtrgm%'
      AND proname NOT LIKE '%similarity%' AND proname NOT LIKE '%trgm%';
-   应只剩 pg_trgm 扩展函数（gin_extract_*/set_limit/show_limit 等）。
+   应只剩 pg_trgm 扩展函数（gin_extract 系列、set_limit、show_limit 等）。
 */
 
 /* 登记台账（台账表还没建过则跳过，不报错） */

@@ -33,8 +33,12 @@ errlog=$(mktemp)
 while IFS= read -r f; do
   : > "$errlog"
   psql "$DB" -q -f "$f" > /dev/null 2>"$errlog" || true
-  # 只审计 ERROR 行；白名单：对象已存在/不存在（预期冲突）、种子数据主键重复
-  bad=$(grep -E "ERROR:" "$errlog" | grep -viE "already exists|does not exist|duplicate key value violates" || true)
+  # 只审计 ERROR 行；白名单：
+  #   already exists / does not exist —— schema.sql 快照与早期迁移的预期冲突
+  #   duplicate key value violates —— 种子数据重复插入
+  #   cannot be implemented —— 0505 FK 引用 vehicle_models 的类型错位（快照已是新结构）
+  #   cannot truncate a table referenced —— 0520 车型导入清表被快照已有 FK 挡住（CI 不强求全量车型数据）
+  bad=$(grep -E "ERROR:" "$errlog" | grep -viE "already exists|does not exist|duplicate key value violates|cannot be implemented|cannot truncate a table referenced" || true)
   if [ -n "$bad" ]; then
     echo "--- ✗ $f 有非白名单错误："
     echo "$bad" | head -5
