@@ -300,13 +300,15 @@ describe("revoke_completed_inbound / revoke_supplier_returns - 数据库集成�
     expect((await query(`SELECT COUNT(*) c FROM part_batches WHERE reference_id = $1 AND inbound_type = 'purchase'`, [h.purchaseOrderId])).rows[0].c).toBe("0");
     expect((await query(`SELECT COUNT(*) c FROM supplier_transactions WHERE reference_id = $1`, [inb.inbound_order_id])).rows[0].c).toBe("0");
 
-    /* 待退货记录删除、明细清空、采购单回 submitted、到货标记回退 */
-    expect((await query(`SELECT COUNT(*) c FROM supplier_return_records WHERE work_order_item_part_id = ANY($1)`, [h.branchIds])).rows[0].c).toBe("0");
-    const poi = await query(`SELECT handle_action, received_qty FROM purchase_order_items WHERE order_id = $1`, [h.purchaseOrderId]);
-    expect(poi.rows.every((r) => r.handle_action === null && r.received_qty === null)).toBe(true);
-    expect((await query(`SELECT status FROM purchase_orders WHERE id = $1`, [h.purchaseOrderId])).rows[0].status).toBe("submitted");
-    expect(await 到货标记(h.branchIds[0])).toBe(false);
-    expect(await 到货标记(h.branchIds[1])).toBe(false);
+    /* 2026-09-13 新语义（migrations_20260913_a_revoke_inbound_to_storage）：撤销入库只倒退一步到「待入库」，
+       收货结果全部保留——待退货记录保留、handle_action/received_qty 不清、采购单回 pending_storage、到货标记保留 */
+    expect((await query(`SELECT COUNT(*) c FROM supplier_return_records WHERE work_order_item_part_id = ANY($1)`, [h.branchIds])).rows[0].c).toBe("1");
+    const poi = await query(`SELECT handle_action, received_qty FROM purchase_order_items WHERE order_id = $1 ORDER BY part_number`, [h.purchaseOrderId]);
+    expect(poi.rows.map((r) => r.handle_action)).toEqual(["normal", "broken_exchange"]);
+    expect(poi.rows.map((r) => r.received_qty)).toEqual([5, 3]);
+    expect((await query(`SELECT status FROM purchase_orders WHERE id = $1`, [h.purchaseOrderId])).rows[0].status).toBe("pending_storage");
+    expect(await 到货标记(h.branchIds[0])).toBe(true);
+    expect(await 到货标记(h.branchIds[1])).toBe(true);
 
     await cleanupAll();
   });

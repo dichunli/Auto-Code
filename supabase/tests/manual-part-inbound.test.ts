@@ -201,7 +201,8 @@ describe("manual_part_inbound - 数据库集成测试", () => {
 
     await client2.query("BEGIN");
     await client2.query(`SELECT set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: TEST_USER_ID })]);
-    const p2 = callManualInbound(partId, 3, { batchNo: "PC-T2" })
+    /* 必须传 client2：pg 客户端单连接的 query 是排队的，不传就会排在 client 的 COMMIT 之后执行（claims 已失效） */
+    const p2 = callManualInbound(partId, 3, { batchNo: "PC-T2" }, client2)
       .then(async (r) => { await client2.query("COMMIT"); return r; })
       .catch(async (e) => { await client2.query("ROLLBACK"); throw e; });
 
