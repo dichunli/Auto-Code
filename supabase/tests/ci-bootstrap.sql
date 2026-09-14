@@ -43,6 +43,10 @@ CREATE TABLE IF NOT EXISTS auth.users (
   email TEXT,
   encrypted_password TEXT,
   email_confirmed_at TIMESTAMPTZ,
+  /* 迁移里的 on_auth_user_created 触发器会读 NEW.raw_user_meta_data（取 full_name 建 profiles） */
+  raw_user_meta_data JSONB,
+  raw_app_meta_data JSONB,
+  phone TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
