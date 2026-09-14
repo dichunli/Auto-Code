@@ -9,6 +9,7 @@ import { base64转Blob } from "@/lib/imageCompress";
 import { 提交行为记分 } from "./actions";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { toast } from "@/lib/globalToast";
+import { 视频最大字节 } from "@/lib/uploadLimits";
 
 interface 员工 {
   id: string;
@@ -207,8 +208,8 @@ export default function BehaviorScoreContent({
     const files = e.target.files;
     if (!files || files.length === 0) return;
     for (const file of Array.from(files)) {
-      if (file.size > 100 * 1024 * 1024) {
-        toast(`视频 ${file.name} 超过 100MB 限制`, "warning");
+      if (file.size > 视频最大字节) {
+        toast(`视频 ${file.name} 超过 4GB 限制`, "warning");
         continue;
       }
       const preview = URL.createObjectURL(file);

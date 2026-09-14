@@ -85,7 +85,7 @@ export async function 保存员工档案(参数: {
 
   const supabase = await createClient();
 
-  /* 1. 更新员工主表 */
+  /* 1. 更新员工主表（非敏感字段） */
   const { error: profileError } = await supabase
     .from("profiles")
     .update({
@@ -98,15 +98,27 @@ export async function 保存员工档案(参数: {
       address: address || null,
       notes: notes || null,
       is_active: isActive,
-      id_card: idCard || null,
-      id_card_front_url: idCardFrontUrl || null,
-      id_card_back_url: idCardBackUrl || null,
-      base_salary: baseSalary.trim() ? Number(baseSalary) : null,
     })
     .eq("id", employeeId);
 
   if (profileError) {
     return { success: false, error: profileError.message };
+  }
+
+  /* 1b. 敏感字段（身份证/底薪）写 profile_privates 表（2026-09-14 起从 profiles 拆出） */
+  const { error: 敏感错误 } = await supabase
+    .from("profile_privates")
+    .upsert({
+      profile_id: employeeId,
+      id_card: idCard || null,
+      id_card_front_url: idCardFrontUrl || null,
+      id_card_back_url: idCardBackUrl || null,
+      base_salary: baseSalary.trim() ? Number(baseSalary) : null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "profile_id" });
+
+  if (敏感错误) {
+    return { success: false, error: 敏感错误.message };
   }
 
   /* 2. 同步角色：服务端读现有角色，算出差集后增删 */

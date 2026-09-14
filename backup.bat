@@ -38,7 +38,8 @@ echo.
 powershell -Command "exit" >nul 2>&1
 if errorlevel 1 (
     echo [错误] PowerShell 不可用，无法创建压缩包
-    pause
+    node "%PROJECT_DIR%scripts\backup-alert.js" "PowerShell 不可用，备份未执行"
+    timeout /t 60 >nul
     exit /b 1
 )
 
@@ -46,7 +47,7 @@ if errorlevel 1 (
 node --version >nul 2>&1
 if errorlevel 1 (
     echo [错误] Node.js 未安装，无法导出数据库
-    pause
+    timeout /t 60 >nul
     exit /b 1
 )
 
@@ -67,8 +68,9 @@ if errorlevel 1 (
     echo  没有数据备份的压缩包等于没备份。
     echo  请把上方红色错误截图发给技术处理。
     echo ========================================
+    node "%PROJECT_DIR%scripts\backup-alert.js" "数据库导出失败，本次备份未生成，请尽快检查服务器"
     rmdir /S /Q "%DB_BACKUP_DIR%" >nul 2>&1
-    pause
+    timeout /t 60 >nul
     exit /b 1
 )
 
@@ -95,8 +97,9 @@ powershell -Command "$ErrorActionPreference = 'Stop'; Compress-Archive -Path '%T
 
 if errorlevel 1 (
     echo [错误] 压缩失败
+    node "%PROJECT_DIR%scripts\backup-alert.js" "备份压缩失败，本次备份未生成，请检查磁盘空间"
     rmdir /S /Q "%TEMP_BACKUP%" >nul 2>&1
-    pause
+    timeout /t 60 >nul
     exit /b 1
 )
 

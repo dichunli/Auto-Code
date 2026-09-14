@@ -108,15 +108,28 @@ export async function POST(request: Request) {
       entry_date: entryDate || null,
       address: address || null,
       notes: notes || null,
-      id_card: idCard || null,
-      id_card_front_url: idCardFrontUrl || null,
-      id_card_back_url: idCardBackUrl || null,
       is_active: true,
     }, { onConflict: "id" });
 
   if (profileError) {
     await admin.auth.admin.deleteUser(userId);
     return NextResponse.json({ error: profileError.message }, { status: 500 });
+  }
+
+  /* 敏感字段（身份证）单独写 profile_privates 表（2026-09-14 起从 profiles 拆出） */
+  if (idCard || idCardFrontUrl || idCardBackUrl) {
+    const { error: 敏感错误 } = await admin
+      .from("profile_privates")
+      .upsert({
+        profile_id: userId,
+        id_card: idCard || null,
+        id_card_front_url: idCardFrontUrl || null,
+        id_card_back_url: idCardBackUrl || null,
+      }, { onConflict: "profile_id" });
+    if (敏感错误) {
+      await admin.auth.admin.deleteUser(userId);
+      return NextResponse.json({ error: 敏感错误.message }, { status: 500 });
+    }
   }
 
   if (roleIds && roleIds.length > 0) {

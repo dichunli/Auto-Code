@@ -9,6 +9,7 @@ import { 解析Multipart请求 } from "@/lib/parseMultipart";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { 异步处理视频 } from "@/lib/videoProcessing";
+import { 视频最大字节 } from "@/lib/uploadLimits";
 
 const execFileAsync = promisify(execFile);
 
@@ -18,8 +19,8 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || "E:/autorepair-uploads";
 /* multipart 路径（图片等小文件）最大 550MB：整段读内存，仅用于图片 */
 const MAX_FILE_SIZE = 550 * 1024 * 1024;
 
-/* 视频等大文件走裸 body 流式写盘，上限 1GB（前端限 1GB，服务端留余量到约 1.05GB） */
-const MAX_STREAM_SIZE = 1080 * 1024 * 1024;
+/* 视频等大文件走裸 body 流式写盘，上限取全站统一口径 4GB（更大的文件前端会自动走分片上传，不经过此路径） */
+const MAX_STREAM_SIZE = 视频最大字节;
 
 /* Office 文件扩展名 */
 const officeExts = [".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"];

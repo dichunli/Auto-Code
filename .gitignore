@@ -100,6 +100,8 @@ scripts/*
 # 生产运维脚本同属长期设施（对账/备份/告警，生产机计划任务使用）
 !scripts/weekly-stock-check.js
 !scripts/backup-export.js
+!scripts/backup-alert.js
+!scripts/restore-import.js
 !scripts/error-watch.js
 # RLS 巡检同属长期设施（防"建了策略忘开开关"漏开）
 !scripts/check-rls-status.js

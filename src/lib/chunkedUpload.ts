@@ -1,11 +1,11 @@
-/* 分片上传工具：文件 > 100MB 自动走分片，支持断点续传 */
+/* 分片上传工具：文件超过 分片阈值字节（100MB）自动走分片，支持断点续传 */
 
 import { 获取访问令牌 } from "@/lib/supabase/client";
+import { 分片阈值字节 } from "@/lib/uploadLimits";
 
 const CHUNK_SIZE = 5 * 1024 * 1024;          /* 5MB */
 const 并发数 = 3;                              /* 同时上传 3 个分片 */
 const 最大重试次数 = 3;                         /* 每个分片最多重试 3 次 */
-const 分片阈值 = 100 * 1024 * 1024;           /* 100MB 以上走分片 */
 
 /* sessionStorage 键前缀，用于断点续传 */
 const 续传键前缀 = "chunk_upload_";
@@ -235,5 +235,5 @@ export async function 分片上传文件(
 
 /* 判断文件是否需要走分片上传 */
 export function 需要分片上传(file: File): boolean {
-  return file.size > 分片阈值;
+  return file.size > 分片阈值字节;
 }
