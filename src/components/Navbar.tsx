@@ -62,6 +62,7 @@ const navItems: NavItem[] = [
       { href: "/procurement", label: "采购流程" },
       { href: "/inbound-orders", label: "入库单" },
       { href: "/return-orders", label: "采退单" },
+      { href: "/supplier-payments", label: "供应商付款" },
     ],
   },
   { href: "/logistics", label: "物流运单" },

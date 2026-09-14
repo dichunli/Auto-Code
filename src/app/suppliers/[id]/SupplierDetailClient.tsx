@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -89,6 +89,26 @@ export interface Transaction {
   profiles: { full_name: string } | null;
 }
 
+/* 未付清应付行（list_supplier_payables 返回，2026-09-14 供应商款项改造批次1） */
+interface PayableInfo {
+  transaction_id: string;
+  amount: number;
+  allocated: number;
+  remaining: number;
+  created_at: string;
+  description: string | null;
+  inbound_order_id: string | null;
+  inbound_no: string | null;
+  supplier_order_no: string | null;
+}
+
+interface PayablesResult {
+  success: boolean;
+  payables?: PayableInfo[];
+  available?: number;
+  balance?: number;
+}
+
 interface SupplierDetailClientProps {
   supplierId: string;
   supplier: Supplier;
@@ -120,6 +140,20 @@ export default function SupplierDetailClient({
 }: SupplierDetailClientProps) {
   const supabase = useMemo(() => createClient(), []);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
+
+  /* 未付清应付清单（核销视角，2026-09-14 批次1）：挂载时拉一次，付款后可在付款单页看到最新 */
+  const [payables, setPayables] = useState<PayableInfo[] | null>(null);
+  useEffect(() => {
+    let 有效 = true;
+    supabase
+      .rpc("list_supplier_payables", { p_supplier_id: supplierId })
+      .then(({ data, error }) => {
+        if (!有效 || error) return;
+        const 结果 = data as PayablesResult | null;
+        if (结果?.success) setPayables(结果.payables || []);
+      });
+    return () => { 有效 = false; };
+  }, [supabase, supplierId]);
 
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [transactionForm, setTransactionForm] = useState<TransactionForm>({
@@ -649,6 +683,54 @@ export default function SupplierDetailClient({
                     });
                   })()}
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* 未付清应付（核销视角）+ 去付款入口（2026-09-14 批次1） */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-gray-900">
+                未付清应付{payables ? ` (${payables.filter((p) => p.remaining > 0.004).length})` : ""}
+              </h2>
+              <Link
+                href={`/supplier-payments?supplier_id=${supplierId}&new=1`}
+                className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700"
+              >
+                去付款
+              </Link>
+            </div>
+            {payables === null ? (
+              <p className="text-sm text-gray-400">加载中...</p>
+            ) : payables.filter((p) => p.remaining > 0.004).length === 0 ? (
+              <p className="text-sm text-gray-400">没有未付清的应付，不欠这家钱了</p>
+            ) : (
+              <div className="space-y-2">
+                {payables
+                  .filter((p) => p.remaining > 0.004)
+                  .map((p) => (
+                    <div key={p.transaction_id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <div>
+                        {p.inbound_order_id ? (
+                          <Link href={`/inbound-orders/${p.inbound_order_id}`} className="text-blue-600 hover:underline">
+                            {p.inbound_no || "入库单"}
+                          </Link>
+                        ) : (
+                          <span className="text-gray-500">{p.description || "应付"}</span>
+                        )}
+                        <span className="text-gray-400 text-xs ml-2">
+                          {new Date(p.created_at).toLocaleDateString("zh-CN")}
+                        </span>
+                        {p.allocated > 0.004 && (
+                          <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700">部分已付</span>
+                        )}
+                      </div>
+                      <span className="font-medium text-red-600">
+                        未付 {formatCurrency(p.remaining)}
+                        <span className="text-gray-400 text-xs font-normal"> / 应付 {formatCurrency(p.amount)}</span>
+                      </span>
+                    </div>
+                  ))}
               </div>
             )}
           </div>
