@@ -717,6 +717,11 @@ export function PendingStorageList(props: PendingStorageListProps) {
       : null;
   const 销售单未填 = slipAmount.trim() === "";
   const 销售单不平 = 对平差异 !== null && Math.abs(对平差异) > 0.01;
+  /* 合计金额显示门槛（2026-09-14 用户拍板）：销售单总金额未填/填错（对不上）时，
+     合计行的「入库价合计/成本价合计」先显示占位符——这两个数是要拿去和销售单
+     对账的，没对平前显示出来容易被误读成"已对账金额"；对平（差异≤0.01）才亮出。
+     数量合计、分摊运费合计不参与对账，不受影响 */
+  const 合计金额可见 = 对平差异 !== null && Math.abs(对平差异) <= 0.01;
 
   /* 弹窗内打印条码/二维码（2026-09-13）：编码口径与入库单详情页一致（barcode || part_number）；
      退货行（isExcess）不入库不打码；缺编码行打印意义不大，过滤掉 */
@@ -1946,30 +1951,42 @@ export function PendingStorageList(props: PendingStorageListProps) {
                           .reduce((sum, f) => sum + (parseInt(f.quantity, 10) || 0), 0)}
                       </td>
                       <td className="px-3 py-2 text-right font-medium text-gray-900">
-                        ¥
-                        {inboundItems
-                          .filter((f) => !f.isExcess)
-                          .reduce(
-                            (sum, f) =>
-                              sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0),
-                            0
-                          )
-                          .toFixed(2)}
+                        {合计金额可见 ? (
+                          <>
+                            ¥
+                            {inboundItems
+                              .filter((f) => !f.isExcess)
+                              .reduce(
+                                (sum, f) =>
+                                  sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0),
+                                0
+                              )
+                              .toFixed(2)}
+                          </>
+                        ) : (
+                          <span className="text-gray-300" title="填写销售单总金额并对平后显示">-</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right font-medium text-gray-900">
                         ¥{allocatedCosts.reduce((sum, a) => sum + a, 0).toFixed(2)}
                       </td>
                       <td className="px-3 py-2 text-right font-medium text-gray-900">
-                        ¥
-                        {(
-                          inboundItems
-                            .filter((f) => !f.isExcess)
-                            .reduce(
-                              (sum, f) =>
-                                sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0),
-                              0
-                            ) + allocatedCosts.reduce((sum, a) => sum + a, 0)
-                        ).toFixed(2)}
+                        {合计金额可见 ? (
+                          <>
+                            ¥
+                            {(
+                              inboundItems
+                                .filter((f) => !f.isExcess)
+                                .reduce(
+                                  (sum, f) =>
+                                    sum + (parseInt(f.quantity, 10) || 0) * (parseFloat(f.unitCost) || 0),
+                                  0
+                                ) + allocatedCosts.reduce((sum, a) => sum + a, 0)
+                            ).toFixed(2)}
+                          </>
+                        ) : (
+                          <span className="text-gray-300" title="填写销售单总金额并对平后显示">-</span>
+                        )}
                       </td>
                       <td colSpan={6} />
                     </tr>
