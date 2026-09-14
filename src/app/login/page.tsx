@@ -1,28 +1,19 @@
 "use client";
 
 /*
- * ========== 登录页面 - 兼容性设计说明 ==========
+ * ========== 登录页面说明 ==========
  *
- * 【问题背景】某些旧版Android手机的WebView不支持React 19的某些新特性，
- * 导致React无法hydrate（页面显示正常但按钮点击无反应）。
- * 典型现象："当前环境: 检测中..."一直不变，点击登录按钮没反应。
+ * 【历史】本页曾内置"双保险"：React 版登录按钮 + 原生 HTML/JS 兼容模式按钮
+ * （供不支持 React 19 的旧版 Android WebView 兜底）。后因兼容按钮长期隐藏不用、
+ * 且原生脚本自己拼 cookie 的写法会重现 6 月"登录信息被截断"事故（session JSON
+ * 超过 4KB cookie 上限被截断），已于 2026-09 整体移除，登录统一走 React 版
+ * + client.ts 的存储路径。
  *
- * 【根本原因】国产低端手机的WebView内核版本过旧（如Android 8-10的默认WebView），
- * 无法解析Next.js 16 + Turbopack + React 19生成的一些现代JS语法。
+ * 【环境判断注意】判断 APP 环境必须用 是Capacitor环境()（isNativePlatform），
+ * 禁止用 window.Capacitor：浏览器 import @capacitor/core 后会生成 Web 垫片，
+ * 会把浏览器误判成 APP 而不跳回首页。
  *
- * 【解决方案】登录页面采用"双保险"设计：
- * 1. 蓝色"登录"按钮 → React版本，正常设备使用（有完整的错误处理、加载状态）
- * 2. "登录（兼容模式）"按钮 → 原生HTML+JS版本，用dangerouslySetInnerHTML插入真正的
- *    原生DOM元素，完全不依赖React事件系统。旧版WebView也能正常工作。
- *
- * 【关键实现】
- * - 原生按钮必须使用 <div dangerouslySetInnerHTML> 插入，React的JSX不支持原生 onclick
- * - 原生脚本必须使用 <div dangerouslySetInnerHTML> 包裹 <script>，否则Next.js SSR会过滤掉
- * - 登录成功后同时写入 localStorage 和 cookie，让APP的createClient()能正确识别session
- *
- * 【不要删除兼容模式按钮】即使未来升级了React版本，某些用户的旧手机仍然需要它。
- *
- * 【相关记忆】[[old-webview-react-failure]]
+ * 【相关记忆】[[old-webview-react-failure]] [[cookie-truncation-session-loss]]
  */
 
 import { useState, useEffect } from "react";
@@ -30,7 +21,6 @@ import { createClient, 获取当前环境 } from "@/lib/supabase/client";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { logLogin } from "@/lib/operationLog";
 import { 账号转邮箱 } from "@/lib/loginCredentials";
-import { toast } from "@/lib/globalToast";
 
 export default function LoginPage() {
   const [account, setAccount] = useState("");
@@ -143,63 +133,6 @@ export default function LoginPage() {
 
   return (
     <>
-      {/* ===== 原生登录脚本：兼容旧版WebView（React可能加载失败） ===== */}
-      {/* 用 div+dangerouslySetInnerHTML 确保原生 script 被插入到 DOM 中 */}
-      <div dangerouslySetInnerHTML={{ __html: `
-        <script id="native-login-script">
-          (function() {
-            /* 如果React加载成功，让React接管；否则原生登录作为fallback */
-            window._nativeLoginInit = function() {
-              var accountEl = document.getElementById('login-account');
-              var passwordEl = document.getElementById('login-password');
-              var account = accountEl ? accountEl.value : '';
-              var password = passwordEl ? passwordEl.value : '';
-
-              if (!account || !password) {
-                toast('请输入账号和密码', "warning");
-                return;
-              }
-
-              var isPhone = /^1[3-9]\\d{9}$/.test(account);
-              var email = isPhone ? 'phone-' + account + '@auto.local' : account;
-
-              var SUPABASE_URL = '` + (process.env.NEXT_PUBLIC_SUPABASE_URL || '') + `';
-              var SUPABASE_KEY = '` + (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '') + `';
-
-              fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', {
-                method: 'POST',
-                headers: {
-                  'apikey': SUPABASE_KEY,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ email: email, password: password })
-              })
-              .then(function(r) { return r.json(); })
-              .then(function(data) {
-                if (data.error) {
-                  toast('登录失败: ' + (data.error_description || data.error || '未知错误'), "error");
-                  return;
-                }
-                if (data.access_token) {
-                  var tokenKey = 'sb-' + SUPABASE_URL.replace('https://', '').split('.')[0] + '-auth-token';
-                  localStorage.setItem(tokenKey, JSON.stringify(data));
-                  /* 同时写入cookie，让服务端也能识别 */
-                  var maxAge = 400 * 24 * 60 * 60;
-                  document.cookie = tokenKey + '=' + encodeURIComponent(JSON.stringify(data)) + '; path=/; max-age=' + maxAge + '; SameSite=Lax';
-                  toast('✅ 登录成功！正在跳转...', "success");
-                  window.location.href = '/m';
-                } else {
-                  toast('登录响应异常，没有获取到token', "error");
-                }
-              })
-              .catch(function(err) {
-                toast('登录请求失败: ' + (err.message || String(err)), "error");
-              });
-            };
-          })();
-        </script>
-      `}} />
-
       {/* 兜底样式：防止某些浏览器缓存旧CSS导致页面无样式 */}
       <style dangerouslySetInnerHTML={{ __html: `
         .login-root { min-height:100vh; display:flex; align-items:center; justify-content:center; background:#f9fafb; padding:0 16px; font-family:system-ui,-apple-system,sans-serif; }
@@ -207,7 +140,7 @@ export default function LoginPage() {
         @media (min-width:768px){ .login-card { padding:32px; } }
         .login-logo { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:24px; }
         @media (min-width:768px){ .login-logo { margin-bottom:32px; } }
-        .login-logo-box { width:40px; height:40px; background:#2563eb; border-radius:8px; display:flex; align-items:center; justify:center; flex-shrink:0; }
+        .login-logo-box { width:40px; height:40px; background:#2563eb; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
         .login-logo-text { color:#fff; font-weight:700; font-size:18px; }
         .login-title { font-size:20px; font-weight:700; color:#111827; }
         @media (min-width:768px){ .login-title { font-size:24px; } }
@@ -221,8 +154,6 @@ export default function LoginPage() {
         .login-hint { margin-top:24px; text-align:center; font-size:12px; color:#9ca3af; }
         /* 移动端：内容靠上对齐，防止键盘弹出遮挡输入框 */
         @media (max-width:767px){ .login-root { align-items:flex-start; padding-top:60px; } }
-        /* 隐藏兼容模式按钮和提示（所有设备统一隐藏） */
-        .login-compat-btn { display:none; } .login-compat-hint { display:none; }
       `}} />
       <noscript>
         <div style={{ padding: "20px", textAlign: "center", color: "#dc2626", background: "#fef2f2", borderRadius: "8px", margin: "20px" }}>
@@ -284,7 +215,7 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* React版本登录按钮（正常设备用） */}
+            {/* React版本登录按钮 */}
             <button
               type="button"
               onClick={handleSubmit}
@@ -293,32 +224,6 @@ export default function LoginPage() {
             >
               {loading ? "登录中..." : "登录"}
             </button>
-
-            {/* 原生登录按钮（旧版WebView fallback，用dangerouslySetInnerHTML插入真正的原生HTML） */}
-            {/* 移动端（屏幕宽度≤767px）自动隐藏此按钮，因为现代手机浏览器和APP的WebView都支持React 19 */}
-            <div className="login-compat-btn" dangerouslySetInnerHTML={{ __html: `
-              <button type="button"
-                onclick="if(window._nativeLoginInit){window._nativeLoginInit();}else{toast('登录脚本加载中，请稍后再试', "warning");}"
-                style="margin-top:8px;padding:12px;font-size:14px;font-weight:500;color:#fff;background:#2563eb;border:none;border-radius:8px;cursor:pointer;width:100%;"
-              >
-                登录（兼容模式）
-              </button>
-            `}} />
-
-            {/* 调试信息显示 */}
-            <div
-              id="debug-info"
-              className="login-compat-hint"
-              style={{
-                marginTop: "8px",
-                fontSize: "11px",
-                color: "#9ca3af",
-                lineHeight: "1.5",
-                wordBreak: "break-all",
-              }}
-            >
-              {环境 === "检测中..." ? `如果上方按钮点击无反应，请使用"兼容模式"按钮` : `环境: ${环境}`}
-            </div>
           </div>
 
           <div className="login-hint">
