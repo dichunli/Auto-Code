@@ -75,11 +75,15 @@ async function callManualInbound(
   };
 }
 
-/* 造一个配件（含 part_names），返回句柄 */
+/* 造一个配件（含 part_names；part_names.category_id 为 NOT NULL FK，先造分类） */
 async function createPart(suffix: string, 初始库存: number) {
+  const catRes = await query(
+    `INSERT INTO part_categories (name) VALUES ($1) RETURNING id`,
+    [`${PFX}分类${suffix}`]
+  );
   const pnRes = await query(
-    `INSERT INTO part_names (name) VALUES ($1) RETURNING id`,
-    [`${PFX}配件名${suffix}`]
+    `INSERT INTO part_names (category_id, name) VALUES ($1, $2) RETURNING id`,
+    [catRes.rows[0].id, `${PFX}配件名${suffix}`]
   );
   const pRes = await query(
     `INSERT INTO parts (part_number, part_name_id, name, quantity, purchase_price)
@@ -95,6 +99,7 @@ async function cleanupAll() {
   await query(`DELETE FROM part_batches WHERE part_id IN (SELECT id FROM parts WHERE part_number LIKE $1)`, [`${PFX}%`]);
   await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
+  await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
 }
 
 async function 库存(partId: string): Promise<number> {

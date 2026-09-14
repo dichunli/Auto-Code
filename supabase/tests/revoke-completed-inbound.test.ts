@@ -97,11 +97,15 @@ async function callRevokeReturns(recordIds: string[]) {
   return res.rows[0].result as { success: boolean; error?: string };
 }
 
-/* 造一个配件（含 part_names） */
+/* 造一个配件（含 part_names；part_names.category_id 为 NOT NULL FK，先造分类） */
 async function createPart(suffix: string, 初始库存: number, 采购价 = 10) {
+  const catRes = await query(
+    `INSERT INTO part_categories (name) VALUES ($1) RETURNING id`,
+    [`${PFX}分类${suffix}`]
+  );
   const pnRes = await query(
-    `INSERT INTO part_names (name) VALUES ($1) RETURNING id`,
-    [`${PFX}配件名${suffix}`]
+    `INSERT INTO part_names (category_id, name) VALUES ($1, $2) RETURNING id`,
+    [catRes.rows[0].id, `${PFX}配件名${suffix}`]
   );
   const partNameId = pnRes.rows[0].id;
   const pRes = await query(
@@ -204,6 +208,7 @@ async function cleanupAll() {
   await query(`DELETE FROM customers WHERE name LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
+  await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM suppliers WHERE name LIKE $1`, [`${PFX}%`]);
 }
 
