@@ -14,7 +14,7 @@ export default async function SupplierPaymentsPage({
   const [{ data: payments }, { data: supplierList }, { data: methodList }] = await Promise.all([
     supabase
       .from("supplier_payments")
-      .select("*, suppliers(name), profiles(full_name)")
+      .select("*, suppliers(name), profiles!supplier_payments_created_by_fkey(full_name)")
       .order("created_at", { ascending: false })
       .limit(500),
     supabase.from("suppliers").select("id, name").order("name"),

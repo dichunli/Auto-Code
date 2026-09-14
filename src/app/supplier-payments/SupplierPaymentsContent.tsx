@@ -458,7 +458,7 @@ export default function SupplierPaymentsContent({
     setLoading(true);
     const { data, error } = await supabase
       .from("supplier_payments")
-      .select("*, suppliers(name), profiles(full_name)")
+      .select("*, suppliers(name), profiles!supplier_payments_created_by_fkey(full_name)")
       .order("created_at", { ascending: false })
       .limit(500);
     setLoading(false);
