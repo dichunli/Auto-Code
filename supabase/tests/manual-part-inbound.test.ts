@@ -208,8 +208,8 @@ describe("manual_part_inbound - 数据库集成测试", () => {
     const [r1, r2] = await Promise.all([p1, p2]);
     await client2.end();
 
-    expect(r1.success).toBe(true);
-    expect(r2.success).toBe(true);
+    expect(r1.success, `r1 失败原因: ${r1.error ?? "无"}; r2=${JSON.stringify(r2)}`).toBe(true);
+    expect(r2.success, `r2 失败原因: ${r2.error ?? "无"}; r1=${JSON.stringify(r1)}`).toBe(true);
     /* 核心断言：10 + 5 + 3 = 18，一次都不能丢 */
     expect(await 库存(partId)).toBe(18);
 

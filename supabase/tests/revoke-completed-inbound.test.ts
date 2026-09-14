@@ -198,9 +198,10 @@ async function cleanupAll() {
   await query(`DELETE FROM inbound_orders WHERE supplier_name LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM part_batches WHERE part_id IN (SELECT id FROM parts WHERE part_number LIKE $1)`, [`${PFX}%`]);
   await query(`DELETE FROM part_stock_locations WHERE part_id IN (SELECT id FROM parts WHERE part_number LIKE $1)`, [`${PFX}%`]);
-  await query(`DELETE FROM purchase_order_items WHERE part_number LIKE $1`, [`${PFX}%`]);
+  /* purchase_orders 必须先于 purchase_order_items 删：它的反查子查询依赖明细行还在 */
   await query(`DELETE FROM purchase_orders WHERE id IN (SELECT order_id FROM purchase_order_items WHERE part_number LIKE $1)`, [`${PFX}%`]);
   await query(`DELETE FROM purchase_orders WHERE order_no LIKE $1`, [`${PFX}%`]);
+  await query(`DELETE FROM purchase_order_items WHERE part_number LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM work_order_item_parts WHERE part_number LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM work_order_items WHERE work_order_id IN (SELECT id FROM work_orders WHERE order_no LIKE $1)`, [`${PFX}%`]);
   await query(`DELETE FROM work_orders WHERE order_no LIKE $1`, [`${PFX}%`]);
