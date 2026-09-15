@@ -3,17 +3,12 @@
 import { useState } from "react";
 import { 指派需求, 领取需求, 取消需求指派 } from "@/app/work-orders/actions";
 import { toast } from "@/lib/globalToast";
+import type { Profile } from "@/types/domain";
 
 interface Requirement {
   id: string;
   /* 可选：新建需求尚未派工时此字段不存在 */
   assigned_to?: string | null;
-}
-
-interface Profile {
-  id: string;
-  /* 可空：数据源 员工档案.full_name 本身可选 */
-  full_name?: string | null;
 }
 
 export default function RequirementActions({

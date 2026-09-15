@@ -3,6 +3,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Barcode } from "@/components/Barcode";
+import type { Profile } from "@/types/domain";
 
 const DOC_TITLES: Record<string, string> = {
   reception: "接车单",
@@ -37,11 +38,6 @@ interface Customer {
   id: string;
   name: string;
   phone: string | null;
-}
-
-interface Profile {
-  id: string;
-  full_name: string | null;
 }
 
 interface WorkOrder {

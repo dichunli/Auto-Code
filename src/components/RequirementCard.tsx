@@ -4,11 +4,7 @@ import { useState, type ComponentProps } from "react";
 import RequirementBatchModal from "./RequirementBatchModal";
 import RequirementActions from "./RequirementActions";
 import AddRequirementItemsButton from "./AddRequirementItemsButton";
-
-interface Profile {
-  id: string;
-  full_name?: string | null;
-}
+import type { Profile } from "@/types/domain";
 
 interface Requirement {
   id: string;

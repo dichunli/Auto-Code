@@ -1,10 +1,10 @@
 /* ==================== MobileItemEditor 类型定义 ====================
  * 从 MobileItemEditor.tsx 原样搬出，仅做类型归集，无任何改动 */
 
-export interface Profile {
-  id: string;
-  full_name: string;
-}
+import type { Profile } from "@/types/domain";
+
+/* Profile 已收口到 @/types/domain，保留 re-export 防下游断链 */
+export type { Profile };
 
 export interface MechanicGroup {
   id: string;

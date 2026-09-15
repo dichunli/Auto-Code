@@ -5,12 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
 import { 领取质检, 保存质检人 } from "@/app/work-orders/actions";
 import { toast } from "@/lib/globalToast";
-
-interface Profile {
-  id: string;
-  /* 可空：数据源 员工档案.full_name 本身可选 */
-  full_name?: string | null;
-}
+import type { Profile } from "@/types/domain";
 
 interface Props {
   open: boolean;

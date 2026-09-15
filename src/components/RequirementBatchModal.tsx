@@ -7,17 +7,13 @@ import { VideoUploader } from "@/components/VideoUploader";
 import { useConfirm } from "./ConfirmDialog";
 import { 保存需求, 指派需求, 领取需求, 取消需求指派, 删除需求 } from "@/app/work-orders/actions";
 import { toast } from "@/lib/globalToast";
+import type { Profile } from "@/types/domain";
 
 interface MediaItem {
   id?: string;
   /* 放宽为 string：与数据源 MediaRecord 及 RequirementTitle 的定义对齐 */
   media_type?: string;
   storage_path?: string;
-}
-
-interface Profile {
-  id: string;
-  full_name?: string | null;
 }
 
 /* 包装 Promise 加超时：网络"假死"（连接挂着但不回包）时，

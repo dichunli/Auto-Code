@@ -3,12 +3,7 @@
 import { useState } from "react";
 import { ItemMechanicAssigner } from "./ItemMechanicAssigner";
 import { AssignInspectorModal } from "./AssignInspectorModal";
-
-interface Profile {
-  id: string;
-  /* 可空：数据源 员工档案.full_name 本身可选 */
-  full_name?: string | null;
-}
+import type { Profile } from "@/types/domain";
 
 interface MechanicGroup {
   id: string;
