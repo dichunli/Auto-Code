@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 更新供应商电话 } from "@/app/suppliers/actions";
-import { 结清运费, 删除物流公司, 删除运单, 保存运单, 批量建运单, 保存运单行内字段, 保存物流公司, 交换物流公司排序, 保存物流公司排序号, 创建物流结算单, 作废物流结算单 } from "@/app/logistics/actions";
+import { 结清运费, 删除物流公司, 删除运单, 保存运单, 批量建运单, 保存运单行内字段, 保存物流公司, 交换物流公司排序, 保存物流公司排序号, 创建物流结算单, 作废物流结算单, 标记代收已转付 } from "@/app/logistics/actions";
 import { useToast } from "@/components/Toast";
 import { 刷新基础数据缓存 } from "@/app/work-orders/actions";
 import Link from "next/link";
@@ -65,6 +65,8 @@ interface Waybill {
   photos: string[] | null;
   status: string;
   freight_settled: boolean | null;
+  /* 2026-09-15 批次5：代收货款转付核对 */
+  cod_transferred?: boolean | null;
   created_at: string;
   notes: string | null;
   logistics_companies: { name: string; scopes: string[] | null } | null;
@@ -308,14 +310,12 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
     }
     setCompanies((data as LogisticsCompany[]) || []);
 
-    /* 未结运费余额：应付(debit) − 已付(payment)，按物流公司汇总 */
-    const { data: txs } = await supabase
-      .from("logistics_transactions")
-      .select("logistics_company_id, transaction_type, amount");
+    /* 未结运费余额：应付(debit) − 已付(payment)，按物流公司汇总
+       2026-09-15 批次4：改为数据库聚合 RPC，不再全量拉流水前端加总 */
+    const { data: 余额行 } = await supabase.rpc("logistics_company_balances");
     const 余额: Record<string, number> = {};
-    for (const t of (txs || []) as { logistics_company_id: string; transaction_type: string; amount: number }[]) {
-      const 符号 = t.transaction_type === "debit" ? 1 : -1;
-      余额[t.logistics_company_id] = (余额[t.logistics_company_id] || 0) + 符号 * Number(t.amount || 0);
+    for (const r of (余额行 || []) as { company_id: string; balance: number }[]) {
+      余额[r.company_id] = Number(r.balance || 0);
     }
     set运费余额(余额);
     setCompanyLoading(false);
@@ -413,6 +413,18 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
     /* 若删的是当前页最后一条且不在第 1 页，退到上一页，避免停在空页 */
     const 目标页 = waybills.length === 1 && waybillPage > 1 ? waybillPage - 1 : waybillPage;
     loadWaybills(目标页);
+  }
+
+  /* 代收货款转付核对（批次5）：货运站把代收款转给供应商后确认 */
+  async function handleMarkCodTransferred(w: Waybill) {
+    if (!(await 请求确认(`确认运单「${w.tracking_no}」的代收货款 ${formatCurrency(w.cod_amount)} 货运站已转付给供应商？`))) return;
+    const res = await 标记代收已转付(w.id);
+    if (!res.success) {
+      toast("标记失败: " + (res.error || "未知错误"), "error");
+      return;
+    }
+    toast("已标记代收转付", "success");
+    loadWaybills(waybillPage);
   }
 
   /* 结清运费（三期）：运费是付给物流公司的，和供应商应付款无关，在这里单独结算 */
@@ -1011,6 +1023,21 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
                               </button>
                             )
                           )}
+                          {/* 代收货款转付核对（批次5）：有代收且未标记的给确认入口 */}
+                          {Number(w.cod_amount || 0) > 0 && (
+                            w.cod_transferred ? (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">代收已转付</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleMarkCodTransferred(w)}
+                                className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                title="货运站已把代收货款转给供应商后点这里"
+                              >
+                                转付确认
+                              </button>
+                            )
+                          )}
                           <button
                             type="button"
                             onClick={() => openEditWaybillModal(w)}
@@ -1177,6 +1204,13 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
                         >
                           去结算
                         </button>
+                        {/* 对账单（批次4）：按月出运单+运费明细，可打印发给物流公司 */}
+                        <Link
+                          href={`/logistics/${c.id}/statement`}
+                          className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          对账
+                        </Link>
                         <button
                           type="button"
                           onClick={() => handleDelete(c)}

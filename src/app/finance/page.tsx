@@ -46,6 +46,17 @@ export default async function FinancePage() {
     .from("accounts_payable")
     .select("status, amount, paid_amount");
 
+  /* 2026-09-15 批次4：全口径应付——采购（供应商往来净额）+ 物流（运费净额），
+     外包应付仍走 accounts_payable（互不相通的两套账，分区显示不合并） */
+  const [{ data: 供应商余额 }, { data: 物流余额 }] = await Promise.all([
+    supabase.rpc("supplier_balances"),
+    supabase.rpc("logistics_company_balances"),
+  ]);
+  const 采购应付 = ((供应商余额 || []) as { balance: number }[])
+    .reduce((sum, r) => sum + Math.max(0, Number(r.balance || 0)), 0);
+  const 物流应付 = ((物流余额 || []) as { balance: number }[])
+    .reduce((sum, r) => sum + Math.max(0, Number(r.balance || 0)), 0);
+
   const totalBalance = accounts?.reduce((sum, a) => sum + (a.balance || 0), 0) || 0;
   const totalIncome = todayIncome?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0;
   const totalExpense = todayExpense?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0;
@@ -117,16 +128,20 @@ export default async function FinancePage() {
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">应付总额</span>
-              <span className="font-medium text-gray-900">{formatCurrency(apTotal)}</span>
+              <span className="text-gray-500">采购应付（供应商欠款）</span>
+              <span className={`font-medium ${采购应付 > 0 ? "text-red-600" : "text-gray-900"}`}>{formatCurrency(采购应付)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">已付金额</span>
-              <span className="font-medium text-green-600">{formatCurrency(apPaid)}</span>
+              <span className="text-gray-500">物流应付（未结运费）</span>
+              <span className={`font-medium ${物流应付 > 0 ? "text-red-600" : "text-gray-900"}`}>{formatCurrency(物流应付)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">未付金额</span>
-              <span className="font-medium text-red-600">{formatCurrency(apTotal - apPaid)}</span>
+              <span className="text-gray-500">外包应付（未付部分）</span>
+              <span className={`font-medium ${apTotal - apPaid > 0 ? "text-red-600" : "text-gray-900"}`}>{formatCurrency(apTotal - apPaid)}</span>
+            </div>
+            <div className="flex justify-between text-sm border-t border-gray-100 pt-2">
+              <span className="text-gray-700 font-medium">应付合计</span>
+              <span className="font-bold text-red-600">{formatCurrency(采购应付 + 物流应付 + (apTotal - apPaid))}</span>
             </div>
           </div>
         </div>
