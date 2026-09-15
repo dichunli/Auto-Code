@@ -2,21 +2,43 @@
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { 考勤管理角色名单 } from "@/lib/attendanceDays";
 
 /* ═══ 其它收支收款方式 Server Action ═══
  * 新建/编辑/删除/拖拽排序从客户端直写收口到服务端，
  * 避免客户端 session 异常导致 401 / 被 RLS 拦截。
- * 角色门禁由表 RLS 兜底。 */
+ * 写操作限 admin/boss/accountant（名单与考勤工资同口径），
+ * 与数据库 RLS has_role('admin','boss','accountant') 一致（migrations_20260916_b）。 */
+
+/* 检查指定用户是否是财务管理角色 */
+async function 是财务角色(userId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("profile_roles")
+    .select("roles(name)")
+    .eq("profile_id", userId);
+  return ((data || []) as unknown as { roles?: { name?: string } | null }[]).some(
+    (d) => d.roles?.name != null && 考勤管理角色名单.includes(d.roles.name)
+  );
+}
+
+/* 统一校验：返回 null 表示通过，否则返回错误响应 */
+async function 校验财务权限(): Promise<{ success: false; error: string } | null> {
+  const { user, error } = await 验证用户已登录();
+  if (!user) return { success: false, error: error || "未登录或登录已过期，请重新登录" };
+  if (!(await 是财务角色(user.id))) {
+    return { success: false, error: "只有管理员、老板或财务能维护收款方式" };
+  }
+  return null;
+}
 
 export async function 新建收款方式(参数: {
   name: string;
   operatorId: string;
   sortOrder: number;
 }): Promise<{ success: boolean; error?: string }> {
-  const { user, error: 登录错误 } = await 验证用户已登录();
-  if (!user) {
-    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
-  }
+  const 拒绝 = await 校验财务权限();
+  if (拒绝) return 拒绝;
 
   const name = 参数.name.trim();
   if (!name) {
@@ -43,10 +65,8 @@ export async function 更新收款方式(参数: {
   operatorId: string;
   isActive: boolean;
 }): Promise<{ success: boolean; error?: string }> {
-  const { user, error: 登录错误 } = await 验证用户已登录();
-  if (!user) {
-    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
-  }
+  const 拒绝 = await 校验财务权限();
+  if (拒绝) return 拒绝;
 
   const name = 参数.name.trim();
   if (!name) {
@@ -72,10 +92,8 @@ export async function 更新收款方式(参数: {
 
 /* 删除前检查是否被其它收支记录引用（检查也在服务端做，防并发误删） */
 export async function 删除收款方式(id: string): Promise<{ success: boolean; error?: string }> {
-  const { user, error: 登录错误 } = await 验证用户已登录();
-  if (!user) {
-    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
-  }
+  const 拒绝 = await 校验财务权限();
+  if (拒绝) return 拒绝;
 
   const supabase = await createClient();
   const { count } = await supabase
@@ -100,10 +118,8 @@ export async function 删除收款方式(id: string): Promise<{ success: boolean
 export async function 保存收款方式排序(参数: {
   items: { id: string; sort_order: number }[];
 }): Promise<{ success: boolean; error?: string }> {
-  const { user, error: 登录错误 } = await 验证用户已登录();
-  if (!user) {
-    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
-  }
+  const 拒绝 = await 校验财务权限();
+  if (拒绝) return 拒绝;
 
   const supabase = await createClient();
   for (const item of 参数.items) {
