@@ -8,6 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { formatCurrency } from "@/lib/utils";
 import { 记供应商往来账 } from "@/app/supplier-transactions/actions";
 import { toast } from "@/lib/globalToast";
+import type { Supplier as 共享供应商 } from "@/types/domain";
 
 interface TransactionForm {
   transaction_type: "payment" | "refund" | "credit" | "debit";
@@ -15,9 +16,8 @@ interface TransactionForm {
   description: string;
 }
 
-export interface Supplier {
-  id: string;
-  name: string;
+/* 供应商详情：共享 Supplier + 详情页全字段扩展（联系人/地址/对账统计/微信群） */
+export interface Supplier extends 共享供应商 {
   contact: string | null;
   phone: string | null;
   address: string | null;

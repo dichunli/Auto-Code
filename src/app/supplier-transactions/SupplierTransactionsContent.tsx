@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import { 记供应商往来账 } from "./actions";
 import { toast } from "@/lib/globalToast";
+import type { Supplier } from "@/types/domain";
 
 const transactionTypeMap: Record<string, string> = {
   payment: "付款",
@@ -14,11 +15,6 @@ const transactionTypeMap: Record<string, string> = {
   credit: "应收",
   debit: "应付",
 };
-
-interface Supplier {
-  id: string;
-  name: string;
-}
 
 interface TransactionRecord {
   id: string;

@@ -20,6 +20,10 @@ import PurchaseOrderNotifyModal, { type 采购通知数据, type 采购通知明
 import { toast } from "@/lib/globalToast";
 import { 行符合待采购, 待采购查询字段 } from "@/lib/procurementRules";
 import { Pagination } from "./Pagination";
+import type { Supplier } from "@/types/domain";
+
+/* Supplier 已收口到 @/types/domain，保留 re-export 防下游断链（procurement/page.tsx 引 待采购供应商） */
+export type { Supplier };
 
 /* 分页大小（与待收货列表一致） */
 const 每页条数 = 20;
@@ -59,12 +63,6 @@ export interface PartBranchRow {
   /* 自定义采购暂存行（2026-08-15）：非空表示这行来自 custom_purchase_staging（无工单），
      id 即暂存表 id，发起采购成功后删除 */
   staging?: { id: string; supplier_id: string | null } | null;
-}
-
-export interface Supplier {
-  id: string;
-  name: string;
-  region?: string | null;
 }
 
 export interface LogisticsCompany {

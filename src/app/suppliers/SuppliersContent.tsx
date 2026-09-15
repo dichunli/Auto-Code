@@ -10,10 +10,10 @@ import { PageHeader } from "@/components/PageHeader";
 import { useConfirm } from "@/components/ConfirmDialog";
 import Link from "next/link";
 import { toast } from "@/lib/globalToast";
+import type { Supplier } from "@/types/domain";
 
-interface Supplier {
-  id: string;
-  name: string;
+/* 供应商列表行：共享 Supplier + 列表页扩展字段（联系人/地址/配件计数） */
+interface 供应商行 extends Supplier {
   contact: string | null;
   phone: string | null;
   address: string | null;
@@ -35,11 +35,11 @@ const REGION_STYLES: Record<string, string> = {
   outside: "bg-orange-50 text-orange-700 border-orange-200",
 };
 
-export default function SuppliersContent({ initialSuppliers, initialCount }: { initialSuppliers: Supplier[]; initialCount: number }) {
+export default function SuppliersContent({ initialSuppliers, initialCount }: { initialSuppliers: 供应商行[]; initialCount: number }) {
   const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [regionFilter, setRegionFilter] = useState("");
-  const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
+  const [suppliers, setSuppliers] = useState<供应商行[]>(initialSuppliers);
   /* 分页状态：首屏数据由服务端给（第 1 页），后续搜索/翻页走 loadSuppliers */
   const [total, setTotal] = useState(initialCount);
   const [page, setPage] = useState(1);
@@ -71,7 +71,7 @@ export default function SuppliersContent({ initialSuppliers, initialCount }: { i
       console.error("供应商加载失败:", error);
       toast("加载失败: " + error.message, "error");
     } else {
-      setSuppliers((data as unknown as Supplier[]) || []);
+      setSuppliers((data as unknown as 供应商行[]) || []);
       setTotal(count || 0);
       setPage(目标页);
     }
