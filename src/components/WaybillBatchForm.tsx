@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { ImageUploader } from "@/components/ImageUploader";
@@ -72,6 +72,12 @@ function WaybillCard({
   const supabase = createClient();
   const debouncedPhone = useDebounce(行.phone, 300);
 
+  /* onChange 最新引用：父组件行内箭头每次渲染都新建，直接进依赖会让电话防抖检索每次渲染都重跑 */
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
   /* 电话完全匹配才带入供应商名（2026-08-21 用户口径）：
      输入过程中由 SupplierPhoneInput 联想下拉供选择；未点选时，
      只有手输到与某供应商电话完全一致才自动带出，不再模糊命中第一家 */
@@ -79,7 +85,7 @@ function WaybillCard({
     async function 检索() {
       const 电话 = debouncedPhone.trim();
       if (!电话) {
-        onChange({ supplier_name: "" });
+        onChangeRef.current({ supplier_name: "" });
         return;
       }
       const { data } = await supabase
@@ -87,10 +93,9 @@ function WaybillCard({
         .select("name")
         .eq("phone", 电话)
         .limit(1);
-      onChange({ supplier_name: data && data.length > 0 ? data[0].name : "" });
+      onChangeRef.current({ supplier_name: data && data.length > 0 ? data[0].name : "" });
     }
     检索();
-    /* onChange 每次渲染都新建，不放进依赖避免重复检索 */
   }, [debouncedPhone, supabase]);
 
   return (

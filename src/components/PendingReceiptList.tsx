@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PriceValue, usePriceVisibility } from "@/components/PriceVisibilityContext";
@@ -112,32 +112,9 @@ const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
    补货动作映射已下沉到数据库函数 receive_purchase_item:
    broken_exchange→broken_resupply / wrong_exchange→wrong_exchange / short_repurchase→short_resupply */
 
-/* 采购明细完整查询字段（2026-09-12 局部更新改造抽出）：
-   loadData 整表查 与 撤销收货后单条重查 必须用同一套 select 保证口径一致 */
-const 明细查询字段 = `
-  id, name, brand, specification, quantity, unit_cost, received_qty,
-  part_id, work_order_item_part_id, part_number, supplier_part_name,
-  unit, category, license_plate, photos, notes, handle_action,
-  discount_amount, evidence_photos, return_reason, waybill_id, waybill_exempt,
-  staged_qty, staged_action, staged_at, staged_by,
-  logistics_waybills:waybill_id(
-    id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
-    logistics_companies(name)
-  )
-`;
-
-/* 采购单完整查询字段（含明细嵌套）：loadData 与 重查单张订单 同口径 */
-const 待收货查询字段 = `
-  id, order_no, supplier_id, status, total_amount, notes, waybill_id, waybill_exempt, created_at, logistics_company_id,
-  supplier_order_no, supplier_order_amount, supplier_slip_photos,
-  suppliers(id, name, region, phone),
-  logistics_companies:logistics_company_id(name),
-  purchase_order_items(${明细查询字段}),
-  logistics_waybills:waybill_id(
-    id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
-    logistics_companies(name)
-  )
-`;
+/* 采购明细/整单查询字段已收敛到 @/lib/procurementRules（2026-09-15 诊断第1批）：
+   loadData 整表查、撤销收货后单条重查、procurement 页服务端首屏 同口径 */
+import { 采购明细查询字段 as 明细查询字段, 待收货查询字段 } from "@/lib/procurementRules";
 
 function resolveImageUrl(path: string): string {
   if (!path) return "";
@@ -145,6 +122,11 @@ function resolveImageUrl(path: string): string {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!base) return path;
   return `${base}/storage/v1/object/public/work-order-media/${path}`;
+}
+
+/* 该单是否还有未处理明细（loadData 过滤与局部 patch 后重判共用）；纯函数放组件外，避免进 Hook 依赖 */
+function 单还有未处理(order: PurchaseOrder): boolean {
+  return (order.purchase_order_items || []).some((it) => !it.handle_action);
 }
 
 /* 首屏数据 props（服务端查询注入，待办清单第9项）：
@@ -256,13 +238,7 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
   const [shortChoice, setShortChoice] = useState<"" | "repurchase" | "discard">("");
   const [shortEvidence, setShortEvidence] = useState<string[]>([]);
 
-  useEffect(() => {
-    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
-    if (props.initialOrders) return;
-    loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("purchase_orders")
@@ -280,14 +256,15 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     /* 只显示还有未处理明细的订单 */
     setOrders(rawOrders.filter(单还有未处理));
     setLoading(false);
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
+    if (props.initialOrders) return;
+    loadData();
+  }, [loadData, props.initialOrders]);
 
   /* ─── 局部更新工具（2026-09-12）：改哪条只动哪条，不再整表 loadData ─── */
-
-  /* 该单是否还有未处理明细（loadData 过滤与局部 patch 后重判共用） */
-  function 单还有未处理(order: PurchaseOrder): boolean {
-    return (order.purchase_order_items || []).some((it) => !it.handle_action);
-  }
 
   /* patch 某张订单的头字段（运单关联/豁免等） */
   function patch订单(订单id: string, patch: Partial<PurchaseOrder>) {

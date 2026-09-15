@@ -125,7 +125,7 @@ export function PartSearchDropdown({
 
   useEffect(() => {
     doSearch(debouncedQuery);
-  }, [debouncedQuery]);
+  }, [debouncedQuery, doSearch]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!showDropdown) {

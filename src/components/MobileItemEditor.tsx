@@ -139,13 +139,8 @@ export default function MobileItemEditor({
   const debouncedPartSearchQuery = useDebounce(partSearchQuery, 300);
   const debouncedInventorySearchQuery = useDebounce(inventorySearchQuery, 300);
 
-  useEffect(() => {
-    doPartSearch(debouncedPartSearchQuery);
-  }, [debouncedPartSearchQuery]);
-
-  useEffect(() => {
-    doInventorySearch(debouncedInventorySearchQuery);
-  }, [debouncedInventorySearchQuery]);
+  /* 两个搜索 effect 在 doPartSearch/doInventorySearch 定义之后（const 声明不提升，
+     依赖数组引用它们必须先定义——见下 ~300 行） */
 
   /* 外包弹窗 */
   const [showOutsourceModal, setShowOutsourceModal] = useState(false);
@@ -278,9 +273,11 @@ export default function MobileItemEditor({
     }
   }, [showMechanicModal, existingMechanics]);
 
-  const mechanicIds = mechanicMode === "group" && selectedGroup
+  /* useMemo 固定引用：group 模式下 .map() 每次渲染都产新数组，
+     不包一层会让下游 effect（按等级提成预览等）每次渲染都重跑 */
+  const mechanicIds = useMemo(() => mechanicMode === "group" && selectedGroup
     ? (mechanicGroups.find((g) => g.id === selectedGroup)?.members.map((m) => m.mechanic_id) || [])
-    : selectedPersons;
+    : selectedPersons, [mechanicMode, selectedGroup, mechanicGroups, selectedPersons]);
 
   const personCount = mechanicIds.length;
   const isMulti = personCount > 1;
@@ -301,6 +298,38 @@ export default function MobileItemEditor({
     setPartSearchResults(data || []);
     setPartSearching(false);
   }, [supabase]);
+
+  /* 库存配件搜索（2026-09-15 从下方 function 声明挪来并改 useCallback：
+     effect 依赖数组引用它，const 必须先定义） */
+  const doInventorySearch = useCallback(async (keyword: string) => {
+    setInventorySearching(true);
+    let query = supabase
+      .from("parts")
+      .select("id, part_number, name, quantity, unit_price, part_name_id")
+      .limit(100);
+    if (keyword.trim()) {
+      query = query.or(`name.ilike.%${清理搜索词(keyword)}%,part_number.ilike.%${清理搜索词(keyword)}%`);
+    }
+    const { data } = await query;
+    const results = (data || []) as InventoryPart[];
+    results.sort((a, b) => {
+      const aStock = (a.quantity || 0) > 0;
+      const bStock = (b.quantity || 0) > 0;
+      if (aStock && !bStock) return -1;
+      if (!aStock && bStock) return 1;
+      return a.name.localeCompare(b.name, "zh-CN");
+    });
+    setInventorySearchResults(results);
+    setInventorySearching(false);
+  }, [supabase]);
+
+  useEffect(() => {
+    doPartSearch(debouncedPartSearchQuery);
+  }, [debouncedPartSearchQuery, doPartSearch]);
+
+  useEffect(() => {
+    doInventorySearch(debouncedInventorySearchQuery);
+  }, [debouncedInventorySearchQuery, doInventorySearch]);
 
   /* 初始化配件弹窗状态 */
   useEffect(() => {
@@ -389,7 +418,7 @@ export default function MobileItemEditor({
         setLinkedPartIds(new Set());
       }
     }
-  }, [showPartModal, item.service_item_id, vehicleModelId, supabase]);
+  }, [showPartModal, item.service_item_id, vehicleModelId, supabase, doPartSearch]);
 
   /* 按技师等级分配预览 */
   useEffect(() => {
@@ -423,7 +452,7 @@ export default function MobileItemEditor({
     }
     calcPreview();
      
-  }, [commissionRule, selectedPersons, selectedGroup, mechanicMode]);
+  }, [commissionRule, selectedPersons, selectedGroup, mechanicMode, mechanicIds, personCount, supabase]);
 
   /* 通用刷新 */
   const refresh = useCallback(() => {
@@ -722,28 +751,6 @@ export default function MobileItemEditor({
   }
 
   /* 配件库搜索 */
-  async function doInventorySearch(keyword: string) {
-    setInventorySearching(true);
-    let query = supabase
-      .from("parts")
-      .select("id, part_number, name, quantity, unit_price, part_name_id")
-      .limit(100);
-    if (keyword.trim()) {
-      query = query.or(`name.ilike.%${清理搜索词(keyword)}%,part_number.ilike.%${清理搜索词(keyword)}%`);
-    }
-    const { data } = await query;
-    const results = (data || []) as InventoryPart[];
-    results.sort((a, b) => {
-      const aStock = (a.quantity || 0) > 0;
-      const bStock = (b.quantity || 0) > 0;
-      if (aStock && !bStock) return -1;
-      if (!aStock && bStock) return 1;
-      return a.name.localeCompare(b.name, "zh-CN");
-    });
-    setInventorySearchResults(results);
-    setInventorySearching(false);
-  }
-
   function handleInventorySearchChange(val: string) {
     setInventorySearchQuery(val);
   }
@@ -984,10 +991,10 @@ export default function MobileItemEditor({
       取消 = true;
     };
      
-  }, [debounced编码查询, detailEditing]);
+  }, [debounced编码查询, detailEditing, supabase]);
 
   /* 当前详情面板正在看的分支（与渲染处同一套口径） */
-  function 当前详情分支(): ItemPart | null {
+  const 当前详情分支 = useCallback((): ItemPart | null => {
     if (!selectedPartForDetail) return null;
     const branchParts = selectedPartForDetail.branch_group_id
       ? parts合并.filter((p) => p.branch_group_id === selectedPartForDetail.branch_group_id)
@@ -995,7 +1002,7 @@ export default function MobileItemEditor({
       ? parts合并.filter((p) => p.part_name_id === selectedPartForDetail.part_name_id)
       : [selectedPartForDetail];
     return branchParts.find((p) => p.id === detailActiveBranchId) || branchParts[0];
-  }
+  }, [selectedPartForDetail, parts合并, detailActiveBranchId]);
 
   /* 把命中的库存配件带回当前分支：关联 part_id 并补齐编码/品牌/规格/价格/单据名
    * （同桌面端"应用命中配件"，但不改配件名称和分组归属）；写库走 Server Action */
@@ -1131,7 +1138,7 @@ export default function MobileItemEditor({
       set申领列表((data || []) as 申领行[]);
     })();
      
-  }, [申领展开, detailActiveBranchId, selectedPartForDetail?.id]);
+  }, [申领展开, detailActiveBranchId, selectedPartForDetail?.id, supabase, 当前详情分支]);
 
   /* 提交申领（走 Server Action，只记需求不动库存；库管实领后自动核销） */
   async function 提交申领() {
@@ -1220,7 +1227,7 @@ export default function MobileItemEditor({
       set退申请列表((申请们 || []) as 退料申请行[]);
     })();
 
-  }, [退料展开, detailActiveBranchId, selectedPartForDetail?.id]);
+  }, [退料展开, detailActiveBranchId, selectedPartForDetail?.id, supabase, 当前详情分支]);
 
   /* 提交退料申请（走 Server Action，只记意向不动库存；库管确认后才生成退料单） */
   async function 提交退料申请() {

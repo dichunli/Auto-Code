@@ -1,6 +1,6 @@
 "use client";
 
-import {useState, useEffect, useMemo, useRef} from "react";
+import {useState, useEffect, useMemo, useRef, useCallback} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
@@ -106,7 +106,7 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
     require_confirm: false,
   });
 
-  async function loadCategories(search?: string) {
+  const loadCategories = useCallback(async (search?: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     setSearching(!!search);
@@ -121,12 +121,12 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
     setCategories(data || []);
     setLoading(false);
     setSearching(false);
-  }
+  }, [supabase]);
 
   useEffect(() => {
     if (跳过首次查询.current) { 跳过首次查询.current = false; return; }
     loadCategories(debouncedQuery);
-  }, [debouncedQuery]);
+  }, [debouncedQuery, loadCategories]);
 
   function formatCommission(type: string | null, value: number | null) {
     if (!type || value == null) return "-";

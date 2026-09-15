@@ -309,22 +309,37 @@ export function PartPickerModal({ open, onClose, onConfirm, vehicleModelId, defa
   }, [gunMode]);
 
   // 打开时自动查询一次，如果有默认名称搜索词则填入
+  /* 最新值镜像：本 effect 故意只在 open 变化时跑一次；doSearch 随输入框内容变化，
+     直接进依赖会导致用户打字/改筛选时误触发——清空已选配件并重查 */
+  const defaultNameQueryRef = useRef(defaultNameQuery);
+  useEffect(() => {
+    defaultNameQueryRef.current = defaultNameQuery;
+  }, [defaultNameQuery]);
+  const doSearchRef = useRef(doSearch);
+  useEffect(() => {
+    doSearchRef.current = doSearch;
+  }, [doSearch]);
+  const doSearchWithNameRef = useRef(doSearchWithName);
+  useEffect(() => {
+    doSearchWithNameRef.current = doSearchWithName;
+  }, [doSearchWithName]);
   useEffect(() => {
     if (open) {
-      if (defaultNameQuery && defaultNameQuery.trim()) {
-        setNameQuery(defaultNameQuery.trim());
+      const 默认词 = defaultNameQueryRef.current;
+      if (默认词 && 默认词.trim()) {
+        setNameQuery(默认词.trim());
         // 延迟搜索，等待状态更新
         setTimeout(() => {
-          doSearchWithName(defaultNameQuery.trim());
+          doSearchWithNameRef.current(默认词.trim());
         }, 0);
       } else {
-        doSearch();
+        doSearchRef.current();
       }
       setSelectedIds(new Set());
       setSelectedQtyMap({});
       setBrandQuery("");
     }
-     
+
   }, [open]);
 
   // 客户端过滤（库存状态、关联车型等）

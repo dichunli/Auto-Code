@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
 import { 单人领单, 保存施工指派, 删除项目施工人 } from "@/app/work-orders/actions";
@@ -84,6 +84,13 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
     }
   }
 
+  /* existingMechanics 最新引用：父组件每次渲染都会新建数组（行内 map），
+   * 直接进依赖会让弹窗打开期间父组件重渲染就重置用户正在编辑的选中 */
+  const existingMechanicsRef = useRef(existingMechanics);
+  useEffect(() => {
+    existingMechanicsRef.current = existingMechanics;
+  }, [existingMechanics]);
+
   useEffect(() => {
     if (!open) return;
     setSelectedGroup("");
@@ -99,7 +106,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
         const 最新 = (data || []) as { mechanic_id: string; share_pct: number | null }[];
         set打开时指纹(名单指纹(最新));
         /* 查询失败/为空时退回 prop 快照初始化 */
-        初始化选中与分成(最新.length > 0 || data !== null ? 最新 : existingMechanics);
+        初始化选中与分成(最新.length > 0 || data !== null ? 最新 : existingMechanicsRef.current);
       });
   }, [open, itemId, supabase]);
 
@@ -231,7 +238,7 @@ export function AssignMechanicModal({ open, itemId, profiles, mechanicGroups, ex
       setLevelPreview(preview);
     }
     calcPreview();
-  }, [commissionRule, isMulti, mode, selectedGroup, selectedPersons, supabase]);
+  }, [commissionRule, isMulti, mode, selectedGroup, selectedPersons, mechanicGroups, supabase]);
 
   async function handleSoloClaim() {
     setLoading(true);

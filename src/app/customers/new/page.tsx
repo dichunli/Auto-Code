@@ -1,6 +1,6 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useRef, useMemo, useCallback} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
@@ -130,7 +130,7 @@ export default function NewCustomerPage() {
     );
   }
 
-  async function searchContactByPhone(contactId: string, phone: string) {
+  const searchContactByPhone = useCallback(async (contactId: string, phone: string) => {
     if (!phone.trim()) return;
     const { data } = await supabase
       .from("customers")
@@ -143,13 +143,13 @@ export default function NewCustomerPage() {
         prev.map((c) => (c.id === contactId ? { ...c, searchResult: { name: data.name, phone: data.phone, relationship: "", notes: "" } } : c))
       );
     }
-  }
+  }, [supabase]);
 
   useEffect(() => {
     if (debouncedPhoneSearch) {
       searchContactByPhone(debouncedPhoneSearch.contactId, debouncedPhoneSearch.phone);
     }
-  }, [debouncedPhoneSearch]);
+  }, [debouncedPhoneSearch, searchContactByPhone]);
 
   async function searchMainPhone(phone: string) {
     if (!phone.trim()) { setPhoneSearchResult(null); return; }

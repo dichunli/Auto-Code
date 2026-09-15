@@ -246,7 +246,7 @@ export default function LicensePlateCameraModal({ open, onClose, onRecognize }: 
       已取消Ref.current = true;
       stopCamera();
     };
-  }, [open, 是App, stopCamera, 启动实时摄像头]);
+  }, [open, 是App, stopCamera, 启动实时摄像头, 原生拍照, 启动离线车牌识别]);
 
   /* ========== 确认 ========== */
   const handleConfirm = useCallback(() => {

@@ -310,6 +310,13 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
   }, [doOcr]);
 
   /* ========== 打开/关闭生命周期 ========== */
+  /* onClose 最新引用：父组件传的是内联箭头函数（每次渲染新引用），
+   * 直接进依赖会让弹窗打开期间父组件重渲染就重启相机 */
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     已取消Ref.current = false;
 
@@ -353,16 +360,16 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
             设置预览图(base64);
             await doOcr(base64);
           } else if (结果.cancelled) {
-            onClose();
+            onCloseRef.current();
           } else {
             /* 拍照本身失败（相机硬件问题等）：APP端弹窗不渲染，用alert提示后关闭 */
             toast(结果.error || "拍照失败", "error");
-            onClose();
+            onCloseRef.current();
           }
         } catch (err: unknown) {
           if (已取消Ref.current) return;
           toast(err instanceof Error ? err.message : "拍照失败", "error");
-          onClose();
+          onCloseRef.current();
         }
       })();
     } else {
@@ -375,7 +382,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       已取消Ref.current = true;
       stopCamera();
     };
-  }, [open, 是App, stopCamera, 启动实时摄像头]);
+  }, [open, 是App, stopCamera, 启动实时摄像头, doOcr, 设置预览图]);
 
   /* ========== 确认 ========== */
   const handleConfirm = useCallback(() => {
@@ -427,7 +434,7 @@ export default function VinCameraModal({ open, onClose, onRecognize }: Props) {
       set模式("实时");
       启动实时摄像头();
     }
-  }, [是App, doOcr, onClose, 启动实时摄像头]);
+  }, [是App, doOcr, onClose, 启动实时摄像头, 设置预览图]);
 
   /* APP端：原生相机取景期间弹窗不渲染（null）；
    * 拍完进入"预览"模式后渲染共享UI——显示照片+识别结果供对比，点"使用此 VIN"才回填 */
