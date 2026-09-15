@@ -115,6 +115,7 @@ const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
 /* 采购明细/整单查询字段已收敛到 @/lib/procurementRules（2026-09-15 诊断第1批）：
    loadData 整表查、撤销收货后单条重查、procurement 页服务端首屏 同口径 */
 import { 采购明细查询字段 as 明细查询字段, 待收货查询字段 } from "@/lib/procurementRules";
+import { Pagination } from "./Pagination";
 
 function resolveImageUrl(path: string): string {
   if (!path) return "";
@@ -129,11 +130,16 @@ function 单还有未处理(order: PurchaseOrder): boolean {
   return (order.purchase_order_items || []).some((it) => !it.handle_action);
 }
 
+/* 分页大小（与工单列表一致） */
+const 每页条数 = 20;
+
 /* 首屏数据 props（服务端查询注入，待办清单第9项）：
    有 initialOrders 时首屏直接渲染、跳过 useEffect 里的 loadData，
    避免 SPA 软导航时 session 未就绪导致整页空白；后续操作照常走 loadData 刷新 */
 interface PendingReceiptListProps {
   initialOrders?: PurchaseOrder[];
+  /* 服务端首屏的总条数（两阶段分页的 count），有 initialOrders 时必传 */
+  initialTotalCount?: number;
 }
 
 export function PendingReceiptList(props: PendingReceiptListProps) {
@@ -167,6 +173,10 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
   }, [supabase]);
   const [orders, setOrders] = useState<PurchaseOrder[]>(props.initialOrders ?? []);
   const [loading, setLoading] = useState(!props.initialOrders);
+  /* 分页（2026-09-15）：两阶段数据库分页——先取"有未处理明细"的订单 id 集合，
+     再主表 count: exact + range 取当前页；页码/总数都由服务端校准 */
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(props.initialTotalCount ?? 0);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<GroupBy>("supplier");
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
@@ -238,13 +248,37 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
   const [shortChoice, setShortChoice] = useState<"" | "repurchase" | "discard">("");
   const [shortEvidence, setShortEvidence] = useState<string[]>([]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (目标页 = 1) => {
     setLoading(true);
-    const { data, error } = await supabase
+    /* 阶段1：取"状态符合且还有未处理明细"的订单 id（只取一列，量小）。
+       handle_action 为空串/NULL 都算未处理（与原内存谓词 !it.handle_action 同口径） */
+    const { data: idRows, error: idErr } = await supabase
+      .from("purchase_order_items")
+      .select("order_id, purchase_orders!inner(status)")
+      .or("handle_action.is.null,handle_action.eq.")
+      .in("purchase_orders.status", ["submitted", "approved", "partial_received"]);
+    if (idErr) {
+      console.error("加载待收货订单 id 集合失败:", idErr);
+      setLoading(false);
+      return;
+    }
+    const 合格ids = [...new Set((idRows || []).map((r) => r.order_id as string))];
+    if (合格ids.length === 0) {
+      setOrders([]);
+      setTotalCount(0);
+      setPage(目标页);
+      setLoading(false);
+      return;
+    }
+
+    /* 阶段2：主表精确 count + range 取当前页（口径与阶段1一致，无需再内存过滤） */
+    const from = (目标页 - 1) * 每页条数;
+    const { data, count, error } = await supabase
       .from("purchase_orders")
-      .select(待收货查询字段)
-      .in("status", ["submitted", "approved", "partial_received"])
-      .order("created_at", { ascending: false });
+      .select(待收货查询字段, { count: "exact" })
+      .in("id", 合格ids)
+      .order("created_at", { ascending: false })
+      .range(from, from + 每页条数 - 1);
 
     if (error) {
       console.error("加载待收货采购单失败:", error);
@@ -252,16 +286,16 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       return;
     }
 
-    const rawOrders = (data || []) as unknown as PurchaseOrder[];
-    /* 只显示还有未处理明细的订单 */
-    setOrders(rawOrders.filter(单还有未处理));
+    setOrders((data || []) as unknown as PurchaseOrder[]);
+    setTotalCount(count || 0);
+    setPage(目标页);
     setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
     /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
     if (props.initialOrders) return;
-    loadData();
+    loadData(1);
   }, [loadData, props.initialOrders]);
 
   /* ─── 局部更新工具（2026-09-12）：改哪条只动哪条，不再整表 loadData ─── */
@@ -295,18 +329,27 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       .select(待收货查询字段)
       .eq("id", orderId)
       .single();
+    /* 不在当前页的单：filter/map 本就 no-op，count 更不能动（2026-09-15 分页口径） */
+    const 在列表 = orders.some((o) => o.id === orderId);
     if (!data) {
-      setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      if (在列表) {
+        setOrders((prev) => prev.filter((o) => o.id !== orderId));
+        setTotalCount((c) => Math.max(0, c - 1));
+      }
       return;
     }
     const 新单 = data as unknown as PurchaseOrder;
-    setOrders((prev) => {
-      /* 整单被 RPC 置 cancelled 或已无未处理明细 → 移出待收货列表 */
-      if (!单还有未处理(新单) || 新单.status === "cancelled") {
-        return prev.filter((o) => o.id !== orderId);
+    /* 整单被 RPC 置 cancelled 或已无未处理明细 → 移出待收货列表（总数同步 -1） */
+    if (!单还有未处理(新单) || 新单.status === "cancelled") {
+      if (在列表) {
+        setOrders((prev) => prev.filter((o) => o.id !== orderId));
+        setTotalCount((c) => Math.max(0, c - 1));
       }
-      return prev.map((o) => (o.id === orderId ? 新单 : o));
-    });
+      return;
+    }
+    if (在列表) {
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? 新单 : o)));
+    }
   }
 
   /* 只重查这一条明细（撤销收货后 RPC 清了哪些字段前端猜不全，单条重查最稳） */
@@ -657,8 +700,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
       showToast(`提交成功，已入账 ${res.count} 件`);
       /* 保留整表重查（局部更新不兜底此操作）：跨多订单批量入账，
          receive_purchase_item 逐行有补货克隆/状态重算/运单联动，
-         行去留和单去留都要服务端重算后才知道；一次一批的低频操作，整刷可接受 */
-      loadData();
+         行去留和单去留都要服务端重算后才知道；一次一批的低频操作，整刷可接受。
+         批量操作后回第 1 页（最新数据排在前面，count 由服务端重校准） */
+      loadData(1);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("提交失败: " + msg, "error");
@@ -709,8 +753,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
     try {
       const res = await 撤销作废采购单(orderId, mode);
       if (!res.success) throw new Error(res.error || "操作失败");
-      /* 局部更新：整单已标 cancelled 留档，必然离开待收货列表，直接移除 */
+      /* 局部更新：整单已标 cancelled 留档，必然离开待收货列表，直接移除（总数同步 -1） */
       setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      setTotalCount((c) => Math.max(0, c - 1));
       setSelectedOrderIds((prev) => { const n = new Set(prev); n.delete(orderId); return n; });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1116,9 +1161,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
             const res = await 关联运单到供应商待收货单(waybillId, 创建结果.命中供应商id);
             if (!res.success) throw new Error(res.error || "关联采购单失败");
             toast(`运单创建成功，已关联 ${res.count} 张待收货采购单`, "success");
-            /* 保留整表重查：命中哪些单是服务端按供应商名匹配出来的，前端口径容易漂 */
+            /* 保留整表重查：命中哪些单是服务端按供应商名匹配出来的，前端口径容易漂；回第 1 页 */
             closeCreateWaybillModal();
-            loadData();
+            loadData(1);
             return;
           } else {
             toast("运单创建成功", "success");
@@ -2366,8 +2411,8 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
                 提交完成后={() => {
                   setBatchModalOpen(false);
                   /* 保留整表重查：批量分步表单一次创建多张运单并逐单关联，
-                     低频操作，局部化收益小 */
-                  loadData();
+                     低频操作，局部化收益小；回第 1 页 */
+                  loadData(1);
                 }}
               />
             </div>
@@ -2740,6 +2785,9 @@ export function PendingReceiptList(props: PendingReceiptListProps) {
           </div>
         </div>
       )}
+
+      {/* 翻页：弹窗都是 fixed 不占文档流，这里视觉上就在列表最底部 */}
+      <Pagination page={page} totalCount={totalCount} pageSize={每页条数} onChange={(p) => loadData(p)} />
 
       {确认弹窗}
     </div>

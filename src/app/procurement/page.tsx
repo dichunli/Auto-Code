@@ -62,11 +62,20 @@ export default async function ProcurementPage({
      消除表格左右滑屏；数据服务端首屏查询（与 /m/receiving/orders 同口径） */
   let 手机待收订单: 待收订单[] = [];
   let 手机待签收运单: 待签收运单[] = [];
-  /* 桌面端待收货列表首屏（待办清单第9项）：与 PendingReceiptList.loadData 同口径 */
+  /* 桌面端待收货列表首屏（待办清单第9项）：与 PendingReceiptList.loadData 同口径。
+     2026-09-15 起两阶段分页：先取"有未处理明细"的订单 id 集合，再主表 count+range 取第 1 页 */
   let 待收货桌面订单: 待收货采购单[] | undefined;
+  let 待收货总数 = 0;
   if (currentTab === "pending_receipt") {
     const supabase = await createClient();
-    const [{ data: orders }, { data: waybills }, { data: desktopData }] = await Promise.all([
+    const { data: 明细ids } = await supabase
+      .from("purchase_order_items")
+      .select("order_id, purchase_orders!inner(status)")
+      .or("handle_action.is.null,handle_action.eq.")
+      .in("purchase_orders.status", ["submitted", "approved", "partial_received"]);
+    const 合格ids = [...new Set((明细ids || []).map((r) => r.order_id as string))];
+
+    const [{ data: orders }, { data: waybills }, { data: desktopData, count: desktopCount }] = await Promise.all([
       supabase
         .from("purchase_orders")
         .select(`
@@ -87,18 +96,20 @@ export default async function ProcurementPage({
         .eq("status", "pending")
         .order("created_at", { ascending: false })
         .limit(100),
-      supabase
-        .from("purchase_orders")
-        .select(待收货查询字段)
-        .in("status", ["submitted", "approved", "partial_received"])
-        .order("created_at", { ascending: false }),
+      合格ids.length > 0
+        ? supabase
+            .from("purchase_orders")
+            .select(待收货查询字段, { count: "exact" })
+            .in("id", 合格ids)
+            .order("created_at", { ascending: false })
+            .range(0, 19)
+        : Promise.resolve({ data: [], count: 0, error: null }),
     ]);
     手机待收订单 = ((orders || []) as unknown) as 待收订单[];
     手机待签收运单 = ((waybills || []) as unknown) as 待签收运单[];
-    /* 只显示还有未处理明细的订单 */
-    待收货桌面订单 = ((desktopData || []) as unknown as 待收货采购单[]).filter((order) =>
-      (order.purchase_order_items || []).some((it) => !it.handle_action)
-    );
+    /* 阶段1已按"还有未处理明细"过滤 id 集合，阶段2直接取数即可 */
+    待收货桌面订单 = (desktopData || []) as unknown as 待收货采购单[];
+    待收货总数 = desktopCount || 0;
   }
 
   /* ═══ 其余 tab 桌面端列表首屏数据（待办清单第9项）═══
@@ -533,7 +544,7 @@ export default async function ProcurementPage({
       {/* 待收货（2026-08-21 需求4）：桌面端表格版 / 手机端竖排卡片版，同一 URL 按屏幕宽度自动切换 */}
       {currentTab === "pending_receipt" && (
         <>
-          <div className="hidden md:block"><PendingReceiptList key={currentTab} initialOrders={待收货桌面订单} /></div>
+          <div className="hidden md:block"><PendingReceiptList key={currentTab} initialOrders={待收货桌面订单} initialTotalCount={待收货总数} /></div>
           <div className="md:hidden">
             <MobileReceivingOrders 订单列表={手机待收订单} 待签收运单={手机待签收运单} />
           </div>
