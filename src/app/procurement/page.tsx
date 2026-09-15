@@ -10,7 +10,7 @@ import { CompletedStorageList } from "@/components/CompletedStorageList";
 import { PendingReturnList } from "@/components/PendingReturnList";
 import { CompletedReturnList } from "@/components/CompletedReturnList";
 import { ProcurementTabBar } from "@/components/ProcurementTabBar";
-import { 行符合采购阶段, 行符合待采购, 待收货查询字段 } from "@/lib/procurementRules";
+import { 待采购查询字段, 待收货查询字段 } from "@/lib/procurementRules";
 import { BrowserNotificationToggle } from "@/components/BrowserNotificationToggle";
 import { MobileReceivingOrders, 待收订单, 待签收运单 } from "@/components/mobile/MobileReceivingOrders";
 /* 首屏数据的行类型直接从各列表组件导入（type-only，服务端可用） */
@@ -62,11 +62,20 @@ export default async function ProcurementPage({
      消除表格左右滑屏；数据服务端首屏查询（与 /m/receiving/orders 同口径） */
   let 手机待收订单: 待收订单[] = [];
   let 手机待签收运单: 待签收运单[] = [];
-  /* 桌面端待收货列表首屏（待办清单第9项）：与 PendingReceiptList.loadData 同口径 */
+  /* 桌面端待收货列表首屏（待办清单第9项）：与 PendingReceiptList.loadData 同口径。
+     2026-09-15 起两阶段分页：先取"有未处理明细"的订单 id 集合，再主表 count+range 取第 1 页 */
   let 待收货桌面订单: 待收货采购单[] | undefined;
+  let 待收货总数 = 0;
   if (currentTab === "pending_receipt") {
     const supabase = await createClient();
-    const [{ data: orders }, { data: waybills }, { data: desktopData }] = await Promise.all([
+    const { data: 明细ids } = await supabase
+      .from("purchase_order_items")
+      .select("order_id, purchase_orders!inner(status)")
+      .or("handle_action.is.null,handle_action.eq.")
+      .in("purchase_orders.status", ["submitted", "approved", "partial_received"]);
+    const 合格ids = [...new Set((明细ids || []).map((r) => r.order_id as string))];
+
+    const [{ data: orders }, { data: waybills }, { data: desktopData, count: desktopCount }] = await Promise.all([
       supabase
         .from("purchase_orders")
         .select(`
@@ -87,18 +96,20 @@ export default async function ProcurementPage({
         .eq("status", "pending")
         .order("created_at", { ascending: false })
         .limit(100),
-      supabase
-        .from("purchase_orders")
-        .select(待收货查询字段)
-        .in("status", ["submitted", "approved", "partial_received"])
-        .order("created_at", { ascending: false }),
+      合格ids.length > 0
+        ? supabase
+            .from("purchase_orders")
+            .select(待收货查询字段, { count: "exact" })
+            .in("id", 合格ids)
+            .order("created_at", { ascending: false })
+            .range(0, 19)
+        : Promise.resolve({ data: [], count: 0, error: null }),
     ]);
     手机待收订单 = ((orders || []) as unknown) as 待收订单[];
     手机待签收运单 = ((waybills || []) as unknown) as 待签收运单[];
-    /* 只显示还有未处理明细的订单 */
-    待收货桌面订单 = ((desktopData || []) as unknown as 待收货采购单[]).filter((order) =>
-      (order.purchase_order_items || []).some((it) => !it.handle_action)
-    );
+    /* 阶段1已按"还有未处理明细"过滤 id 集合，阶段2直接取数即可 */
+    待收货桌面订单 = (desktopData || []) as unknown as 待收货采购单[];
+    待收货总数 = desktopCount || 0;
   }
 
   /* ═══ 其余 tab 桌面端列表首屏数据（待办清单第9项）═══
@@ -106,9 +117,12 @@ export default async function ProcurementPage({
    * 首屏查询搬到服务端（查询条件与各组件 loadData 原样一致），通过 props 注入；
    * 组件拿到 initialXxx 就跳过首次 loadData，后续操作仍走客户端 loadData 刷新 */
 
-  /* 待询价 / 待报价 / 待确认（PartBranchStatusList，按 tab 过滤口径不同） */
+  /* 待询价 / 待报价 / 待确认（PartBranchStatusList，按 tab 过滤口径不同）
+     2026-09-15 起两阶段分页：先按当前阶段谓词下推取合格 id 集合（与组件 loadData 严格同口径），
+     再主表 count+range 取第 1 页 */
   let 分支首屏: {
     rows: 分支行[];
+    totalCount: number;
     suppliers: 分支供应商[];
     partMediaMap: Record<string, { id: string; storage_path: string }[]>;
     vehicleModelsMap: Record<string, { 厂商?: string; 品牌?: string; 车系?: string }>;
@@ -127,8 +141,27 @@ export default async function ProcurementPage({
   ) {
     const status = currentTab;
     const supabase = await createClient();
+    /* 阶段1：谓词下推轻量取 id（门禁 + 阶段条件，与 PartBranchStatusList.loadData 严格同口径；
+       连续 .or() 在 PostgREST 里是 AND 关系） */
+    let 阶段一查询 = supabase
+      .from("work_order_item_parts")
+      .select("id, work_order_items!inner(work_orders!inner(settled_at, order_type))")
+      .is("work_order_items.work_orders.settled_at", null)
+      .not("work_order_items.work_orders.order_type", "in", '("cancelled","maintenance")')
+      .or("is_purchased.is.null,is_purchased.eq.false")
+      .or("is_arrived.is.null,is_arrived.eq.false");
+    if (status === "pending_inquiry") {
+      阶段一查询 = 阶段一查询.or("unit_cost.is.null,unit_cost.lte.0");
+    } else if (status === "pending_quote") {
+      阶段一查询 = 阶段一查询.gt("unit_cost", 0).or("unit_price.is.null,unit_price.lte.0");
+    } else {
+      阶段一查询 = 阶段一查询
+        .gt("unit_cost", 0)
+        .gt("unit_price", 0)
+        .or("customer_opinion.is.null,customer_opinion.eq.pending");
+    }
     const [
-      { data: parts },
+      { data: idRows },
       { data: sups },
       { data: brandList },
       { data: specList },
@@ -136,7 +169,21 @@ export default async function ProcurementPage({
       { data: spc },
       { data: spb },
     ] = await Promise.all([
-      supabase
+      阶段一查询,
+      supabase.from("suppliers").select("id, name, recommendation_level").order("name"),
+      supabase.from("part_brands").select("id, name"),
+      supabase.from("part_specifications").select("name"),
+      supabase.from("supplier_part_names").select("supplier_id, part_name_id"),
+      supabase.from("supplier_part_categories").select("supplier_id, part_category_id"),
+      supabase.from("supplier_part_brands").select("supplier_id, part_brand_id"),
+    ]);
+    const 合格ids = [...new Set((idRows || []).map((r) => r.id as string))];
+
+    /* 阶段2：完整 select + count + 第 1 页（合格 id 为空时跳过，in 空列表会报错） */
+    let filtered: 分支行[] = [];
+    let 分支总数 = 0;
+    if (合格ids.length > 0) {
+      const { data, count } = await supabase
         .from("work_order_item_parts")
         .select(`
           id, name, brand, specification, unit, quantity, unit_cost, unit_price,
@@ -157,19 +204,13 @@ export default async function ProcurementPage({
               vehicles(id, plate_number, vin, vehicle_model_id)
             )
           )
-        `)
+        `, { count: "exact" })
+        .in("id", 合格ids)
         .order("created_at", { ascending: true })
-        .limit(1000),
-      supabase.from("suppliers").select("id, name, recommendation_level").order("name"),
-      supabase.from("part_brands").select("id, name"),
-      supabase.from("part_specifications").select("name"),
-      supabase.from("supplier_part_names").select("supplier_id, part_name_id"),
-      supabase.from("supplier_part_categories").select("supplier_id, part_category_id"),
-      supabase.from("supplier_part_brands").select("supplier_id, part_brand_id"),
-    ]);
-
-    /* 状态过滤规则已收敛到 @/lib/procurementRules（原与 PartBranchStatusList 复制一致） */
-    const filtered = ((parts || []) as unknown as 分支行[]).filter((r) => 行符合采购阶段(r, status));
+        .range(0, 19);
+      filtered = (data || []) as unknown as 分支行[];
+      分支总数 = count || 0;
+    }
 
     /* 配件分支图片 */
     const partIds = filtered.map((p) => p.id);
@@ -219,6 +260,7 @@ export default async function ProcurementPage({
 
     分支首屏 = {
       rows: filtered,
+      totalCount: 分支总数,
       suppliers: (sups || []) as 分支供应商[],
       partMediaMap,
       vehicleModelsMap,
@@ -232,36 +274,46 @@ export default async function ProcurementPage({
     };
   }
 
-  /* 待采购（与 PendingPurchaseList.loadData 同口径：工单配件行 + 自定义采购暂存行合并） */
+  /* 待采购（与 PendingPurchaseList.loadData 同口径：工单配件行 + 自定义采购暂存行合并）
+     2026-09-15 起工单配件行两阶段分页：先按待采购谓词取合格 id 集合（无库存关联直接合格 /
+     关联且库存 ≤0 合格），再主表 count+range 取第 1 页；自定义暂存行不参与分页照旧全量 */
   let 待采购首屏: {
     rows: 待采购行[];
+    totalCount: number;
     suppliers: 待采购供应商[];
     logisticsCompanies: 物流公司[];
     notArrivedMarks: Record<string, string>;
   } | undefined;
   if (currentTab === "pending_purchase") {
     const supabase = await createClient();
-    const [{ data: parts }, { data: sups }, { data: logistics }, { data: stagingData }] = await Promise.all([
+    const [
+      { data: 无关联行 },
+      { data: 有关联行 },
+      { data: sups },
+      { data: logistics },
+      { data: stagingData },
+    ] = await Promise.all([
       supabase
         .from("work_order_item_parts")
-        .select(`
-          id, name, brand, specification, unit, quantity, unit_cost, unit_price,
-          customer_opinion, supplier_name, part_id, part_number, part_name_id,
-          alias_name, notes, purchase_reason, work_order_item_id, document_name,
-          work_order_items(
-            name,
-            work_orders(
-              id, order_no, settled_at, order_type,
-              customers(name, phone),
-              vehicles(plate_number, vin)
-            )
-          ),
-          parts(quantity)
-        `)
+        .select("id, work_order_items!inner(work_orders!inner(settled_at, order_type))")
         .eq("customer_opinion", "agree")
         .eq("is_purchased", false)
-        .order("created_at", { ascending: true })
-        .limit(1000),
+        .is("work_order_items.work_orders.settled_at", null)
+        .not("work_order_items.work_orders.order_type", "in", '("cancelled","maintenance")')
+        .gt("unit_cost", 0)
+        .gt("unit_price", 0)
+        .is("part_id", null),
+      supabase
+        .from("work_order_item_parts")
+        .select("id, work_order_items!inner(work_orders!inner(settled_at, order_type)), parts!inner(quantity)")
+        .eq("customer_opinion", "agree")
+        .eq("is_purchased", false)
+        .is("work_order_items.work_orders.settled_at", null)
+        .not("work_order_items.work_orders.order_type", "in", '("cancelled","maintenance")')
+        .gt("unit_cost", 0)
+        .gt("unit_price", 0)
+        .not("part_id", "is", null)
+        .lte("parts.quantity", 0),
       supabase.from("suppliers").select("id, name, region").order("name"),
       supabase.from("logistics_companies").select("id, name, scopes").order("name"),
       supabase
@@ -270,8 +322,25 @@ export default async function ProcurementPage({
         .order("created_at", { ascending: true }),
     ]);
 
-    /* 待采购谓词已收敛到 @/lib/procurementRules（原与 PendingPurchaseList 复制一致） */
-    const filtered = ((parts || []) as unknown as 待采购行[]).filter(行符合待采购);
+    /* 待采购谓词已下推到阶段1 的两个查询（与 PendingPurchaseList.loadData 严格同口径） */
+    const 合格ids = [
+      ...new Set([
+        ...(无关联行 || []).map((r) => r.id as string),
+        ...(有关联行 || []).map((r) => r.id as string),
+      ]),
+    ];
+    let filtered: 待采购行[] = [];
+    let 待采购总数 = 0;
+    if (合格ids.length > 0) {
+      const { data, count } = await supabase
+        .from("work_order_item_parts")
+        .select(待采购查询字段, { count: "exact" })
+        .in("id", 合格ids)
+        .order("created_at", { ascending: true })
+        .range(0, 19);
+      filtered = (data || []) as unknown as 待采购行[];
+      待采购总数 = count || 0;
+    }
 
     /* 未到货标记 */
     const { data: markData } = await supabase
@@ -330,17 +399,28 @@ export default async function ProcurementPage({
 
     待采购首屏 = {
       rows: [...filtered, ...暂存行列表],
+      totalCount: 待采购总数,
       suppliers: (sups || []) as 待采购供应商[],
       logisticsCompanies: (logistics || []) as 物流公司[],
       notArrivedMarks: marks,
     };
   }
 
-  /* 待入库（与 PendingStorageList.loadData 同口径：老流程单 + 已确认到货单 + 收货批次卡片） */
-  let 待入库首屏: { orders: 待入库采购单[]; arrivalReceipts: 到货单[]; batches: 批次卡片[]; drafts: { id: string; inbound_no: string; purchase_order_id: string | null }[] } | undefined;
+  /* 待入库（与 PendingStorageList.loadData 同口径：老流程单 + 已确认到货单 + 收货批次卡片）
+     2026-09-15 起老流程单两阶段分页：先取"走过到货确认单/收货批次"的黑名单单号，
+     再主表 count+range 取第 1 页；批次卡片/到货单数据量小，照旧全量 */
+  let 待入库首屏: { orders: 待入库采购单[]; totalCount: number; arrivalReceipts: 到货单[]; batches: 批次卡片[]; drafts: { id: string; inbound_no: string; purchase_order_id: string | null }[] } | undefined;
   if (currentTab === "pending_storage") {
     const supabase = await createClient();
-    const { data } = await supabase
+    /* 阶段1：黑名单——有明细走过到货确认单/收货批次的 pending_storage 采购单 */
+    const { data: 黑名单行 } = await supabase
+      .from("purchase_order_items")
+      .select("order_id, purchase_orders!inner(status)")
+      .eq("purchase_orders.status", "pending_storage")
+      .or("arrival_item_id.not.is.null,receiving_batch_id.not.is.null");
+    const 黑名单ids = [...new Set((黑名单行 || []).map((r) => r.order_id as string))];
+    /* 阶段2：老流程单 count + 第 1 页（黑名单为空时跳过 not-in） */
+    let 老流程查询 = supabase
       .from("purchase_orders")
       .select(`
         id, order_no, supplier_id, status, total_amount, notes, created_at, waybill_id,
@@ -352,13 +432,14 @@ export default async function ProcurementPage({
           unit, category, license_plate, photos, notes,
           handle_action, discount_amount, evidence_photos, return_reason, arrival_item_id, receiving_batch_id
         )
-      `)
+      `, { count: "exact" })
       .eq("status", "pending_storage")
       .order("created_at", { ascending: false });
-    /* 走过到货确认单或收货批次的采购单不进老入库列表（2026-09-07 补 receiving_batch_id，与 loadData 对齐） */
-    const 老流程单 = ((data || []) as unknown as 待入库采购单[]).filter(
-      (o) => !(o.purchase_order_items || []).some((it) => it.arrival_item_id || it.receiving_batch_id)
-    );
+    if (黑名单ids.length > 0) {
+      老流程查询 = 老流程查询.not("id", "in", `(${黑名单ids.join(",")})`);
+    }
+    const { data, count: 老流程总数 } = await 老流程查询.range(0, 19);
+    const 老流程单 = (data || []) as unknown as 待入库采购单[];
     const { data: 到货单数据 } = await supabase
       .from("arrival_receipts")
       .select("id, receipt_no, supplier_order_no, supplier_order_amount, suppliers(name), logistics_waybills(tracking_no, freight_amount), arrival_receipt_items(count)")
@@ -377,7 +458,7 @@ export default async function ProcurementPage({
         .in("purchase_order_id", 老流程单id数组);
       蓝卡确认单们 = (确认单数据 || []) as { id: string; inbound_no: string; purchase_order_id: string | null }[];
     }
-    待入库首屏 = { orders: 老流程单, arrivalReceipts: ((到货单数据 || []) as unknown) as 到货单[], batches: 批次卡片们, drafts: 蓝卡确认单们 };
+    待入库首屏 = { orders: 老流程单, totalCount: 老流程总数 || 0, arrivalReceipts: ((到货单数据 || []) as unknown) as 到货单[], batches: 批次卡片们, drafts: 蓝卡确认单们 };
   }
 
   /* 已入库（与 CompletedStorageList.loadData 同口径） */
@@ -509,6 +590,7 @@ export default async function ProcurementPage({
           key={currentTab}
           status={currentTab}
           initialRows={分支首屏?.rows}
+          initialTotalCount={分支首屏?.totalCount}
           initialSuppliers={分支首屏?.suppliers}
           initialPartMediaMap={分支首屏?.partMediaMap}
           initialVehicleModelsMap={分支首屏?.vehicleModelsMap}
@@ -525,6 +607,7 @@ export default async function ProcurementPage({
         <PendingPurchaseList
           key={currentTab}
           initialRows={待采购首屏?.rows}
+          initialTotalCount={待采购首屏?.totalCount}
           initialSuppliers={待采购首屏?.suppliers}
           initialLogisticsCompanies={待采购首屏?.logisticsCompanies}
           initialNotArrivedMarks={待采购首屏?.notArrivedMarks}
@@ -533,7 +616,7 @@ export default async function ProcurementPage({
       {/* 待收货（2026-08-21 需求4）：桌面端表格版 / 手机端竖排卡片版，同一 URL 按屏幕宽度自动切换 */}
       {currentTab === "pending_receipt" && (
         <>
-          <div className="hidden md:block"><PendingReceiptList key={currentTab} initialOrders={待收货桌面订单} /></div>
+          <div className="hidden md:block"><PendingReceiptList key={currentTab} initialOrders={待收货桌面订单} initialTotalCount={待收货总数} /></div>
           <div className="md:hidden">
             <MobileReceivingOrders 订单列表={手机待收订单} 待签收运单={手机待签收运单} />
           </div>
@@ -543,6 +626,7 @@ export default async function ProcurementPage({
         <PendingStorageList
           key={currentTab}
           initialOrders={待入库首屏?.orders}
+          initialTotalCount={待入库首屏?.totalCount}
           initialArrivalReceipts={待入库首屏?.arrivalReceipts}
           initialBatches={待入库首屏?.batches}
           initialDrafts={待入库首屏?.drafts}
