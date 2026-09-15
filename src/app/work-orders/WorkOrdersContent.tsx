@@ -12,6 +12,7 @@ import { 读本地工单标签 } from "@/lib/orderTabs";
 import StageOrderCard from "@/components/StageOrderCard";
 import type { Order } from "./page";
 import { toast } from "@/lib/globalToast";
+import type { Profile } from "@/types/domain";
 
 /* ═════════════════════════════════════════════════════════════════
  * 工单列表内容 — Client Component（纯展示 + 交互）
@@ -22,8 +23,8 @@ import { toast } from "@/lib/globalToast";
  * 阶段分栏视图用 StageOrderCard（卡片可直接操作：领单/派工/计时/质检指派）。
  * ═════════════════════════════════════════════════════════════════ */
 
-interface Profile {
-  id: string;
+/* 工单页员工：共享 Profile + 分组/角色/等级扩展（分栏卡片派工排序用） */
+interface 工单员工 extends Profile {
   full_name: string;
   group_id?: string | null;
   profile_roles?: { roles?: { name?: string } | null }[] | null;
@@ -46,7 +47,7 @@ interface WorkOrdersContentProps {
   queryError: string | null;
   baseParams: Record<string, string>;
   /* 分栏卡片操作需要的人员数据（派工/质检指派） */
-  profiles?: Profile[];
+  profiles?: 工单员工[];
   mechanicGroups?: MechanicGroup[];
 }
 

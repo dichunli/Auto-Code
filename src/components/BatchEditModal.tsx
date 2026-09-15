@@ -4,6 +4,7 @@ import { useState } from "react";
 import { filterLogisticsBySupplierName, supplierNeedsLogistics } from "@/lib/logisticsFilter";
 import { 批量修改工单明细 } from "@/app/work-orders/actions";
 import { toast } from "@/lib/globalToast";
+import type { Supplier } from "@/types/domain";
 
 interface BatchEditModalProps {
   orderId: string;
@@ -27,12 +28,6 @@ interface WorkOrderItemPart {
   parts?: { name?: string } | null;
   name?: string;
   part_names?: { name?: string } | null;
-}
-
-interface Supplier {
-  id: string;
-  name: string;
-  region?: string | null;
 }
 
 interface LogisticsCompany {

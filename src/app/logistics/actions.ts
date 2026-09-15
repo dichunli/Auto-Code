@@ -2,16 +2,12 @@
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import type { 操作结果 } from "@/types/domain";
 
 /* ═══ 物流运单 Server Action（2026-08-20 待收货改造一期③） ═══
  * 批量建运单 + 电话命中供应商后关联其待收货采购单。
  * 写操作统一走服务端，避免客户端 session 异常导致 401/RLS 拦截。
  */
-
-interface 操作结果 {
-  success: boolean;
-  error?: string;
-}
 
 /* ─── 批量创建运单的每行输入 ─── */
 export interface 运单行输入 {

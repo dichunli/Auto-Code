@@ -2,11 +2,7 @@
 
 import { useState, useEffect } from "react";
 import RequirementBatchModal from "./RequirementBatchModal";
-
-interface Profile {
-  id: string;
-  full_name?: string | null;
-}
+import type { Profile } from "@/types/domain";
 
 interface Requirement {
   id: string;

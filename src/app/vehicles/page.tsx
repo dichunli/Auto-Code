@@ -3,7 +3,8 @@ import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import { SubNav } from "../customers/SubNav";
-import { DeleteButton } from "./DeleteButton";
+import { DeleteButton } from "@/components/DeleteButton";
+import { 删除车辆 } from "./actions";
 import VehicleImportExport from "./VehicleImportExport";
 
 export default async function VehiclesPage(props: { searchParams?: Promise<Record<string, string | undefined>> | Record<string, string | undefined> }) {
@@ -183,7 +184,7 @@ export default async function VehiclesPage(props: { searchParams?: Promise<Recor
                     <div className="flex items-center gap-3">
                       <Link href={`/vehicles/${v.id}`} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">查看详情</Link>
                       <Link href={`/vehicles/${v.id}/edit`} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">编辑</Link>
-                      <DeleteButton id={v.id} />
+                      <DeleteButton id={v.id} 确认文案="确定要删除该车辆吗？删除前会检查关联数据。" 删除动作={删除车辆} />
                     </div>
                   </td>
                 </tr>

@@ -2,6 +2,7 @@
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import type { 操作结果 } from "@/types/domain";
 
 /* ═══ 采购模块 Server Action ═══
  * 入库、收货、建单等核心写操作统一走服务端:
@@ -9,11 +10,6 @@ import { revalidatePath } from "next/cache";
  * 2. 多表写入由数据库函数(RPC)一个事务完成,任一失败整体回滚
  * 3. 库存数量以数据库当前值为准(SQL 原子自增),不用客户端快照
  */
-
-interface 操作结果 {
-  success: boolean;
-  error?: string;
-}
 
 interface RPC返回 {
   success: boolean;

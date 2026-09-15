@@ -11,6 +11,7 @@ import LiveTimer from "./LiveTimer";
 import { formatCurrency } from "@/lib/utils";
 import type { Order } from "@/app/work-orders/page";
 import { toast } from "@/lib/globalToast";
+import type { Profile } from "@/types/domain";
 
 /* 阶段卡片（可操作版）：
  * 工单列表分栏视图的单个工单卡片。按"当前阶段"渲染项目行+操作区：
@@ -19,8 +20,8 @@ import { toast } from "@/lib/globalToast";
  * 待结算-显示工时/配件金额。
  * 操作成功后统一 router.refresh()：列表重取，工单自动挪到下一阶段列。 */
 
-interface Profile {
-  id: string;
+/* 工单页员工：共享 Profile + 分组/角色/等级扩展（派工弹窗排序用） */
+interface 工单员工 extends Profile {
   full_name: string;
   group_id?: string | null;
   profile_roles?: { roles?: { name?: string } | null }[] | null;
@@ -38,7 +39,7 @@ type StageItem = Order["stageItems"][number];
 interface Props {
   order: Order;
   当前阶段: 阶段key;
-  profiles: Profile[];
+  profiles: 工单员工[];
   mechanicGroups: MechanicGroup[];
   on打开工单: (orderId: string) => void;
 }

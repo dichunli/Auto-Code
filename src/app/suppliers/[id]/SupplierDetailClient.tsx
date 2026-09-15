@@ -8,6 +8,10 @@ import { QRCodeSVG } from "qrcode.react";
 import { formatCurrency } from "@/lib/utils";
 import { 记供应商往来账 } from "@/app/supplier-transactions/actions";
 import { toast } from "@/lib/globalToast";
+import type { Supplier as 共享供应商, PurchaseOrder, InboundOrder as 共享入库单 } from "@/types/domain";
+
+/* PurchaseOrder 已收口到 @/types/domain，保留 re-export 防下游断链（同目录 page.tsx 引用） */
+export type { PurchaseOrder };
 
 interface TransactionForm {
   transaction_type: "payment" | "refund" | "credit" | "debit";
@@ -15,9 +19,8 @@ interface TransactionForm {
   description: string;
 }
 
-export interface Supplier {
-  id: string;
-  name: string;
+/* 供应商详情：共享 Supplier + 详情页全字段扩展（联系人/地址/对账统计/微信群） */
+export interface Supplier extends 共享供应商 {
   contact: string | null;
   phone: string | null;
   address: string | null;
@@ -46,14 +49,6 @@ export interface SupplierContact {
   is_primary: boolean | null;
 }
 
-export interface PurchaseOrder {
-  id: string;
-  order_no: string | null;
-  status: string | null;
-  total_amount: number | null;
-  created_at: string;
-}
-
 export interface ReturnRecord {
   id: string;
   return_reason: string | null;
@@ -63,14 +58,12 @@ export interface ReturnRecord {
   work_order_item_parts: { supplier_id: string } | null;
 }
 
-export interface InboundOrder {
-  id: string;
-  inbound_no: string;
+/* 供应商对账视图的入库单：共享 InboundOrder + 本页扩展（运费/状态），
+   total_quantity 本页数据源允许 NULL，故 Omit 后重声明为可空 */
+export interface InboundOrder extends Omit<共享入库单, "total_quantity"> {
   total_quantity: number | null;
-  total_amount: number | null;
   freight_amount: number | null;
   status: string | null;
-  created_at: string;
 }
 
 export interface ReturnOrder {

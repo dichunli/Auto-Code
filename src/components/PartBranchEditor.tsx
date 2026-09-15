@@ -12,6 +12,7 @@ import { 更新配件分支, 按组更新分支目录, 同步分支图片到配�
 import { useDebounce } from "@/lib/useDebounce";
 import { 计算供应商得分, 供应商匹配原因 } from "@/lib/procurementRules";
 import { toast } from "@/lib/globalToast";
+import type { Supplier } from "@/types/domain";
 
 function toFixed2(val: string | number | null | undefined): string {
   if (val === "" || val === null || val === undefined) return "";
@@ -50,12 +51,6 @@ interface PartData {
   branch_group_id?: string | null;
   part_names?: { name?: string | null; category_id?: string | null } | null;
   parts?: { name?: string | null; document_name?: string | null } | null;
-}
-
-interface Supplier {
-  id: string;
-  name: string;
-  recommendation_level?: number | null;
 }
 
 interface Props {

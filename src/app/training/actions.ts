@@ -2,6 +2,7 @@
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import type { 操作结果 } from "@/types/domain";
 
 interface 新建课程数据 {
   title: string;
@@ -278,11 +279,6 @@ export async function 删除培训分类(id: string): Promise<{ success: boolean
 /* ═══ 培训分类/专题/排序/分配/考题/考试/判卷/损失/返工/晋级 写操作收编 ═══
  * 以下函数从客户端直写收口到服务端（2026-08-27 第五批），
  * 判卷人/审批人/申请人等身份字段一律取服务端验证的 user.id。 */
-
-interface 操作结果 {
-  success: boolean;
-  error?: string;
-}
 
 /* ─── 培训分类（新建/编辑，查重和父子校验在服务端兜底） ─── */
 export async function 保存培训分类(参数: {

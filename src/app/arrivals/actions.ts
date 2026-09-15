@@ -2,16 +2,12 @@
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import type { 操作结果 } from "@/types/domain";
 
 /* ═══ 到货确认单 Server Action（2026-08-20 待收货改造二期） ═══
  * 到货单建单/逐行收货/确认到货/确认入库全部走服务端 + 数据库事务函数。
  * 注意：依赖迁移 supabase/migrations_20260820_arrival_receipts.sql 已执行。
  */
-
-interface 操作结果 {
-  success: boolean;
-  error?: string;
-}
 
 interface RPC返回 {
   success: boolean;

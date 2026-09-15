@@ -2,6 +2,7 @@
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import type { 操作结果 } from "@/types/domain";
 
 /* ═══ 入库确认单 Server Action（2026-09-08 两阶段入库）═══
  * 确认单（draft）的编辑/作废/确认入库统一走服务端：
@@ -10,11 +11,6 @@ import { revalidatePath } from "next/cache";
  *    无法篡改价格/运费/抹零
  * 3. 多表写入由数据库函数（RPC）一个事务完成，任一失败整体回滚
  */
-
-interface 操作结果 {
-  success: boolean;
-  error?: string;
-}
 
 interface RPC返回 {
   success: boolean;

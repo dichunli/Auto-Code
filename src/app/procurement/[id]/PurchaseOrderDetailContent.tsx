@@ -7,6 +7,26 @@ import { PriceValue } from "@/components/PriceVisibilityContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 部分收货登记, 撤销作废采购单 } from "@/app/procurement/actions";
 import { toast } from "@/lib/globalToast";
+import type { PurchaseOrder, PurchaseOrderItem as 共享采购明细 } from "@/types/domain";
+
+/* PurchaseOrder 已收口到 @/types/domain，保留 re-export 防下游断链（同目录 page.tsx 引用） */
+export type { PurchaseOrder };
+
+/* 本页明细行是"可选字段宽松版"（联查 parts(id,quantity)/work_order_item_parts 快照），
+   以共享 PurchaseOrderItem 为底（Partial 放宽必填键），保留本页特有的联查形状 */
+export interface PurchaseOrderItem extends Omit<Partial<共享采购明细>, "parts"> {
+  id: string;
+  name: string;
+  quantity: number;
+  parts?: {
+    id?: string;
+    quantity?: number | null;
+  } | null;
+  work_order_item_parts?: {
+    id?: string;
+    is_arrived?: boolean | null;
+  } | null;
+}
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
@@ -29,42 +49,6 @@ const STATUS_CLASS: Record<string, string> = {
   completed: "bg-green-50 text-green-700",
   cancelled: "bg-red-50 text-red-600",
 };
-
-interface Supplier {
-  name?: string | null;
-}
-
-export interface PurchaseOrder {
-  id: string;
-  order_no?: string | null;
-  status: string;
-  supplier_id?: string | null;
-  total_amount?: number | null;
-  created_at: string;
-  notes?: string | null;
-  suppliers?: Supplier | null;
-}
-
-export interface PurchaseOrderItem {
-  id: string;
-  name: string;
-  part_number?: string | null;
-  brand?: string | null;
-  specification?: string | null;
-  quantity: number;
-  unit_cost?: number | null;
-  received_qty?: number | null;
-  part_id?: string | null;
-  work_order_item_part_id?: string | null;
-  parts?: {
-    id?: string;
-    quantity?: number | null;
-  } | null;
-  work_order_item_parts?: {
-    id?: string;
-    is_arrived?: boolean | null;
-  } | null;
-}
 
 /* 收货后库存不再在此页直接增加:统一由「采购管理 → 待入库 → 确认入库」完成 */
 

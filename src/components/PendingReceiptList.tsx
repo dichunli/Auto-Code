@@ -18,74 +18,11 @@ import { useDebounce } from "@/lib/useDebounce";
 import { DocumentNameInput } from "./DocumentNameInput";
 import { useToast } from "@/components/Toast";
 import { toast } from "@/lib/globalToast";
+import type { PurchaseOrder, PurchaseOrderItem, Waybill } from "@/types/domain";
 
-interface PurchaseOrderItem {
-  id: string;
-  name: string;
-  brand: string | null;
-  specification: string | null;
-  quantity: number;
-  unit_cost: number | null;
-  received_qty: number | null;
-  part_id: string | null;
-  work_order_item_part_id: string | null;
-  part_number: string | null;
-  supplier_part_name: string | null;
-  unit: string | null;
-  category: string | null;
-  license_plate: string | null;
-  photos: string[] | null;
-  notes: string | null;
-  handle_action: string | null;
-  discount_amount: number | null;
-  evidence_photos: string[] | null;
-  return_reason: string | null;
-  /* 配件级运单关联/豁免（2026-08-21） */
-  waybill_id: string | null;
-  waybill_exempt: boolean | null;
-  /* 收货暂存（2026-09-04）：确认收货先暂存不入账，手动提交统一入账 */
-  staged_qty: number | null;
-  staged_action: string | null;
-  staged_at: string | null;
-  /* 暂存操作人（2026-09-05 提交核对弹窗显示收货人） */
-  staged_by: string | null;
-  /* 配件级运单详情（2026-09-07 已暂存区顶部显示关联运单） */
-  logistics_waybills?: Waybill | null;
-}
-
-interface Waybill {
-  id: string;
-  tracking_no: string;
-  logistics_company_name: string | null;
-  supplier_name: string | null;
-  freight_amount: number | null;
-  cod_amount: number | null;
-  status: string;
-  logistics_companies: { name: string } | null;
-}
-
-/* 订单类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
-export interface PurchaseOrder {
-  id: string;
-  order_no: string | null;
-  supplier_id: string | null;
-  status: string;
-  total_amount: number | null;
-  notes: string | null;
-  waybill_id: string | null;
-  /* 整单运单豁免（2026-08-21） */
-  waybill_exempt: boolean | null;
-  /* 供应商销售单（2026-08-21） */
-  supplier_order_no: string | null;
-  supplier_order_amount: number | null;
-  supplier_slip_photos: string[] | null;
-  logistics_company_id: string | null;
-  created_at: string;
-  suppliers: { id: string; name: string; region?: string | null; phone?: string | null } | null;
-  logistics_companies: { name: string } | null;
-  purchase_order_items: PurchaseOrderItem[];
-  logistics_waybills: Waybill | null;
-}
+/* PurchaseOrder/PurchaseOrderItem/Waybill 已收口到 @/types/domain；
+   PurchaseOrder 保留 re-export 防下游断链（procurement/page.tsx 引 待收货采购单） */
+export type { PurchaseOrder };
 
 type GroupBy = "supplier" | "logistics";
 

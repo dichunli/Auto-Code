@@ -2,13 +2,9 @@
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import type { 操作结果 } from "@/types/domain";
 
 /* ═══ 外包单 Server Action ═══ */
-
-interface 操作结果 {
-  success: boolean;
-  error?: string;
-}
 
 /* ─── 重置外包财务记录(2026-08-16 批次3 破口修复) ───
  * supplier_transactions/accounts_payable 写已角色化,客户端直写会被 RLS 拦,
