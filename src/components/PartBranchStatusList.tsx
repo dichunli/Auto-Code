@@ -20,6 +20,10 @@ import { 添加配件图片记录, 分支关联配件并同步采购, 撤销分�
 import { 更新列表项, 移除列表项 } from "@/lib/listUpdate";
 import { toast } from "@/lib/globalToast";
 import { 全局提示 } from "@/components/GlobalDialogs";
+import { Pagination } from "./Pagination";
+
+/* 分页大小（与待收货列表一致） */
+const 每页条数 = 20;
 
 const STATUS_TITLES: Record<string, string> = {
   pending_inquiry: "待询价",
@@ -126,6 +130,8 @@ export interface Supplier {
 interface Props {
   status: "pending_inquiry" | "pending_quote" | "pending_confirm";
   initialRows?: PartBranchRow[];
+  /* 服务端首屏当前阶段的总条数（两阶段分页的 count），有 initialRows 时必传 */
+  initialTotalCount?: number;
   initialSuppliers?: Supplier[];
   initialPartMediaMap?: Record<string, { id: string; storage_path: string }[]>;
   initialVehicleModelsMap?: Record<string, { 厂商?: string; 品牌?: string; 车系?: string }>;
@@ -148,6 +154,7 @@ function 记录转映射集(记录?: Record<string, string[]>): Map<string, Set<
 export function PartBranchStatusList({
   status,
   initialRows,
+  initialTotalCount,
   initialSuppliers,
   initialPartMediaMap,
   initialVehicleModelsMap,
@@ -163,6 +170,10 @@ export function PartBranchStatusList({
   const [rows, setRows] = useState<PartBranchRow[]>(initialRows ?? []);
   const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers ?? []);
   const [loading, setLoading] = useState(!initialRows);
+  /* 分页（2026-09-15）：两阶段数据库分页——阶段1 按当前阶段谓词下推取合格 id，
+     阶段2 主表 count+range 取当前页；页签切换靠 key={status} 重挂载，天然回第 1 页 */
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(initialTotalCount ?? 0);
   const [edits, setEdits] = useState<Record<string, Partial<Record<EditableField, string>>>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -243,10 +254,32 @@ export function PartBranchStatusList({
   /* 该行是否属于当前阶段页：谓词已收敛到 @/lib/procurementRules（全站唯一口径） */
   const 行符合本阶段 = useCallback((r: PartBranchRow): boolean => 行符合采购阶段(r, status), [status]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (目标页 = 1) => {
     setLoading(true);
+    /* 阶段1：按当前阶段谓词下推，轻量取合格 id 集合（与内存谓词 行符合采购阶段 严格同口径）。
+       门禁：工单未结算 + 非作废/保养单 + 未采购 + 未到货（NULL 视为未采购/未到货）；
+       待询价=进价空或 ≤0；待报价=进价 >0 且销售价空或 ≤0；待确认=价齐且客户意见空或 pending。
+       （连续 .or() 在 PostgREST 里是 AND 关系，与 行可进采购流程 的逐项 return false 等价） */
+    let 阶段一查询 = supabase
+      .from("work_order_item_parts")
+      .select("id, work_order_items!inner(work_orders!inner(settled_at, order_type))")
+      .is("work_order_items.work_orders.settled_at", null)
+      .not("work_order_items.work_orders.order_type", "in", '("cancelled","maintenance")')
+      .or("is_purchased.is.null,is_purchased.eq.false")
+      .or("is_arrived.is.null,is_arrived.eq.false");
+    if (status === "pending_inquiry") {
+      阶段一查询 = 阶段一查询.or("unit_cost.is.null,unit_cost.lte.0");
+    } else if (status === "pending_quote") {
+      阶段一查询 = 阶段一查询.gt("unit_cost", 0).or("unit_price.is.null,unit_price.lte.0");
+    } else {
+      阶段一查询 = 阶段一查询
+        .gt("unit_cost", 0)
+        .gt("unit_price", 0)
+        .or("customer_opinion.is.null,customer_opinion.eq.pending");
+    }
+
     const [
-      { data: parts },
+      { data: idRows, error: idErr },
       { data: sups },
       { data: brandList },
       { data: specList },
@@ -254,11 +287,7 @@ export function PartBranchStatusList({
       { data: spc },
       { data: spb },
     ] = await Promise.all([
-      supabase
-        .from("work_order_item_parts")
-        .select(分支行查询字段)
-        .order("created_at", { ascending: true })
-        .limit(1000),
+      阶段一查询,
       supabase.from("suppliers").select("id, name, recommendation_level").order("name"),
       supabase.from("part_brands").select("id, name"),
       supabase.from("part_specifications").select("name"),
@@ -267,7 +296,34 @@ export function PartBranchStatusList({
       supabase.from("supplier_part_brands").select("supplier_id, part_brand_id"),
     ]);
 
-    const filtered = ((parts || []) as unknown as PartBranchRow[]).filter(行符合本阶段);
+    if (idErr) {
+      console.error("加载阶段配件 id 集合失败:", idErr);
+      setLoading(false);
+      return;
+    }
+    const 合格ids = [...new Set((idRows || []).map((r) => r.id as string))];
+
+    /* 阶段2：主表精确 count + range 取当前页（合格 id 为空时跳过，.in("id",[]) 会报错） */
+    let filtered: PartBranchRow[] = [];
+    if (合格ids.length > 0) {
+      const from = (目标页 - 1) * 每页条数;
+      const { data, count, error } = await supabase
+        .from("work_order_item_parts")
+        .select(分支行查询字段, { count: "exact" })
+        .in("id", 合格ids)
+        .order("created_at", { ascending: true })
+        .range(from, from + 每页条数 - 1);
+      if (error) {
+        console.error("加载阶段配件失败:", error);
+        setLoading(false);
+        return;
+      }
+      filtered = (data || []) as unknown as PartBranchRow[];
+      setTotalCount(count || 0);
+    } else {
+      setTotalCount(0);
+    }
+    setPage(目标页);
 
     /* 查询配件分支图片 */
     const partIds = (filtered || []).map((p) => p.id);
@@ -342,16 +398,16 @@ export function PartBranchStatusList({
     setSupplierBrandIds(spbMap);
 
     setLoading(false);
-  }, [supabase, 行符合本阶段]);
+  }, [supabase, status]);
 
   useEffect(() => {
     /* 服务端已给首屏数据则跳过首次查询，避免重复拉取（tab 切换靠 key 重挂载，这里不会重复进） */
     if (initialRows) return;
-    loadData();
+    loadData(1);
 
   }, [status, initialRows, loadData]);
 
-  /* Supabase Realtime 订阅 */
+  /* Supabase Realtime 订阅（page 进依赖：翻页时重订阅，回调里刷新的是当前页） */
   useEffect(() => {
     requestNotificationPermission();
 
@@ -363,7 +419,7 @@ export function PartBranchStatusList({
         () => {
           /* 2 秒内自己刚操作过，跳过刷新避免重复 */
           if (Date.now() - lastSelfUpdate.current < 2000) return;
-          loadData();
+          loadData(page);
           /* 5 秒内只通知一次，避免刷屏 */
           if (Date.now() - lastNotifyTime.current > 5000) {
             lastNotifyTime.current = Date.now();
@@ -378,7 +434,7 @@ export function PartBranchStatusList({
       supabase.removeChannel(channel);
     };
 
-  }, [supabase, status, loadData]);
+  }, [supabase, status, loadData, page]);
 
   /* 局部更新：只重查这一行（完整 select 与 loadData 同口径），
      查到后 replace；谓词不通过（已流转出本阶段）则从列表移除 */
@@ -388,15 +444,26 @@ export function PartBranchStatusList({
       .select(分支行查询字段)
       .eq("id", id)
       .single();
+    /* 不在当前页的行：filter/map 本就 no-op，count 更不能动（2026-09-15 分页口径） */
+    const 在列表 = rows.some((r) => r.id === id);
     if (!data) {
-      setRows((prev) => prev.filter((r) => r.id !== id));
+      if (在列表) {
+        setRows((prev) => prev.filter((r) => r.id !== id));
+        setTotalCount((c) => Math.max(0, c - 1));
+      }
       return;
     }
     const 新行 = data as unknown as PartBranchRow;
-    setRows((prev) => {
-      if (!行符合本阶段(新行)) return prev.filter((r) => r.id !== id);
-      return prev.map((r) => (r.id === id ? 新行 : r));
-    });
+    if (!行符合本阶段(新行)) {
+      if (在列表) {
+        setRows((prev) => prev.filter((r) => r.id !== id));
+        setTotalCount((c) => Math.max(0, c - 1));
+      }
+      return;
+    }
+    if (在列表) {
+      setRows((prev) => prev.map((r) => (r.id === id ? 新行 : r)));
+    }
   }
 
   /* 上传配件信息图片：压缩 → /api/upload → part_images 插行 → 局部追加图片 */
@@ -752,11 +819,12 @@ export function PartBranchStatusList({
       return;
     }
     /* 局部更新：撤销（清进价/清销售价）后这些行必然离开当前阶段，
-       直接从列表移除并清掉草稿，不整表重查 */
+       直接从列表移除并清掉草稿，不整表重查（总数只扣当前页里实际移除的行数） */
     const 撤销ids = new Set(selectedIds);
     setSelectedIds(new Set());
     lastSelfUpdate.current = Date.now();
     setRows((prev) => 移除列表项(prev, 撤销ids));
+    setTotalCount((c) => Math.max(0, c - rows.filter((r) => 撤销ids.has(r.id)).length));
     setEdits((prev) => {
       const next = { ...prev };
       for (const id of 撤销ids) delete next[id];
@@ -866,6 +934,11 @@ export function PartBranchStatusList({
        逐条 merge 进列表后按谓词重判——填齐进价+供应商的行离开待询价、
        选"同意"的行离开待确认等，自动实现"推进消失"，不整表重查 */
     const 更新Map = new Map(updates.map((u) => [u.id, u.data]));
+    /* 分页口径：提交后不再符合本阶段的行从当前页移除，总数同步扣减 */
+    const 移除数 = rows.filter((r) => {
+      const data = 更新Map.get(r.id);
+      return data ? !行符合本阶段({ ...r, ...data } as PartBranchRow) : false;
+    }).length;
     setRows((prev) =>
       prev
         .map((r) => {
@@ -874,6 +947,7 @@ export function PartBranchStatusList({
         })
         .filter(行符合本阶段)
     );
+    if (移除数 > 0) setTotalCount((c) => Math.max(0, c - 移除数));
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>, row: PartBranchRow, field: EditableField) {
@@ -942,7 +1016,7 @@ export function PartBranchStatusList({
     if (!结果.success) { toast("添加失败: " + (结果.error || "未知错误"), "error"); return; }
     lastSelfUpdate.current = Date.now();
     /* 局部更新：RPC 返回新分支 id，只补查这一行追加到列表末尾
-       （created_at 升序，新行天然在最后），不整表重查 */
+       （created_at 升序，新行天然在最后），不整表重查；追加进本页则总数 +1 */
     if (结果.id) {
       const { data: 新行数据 } = await supabase
         .from("work_order_item_parts")
@@ -951,7 +1025,10 @@ export function PartBranchStatusList({
         .single();
       if (新行数据) {
         const 新行 = 新行数据 as unknown as PartBranchRow;
-        if (行符合本阶段(新行)) setRows((prev) => [...prev, 新行]);
+        if (行符合本阶段(新行)) {
+          setRows((prev) => [...prev, 新行]);
+          setTotalCount((c) => c + 1);
+        }
       }
     }
   }
@@ -969,8 +1046,12 @@ export function PartBranchStatusList({
     setSavingId(null);
     if (!结果.success) { toast("删除失败: " + (结果.error || "未知错误"), "error"); return; }
     lastSelfUpdate.current = Date.now();
-    /* 局部更新：从列表移除该行并清掉它的草稿/勾选，不整表重查 */
-    setRows((prev) => prev.filter((r) => r.id !== row.id));
+    /* 局部更新：从列表移除该行并清掉它的草稿/勾选，不整表重查（总数同步 -1；
+       不在当前页的行 filter 本就 no-op，count 更不能动） */
+    if (rows.some((r) => r.id === row.id)) {
+      setRows((prev) => prev.filter((r) => r.id !== row.id));
+      setTotalCount((c) => Math.max(0, c - 1));
+    }
     setEdits((prev) => {
       const next = { ...prev };
       delete next[row.id];
@@ -1564,7 +1645,7 @@ export function PartBranchStatusList({
       <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between gap-4 flex-wrap">
         <h3 className="text-sm font-semibold text-gray-900">
           {STATUS_TITLES[status]}
-          <span className="ml-2 text-xs font-normal text-gray-500">共 {rows.length} 条</span>
+          <span className="ml-2 text-xs font-normal text-gray-500">共 {totalCount} 条</span>
         </h3>
         <div className="flex items-center gap-1">
           <span className="text-xs text-gray-500 mr-1">分组:</span>
@@ -1801,6 +1882,9 @@ export function PartBranchStatusList({
           </tbody>
         </table>
       </div>
+
+      {/* 翻页：下方弹窗都是 fixed 不占文档流，视觉上就在列表最底部 */}
+      <Pagination page={page} totalCount={totalCount} pageSize={每页条数} onChange={(p) => loadData(p)} />
 
       {/* 编辑配件弹窗 */}
       {editRow && (

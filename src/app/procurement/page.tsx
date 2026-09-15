@@ -10,7 +10,7 @@ import { CompletedStorageList } from "@/components/CompletedStorageList";
 import { PendingReturnList } from "@/components/PendingReturnList";
 import { CompletedReturnList } from "@/components/CompletedReturnList";
 import { ProcurementTabBar } from "@/components/ProcurementTabBar";
-import { 行符合采购阶段, 待采购查询字段, 待收货查询字段 } from "@/lib/procurementRules";
+import { 待采购查询字段, 待收货查询字段 } from "@/lib/procurementRules";
 import { BrowserNotificationToggle } from "@/components/BrowserNotificationToggle";
 import { MobileReceivingOrders, 待收订单, 待签收运单 } from "@/components/mobile/MobileReceivingOrders";
 /* 首屏数据的行类型直接从各列表组件导入（type-only，服务端可用） */
@@ -117,9 +117,12 @@ export default async function ProcurementPage({
    * 首屏查询搬到服务端（查询条件与各组件 loadData 原样一致），通过 props 注入；
    * 组件拿到 initialXxx 就跳过首次 loadData，后续操作仍走客户端 loadData 刷新 */
 
-  /* 待询价 / 待报价 / 待确认（PartBranchStatusList，按 tab 过滤口径不同） */
+  /* 待询价 / 待报价 / 待确认（PartBranchStatusList，按 tab 过滤口径不同）
+     2026-09-15 起两阶段分页：先按当前阶段谓词下推取合格 id 集合（与组件 loadData 严格同口径），
+     再主表 count+range 取第 1 页 */
   let 分支首屏: {
     rows: 分支行[];
+    totalCount: number;
     suppliers: 分支供应商[];
     partMediaMap: Record<string, { id: string; storage_path: string }[]>;
     vehicleModelsMap: Record<string, { 厂商?: string; 品牌?: string; 车系?: string }>;
@@ -138,8 +141,27 @@ export default async function ProcurementPage({
   ) {
     const status = currentTab;
     const supabase = await createClient();
+    /* 阶段1：谓词下推轻量取 id（门禁 + 阶段条件，与 PartBranchStatusList.loadData 严格同口径；
+       连续 .or() 在 PostgREST 里是 AND 关系） */
+    let 阶段一查询 = supabase
+      .from("work_order_item_parts")
+      .select("id, work_order_items!inner(work_orders!inner(settled_at, order_type))")
+      .is("work_order_items.work_orders.settled_at", null)
+      .not("work_order_items.work_orders.order_type", "in", '("cancelled","maintenance")')
+      .or("is_purchased.is.null,is_purchased.eq.false")
+      .or("is_arrived.is.null,is_arrived.eq.false");
+    if (status === "pending_inquiry") {
+      阶段一查询 = 阶段一查询.or("unit_cost.is.null,unit_cost.lte.0");
+    } else if (status === "pending_quote") {
+      阶段一查询 = 阶段一查询.gt("unit_cost", 0).or("unit_price.is.null,unit_price.lte.0");
+    } else {
+      阶段一查询 = 阶段一查询
+        .gt("unit_cost", 0)
+        .gt("unit_price", 0)
+        .or("customer_opinion.is.null,customer_opinion.eq.pending");
+    }
     const [
-      { data: parts },
+      { data: idRows },
       { data: sups },
       { data: brandList },
       { data: specList },
@@ -147,7 +169,21 @@ export default async function ProcurementPage({
       { data: spc },
       { data: spb },
     ] = await Promise.all([
-      supabase
+      阶段一查询,
+      supabase.from("suppliers").select("id, name, recommendation_level").order("name"),
+      supabase.from("part_brands").select("id, name"),
+      supabase.from("part_specifications").select("name"),
+      supabase.from("supplier_part_names").select("supplier_id, part_name_id"),
+      supabase.from("supplier_part_categories").select("supplier_id, part_category_id"),
+      supabase.from("supplier_part_brands").select("supplier_id, part_brand_id"),
+    ]);
+    const 合格ids = [...new Set((idRows || []).map((r) => r.id as string))];
+
+    /* 阶段2：完整 select + count + 第 1 页（合格 id 为空时跳过，in 空列表会报错） */
+    let filtered: 分支行[] = [];
+    let 分支总数 = 0;
+    if (合格ids.length > 0) {
+      const { data, count } = await supabase
         .from("work_order_item_parts")
         .select(`
           id, name, brand, specification, unit, quantity, unit_cost, unit_price,
@@ -168,19 +204,13 @@ export default async function ProcurementPage({
               vehicles(id, plate_number, vin, vehicle_model_id)
             )
           )
-        `)
+        `, { count: "exact" })
+        .in("id", 合格ids)
         .order("created_at", { ascending: true })
-        .limit(1000),
-      supabase.from("suppliers").select("id, name, recommendation_level").order("name"),
-      supabase.from("part_brands").select("id, name"),
-      supabase.from("part_specifications").select("name"),
-      supabase.from("supplier_part_names").select("supplier_id, part_name_id"),
-      supabase.from("supplier_part_categories").select("supplier_id, part_category_id"),
-      supabase.from("supplier_part_brands").select("supplier_id, part_brand_id"),
-    ]);
-
-    /* 状态过滤规则已收敛到 @/lib/procurementRules（原与 PartBranchStatusList 复制一致） */
-    const filtered = ((parts || []) as unknown as 分支行[]).filter((r) => 行符合采购阶段(r, status));
+        .range(0, 19);
+      filtered = (data || []) as unknown as 分支行[];
+      分支总数 = count || 0;
+    }
 
     /* 配件分支图片 */
     const partIds = filtered.map((p) => p.id);
@@ -230,6 +260,7 @@ export default async function ProcurementPage({
 
     分支首屏 = {
       rows: filtered,
+      totalCount: 分支总数,
       suppliers: (sups || []) as 分支供应商[],
       partMediaMap,
       vehicleModelsMap,
@@ -559,6 +590,7 @@ export default async function ProcurementPage({
           key={currentTab}
           status={currentTab}
           initialRows={分支首屏?.rows}
+          initialTotalCount={分支首屏?.totalCount}
           initialSuppliers={分支首屏?.suppliers}
           initialPartMediaMap={分支首屏?.partMediaMap}
           initialVehicleModelsMap={分支首屏?.vehicleModelsMap}
