@@ -56,6 +56,7 @@ import {
   转命中配件,
 } from "./mobile-item-editor/utils";
 import { useItemTimer } from "./mobile-item-editor/useItemTimer";
+import { ImagePreviewModal } from "./mobile-item-editor/ImagePreviewModal";
 import { toast } from "@/lib/globalToast";
 
 /* ==================== 主组件 ==================== */
@@ -3704,15 +3705,8 @@ export default function MobileItemEditor({
           compact
         />
       )}
-      {/* 图片大图预览（点任意处关闭；层级高于配件详情抽屉 z-[110]） */}
-      {预览图片 && (
-        <div
-          className="fixed inset-0 z-[130] bg-black/80 flex items-center justify-center p-4"
-          onClick={() => set预览图片(null)}
-        >
-          <img src={预览图片} alt="" className="max-w-full max-h-full object-contain rounded" />
-        </div>
-      )}
+      {/* 图片大图预览（2026-09-16 拆到独立组件） */}
+      <ImagePreviewModal src={预览图片} onClose={() => set预览图片(null)} />
       {确认弹窗}
     </>
   );
