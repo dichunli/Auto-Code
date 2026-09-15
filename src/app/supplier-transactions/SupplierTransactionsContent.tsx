@@ -14,6 +14,8 @@ const transactionTypeMap: Record<string, string> = {
   refund: "退款",
   credit: "应收",
   debit: "应付",
+  /* 2026-09-16 批次6：优惠（供应商少收的钱，减欠款） */
+  discount: "优惠",
 };
 
 interface TransactionRecord {
@@ -232,21 +234,22 @@ export default function SupplierTransactionsContent({
     loadRecords();
   }
 
-  /* 统计口径（2026-08-19 修正，用户确认）：
-     欠款余额 = 应付(debit) − 已付(payment) − 退货冲减(credit) + 退款(refund 加回)。
-     原卡片把 debit(欠款) 算进"支出"、credit(冲减) 算进"收入"，口径混乱。 */
+  /* 统计口径（2026-09-16 加 discount）：
+     欠款余额 = 应付(debit) − 已付(payment) − 退货冲减(credit) − 优惠(discount) + 退款(refund 加回)。 */
   const 合计 = (() => {
     let debit = 0;
     let payment = 0;
     let credit = 0;
     let refund = 0;
+    let discount = 0;
     for (const r of records) {
       if (r.transaction_type === "debit") debit += r.amount || 0;
       else if (r.transaction_type === "payment") payment += r.amount || 0;
       else if (r.transaction_type === "credit") credit += r.amount || 0;
       else if (r.transaction_type === "refund") refund += r.amount || 0;
+      else if (r.transaction_type === "discount") discount += r.amount || 0;
     }
-    return { debit, payment, credit, refund, 余额: debit - payment - credit + refund };
+    return { debit, payment, credit, refund, discount, 余额: debit - payment - credit - discount + refund };
   })();
 
   /* 分页切片（page 状态见上方声明，筛选/搜索变化时在 filterRecords 里重置回第 1 页） */
@@ -310,6 +313,7 @@ export default function SupplierTransactionsContent({
           <option value="refund">退款</option>
           <option value="credit">应收</option>
           <option value="debit">应付</option>
+          <option value="discount">优惠</option>
         </select>
         {query.trim() && (
           <button
