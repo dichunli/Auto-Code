@@ -326,6 +326,95 @@ export async function 结清运费(运单id: string): Promise<操作结果> {
   return { success: true };
 }
 
+/* ─── 创建物流结算单（2026-09-15 批次3：一批运单一张结算单，事务） ─── */
+export async function 创建物流结算单(参数: {
+  company_id: string;
+  waybill_ids: string[];
+  payment_method?: string;
+  note?: string;
+}): Promise<操作结果 & { settlement_no?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!参数.company_id) {
+    return { success: false, error: "请选择物流公司" };
+  }
+  if (!参数.waybill_ids || 参数.waybill_ids.length === 0) {
+    return { success: false, error: "请至少选择一张运单" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("create_logistics_settlement", {
+    p_company_id: 参数.company_id,
+    p_waybill_ids: 参数.waybill_ids,
+    p_payment_method: 参数.payment_method?.trim() || null,
+    p_note: 参数.note?.trim() || null,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as unknown as { success: boolean; settlement_no?: string; error?: string };
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "创建结算单失败" };
+  }
+
+  revalidatePath("/logistics");
+  return { success: true, settlement_no: 结果.settlement_no };
+}
+
+/* ─── 作废物流结算单（批次3） ─── */
+export async function 作废物流结算单(结算单id: string): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!结算单id) {
+    return { success: false, error: "缺少结算单信息" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("void_logistics_settlement", {
+    p_settlement_id: 结算单id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as unknown as { success: boolean; error?: string };
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "作废失败" };
+  }
+
+  revalidatePath("/logistics");
+  return { success: true };
+}
+
+/* ─── 标记代收货款已转付（批次5：货运站把代收款转给供应商后的核对动作） ─── */
+export async function 标记代收已转付(运单id: string): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!运单id) {
+    return { success: false, error: "缺少运单信息" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("mark_waybill_cod_transferred", {
+    p_waybill_id: 运单id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as unknown as { success: boolean; error?: string };
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "标记失败" };
+  }
+
+  revalidatePath("/logistics");
+  return { success: true };
+}
+
 /* ─── 把运单关联到指定采购单（手机待收货管理页用：单张或批量） ─── */
 export async function 关联运单到采购单(
   运单id: string,

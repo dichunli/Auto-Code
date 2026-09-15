@@ -25,14 +25,25 @@ export default async function PayablePage({ searchParams }: { searchParams?: Pro
   const pageSize = 50;
   const from = (page - 1) * pageSize;
 
-  const [{ data: items, count }, { data: 金额行 }] = await Promise.all([
+  const [{ data: items, count }, { data: 金额行 }, { data: 供应商余额 }, { data: 物流余额 }] = await Promise.all([
     supabase
       .from("accounts_payable")
       .select("*, suppliers(name, contact), purchase_orders(order_no, total_amount)", { count: "exact" })
       .order("created_at", { ascending: false })
       .range(from, from + pageSize - 1),
     supabase.from("accounts_payable").select("amount, paid_amount"),
+    /* 2026-09-15 批次4：采购应付/物流应付全口径（此前这页只有外包应付） */
+    supabase.rpc("supplier_balances"),
+    supabase.rpc("logistics_company_balances"),
   ]);
+
+  /* 只列还有欠款的（余额 > 0.5 分视为有欠） */
+  const 采购欠款 = ((供应商余额 || []) as { supplier_id: string; supplier_name: string; balance: number }[])
+    .filter((r) => Number(r.balance) > 0.004);
+  const 物流欠款 = ((物流余额 || []) as { company_id: string; company_name: string; balance: number }[])
+    .filter((r) => Number(r.balance) > 0.004);
+  const 采购应付合计 = 采购欠款.reduce((s, r) => s + Number(r.balance), 0);
+  const 物流应付合计 = 物流欠款.reduce((s, r) => s + Number(r.balance), 0);
 
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / pageSize));
 
@@ -49,24 +60,111 @@ export default async function PayablePage({ searchParams }: { searchParams?: Pro
 
   return (
     <div className="space-y-6">
-      <PageHeader title="应付账款" description="管理供应商采购未付款项" />
+      <PageHeader title="应付账款" description="采购货款、物流运费、外包费用的全口径应付" />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500">应付总额</div>
-          <div className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(totalAmount)}</div>
+          <div className="text-sm text-gray-500">采购应付（供应商欠款）</div>
+          <div className="text-xl font-bold text-red-600 mt-1">{formatCurrency(采购应付合计)}</div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500">已付金额</div>
-          <div className="text-xl font-bold text-green-600 mt-1">{formatCurrency(totalPaid)}</div>
+          <div className="text-sm text-gray-500">物流应付（未结运费）</div>
+          <div className="text-xl font-bold text-red-600 mt-1">{formatCurrency(物流应付合计)}</div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="text-sm text-gray-500">未付金额</div>
+          <div className="text-sm text-gray-500">外包应付（未付部分）</div>
           <div className="text-xl font-bold text-red-600 mt-1">{formatCurrency(totalPending)}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="text-sm text-gray-500">应付合计</div>
+          <div className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(采购应付合计 + 物流应付合计 + totalPending)}</div>
         </div>
       </div>
 
+      {/* 采购应付：按供应商列欠款，点进去对账/付款 */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900">采购应付（按供应商）</h3>
+          <Link href="/supplier-payments" className="text-sm text-blue-600 hover:underline">去付款</Link>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">供应商</th>
+                <th className="px-6 py-3 text-right font-medium text-gray-500">欠款余额</th>
+                <th className="px-6 py-3 text-right font-medium text-gray-500">操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {采购欠款.map((r) => (
+                <tr key={r.supplier_id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4">
+                    <Link href={`/suppliers/${r.supplier_id}`} className="font-medium text-blue-600 hover:underline">
+                      {r.supplier_name}
+                    </Link>
+                  </td>
+                  <td className="px-6 py-4 text-right font-medium text-red-600">{formatCurrency(Number(r.balance))}</td>
+                  <td className="px-6 py-4 text-right space-x-3">
+                    <Link href={`/suppliers/${r.supplier_id}/statement`} className="text-xs text-gray-600 hover:underline">对账单</Link>
+                    <Link href={`/supplier-payments?supplier_id=${r.supplier_id}&new=1`} className="text-xs text-green-600 hover:underline">去付款</Link>
+                  </td>
+                </tr>
+              ))}
+              {采购欠款.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-6 py-8 text-center text-gray-400">供应商货款不欠了</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 物流应付：按公司列未结运费 */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900">物流应付（按公司）</h3>
+          <Link href="/logistics" className="text-sm text-blue-600 hover:underline">去结算</Link>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left font-medium text-gray-500">物流公司</th>
+                <th className="px-6 py-3 text-right font-medium text-gray-500">未结运费</th>
+                <th className="px-6 py-3 text-right font-medium text-gray-500">操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {物流欠款.map((r) => (
+                <tr key={r.company_id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 font-medium text-gray-900">{r.company_name}</td>
+                  <td className="px-6 py-4 text-right font-medium text-red-600">{formatCurrency(Number(r.balance))}</td>
+                  <td className="px-6 py-4 text-right">
+                    <Link href={`/logistics/${r.company_id}/statement`} className="text-xs text-gray-600 hover:underline">对账单</Link>
+                  </td>
+                </tr>
+              ))}
+              {物流欠款.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-6 py-8 text-center text-gray-400">运费都结清了</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 外包应付（原 accounts_payable 列表） */}
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900">外包应付（按单据）</h3>
+          <span className="text-xs text-gray-500">
+            总额 {formatCurrency(totalAmount)} / 已付 {formatCurrency(totalPaid)}
+          </span>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">

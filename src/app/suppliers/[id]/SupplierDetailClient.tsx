@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -28,6 +28,13 @@ export interface Supplier {
   notes: string | null;
   wechat_id: string | null;
   wechat_group_qr: string | null;
+  /* 2026-09-15 批次2：财务信息 */
+  settle_type: string | null;
+  credit_days: number | null;
+  payee_name: string | null;
+  bank_name: string | null;
+  bank_account: string | null;
+  payment_note: string | null;
 }
 
 export interface SupplierContact {
@@ -89,6 +96,26 @@ export interface Transaction {
   profiles: { full_name: string } | null;
 }
 
+/* 未付清应付行（list_supplier_payables 返回，2026-09-14 供应商款项改造批次1） */
+interface PayableInfo {
+  transaction_id: string;
+  amount: number;
+  allocated: number;
+  remaining: number;
+  created_at: string;
+  description: string | null;
+  inbound_order_id: string | null;
+  inbound_no: string | null;
+  supplier_order_no: string | null;
+}
+
+interface PayablesResult {
+  success: boolean;
+  payables?: PayableInfo[];
+  available?: number;
+  balance?: number;
+}
+
 interface SupplierDetailClientProps {
   supplierId: string;
   supplier: Supplier;
@@ -120,6 +147,20 @@ export default function SupplierDetailClient({
 }: SupplierDetailClientProps) {
   const supabase = useMemo(() => createClient(), []);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
+
+  /* 未付清应付清单（核销视角，2026-09-14 批次1）：随往来流水刷新（记一笔/付款回来后不过期） */
+  const [payables, setPayables] = useState<PayableInfo[] | null>(null);
+  useEffect(() => {
+    let 有效 = true;
+    supabase
+      .rpc("list_supplier_payables", { p_supplier_id: supplierId })
+      .then(({ data, error }) => {
+        if (!有效 || error) return;
+        const 结果 = data as PayablesResult | null;
+        if (结果?.success) setPayables(结果.payables || []);
+      });
+    return () => { 有效 = false; };
+  }, [supabase, supplierId, transactions]);
 
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [transactionForm, setTransactionForm] = useState<TransactionForm>({
@@ -302,6 +343,47 @@ export default function SupplierDetailClient({
                 <div className="col-span-2">
                   <span className="text-gray-500">备注：</span>
                   <span className="text-gray-900">{supplier.notes}</span>
+                </div>
+              )}
+              {/* 财务信息（2026-09-15 批次2）：填了才显示 */}
+              {(supplier.settle_type || supplier.payee_name || supplier.bank_account || supplier.payment_note) && (
+                <div className="col-span-2 border-t border-gray-100 pt-3 mt-1">
+                  <div className="grid grid-cols-2 gap-4">
+                    {supplier.settle_type && (
+                      <div>
+                        <span className="text-gray-500">结算方式：</span>
+                        <span className="text-gray-900">
+                          {supplier.settle_type === "cash" && "现结"}
+                          {supplier.settle_type === "monthly" && "月结"}
+                          {supplier.settle_type === "credit_days" && `账期 ${supplier.credit_days || "?"} 天`}
+                        </span>
+                      </div>
+                    )}
+                    {supplier.payee_name && (
+                      <div>
+                        <span className="text-gray-500">收款户名：</span>
+                        <span className="text-gray-900">{supplier.payee_name}</span>
+                      </div>
+                    )}
+                    {supplier.bank_name && (
+                      <div>
+                        <span className="text-gray-500">开户行：</span>
+                        <span className="text-gray-900">{supplier.bank_name}</span>
+                      </div>
+                    )}
+                    {supplier.bank_account && (
+                      <div>
+                        <span className="text-gray-500">银行账号：</span>
+                        <span className="text-gray-900 font-mono">{supplier.bank_account}</span>
+                      </div>
+                    )}
+                    {supplier.payment_note && (
+                      <div className="col-span-2">
+                        <span className="text-gray-500">收款说明：</span>
+                        <span className="text-gray-900">{supplier.payment_note}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -653,16 +735,72 @@ export default function SupplierDetailClient({
             )}
           </div>
 
+          {/* 未付清应付（核销视角）+ 去付款入口（2026-09-14 批次1） */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-gray-900">
+                未付清应付{payables ? ` (${payables.filter((p) => p.remaining > 0.004).length})` : ""}
+              </h2>
+              <Link
+                href={`/supplier-payments?supplier_id=${supplierId}&new=1`}
+                className="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700"
+              >
+                去付款
+              </Link>
+            </div>
+            {payables === null ? (
+              <p className="text-sm text-gray-400">加载中...</p>
+            ) : payables.filter((p) => p.remaining > 0.004).length === 0 ? (
+              <p className="text-sm text-gray-400">没有未付清的应付，不欠这家钱了</p>
+            ) : (
+              <div className="space-y-2">
+                {payables
+                  .filter((p) => p.remaining > 0.004)
+                  .map((p) => (
+                    <div key={p.transaction_id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <div>
+                        {p.inbound_order_id ? (
+                          <Link href={`/inbound-orders/${p.inbound_order_id}`} className="text-blue-600 hover:underline">
+                            {p.inbound_no || "入库单"}
+                          </Link>
+                        ) : (
+                          <span className="text-gray-500">{p.description || "应付"}</span>
+                        )}
+                        <span className="text-gray-400 text-xs ml-2">
+                          {new Date(p.created_at).toLocaleDateString("zh-CN")}
+                        </span>
+                        {p.allocated > 0.004 && (
+                          <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700">部分已付</span>
+                        )}
+                      </div>
+                      <span className="font-medium text-red-600">
+                        未付 {formatCurrency(p.remaining)}
+                        <span className="text-gray-400 text-xs font-normal"> / 应付 {formatCurrency(p.amount)}</span>
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+
           {/* 往来款项 */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-gray-900">往来款项 ({transactions.length})</h2>
-              <button
-                onClick={() => setShowTransactionForm(!showTransactionForm)}
-                className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
-              >
-                {showTransactionForm ? "取消" : "记一笔"}
-              </button>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/suppliers/${supplierId}/statement`}
+                  className="px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100"
+                >
+                  对账单
+                </Link>
+                <button
+                  onClick={() => setShowTransactionForm(!showTransactionForm)}
+                  className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
+                >
+                  {showTransactionForm ? "取消" : "记一笔"}
+                </button>
+              </div>
             </div>
 
             {showTransactionForm && (

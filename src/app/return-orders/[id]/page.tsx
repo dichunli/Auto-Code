@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { PrintButton } from "@/components/PrintButton";
+import { FreightRecordButton } from "./FreightRecordButton";
 
 interface ReturnOrderItem {
   id: string;
@@ -25,6 +26,8 @@ interface ReturnOrder {
   tracking_no: string | null;
   return_shipping_fee: number | null;
   shipping_fee_payer: string | null;
+  /* 2026-09-15 批次5：退货运费是否已记入物流应付 */
+  freight_recorded: boolean | null;
   notes: string | null;
   created_at: string;
   profiles: { full_name: string | null } | null;
@@ -49,7 +52,7 @@ export default async function ReturnOrderDetailPage({
   const { data: order } = await supabase
     .from("purchase_return_orders")
     .select(
-      "id, return_no, supplier_name, total_quantity, status, logistics_company, tracking_no, return_shipping_fee, shipping_fee_payer, notes, created_at, profiles(full_name)"
+      "id, return_no, supplier_name, total_quantity, status, logistics_company, tracking_no, return_shipping_fee, shipping_fee_payer, freight_recorded, notes, created_at, profiles(full_name)"
     )
     .eq("id", id)
     .single();
@@ -117,6 +120,18 @@ export default async function ReturnOrderDetailPage({
             <div className="text-xs text-gray-500">退货运费</div>
             <div className="font-medium text-gray-900">
               {returnOrder.return_shipping_fee != null ? `¥${returnOrder.return_shipping_fee.toFixed(2)}` : "-"}
+              {/* 批次5：我方承担且有运费时，可手动记入物流应付（已入账的打标） */}
+              {returnOrder.shipping_fee_payer === "self" &&
+                (returnOrder.return_shipping_fee || 0) > 0 &&
+                (returnOrder.freight_recorded ? (
+                  <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-600">已入物流应付</span>
+                ) : (
+                  <FreightRecordButton
+                    returnOrderId={returnOrder.id}
+                    amount={returnOrder.return_shipping_fee || 0}
+                    companyName={returnOrder.logistics_company || ""}
+                  />
+                ))}
             </div>
           </div>
           <div>

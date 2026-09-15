@@ -56,6 +56,13 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
     wrong_shipment_count: "0",
     quality_return_count: "0",
     recommendation_level: "0",
+    /* 2026-09-15 批次2：财务信息（选填） */
+    settle_type: "",
+    credit_days: "",
+    payee_name: "",
+    bank_name: "",
+    bank_account: "",
+    payment_note: "",
   });
 
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -92,6 +99,12 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
           wrong_shipment_count: String(data.wrong_shipment_count || 0),
           quality_return_count: String(data.quality_return_count || 0),
           recommendation_level: String(data.recommendation_level || 0),
+          settle_type: data.settle_type || "",
+          credit_days: data.credit_days ? String(data.credit_days) : "",
+          payee_name: data.payee_name || "",
+          bank_name: data.bank_name || "",
+          bank_account: data.bank_account || "",
+          payment_note: data.payment_note || "",
         });
         setWechatGroupQr(data.wechat_group_qr || "");
       }
@@ -289,6 +302,12 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
           wrong_shipment_count: form.wrong_shipment_count,
           quality_return_count: form.quality_return_count,
           recommendation_level: form.recommendation_level,
+          settle_type: form.settle_type,
+          credit_days: form.credit_days,
+          payee_name: form.payee_name,
+          bank_name: form.bank_name,
+          bank_account: form.bank_account,
+          payment_note: form.payment_note,
         },
         contacts,
         linkedCategories.map((c) => c.id),
@@ -547,6 +566,69 @@ export default function SupplierForm({ editMode, supplierId }: Props) {
                   <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadWechatGroupQr(f); }} />
                 </label>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* 财务信息（2026-09-15 批次2，选填） */}
+        <div className="border-t border-gray-100 pt-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">财务信息<span className="text-xs font-normal text-gray-400 ml-2">选填，付款时看</span></h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">结算方式</label>
+              <div className="flex gap-2">
+                {[
+                  { value: "cash", label: "现结", desc: "到货就付" },
+                  { value: "monthly", label: "月结", desc: "每月对账付款" },
+                  { value: "credit_days", label: "账期", desc: "入库后 N 天内付" },
+                ].map((r) => (
+                  <button
+                    key={r.value}
+                    type="button"
+                    onClick={() => setForm({ ...form, settle_type: form.settle_type === r.value ? "" : r.value })}
+                    className={`flex-1 px-3 py-2 text-sm rounded-lg border transition ${
+                      form.settle_type === r.value
+                        ? "bg-blue-50 text-blue-700 border-blue-300 font-medium"
+                        : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                    }`}
+                    title={r.desc}
+                  >
+                    <div>{r.label}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">{r.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {form.settle_type === "credit_days" && (
+              <div className="max-w-xs">
+                <label className="block text-sm font-medium text-gray-700 mb-1">账期天数</label>
+                <input
+                  type="number"
+                  min={1}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  value={form.credit_days}
+                  onChange={(e) => setForm({ ...form, credit_days: e.target.value })}
+                  placeholder="如 30"
+                />
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">收款户名</label>
+                <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" value={form.payee_name} onChange={(e) => setForm({ ...form, payee_name: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">开户行</label>
+                <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" value={form.bank_name} onChange={(e) => setForm({ ...form, bank_name: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">银行账号</label>
+                <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" value={form.bank_account} onChange={(e) => setForm({ ...form, bank_account: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">收款说明</label>
+              <input className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" value={form.payment_note} onChange={(e) => setForm({ ...form, payment_note: e.target.value })} placeholder="如：微信同手机号 / 只收对公转账" />
             </div>
           </div>
         </div>
