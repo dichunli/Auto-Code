@@ -3,7 +3,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { SubNav } from "./SubNav";
-import { DeleteButton } from "./DeleteButton";
+import { DeleteButton } from "@/components/DeleteButton";
+import { 删除客户 } from "./actions";
 import { MergeButton } from "./MergeButton";
 import CustomerImportExport from "./CustomerImportExport";
 
@@ -265,7 +266,7 @@ export default async function CustomersPage(props: { searchParams?: Promise<Reco
                     <div className="flex items-center gap-3">
                       <Link href={`/customers/${customer.id}`} className="text-xs text-gray-600 hover:text-gray-800 hover:underline">查看</Link>
                       <Link href={`/customers/${customer.id}/edit`} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">编辑</Link>
-                      <DeleteButton id={customer.id} />
+                      <DeleteButton id={customer.id} 确认文案="确定要删除该客户吗？删除前会检查关联数据。" 删除动作={删除客户} />
                     </div>
                   </td>
                 </tr>

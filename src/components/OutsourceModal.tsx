@@ -6,11 +6,7 @@ import { 保存外包单, 移除外包明细 } from "@/app/outsource-orders/acti
 import { useConfirm } from "./ConfirmDialog";
 import { useDebounce } from "@/lib/useDebounce";
 import { toast } from "@/lib/globalToast";
-
-interface Supplier {
-  id: string;
-  name: string;
-}
+import type { Supplier } from "@/types/domain";
 
 interface ExistingItem {
   id: string;

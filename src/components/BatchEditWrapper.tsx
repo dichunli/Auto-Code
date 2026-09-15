@@ -3,6 +3,7 @@
 import { useState, type ComponentProps } from "react";
 import { useRouter } from "next/navigation";
 import { BatchEditModal } from "./BatchEditModal";
+import type { Supplier } from "@/types/domain";
 
 interface BatchItem {
   id: string;
@@ -19,11 +20,6 @@ interface ItemPart {
   quantity: number;
   unit_price: number | null;
   status: string;
-}
-
-interface Supplier {
-  id: string;
-  name: string;
 }
 
 interface LogisticsCompany {

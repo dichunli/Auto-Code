@@ -7,8 +7,8 @@ import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import { SearchDropdown } from "@/components/SearchDropdown";
 import Link from "next/link";
-import { DeleteButton } from "./DeleteButton";
-import { 新建品牌并关联 } from "./actions";
+import { DeleteButton } from "@/components/DeleteButton";
+import { 新建品牌并关联, 删除配件品牌 } from "./actions";
 import { toast } from "@/lib/globalToast";
 
 interface PartBrand {
@@ -177,7 +177,7 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <Link href={`/part-brands/${b.id}/edit`} className="text-sm text-blue-600 hover:text-blue-700 font-medium">编辑</Link>
-                      <DeleteButton id={b.id} name={b.name} />
+                      <DeleteButton id={b.id} 确认文案={`确定要删除品牌「${b.name}」吗？`} 删除动作={删除配件品牌} 按钮样式="text-sm text-red-600 hover:text-red-700 font-medium" />
                     </div>
                   </td>
                 </tr>

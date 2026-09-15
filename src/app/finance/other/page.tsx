@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
-import { DeleteButton } from "./DeleteButton";
+import { DeleteButton } from "@/components/DeleteButton";
+import { 删除其它收支 } from "./actions";
 import { MonthSelector } from "./MonthSelector";
 
 interface 其它收支 {
@@ -171,7 +172,7 @@ export default async function OtherTransactionsPage({
                           >
                             编辑
                           </Link>
-                          <DeleteButton id={item.id} />
+                          <DeleteButton id={item.id} 确认文案="确定删除这条记录？" 删除动作={删除其它收支} 按钮样式="text-xs text-red-600 hover:underline disabled:opacity-50" />
                         </>
                       ) : (
                         <span className="text-xs text-gray-400">他人提交</span>

@@ -21,6 +21,10 @@ import { 更新列表项, 移除列表项 } from "@/lib/listUpdate";
 import { toast } from "@/lib/globalToast";
 import { 全局提示 } from "@/components/GlobalDialogs";
 import { Pagination } from "./Pagination";
+import type { Supplier } from "@/types/domain";
+
+/* Supplier 已收口到 @/types/domain，保留 re-export 防下游断链（procurement/page.tsx 引 分支供应商） */
+export type { Supplier };
 
 /* 分页大小（与待收货列表一致） */
 const 每页条数 = 20;
@@ -115,12 +119,6 @@ export interface PartBranchRow {
       vehicles: { id: string; plate_number: string; vin: string | null; vehicle_model_id: string | null } | null;
     } | null;
   } | null;
-}
-
-export interface Supplier {
-  id: string;
-  name: string;
-  recommendation_level?: number;
 }
 
 /* 首屏数据 props（服务端查询注入，待办清单第9项）：

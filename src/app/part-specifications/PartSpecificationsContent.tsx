@@ -6,9 +6,9 @@ import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import { SearchDropdown } from "@/components/SearchDropdown";
 import Link from "next/link";
-import { DeleteButton } from "./DeleteButton";
+import { DeleteButton } from "@/components/DeleteButton";
 import { BatchLinkDialog } from "./BatchLinkDialog";
-import { 新建规格并关联, 批量导入配件规格 } from "./actions";
+import { 新建规格并关联, 批量导入配件规格, 删除配件规格 } from "./actions";
 import { toast } from "@/lib/globalToast";
 
 function normalize(str: string) {
@@ -306,7 +306,7 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <Link href={`/part-specifications/${s.id}/edit`} className="text-sm text-blue-600 hover:text-blue-700 font-medium">编辑</Link>
-                      <DeleteButton id={s.id} name={s.name} />
+                      <DeleteButton id={s.id} 确认文案={`确定要删除规格「${s.name}」吗？`} 删除动作={删除配件规格} 按钮样式="text-sm text-red-600 hover:text-red-700 font-medium" />
                     </div>
                   </td>
                 </tr>

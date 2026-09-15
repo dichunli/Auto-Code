@@ -5,8 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
-import { DeleteButton } from "./DeleteButton";
-import { 新建配件分类, 保存配件分类排序 } from "./actions";
+import { DeleteButton } from "@/components/DeleteButton";
+import { 新建配件分类, 保存配件分类排序, 删除配件分类 } from "./actions";
 import { toast } from "@/lib/globalToast";
 
 interface 配件分类 {
@@ -321,7 +321,7 @@ export default function PartCategoriesContent({ initialCategories }: { initialCa
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <Link href={`/part-categories/${c.id}/edit`} className="text-sm text-blue-600 hover:text-blue-700 font-medium">编辑</Link>
-                      <DeleteButton id={c.id} name={c.name} />
+                      <DeleteButton id={c.id} 确认文案={`确定要删除分类「${c.name}」吗？`} 删除动作={删除配件分类} 按钮样式="text-sm text-red-600 hover:text-red-700 font-medium" />
                     </div>
                   </td>
                 </tr>

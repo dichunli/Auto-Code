@@ -5,11 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
 import { 单人领单, 保存施工指派, 删除项目施工人 } from "@/app/work-orders/actions";
 import { toast } from "@/lib/globalToast";
+import type { Profile } from "@/types/domain";
 
-interface Profile {
-  id: string;
-  /* 可空：数据源 员工档案.full_name 本身可选 */
-  full_name?: string | null;
+/* 派工候选员工：共享 Profile + 技师/分组/等级扩展（列表排序用） */
+interface 技师Profile extends Profile {
   is_mechanic?: boolean;
   group_name?: string | null;
   level_sort?: number; // 技师等级 sort_order，越大等级越高，无等级为 -1
@@ -31,7 +30,7 @@ interface ExistingMechanic {
 interface Props {
   open: boolean;
   itemId: string;
-  profiles: Profile[];
+  profiles: 技师Profile[];
   mechanicGroups: MechanicGroup[];
   existingMechanics: ExistingMechanic[];
   onClose: () => void;

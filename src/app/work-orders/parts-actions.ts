@@ -2,16 +2,12 @@
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import type { 操作结果 } from "@/types/domain";
 
 /* ═══ 工单配件行（woip）写操作 Server Action（2026-08-19 批次5B 阶段1） ═══
  * 这些写操作收编为 RPC 事务函数（SECURITY DEFINER + 五角色门禁），
  * 为阶段 2 的表策略收紧（DELETE/INSERT 角色化）做准备——表收紧后客户端直写会被拦，
  * 全部改走这里的函数通道。 */
-
-interface 操作结果 {
-  success: boolean;
-  error?: string;
-}
 
 interface RPC返回 extends 操作结果 {
   new_selected_id?: string;

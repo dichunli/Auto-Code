@@ -6,8 +6,8 @@ import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import * as XLSX from "xlsx";
-import { DeleteButton } from "./DeleteButton";
-import { 批量导入维修项目名称 } from "./actions";
+import { DeleteButton } from "@/components/DeleteButton";
+import { 批量导入维修项目名称, 删除维修项目名称 } from "./actions";
 
 interface ServiceName {
   id: string;
@@ -323,7 +323,7 @@ export default function ServiceNamesContent({ initialData }: { initialData: Serv
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <Link href={`/service-names/${n.id}/edit`} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">编辑</Link>
-                      <DeleteButton id={n.id} name={n.name} />
+                      <DeleteButton id={n.id} 确认文案={`确定要删除项目名称「${n.name}」吗？`} 删除动作={删除维修项目名称} 按钮样式="text-xs text-red-600 hover:text-red-700" />
                     </div>
                   </td>
                 </tr>

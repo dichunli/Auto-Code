@@ -3,7 +3,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { SubNav } from "../customers/SubNav";
-import { DeleteButton } from "./DeleteButton";
+import { DeleteButton } from "@/components/DeleteButton";
+import { 删除单位 } from "./actions";
 
 export default async function CompaniesPage(props: { searchParams?: Promise<Record<string, string | undefined>> | Record<string, string | undefined> }) {
   const searchParams = (await Promise.resolve(props.searchParams || {})) as Record<string, string | undefined>;
@@ -138,7 +139,7 @@ export default async function CompaniesPage(props: { searchParams?: Promise<Reco
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <Link href={`/companies/${company.id}/edit`} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">编辑</Link>
-                      <DeleteButton id={company.id} />
+                      <DeleteButton id={company.id} 确认文案="确定要删除该单位吗？删除前会检查关联数据。" 删除动作={删除单位} />
                     </div>
                   </td>
                 </tr>
