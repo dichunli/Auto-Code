@@ -18,6 +18,10 @@ import { DocumentNameInput } from "./DocumentNameInput";
 import { InboundBarcodePrint, type 条码打印行 } from "@/components/InboundBarcodePrint";
 import { toast } from "@/lib/globalToast";
 import { 全局提示 } from "@/components/GlobalDialogs";
+import { Pagination } from "./Pagination";
+
+/* 分页大小（与待收货列表一致） */
+const 每页条数 = 20;
 
 interface PurchaseOrderItem {
   id: string;
@@ -148,6 +152,8 @@ interface InboundItemForm {
    避免 SPA 软导航时 session 未就绪导致整页空白；后续操作照常走 loadData 刷新 */
 interface PendingStorageListProps {
   initialOrders?: PurchaseOrder[];
+  /* 服务端首屏老流程单的总条数（两阶段分页的 count），有 initialOrders 时必传 */
+  initialTotalCount?: number;
   initialArrivalReceipts?: 到货单[];
   /* 批次卡片首屏数据（2026-09-07）：服务端与客户端同走 查询批次卡片，口径一致 */
   initialBatches?: 批次卡片[];
@@ -161,6 +167,10 @@ export function PendingStorageList(props: PendingStorageListProps) {
   const { showToast } = useToast();
   const [orders, setOrders] = useState<PurchaseOrder[]>(props.initialOrders ?? []);
   const [loading, setLoading] = useState(!props.initialOrders);
+  /* 分页（2026-09-15）：只分页"老流程按单入库列表"（orders）；
+     批次卡片区/到货单区数据量小，照旧全量，不参与分页 */
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(props.initialTotalCount ?? 0);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
   /* 蓝卡入库确认单映射（2026-09-08 两阶段入库）：采购单 id → draft 确认单，
@@ -215,9 +225,25 @@ export function PendingStorageList(props: PendingStorageListProps) {
   const [选中运单id, set选中运单id] = useState<string>("");
   const [运单加载中, set运单加载中] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (目标页 = 1) => {
     setLoading(true);
-    const { data, error } = await supabase
+    /* 阶段1：取黑名单——有明细走过到货确认单/收货批次的 pending_storage 采购单 id
+       （它们从各自流程入库，不进老按单入库列表，防双入库；与原内存谓词 some(it.arrival_item_id || it.receiving_batch_id) 同口径） */
+    const { data: 黑名单行, error: 黑名单错误 } = await supabase
+      .from("purchase_order_items")
+      .select("order_id, purchase_orders!inner(status)")
+      .eq("purchase_orders.status", "pending_storage")
+      .or("arrival_item_id.not.is.null,receiving_batch_id.not.is.null");
+    if (黑名单错误) {
+      console.error("加载待入库黑名单失败:", 黑名单错误);
+      setLoading(false);
+      return;
+    }
+    const 黑名单ids = [...new Set((黑名单行 || []).map((r) => r.order_id as string))];
+
+    /* 阶段2：主表精确 count + range 取当前页（黑名单为空时跳过 not-in，空 in 列表会报错） */
+    const from = (目标页 - 1) * 每页条数;
+    let 主查询 = supabase
       .from("purchase_orders")
       .select(
         `
@@ -230,10 +256,15 @@ export function PendingStorageList(props: PendingStorageListProps) {
           unit, category, license_plate, photos, notes,
           handle_action, discount_amount, evidence_photos, return_reason, arrival_item_id, receiving_batch_id
         )
-      `
+      `,
+        { count: "exact" }
       )
       .eq("status", "pending_storage")
       .order("created_at", { ascending: false });
+    if (黑名单ids.length > 0) {
+      主查询 = 主查询.not("id", "in", `(${黑名单ids.join(",")})`);
+    }
+    const { data, count, error } = await 主查询.range(from, from + 每页条数 - 1);
 
     if (error) {
       console.error("加载待入库采购单失败:", error);
@@ -241,13 +272,13 @@ export function PendingStorageList(props: PendingStorageListProps) {
       return;
     }
 
-    /* 走过到货确认单或收货批次的采购单不进老按单入库列表（它们从各自的流程入库，防双入库） */
-    const 老流程单 = ((data || []) as unknown as PurchaseOrder[]).filter(
-      (o) => !(o.purchase_order_items || []).some((it) => it.arrival_item_id || it.receiving_batch_id)
-    );
+    /* 阶段1已把走过到货确认单/收货批次的单排除（黑名单），这里无需再内存过滤 */
+    const 老流程单 = (data || []) as unknown as PurchaseOrder[];
     setOrders(老流程单);
+    setTotalCount(count || 0);
+    setPage(目标页);
 
-    /* 蓝卡入库确认单映射（2026-09-08 两阶段入库）：查这些采购单已生成的 draft 确认单 */
+    /* 蓝卡入库确认单映射（2026-09-08 两阶段入库）：查当前页这些采购单已生成的 draft 确认单 */
     const 老流程单id数组 = 老流程单.map((o) => o.id);
     if (老流程单id数组.length > 0) {
       const { data: 确认单们 } = await supabase
@@ -548,7 +579,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
   useEffect(() => {
     /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
     if (props.initialOrders) return;
-    loadData();
+    loadData(1);
 
   }, [loadData, props.initialOrders]);
 
@@ -816,8 +847,12 @@ export function PendingStorageList(props: PendingStorageListProps) {
       }
       showToast(`入库完成，入库单号 ${res.inbound_no}（可到「入库单」打印）`);
       closeInboundModal();
-      /* 局部更新：采购单入库后 status 离开 pending_storage，直接移出待入库列表 */
-      setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      /* 局部更新：采购单入库后 status 离开 pending_storage，直接移出待入库列表（总数同步 -1；
+         不在当前页的单 filter 本就 no-op，count 更不能动） */
+      if (orders.some((o) => o.id === orderId)) {
+        setOrders((prev) => prev.filter((o) => o.id !== orderId));
+        setTotalCount((c) => Math.max(0, c - 1));
+      }
     } catch (err: unknown) {
       const e = err as Error;
       toast("操作失败: " + (e.message || String(err)), "error");
@@ -836,8 +871,12 @@ export function PendingStorageList(props: PendingStorageListProps) {
         toast("退回失败: " + (res.error || "未知错误"), "error");
         return;
       }
-      /* 局部更新：整单退回后 status 离开 pending_storage，直接从待入库列表移除 */
-      setOrders((prev) => prev.filter((o) => o.id !== order.id));
+      /* 局部更新：整单退回后 status 离开 pending_storage，直接从待入库列表移除（总数同步 -1；
+         不在当前页的单 filter 本就 no-op，count 更不能动） */
+      if (orders.some((o) => o.id === order.id)) {
+        setOrders((prev) => prev.filter((o) => o.id !== order.id));
+        setTotalCount((c) => Math.max(0, c - 1));
+      }
     } catch (err: unknown) {
       const e = err as Error;
       toast("退回失败: " + (e.message || String(err)), "error");
@@ -868,7 +907,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
     const res = await 保存批次配件排序(卡.id, 排序);
     if (!res.success) {
       showToast("保存排序失败: " + (res.error || "未知错误"), "error");
-      loadData();
+      loadData(1);
     }
   }
 
@@ -896,8 +935,8 @@ export function PendingStorageList(props: PendingStorageListProps) {
       }
       showToast(`已移动：${res.source_batch_no || ""} → ${res.target_batch_no || ""}`);
       /* 保留整表重查：跨卡移动后目标卡的 waybills 派生（配件级→单头回退链）
-         和应付口径都会变，本地算要复制 查询批次卡片 半套逻辑，低频操作不值得 */
-      loadData();
+         和应付口径都会变，本地算要复制 查询批次卡片 半套逻辑，低频操作不值得；回第 1 页 */
+      loadData(1);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("移动失败: " + msg, "error");
@@ -1540,6 +1579,9 @@ export function PendingStorageList(props: PendingStorageListProps) {
           </div>
         </div>
       ))}
+
+      {/* 翻页：只分页"老流程按单入库列表"；下方弹窗都是 fixed 不占文档流，视觉上就在列表最底部 */}
+      <Pagination page={page} totalCount={totalCount} pageSize={每页条数} onChange={(p) => loadData(p)} />
 
       {/* 入库单确认弹窗（2026-09-09 加大美化：更宽窗口+更大输入框；
           2026-09-14 再加宽到 1500px，表格 nowrap 防逐字竖排） */}

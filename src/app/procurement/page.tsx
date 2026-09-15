@@ -347,11 +347,21 @@ export default async function ProcurementPage({
     };
   }
 
-  /* 待入库（与 PendingStorageList.loadData 同口径：老流程单 + 已确认到货单 + 收货批次卡片） */
-  let 待入库首屏: { orders: 待入库采购单[]; arrivalReceipts: 到货单[]; batches: 批次卡片[]; drafts: { id: string; inbound_no: string; purchase_order_id: string | null }[] } | undefined;
+  /* 待入库（与 PendingStorageList.loadData 同口径：老流程单 + 已确认到货单 + 收货批次卡片）
+     2026-09-15 起老流程单两阶段分页：先取"走过到货确认单/收货批次"的黑名单单号，
+     再主表 count+range 取第 1 页；批次卡片/到货单数据量小，照旧全量 */
+  let 待入库首屏: { orders: 待入库采购单[]; totalCount: number; arrivalReceipts: 到货单[]; batches: 批次卡片[]; drafts: { id: string; inbound_no: string; purchase_order_id: string | null }[] } | undefined;
   if (currentTab === "pending_storage") {
     const supabase = await createClient();
-    const { data } = await supabase
+    /* 阶段1：黑名单——有明细走过到货确认单/收货批次的 pending_storage 采购单 */
+    const { data: 黑名单行 } = await supabase
+      .from("purchase_order_items")
+      .select("order_id, purchase_orders!inner(status)")
+      .eq("purchase_orders.status", "pending_storage")
+      .or("arrival_item_id.not.is.null,receiving_batch_id.not.is.null");
+    const 黑名单ids = [...new Set((黑名单行 || []).map((r) => r.order_id as string))];
+    /* 阶段2：老流程单 count + 第 1 页（黑名单为空时跳过 not-in） */
+    let 老流程查询 = supabase
       .from("purchase_orders")
       .select(`
         id, order_no, supplier_id, status, total_amount, notes, created_at, waybill_id,
@@ -363,13 +373,14 @@ export default async function ProcurementPage({
           unit, category, license_plate, photos, notes,
           handle_action, discount_amount, evidence_photos, return_reason, arrival_item_id, receiving_batch_id
         )
-      `)
+      `, { count: "exact" })
       .eq("status", "pending_storage")
       .order("created_at", { ascending: false });
-    /* 走过到货确认单或收货批次的采购单不进老入库列表（2026-09-07 补 receiving_batch_id，与 loadData 对齐） */
-    const 老流程单 = ((data || []) as unknown as 待入库采购单[]).filter(
-      (o) => !(o.purchase_order_items || []).some((it) => it.arrival_item_id || it.receiving_batch_id)
-    );
+    if (黑名单ids.length > 0) {
+      老流程查询 = 老流程查询.not("id", "in", `(${黑名单ids.join(",")})`);
+    }
+    const { data, count: 老流程总数 } = await 老流程查询.range(0, 19);
+    const 老流程单 = (data || []) as unknown as 待入库采购单[];
     const { data: 到货单数据 } = await supabase
       .from("arrival_receipts")
       .select("id, receipt_no, supplier_order_no, supplier_order_amount, suppliers(name), logistics_waybills(tracking_no, freight_amount), arrival_receipt_items(count)")
@@ -388,7 +399,7 @@ export default async function ProcurementPage({
         .in("purchase_order_id", 老流程单id数组);
       蓝卡确认单们 = (确认单数据 || []) as { id: string; inbound_no: string; purchase_order_id: string | null }[];
     }
-    待入库首屏 = { orders: 老流程单, arrivalReceipts: ((到货单数据 || []) as unknown) as 到货单[], batches: 批次卡片们, drafts: 蓝卡确认单们 };
+    待入库首屏 = { orders: 老流程单, totalCount: 老流程总数 || 0, arrivalReceipts: ((到货单数据 || []) as unknown) as 到货单[], batches: 批次卡片们, drafts: 蓝卡确认单们 };
   }
 
   /* 已入库（与 CompletedStorageList.loadData 同口径） */
@@ -554,6 +565,7 @@ export default async function ProcurementPage({
         <PendingStorageList
           key={currentTab}
           initialOrders={待入库首屏?.orders}
+          initialTotalCount={待入库首屏?.totalCount}
           initialArrivalReceipts={待入库首屏?.arrivalReceipts}
           initialBatches={待入库首屏?.batches}
           initialDrafts={待入库首屏?.drafts}
