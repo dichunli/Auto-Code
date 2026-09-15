@@ -628,7 +628,7 @@ export default function usePartFormInit(
       });
     }
 
-  }, []);
+  }, [editId, prefillData, setDocNameQuery, setForm, setOeNumber, setPartNumber, setSelectedBrand, setSelectedPartName, setSelectedSpecs, supabase]);
 
   /* 5. 弹窗模式下：编码精确匹配配件库时自动填充 */
   useEffect(() => {
@@ -716,5 +716,5 @@ export default function usePartFormInit(
       }
     }
     按编码自动填充();
-  }, [debouncedPartNumber, isEmbedded, isEditMode]);
+  }, [debouncedPartNumber, isEmbedded, isEditMode, setBarcode, setDocNameQuery, setForm, setInterchangeCode, setPartImages, setPartNumber, setSelectedBrand, setSelectedPartName, setSelectedSpecs, setSelectedSupplier, setStockLocations, supabase]);
 }

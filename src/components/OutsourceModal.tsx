@@ -129,8 +129,8 @@ export function OutsourceModal({
       setSupplierResults((data || []) as Supplier[]);
     }
     搜索供应商();
-     
-  }, [debouncedSupplierKeyword]);
+
+  }, [debouncedSupplierKeyword, supabase]);
 
   // 搜索供应商输入框变化
   function handleSupplierSearch(val: string) {

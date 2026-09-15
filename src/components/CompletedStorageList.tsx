@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -289,6 +289,37 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
   /* 批量退货弹窗的可选批次（null=加载中）：点「批量退货」时一次性查好 */
   const [退货批次Map, set退货批次Map] = useState<Map<string, 库存批次[]> | null>(null);
 
+  /* loadData 放在组件级 supabase 调用（打开批量退货等）之前：
+     React Compiler 会把前面的 supabase 方法调用视为潜在修改，导致 preserve-manual-memoization 报错 */
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("purchase_orders")
+      .select(
+        `
+        id, order_no, supplier_id, status, total_amount, notes, created_at,
+        suppliers(id, name),
+        purchase_order_items(
+          id, name, brand, specification, quantity, unit_cost, received_qty,
+          part_id, work_order_item_part_id, part_number, supplier_part_name,
+          unit, category, license_plate, photos, notes, parts(barcode)
+        ),
+        inbound_orders(id, inbound_no, total_quantity, total_amount, created_at)
+      `
+      )
+      .eq("status", "completed")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("加载已入库采购单失败:", error);
+      setLoading(false);
+      return;
+    }
+
+    setOrders((data || []) as unknown as PurchaseOrder[]);
+    setLoading(false);
+  }, [supabase]);
+
   function 切换退货勾选(itemId: string, 勾选: boolean) {
     set退货勾选((prev) => {
       const next = new Set(prev);
@@ -323,41 +354,12 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
     set退货批次Map(map);
   }
 
-  async function loadData() {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("purchase_orders")
-      .select(
-        `
-        id, order_no, supplier_id, status, total_amount, notes, created_at,
-        suppliers(id, name),
-        purchase_order_items(
-          id, name, brand, specification, quantity, unit_cost, received_qty,
-          part_id, work_order_item_part_id, part_number, supplier_part_name,
-          unit, category, license_plate, photos, notes, parts(barcode)
-        ),
-        inbound_orders(id, inbound_no, total_quantity, total_amount, created_at)
-      `
-      )
-      .eq("status", "completed")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("加载已入库采购单失败:", error);
-      setLoading(false);
-      return;
-    }
-
-    setOrders((data || []) as unknown as PurchaseOrder[]);
-    setLoading(false);
-  }
-
   useEffect(() => {
     /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
     if (props.initialOrders) return;
     loadData();
 
-  }, []);
+  }, [loadData, props.initialOrders]);
 
   /* 撤销已入库→退回待入库（2026-09-13 用户拍板新语义）：
      只倒退一步——扣回库存、删除入库单，收货处理结果全部保留；

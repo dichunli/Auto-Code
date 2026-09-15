@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PriceValue } from "@/components/PriceVisibilityContext";
@@ -215,7 +215,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
   const [选中运单id, set选中运单id] = useState<string>("");
   const [运单加载中, set运单加载中] = useState(false);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("purchase_orders")
@@ -275,7 +275,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
     /* 收货批次卡片（2026-09-07 卡片化）：批次+明细+关联运单+运费分摊进度，共用查询 */
     set批次列表(await 查询批次卡片(supabase));
     setLoading(false);
-  }
+  }, [supabase]);
 
   /* ─── 局部更新工具（2026-09-12）：改哪条只动哪条，不再整表 loadData ─── */
 
@@ -548,7 +548,7 @@ export function PendingStorageList(props: PendingStorageListProps) {
     if (props.initialOrders) return;
     loadData();
 
-  }, []);
+  }, [loadData, props.initialOrders]);
 
   /* 打开入库单确认弹窗 */
   async function openInboundModal(order: PurchaseOrder) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { 变更车主 } from "@/app/vehicles/actions";
@@ -56,7 +56,7 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
   const [saving, setSaving] = useState(false);
   const debouncedSearchPlate = useDebounce(searchPlate, 300);
 
-  async function doSearch(plate: string) {
+  const doSearch = useCallback(async (plate: string) => {
     if (!plate.trim()) {
       setSearchResults(null);
       setShowNewForm(false);
@@ -76,11 +76,11 @@ export default function VehicleSearchAdd({ customerId, initialVehicles }: Props)
       setShowNewForm(true);
       setNewVehicle((prev) => ({ ...prev, plate_number: plate.trim().toUpperCase() }));
     }
-  }
+  }, []);
 
   useEffect(() => {
     doSearch(debouncedSearchPlate);
-  }, [debouncedSearchPlate]);
+  }, [debouncedSearchPlate, doSearch]);
 
   function handleInputChange(value: string) {
     setSearchPlate(value);

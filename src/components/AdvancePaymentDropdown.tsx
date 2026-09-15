@@ -56,11 +56,11 @@ export default function AdvancePaymentDropdown({ orderId, advancePayment, totalC
         .order("sort_order", { ascending: true });
       const loadedMethods = (mData || []) as PaymentMethod[];
       setMethods(loadedMethods);
-      if (loadedMethods.length > 0 && !method) {
-        setMethod(loadedMethods[0].code);
-      }
-      if (loadedMethods.length > 0 && !refundMethod) {
-        setRefundMethod(loadedMethods[0].code);
+      /* 仅在未选过时给默认方式：函数式更新读当前值，避免把 method/refundMethod
+       * 拉进依赖导致每次切换收款方式都重复跑这段初始化查询 */
+      if (loadedMethods.length > 0) {
+        setMethod((prev) => prev || loadedMethods[0].code);
+        setRefundMethod((prev) => prev || loadedMethods[0].code);
       }
 
       const { data: sessionData } = await supabase.auth.getSession();

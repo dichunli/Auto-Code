@@ -1,6 +1,6 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useRef, useMemo, useCallback} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
@@ -66,7 +66,7 @@ export default function SupplierTransactionsContent({
 
   /* 销售单信息补充（2026-08-21 对账增强）：入库应付款记录 → 入库单 → 采购单/到货单，
      带出供应商单号和销售单照片，对账时可直接点开照片核对 */
-  async function 补充销售单信息(list: TransactionRecord[]): Promise<TransactionRecord[]> {
+  const 补充销售单信息 = useCallback(async (list: TransactionRecord[]): Promise<TransactionRecord[]> => {
     const 入库单ids = list
       .filter((r) => r.transaction_type === "debit" && r.reference_type === "inbound_order" && r.reference_id)
       .map((r) => r.reference_id as string);
@@ -103,7 +103,7 @@ export default function SupplierTransactionsContent({
           : null;
       return { ...r, slipNo: io.supplier_order_no, slipPhotos: 照片 || null };
     });
-  }
+  }, [supabase]);
 
   /* 首屏：对服务端传入的初始记录补充销售单信息（挂载一次） */
   useEffect(() => {
@@ -114,8 +114,8 @@ export default function SupplierTransactionsContent({
       setRecords(结果);
     });
     return () => { 有效 = false; };
-    /* 仅挂载时跑一次（exhaustive-deps 项目已关闭，无需 disable 注释） */
-  }, []);
+    /* 仅挂载时跑一次（initialTransactions 与 补充销售单信息 均为稳定引用，不会重复执行） */
+  }, [initialTransactions, 补充销售单信息]);
   const [suppliers] = useState<Supplier[]>(initialSuppliers);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
@@ -124,6 +124,13 @@ export default function SupplierTransactionsContent({
   /* 分页展示：记录超过 50 条时只渲染当前页，避免表格行数过多卡顿 */
   const [page, setPage] = useState(1);
   const debouncedQuery = useDebounce(query, 300);
+
+  /* loadRecords 刷新后要按当前搜索词过滤，但打字本身只走前端过滤、不该触发整表重查；
+     用 ref 让 loadRecords 读到最新 query，而不把 query 列进它的依赖（否则会每次打字都重查数据库） */
+  const queryRef = useRef(query);
+  useEffect(() => {
+    queryRef.current = query;
+  }, [query]);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<TransactionForm>({
@@ -134,7 +141,7 @@ export default function SupplierTransactionsContent({
   });
   const [saving, setSaving] = useState(false);
 
-  async function loadRecords() {
+  const loadRecords = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     setLoading(true);
@@ -160,9 +167,9 @@ export default function SupplierTransactionsContent({
     const result = (data || []) as TransactionRecord[];
     const 补充后 = await 补充销售单信息(result);
     setAllRecords(补充后);
-    filterRecords(补充后, query);
+    filterRecords(补充后, queryRef.current);
     setLoading(false);
-  }
+  }, [supabase, supplierFilter, typeFilter, 补充销售单信息]);
 
   function filterRecords(source: TransactionRecord[], search: string) {
     if (!search.trim()) {
@@ -190,7 +197,7 @@ export default function SupplierTransactionsContent({
       return;
     }
     loadRecords();
-  }, [supplierFilter, typeFilter]);
+  }, [supplierFilter, typeFilter, loadRecords]);
 
   // 搜索关键词变化时前端过滤
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
 import { useConfirm } from "./ConfirmDialog";
@@ -98,7 +98,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
   }
 
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("supplier_return_records")
@@ -116,14 +116,14 @@ export function PendingReturnList(props: PendingReturnListProps) {
 
     setRecords((data || []) as unknown as ReturnRecord[]);
     setLoading(false);
-  }
+  }, [supabase]);
 
   useEffect(() => {
     /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
     if (props.initialRecords) return;
     loadData();
 
-  }, []);
+  }, [loadData, props.initialRecords]);
 
   async function handleComplete(id: string) {
     if (!(await 请求确认("确认标记为已完成？（将按 数量×采购价 记一条退货冲减往来账）"))) return;

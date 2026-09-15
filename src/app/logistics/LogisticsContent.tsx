@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 更新供应商电话 } from "@/app/suppliers/actions";
 import { 结清运费, 删除物流公司, 删除运单, 保存运单, 批量建运单, 保存运单行内字段, 保存物流公司, 交换物流公司排序, 保存物流公司排序号 } from "@/app/logistics/actions";
@@ -141,24 +141,8 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
   const { 请求确认, 确认弹窗 } = useConfirm();
   const { showToast } = useToast();
 
-  /* Tab切换和筛选变化时重新加载（跳过首次挂载，数据已从服务端预加载），回到第 1 页 */
-  useEffect(() => {
-    if (首次挂载.current) return;
-    if (activeTab === "waybills") loadWaybills(1);
-  }, [filter, activeTab]);
-
-  useEffect(() => {
-    if (首次挂载.current) return;
-    if (activeTab === "companies") loadCompanies();
-  }, [scopeFilter, activeTab]);
-
-  /* 初始化标记：在所有 useEffect 之后，用一个 layout 级别标记首次挂载完成 */
-  useEffect(() => {
-    首次挂载.current = false;
-  }, []);
-
   /* 通过主电话或联系人电话搜索供应商 */
-  async function findSupplierByPhone(phone: string): Promise<{ id: string; name: string } | null> {
+  const findSupplierByPhone = useCallback(async (phone: string): Promise<{ id: string; name: string } | null> => {
     if (!phone.trim()) return null;
     const val = phone.trim();
     // 先查主电话
@@ -183,28 +167,9 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
       if (sup) return sup;
     }
     return null;
-  }
+  }, [supabase]);
 
-  /* 运单电话输入时实时检索供应商 */
-  useEffect(() => {
-    async function lookup() {
-      if (phoneLookupLock.current) {
-        phoneLookupLock.current = false;
-        return;
-      }
-      if (!singlePhone.trim()) {
-        setSingleSupplierName("");
-        return;
-      }
-      const result = await findSupplierByPhone(singlePhone);
-      if (result) {
-        setSingleSupplierName(result.name);
-      }
-    }
-    lookup();
-  }, [singlePhone, supabase]);
-
-  async function loadWaybills(目标页: number) {
+  const loadWaybills = useCallback(async (目标页: number) => {
     /* 客户端 session 丢失时不查询，避免空结果覆盖服务端数据 */
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
@@ -250,9 +215,9 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
       setWaybills(waybillsData);
     }
     setWaybillLoading(false);
-  }
+  }, [supabase, filter]);
 
-  async function loadCompanies() {
+  const loadCompanies = useCallback(async () => {
     /* 客户端 session 丢失时不查询，避免空结果覆盖服务端数据 */
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
@@ -286,7 +251,42 @@ export default function LogisticsContent({ initialWaybills, initialWaybillCount,
     }
     set运费余额(余额);
     setCompanyLoading(false);
-  }
+  }, [supabase, scopeFilter]);
+
+  /* Tab切换和筛选变化时重新加载（跳过首次挂载，数据已从服务端预加载），回到第 1 页 */
+  useEffect(() => {
+    if (首次挂载.current) return;
+    if (activeTab === "waybills") loadWaybills(1);
+  }, [filter, activeTab, loadWaybills]);
+
+  useEffect(() => {
+    if (首次挂载.current) return;
+    if (activeTab === "companies") loadCompanies();
+  }, [scopeFilter, activeTab, loadCompanies]);
+
+  /* 初始化标记：在所有 useEffect 之后，用一个 layout 级别标记首次挂载完成 */
+  useEffect(() => {
+    首次挂载.current = false;
+  }, []);
+
+  /* 运单电话输入时实时检索供应商 */
+  useEffect(() => {
+    async function lookup() {
+      if (phoneLookupLock.current) {
+        phoneLookupLock.current = false;
+        return;
+      }
+      if (!singlePhone.trim()) {
+        setSingleSupplierName("");
+        return;
+      }
+      const result = await findSupplierByPhone(singlePhone);
+      if (result) {
+        setSingleSupplierName(result.name);
+      }
+    }
+    lookup();
+  }, [singlePhone, supabase, findSupplierByPhone]);
 
   function openAdd() {
     setEditing(null);

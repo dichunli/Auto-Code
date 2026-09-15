@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { 撤销已退货记录 } from "@/app/procurement/actions";
@@ -51,7 +51,7 @@ export function CompletedReturnList(props: CompletedReturnListProps) {
   const [loading, setLoading] = useState(!props.initialRecords);
   const [submitting, setSubmitting] = useState<string | null>(null);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("supplier_return_records")
@@ -69,14 +69,14 @@ export function CompletedReturnList(props: CompletedReturnListProps) {
 
     setRecords((data || []) as unknown as ReturnRecord[]);
     setLoading(false);
-  }
+  }, [supabase]);
 
   useEffect(() => {
     /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
     if (props.initialRecords) return;
     loadData();
 
-  }, []);
+  }, [loadData, props.initialRecords]);
 
   /* 撤销已退货（2026-08-16 批次2）：原为客户端 5 步连环删（无事务留半成品），
      现收编为 RPC 一个事务；此处只保留只读预查用于确认文案。 */

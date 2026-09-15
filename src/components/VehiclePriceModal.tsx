@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "@/lib/globalToast";
 
@@ -58,23 +58,32 @@ export default function VehiclePriceModal({ open, onClose, onConfirm, defaultPri
   });
 
   // 初始化：打开时重置价格和选择
+  /* defaultPrices/preSelectedIds 最新引用：父组件每次渲染都可能新建对象/数组，
+     直接进依赖会让打开期间父组件重渲染就重置用户正在输入的价格和勾选，保持"仅 open 变化时初始化"的原时机 */
+  const defaultPricesRef = useRef(defaultPrices);
+  const preSelectedIdsRef = useRef(preSelectedIds);
+  useEffect(() => {
+    defaultPricesRef.current = defaultPrices;
+    preSelectedIdsRef.current = preSelectedIds;
+  }, [defaultPrices, preSelectedIds]);
   useEffect(() => {
     if (!open) {
       setConfirming(false);
       return;
     }
-    if (defaultPrices) {
-      setPrice(defaultPrices.price.toString());
-      setVipPrice(defaultPrices.vip_price?.toString() ?? "");
-      setCustomerPartsPrice(defaultPrices.customer_parts_price?.toString() ?? "");
-      setCompanyPrice(defaultPrices.company_price?.toString() ?? "");
+    const 默认价 = defaultPricesRef.current;
+    if (默认价) {
+      setPrice(默认价.price.toString());
+      setVipPrice(默认价.vip_price?.toString() ?? "");
+      setCustomerPartsPrice(默认价.customer_parts_price?.toString() ?? "");
+      setCompanyPrice(默认价.company_price?.toString() ?? "");
     } else {
       setPrice("");
       setVipPrice("");
       setCustomerPartsPrice("");
       setCompanyPrice("");
     }
-    setSelectedIds(new Set(preSelectedIds || []));
+    setSelectedIds(new Set(preSelectedIdsRef.current || []));
     setPage(1);
     setFilters({ id: "", 品牌: "", 车系: "", 车型: "", 年款: "", 排量: "", 发动机型号: "", 底盘型号: "", 变速箱类型: "", 前轮胎规格: "", 后轮胎规格: "" });
   }, [open]);

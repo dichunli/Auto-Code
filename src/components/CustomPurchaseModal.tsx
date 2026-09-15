@@ -127,7 +127,7 @@ export default function CustomPurchaseModal({ open, onClose, suppliers, on成功
       已取消 = true;
     };
 
-  }, [防抖搜索词]);
+  }, [防抖搜索词, supabase]);
 
   function 加入清单(p: 搜索结果) {
     if (清单.some((r) => r.partId === p.id)) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import {useState, useEffect, useMemo} from "react";
+import {useState, useEffect, useMemo, useCallback} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
@@ -98,7 +98,7 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [discountAmount, setDiscountAmount] = useState("");
 
-  async function loadData(id: string) {
+  const loadData = useCallback(async (id: string) => {
     setDataLoading(true);
     setError("");
     try {
@@ -143,14 +143,14 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
     } finally {
       setDataLoading(false);
     }
-  }
+  }, [supabase]);
 
   useEffect(() => {
     params.then((p) => {
       setOrderId(p.id);
       loadData(p.id);
     });
-  }, [params]);
+  }, [params, loadData]);
 
   function addPayment() {
     setPayments([...payments, { method: "cash", amount: "" }]);

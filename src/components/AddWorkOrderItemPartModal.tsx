@@ -188,7 +188,7 @@ export function AddWorkOrderItemPartModal({
       setPresetParts([]);
     }
      
-  }, [open, serviceItemId, itemId]);
+  }, [open, serviceItemId, itemId, supabase]);
 
   /* 配件名称搜索（SearchDropdown 的 searchFn）：查询条件与原手写块完全一致 */
   async function 搜索配件名称(keyword: string): Promise<PartName[]> {

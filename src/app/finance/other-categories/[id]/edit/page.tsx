@@ -35,7 +35,7 @@ export default function EditOtherCategoryPage({ params }: { params: Promise<{ id
       setId(p.id);
       loadData(p.id);
     });
-  }, [params]);
+  }, [params, supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

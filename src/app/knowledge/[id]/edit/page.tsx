@@ -1,6 +1,6 @@
 "use client";
 
-import {useState, useEffect, useMemo} from "react";
+import {useState, useEffect, useMemo, useCallback} from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -191,7 +191,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
     load();
   }, [params, router, supabase]);
 
-  async function doNameSearch(keyword: string) {
+  const doNameSearch = useCallback(async (keyword: string) => {
     if (!keyword.trim()) { setNameResults([]); return; }
     setNameSearching(true);
     const { data } = await supabase
@@ -201,7 +201,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
       .limit(20);
     setNameResults((data || []) as NamedItem[]);
     setNameSearching(false);
-  }
+  }, [supabase]);
 
   function handleNameSearchChange(val: string) {
     setNameSearch(val);
@@ -209,7 +209,7 @@ export default function EditKnowledgePage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     doNameSearch(debouncedNameSearch);
-  }, [debouncedNameSearch]);
+  }, [debouncedNameSearch, doNameSearch]);
 
   function addLinkedName(item: NamedItem) {
     if (!linkedNames.find((n) => n.id === item.id)) {

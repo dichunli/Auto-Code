@@ -228,10 +228,17 @@ export default function BehaviorScoreContent({
     });
   }
 
+  /* mediaFiles 最新引用：卸载清理要拿最后一份清单；
+   * 直接进依赖会让每次增删照片都先把还在显示的旧预览 URL 释放掉 */
+  const mediaFilesRef = useRef(mediaFiles);
+  useEffect(() => {
+    mediaFilesRef.current = mediaFiles;
+  }, [mediaFiles]);
+
   /* 组件卸载时释放所有预览 URL */
   useEffect(() => {
     return () => {
-      mediaFiles.forEach((f) => URL.revokeObjectURL(f.preview));
+      mediaFilesRef.current.forEach((f) => URL.revokeObjectURL(f.preview));
     };
   }, []);
 

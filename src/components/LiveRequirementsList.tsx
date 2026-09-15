@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import RequirementTitle from "./RequirementTitle";
 import RequirementActions from "./RequirementActions";
 import AddRequirementItemsButton from "./AddRequirementItemsButton";
@@ -88,9 +88,15 @@ export default function LiveRequirementsList({
 
   // 整页刷新后：新需求已进服务端数据，从追加列表移除（去重防重复显示）
   const 已有IDs拼串 = 已有需求IDs.join(",");
+  /* 已有需求IDs 最新引用：父组件每次渲染都可能新建数组，直接进依赖会让本 effect
+     每次渲染都跑（filter 必返新数组有循环风险），故保持"拼串变化才触发"的原时机 */
+  const 已有需求IDsRef = useRef(已有需求IDs);
   useEffect(() => {
-    设置追加需求((prev) => prev.filter((r) => !已有需求IDs.includes(r.req.id)));
-     
+    已有需求IDsRef.current = 已有需求IDs;
+  }, [已有需求IDs]);
+  useEffect(() => {
+    设置追加需求((prev) => prev.filter((r) => !已有需求IDsRef.current.includes(r.req.id)));
+
   }, [已有IDs拼串]);
 
   const 初始需求数 = 已有需求IDs.length;

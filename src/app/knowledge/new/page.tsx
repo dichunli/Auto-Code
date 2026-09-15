@@ -1,6 +1,6 @@
 "use client";
 
-import {useState, useEffect, useMemo} from "react";
+import {useState, useEffect, useMemo, useCallback} from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -68,7 +68,7 @@ export default function NewKnowledgePage() {
     supabase.from("knowledge_categories").select("*").order("sort_order").limit(100).then(({ data }) => setCategories(data || []));
   }, [supabase]);
 
-  async function doNameSearch(keyword: string) {
+  const doNameSearch = useCallback(async (keyword: string) => {
     if (!keyword.trim()) { setNameResults([]); return; }
     setNameSearching(true);
     const { data } = await supabase
@@ -78,7 +78,7 @@ export default function NewKnowledgePage() {
       .limit(20);
     setNameResults((data || []) as NamedItem[]);
     setNameSearching(false);
-  }
+  }, [supabase]);
 
   function handleNameSearchChange(val: string) {
     setNameSearch(val);
@@ -86,7 +86,7 @@ export default function NewKnowledgePage() {
 
   useEffect(() => {
     doNameSearch(debouncedNameSearch);
-  }, [debouncedNameSearch]);
+  }, [debouncedNameSearch, doNameSearch]);
 
   function addLinkedName(item: NamedItem) {
     if (!linkedNames.find((n) => n.id === item.id)) {

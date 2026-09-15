@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useConfirm } from "./ConfirmDialog";
 
 export interface ImageViewerProps {
@@ -35,24 +35,24 @@ export function ImageViewer({
   const canNavigate = isGallery && total > 1;
 
   /* 重置缩放和平移（切换图片时调用） */
-  function resetZoom() {
+  const resetZoom = useCallback(() => {
     setScale(1);
     setTranslate({ x: 0, y: 0 });
-  }
+  }, []);
 
   /* 翻到上一张 */
-  function goPrev() {
+  const goPrev = useCallback(() => {
     if (!canNavigate || !onIndexChange) return;
     onIndexChange(index > 0 ? index - 1 : total - 1);
     resetZoom();
-  }
+  }, [canNavigate, onIndexChange, index, total, resetZoom]);
 
   /* 翻到下一张 */
-  function goNext() {
+  const goNext = useCallback(() => {
     if (!canNavigate || !onIndexChange) return;
     onIndexChange(index < total - 1 ? index + 1 : 0);
     resetZoom();
-  }
+  }, [canNavigate, onIndexChange, index, total, resetZoom]);
 
   /* 键盘事件 */
   useEffect(() => {
@@ -65,7 +65,7 @@ export function ImageViewer({
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose, canNavigate, index]);
+  }, [onClose, canNavigate, goPrev, goNext]);
 
   /* ========== 触摸手势 ========== */
 
