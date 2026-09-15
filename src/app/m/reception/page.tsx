@@ -4,8 +4,6 @@ import MobileReceptionContent, { type Order } from "./MobileReceptionContent";
 /* 手机端接车登记 — Server Component
  * 首屏在厂工单列表在服务端查询，避免 SPA 软导航时客户端 session 未就绪导致空白 */
 
-const SETTLED_STATUSES = ["settled", "delivered"];
-
 export default async function MobileReceptionListPage() {
   const supabase = await createClient();
 
@@ -19,14 +17,15 @@ export default async function MobileReceptionListPage() {
         "id, order_no, status, received_at, mileage_in, vehicles(plate_number, brand, model), customers(name, phone)"
       )
       .neq("order_type", "cancelled")
-      .order("created_at", { ascending: false });
+      /* 已结算/已交车过滤下推到 SQL——不再把全部历史工单拉回手机内存过滤 */
+      .not("status", "in", '("settled","delivered")')
+      .order("created_at", { ascending: false })
+      /* 在厂工单上限 100 条（正常同时在厂远低于此），防历史积压单拖慢手机首页 */
+      .limit(100);
     if (queryError) {
       error = "查询失败：" + queryError.message;
     } else {
-      /* 内存过滤：排除已结算、已交车 */
-      orders = ((data || []) as unknown as (Record<string, unknown> & Order)[]).filter(
-        (o) => !SETTLED_STATUSES.includes(o.status as string)
-      );
+      orders = (data || []) as unknown as Order[];
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
