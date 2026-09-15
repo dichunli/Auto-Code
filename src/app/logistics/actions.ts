@@ -389,6 +389,32 @@ export async function 作废物流结算单(结算单id: string): Promise<操作
   return { success: true };
 }
 
+/* ─── 标记代收货款已转付（批次5：货运站把代收款转给供应商后的核对动作） ─── */
+export async function 标记代收已转付(运单id: string): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!运单id) {
+    return { success: false, error: "缺少运单信息" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("mark_waybill_cod_transferred", {
+    p_waybill_id: 运单id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as unknown as { success: boolean; error?: string };
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "标记失败" };
+  }
+
+  revalidatePath("/logistics");
+  return { success: true };
+}
+
 /* ─── 把运单关联到指定采购单（手机待收货管理页用：单张或批量） ─── */
 export async function 关联运单到采购单(
   运单id: string,
