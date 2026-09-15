@@ -19,35 +19,14 @@ import { InboundBarcodePrint, type 条码打印行 } from "@/components/InboundB
 import { toast } from "@/lib/globalToast";
 import { 全局提示 } from "@/components/GlobalDialogs";
 import { Pagination } from "./Pagination";
+import type { PurchaseOrder, PurchaseOrderItem } from "@/types/domain";
 
 /* 分页大小（与待收货列表一致） */
 const 每页条数 = 20;
 
-interface PurchaseOrderItem {
-  id: string;
-  name: string;
-  brand: string | null;
-  specification: string | null;
-  quantity: number;
-  unit_cost: number | null;
-  received_qty: number | null;
-  part_id: string | null;
-  work_order_item_part_id: string | null;
-  part_number: string | null;
-  supplier_part_name: string | null;
-  unit: string | null;
-  category: string | null;
-  license_plate: string | null;
-  photos: string[] | null;
-  notes: string | null;
-  handle_action: string | null;
-  discount_amount: number | null;
-  evidence_photos: string[] | null;
-  return_reason: string | null;
-  arrival_item_id: string | null;
-  /* 收货批次关联（2026-09-04）：非空表示该行走批次入库，不进按单入库列表 */
-  receiving_batch_id: string | null;
-}
+/* PurchaseOrder/PurchaseOrderItem 已收口到 @/types/domain；
+   PurchaseOrder 保留 re-export 防下游断链（procurement/page.tsx 引 待入库采购单） */
+export type { PurchaseOrder };
 
 /* 已确认到货的到货确认单（2026-08-20 二期：待入库的新来源）；
    导出给采购看板 page.tsx 服务端首屏查询用（待办清单第9项） */
@@ -60,24 +39,6 @@ export interface 到货单 {
   suppliers: { name: string } | null;
   logistics_waybills: { tracking_no: string; freight_amount: number | null } | null;
   arrival_receipt_items: { count: number }[];
-}
-
-/* 订单类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
-export interface PurchaseOrder {
-  id: string;
-  order_no: string | null;
-  supplier_id: string | null;
-  status: string;
-  total_amount: number | null;
-  notes: string | null;
-  created_at: string;
-  waybill_id: string | null;
-  /* 供应商销售单（2026-08-21） */
-  supplier_order_no: string | null;
-  supplier_order_amount: number | null;
-  supplier_slip_photos: string[] | null;
-  suppliers: { id: string; name: string } | null;
-  purchase_order_items: PurchaseOrderItem[];
 }
 
 /* 缺编码行数（2026-09-09 统一口径）：除「错发丢弃」外，没填零件编码的行都算缺编码——

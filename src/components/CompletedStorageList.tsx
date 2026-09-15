@@ -12,49 +12,11 @@ import { useToast } from "@/components/Toast";
 import { DocumentNameInput } from "./DocumentNameInput";
 import { useDebounce } from "@/lib/useDebounce";
 import { toast } from "@/lib/globalToast";
+import type { PurchaseOrder, PurchaseOrderItem } from "@/types/domain";
 
-interface PurchaseOrderItem {
-  id: string;
-  name: string;
-  brand: string | null;
-  specification: string | null;
-  quantity: number;
-  unit_cost: number | null;
-  received_qty: number | null;
-  part_id: string | null;
-  work_order_item_part_id: string | null;
-  part_number: string | null;
-  supplier_part_name: string | null;
-  unit: string | null;
-  category: string | null;
-  license_plate: string | null;
-  photos: string[] | null;
-  notes: string | null;
-  /* 联配件档案（2026-09-13 商品搜索）：按条形码也能搜到该单 */
-  parts: { barcode: string | null } | null;
-}
-
-interface InboundOrder {
-  id: string;
-  inbound_no: string;
-  total_quantity: number;
-  total_amount: number | null;
-  created_at: string;
-}
-
-/* 订单类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
-export interface PurchaseOrder {
-  id: string;
-  order_no: string | null;
-  supplier_id: string | null;
-  status: string;
-  total_amount: number | null;
-  notes: string | null;
-  created_at: string;
-  suppliers: { id: string; name: string } | null;
-  purchase_order_items: PurchaseOrderItem[];
-  inbound_orders: InboundOrder[] | null;
-}
+/* PurchaseOrder/PurchaseOrderItem 已收口到 @/types/domain（InboundOrder 随共享 PurchaseOrder 内含，无需单列）；
+   PurchaseOrder 保留 re-export 防下游断链（procurement/page.tsx 引 已入库采购单） */
+export type { PurchaseOrder };
 
 /* 首屏数据 props（服务端查询注入，待办清单第9项）：
    有 initialOrders 时首屏直接渲染、跳过 useEffect 里的 loadData，
