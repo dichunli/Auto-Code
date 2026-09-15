@@ -7,11 +7,11 @@ import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
 import * as XLSX from "xlsx";
-import { DeleteButton } from "./DeleteButton";
+import { DeleteButton } from "@/components/DeleteButton";
 import { BatchLinkDialog } from "./BatchLinkDialog";
 import { BatchMergeDialog } from "./BatchMergeDialog";
 import { SearchLinkSection } from "./SearchLinkSection";
-import { 新建配件名称, 批量导入配件名称 } from "./actions";
+import { 新建配件名称, 批量导入配件名称, 删除配件名称 } from "./actions";
 import { 新建配件品牌, 新建配件规格 } from "@/app/inventory/actions";
 import { toast } from "@/lib/globalToast";
 
@@ -643,7 +643,7 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <Link href={`/part-names/${n.id}/edit`} className="text-sm text-blue-600 hover:text-blue-700 font-medium">编辑</Link>
-                      <DeleteButton id={n.id} name={n.name} />
+                      <DeleteButton id={n.id} 确认文案={`确定要删除配件名称「${n.name}」吗？`} 删除动作={删除配件名称} 按钮样式="text-sm text-red-600 hover:text-red-700 font-medium" />
                     </div>
                   </td>
                 </tr>

@@ -4,8 +4,8 @@ import {useState, useMemo} from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
-import { DeleteButton } from "./DeleteButton";
-import { 新建服务分类, 保存服务分类排序 } from "./actions";
+import { DeleteButton } from "@/components/DeleteButton";
+import { 新建服务分类, 保存服务分类排序, 删除服务分类 } from "./actions";
 import { toast } from "@/lib/globalToast";
 
 interface 维修分类 {
@@ -395,7 +395,7 @@ export default function ServiceCategoriesContent({ initialCategories }: { initia
                       >
                         编辑
                       </Link>
-                      <DeleteButton id={c.id} name={c.name} />
+                      <DeleteButton id={c.id} 确认文案={`确定要删除分类「${c.name}」吗？`} 删除动作={删除服务分类} 按钮样式="text-xs text-red-600 hover:text-red-700" />
                     </div>
                   </td>
                 </tr>

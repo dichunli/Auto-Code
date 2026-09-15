@@ -3,8 +3,8 @@
 import {useState, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
-import { DeleteButton } from "./DeleteButton";
-import { 新建标签, 更新标签 } from "./actions";
+import { DeleteButton } from "@/components/DeleteButton";
+import { 新建标签, 更新标签, 删除标签 } from "./actions";
 import { toast } from "@/lib/globalToast";
 
 const PRESET_COLORS = [
@@ -265,7 +265,7 @@ export default function TagsContent({ initialTags }: { initialTags: Tag[] }) {
                           >
                             编辑
                           </button>
-                          <DeleteButton id={tag.id} name={tag.name} />
+                          <DeleteButton id={tag.id} 确认文案={`确定要删除标签「${tag.name}」吗？`} 删除动作={删除标签} 按钮样式="text-xs text-red-600 hover:text-red-700" />
                         </div>
                       </td>
                     </>
