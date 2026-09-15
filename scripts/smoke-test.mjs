@@ -59,6 +59,10 @@ function 记录(步骤, 通过, 详情 = "") {
 
 const 页面错误 = [];
 const 控制台错误 = [];
+/* 4xx/5xx 请求记录（带 URL）：console 的 "Failed to load resource" 不含地址，
+   之前出过"只见 403 不知哪个请求"的盲区，这里从 response 事件补齐 */
+const 异常请求 = [];
+const 异常响应体 = new Map(); /* url → 响应体前300字（定位 4xx 根因用） */
 
 /* 测试客户资料：随机虚拟手机号，避免撞唯一约束 */
 const 测试手机号 = "199" + String(Math.floor(Math.random() * 100000000)).padStart(8, "0");
@@ -82,6 +86,14 @@ page.setDefaultTimeout(30000);
 page.on("pageerror", (err) => 页面错误.push(String(err)));
 page.on("console", (msg) => {
   if (msg.type() === "error") 控制台错误.push(msg.text());
+});
+page.on("response", (res) => {
+  const 状态 = res.status();
+  if (状态 >= 400) {
+    异常请求.push(`${状态} ${res.request().method()} ${res.url()}`);
+    /* 顺手抓响应体（后台异步，失败无碍） */
+    res.text().then((t) => 异常响应体.set(res.url(), (t || "").slice(0, 300))).catch(() => {});
+  }
 });
 
 let 全部通过 = true;
@@ -201,6 +213,13 @@ if (页面错误.length > 0) {
 if (控制台错误.length > 0) {
   console.log("\n⚠️ 浏览器 console 错误（仅提示，不计失败）:");
   [...new Set(控制台错误)].slice(0, 5).forEach((e) => console.log("   " + e));
+}
+if (异常请求.length > 0) {
+  console.log("\n⚠️ 4xx/5xx 请求清单（仅提示，不计失败）:");
+  [...new Set(异常请求)].slice(0, 10).forEach((e) => console.log("   " + e));
+  for (const [url, body] of 异常响应体) {
+    console.log(`   ─ 响应体(${url.slice(0, 80)}): ${body.replace(/\s+/g, " ").slice(0, 200)}`);
+  }
 }
 
 console.log(`\n${全部通过 ? "✅ 冒烟测试全部通过" : "❌ 冒烟测试存在失败项"}`);

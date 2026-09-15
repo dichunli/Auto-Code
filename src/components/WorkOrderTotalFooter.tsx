@@ -27,12 +27,16 @@ export default function WorkOrderTotalFooter({ items, parts, advancePaymentTotal
   const [partsState, setPartsState] = useState<PartLite[]>(parts);
   const [itemsState, setItemsState] = useState<ItemLite[]>(items);
 
+  /* 内容指纹：只在 props 内容变化时覆盖本地状态（本地有事件驱动的实时更新，
+   * 父组件重渲染但内容没变时不覆盖）；effect 内从指纹还原，避免依赖数组引用 props 本身 */
+  const parts指纹 = JSON.stringify(parts);
+  const items指纹 = JSON.stringify(items);
   useEffect(() => {
-    setPartsState(parts);
-  }, [JSON.stringify(parts)]);
+    setPartsState(JSON.parse(parts指纹) as PartLite[]);
+  }, [parts指纹]);
   useEffect(() => {
-    setItemsState(items);
-  }, [JSON.stringify(items)]);
+    setItemsState(JSON.parse(items指纹) as ItemLite[]);
+  }, [items指纹]);
 
   // 监听项目修改（编辑项目弹窗改单价/数量后广播），同步重算合计
   useEffect(() => {

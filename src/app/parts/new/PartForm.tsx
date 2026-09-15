@@ -1,6 +1,6 @@
 "use client";
 
-import {useState, useEffect, useMemo} from "react";
+import {useState, useEffect, useMemo, useRef} from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -194,12 +194,18 @@ export default function PartForm({
   }, [onDraftChange, partNumber, selectedPartName, form.name, selectedBrand, brandQuery, selectedSpecs, specQuery, form.purchase_price, form.reference_purchase_price, form.unit_price, docNameQuery]);
 
   // Keyboard shortcuts
+  /* handleSubmit 最新引用：它的闭包涉及 20+ 个表单状态，直接进依赖会让
+   * 快捷键监听每次输入都重挂；用 ref 调保证 Ctrl+S 永远调最新一版 */
+  const handleSubmitRef = useRef(handleSubmit);
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit;
+  });
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       // Ctrl+S / Cmd+S — 保存
       if ((e.ctrlKey || e.metaKey) && e.key === "s" && !e.shiftKey) {
         e.preventDefault();
-        handleSubmit();
+        handleSubmitRef.current();
         return;
       }
       // Ctrl+Shift+D — 复制新建
@@ -224,7 +230,7 @@ export default function PartForm({
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [handleSubmit, isEditMode, editId, searchParams, router]);
+  }, [isEditMode, editId, searchParams, router, onCancel]);
 
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();

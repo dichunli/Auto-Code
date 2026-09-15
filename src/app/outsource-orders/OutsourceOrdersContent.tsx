@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
@@ -57,7 +57,7 @@ export default function OutsourceOrdersContent({ initialOrders, initialCount }: 
   const debouncedQuery = useDebounce(query, 300);
   const mounted = useRef(false);
 
-  async function loadOrders(search: string, status: string, 目标页: number) {
+  const loadOrders = useCallback(async (search: string, status: string, 目标页: number) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     setLoading(true);
@@ -93,7 +93,7 @@ export default function OutsourceOrdersContent({ initialOrders, initialCount }: 
     setTotal(count || 0);
     setPage(目标页);
     setLoading(false);
-  }
+  }, [supabase]);
 
   // 支付状态/搜索词变化时重新拉取（跳过首次挂载），回到第 1 页
   useEffect(() => {
@@ -102,7 +102,7 @@ export default function OutsourceOrdersContent({ initialOrders, initialCount }: 
       return;
     }
     loadOrders(debouncedQuery, paymentStatus, 1);
-  }, [debouncedQuery, paymentStatus]);
+  }, [debouncedQuery, paymentStatus, loadOrders]);
 
   /* 分页后拿不到全量数据，合计口径为当前页 */
   const totalAmount = useMemo(() => {

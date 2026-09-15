@@ -21,9 +21,12 @@ export default function SortableList({ ids, tableName, extraIdMap, children }: P
    * 之前整行 draggable，在备注/价格等输入框上按鼠标移动也会误拖整行 */
   const [按住手柄的行id, set按住手柄的行id] = useState<string | null>(null);
 
+  /* 内容指纹：只在 ids 内容变化时覆盖本地排序（拖拽排序中父组件重渲染不冲掉本地顺序）；
+   * effect 内从指纹还原，避免依赖数组引用 ids 本身 */
+  const ids指纹 = JSON.stringify(ids);
   useEffect(() => {
-    setOrderedIds(ids);
-  }, [JSON.stringify(ids)]);
+    setOrderedIds(JSON.parse(ids指纹) as string[]);
+  }, [ids指纹]);
 
   const childArray = Children.toArray(children);
 

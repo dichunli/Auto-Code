@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { 工单标签存储键, 读本地工单标签 } from "@/lib/orderTabs";
@@ -18,7 +18,8 @@ export function WorkOrderTabBar({ tabs: tabsProp }: WorkOrderTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
 
-  const urlTabs = tabsProp?.split(",").filter(Boolean) || [];
+  /* useMemo 固定引用：tabsProp 不变时 urlTabs 引用不变，下游 effect 不会每次渲染重跑 */
+  const urlTabs = useMemo(() => tabsProp?.split(",").filter(Boolean) || [], [tabsProp]);
 
   const activeId =
     pathname.startsWith("/work-orders/") && pathname !== "/work-orders"
@@ -80,7 +81,7 @@ export function WorkOrderTabBar({ tabs: tabsProp }: WorkOrderTabBarProps) {
           return next;
         });
       });
-  }, [tabs.join(",")]);
+  }, [tabs]);
 
   const handleTabClick = useCallback(
     (tabId: string | null) => {

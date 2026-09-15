@@ -1,6 +1,6 @@
 "use client";
 
-import {useState, useEffect, useMemo, useRef} from "react";
+import {useState, useEffect, useMemo, useRef, useCallback} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
@@ -46,7 +46,7 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
   const [pnQuery, setPnQuery] = useState("");
   const [linkedNames, setLinkedNames] = useState<{ id: string; name: string; category_name?: string | null }[]>([]);
 
-  async function loadBrands(search?: string) {
+  const loadBrands = useCallback(async (search?: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     setSearching(!!search);
@@ -60,12 +60,12 @@ export default function PartBrandsContent({ initialBrands }: { initialBrands: Pa
     const { data } = await q;
     setBrands(data || []);
     setSearching(false);
-  }
+  }, [supabase]);
 
   useEffect(() => {
     if (跳过首次查询.current) { 跳过首次查询.current = false; return; }
     loadBrands(debouncedQuery);
-  }, [debouncedQuery]);
+  }, [debouncedQuery, loadBrands]);
 
   /* 配件名称联想查询（查询条件与原防抖块一致，仅换成 SearchDropdown 的 searchFn） */
   async function 搜索配件名称(q: string): Promise<PartName[]> {

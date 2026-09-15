@@ -12,6 +12,21 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      # 数据库集成测试用：pgvector 镜像（迁移里有 CREATE EXTENSION vector，官方 postgres 镜像没有）
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -23,7 +38,10 @@ jobs:
           cache: npm
 
       - name: 安装依赖
-        run: npm ci
+        # --ignore-scripts：ffmpeg-static 的 postinstall 要从 GitHub releases 下载二进制，
+        # 经常 504 拖垮整个 CI；CI 只做 lint/测试/构建，不跑视频转码，不需要这个二进制。
+        # （require("ffmpeg-static") 只是读个路径字符串，不检查二进制存在，构建不受影响）
+        run: npm ci --ignore-scripts
 
       - name: ESLint 检查
         run: npm run lint
@@ -33,6 +51,16 @@ jobs:
 
       - name: 单元测试
         run: npm run test:unit
+
+      - name: 重建数据库结构（垫片 → schema.sql → 全部迁移）
+        run: bash scripts/ci-db-setup.sh
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      - name: 数据库集成测试（库存/结算等核心 RPC）
+        run: npm run test:db
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
       - name: 构建
         run: npm run build

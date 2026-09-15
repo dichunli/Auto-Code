@@ -1,10 +1,41 @@
+/* ============================================================
+ * 车型信息 Excel 导入脚本（一次性工具）
+ * 把《车型信息.xlsx》导入 vehicle_models 表。
+ *
+ * 用法：node scripts/import-vehicle-models.js [Excel文件路径]
+ *   Excel 路径缺省为当前目录下的"车型信息.xlsx"
+ *   密钥自动读项目根目录 .env.local（也可提前用环境变量注入）
+ * ============================================================ */
 const xlsx = require('xlsx');
 const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
+const path = require('path');
 
-const SUPABASE_URL = 'https://eyyhcdoftwhhpexteuvz.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV5eWhjZG9mdHdoaHBleHRldXZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MzYwNDEsImV4cCI6MjA5MzIxMjA0MX0.tbFfZs1tg2NRX7i0X8qNsB97zdOm84PGSaJMhuwZzkI';
+/* 自动加载项目根目录的 .env.local（与 backup-export.js 同一模式） */
+(function 加载本地环境变量() {
+  const envPath = path.join(__dirname, '..', '.env.local');
+  if (!fs.existsSync(envPath)) return;
+  for (const 行 of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const 匹配 = 行.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!匹配) continue;
+    const [, 名, 原始值] = 匹配;
+    if (process.env[名]) continue; /* 已注入的不覆盖 */
+    process.env[名] = 原始值.replace(/^["']|["']$/g, '');
+  }
+})();
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error('缺少 NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY，请检查项目根目录 .env.local');
+  process.exit(1);
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* Excel 路径：命令行第一个参数，缺省取当前目录下的"车型信息.xlsx" */
+const EXCEL_PATH = process.argv[2] || path.join(process.cwd(), '车型信息.xlsx');
 
 // Excel日期序列号转ISO日期字符串 (Excel基准日1899-12-30)
 function excelDateToISO(excelDate) {
@@ -14,7 +45,12 @@ function excelDateToISO(excelDate) {
 }
 
 async function importVehicleModels() {
-  const wb = xlsx.readFile('E:/auto code/auto-repair-shop/车型信息.xlsx');
+  if (!fs.existsSync(EXCEL_PATH)) {
+    console.error(`找不到 Excel 文件：${EXCEL_PATH}`);
+    console.error('用法：node scripts/import-vehicle-models.js [Excel文件路径]');
+    process.exit(1);
+  }
+  const wb = xlsx.readFile(EXCEL_PATH);
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = xlsx.utils.sheet_to_json(ws, { header: 1 });
 

@@ -74,7 +74,14 @@ export default function ProfilePage() {
         .single();
 
       if (data) {
-        const typed = data as unknown as 用户资料;
+        /* 敏感字段（身份证号）从 profile_privates 补读（2026-09-14 起从 profiles 拆出，本人可读） */
+        const { data: 敏感信息 } = await supabase
+          .from("profile_privates")
+          .select("id_card")
+          .eq("profile_id", user.id)
+          .maybeSingle();
+
+        const typed = { ...(data as unknown as 用户资料), id_card: 敏感信息?.id_card ?? null } as 用户资料;
         setProfile(typed);
         setFullName(typed.full_name || "");
         setPhone(typed.phone || "");

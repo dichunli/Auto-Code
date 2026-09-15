@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useConfirm } from "./ConfirmDialog";
 import { 合并配件 } from "@/app/parts/actions";
@@ -40,7 +40,7 @@ export default function PartMergeDialog({ open, selectedItems, onClose, onSucces
     }
   }, [targetId, selectedItems]);
 
-  async function checkConflicts() {
+  const checkConflicts = useCallback(async () => {
     const target = selectedItems.find((i) => i.id === targetId);
     if (!target) return;
     const sourceIds = selectedItems.filter((i) => i.id !== targetId).map((i) => i.id);
@@ -72,13 +72,13 @@ export default function PartMergeDialog({ open, selectedItems, onClose, onSucces
     } else {
       setConflictInfo("");
     }
-  }
+  }, [selectedItems, targetId, supabase]);
 
   useEffect(() => {
     if (open && targetId) {
       checkConflicts();
     }
-  }, [open, targetId]);
+  }, [open, targetId, checkConflicts]);
 
   async function handleMerge() {
     if (!targetId) {

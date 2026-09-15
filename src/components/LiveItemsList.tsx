@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import NewItemRow from "./NewItemRow";
 import type { SupplierLite, LogisticsLite } from "./ItemPartGroup";
 
@@ -93,9 +93,15 @@ export default function LiveItemsList({
 
   // 整页刷新后：新项目已进服务端数据，从追加列表移除（去重防重复显示）
   const 已有IDs拼串 = 已有项目IDs.join(",");
+  /* 已有项目IDs 最新引用：父组件每次渲染都可能新建数组，直接进依赖会让本 effect
+     每次渲染都跑（filter 必返新数组有循环风险），故保持"拼串变化才触发"的原时机 */
+  const 已有项目IDsRef = useRef(已有项目IDs);
   useEffect(() => {
-    设置追加项目((prev) => prev.filter((p) => !已有项目IDs.includes(p.id)));
-     
+    已有项目IDsRef.current = 已有项目IDs;
+  }, [已有项目IDs]);
+  useEffect(() => {
+    设置追加项目((prev) => prev.filter((p) => !已有项目IDsRef.current.includes(p.id)));
+
   }, [已有IDs拼串]);
 
   if (追加项目.length === 0) return <>{emptyFallback}</>;

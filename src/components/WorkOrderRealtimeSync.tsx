@@ -20,6 +20,9 @@ export function WorkOrderRealtimeSync({ orderId, itemIds = [], partIds = [] }: P
   const supabase = createClient();
   const router = useRouter();
   const [有更新, set有更新] = useState(false);
+  /* id 数组转字符串 key：effect 依赖用它（原始值），避免数组引用每次渲染都变导致频道反复重建 */
+  const itemIdsKey = itemIds.join(",");
+  const partIdsKey = partIds.join(",");
 
   useEffect(() => {
     if (!orderId) return;
@@ -85,13 +88,13 @@ export function WorkOrderRealtimeSync({ orderId, itemIds = [], partIds = [] }: P
       channel.on("postgres_changes", { event: "*", schema: "public", table: "payments", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
       channel.on("postgres_changes", { event: "*", schema: "public", table: "quality_checks", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
       channel.on("postgres_changes", { event: "*", schema: "public", table: "advance_payment_records", filter: `work_order_id=eq.${orderId}` }, onOtherChange);
-      if (itemIds.length > 0) {
-        const itemFilter = `work_order_item_id=in.(${itemIds.join(",")})`;
+      if (itemIdsKey) {
+        const itemFilter = `work_order_item_id=in.(${itemIdsKey})`;
         channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_item_parts", filter: itemFilter }, onPartChange);
         channel.on("postgres_changes", { event: "*", schema: "public", table: "work_order_item_mechanics", filter: itemFilter }, onOtherChange);
       }
-      if (partIds.length > 0) {
-        const partFilter = `work_order_item_part_id=in.(${partIds.join(",")})`;
+      if (partIdsKey) {
+        const partFilter = `work_order_item_part_id=in.(${partIdsKey})`;
         channel.on("postgres_changes", { event: "*", schema: "public", table: "part_picking_records", filter: partFilter }, onOtherChange);
         channel.on("postgres_changes", { event: "*", schema: "public", table: "part_return_records", filter: partFilter }, onOtherChange);
         channel.on("postgres_changes", { event: "*", schema: "public", table: "supplier_return_records", filter: partFilter }, onOtherChange);
@@ -106,7 +109,7 @@ export function WorkOrderRealtimeSync({ orderId, itemIds = [], partIds = [] }: P
       if (channel) supabase.removeChannel(channel);
     };
      
-  }, [supabase, router, orderId, itemIds.join(","), partIds.join(",")]);
+  }, [supabase, router, orderId, itemIdsKey, partIdsKey]);
 
   if (!有更新) return null;
 

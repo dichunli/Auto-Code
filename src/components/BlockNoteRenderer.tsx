@@ -566,15 +566,49 @@ function ImagePreview({ images, initialIndex, onClose }: { images: 预览图片[
   const 有上一张 = index > 0;
   const 有下一张 = index < images.length - 1;
 
+  /* 取图片中心坐标（缩放定位用）。useCallback 固定引用：下方键盘监听 effect 间接依赖 */
+  const getImageCenter = useCallback((): { x: number; y: number } | null => {
+    if (!imgRef.current) return null;
+    const rect = imgRef.current.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }, []);
+
+  const zoomTo = useCallback((newScale: number, centerX: number, centerY: number) => {
+    const clamped = Math.min(Math.max(newScale, 0.5), 5);
+    if (clamped === scale) return;
+    const center = getImageCenter();
+    if (!center) {
+      setScale(clamped);
+      return;
+    }
+    const ratio = clamped / scale;
+    const newX = position.x - (centerX - center.x) * (ratio - 1);
+    const newY = position.y - (centerY - center.y) * (ratio - 1);
+    setScale(clamped);
+    setPosition({ x: newX, y: newY });
+  }, [scale, position, getImageCenter]);
+
+  const handleZoomIn = useCallback(() => {
+    if (!imgRef.current) return;
+    const rect = imgRef.current.getBoundingClientRect();
+    zoomTo(scale * 1.25, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }, [zoomTo, scale]);
+
+  const handleZoomOut = useCallback(() => {
+    if (!imgRef.current) return;
+    const rect = imgRef.current.getBoundingClientRect();
+    zoomTo(scale * 0.8, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }, [zoomTo, scale]);
+
   /* 切换到指定序号的图片，越界不动作（不循环），切换后恢复原始大小和位置 */
-  function 切换图片(newIndex: number) {
+  const 切换图片 = useCallback((newIndex: number) => {
     if (newIndex < 0 || newIndex >= images.length) return;
     setIndex(newIndex);
     setScale(1);
     setPosition({ x: 0, y: 0 });
     setIsDragging(false);
     pinchStartRef.current = null;
-  }
+  }, [images.length]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -591,40 +625,7 @@ function ImagePreview({ images, initialIndex, onClose }: { images: 预览图片[
       document.removeEventListener("keydown", handleKey);
       document.body.style.overflow = "";
     };
-  }, [onClose, scale, position, index]);
-
-  function getImageCenter(): { x: number; y: number } | null {
-    if (!imgRef.current) return null;
-    const rect = imgRef.current.getBoundingClientRect();
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-  }
-
-  function zoomTo(newScale: number, centerX: number, centerY: number) {
-    const clamped = Math.min(Math.max(newScale, 0.5), 5);
-    if (clamped === scale) return;
-    const center = getImageCenter();
-    if (!center) {
-      setScale(clamped);
-      return;
-    }
-    const ratio = clamped / scale;
-    const newX = position.x - (centerX - center.x) * (ratio - 1);
-    const newY = position.y - (centerY - center.y) * (ratio - 1);
-    setScale(clamped);
-    setPosition({ x: newX, y: newY });
-  }
-
-  function handleZoomIn() {
-    if (!imgRef.current) return;
-    const rect = imgRef.current.getBoundingClientRect();
-    zoomTo(scale * 1.25, rect.left + rect.width / 2, rect.top + rect.height / 2);
-  }
-
-  function handleZoomOut() {
-    if (!imgRef.current) return;
-    const rect = imgRef.current.getBoundingClientRect();
-    zoomTo(scale * 0.8, rect.left + rect.width / 2, rect.top + rect.height / 2);
-  }
+  }, [onClose, scale, position, index, handleZoomIn, handleZoomOut, 切换图片]);
 
   function handleReset() {
     setScale(1);

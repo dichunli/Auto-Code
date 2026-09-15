@@ -103,7 +103,7 @@ export function SearchDropdown<T>({
 
   useEffect(() => {
     doSearch(debouncedQuery);
-  }, [debouncedQuery]);
+  }, [debouncedQuery, doSearch]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!open) {

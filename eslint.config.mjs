@@ -9,9 +9,9 @@ const eslintConfig = defineConfig([
     rules: {
       // React 19 实验性规则过于严格，对 useEffect 中加载数据的常见模式误报
       // 项目中统一使用 useEffect + async fetch + setState 的数据加载模式，关闭避免误报
-      // exhaustive-deps 2026-09-13 从 off 改 warn（诊断发现 35 处依赖缺失，
-      // 其中 APP 照片恢复逻辑失效就是关闭此规则才没被发现；逐个修完后改回 error）
-      "react-hooks/exhaustive-deps": "warn",
+      // exhaustive-deps 2026-09-15 已锁回 error：77 处依赖缺失全部修完（诊断发现
+      // 的 APP 照片恢复失效即缺依赖所致；此后新增缺失直接报错，防同类失效再溜进来）
+      "react-hooks/exhaustive-deps": "error",
       "react-hooks/set-state-in-effect": "off",
       // Next.js Image 组件优化建议，项目中统一使用 <img> + Tailwind 控制尺寸
       "@next/next/no-img-element": "off",

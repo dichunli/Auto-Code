@@ -8,6 +8,7 @@ import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL 
 import { useConfirm } from "./ConfirmDialog";
 import { toast } from "@/lib/globalToast";
 import { 全局提示 } from "@/components/GlobalDialogs";
+import { 视频最大MB } from "@/lib/uploadLimits";
 
 interface Props {
   onUpload: (paths: string[]) => void;
@@ -26,7 +27,7 @@ export function VideoUploader({
   onDelete,
   existingVideos = [],
   maxVideos = 3,
-  maxFileSizeMB = 4096,
+  maxFileSizeMB = 视频最大MB,
   maxDurationSeconds = 0,
   timeoutMs = 600000,
   folder,

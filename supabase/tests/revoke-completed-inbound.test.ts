@@ -97,11 +97,15 @@ async function callRevokeReturns(recordIds: string[]) {
   return res.rows[0].result as { success: boolean; error?: string };
 }
 
-/* 造一个配件（含 part_names） */
+/* 造一个配件（含 part_names；part_names.category_id 为 NOT NULL FK，先造分类） */
 async function createPart(suffix: string, 初始库存: number, 采购价 = 10) {
+  const catRes = await query(
+    `INSERT INTO part_categories (name) VALUES ($1) RETURNING id`,
+    [`${PFX}分类${suffix}`]
+  );
   const pnRes = await query(
-    `INSERT INTO part_names (name) VALUES ($1) RETURNING id`,
-    [`${PFX}配件名${suffix}`]
+    `INSERT INTO part_names (category_id, name) VALUES ($1, $2) RETURNING id`,
+    [catRes.rows[0].id, `${PFX}配件名${suffix}`]
   );
   const partNameId = pnRes.rows[0].id;
   const pRes = await query(
@@ -194,9 +198,10 @@ async function cleanupAll() {
   await query(`DELETE FROM inbound_orders WHERE supplier_name LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM part_batches WHERE part_id IN (SELECT id FROM parts WHERE part_number LIKE $1)`, [`${PFX}%`]);
   await query(`DELETE FROM part_stock_locations WHERE part_id IN (SELECT id FROM parts WHERE part_number LIKE $1)`, [`${PFX}%`]);
-  await query(`DELETE FROM purchase_order_items WHERE part_number LIKE $1`, [`${PFX}%`]);
+  /* purchase_orders 必须先于 purchase_order_items 删：它的反查子查询依赖明细行还在 */
   await query(`DELETE FROM purchase_orders WHERE id IN (SELECT order_id FROM purchase_order_items WHERE part_number LIKE $1)`, [`${PFX}%`]);
   await query(`DELETE FROM purchase_orders WHERE order_no LIKE $1`, [`${PFX}%`]);
+  await query(`DELETE FROM purchase_order_items WHERE part_number LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM work_order_item_parts WHERE part_number LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM work_order_items WHERE work_order_id IN (SELECT id FROM work_orders WHERE order_no LIKE $1)`, [`${PFX}%`]);
   await query(`DELETE FROM work_orders WHERE order_no LIKE $1`, [`${PFX}%`]);
@@ -204,6 +209,7 @@ async function cleanupAll() {
   await query(`DELETE FROM customers WHERE name LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
+  await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM suppliers WHERE name LIKE $1`, [`${PFX}%`]);
 }
 
@@ -294,13 +300,15 @@ describe("revoke_completed_inbound / revoke_supplier_returns - 数据库集成�
     expect((await query(`SELECT COUNT(*) c FROM part_batches WHERE reference_id = $1 AND inbound_type = 'purchase'`, [h.purchaseOrderId])).rows[0].c).toBe("0");
     expect((await query(`SELECT COUNT(*) c FROM supplier_transactions WHERE reference_id = $1`, [inb.inbound_order_id])).rows[0].c).toBe("0");
 
-    /* 待退货记录删除、明细清空、采购单回 submitted、到货标记回退 */
-    expect((await query(`SELECT COUNT(*) c FROM supplier_return_records WHERE work_order_item_part_id = ANY($1)`, [h.branchIds])).rows[0].c).toBe("0");
-    const poi = await query(`SELECT handle_action, received_qty FROM purchase_order_items WHERE order_id = $1`, [h.purchaseOrderId]);
-    expect(poi.rows.every((r) => r.handle_action === null && r.received_qty === null)).toBe(true);
-    expect((await query(`SELECT status FROM purchase_orders WHERE id = $1`, [h.purchaseOrderId])).rows[0].status).toBe("submitted");
-    expect(await 到货标记(h.branchIds[0])).toBe(false);
-    expect(await 到货标记(h.branchIds[1])).toBe(false);
+    /* 2026-09-13 新语义（migrations_20260913_a_revoke_inbound_to_storage）：撤销入库只倒退一步到「待入库」，
+       收货结果全部保留——待退货记录保留、handle_action/received_qty 不清、采购单回 pending_storage、到货标记保留 */
+    expect((await query(`SELECT COUNT(*) c FROM supplier_return_records WHERE work_order_item_part_id = ANY($1)`, [h.branchIds])).rows[0].c).toBe("1");
+    const poi = await query(`SELECT handle_action, received_qty FROM purchase_order_items WHERE order_id = $1 ORDER BY part_number`, [h.purchaseOrderId]);
+    expect(poi.rows.map((r) => r.handle_action)).toEqual(["normal", "broken_exchange"]);
+    expect(poi.rows.map((r) => r.received_qty)).toEqual([5, 3]);
+    expect((await query(`SELECT status FROM purchase_orders WHERE id = $1`, [h.purchaseOrderId])).rows[0].status).toBe("pending_storage");
+    expect(await 到货标记(h.branchIds[0])).toBe(true);
+    expect(await 到货标记(h.branchIds[1])).toBe(true);
 
     await cleanupAll();
   });

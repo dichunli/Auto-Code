@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef, Fragment } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback, Fragment } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { requestNotificationPermission, sendBrowserNotification } from "@/lib/notification";
+import { 行符合采购阶段, 计算供应商得分, 供应商匹配原因, 配件分组键 } from "@/lib/procurementRules";
 import { PartBranchImages } from "./PartBranchImages";
 import { 压缩图片 } from "@/lib/imageCompress";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
@@ -19,6 +20,10 @@ import { 添加配件图片记录, 分支关联配件并同步采购, 撤销分�
 import { 更新列表项, 移除列表项 } from "@/lib/listUpdate";
 import { toast } from "@/lib/globalToast";
 import { 全局提示 } from "@/components/GlobalDialogs";
+import { Pagination } from "./Pagination";
+
+/* 分页大小（与待收货列表一致） */
+const 每页条数 = 20;
 
 const STATUS_TITLES: Record<string, string> = {
   pending_inquiry: "待询价",
@@ -125,6 +130,8 @@ export interface Supplier {
 interface Props {
   status: "pending_inquiry" | "pending_quote" | "pending_confirm";
   initialRows?: PartBranchRow[];
+  /* 服务端首屏当前阶段的总条数（两阶段分页的 count），有 initialRows 时必传 */
+  initialTotalCount?: number;
   initialSuppliers?: Supplier[];
   initialPartMediaMap?: Record<string, { id: string; storage_path: string }[]>;
   initialVehicleModelsMap?: Record<string, { 厂商?: string; 品牌?: string; 车系?: string }>;
@@ -147,6 +154,7 @@ function 记录转映射集(记录?: Record<string, string[]>): Map<string, Set<
 export function PartBranchStatusList({
   status,
   initialRows,
+  initialTotalCount,
   initialSuppliers,
   initialPartMediaMap,
   initialVehicleModelsMap,
@@ -162,6 +170,10 @@ export function PartBranchStatusList({
   const [rows, setRows] = useState<PartBranchRow[]>(initialRows ?? []);
   const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers ?? []);
   const [loading, setLoading] = useState(!initialRows);
+  /* 分页（2026-09-15）：两阶段数据库分页——阶段1 按当前阶段谓词下推取合格 id，
+     阶段2 主表 count+range 取当前页；页签切换靠 key={status} 重挂载，天然回第 1 页 */
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(initialTotalCount ?? 0);
   const [edits, setEdits] = useState<Record<string, Partial<Record<EditableField, string>>>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -239,46 +251,35 @@ export function PartBranchStatusList({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [批量供应商弹层开]);
 
-  useEffect(() => {
-    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取（tab 切换靠 key 重挂载，这里不会重复进） */
-    if (initialRows) return;
-    loadData();
+  /* 该行是否属于当前阶段页：谓词已收敛到 @/lib/procurementRules（全站唯一口径） */
+  const 行符合本阶段 = useCallback((r: PartBranchRow): boolean => 行符合采购阶段(r, status), [status]);
 
-  }, [status]);
-
-  /* Supabase Realtime 订阅 */
-  useEffect(() => {
-    requestNotificationPermission();
-
-    const channel = supabase
-      .channel("work_order_item_parts_changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_item_parts" },
-        () => {
-          /* 2 秒内自己刚操作过，跳过刷新避免重复 */
-          if (Date.now() - lastSelfUpdate.current < 2000) return;
-          loadData();
-          /* 5 秒内只通知一次，避免刷屏 */
-          if (Date.now() - lastNotifyTime.current > 5000) {
-            lastNotifyTime.current = Date.now();
-            const title = STATUS_TITLES[status] || "采购管理";
-            sendBrowserNotification(`${title} 状态更新`, "配件采购状态有变动，请查看最新情况");
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-     
-  }, [supabase]);
-
-  async function loadData() {
+  const loadData = useCallback(async (目标页 = 1) => {
     setLoading(true);
+    /* 阶段1：按当前阶段谓词下推，轻量取合格 id 集合（与内存谓词 行符合采购阶段 严格同口径）。
+       门禁：工单未结算 + 非作废/保养单 + 未采购 + 未到货（NULL 视为未采购/未到货）；
+       待询价=进价空或 ≤0；待报价=进价 >0 且销售价空或 ≤0；待确认=价齐且客户意见空或 pending。
+       （连续 .or() 在 PostgREST 里是 AND 关系，与 行可进采购流程 的逐项 return false 等价） */
+    let 阶段一查询 = supabase
+      .from("work_order_item_parts")
+      .select("id, work_order_items!inner(work_orders!inner(settled_at, order_type))")
+      .is("work_order_items.work_orders.settled_at", null)
+      .not("work_order_items.work_orders.order_type", "in", '("cancelled","maintenance")')
+      .or("is_purchased.is.null,is_purchased.eq.false")
+      .or("is_arrived.is.null,is_arrived.eq.false");
+    if (status === "pending_inquiry") {
+      阶段一查询 = 阶段一查询.or("unit_cost.is.null,unit_cost.lte.0");
+    } else if (status === "pending_quote") {
+      阶段一查询 = 阶段一查询.gt("unit_cost", 0).or("unit_price.is.null,unit_price.lte.0");
+    } else {
+      阶段一查询 = 阶段一查询
+        .gt("unit_cost", 0)
+        .gt("unit_price", 0)
+        .or("customer_opinion.is.null,customer_opinion.eq.pending");
+    }
+
     const [
-      { data: parts },
+      { data: idRows, error: idErr },
       { data: sups },
       { data: brandList },
       { data: specList },
@@ -286,11 +287,7 @@ export function PartBranchStatusList({
       { data: spc },
       { data: spb },
     ] = await Promise.all([
-      supabase
-        .from("work_order_item_parts")
-        .select(分支行查询字段)
-        .order("created_at", { ascending: true })
-        .limit(1000),
+      阶段一查询,
       supabase.from("suppliers").select("id, name, recommendation_level").order("name"),
       supabase.from("part_brands").select("id, name"),
       supabase.from("part_specifications").select("name"),
@@ -299,7 +296,34 @@ export function PartBranchStatusList({
       supabase.from("supplier_part_brands").select("supplier_id, part_brand_id"),
     ]);
 
-    const filtered = ((parts || []) as unknown as PartBranchRow[]).filter(行符合本阶段);
+    if (idErr) {
+      console.error("加载阶段配件 id 集合失败:", idErr);
+      setLoading(false);
+      return;
+    }
+    const 合格ids = [...new Set((idRows || []).map((r) => r.id as string))];
+
+    /* 阶段2：主表精确 count + range 取当前页（合格 id 为空时跳过，.in("id",[]) 会报错） */
+    let filtered: PartBranchRow[] = [];
+    if (合格ids.length > 0) {
+      const from = (目标页 - 1) * 每页条数;
+      const { data, count, error } = await supabase
+        .from("work_order_item_parts")
+        .select(分支行查询字段, { count: "exact" })
+        .in("id", 合格ids)
+        .order("created_at", { ascending: true })
+        .range(from, from + 每页条数 - 1);
+      if (error) {
+        console.error("加载阶段配件失败:", error);
+        setLoading(false);
+        return;
+      }
+      filtered = (data || []) as unknown as PartBranchRow[];
+      setTotalCount(count || 0);
+    } else {
+      setTotalCount(0);
+    }
+    setPage(目标页);
 
     /* 查询配件分支图片 */
     const partIds = (filtered || []).map((p) => p.id);
@@ -374,31 +398,43 @@ export function PartBranchStatusList({
     setSupplierBrandIds(spbMap);
 
     setLoading(false);
-  }
+  }, [supabase, status]);
 
-  /* 该行是否属于当前阶段页（2026-09-12 局部更新改造抽出）：
-     loadData 整表过滤与局部 patch 后重判共用——patch 后谓词不通过的行
-     自动离开当前 TAB（原来靠整表重查实现的"推进消失"）。
-     注意：必须放在 loadData 之后声明（useEffect 前置引用 loadData 的
-     函数提升分析会被中间插入的函数声明干扰，react-hooks 编译器规则报错） */
-  function 行符合本阶段(r: PartBranchRow): boolean {
-    const wo = r.work_order_items?.work_orders;
-    if (!wo) return false;
-    if (wo.settled_at) return false;
-    if (wo.order_type === "cancelled") return false;
-    /* 保养单不走询价/报价等采购流程（用户定的规则） */
-    if (wo.order_type === "maintenance") return false;
-    if (r.is_purchased || r.is_arrived) return false;
+  useEffect(() => {
+    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取（tab 切换靠 key 重挂载，这里不会重复进） */
+    if (initialRows) return;
+    loadData(1);
 
-    const cost = Number(r.unit_cost || 0);
-    const price = Number(r.unit_price || 0);
-    const opinion = r.customer_opinion || "pending";
+  }, [status, initialRows, loadData]);
 
-    if (status === "pending_inquiry") return cost <= 0;
-    if (status === "pending_quote") return cost > 0 && price <= 0;
-    if (status === "pending_confirm") return cost > 0 && price > 0 && opinion === "pending";
-    return false;
-  }
+  /* Supabase Realtime 订阅（page 进依赖：翻页时重订阅，回调里刷新的是当前页） */
+  useEffect(() => {
+    requestNotificationPermission();
+
+    const channel = supabase
+      .channel("work_order_item_parts_changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_order_item_parts" },
+        () => {
+          /* 2 秒内自己刚操作过，跳过刷新避免重复 */
+          if (Date.now() - lastSelfUpdate.current < 2000) return;
+          loadData(page);
+          /* 5 秒内只通知一次，避免刷屏 */
+          if (Date.now() - lastNotifyTime.current > 5000) {
+            lastNotifyTime.current = Date.now();
+            const title = STATUS_TITLES[status] || "采购管理";
+            sendBrowserNotification(`${title} 状态更新`, "配件采购状态有变动，请查看最新情况");
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+
+  }, [supabase, status, loadData, page]);
 
   /* 局部更新：只重查这一行（完整 select 与 loadData 同口径），
      查到后 replace；谓词不通过（已流转出本阶段）则从列表移除 */
@@ -408,15 +444,26 @@ export function PartBranchStatusList({
       .select(分支行查询字段)
       .eq("id", id)
       .single();
+    /* 不在当前页的行：filter/map 本就 no-op，count 更不能动（2026-09-15 分页口径） */
+    const 在列表 = rows.some((r) => r.id === id);
     if (!data) {
-      setRows((prev) => prev.filter((r) => r.id !== id));
+      if (在列表) {
+        setRows((prev) => prev.filter((r) => r.id !== id));
+        setTotalCount((c) => Math.max(0, c - 1));
+      }
       return;
     }
     const 新行 = data as unknown as PartBranchRow;
-    setRows((prev) => {
-      if (!行符合本阶段(新行)) return prev.filter((r) => r.id !== id);
-      return prev.map((r) => (r.id === id ? 新行 : r));
-    });
+    if (!行符合本阶段(新行)) {
+      if (在列表) {
+        setRows((prev) => prev.filter((r) => r.id !== id));
+        setTotalCount((c) => Math.max(0, c - 1));
+      }
+      return;
+    }
+    if (在列表) {
+      setRows((prev) => prev.map((r) => (r.id === id ? 新行 : r)));
+    }
   }
 
   /* 上传配件信息图片：压缩 → /api/upload → part_images 插行 → 局部追加图片 */
@@ -772,11 +819,12 @@ export function PartBranchStatusList({
       return;
     }
     /* 局部更新：撤销（清进价/清销售价）后这些行必然离开当前阶段，
-       直接从列表移除并清掉草稿，不整表重查 */
+       直接从列表移除并清掉草稿，不整表重查（总数只扣当前页里实际移除的行数） */
     const 撤销ids = new Set(selectedIds);
     setSelectedIds(new Set());
     lastSelfUpdate.current = Date.now();
     setRows((prev) => 移除列表项(prev, 撤销ids));
+    setTotalCount((c) => Math.max(0, c - rows.filter((r) => 撤销ids.has(r.id)).length));
     setEdits((prev) => {
       const next = { ...prev };
       for (const id of 撤销ids) delete next[id];
@@ -886,6 +934,11 @@ export function PartBranchStatusList({
        逐条 merge 进列表后按谓词重判——填齐进价+供应商的行离开待询价、
        选"同意"的行离开待确认等，自动实现"推进消失"，不整表重查 */
     const 更新Map = new Map(updates.map((u) => [u.id, u.data]));
+    /* 分页口径：提交后不再符合本阶段的行从当前页移除，总数同步扣减 */
+    const 移除数 = rows.filter((r) => {
+      const data = 更新Map.get(r.id);
+      return data ? !行符合本阶段({ ...r, ...data } as PartBranchRow) : false;
+    }).length;
     setRows((prev) =>
       prev
         .map((r) => {
@@ -894,6 +947,7 @@ export function PartBranchStatusList({
         })
         .filter(行符合本阶段)
     );
+    if (移除数 > 0) setTotalCount((c) => Math.max(0, c - 移除数));
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>, row: PartBranchRow, field: EditableField) {
@@ -962,7 +1016,7 @@ export function PartBranchStatusList({
     if (!结果.success) { toast("添加失败: " + (结果.error || "未知错误"), "error"); return; }
     lastSelfUpdate.current = Date.now();
     /* 局部更新：RPC 返回新分支 id，只补查这一行追加到列表末尾
-       （created_at 升序，新行天然在最后），不整表重查 */
+       （created_at 升序，新行天然在最后），不整表重查；追加进本页则总数 +1 */
     if (结果.id) {
       const { data: 新行数据 } = await supabase
         .from("work_order_item_parts")
@@ -971,7 +1025,10 @@ export function PartBranchStatusList({
         .single();
       if (新行数据) {
         const 新行 = 新行数据 as unknown as PartBranchRow;
-        if (行符合本阶段(新行)) setRows((prev) => [...prev, 新行]);
+        if (行符合本阶段(新行)) {
+          setRows((prev) => [...prev, 新行]);
+          setTotalCount((c) => c + 1);
+        }
       }
     }
   }
@@ -989,8 +1046,12 @@ export function PartBranchStatusList({
     setSavingId(null);
     if (!结果.success) { toast("删除失败: " + (结果.error || "未知错误"), "error"); return; }
     lastSelfUpdate.current = Date.now();
-    /* 局部更新：从列表移除该行并清掉它的草稿/勾选，不整表重查 */
-    setRows((prev) => prev.filter((r) => r.id !== row.id));
+    /* 局部更新：从列表移除该行并清掉它的草稿/勾选，不整表重查（总数同步 -1；
+       不在当前页的行 filter 本就 no-op，count 更不能动） */
+    if (rows.some((r) => r.id === row.id)) {
+      setRows((prev) => prev.filter((r) => r.id !== row.id));
+      setTotalCount((c) => Math.max(0, c - 1));
+    }
     setEdits((prev) => {
       const next = { ...prev };
       delete next[row.id];
@@ -1008,7 +1069,7 @@ export function PartBranchStatusList({
     });
   }
 
-  /* 按当前行配件信息给供应商排序 */
+  /* 按当前行配件信息给供应商排序（权重口径在 @/lib/procurementRules） */
   function getSortedSuppliers(row: PartBranchRow): Supplier[] {
     const partNameId = row.part_name_id ? String(row.part_name_id) : null;
     const categoryId = row.part_names?.category_id ? String(row.part_names.category_id) : null;
@@ -1016,14 +1077,12 @@ export function PartBranchStatusList({
     const brandId = currentBrand ? partBrandsMap.get(currentBrand) : null;
 
     return [...suppliers].sort((a, b) => {
-      const score = (s: Supplier) => {
-        let sc = 0;
-        sc += (s.recommendation_level || 0) * 10;
-        if (partNameId && supplierPartNameIds.get(s.id)?.has(partNameId)) sc += 500;
-        if (categoryId && supplierCategoryIds.get(s.id)?.has(categoryId)) sc += 200;
-        if (brandId && supplierBrandIds.get(s.id)?.has(brandId)) sc += 200;
-        return sc;
-      };
+      const score = (s: Supplier) => 计算供应商得分({
+        推荐等级: s.recommendation_level,
+        配件命中: !!(partNameId && supplierPartNameIds.get(s.id)?.has(partNameId)),
+        分类命中: !!(categoryId && supplierCategoryIds.get(s.id)?.has(categoryId)),
+        品牌命中: !!(brandId && supplierBrandIds.get(s.id)?.has(brandId)),
+      });
       const aScore = score(a);
       const bScore = score(b);
       if (bScore !== aScore) return bScore - aScore;
@@ -1031,9 +1090,8 @@ export function PartBranchStatusList({
     });
   }
 
-  /* 获取供应商匹配原因 */
-  function getSupplierMatchReasons(row: PartBranchRow, s: Supplier): string[] {
-    const reasons: string[] = [];
+  /* 获取供应商匹配原因（文案口径在 @/lib/procurementRules；命中判定按 ID 比对） */
+  const getSupplierMatchReasons = useCallback((row: PartBranchRow, s: Supplier): string[] => {
     const partNameId = row.part_name_id ? String(row.part_name_id) : null;
     const categoryId = row.part_names?.category_id ? String(row.part_names.category_id) : null;
     const currentBrand = edits[row.id]?.brand !== undefined ? edits[row.id]!.brand : row.brand;
@@ -1041,33 +1099,29 @@ export function PartBranchStatusList({
 
     /* 车型匹配 */
     const vehicleModelId = row.work_order_items?.work_orders?.vehicles?.vehicle_model_id;
+    let 车型描述 = "";
+    let 车型命中 = false;
     if (vehicleModelId) {
       const vm = vehicleModelsMap.get(String(vehicleModelId));
       const supplierVmIds = supplierVehicleMap.get(s.id);
       if (vm && supplierVmIds?.has(String(vehicleModelId))) {
+        车型命中 = true;
         const parts: string[] = [];
         if (vm.厂商) parts.push(vm.厂商);
         if (vm.品牌) parts.push(vm.品牌);
         if (vm.车系) parts.push(vm.车系);
-        reasons.push(`匹配车型${parts.length > 0 ? ":" + parts.join("-") : ""}`);
+        车型描述 = parts.join("-");
       }
     }
 
-    if (partNameId && supplierPartNameIds.get(s.id)?.has(partNameId)) reasons.push("匹配配件");
-    if (categoryId && supplierCategoryIds.get(s.id)?.has(categoryId)) reasons.push("匹配分类");
-    if (brandId && supplierBrandIds.get(s.id)?.has(brandId)) reasons.push("匹配品牌");
-    if (s.recommendation_level && s.recommendation_level > 0) reasons.push("⭐".repeat(s.recommendation_level));
-
-    return reasons;
-  }
-
-  function getGroupKey(row: PartBranchRow): string {
-    if (groupBy === "plate") return row.work_order_items?.work_orders?.vehicles?.plate_number || "(无车牌)";
-    if (groupBy === "category") return row.part_names?.part_categories?.name || "(未分类)";
-    if (groupBy === "name") return row.name || "(未命名)";
-    if (groupBy === "supplier") return row.supplier_name || "(未指定供应商)";
-    return "";
-  }
+    return 供应商匹配原因({
+      车型命中,
+      配件命中: !!(partNameId && supplierPartNameIds.get(s.id)?.has(partNameId)),
+      分类命中: !!(categoryId && supplierCategoryIds.get(s.id)?.has(categoryId)),
+      品牌命中: !!(brandId && supplierBrandIds.get(s.id)?.has(brandId)),
+      推荐等级: s.recommendation_level,
+    }, { 车型描述: 车型描述 || undefined, 带星级: true });
+  }, [edits, partBrandsMap, vehicleModelsMap, supplierVehicleMap, supplierPartNameIds, supplierCategoryIds, supplierBrandIds]);
 
   /* 批量选择 */
   function toggleSelect(id: string) {
@@ -1116,7 +1170,7 @@ export function PartBranchStatusList({
         (a.s.name || "").localeCompare(b.s.name || "", "zh-CN")
       );
 
-  }, [suppliers, rows, selectedIds, 批量供应商搜索]);
+  }, [suppliers, rows, selectedIds, 批量供应商搜索, getSupplierMatchReasons]);
 
   /* 待询价页：有行已选供应商但还没采购价时提示（规则：两者必须同时填写） */
   const 缺采购价行数 = useMemo(() => {
@@ -1132,19 +1186,19 @@ export function PartBranchStatusList({
     return n;
   }, [edits, rows, status]);
 
-  /* 按 groupBy 把 rows 分组,保持原排序;返回 [key, rows][] */
+  /* 按 groupBy 把 rows 分组,保持原排序;返回 [key, rows][]（分组键走 @/lib/procurementRules） */
   const groups = useMemo<Array<{ key: string; rows: PartBranchRow[] }>>(() => {
     if (groupBy === "none") return [{ key: "", rows }];
     const map = new Map<string, PartBranchRow[]>();
     for (const r of rows) {
-      const k = getGroupKey(r);
+      const k = 配件分组键(r, groupBy);
       if (!map.has(k)) map.set(k, []);
       map.get(k)!.push(r);
     }
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b, "zh"))
       .map(([key, rs]) => ({ key, rows: rs.sort((a, b) => (a.name || "").localeCompare(b.name || "", "zh")) }));
-     
+
   }, [rows, groupBy]);
 
   /* 待询价阶段不显示"销售价/客户意见"两列（用户拍板 2026-08-06：询价阶段只关心采购侧信息） */
@@ -1591,7 +1645,7 @@ export function PartBranchStatusList({
       <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between gap-4 flex-wrap">
         <h3 className="text-sm font-semibold text-gray-900">
           {STATUS_TITLES[status]}
-          <span className="ml-2 text-xs font-normal text-gray-500">共 {rows.length} 条</span>
+          <span className="ml-2 text-xs font-normal text-gray-500">共 {totalCount} 条</span>
         </h3>
         <div className="flex items-center gap-1">
           <span className="text-xs text-gray-500 mr-1">分组:</span>
@@ -1828,6 +1882,9 @@ export function PartBranchStatusList({
           </tbody>
         </table>
       </div>
+
+      {/* 翻页：下方弹窗都是 fixed 不占文档流，视觉上就在列表最底部 */}
+      <Pagination page={page} totalCount={totalCount} pageSize={每页条数} onChange={(p) => loadData(p)} />
 
       {/* 编辑配件弹窗 */}
       {editRow && (

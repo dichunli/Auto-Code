@@ -1,6 +1,6 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useRef, useMemo, useCallback} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
@@ -50,7 +50,7 @@ export default function SuppliersContent({ initialSuppliers, initialCount }: { i
   const mounted = useRef(false);
   const { 请求确认, 确认弹窗 } = useConfirm();
 
-  async function loadSuppliers(search: string | undefined, region: string, 目标页: number) {
+  const loadSuppliers = useCallback(async (search: string | undefined, region: string, 目标页: number) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     setLoading(true);
@@ -76,7 +76,14 @@ export default function SuppliersContent({ initialSuppliers, initialCount }: { i
       setPage(目标页);
     }
     setLoading(false);
-  }
+  }, [supabase]);
+
+  /* 搜索 effect 刷新时要带上最新地域筛选，但地域变化本身由上面的 effect 负责拉取；
+     用 ref 让搜索 effect 读到最新 regionFilter，而不把它列进依赖（否则地域一变会重复拉取两次） */
+  const regionFilterRef = useRef(regionFilter);
+  useEffect(() => {
+    regionFilterRef.current = regionFilter;
+  }, [regionFilter]);
 
   // 地域筛选变化时重新拉取（跳过首次挂载），回到第 1 页
   useEffect(() => {
@@ -85,7 +92,7 @@ export default function SuppliersContent({ initialSuppliers, initialCount }: { i
       return;
     }
     loadSuppliers(undefined, regionFilter, 1);
-  }, [regionFilter]);
+  }, [regionFilter, loadSuppliers]);
 
   // 搜索关键词变化时重新拉取（跳过首次挂载时 debouncedQuery 为空的情况），回到第 1 页
   const searchMounted = useRef(false);
@@ -94,8 +101,8 @@ export default function SuppliersContent({ initialSuppliers, initialCount }: { i
       searchMounted.current = true;
       return;
     }
-    loadSuppliers(debouncedQuery, regionFilter, 1);
-  }, [debouncedQuery]);
+    loadSuppliers(debouncedQuery, regionFilterRef.current, 1);
+  }, [debouncedQuery, loadSuppliers]);
 
   async function handleDelete(id: string, name: string, hasParts: boolean) {
     if (hasParts) {

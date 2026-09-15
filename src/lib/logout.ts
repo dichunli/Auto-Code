@@ -1,44 +1,26 @@
-/* 完整退出登录（2026-09-01）
+/* 完整退出登录（2026-09-01 立，2026-09-14 简化）
  *
- * 完整退出 = 本地清除 + 服务端作废 Token，两者配合（用户拍板口径）：
- *   1. 后台作废服务端 refresh_token（不阻塞）：网络正常时立即作废；
- *      代理/弱网挂起时无碍——本地已清、令牌到期自然失效
- *   2. 本地立即清除 session（不等网络，根治 logout 请求挂起导致退出按钮卡死）
+ * 一次 signOut 调用完成两件事（auth-js 内部顺序：先调 /logout 作废服务端
+ * 令牌，成功或令牌已失效（401/403/404）都继续清本地 session）：
  *
- * 用法：handleLogout 里 await 完整退出登录() 后照常跳转登录页。
+ *   - scope:'local' 只作废并清除【当前设备】的 session——店里多人共用
+ *     账号的场景不能用 global，否则会把手机 APP 等其他设备一起踢下线
+ *
+ * 历史教训（勿改回双通道）：
+ *   2026-09-01 版本是"手动 fetch /logout 后台作废 + signOut(local) 清本地"
+ *   双通道，误以为 scope:'local' 不联网。实际 auth-js 任何 scope 都会先调
+ *   /logout 接口再清本地——同一 token 被作废两次，后到的请求稳定 403
+ *   （浏览器 console 噪音，冒烟测试屡见）。手动 fetch 并不能防止弱网卡死
+ *   （await signOut 本身才是调用方等待的那个），纯属多余，已删除。
  */
 
 import { createClient } from "@/lib/supabase/client";
 
 export async function 完整退出登录(): Promise<void> {
   const supabase = createClient();
-
-  /* 1. 后台作废服务端凭证（发起后不等待） */
-  void (async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) return;
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 8000);
-      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/logout`, {
-        method: "POST",
-        headers: {
-          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-          Authorization: `Bearer ${token}`,
-        },
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-    } catch {
-      /* 后台作废失败无碍：本地已清，令牌到期自然失效 */
-    }
-  })();
-
-  /* 2. 本地立即清除（scope:'local' 不调网络，秒回） */
   try {
     await supabase.auth.signOut({ scope: "local" });
   } catch {
-    /* 忽略登出错误，调用方照常跳转 */
+    /* 兜底：auth-js 正常只返回 error 不抛异常，此处防御极端情况，调用方照常跳转 */
   }
 }

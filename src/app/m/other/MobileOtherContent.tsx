@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -48,7 +48,7 @@ export default function MobileOtherContent({
     monthOptions.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   }
 
-  async function loadRecords() {
+  const loadRecords = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
 
@@ -71,7 +71,7 @@ export default function MobileOtherContent({
 
     setRecords((data || []) as unknown as 记录[]);
     setLoading(false);
-  }
+  }, [currentMonth]);
 
   const incomeTotal = records
     .filter((r) => r.type === "income")
@@ -88,7 +88,7 @@ export default function MobileOtherContent({
       return;
     }
     loadRecords();
-  }, [currentMonth]);
+  }, [currentMonth, loadRecords]);
 
   async function handleDelete(id: string) {
     if (!(await 请求确认("确定删除这条记录？"))) return;

@@ -21,10 +21,13 @@ export default function ItemSubtotalDisplay({ itemId, itemTotalPrice, parts }: P
   const [partsState, setPartsState] = useState<PartLite[]>(parts);
   const [itemTotal, setItemTotal] = useState(itemTotalPrice);
 
-  // props 变更（router.refresh 后）同步本地状态
+  /* props 变更（router.refresh 后）同步本地状态。内容指纹：只在内容变化时覆盖，
+   * 本地有事件驱动的实时更新，父组件重渲染但内容没变时不覆盖；
+   * effect 内从指纹还原，避免依赖数组引用 props 本身 */
+  const parts指纹 = JSON.stringify(parts);
   useEffect(() => {
-    setPartsState(parts);
-  }, [JSON.stringify(parts)]);
+    setPartsState(JSON.parse(parts指纹) as PartLite[]);
+  }, [parts指纹]);
   useEffect(() => {
     setItemTotal(itemTotalPrice);
   }, [itemTotalPrice]);

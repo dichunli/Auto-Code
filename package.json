@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:unit": "vitest run src",
-    "test:db": "vitest run supabase/tests",
+    "test:db": "vitest run --config vitest.db.config.ts",
     "test:watch": "vitest",
     "test:smoke": "node scripts/smoke-test.mjs",
     "test:auth": "node scripts/auth-test.mjs",
@@ -18,7 +18,8 @@
     "test:realtime": "node scripts/realtime-test.mjs",
     "test:perm": "node scripts/permission-test.mjs",
     "db:check": "node scripts/check-migrations.js",
-    "db:rls": "node scripts/check-rls-status.js"
+    "db:rls": "node scripts/check-rls-status.js",
+    "db:fk": "node scripts/check-fk-indexes.js"
   },
   "dependencies": {
     "@blocknote/core": "^0.51.2",

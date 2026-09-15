@@ -57,13 +57,20 @@ export default async function EditEmployeePage({ params }: { params: Promise<{ i
 
   const { data: employee } = await supabase
     .from("profiles")
-    .select("id, full_name, phone, group_id, mechanic_level_id, gender, entry_date, address, notes, is_active, id_card, id_card_front_url, id_card_back_url, base_salary, dingtalk_userid")
+    .select("id, full_name, phone, group_id, mechanic_level_id, gender, entry_date, address, notes, is_active, dingtalk_userid")
     .eq("id", id)
     .single();
 
   if (!employee) {
     notFound();
   }
+
+  /* 敏感字段（身份证/底薪）从 profile_privates 补读（2026-09-14 起从 profiles 拆出） */
+  const { data: 敏感信息 } = await supabase
+    .from("profile_privates")
+    .select("id_card, id_card_front_url, id_card_back_url, base_salary")
+    .eq("profile_id", id)
+    .maybeSingle();
 
   const [{ data: userRoles }, { data: userContacts }] = await Promise.all([
     supabase.from("profile_roles").select("role_id").eq("profile_id", id),
@@ -74,7 +81,13 @@ export default async function EditEmployeePage({ params }: { params: Promise<{ i
       .order("is_primary", { ascending: false }),
   ]);
 
-  const typedEmployee = employee as unknown as Employee;
+  const typedEmployee = {
+    ...(employee as unknown as Employee),
+    id_card: 敏感信息?.id_card ?? null,
+    id_card_front_url: 敏感信息?.id_card_front_url ?? null,
+    id_card_back_url: 敏感信息?.id_card_back_url ?? null,
+    base_salary: 敏感信息?.base_salary ?? null,
+  } as Employee;
   const typedGroups = (groups || []) as unknown as EmployeeGroup[];
   const typedRoles = (roles || []) as unknown as Role[];
   const typedLevels = (levels || []) as unknown as MechanicLevel[];

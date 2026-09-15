@@ -16,6 +16,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { blocknoteDictionary } from "@/lib/blocknoteDictionary";
 import { 是Capacitor环境 } from "@/lib/capacitorEnv";
 import { 分片上传文件, 需要分片上传 } from "@/lib/chunkedUpload";
+import { 视频最大字节 } from "@/lib/uploadLimits";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { 启动原生录像, 启动原生视频选择, 本地文件路径转URL } from "@/lib/androidVideoCapture";
 import BlockPermissionModal from "./BlockPermissionModal";
@@ -106,8 +107,8 @@ export function BlockNoteEditor({ initialValue, onChange }: Props) {
   const uploadFile = useCallback(async (file: File) => {
     const 是视频 = file.type.startsWith("video/");
 
-    /* 视频大小上限 4GB */
-    if (是视频 && file.size > 4096 * 1024 * 1024) {
+    /* 视频大小上限：全站统一口径 4GB */
+    if (是视频 && file.size > 视频最大字节) {
       throw new Error(`视频不能超过 4GB（当前 ${Math.round(file.size / 1024 / 1024)}MB）`);
     }
 
@@ -488,8 +489,8 @@ function CustomToolbarButtons({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    /* 视频大小上限 4GB */
-    if (file.size > 4096 * 1024 * 1024) {
+    /* 视频大小上限：全站统一口径 4GB */
+    if (file.size > 视频最大字节) {
       toast(`视频不能超过 4GB（当前 ${Math.round(file.size / 1024 / 1024)}MB）`, "error");
       e.target.value = "";
       return;

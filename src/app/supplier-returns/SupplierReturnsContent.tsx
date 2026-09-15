@@ -1,6 +1,6 @@
 "use client";
 
-import {useState, useEffect, useRef, useMemo} from "react";
+import {useState, useEffect, useRef, useMemo, useCallback} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
@@ -54,7 +54,7 @@ export default function SupplierReturnsContent({ initialRecords, initialCount }:
   const mounted = useRef(false);
   const { 请求确认, 确认弹窗 } = useConfirm();
 
-  async function loadRecords(search: string, status: string, 目标页: number) {
+  const loadRecords = useCallback(async (search: string, status: string, 目标页: number) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     setLoading(true);
@@ -87,7 +87,7 @@ export default function SupplierReturnsContent({ initialRecords, initialCount }:
     setTotal(count || 0);
     setPage(目标页);
     setLoading(false);
-  }
+  }, [supabase]);
 
   // 状态筛选/搜索词变化时重新拉取（跳过首次挂载），回到第 1 页
   useEffect(() => {
@@ -96,7 +96,7 @@ export default function SupplierReturnsContent({ initialRecords, initialCount }:
       return;
     }
     loadRecords(debouncedQuery, statusFilter, 1);
-  }, [statusFilter, debouncedQuery]);
+  }, [statusFilter, debouncedQuery, loadRecords]);
 
   /* 标记完成（2026-08-19 收编）：统一走 Server Action → RPC，
      与待退货页签同口径——标记完成时记应收冲减往来账 */

@@ -10,6 +10,7 @@ import { useConfirm } from "./ConfirmDialog";
 import { 选中配件分支, 标记采购到货 } from "@/app/work-orders/parts-actions";
 import { 更新配件分支, 按组更新分支目录, 同步分支图片到配件, 配件分支更新 } from "@/app/work-orders/actions";
 import { useDebounce } from "@/lib/useDebounce";
+import { 计算供应商得分, 供应商匹配原因 } from "@/lib/procurementRules";
 import { toast } from "@/lib/globalToast";
 
 function toFixed2(val: string | number | null | undefined): string {
@@ -210,6 +211,8 @@ export default function PartBranchEditor({
 
   // 兜底：part prop 变化（点提示条整页刷新后拿到新数据）时，把输入框同步为最新值；
   // 正在本行打字则跳过，避免打断输入。
+  /* 嵌套取值抽成局部变量：complex expression 不能直接进依赖数组 */
+  const 库存单据名 = part.parts?.document_name;
   useEffect(() => {
     const 本行有焦点 = 根容器Ref.current?.contains(document.activeElement);
     if (本行有焦点) return;
@@ -222,9 +225,9 @@ export default function PartBranchEditor({
       unit_price: toFixed2(part.unit_price),
       supplier_name: part.supplier_name || "",
       quantity: part.quantity != null ? String(part.quantity) : "1",
-      document_name: part.document_name || part.parts?.document_name || "",
+      document_name: part.document_name || 库存单据名 || "",
     });
-  }, [part.part_number, part.brand, part.specification, part.unit_cost, part.cost_price, part.unit_price, part.supplier_name, part.quantity, part.document_name]);
+  }, [part.part_number, part.brand, part.specification, part.unit_cost, part.cost_price, part.unit_price, part.supplier_name, part.quantity, part.document_name, 库存单据名]);
 
   // 供应商推荐相关状态
   const [vehicleInfo, setVehicleInfo] = useState<{ 厂商?: string; 品牌?: string; 车系?: string }>({});
@@ -914,7 +917,7 @@ export default function PartBranchEditor({
     }
   }
 
-  // 供应商推荐排序
+  // 供应商推荐排序（权重口径在 @/lib/procurementRules；命中判定此处按名称比对）
   const recommendedSuppliers = useMemo(() => {
     if (!suppliers.length) return [];
 
@@ -922,33 +925,26 @@ export default function PartBranchEditor({
 
     return [...suppliers].sort((a, b) => {
       const getScore = (s: Supplier) => {
-        let score = 0;
         const sid = s.id;
 
         // 车型匹配（厂商/品牌/车系任意一项匹配即可）
+        let 车型命中 = false;
         if (vehicleInfo.厂商 || vehicleInfo.品牌 || vehicleInfo.车系) {
           const vmList = supplierVehicleMap.get(sid) || [];
-          const hasVehicleMatch = vmList.some((vm) =>
+          车型命中 = vmList.some((vm) =>
             (vehicleInfo.厂商 && vm?.厂商 === vehicleInfo.厂商) ||
             (vehicleInfo.品牌 && vm?.品牌 === vehicleInfo.品牌) ||
             (vehicleInfo.车系 && vm?.车系 === vehicleInfo.车系)
           );
-          if (hasVehicleMatch) score += 1000;
         }
 
-        // 配件名称匹配
-        if (part.part_name_id && matchedPartNameSupplierIds.has(sid)) score += 500;
-
-        // 配件分类匹配
-        if (categoryId && matchedCategorySupplierIds.has(sid)) score += 200;
-
-        // 品牌匹配
-        if (brandId && matchedBrandSupplierIds.has(sid)) score += 200;
-
-        // 推荐等级加成
-        score += (s.recommendation_level || 0) * 10;
-
-        return score;
+        return 计算供应商得分({
+          车型命中,
+          配件命中: !!(part.part_name_id && matchedPartNameSupplierIds.has(sid)),
+          分类命中: !!(categoryId && matchedCategorySupplierIds.has(sid)),
+          品牌命中: !!(brandId && matchedBrandSupplierIds.has(sid)),
+          推荐等级: s.recommendation_level,
+        });
       };
 
       const aScore = getScore(a);
@@ -969,26 +965,26 @@ export default function PartBranchEditor({
     brandId,
   ]);
 
-  // 判断供应商是否匹配当前条件
+  // 判断供应商是否匹配当前条件（文案口径在 @/lib/procurementRules）
   function getSupplierMatchReasons(s: Supplier): string[] {
-    const reasons: string[] = [];
     const sid = s.id;
 
+    let 车型命中 = false;
     if (vehicleInfo.厂商 || vehicleInfo.品牌 || vehicleInfo.车系) {
       const vmList = supplierVehicleMap.get(sid) || [];
-      const hasVehicleMatch = vmList.some((vm) =>
+      车型命中 = vmList.some((vm) =>
         (vehicleInfo.厂商 && vm?.厂商 === vehicleInfo.厂商) ||
         (vehicleInfo.品牌 && vm?.品牌 === vehicleInfo.品牌) ||
         (vehicleInfo.车系 && vm?.车系 === vehicleInfo.车系)
       );
-      if (hasVehicleMatch) reasons.push("匹配车型");
     }
 
-    if (part.part_name_id && matchedPartNameSupplierIds.has(sid)) reasons.push("匹配配件");
-    if (part.part_names?.category_id && matchedCategorySupplierIds.has(sid)) reasons.push("匹配分类");
-    if (brandId && matchedBrandSupplierIds.has(sid)) reasons.push("匹配品牌");
-
-    return reasons;
+    return 供应商匹配原因({
+      车型命中,
+      配件命中: !!(part.part_name_id && matchedPartNameSupplierIds.has(sid)),
+      分类命中: !!(part.part_names?.category_id && matchedCategorySupplierIds.has(sid)),
+      品牌命中: !!(brandId && matchedBrandSupplierIds.has(sid)),
+    });
   }
 
   const partName = part.alias_name || part.parts?.name || part.name || part.part_names?.name || "未命名配件";

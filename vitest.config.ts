@@ -8,7 +8,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
-    include: ["src/**/*.{test,spec}.{ts,tsx}", "supabase/tests/**/*.test.ts"],
+    /* 单元测试只扫 src；数据库集成测试在 supabase/tests，用 npm run test:db（vitest.db.config.ts）单独跑，
+       避免没有本地 Postgres 的电脑上 npm test 必然失败 */
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
   },
   resolve: {
     alias: {

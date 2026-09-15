@@ -100,13 +100,19 @@ scripts/*
 # 生产运维脚本同属长期设施（对账/备份/告警，生产机计划任务使用）
 !scripts/weekly-stock-check.js
 !scripts/backup-export.js
+!scripts/backup-alert.js
+!scripts/restore-import.js
 !scripts/error-watch.js
 # RLS 巡检同属长期设施（防"建了策略忘开开关"漏开）
 !scripts/check-rls-status.js
+# 外键缺索引巡检同属长期设施（防"外键没配索引"全表扫描）
+!scripts/check-fk-indexes.js
 # 迁移对账同属长期设施（部署前自查"文件写了没执行"）
 !scripts/check-migrations.js
 # 重复数据查重同属长期设施（建唯一索引前的必备步骤）
 !scripts/find-duplicates.js
+# CI 数据库重建脚本同属长期设施（数据库集成测试的建库步骤）
+!scripts/ci-db-setup.sh
 # 查重报告含真实姓名/手机号，禁止提交
 查重报告.md
 
