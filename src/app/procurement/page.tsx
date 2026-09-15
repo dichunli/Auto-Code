@@ -10,6 +10,7 @@ import { CompletedStorageList } from "@/components/CompletedStorageList";
 import { PendingReturnList } from "@/components/PendingReturnList";
 import { CompletedReturnList } from "@/components/CompletedReturnList";
 import { ProcurementTabBar } from "@/components/ProcurementTabBar";
+import { 行符合采购阶段, 行符合待采购, 待收货查询字段 } from "@/lib/procurementRules";
 import { BrowserNotificationToggle } from "@/components/BrowserNotificationToggle";
 import { MobileReceivingOrders, 待收订单, 待签收运单 } from "@/components/mobile/MobileReceivingOrders";
 /* 首屏数据的行类型直接从各列表组件导入（type-only，服务端可用） */
@@ -88,27 +89,7 @@ export default async function ProcurementPage({
         .limit(100),
       supabase
         .from("purchase_orders")
-        .select(`
-          id, order_no, supplier_id, status, total_amount, notes, waybill_id, waybill_exempt, created_at, logistics_company_id,
-          supplier_order_no, supplier_order_amount, supplier_slip_photos,
-          suppliers(id, name, region, phone),
-          logistics_companies:logistics_company_id(name),
-          purchase_order_items(
-            id, name, brand, specification, quantity, unit_cost, received_qty,
-            part_id, work_order_item_part_id, part_number, supplier_part_name,
-            unit, category, license_plate, photos, notes, handle_action,
-            discount_amount, evidence_photos, return_reason, waybill_id, waybill_exempt,
-            staged_qty, staged_action, staged_at, staged_by,
-            logistics_waybills:waybill_id(
-              id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
-              logistics_companies(name)
-            )
-          ),
-          logistics_waybills:waybill_id(
-            id, tracking_no, logistics_company_name, freight_amount, cod_amount, status,
-            logistics_companies(name)
-          )
-        `)
+        .select(待收货查询字段)
         .in("status", ["submitted", "approved", "partial_received"])
         .order("created_at", { ascending: false }),
     ]);
@@ -187,23 +168,8 @@ export default async function ProcurementPage({
       supabase.from("supplier_part_brands").select("supplier_id, part_brand_id"),
     ]);
 
-    /* 状态过滤规则与 PartBranchStatusList.loadData 原样一致 */
-    const filtered = ((parts || []) as unknown as 分支行[]).filter((r) => {
-      const wo = r.work_order_items?.work_orders;
-      if (!wo) return false;
-      if (wo.settled_at) return false;
-      if (wo.order_type === "cancelled") return false;
-      /* 保养单不走询价/报价等采购流程 */
-      if (wo.order_type === "maintenance") return false;
-      if (r.is_purchased || r.is_arrived) return false;
-      const cost = Number(r.unit_cost || 0);
-      const price = Number(r.unit_price || 0);
-      const opinion = r.customer_opinion || "pending";
-      if (status === "pending_inquiry") return cost <= 0;
-      if (status === "pending_quote") return cost > 0 && price <= 0;
-      if (status === "pending_confirm") return cost > 0 && price > 0 && opinion === "pending";
-      return false;
-    });
+    /* 状态过滤规则已收敛到 @/lib/procurementRules（原与 PartBranchStatusList 复制一致） */
+    const filtered = ((parts || []) as unknown as 分支行[]).filter((r) => 行符合采购阶段(r, status));
 
     /* 配件分支图片 */
     const partIds = filtered.map((p) => p.id);
@@ -304,20 +270,8 @@ export default async function ProcurementPage({
         .order("created_at", { ascending: true }),
     ]);
 
-    const filtered = ((parts || []) as unknown as 待采购行[]).filter((r) => {
-      const wo = r.work_order_items?.work_orders;
-      if (!wo) return false;
-      if (wo.settled_at) return false;
-      if (wo.order_type === "cancelled") return false;
-      /* 保养单不走采购流程 */
-      if (wo.order_type === "maintenance") return false;
-      const cost = Number(r.unit_cost || 0);
-      const price = Number(r.unit_price || 0);
-      if (cost <= 0 || price <= 0) return false;
-      const inventoryQty = Number(r.parts?.quantity || 0);
-      if (r.part_id && inventoryQty > 0) return false;
-      return true;
-    });
+    /* 待采购谓词已收敛到 @/lib/procurementRules（原与 PendingPurchaseList 复制一致） */
+    const filtered = ((parts || []) as unknown as 待采购行[]).filter(行符合待采购);
 
     /* 未到货标记 */
     const { data: markData } = await supabase

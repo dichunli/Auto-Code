@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Fragment } from "react";
+import { useEffect, useMemo, useState, useCallback, Fragment } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { filterLogisticsByRegion, REGION_LABELS } from "@/lib/logisticsFilter";
@@ -18,6 +18,7 @@ import CustomPurchaseModal from "./CustomPurchaseModal";
 import { 更新列表项 } from "@/lib/listUpdate";
 import PurchaseOrderNotifyModal, { type 采购通知数据, type 采购通知明细 } from "./PurchaseOrderNotifyModal";
 import { toast } from "@/lib/globalToast";
+import { 行符合待采购, 待采购查询字段 } from "@/lib/procurementRules";
 
 /* 行类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
 export interface PartBranchRow {
@@ -105,40 +106,9 @@ const BRANCH_BG_COLORS = [
 /* 配件需求来源标签 — 由「待收货」流程中的换货/补货动作生成 */
 /* purchase_reason 徽标已抽到 @/lib/purchaseFlowLabels（唯一来源） */
 
-/* 工单配件行完整查询字段（2026-09-12 局部更新改造抽出）：
-   loadData 整表查 与 重查单行 必须用同一套 select 保证口径一致 */
-const 待采购查询字段 = `
-  id, name, brand, specification, unit, quantity, unit_cost, unit_price,
-  customer_opinion, supplier_name, part_id, part_number, part_name_id,
-  alias_name, notes, purchase_reason, work_order_item_id, document_name,
-  work_order_items(
-    name,
-    work_orders(
-      id, order_no, settled_at, order_type,
-      customers(name, phone),
-      vehicles(plate_number, vin)
-    )
-  ),
-  parts(quantity)
-`;
-
-/* 该行是否属于待采购列表（局部更新改造抽出）：
-   loadData 整表过滤与局部 patch 后重判共用。
-   注意：只适用于工单配件行；自定义采购暂存行（无工单）无条件显示，不走此谓词 */
-function 行符合待采购(r: PartBranchRow): boolean {
-  const wo = r.work_order_items?.work_orders;
-  if (!wo) return false;
-  if (wo.settled_at) return false;
-  if (wo.order_type === "cancelled") return false;
-  /* 保养单不走采购流程 */
-  if (wo.order_type === "maintenance") return false;
-  const cost = Number(r.unit_cost || 0);
-  const price = Number(r.unit_price || 0);
-  if (cost <= 0 || price <= 0) return false;
-  const inventoryQty = Number(r.parts?.quantity || 0);
-  if (r.part_id && inventoryQty > 0) return false;
-  return true;
-}
+/* 待采购查询字段 与 行符合待采购 谓词已收敛到 @/lib/procurementRules（全站唯一口径，2026-09-15）：
+   loadData 整表查/重查单行/局部 patch 后重判共用同一份。
+   注意：谓词只适用于工单配件行；自定义采购暂存行（无工单）无条件显示，不走此谓词 */
 
 /* 暂存行转统一展示行（局部更新改造抽出）：loadData 与"补货加入/自定义采购"
    局部 append 共用。库存数量由调用方给（loadData 来自 parts join，局部新增时补查） */
@@ -264,13 +234,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
     "其他",
   ];
 
-  useEffect(() => {
-    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
-    if (props.initialRows) return;
-    loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const [{ data: parts }, { data: sups }, { data: logistics }, { data: stagingData }] = await Promise.all([
       supabase
@@ -330,7 +294,13 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
     setSuppliers(sups || []);
     setLogisticsCompanies(logistics || []);
     setLoading(false);
-  }
+  }, [supabase]);
+
+  useEffect(() => {
+    /* 服务端已给首屏数据则跳过首次查询，避免重复拉取 */
+    if (props.initialRows) return;
+    loadData();
+  }, [loadData, props.initialRows]);
 
   /* 局部更新：只重查这一行工单配件（完整 select 与 loadData 同口径），
      查到后按谓词重判——行内选中配件后若有库存，该行自动离开待采购列表 */
@@ -801,10 +771,11 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
     setShowStockModal(true);
   }
 
-  /* 弹窗行的有效供应商：改选过的优先，否则取配件自带（2026-08-14 供应商可改选） */
-  function 有效供应商id(p: LowStockPart): string {
+  /* 弹窗行的有效供应商：改选过的优先，否则取配件自带（2026-08-14 供应商可改选）。
+   * useCallback 固定引用：下方排序 useMemo 依赖它，stockSupplierMap 变更时才重建 */
+  const 有效供应商id = useCallback((p: LowStockPart): string => {
     return stockSupplierMap[p.id] || p.supplier_id || "";
-  }
+  }, [stockSupplierMap]);
 
   /* 弹窗列表按有效供应商分别排序：有（之前）供应商的在前、按供应商名排，没有的沉底 */
   const 排序后库存配件 = useMemo(() => {
@@ -820,7 +791,7 @@ export function PendingPurchaseList(props: PendingPurchaseListProps) {
       return 名a.localeCompare(名b, "zh-CN") || (a.name || "").localeCompare(b.name || "", "zh-CN");
     });
 
-  }, [lowStockParts, stockSupplierMap, suppliers]);
+  }, [lowStockParts, suppliers, 有效供应商id]);
 
   /* 弹窗内搜索过滤（本地过滤，数据量小不需要防抖） */
   const 过滤后库存配件 = useMemo(() => {
