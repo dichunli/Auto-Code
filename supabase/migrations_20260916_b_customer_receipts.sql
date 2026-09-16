@@ -335,7 +335,7 @@ REVOKE EXECUTE ON FUNCTION public.void_customer_receipt(uuid) FROM anon, PUBLIC;
      success,
      receivables: [ { transaction_id(=应收id，对齐勾稽组件口径), work_order_id, order_no,
                      amount, paid_amount, remaining, created_at, due_date, notes } ],
-     total_remaining   /* 该客户待收合计
+     total_remaining   —— 该客户待收合计
    }
    ============================================================ */
 CREATE OR REPLACE FUNCTION public.list_customer_receivables(p_customer_id UUID)
