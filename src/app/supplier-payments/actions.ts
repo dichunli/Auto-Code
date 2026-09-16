@@ -19,10 +19,11 @@ interface RPC结果 {
   payment_no?: string;
 }
 
-/* ─── 创建付款单（含核销明细） ─── */
+/* ─── 创建付款单（含核销明细；2026-09-16 批次6 支持优惠金额） ─── */
 export async function 创建供应商付款单(参数: {
   supplier_id: string;
   amount: number;
+  discount_amount?: number;
   payment_method?: string;
   paid_at?: string;
   note?: string;
@@ -36,8 +37,15 @@ export async function 创建供应商付款单(参数: {
   if (!参数.supplier_id) {
     return { success: false, error: "请选择供应商" };
   }
-  if (!Number.isFinite(参数.amount) || 参数.amount <= 0) {
-    return { success: false, error: "付款金额必须大于 0" };
+  const 优惠 = 参数.discount_amount || 0;
+  if (!Number.isFinite(参数.amount) || 参数.amount < 0) {
+    return { success: false, error: "付款金额不能为负" };
+  }
+  if (!Number.isFinite(优惠) || 优惠 < 0) {
+    return { success: false, error: "优惠金额不能为负" };
+  }
+  if (参数.amount + 优惠 <= 0) {
+    return { success: false, error: "付款金额和优惠金额至少一项要大于 0" };
   }
 
   /* 核销明细清洗：过滤非法行，金额保留 2 位小数（RPC 内还会全量复核） */
@@ -56,6 +64,7 @@ export async function 创建供应商付款单(参数: {
     p_paid_at: 参数.paid_at || null,
     p_note: 参数.note?.trim() || null,
     p_allocations: 明细,
+    p_discount_amount: Math.round(优惠 * 100) / 100,
   });
 
   if (error) {

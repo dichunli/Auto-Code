@@ -80,7 +80,8 @@ export interface ReturnOrder {
 
 export interface Transaction {
   id: string;
-  transaction_type: "payment" | "refund" | "credit" | "debit";
+  /* 2026-09-16 批次6：加 discount（付款优惠） */
+  transaction_type: "payment" | "refund" | "credit" | "debit" | "discount";
   amount: number | null;
   description: string | null;
   reference_type: string | null;
@@ -194,22 +195,22 @@ export default function SupplierDetailClient({
     setTransactions((data as Transaction[]) || []);
   }
 
-  /* 财务统计（2026-08-19 修正口径，用户确认）：
-     欠款余额 = 入库欠的(debit) − 已付的(payment) − 退货冲掉的(credit) + 供应商退回的(refund)
-     （refund 是"付款的回撤"：付了又被退回，相当于没付那么多，欠款加回）
-     原公式 debit+payment-credit-refund 方向反了：付款越多欠款越大。 */
+  /* 财务统计（2026-09-16 加 discount 口径）：
+     欠款余额 = 入库欠的(debit) − 已付的(payment) − 退货冲掉的(credit) − 优惠(discount) + 供应商退回的(refund) */
   const payableBalance = useMemo(() => {
     let debit = 0;
     let payment = 0;
     let credit = 0;
     let refund = 0;
+    let discount = 0;
     for (const t of transactions) {
       if (t.transaction_type === "debit") debit += t.amount || 0;
       if (t.transaction_type === "payment") payment += t.amount || 0;
       if (t.transaction_type === "credit") credit += t.amount || 0;
       if (t.transaction_type === "refund") refund += t.amount || 0;
+      if (t.transaction_type === "discount") discount += t.amount || 0;
     }
-    return { debit, payment, credit, refund, net: debit - payment - credit + refund };
+    return { debit, payment, credit, refund, discount, net: debit - payment - credit - discount + refund };
   }, [transactions]);
 
   const thisMonth = new Date().toISOString().slice(0, 7);
@@ -257,6 +258,8 @@ export default function SupplierDetailClient({
     refund: "退款",
     credit: "应收",
     debit: "应付",
+    /* 2026-09-16 批次6 */
+    discount: "优惠",
   };
 
   const returnReasonMap: Record<string, string> = {

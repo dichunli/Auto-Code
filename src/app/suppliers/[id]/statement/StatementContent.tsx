@@ -43,6 +43,8 @@ const 类型名: Record<string, string> = {
   credit: "退货冲减",
   payment: "付款",
   refund: "退款",
+  /* 2026-09-16 批次6 */
+  discount: "优惠",
 };
 
 const 结算方式名: Record<string, string> = {
@@ -51,10 +53,10 @@ const 结算方式名: Record<string, string> = {
   credit_days: "账期",
 };
 
-/* 正负号：应付/退款加欠款，付款/冲减减欠款（与总账公式一致） */
+/* 正负号：应付/退款加欠款，付款/冲减/优惠减欠款（与总账公式一致） */
 function 符号(type: string): number {
   if (type === "debit" || type === "refund") return 1;
-  if (type === "payment" || type === "credit") return -1;
+  if (type === "payment" || type === "credit" || type === "discount") return -1;
   return 0;
 }
 
@@ -91,12 +93,14 @@ export default function StatementContent({
     let 付款分 = 0;
     let 冲减分 = 0;
     let 退款分 = 0;
+    let 优惠分 = 0;
     for (const r of 本期) {
       const 分 = Math.round(r.amount * 100);
       if (r.transaction_type === "debit") 应付分 += 分;
       else if (r.transaction_type === "payment") 付款分 += 分;
       else if (r.transaction_type === "credit") 冲减分 += 分;
       else if (r.transaction_type === "refund") 退款分 += 分;
+      else if (r.transaction_type === "discount") 优惠分 += 分;
     }
     return {
       期初: 期初分 / 100,
@@ -106,6 +110,7 @@ export default function StatementContent({
       本期付款: 付款分 / 100,
       本期冲减: 冲减分 / 100,
       本期退款: 退款分 / 100,
+      本期优惠: 优惠分 / 100,
     };
   }, [rows, 期初起点, 期末止点]);
 
@@ -123,6 +128,7 @@ export default function StatementContent({
       摘要: r.description || "",
       应付增加: r.transaction_type === "debit" ? r.amount : "",
       付款支出: r.transaction_type === "payment" ? r.amount : "",
+      优惠: r.transaction_type === "discount" ? r.amount : "",
       冲减: r.transaction_type === "credit" ? r.amount : "",
       退款: r.transaction_type === "refund" ? r.amount : "",
       余额: r.余额,
@@ -195,7 +201,9 @@ export default function StatementContent({
           <div className="text-xl font-bold text-red-600 mt-1">+{formatCurrency(账.本期应付)}</div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4 print:border-black print:rounded-none">
-          <div className="text-sm text-gray-500">本期已付{账.本期冲减 > 0 ? `（另冲减 ${formatCurrency(账.本期冲减)}）` : ""}</div>
+          <div className="text-sm text-gray-500">
+            本期已付{账.本期冲减 > 0 ? `（另冲减 ${formatCurrency(账.本期冲减)}）` : ""}{账.本期优惠 > 0 ? `（另优惠 ${formatCurrency(账.本期优惠)}）` : ""}
+          </div>
           <div className="text-xl font-bold text-green-600 mt-1">-{formatCurrency(账.本期付款)}</div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4 print:border-black print:rounded-none">
@@ -255,7 +263,8 @@ export default function StatementContent({
                   {r.transaction_type === "debit" ? formatCurrency(r.amount) : ""}
                 </td>
                 <td className="px-4 py-3 text-right text-green-600">
-                  {r.transaction_type === "payment" ? formatCurrency(r.amount) : ""}
+                  {/* 优惠也算减欠款，和付款同列展示（类型徽标区分） */}
+                  {r.transaction_type === "payment" || r.transaction_type === "discount" ? formatCurrency(r.amount) : ""}
                 </td>
                 <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(r.余额)}</td>
                 <td className="px-4 py-3 text-gray-500 text-xs print:hidden">{r.profiles?.full_name || "-"}</td>

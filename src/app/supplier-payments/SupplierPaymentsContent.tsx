@@ -27,6 +27,8 @@ interface PaymentRecord {
   payment_no: string;
   supplier_id: string;
   amount: number;
+  /* 2026-09-16 批次6：优惠金额（抹零） */
+  discount_amount: number | null;
   payment_method: string | null;
   paid_at: string;
   status: string;
@@ -97,6 +99,7 @@ function PaymentFormModal({
   const supabase = useMemo(() => createClient(), []);
   const [supplierId, setSupplierId] = useState(预选供应商id);
   const [amountStr, setAmountStr] = useState("");
+  const [discountStr, setDiscountStr] = useState(""); /* 2026-09-16 批次6：优惠金额（抹零，不是真付钱） */
   const [method, setMethod] = useState("");
   const [paidAt, setPaidAt] = useState(() => 本地时间字符串(new Date()));
   const [note, setNote] = useState("");
@@ -105,12 +108,16 @@ function PaymentFormModal({
   const [欠款分, set欠款分] = useState(0);
   const [loadingPayables, setLoadingPayables] = useState(false);
   const [saving, setSaving] = useState(false);
-  /* 金额镜像：选供应商加载应付时要用最新金额做 FIFO，但不想把 amountStr 挂进 effect 依赖（每敲数字就重拉）。
+  /* 金额/优惠镜像：选供应商加载应付时要用最新额度做 FIFO，但不想挂进 effect 依赖（每敲数字就重拉）。
      注意：ref 只能在 effect 里写（react-hooks/refs 新规），不能渲染期直接赋值 */
   const amountStrRef = useRef(amountStr);
   useEffect(() => {
     amountStrRef.current = amountStr;
   }, [amountStr]);
+  const discountStrRef = useRef(discountStr);
+  useEffect(() => {
+    discountStrRef.current = discountStr;
+  }, [discountStr]);
 
   /* 加载供应商应付清单（含可核销额度、欠款余额），并做 FIFO 预勾 */
   const 加载应付 = useCallback(
@@ -139,7 +146,7 @@ function PaymentFormModal({
   /* 选供应商 / 进入弹窗时加载 */
   useEffect(() => {
     if (supplierId) {
-      加载应付(supplierId, 转分(amountStrRef.current));
+      加载应付(supplierId, 转分(amountStrRef.current) + 转分(discountStrRef.current));
     } else {
       setPayables([]);
       set可用额度分(0);
@@ -147,11 +154,19 @@ function PaymentFormModal({
     }
   }, [supplierId, 加载应付]);
 
-  /* 金额变化 → 基于已加载清单重新 FIFO（不重新拉接口） */
+  /* 金额/优惠变化 → 基于已加载清单重新 FIFO（不重新拉接口）。
+     FIFO 的"本单额度"= 实付 + 优惠（批次6：优惠也算能拿去勾单的钱） */
   function 金额变化(新金额: string) {
     setAmountStr(新金额);
     if (payables.length > 0) {
-      setPayables(先进先出勾稽(payables, 转分(新金额), 可用额度分));
+      setPayables(先进先出勾稽(payables, 转分(新金额) + 转分(discountStr), 可用额度分));
+    }
+  }
+
+  function 优惠变化(新优惠: string) {
+    setDiscountStr(新优惠);
+    if (payables.length > 0) {
+      setPayables(先进先出勾稽(payables, 转分(amountStr) + 转分(新优惠), 可用额度分));
     }
   }
 
@@ -172,19 +187,21 @@ function PaymentFormModal({
   }
 
   const 付款分 = 转分(amountStr);
+  const 优惠分 = 转分(discountStr);
   const 核销合计分 = 计算核销合计分(payables);
-  const 剩余预付分 = 付款分 + 可用额度分 - 核销合计分;
+  /* 本单可用额度 = 实付 + 优惠 + 历史余额；剩余预付 = 没勾完的部分 */
+  const 剩余预付分 = 付款分 + 优惠分 + 可用额度分 - 核销合计分;
 
   async function 提交() {
     if (!supplierId) {
       toast("请选择供应商", "warning");
       return;
     }
-    if (付款分 <= 0) {
-      toast("请输入有效的付款金额", "warning");
+    if (付款分 + 优惠分 <= 0) {
+      toast("付款金额和优惠金额至少一项要大于 0", "warning");
       return;
     }
-    /* 逐行校验：勾了就必须 0 < 金额 ≤ 未付余额 */
+    /* 实付为 0 时必须填优惠才有意义（纯抹零单），界面上不强制选支付方式 */
     for (const r of payables) {
       if (!r.checked) continue;
       const 勾 = 转分(r.allocStr);
@@ -197,8 +214,8 @@ function PaymentFormModal({
         return;
       }
     }
-    if (核销合计分 > 付款分 + 可用额度分) {
-      toast("核销合计超过可核销额度（本次付款 + 历史付款余额）", "warning");
+    if (核销合计分 > 付款分 + 优惠分 + 可用额度分) {
+      toast("核销合计超过可核销额度（本次付款 + 优惠 + 历史付款余额）", "warning");
       return;
     }
 
@@ -207,6 +224,7 @@ function PaymentFormModal({
       const res = await 创建供应商付款单({
         supplier_id: supplierId,
         amount: 付款分 / 100,
+        discount_amount: 优惠分 / 100,
         payment_method: method || undefined,
         paid_at: paidAt ? new Date(paidAt).toISOString() : undefined,
         note: note || undefined,
@@ -218,7 +236,7 @@ function PaymentFormModal({
       if (!res.success) {
         toast("保存失败: " + (res.error || "未知错误"), "error");
         /* 并发超勾等情况：重拉清单让用户看到最新可勾状态 */
-        加载应付(supplierId, 付款分);
+        加载应付(supplierId, 付款分 + 优惠分);
         return;
       }
       toast(`付款单 ${res.payment_no || ""} 已保存`, "success");
@@ -254,7 +272,7 @@ function PaymentFormModal({
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">付款金额 *</label>
+              <label className="block text-xs text-gray-500 mb-1">付款金额（实付）</label>
               <input
                 type="number"
                 step="0.01"
@@ -263,6 +281,18 @@ function PaymentFormModal({
                 value={amountStr}
                 onChange={(e) => 金额变化(e.target.value)}
                 placeholder="实际付出去的钱"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">优惠金额（抹零）</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                value={discountStr}
+                onChange={(e) => 优惠变化(e.target.value)}
+                placeholder="供应商少收的，填0"
               />
             </div>
             <div>
@@ -319,7 +349,7 @@ function PaymentFormModal({
                 <h4 className="text-sm font-semibold text-gray-900">核销到哪几笔应付（默认从老到新自动勾）</h4>
                 <button
                   type="button"
-                  onClick={() => setPayables(先进先出勾稽(payables, 付款分, 可用额度分))}
+                  onClick={() => setPayables(先进先出勾稽(payables, 付款分 + 优惠分, 可用额度分))}
                   className="text-xs text-blue-600 hover:underline"
                 >
                   重新自动勾稽
@@ -647,7 +677,8 @@ export default function SupplierPaymentsContent({
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">付款单号</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">供应商</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-500">金额</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">实付金额</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">优惠</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">支付方式</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">付款时间</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">状态</th>
@@ -667,6 +698,9 @@ export default function SupplierPaymentsContent({
                     </td>
                     <td className="px-4 py-3 text-gray-900">{p.suppliers?.name || "-"}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(p.amount)}</td>
+                    <td className="px-4 py-3 text-right text-orange-600">
+                      {p.discount_amount ? formatCurrency(p.discount_amount) : "-"}
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{p.payment_method || "-"}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{new Date(p.paid_at).toLocaleString("zh-CN")}</td>
                     <td className="px-4 py-3">
@@ -690,7 +724,7 @@ export default function SupplierPaymentsContent({
                   </tr>
                   {expandedId === p.id && (
                     <tr className="bg-gray-50/60">
-                      <td colSpan={9} className="px-8 py-3">
+                      <td colSpan={10} className="px-8 py-3">
                         {detailLoading && !allocDetails[p.id] ? (
                           <span className="text-xs text-gray-400">核销明细加载中...</span>
                         ) : (allocDetails[p.id] || []).length === 0 ? (
@@ -713,7 +747,7 @@ export default function SupplierPaymentsContent({
               ))}
               {pagedRecords.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
                     {loading ? "加载中..." : "暂无付款单，点右上角「新建付款」开始"}
                   </td>
                 </tr>
