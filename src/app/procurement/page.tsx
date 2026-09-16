@@ -463,6 +463,7 @@ export default async function ProcurementPage({
 
   /* 已入库（与 CompletedStorageList.loadData 同口径） */
   let 已入库首屏订单: 已入库采购单[] | undefined;
+  let 已入库已退首屏: Record<string, number> | undefined;
   if (currentTab === "completed_storage") {
     const supabase = await createClient();
     const { data } = await supabase
@@ -480,6 +481,21 @@ export default async function ProcurementPage({
       .eq("status", "completed")
       .order("created_at", { ascending: false });
     已入库首屏订单 = (data || []) as unknown as 已入库采购单[];
+
+    /* 已退数量首屏聚合（2026-09-16 退货标识）：与 CompletedStorageList.loadData 同口径 */
+    const 明细ids = 已入库首屏订单.flatMap((o) => (o.purchase_order_items || []).map((it) => it.id));
+    已入库已退首屏 = {};
+    if (明细ids.length > 0) {
+      const { data: 退货行 } = await supabase
+        .from("supplier_return_records")
+        .select("purchase_order_item_id, quantity")
+        .in("purchase_order_item_id", 明细ids);
+      for (const r of (退货行 || []) as { purchase_order_item_id: string | null; quantity: number }[]) {
+        if (r.purchase_order_item_id) {
+          已入库已退首屏[r.purchase_order_item_id] = (已入库已退首屏[r.purchase_order_item_id] ?? 0) + r.quantity;
+        }
+      }
+    }
   }
 
   /* 待退货（与 PendingReturnList.loadData 同口径） */
@@ -489,7 +505,7 @@ export default async function ProcurementPage({
     const { data } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, source, purchase_order_item_id, supplier_id, part_id, part_number, part_name, brand, specification, unit, unit_cost, batch_id, notes, work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
       )
       .eq("status", "pending")
       .order("created_at", { ascending: false });
@@ -633,7 +649,7 @@ export default async function ProcurementPage({
         />
       )}
       {currentTab === "completed_storage" && (
-        <CompletedStorageList key={currentTab} initialOrders={已入库首屏订单} />
+        <CompletedStorageList key={currentTab} initialOrders={已入库首屏订单} initial已退={已入库已退首屏} />
       )}
       {currentTab === "pending_return" && (
         <PendingReturnList key={currentTab} initialRecords={待退货首屏记录} />
