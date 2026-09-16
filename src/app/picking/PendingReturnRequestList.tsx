@@ -7,6 +7,7 @@ import { 退料类型标签 } from "@/lib/returnTypes";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { 确认退料申请, 取消退料申请 } from "@/app/material-returns/actions";
+import { useRetreatToSupplier } from "@/components/useRetreatToSupplier";
 
 /* 待退料申请行（page.tsx 首屏查询注入） */
 export interface 退料申请行 {
@@ -48,6 +49,8 @@ export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: P
   const router = useRouter();
   const { showToast } = useToast();
   const { 请求确认, 确认弹窗 } = useConfirm();
+  /* 退库后连续退货（2026-09-16）：带车牌的工单件退库成功时弹"是否退给供应商" */
+  const { 提示并连续退货, 连续退货弹窗 } = useRetreatToSupplier();
   const [勾选, set勾选] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
 
@@ -81,14 +84,29 @@ export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: P
       return;
     }
     setLoading(true);
+    /* 先取出本次勾选的申请行（连续退货提示要用），确认成功后再清空勾选 */
+    const 本次申请 = initialRequests.filter((q) => 勾选.has(q.id));
     try {
       const r = await 确认退料申请(Array.from(勾选));
       if (!r.success) {
         showToast("确认退料失败: " + (r.error || "未知错误"), "error");
         return;
       }
-      set勾选(new Set());
       showToast(`退料单已生成${r.退料单号?.length ? `（${r.退料单号.join("、")}）` : ""}，库存已加回`, "success");
+      /* 连续退货提示（带车牌的工单件才弹）：申请行无批次，传领料记录 id 由 Hook 补查 */
+      await 提示并连续退货(
+        本次申请
+          .filter((q) => q.work_order_item_parts)
+          .map((q) => ({
+            work_order_item_part_id: q.work_order_item_parts!.id,
+            quantity: q.quantity,
+            name: q.work_order_item_parts!.name || q.work_order_item_parts!.alias_name,
+            return_type: q.return_type,
+            picking_record_id: q.part_picking_records?.id || null,
+          })),
+        `退料单 ${r.退料单号?.join("、") || ""}`
+      );
+      set勾选(new Set());
       router.refresh();
     } catch (err: unknown) {
       showToast("确认退料失败: " + (err instanceof Error ? err.message : "网络异常"), "error");
@@ -259,6 +277,7 @@ export function PendingReturnRequestList({ initialRequests, 申请人姓名 }: P
         </div>
       </div>
       {确认弹窗}
+      {连续退货弹窗}
     </div>
   );
 }

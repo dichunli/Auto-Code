@@ -52,4 +52,5 @@ export const RETURN_REASON_LABELS: Record<string, string> = {
   damaged: "损坏",
   cancel: "客户悔单",
   quality: "质量问题",
+  other: "其他",
 };

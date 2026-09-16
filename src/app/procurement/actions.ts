@@ -671,6 +671,47 @@ export async function 部分收货登记(
 
 /* ═══ 退货 / 采退单 ═══ */
 
+/* ─── 已入库退货(2026-09-16):扣库存+建待退货记录,一个事务 ───
+ * 替代原"已入库页退货调库存退货 create_purchase_return"的老路子
+ * (只扣库存不记账,待退货页看不到、采退单生成不了、应付款不冲减)。
+ * 新路径:退货后进「待退货」页签 → 生成采退单 → 自动冲减应付款。
+ * 可退数 = 实际入库数 − 已退数,在 RPC 内锁行校验,防重复退货。 */
+export interface 已入库退货明细 {
+  purchase_order_item_id: string;
+  batch_id: string;
+  quantity: number;
+  return_reason: string;
+  notes?: string | null;
+}
+
+export async function 已入库退货(明细: 已入库退货明细[]): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!明细 || 明细.length === 0) {
+    return { success: false, error: "退货明细不能为空" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("create_inbound_return", {
+    p_items: 明细,
+    p_operator_id: user.id,
+  });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  const 结果 = data as unknown as RPC返回;
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "退货失败" };
+  }
+
+  revalidatePath("/procurement");
+  revalidatePath("/supplier-returns");
+  return { success: true };
+}
+
 /* ─── 标记退货记录已完成(2026-08-19 起记账) ───
  * 与"生成采退单"口径统一：标记完成时按 数量×采购价 记应收冲减(credit)，
  * 供应商按名称文本匹配；匹配不到供应商/无采购价则只改状态不记账(accounted=false)。 */
