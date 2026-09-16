@@ -1,4 +1,4 @@
-/* 供应商收款单 + 汇总加累计优惠列（供应商款项改造 批次7，2026-09-16）
+/* 供应商收款单 + 汇总加累计优惠列（供应商款项改造 批次7，2026-09-17）
  *
  * 背景：
  *   对照 1 号车间供应商款项页改造：汇总大表要同时显示应付（正数）和应收
@@ -58,7 +58,7 @@ CREATE OR REPLACE FUNCTION public.generate_supplier_receipt_no()
 RETURNS TRIGGER
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $func$
 DECLARE
   seq_num INTEGER;
   today TEXT;
@@ -74,7 +74,7 @@ BEGIN
   NEW.receipt_no := 'SK-' || today || '-' || LPAD(seq_num::TEXT, 3, '0');
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$func$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS set_supplier_receipt_no ON public.supplier_receipts;
 CREATE TRIGGER set_supplier_receipt_no BEFORE INSERT ON public.supplier_receipts
@@ -100,7 +100,7 @@ CREATE OR REPLACE FUNCTION public.create_supplier_receipt(
 RETURNS JSONB
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $func$
 DECLARE
   v_receipt_id UUID;
   v_receipt_no TEXT;
@@ -176,7 +176,7 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   RETURN jsonb_build_object('success', false, 'error', SQLERRM);
 END;
-$$ LANGUAGE plpgsql;
+$func$ LANGUAGE plpgsql;
 
 REVOKE EXECUTE ON FUNCTION public.create_supplier_receipt(uuid, numeric, text, timestamptz, text) FROM anon, PUBLIC;
 
@@ -187,7 +187,7 @@ CREATE OR REPLACE FUNCTION public.void_supplier_receipt(p_receipt_id UUID)
 RETURNS JSONB
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $func$
 DECLARE
   v_receipt RECORD;
 BEGIN
@@ -222,7 +222,7 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   RETURN jsonb_build_object('success', false, 'error', SQLERRM);
 END;
-$$ LANGUAGE plpgsql;
+$func$ LANGUAGE plpgsql;
 
 REVOKE EXECUTE ON FUNCTION public.void_supplier_receipt(uuid) FROM anon, PUBLIC;
 
@@ -247,7 +247,7 @@ RETURNS TABLE(
 STABLE
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $func$
 BEGIN
   IF auth.uid() IS NULL THEN
     RETURN;
@@ -271,14 +271,14 @@ BEGIN
   GROUP BY s.id, s.name
   ORDER BY balance DESC;
 END;
-$$ LANGUAGE plpgsql;
+$func$ LANGUAGE plpgsql;
 
 REVOKE EXECUTE ON FUNCTION public.supplier_balances() FROM anon, PUBLIC;
 
 /* ============================================================
    七、台账登记
    ============================================================ */
-INSERT INTO migration_log (file_name) VALUES ('migrations_20260916_b_supplier_receipts.sql') ON CONFLICT DO NOTHING;
+INSERT INTO migration_log (file_name) VALUES ('migrations_20260917_a_supplier_receipts.sql') ON CONFLICT DO NOTHING;
 
 /* ============================================================
    验证方法(执行完本脚本后跑):

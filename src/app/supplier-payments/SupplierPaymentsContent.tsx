@@ -67,6 +67,51 @@ interface SupplierSummaryRow {
   total_discount: number;
 }
 
+/* ═══ 退货核对数据（2026-09-17 批次7：退货入账流水 vs 退货单据逐笔对金额） ═══ */
+
+/* credit 退货流水 */
+interface CreditTxn {
+  id: string;
+  supplier_id: string | null;
+  amount: number;
+  description: string | null;
+  reference_id: string | null;
+  reference_type: string | null;
+  created_at: string;
+  suppliers: { name: string } | null;
+}
+
+/* 采退单（整张退货单，金额=其下退货记录 数量×采购价 合计） */
+interface ReturnOrder {
+  id: string;
+  return_no: string | null;
+  status: string;
+  created_at: string;
+}
+
+/* 退货记录（单据金额 = 数量×采购价快照） */
+interface ReturnRecord {
+  id: string;
+  quantity: number | null;
+  unit_cost: number | null;
+  return_order_id: string | null;
+  part_name: string | null;
+  status: string;
+}
+
+/* 对账结果行 */
+interface 对账行 {
+  流水id: string;
+  时间: string;
+  供应商名: string;
+  流水金额: number;
+  单据类型: "采退单" | "退货记录" | "无关联";
+  单据标识: string;
+  单据金额: number | null; /* null=单据缺单价算不出 */
+  差额: number | null;
+  核对: "一致" | "对不上" | "无法核对";
+}
+
 /* list_supplier_payables 返回的单笔应付 */
 interface PayableRow {
   transaction_id: string;
@@ -629,7 +674,7 @@ function ReceiptFormModal({
 
 /* ═══ 主页面组件 ═══ */
 
-type 页签 = "summary" | "payments" | "receipts";
+type 页签 = "summary" | "payments" | "receipts" | "returnCheck";
 
 export default function SupplierPaymentsContent({
   initialPayments,
@@ -637,6 +682,9 @@ export default function SupplierPaymentsContent({
   paymentMethods,
   initialSummary,
   initialReceipts,
+  initialCreditTxns,
+  returnOrders,
+  returnRecords,
   预选供应商id,
   自动开单,
 }: {
@@ -645,6 +693,9 @@ export default function SupplierPaymentsContent({
   paymentMethods: PaymentMethod[];
   initialSummary: SupplierSummaryRow[];
   initialReceipts: ReceiptRecord[];
+  initialCreditTxns: CreditTxn[];
+  returnOrders: ReturnOrder[];
+  returnRecords: ReturnRecord[];
   预选供应商id: string;
   自动开单: boolean;
 }) {
@@ -763,6 +814,86 @@ export default function SupplierPaymentsContent({
       credit: filteredSummary.reduce((s, r) => s + Number(r.total_credit), 0),
     }),
     [filteredSummary]
+  );
+
+  /* ═══ 退货核对（批次7）：每笔退货入账流水 vs 来源单据金额逐笔对 ═══ */
+  const [只看对不上, set只看对不上] = useState(false);
+
+  const 对账行们 = useMemo<对账行[]>(() => {
+    const 记录Map = new Map(returnRecords.map((r) => [r.id, r]));
+    const 采退单Map = new Map(returnOrders.map((o) => [o.id, o]));
+    /* 采退单 → 其下退货记录合计金额（任一记录缺单价则整单算不出） */
+    const 采退单金额 = new Map<string, number | null>();
+    for (const rec of returnRecords) {
+      if (!rec.return_order_id) continue;
+      const 已有 = 采退单金额.get(rec.return_order_id);
+      if (rec.quantity == null || rec.unit_cost == null) {
+        采退单金额.set(rec.return_order_id, null);
+      } else if (已有 !== null) {
+        采退单金额.set(rec.return_order_id, (已有 || 0) + rec.quantity * rec.unit_cost);
+      }
+    }
+
+    return initialCreditTxns.map((t): 对账行 => {
+      const 流水金额 = Number(t.amount);
+      const 基础 = {
+        流水id: t.id,
+        时间: t.created_at,
+        供应商名: t.suppliers?.name || "-",
+        流水金额,
+      };
+      if (t.reference_type === "supplier_return_record" && t.reference_id) {
+        const rec = 记录Map.get(t.reference_id);
+        if (!rec) {
+          return { ...基础, 单据类型: "退货记录" as const, 单据标识: "记录不存在", 单据金额: null, 差额: null, 核对: "对不上" as const };
+        }
+        if (rec.quantity == null || rec.unit_cost == null) {
+          return { ...基础, 单据类型: "退货记录" as const, 单据标识: rec.part_name || "退货记录", 单据金额: null, 差额: null, 核对: "无法核对" as const };
+        }
+        const 单据金额 = Math.round(rec.quantity * rec.unit_cost * 100) / 100;
+        const 差额 = Math.round((流水金额 - 单据金额) * 100) / 100;
+        return {
+          ...基础,
+          单据类型: "退货记录" as const,
+          单据标识: `${rec.part_name || "配件"} ×${rec.quantity}`,
+          单据金额,
+          差额,
+          核对: Math.abs(差额) <= 0.005 ? ("一致" as const) : ("对不上" as const),
+        };
+      }
+      if (t.reference_type === "purchase_return_order" && t.reference_id) {
+        const 单 = 采退单Map.get(t.reference_id);
+        if (!单) {
+          return { ...基础, 单据类型: "采退单" as const, 单据标识: "采退单不存在", 单据金额: null, 差额: null, 核对: "对不上" as const };
+        }
+        const 单据金额原始 = 采退单金额.get(t.reference_id);
+        if (单据金额原始 == null) {
+          return { ...基础, 单据类型: "采退单" as const, 单据标识: 单.return_no || "采退单", 单据金额: null, 差额: null, 核对: "无法核对" as const };
+        }
+        const 单据金额 = Math.round(单据金额原始 * 100) / 100;
+        const 差额 = Math.round((流水金额 - 单据金额) * 100) / 100;
+        return {
+          ...基础,
+          单据类型: "采退单" as const,
+          单据标识: 单.return_no || "采退单",
+          单据金额,
+          差额,
+          核对: Math.abs(差额) <= 0.005 ? ("一致" as const) : ("对不上" as const),
+        };
+      }
+      /* 老数据/手工冲减：没有关联单据可核 */
+      return { ...基础, 单据类型: "无关联" as const, 单据标识: t.description || "-", 单据金额: null, 差额: null, 核对: "无法核对" as const };
+    });
+  }, [initialCreditTxns, returnOrders, returnRecords]);
+
+  const 对账统计 = useMemo(() => {
+    const 对不上 = 对账行们.filter((r) => r.核对 === "对不上").length;
+    return { 总数: 对账行们.length, 对不上 };
+  }, [对账行们]);
+
+  const 显示对账行 = useMemo(
+    () => (只看对不上 ? 对账行们.filter((r) => r.核对 === "对不上") : 对账行们),
+    [对账行们, 只看对不上]
   );
 
   function 导出汇总Excel() {
@@ -937,6 +1068,7 @@ export default function SupplierPaymentsContent({
     { key: "summary", label: "供应商汇总" },
     { key: "payments", label: "付款单" },
     { key: "receipts", label: "收款单" },
+    { key: "returnCheck", label: `退货核对${对账统计.对不上 > 0 ? `（${对账统计.对不上}笔对不上）` : ""}` },
   ];
 
   return (
@@ -1335,6 +1467,79 @@ export default function SupplierPaymentsContent({
                     <tr>
                       <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
                         暂无收款单
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 页签4：退货核对（批次7：退货入账流水 vs 退货单据逐笔对金额） ═══ */}
+      {tab === "returnCheck" && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="text-gray-500">
+              每笔退货入账和退货单据（采退单/退货记录）逐笔核对金额，对不上的标红。
+              共 {对账统计.总数} 笔退货入账，
+              {对账统计.对不上 > 0 ? (
+                <b className="text-red-600">{对账统计.对不上} 笔对不上</b>
+              ) : (
+                <b className="text-green-600">全部对得上</b>
+              )}
+            </span>
+            <label className="flex items-center gap-1.5 text-gray-600 cursor-pointer ml-auto">
+              <input
+                type="checkbox"
+                checked={只看对不上}
+                onChange={(e) => set只看对不上(e.target.checked)}
+              />
+              只看对不上的
+            </label>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium text-gray-500">入账时间</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-500">供应商</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-500">退货入账金额</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-500">来源单据</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-500">单据金额</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-500">差额</th>
+                    <th className="px-4 py-3 text-center font-medium text-gray-500">核对结果</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {显示对账行.map((r) => (
+                    <tr key={r.流水id} className={r.核对 === "对不上" ? "bg-red-50/50" : "hover:bg-gray-50"}>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{new Date(r.时间).toLocaleString("zh-CN")}</td>
+                      <td className="px-4 py-3 text-gray-900">{r.供应商名}</td>
+                      <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(r.流水金额)}</td>
+                      <td className="px-4 py-3 text-gray-600">
+                        <span className="text-xs text-gray-400 mr-1">{r.单据类型}</span>
+                        {r.单据标识}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-900">
+                        {r.单据金额 == null ? <span className="text-gray-400">算不出</span> : formatCurrency(r.单据金额)}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-medium ${r.差额 != null && Math.abs(r.差额) > 0.005 ? "text-red-600" : "text-gray-400"}`}>
+                        {r.差额 == null ? "-" : r.差额 === 0 ? "0" : formatCurrency(r.差额)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {r.核对 === "一致" && <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">一致</span>}
+                        {r.核对 === "对不上" && <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium">对不上</span>}
+                        {r.核对 === "无法核对" && <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500">无法核对</span>}
+                      </td>
+                    </tr>
+                  ))}
+                  {显示对账行.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
+                        {只看对不上 ? "没有对不上的退货入账" : "暂无退货入账记录"}
                       </td>
                     </tr>
                   )}
