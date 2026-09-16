@@ -115,6 +115,7 @@ const navItems: NavItem[] = [
       { href: "/finance/other", label: "其它收支" },
       { href: "/finance/other-categories", label: "其它收支分类" },
       { href: "/finance/receivable", label: "应收账款" },
+      { href: "/customer-receipts", label: "客户收款" },
       { href: "/finance/payment-methods", label: "收款方式" },
       { href: "/finance/payroll", label: "工资提成" },
     ],

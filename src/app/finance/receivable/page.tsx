@@ -11,6 +11,7 @@ interface 应收记录 {
   paid_amount: number | null;
   due_date: string | null;
   notes: string | null;
+  customer_id: string;
   customers: { name: string | null; phone: string | null } | null;
   work_orders: { order_no: string | null; total_cost: number | null } | null;
 }
@@ -49,7 +50,11 @@ export default async function ReceivablePage({ searchParams }: { searchParams?: 
 
   return (
     <div className="space-y-6">
-      <PageHeader title="应收账款" description="管理客户未结清的维修款项" />
+      <PageHeader
+        title="应收账款"
+        description="管理客户未结清的维修款项；客户还钱后到「客户收款单」登记核销"
+        action={{ href: "/customer-receipts", label: "客户收款单" }}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -79,6 +84,7 @@ export default async function ReceivablePage({ searchParams }: { searchParams?: 
                 <th className="px-6 py-3 text-left font-medium text-gray-500">状态</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">到期日</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">备注</th>
+                <th className="px-6 py-3 text-right font-medium text-gray-500">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -99,12 +105,22 @@ export default async function ReceivablePage({ searchParams }: { searchParams?: 
                     </td>
                     <td className="px-6 py-4 text-gray-500">{r.due_date ? formatDate(r.due_date) : "-"}</td>
                     <td className="px-6 py-4 text-gray-500">{r.notes || "-"}</td>
+                    <td className="px-6 py-4 text-right">
+                      {(r.status === "pending" || r.status === "partial") && (
+                        <Link
+                          href={`/customer-receipts?customer_id=${r.customer_id}&new=1`}
+                          className="text-xs text-green-600 hover:underline"
+                        >
+                          去收款
+                        </Link>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {(!items || items.length === 0) && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-gray-400">暂无应收账款</td>
+                  <td colSpan={9} className="px-6 py-12 text-center text-gray-400">暂无应收账款</td>
                 </tr>
               )}
             </tbody>
