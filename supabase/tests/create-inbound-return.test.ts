@@ -79,16 +79,24 @@ async function 退货(
   return res.rows[0].result as RPC结果;
 }
 
-/* 造一套"已入库"数据：配件 + 批次 + 已完成采购单 + 采购明细，返回关键 id */
+/* 造一套"已入库"数据：配件名称 + 配件 + 批次 + 已完成采购单 + 采购明细，返回关键 id */
 async function 造已入库(opts: { 库存?: number; 入库数?: number; 采购单状态?: string } = {}) {
   const 库存 = opts.库存 ?? 10;
   const 入库数 = opts.入库数 ?? 10;
   const 采购单状态 = opts.采购单状态 ?? "completed";
+  const 随机 = Math.random().toString().slice(2, 10);
+
+  /* parts.part_name_id 是 NOT NULL 外键，先造配件名称（name 全局唯一） */
+  const nameRes = await query(
+    `INSERT INTO part_names (name) VALUES ($1) RETURNING id`,
+    [`${PFX}名称${随机}`]
+  );
+  const partNameId = nameRes.rows[0].id as string;
 
   const partRes = await query(
-    `INSERT INTO parts (part_number, name, quantity, purchase_price)
-     VALUES ($1, $2, $3, 50) RETURNING id`,
-    [`${PFX}${Math.random().toString().slice(2, 10)}`, `${PFX}配件`, 库存]
+    `INSERT INTO parts (part_number, name, part_name_id, quantity, purchase_price)
+     VALUES ($1, $2, $3, $4, 50) RETURNING id`,
+    [`${PFX}${随机}`, `${PFX}配件`, partNameId, 库存]
   );
   const partId = partRes.rows[0].id as string;
 
@@ -102,7 +110,7 @@ async function 造已入库(opts: { 库存?: number; 入库数?: number; 采购�
   const orderRes = await query(
     `INSERT INTO purchase_orders (order_no, supplier_id, status, created_by)
      VALUES ($1, $2, $3, $4) RETURNING id`,
-    [`${PFX}${Math.random().toString().slice(2, 10)}`, supplierId, 采购单状态, TEST_USER_ID]
+    [`${PFX}${随机}`, supplierId, 采购单状态, TEST_USER_ID]
   );
   const orderId = orderRes.rows[0].id as string;
 
@@ -148,7 +156,7 @@ async function 流水数(partId: string, type: string): Promise<number> {
 }
 
 async function cleanupAll() {
-  /* 顺序：退货记录 → 流水 → 批次 → 采购明细 → 采购单 → 配件 → 供应商 */
+  /* 顺序：退货记录 → 流水 → 批次 → 采购明细 → 采购单 → 配件 → 配件名称 → 供应商 */
   await query(`DELETE FROM supplier_return_records WHERE part_number LIKE $1 OR notes LIKE $2 OR id IN (
     SELECT id FROM supplier_return_records WHERE supplier_id IN (SELECT id FROM suppliers WHERE name LIKE $1))`,
     [`${PFX}%`, `%${PFX}%`]);
@@ -157,6 +165,7 @@ async function cleanupAll() {
   await query(`DELETE FROM purchase_order_items WHERE part_number LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM purchase_orders WHERE order_no LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
+  await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM suppliers WHERE name LIKE $1`, [`${PFX}%`]);
 }
 
