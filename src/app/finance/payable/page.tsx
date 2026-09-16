@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
+import ApPaymentCell from "./ApPaymentCell";
 
 /* 应付记录（含关联供应商与采购单） */
 interface 应付记录 {
@@ -28,7 +29,7 @@ export default async function PayablePage({ searchParams }: { searchParams?: Pro
   const 只看有欠款 = params?.all !== "1";
   const 搜索词 = (params?.q || "").trim();
 
-  const [{ data: items, count }, { data: 金额行 }, { data: 供应商余额 }, { data: 物流余额 }] = await Promise.all([
+  const [{ data: items, count }, { data: 金额行 }, { data: 供应商余额 }, { data: 物流余额 }, { data: 账户列表 }, { data: 支付方式列表 }] = await Promise.all([
     supabase
       .from("accounts_payable")
       .select("*, suppliers(name, contact), purchase_orders(order_no, total_amount)", { count: "exact" })
@@ -39,6 +40,9 @@ export default async function PayablePage({ searchParams }: { searchParams?: Pro
        2026-09-16 批次6：供应商汇总加累计列（入库数/进货/已付/退货） */
     supabase.rpc("supplier_balances"),
     supabase.rpc("logistics_company_balances"),
+    /* 2026-09-16 销账闭环：外包付款弹窗要用的资金账户和支付方式 */
+    supabase.from("finance_accounts").select("id, name").eq("is_active", true).order("name"),
+    supabase.from("payment_methods").select("code, name").eq("is_active", true).order("sort_order"),
   ]);
 
   interface 供应商汇总行 {
@@ -223,6 +227,7 @@ export default async function PayablePage({ searchParams }: { searchParams?: Pro
                 <th className="px-6 py-3 text-left font-medium text-gray-500">状态</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">到期日</th>
                 <th className="px-6 py-3 text-left font-medium text-gray-500">备注</th>
+                <th className="px-6 py-3 text-right font-medium text-gray-500">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -243,12 +248,22 @@ export default async function PayablePage({ searchParams }: { searchParams?: Pro
                     </td>
                     <td className="px-6 py-4 text-gray-500">{r.due_date ? formatDate(r.due_date) : "-"}</td>
                     <td className="px-6 py-4 text-gray-500">{r.notes || "-"}</td>
+                    <td className="px-6 py-4 text-right">
+                      <ApPaymentCell
+                        payableId={r.id}
+                        单据名={`${r.suppliers?.name || "外包"} · ${r.notes || "应付单"}`}
+                        未付金额={(r.amount ?? 0) - (r.paid_amount ?? 0)}
+                        状态={r.status}
+                        accounts={账户列表 || []}
+                        paymentMethods={支付方式列表 || []}
+                      />
+                    </td>
                   </tr>
                 );
               })}
               {(!items || items.length === 0) && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-gray-400">暂无应付账款</td>
+                  <td colSpan={9} className="px-6 py-12 text-center text-gray-400">暂无应付账款</td>
                 </tr>
               )}
             </tbody>
