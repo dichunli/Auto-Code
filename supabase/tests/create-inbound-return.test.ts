@@ -256,7 +256,8 @@ describe("已入库退货 RPC - 数据库集成测试", () => {
     expect(记录[0].quantity).toBe(3);
     expect(记录[0].supplier_id).toBe(supplierId);
     expect(记录[0].part_name).toBe(`${PFX}配件`);
-    expect(记录[0].unit_cost).toBe(50);
+    /* pg 驱动对 NUMERIC 列返回字符串，转数字再断言 */
+    expect(Number(记录[0].unit_cost)).toBe(50);
     expect(记录[0].batch_id).toBe(batchId);
     expect(记录[0].notes).toBe(`${PFX}测试退货`);
 

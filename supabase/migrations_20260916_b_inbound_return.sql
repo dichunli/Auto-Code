@@ -251,7 +251,7 @@ BEGIN
   /* 按采购单逐单处理(同一采购单只处理一次,与原逻辑一致) */
   FOR v_rec IN
     SELECT id, work_order_item_part_id, purchase_order_item_id, source,
-           batch_id, part_id, quantity, return_reason, status
+           batch_id, part_id, part_name, quantity, return_reason, status
     FROM supplier_return_records
     WHERE id = ANY(p_record_ids)
   LOOP
