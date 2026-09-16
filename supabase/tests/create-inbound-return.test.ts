@@ -86,10 +86,15 @@ async function 造已入库(opts: { 库存?: number; 入库数?: number; 采购�
   const 采购单状态 = opts.采购单状态 ?? "completed";
   const 随机 = Math.random().toString().slice(2, 10);
 
-  /* parts.part_name_id 是 NOT NULL 外键，先造配件名称（name 全局唯一） */
+  /* parts.part_name_id 是 NOT NULL 外键；part_names.category_id 也是 NOT NULL，
+     造数链：配件分类 → 配件名称（name 全局唯一）→ 配件 */
+  const catRes = await query(
+    `INSERT INTO part_categories (name) VALUES ($1) RETURNING id`,
+    [`${PFX}分类${随机}`]
+  );
   const nameRes = await query(
-    `INSERT INTO part_names (name) VALUES ($1) RETURNING id`,
-    [`${PFX}名称${随机}`]
+    `INSERT INTO part_names (category_id, name) VALUES ($1, $2) RETURNING id`,
+    [catRes.rows[0].id, `${PFX}名称${随机}`]
   );
   const partNameId = nameRes.rows[0].id as string;
 
@@ -166,6 +171,7 @@ async function cleanupAll() {
   await query(`DELETE FROM purchase_orders WHERE order_no LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
+  await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM suppliers WHERE name LIKE $1`, [`${PFX}%`]);
 }
 
