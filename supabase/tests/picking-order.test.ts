@@ -101,7 +101,9 @@ async function 调退料(
   opts: { workOrderId?: string } = {}
 ): Promise<Rpc结果> {
   const res = await client.query(
-    `SELECT create_material_return_order($1::UUID, $2::UUID, $3::JSONB, 'good', '测试退料', NULL, $4::UUID) as result`,
+    /* return_type 传 'excess'（多领退回）：part_return_records 有 CHECK 约束，
+       只允许 excess/wrong_pick/wrong_ship/damaged，传约束外的值会在业务校验前先炸 */
+    `SELECT create_material_return_order($1::UUID, $2::UUID, $3::JSONB, 'excess', '测试退料', NULL, $4::UUID) as result`,
     [opts.workOrderId ?? null, pickingOrderId, JSON.stringify(items), TEST_USER_ID]
   );
   return res.rows[0].result as Rpc结果;
