@@ -2,6 +2,7 @@
 
 import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { 包装ServerAction错误 } from "@/lib/supabase/server";
+import { 考勤管理角色名单 } from "@/lib/attendanceDays";
 
 interface 收支分类 {
   id: string;
@@ -11,6 +12,30 @@ interface 收支分类 {
   is_active: boolean;
 }
 
+/* 收支分类属财务字典：写操作限 admin/boss/accountant（名单与考勤工资同口径），
+ * 与数据库 RLS has_role('admin','boss','accountant') 一致（migrations_20260916_b）。
+ * 读操作（下拉列表）保持只验登录，手机端录入页不受影响。 */
+async function 是财务角色(userId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("profile_roles")
+    .select("roles(name)")
+    .eq("profile_id", userId);
+  return ((data || []) as unknown as { roles?: { name?: string } | null }[]).some(
+    (d) => d.roles?.name != null && 考勤管理角色名单.includes(d.roles.name)
+  );
+}
+
+/* 统一校验：返回 null 表示通过，否则返回错误响应 */
+async function 校验财务权限(): Promise<{ success: false; error: string } | null> {
+  const { user, error } = await 验证用户已登录();
+  if (!user) return { success: false, error: error || "未登录或登录已过期，请重新登录" };
+  if (!(await 是财务角色(user.id))) {
+    return { success: false, error: "只有管理员、老板或财务能维护收支分类" };
+  }
+  return null;
+}
+
 /* 新建收支分类（重名检查 + 排序号都在服务端做，避免并发重名/重号） */
 export async function 新建收支分类(参数: {
   name: string;
@@ -18,8 +43,8 @@ export async function 新建收支分类(参数: {
 }): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
-    const { user, error: 登录错误 } = await 验证用户已登录();
-    if (!user) return { success: false, error: 登录错误 || "未登录" };
+    const 拒绝 = await 校验财务权限();
+    if (拒绝) return 拒绝;
 
     const name = 参数.name.trim();
     if (!name) return { success: false, error: "请填写分类名称" };
@@ -64,8 +89,8 @@ export async function 更新收支分类(参数: {
 }): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
-    const { user, error: 登录错误 } = await 验证用户已登录();
-    if (!user) return { success: false, error: 登录错误 || "未登录" };
+    const 拒绝 = await 校验财务权限();
+    if (拒绝) return 拒绝;
 
     const name = 参数.name.trim();
     if (!name) return { success: false, error: "请填写分类名称" };
@@ -121,8 +146,8 @@ export async function 获取收支分类列表(): Promise<{
 export async function 删除收支分类(id: string): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
-    const { user, error: 登录错误 } = await 验证用户已登录();
-    if (!user) return { success: false, error: 登录错误 || "未登录" };
+    const 拒绝 = await 校验财务权限();
+    if (拒绝) return 拒绝;
 
     /* 检查是否已被使用 */
     const { count } = await supabase
@@ -150,8 +175,8 @@ export async function 更新收支分类排序(参数: {
 }): Promise<{ success: boolean; error?: string }> {
   return 包装ServerAction错误(async () => {
     const supabase = await createClient();
-    const { user, error: 登录错误 } = await 验证用户已登录();
-    if (!user) return { success: false, error: 登录错误 || "未登录" };
+    const 拒绝 = await 校验财务权限();
+    if (拒绝) return 拒绝;
 
     for (const item of 参数.items) {
       const { error } = await supabase

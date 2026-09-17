@@ -245,43 +245,30 @@ export function Navbar() {
 
   useEffect(() => {
     async function fetchCounts() {
-      /* 一次查询所有工单的 status 和 order_type，客户端统计，减少并发请求。
-       * 排除 DRAFT- 保养单草稿（没保存的临时单，任何计数都不该算它） */
-      const { data: rows, error } = await supabase
-        .from("work_orders")
-        .select("status,order_type")
-        .not("order_no", "like", "DRAFT-%");
+      /* 数据库端并行计数：每个角标一个 head:true count 查询（只回数字、不拉行），
+       * 替代旧的"全表拉行到浏览器里数"（工单量越大全站越慢）。
+       * 口径与原客户端统计一致，全部排除 DRAFT- 保养单草稿（没保存的临时单）：
+       *   all=全部非草稿；active=未结算/未交车的普通工单；history=已结算或已交车（不限单型）；
+       *   其余按 order_type 统计（不限状态）。 */
+      const 非草稿计数 = () =>
+        supabase.from("work_orders").select("id", { count: "exact", head: true }).not("order_no", "like", "DRAFT-%");
+      const 结果 = await Promise.all([
+        非草稿计数(),
+        非草稿计数().not("status", "in", '("settled","delivered")').or("order_type.is.null,order_type.eq.normal"),
+        非草稿计数().in("status", ["settled", "delivered"]),
+        非草稿计数().eq("order_type", "appointment"),
+        非草稿计数().eq("order_type", "quote"),
+        非草稿计数().eq("order_type", "maintenance"),
+        非草稿计数().eq("order_type", "cancelled"),
+      ]);
 
-      if (error || !rows) {
-        setCounts({ all: 0, repairing: 0, appointment: 0, quote: 0, maintenance: 0, cancelled: 0 });
+      if (结果.some((r) => r.error)) {
+        setCounts({ all: 0, active: 0, history: 0, appointment: 0, quote: 0, maintenance: 0, cancelled: 0 });
         return;
       }
 
-      const typeMap: Record<string, number> = { appointment: 0, quote: 0, maintenance: 0, cancelled: 0 };
-      let active = 0;
-      let history = 0;
-
-      rows.forEach((o: { status: string; order_type?: string }) => {
-        if (o.status === "settled" || o.status === "delivered") {
-          history++;
-        } else if ((o.order_type || "normal") === "normal") {
-          active++;
-        }
-        const t = o.order_type || "normal";
-        if (t !== "normal" && typeMap[t] !== undefined) {
-          typeMap[t]++;
-        }
-      });
-
-      setCounts({
-        all: rows.length,
-        active,
-        history,
-        appointment: typeMap.appointment,
-        quote: typeMap.quote,
-        maintenance: typeMap.maintenance,
-        cancelled: typeMap.cancelled,
-      });
+      const [all, active, history, appointment, quote, maintenance, cancelled] = 结果.map((r) => r.count || 0);
+      setCounts({ all, active, history, appointment, quote, maintenance, cancelled });
     }
     fetchCounts();
 
