@@ -17,6 +17,8 @@ interface RPC结果 {
   error?: string;
   payment_id?: string;
   payment_no?: string;
+  receipt_id?: string;
+  receipt_no?: string;
 }
 
 /* ─── 创建付款单（含核销明细；2026-09-16 批次6 支持优惠金额） ─── */
@@ -95,6 +97,78 @@ export async function 作废供应商付款单(
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("void_supplier_payment", {
     p_payment_id: paymentId,
+  });
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as RPC结果 | null;
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "作废失败" };
+  }
+
+  revalidatePath("/supplier-payments");
+  revalidatePath("/supplier-transactions");
+  return { success: true };
+}
+
+/* ─── 创建收款单（2026-09-16 批次7：供应商退回多付/退货款，记 refund 流水销负余额） ─── */
+export async function 创建供应商收款单(参数: {
+  supplier_id: string;
+  amount: number;
+  payment_method?: string;
+  received_at?: string;
+  note?: string;
+}): Promise<{ success: boolean; receipt_no?: string; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  if (!参数.supplier_id) {
+    return { success: false, error: "请选择供应商" };
+  }
+  if (!Number.isFinite(参数.amount) || 参数.amount <= 0) {
+    return { success: false, error: "收款金额必须大于 0" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("create_supplier_receipt", {
+    p_supplier_id: 参数.supplier_id,
+    p_amount: Math.round(参数.amount * 100) / 100,
+    p_payment_method: 参数.payment_method?.trim() || null,
+    p_received_at: 参数.received_at || null,
+    p_note: 参数.note?.trim() || null,
+  });
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as RPC结果 | null;
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "创建收款单失败" };
+  }
+
+  revalidatePath("/supplier-payments");
+  revalidatePath("/supplier-transactions");
+  return { success: true, receipt_no: 结果.receipt_no };
+}
+
+/* ─── 作废收款单 ─── */
+export async function 作废供应商收款单(
+  receiptId: string
+): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!receiptId) {
+    return { success: false, error: "缺少收款单 id" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("void_supplier_receipt", {
+    p_receipt_id: receiptId,
   });
 
   if (error) {

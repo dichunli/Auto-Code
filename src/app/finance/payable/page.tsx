@@ -53,6 +53,8 @@ export default async function PayablePage({ searchParams }: { searchParams?: Pro
     total_debit: number;
     total_payment: number;
     total_credit: number;
+    /* 2026-09-16 批次7：累计优惠（抹零） */
+    total_discount: number;
   }
 
   /* 汇总表：默认只看有欠款；搜索词按名称模糊过滤 */
@@ -134,6 +136,7 @@ export default async function PayablePage({ searchParams }: { searchParams?: Pro
                 <th className="px-4 py-3 text-right font-medium text-gray-500">入库单数</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">累计进货</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">累计已付</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">累计优惠</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">累计退货</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">操作</th>
               </tr>
@@ -152,6 +155,7 @@ export default async function PayablePage({ searchParams }: { searchParams?: Pro
                   <td className="px-4 py-4 text-right text-gray-600">{r.inbound_count}</td>
                   <td className="px-4 py-4 text-right text-gray-900">{formatCurrency(Number(r.total_debit))}</td>
                   <td className="px-4 py-4 text-right text-green-600">{formatCurrency(Number(r.total_payment))}</td>
+                  <td className="px-4 py-4 text-right text-orange-600">{formatCurrency(Number(r.total_discount))}</td>
                   <td className="px-4 py-4 text-right text-gray-600">{formatCurrency(Number(r.total_credit))}</td>
                   <td className="px-4 py-4 text-right space-x-3">
                     <Link href={`/suppliers/${r.supplier_id}/statement`} className="text-xs text-gray-600 hover:underline">对账单</Link>
@@ -161,7 +165,7 @@ export default async function PayablePage({ searchParams }: { searchParams?: Pro
               ))}
               {采购汇总.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-gray-400">
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-400">
                     {只看有欠款 ? "供应商货款不欠了" : "没有匹配的供应商"}
                   </td>
                 </tr>
