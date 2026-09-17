@@ -7,8 +7,10 @@ import QuoteSheetsContent from "./QuoteSheetsContent";
 
 /* 询价单管理页：首屏数据服务端取（列表页规范），操作走 Server Action */
 
-export default async function QuoteSheetsPage() {
-  const 结果 = await 获取询价单列表();
+export default async function QuoteSheetsPage(props: { searchParams?: Promise<Record<string, string | undefined>> | Record<string, string | undefined> }) {
+  const searchParams = (await Promise.resolve(props.searchParams || {})) as Record<string, string | undefined>;
+  const 当前页 = Math.max(1, parseInt(searchParams.page || "1", 10));
+  const 结果 = await 获取询价单列表(当前页);
 
   return (
     <div>
@@ -31,7 +33,7 @@ export default async function QuoteSheetsPage() {
       </StickyPageHeader>
 
       {结果.success && 结果.data ? (
-        <QuoteSheetsContent 初始列表={结果.data.列表} 当前时间戳={结果.data.服务器时间戳} />
+        <QuoteSheetsContent 初始列表={结果.data.列表} 当前时间戳={结果.data.服务器时间戳} 总数={结果.data.总数} 当前页={当前页} 每页数={结果.data.每页数} />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-red-500">
           加载失败：{结果.error || "未知错误"}

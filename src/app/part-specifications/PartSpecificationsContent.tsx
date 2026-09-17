@@ -3,6 +3,7 @@
 import {useState, useEffect, useCallback, useRef, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
+import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { SearchDropdown } from "@/components/SearchDropdown";
 import Link from "next/link";
@@ -10,10 +11,6 @@ import { DeleteButton } from "@/components/DeleteButton";
 import { BatchLinkDialog } from "./BatchLinkDialog";
 import { 新建规格并关联, 批量导入配件规格, 删除配件规格 } from "./actions";
 import { toast } from "@/lib/globalToast";
-
-function normalize(str: string) {
-  return str.toLowerCase().replace(/[\s\p{P}]/gu, "");
-}
 
 interface PartName {
   id: string;
@@ -28,11 +25,12 @@ interface Spec {
   part_name_specifications?: { part_names?: PartName | null }[] | null;
 }
 
-export default function PartSpecificationsContent({ initialSpecs }: { initialSpecs: unknown[] }) {
+export default function PartSpecificationsContent({ initialSpecs, initialTotal, 每页数 }: { initialSpecs: unknown[]; initialTotal: number; 每页数: number }) {
   const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
-  const [allSpecs, setAllSpecs] = useState<Spec[]>(initialSpecs as Spec[]);
-  const [filteredSpecs, setFilteredSpecs] = useState<Spec[]>(initialSpecs as Spec[]);
+  const [specs, setSpecs] = useState<Spec[]>(initialSpecs as Spec[]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(initialTotal);
   const [, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -48,37 +46,55 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
   const [importLoading, setImportLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const debouncedQuery = useDebounce(query, 300);
+  const 跳过首次查询 = useRef(true);
+
+  /* 搜索下推到 SQL：规格名直接 ilike；关联配件名/分类名先查出名称 id，再反查关联表拿规格 id */
   const loadSpecs = useCallback(
-    async () => {
+    async (搜索词: string, 目标页: number) => {
       setSearching(true);
-      const { data } = await supabase
+      const s = 清理搜索词(搜索词 || "");
+      let 规格id过滤: string[] | null = null;
+      if (s) {
+        const [{ data: 名称命中 }, { data: 分类命中 }] = await Promise.all([
+          supabase.from("part_names").select("id").ilike("name", `%${s}%`),
+          supabase.from("part_names").select("id, part_categories!inner(name)").ilike("part_categories.name", `%${s}%`),
+        ]);
+        const 名称ids = [...new Set([...(名称命中 || []), ...(分类命中 || [])].map((r: { id: string }) => r.id))];
+        if (名称ids.length > 0) {
+          const { data: 关联行 } = await supabase.from("part_name_specifications").select("specification_id").in("part_name_id", 名称ids);
+          规格id过滤 = [...new Set((关联行 || []).map((l: { specification_id: string }) => l.specification_id))];
+        } else {
+          规格id过滤 = [];
+        }
+      }
+
+      let q = supabase
         .from("part_specifications")
-        .select("*, part_name_specifications(part_names(id, name, part_categories(name)))")
+        .select("*, part_name_specifications(part_names(id, name, part_categories(name)))", { count: "exact" })
         .order("usage_count", { ascending: false });
-      const list = (data || []) as Spec[];
-      setAllSpecs(list);
-      setFilteredSpecs(list);
+      if (s) {
+        /* 名称命中为空时仅按规格名搜；有命中时规格名 OR 关联命中 */
+        q = 规格id过滤 && 规格id过滤.length > 0
+          ? q.or(`name.ilike.%${s}%,id.in.(${规格id过滤.join(",")})`)
+          : q.ilike("name", `%${s}%`);
+      }
+      const from = (目标页 - 1) * 每页数;
+      const { data, count } = await q.range(from, from + 每页数 - 1);
+      setSpecs((data || []) as Spec[]);
+      if (count !== null) setTotal(count);
+      setPage(目标页);
       setLoading(false);
       setSearching(false);
     },
-    [supabase]
+    [supabase, 每页数]
   );
 
   useEffect(() => {
-    if (!query.trim()) {
-      setFilteredSpecs(allSpecs);
-      return;
-    }
-    const nq = normalize(query);
-    const filtered = allSpecs.filter((s) => {
-      const links = s.part_name_specifications || [];
-      const names = links.map((l: { part_names?: PartName | null }) => l.part_names?.name).filter(Boolean);
-      const categories = links.map((l: { part_names?: PartName | null }) => l.part_names?.part_categories?.name).filter(Boolean);
-      const searchable = [s.name, ...names, ...categories].join(" ");
-      return normalize(searchable).includes(nq);
-    });
-    setFilteredSpecs(filtered);
-  }, [query, allSpecs]);
+    if (跳过首次查询.current) { 跳过首次查询.current = false; return; }
+    /* 搜索词变化回到第一页 */
+    loadSpecs(debouncedQuery, 1);
+  }, [debouncedQuery, loadSpecs]);
 
   /* 配件名称联想查询（查询条件与原防抖块一致，仅换成 SearchDropdown 的 searchFn） */
   async function 搜索配件名称(q: string): Promise<PartName[]> {
@@ -99,10 +115,10 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
   }
 
   function toggleSelectAll() {
-    if (selectedIds.size === filteredSpecs.length) {
+    if (selectedIds.size === specs.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredSpecs.map((s) => s.id)));
+      setSelectedIds(new Set(specs.map((s) => s.id)));
     }
   }
 
@@ -148,7 +164,7 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
     setName("");
     setLinkedNames([]);
     setPnQuery("");
-    loadSpecs();
+    loadSpecs("", 1);
     setSaving(false);
   }
 
@@ -168,8 +184,10 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
     return Array.from(set).join("、");
   }
 
-  function handleExport() {
-    const rows = [["规格名称"], ...allSpecs.map((s) => [s.name])];
+  /* 导出语义是"全部规格"：分页后列表只剩当前页，导出时现查全量 */
+  async function handleExport() {
+    const { data } = await supabase.from("part_specifications").select("name").order("usage_count", { ascending: false });
+    const rows = [["规格名称"], ...((data || []) as { name: string }[]).map((s) => [s.name])];
     const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -213,7 +231,7 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
     setImportOpen(false);
     setImportLoading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    loadSpecs();
+    loadSpecs(query, page);
   }
 
   return (
@@ -276,7 +294,7 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
                 <th className="px-4 py-3 text-left">
                   <input
                     type="checkbox"
-                    checked={filteredSpecs.length > 0 && selectedIds.size === filteredSpecs.length}
+                    checked={specs.length > 0 && selectedIds.size === specs.length}
                     onChange={toggleSelectAll}
                     className="w-4 h-4"
                   />
@@ -289,7 +307,7 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredSpecs?.map((s: Spec) => (
+              {specs?.map((s: Spec) => (
                 <tr key={s.id} className="hover:bg-gray-50">
                   <td className="px-4 py-4">
                     <input
@@ -311,7 +329,7 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
                   </td>
                 </tr>
               ))}
-              {(!filteredSpecs || filteredSpecs.length === 0) && !showForm && (
+              {(!specs || specs.length === 0) && !showForm && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center">
                     <div className="text-gray-400 mb-4">
@@ -329,13 +347,43 @@ export default function PartSpecificationsContent({ initialSpecs }: { initialSpe
             </tbody>
           </table>
         </div>
+
+        {/* 分页 */}
+        {total > 每页数 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-gray-100">
+            <div className="text-sm text-gray-500">
+              共 {total} 条，第 {page}/{Math.ceil(total / 每页数)} 页
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => loadSpecs(query, page - 1)}
+                disabled={page <= 1 || searching}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                上一页
+              </button>
+              <span className="text-sm text-gray-600 px-2">
+                {page} / {Math.ceil(total / 每页数)}
+              </span>
+              <button
+                type="button"
+                onClick={() => loadSpecs(query, page + 1)}
+                disabled={page >= Math.ceil(total / 每页数) || searching}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <BatchLinkDialog
         open={showBatchLink}
         selectedSpecIds={Array.from(selectedIds)}
         onClose={() => { setShowBatchLink(false); setSelectedIds(new Set()); }}
-        onSuccess={() => { setSelectedIds(new Set()); loadSpecs(); }}
+        onSuccess={() => { setSelectedIds(new Set()); loadSpecs(query, page); }}
       />
 
       {importOpen && (
