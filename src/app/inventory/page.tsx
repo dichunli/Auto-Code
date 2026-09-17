@@ -73,9 +73,8 @@ export default async function InventoryPage() {
         <Link href="/inventory/checks" className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
           库存盘点
         </Link>
-        <Link href="/inventory/returns" className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
-          供应商退货
-        </Link>
+        {/* 2026-09-16：「供应商退货」入口下线——退货统一从「采购流程 → 已入库」发起，
+            走待退货→采退单→冲减应付款的正规流程（旧入口只扣库存不记账，已废弃） */}
         <Link href="/inventory/plate-parts" className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
           绑定车牌配件
         </Link>

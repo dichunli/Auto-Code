@@ -14,6 +14,24 @@ import { toast } from "@/lib/globalToast";
 /* 退货原因中文化：保持原变量名，引用处零改动 */
 const returnReasonMap = RETURN_REASON_LABELS;
 
+/* 配件展示取值（2026-09-16 已入库退货接入）：记录快照列优先，
+   工单配件行嵌入兜底（收货异常的老记录没有快照） */
+function 取名称(r: ReturnRecord): string {
+  return r.part_name || r.work_order_item_parts?.name || "-";
+}
+function 取编码(r: ReturnRecord): string {
+  return r.part_number || r.work_order_item_parts?.part_number || "";
+}
+function 取品牌(r: ReturnRecord): string {
+  return r.brand || r.work_order_item_parts?.brand || "";
+}
+function 取规格(r: ReturnRecord): string {
+  return r.specification || r.work_order_item_parts?.specification || "";
+}
+function 取单位(r: ReturnRecord): string {
+  return r.unit || r.work_order_item_parts?.unit || "";
+}
+
 interface WorkOrderItemPart {
   id: string;
   name: string;
@@ -39,6 +57,20 @@ export interface ReturnRecord {
   photos: string[] | null;
   status: string;
   created_at: string;
+  /* 2026-09-16 已入库退货接入：来源 + 采购明细/供应商关联 + 配件快照列
+     （备货采购的货没有工单配件行，展示/建采退单直接用快照） */
+  source: string;
+  purchase_order_item_id: string | null;
+  supplier_id: string | null;
+  part_id: string | null;
+  part_number: string | null;
+  part_name: string | null;
+  brand: string | null;
+  specification: string | null;
+  unit: string | null;
+  unit_cost: number | null;
+  batch_id: string | null;
+  notes: string | null;
   work_order_item_parts: WorkOrderItemPart | null;
   profiles: { full_name: string | null } | null;
 }
@@ -103,7 +135,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
     const { data, error } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, source, purchase_order_item_id, supplier_id, part_id, part_number, part_name, brand, specification, unit, unit_cost, batch_id, notes, work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
       )
       .eq("status", "pending")
       .order("created_at", { ascending: false });
@@ -149,11 +181,18 @@ export function PendingReturnList(props: PendingReturnListProps) {
     try {
       const ids = Array.from(selectedIds);
 
-      /* 查询涉及的采购单是否有入库单,用于提示用户(只读) */
+      /* 2026-09-16 两类来源撤销语义不同，确认文案分开说明：
+         - 收货异常(receipt_exception)：整单回滚入库（采购单退回待收货）
+         - 已入库退货(inbound_return)：只加回库存+删记录，不碰入库单 */
+      const 选中记录 = records.filter((r) => ids.includes(r.id));
+      const 已入库退货数 = 选中记录.filter((r) => r.source === "inbound_return").length;
+      const 老来源ids = 选中记录.filter((r) => r.source !== "inbound_return").map((r) => r.id);
+
+      /* 查询老来源记录涉及的采购单是否有入库单,用于提示用户(只读) */
       const { data: recordRows } = await supabase
         .from("supplier_return_records")
         .select("work_order_item_part_id")
-        .in("id", ids);
+        .in("id", 老来源ids.length > 0 ? 老来源ids : ["00000000-0000-0000-0000-000000000000"]);
       const partIds = (recordRows || [])
         .map((r: { work_order_item_part_id: string | null }) => r.work_order_item_part_id)
         .filter((x): x is string => !!x);
@@ -176,10 +215,18 @@ export function PendingReturnList(props: PendingReturnListProps) {
         }
       }
 
-      const msg = inboundNos
-        ? `这些退货记录关联的入库单 ${inboundNos} 也将被撤销，是否继续？`
-        : `确认撤销选中的 ${selectedIds.size} 条退货记录？`;
-      if (!(await 请求确认(msg))) {
+      const 文案段: string[] = [];
+      if (老来源ids.length > 0) {
+        文案段.push(
+          inboundNos
+            ? `${老来源ids.length} 条收货异常记录关联的入库单 ${inboundNos} 也将被整单撤销`
+            : `${老来源ids.length} 条收货异常记录将撤销其收货处理`
+        );
+      }
+      if (已入库退货数 > 0) {
+        文案段.push(`${已入库退货数} 条已入库退货撤销后库存将自动加回`);
+      }
+      if (!(await 请求确认(`确认撤销选中的 ${selectedIds.size} 条退货记录？\n${文案段.join("\n")}`))) {
         setSubmitting(null);
         return;
       }
@@ -213,7 +260,9 @@ export function PendingReturnList(props: PendingReturnListProps) {
       .sort(([a], [b]) => a.localeCompare(b, "zh"))
       .map(([supplierName, list]) => ({
         supplierName,
-        supplierId: list[0]?.work_order_item_parts?.supplier_id || null,
+        /* 供应商 id：记录快照列优先（已入库退货从采购单取的准确值），
+           工单配件行兜底（收货异常的老记录） */
+        supplierId: list[0]?.supplier_id || list[0]?.work_order_item_parts?.supplier_id || null,
         records: list,
         logisticsCompany: list[0]?.logistics_company || "",
         trackingNo: list[0]?.tracking_no || "",
@@ -246,14 +295,15 @@ export function PendingReturnList(props: PendingReturnListProps) {
           notes: g.notes || null,
           records: g.records.map((r) => ({
             record_id: r.id,
-            part_id: r.work_order_item_parts?.part_id || null,
-            part_number: r.work_order_item_parts?.part_number || null,
-            name: r.work_order_item_parts?.name || null,
-            brand: r.work_order_item_parts?.brand || null,
-            specification: r.work_order_item_parts?.specification || null,
+            /* 快照列优先（2026-09-16），工单配件行兜底 */
+            part_id: r.part_id || r.work_order_item_parts?.part_id || null,
+            part_number: r.part_number || r.work_order_item_parts?.part_number || null,
+            name: r.part_name || r.work_order_item_parts?.name || null,
+            brand: r.brand || r.work_order_item_parts?.brand || null,
+            specification: r.specification || r.work_order_item_parts?.specification || null,
             quantity: r.quantity,
             return_reason: r.return_reason,
-            unit_cost: r.work_order_item_parts?.unit_cost || null,
+            unit_cost: r.unit_cost ?? r.work_order_item_parts?.unit_cost ?? null,
           })),
         }))
       );
@@ -511,20 +561,24 @@ export function PendingReturnList(props: PendingReturnListProps) {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="space-y-1">
-                        <PartSearchDropdown
-                          value={r.work_order_item_parts?.part_number || ""}
-                          onChange={() => {}}
-                          onSelect={(part) => handleInlinePartSelect(r, part)}
-                          onCreateNew={(query) => openCreateNewModal(r, query)}
-                          onClear={() => handleInlineClear(r)}
-                          disabled={submitting === `inline-${r.id}`}
-                          placeholder="编码"
-                          inputClassName="w-24 border-gray-200 text-xs"
-                        />
-                        <div className="font-medium text-gray-900">{r.work_order_item_parts?.name || "-"}</div>
-                        {(r.work_order_item_parts?.brand || r.work_order_item_parts?.specification || r.work_order_item_parts?.unit) && (
+                        {/* 行内配件编辑只对有工单配件行的老来源记录开放；
+                            已入库退货（含备货件）直接写死在快照列，无可编辑对象 */}
+                        {r.work_order_item_parts && (
+                          <PartSearchDropdown
+                            value={r.work_order_item_parts?.part_number || ""}
+                            onChange={() => {}}
+                            onSelect={(part) => handleInlinePartSelect(r, part)}
+                            onCreateNew={(query) => openCreateNewModal(r, query)}
+                            onClear={() => handleInlineClear(r)}
+                            disabled={submitting === `inline-${r.id}`}
+                            placeholder="编码"
+                            inputClassName="w-24 border-gray-200 text-xs"
+                          />
+                        )}
+                        <div className="font-medium text-gray-900">{取名称(r)}</div>
+                        {(取品牌(r) || 取规格(r) || 取单位(r)) && (
                           <div className="text-xs text-gray-400">
-                            {r.work_order_item_parts?.brand || ""} {r.work_order_item_parts?.specification || ""} {r.work_order_item_parts?.unit ? `(${r.work_order_item_parts.unit})` : ""}
+                            {取品牌(r)} {取规格(r)} {取单位(r) ? `(${取单位(r)})` : ""}
                           </div>
                         )}
                       </div>
@@ -534,7 +588,14 @@ export function PendingReturnList(props: PendingReturnListProps) {
                         <DocumentNameInput 工单配件行id={r.work_order_item_parts.id} 初始值={r.work_order_item_parts.document_name || ""} 保存后={loadData} />
                       )}
                     </td>
-                    <td className="px-6 py-4 text-gray-600">{returnReasonMap[r.return_reason] || r.return_reason}</td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {returnReasonMap[r.return_reason] || r.return_reason}
+                      {/* 已入库退货来源标识 + 备注（2026-09-16） */}
+                      {r.source === "inbound_return" && (
+                        <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-orange-50 text-orange-600">已入库退货</span>
+                      )}
+                      {r.notes && <div className="text-xs text-gray-400 mt-0.5">{r.notes}</div>}
+                    </td>
                     <td className="px-6 py-4 text-gray-600">{r.quantity}</td>
                     <td className="px-6 py-4 text-gray-500 text-xs">
                       {r.logistics_company && r.tracking_no ? (
@@ -567,14 +628,16 @@ export function PendingReturnList(props: PendingReturnListProps) {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(r)}
-                          disabled={submitting === `edit-${r.id}`}
-                          className="text-xs text-gray-500 hover:text-blue-600 whitespace-nowrap"
-                        >
-                          编辑
-                        </button>
+                        {r.work_order_item_parts && (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(r)}
+                            disabled={submitting === `edit-${r.id}`}
+                            className="text-xs text-gray-500 hover:text-blue-600 whitespace-nowrap"
+                          >
+                            编辑
+                          </button>
+                        )}
                         <button
                           onClick={() => handleComplete(r.id)}
                           className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
@@ -631,13 +694,13 @@ export function PendingReturnList(props: PendingReturnListProps) {
                             <tr key={r.id} className="hover:bg-gray-50">
                               <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                               <td className="px-3 py-2 text-gray-900 font-medium">
-                                {r.work_order_item_parts?.name || "-"}
+                                {取名称(r)}
                               </td>
                               <td className="px-3 py-2 text-gray-600">
-                                {r.work_order_item_parts?.part_number || "-"}
+                                {取编码(r) || "-"}
                               </td>
                               <td className="px-3 py-2 text-gray-600">
-                                {r.work_order_item_parts?.brand || ""} {r.work_order_item_parts?.specification || ""}
+                                {取品牌(r)} {取规格(r)}
                               </td>
                               <td className="px-3 py-2 text-gray-600">
                                 {returnReasonMap[r.return_reason] || r.return_reason}
@@ -810,10 +873,10 @@ export function PendingReturnList(props: PendingReturnListProps) {
                       {g.list.map((r, idx) => (
                         <tr key={r.id} className="border-b border-gray-100">
                           <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
-                          <td className="px-3 py-2 text-gray-900">{r.work_order_item_parts?.name || "-"}</td>
-                          <td className="px-3 py-2 text-gray-600">{r.work_order_item_parts?.part_number || "-"}</td>
+                          <td className="px-3 py-2 text-gray-900">{取名称(r)}</td>
+                          <td className="px-3 py-2 text-gray-600">{取编码(r) || "-"}</td>
                           <td className="px-3 py-2 text-gray-600">
-                            {r.work_order_item_parts?.brand || ""} {r.work_order_item_parts?.specification || ""}
+                            {取品牌(r)} {取规格(r)}
                           </td>
                           <td className="px-3 py-2 text-gray-600">
                             {returnReasonMap[r.return_reason] || r.return_reason}
