@@ -141,15 +141,21 @@ describe("create_work_order RPC - 数据库集成测试", () => {
   });
 
   it("未登录调用 → 拒绝，不产生工单（2026-09-19 门禁）", async () => {
+    /* 记录调用前数量（前一用例已开过 1 单，不能断言绝对值 0） */
+    const before = await query(
+      `SELECT COUNT(*) as cnt FROM work_orders WHERE customer_id = $1`,
+      [customerId]
+    );
+    const 调用前 = parseInt(before.rows[0].cnt);
+
     const r = await 开单(customerId, vehicleId, []);
     expect(r.success).toBe(false);
     expect(r.error).toContain("未登录");
 
-    /* 无新工单产生 */
-    const cnt = await query(
+    const after = await query(
       `SELECT COUNT(*) as cnt FROM work_orders WHERE customer_id = $1`,
       [customerId]
     );
-    expect(parseInt(cnt.rows[0].cnt)).toBe(0);
+    expect(parseInt(after.rows[0].cnt)).toBe(调用前);
   });
 });

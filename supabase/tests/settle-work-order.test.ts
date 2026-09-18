@@ -92,15 +92,17 @@ async function createTestWorkOrder(opts: {
     discountAmount = 0,
   } = opts;
 
-  // 使用临时 customer / vehicle 避免外键冲突
+  // 使用临时 customer / vehicle 避免外键冲突（手机号/车牌随机，防用例间撞唯一约束）
+  const 随机 = Math.random().toString().slice(2, 10);
   const custRes = await query(
-    `INSERT INTO customers (name, phone) VALUES ('测试客户', '13800138000') RETURNING id`
+    `INSERT INTO customers (name, phone) VALUES ('测试客户', $1) RETURNING id`,
+    [`138${随机}`]
   );
   const customerId = custRes.rows[0].id;
 
   const vehRes = await query(
-    `INSERT INTO vehicles (customer_id, plate_number) VALUES ($1, '京A99999') RETURNING id`,
-    [customerId]
+    `INSERT INTO vehicles (customer_id, plate_number) VALUES ($1, $2) RETURNING id`,
+    [customerId, `京T${随机.slice(0, 6)}`]
   );
   const vehicleId = vehRes.rows[0].id;
 
