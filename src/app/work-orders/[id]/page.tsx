@@ -3,6 +3,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { readyToClose } from "@/lib/orderStage";
 import { PriceValue } from "@/components/PriceVisibilityContext";
 import FaultLightIcon from "@/components/FaultLightIcon";
+import { WorkOrderOtherCosts } from "@/components/WorkOrderOtherCosts";
 import { calculateItemCommission } from "@/lib/commission";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -70,7 +71,7 @@ export default async function WorkOrderDetailPage({
     itemMedia, itemMechanics, mechanicGroups, knowledgeLinks, itemParts,
     partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches, pickRequests,
     qualityChecks, payments, advancePaymentRecords, followUps, history, suppliers, logisticsCompanies,
-    inspections, inspectionMedia, outsourceOrder,
+    inspections, inspectionMedia, outsourceOrder, otherCosts,
     historyOrderCount, otherOrdersByType, customerOrderCount,
   } = await getWorkOrderData(id);
 
@@ -1546,6 +1547,14 @@ export default async function WorkOrderDetailPage({
               </div>
             </div>
           </div>
+
+          {/* 其它成本（2026-09-18：退货运费分摊等内部成本明细，误记可删） */}
+          {(otherCosts || []).length > 0 && (
+            <WorkOrderOtherCosts
+              costs={(otherCosts || []) as unknown as ComponentProps<typeof WorkOrderOtherCosts>["costs"]}
+              orderId={id}
+            />
+          )}
 
           {/* 支付记录 */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">

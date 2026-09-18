@@ -311,6 +311,17 @@ export interface 配件批次 { part_id?: string; quantity?: number | null }
 /* 配件申领（待出库，part_pick_requests） */
 export interface 申领记录 { work_order_item_part_id?: string; quantity?: number | null }
 
+/* 工单其它成本明细（2026-09-18：退货运费分摊等，work_order_other_costs 表） */
+export interface 其它成本明细 {
+  id: string;
+  name: string;
+  amount: number;
+  source: string;
+  reference_id: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
 interface WorkOrderDataResult {
   order: 工单信息 | null;
   requirements: 维修需求[] | null;
@@ -339,6 +350,7 @@ interface WorkOrderDataResult {
   inspections: 检查记录[] | null;
   inspectionMedia: 媒体记录[];
   outsourceOrder: 外包单 | null;
+  otherCosts: 其它成本明细[] | null;
   historyOrderCount: number | null;
   otherOrdersByType: 其他工单[] | null;
   customerOrderCount: number | null;
@@ -421,6 +433,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     { data: followUps },
     { data: history },
     { data: itemPartsRaw },
+    { data: otherCostsRaw },
   ] = await Promise.all([
     supabase.from("work_orders").select(`*, vehicles(*, vehicle_models(*)), customers(*)`).eq("id", id).single(),
     缓存查询("profiles", () => supabase.from("profiles").select("id, full_name, group_id, profile_roles(roles(name)), mechanic_levels(sort_order)").eq("is_active", true).order("full_name")),
@@ -474,6 +487,10 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
         parts(*, part_categories(name), part_brands(name)),
         work_order_items!inner(work_order_id)
       `).eq("work_order_items.work_order_id", id).order("sort_order", { ascending: true }).order("created_at", { ascending: true }).order("id", { ascending: true }),
+
+    /* 工单其它成本明细（2026-09-18：退货运费分摊等） */
+    supabase.from("work_order_other_costs").select("id, name, amount, source, reference_id, notes, created_at")
+      .eq("work_order_id", id).order("created_at", { ascending: true }),
   ]);
 
   if (orderError) {
@@ -627,6 +644,7 @@ export const getWorkOrderData = cache(async function getWorkOrderData(id: string
     partMedia, pickingRecords, returnRecords, supplierReturnRecords, partBatches, pickRequests,
     qualityChecks, payments, advancePaymentRecords, followUps, history, suppliers, logisticsCompanies,
     inspections, inspectionMedia, outsourceOrder,
+    otherCosts: (otherCostsRaw as unknown as 其它成本明细[]) ?? null,
     historyOrderCount: historyOrderCount ?? null,
     otherOrdersByType: otherOrdersByType ?? null,
     customerOrderCount: customerOrderCount ?? null,

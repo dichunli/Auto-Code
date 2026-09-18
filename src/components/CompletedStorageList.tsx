@@ -32,6 +32,16 @@ function 取入库时间(o: PurchaseOrder): string {
   return 入库时间们.length > 0 ? 入库时间们.reduce((a, b) => (a > b ? a : b)) : o.created_at;
 }
 
+/* 入库日期默认范围（2026-09-18 用户拍板）：当天往前 3 个月，可修改 */
+function 默认日期范围(): { from: string; to: string } {
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const to = new Date();
+  const from = new Date();
+  from.setMonth(from.getMonth() - 3);
+  return { from: fmt(from), to: fmt(to) };
+}
+
 /* 库存批次（批量退货弹窗用）：只看还有剩余的批次 */
 interface 库存批次 {
   id: string;
@@ -71,12 +81,13 @@ function BatchReturnModal({
 }) {
   const { showToast } = useToast();
   /* 每行表单：批次id + 数量（字符串存储，提交转 number，遵守表单规范）；
-     批次默认带出本次入库的批次；默认数量 = 该行的可退数（已入 − 已退，封顶库存） */
+     批次默认带出本次入库的批次；数量默认不填（2026-09-18 用户拍板：
+     默认带数量容易手滑全退，必须手动填、空着红框提醒） */
   const [表单, set表单] = useState(() =>
     行们.map((it) => ({
       itemId: it.id,
       batch_id: 默认批次Map.get(it.id) ?? "",
-      qty: String(可退数(it)),
+      qty: "",
     }))
   );
   /* 默认批次异步回填（2026-09-18 踩坑）：弹窗先挂载、批次数据后查到，
@@ -122,13 +133,17 @@ function BatchReturnModal({
     /* 前端先校验：批次必选、数量 1..min(批次剩余, 可退) */
     for (const r of 表单) {
       const it = 行们.find((x) => x.id === r.itemId)!;
-      const qty = parseInt(r.qty, 10);
       const 可退 = 可退数(it);
       if (!r.batch_id) {
         showToast(`「${it.name}」还没选批次`, "warning");
         return;
       }
       const 批次 = (批次Map?.get(it.part_id || "") || []).find((b) => b.id === r.batch_id);
+      if (r.qty.trim() === "") {
+        showToast(`「${it.name}」请填写退货数量`, "warning");
+        return;
+      }
+      const qty = parseInt(r.qty, 10);
       if (!Number.isInteger(qty) || qty <= 0) {
         showToast(`「${it.name}」退货数量必须大于 0`, "warning");
         return;
@@ -245,7 +260,10 @@ function BatchReturnModal({
                           max={可退}
                           value={行.qty}
                           onChange={(e) => 改行(it.id, { qty: e.target.value })}
-                          className="w-20 px-2 py-1.5 text-sm text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                          placeholder="必填"
+                          className={`w-20 px-2 py-1.5 text-sm text-right rounded border focus:outline-none focus:border-blue-400 ${
+                            行.qty.trim() === "" ? "border-red-400 bg-red-50" : "border-gray-200"
+                          }`}
                         />
                       </td>
                     </tr>
@@ -262,7 +280,9 @@ function BatchReturnModal({
               <select
                 value={原因}
                 onChange={(e) => set原因(e.target.value)}
-                className="w-full px-2 py-2 text-sm rounded border border-gray-300 bg-white focus:outline-none focus:border-blue-400"
+                className={`w-full px-2 py-2 text-sm rounded border bg-white focus:outline-none focus:border-blue-400 ${
+                  原因 === "" ? "border-red-400 bg-red-50" : "border-gray-300"
+                }`}
               >
                 {/* 2026-09-18 用户拍板：默认不选+6 种原因，顺序即用户给定顺序 */}
                 <option value="">请选择退货原因</option>
@@ -344,8 +364,8 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
   const [商品搜索, set商品搜索] = useState("");
   const 防抖商品搜索 = useDebounce(商品搜索, 300).trim().toLowerCase();
   const [供应商筛选, set供应商筛选] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => 默认日期范围().from);
+  const [dateTo, setDateTo] = useState(() => 默认日期范围().to);
   /* 退货（2026-09-16 接入正规流程）：弹窗单 + 弹窗行 ids（单独退货=只带一行的同一弹窗） */
   const [退货弹窗, set退货弹窗] = useState<{ order: PurchaseOrder; itemIds: string[] } | null>(null);
   /* 批量退货勾选：勾选键 = purchase_order_items.id */
