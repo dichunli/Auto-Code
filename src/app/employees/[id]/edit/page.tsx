@@ -1,5 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
+import { notFound, redirect } from "next/navigation";
 import { EmployeeEditForm } from "./EmployeeEditForm";
 
 interface EmployeeGroup {
@@ -48,6 +48,24 @@ interface Contact {
 export default async function EditEmployeePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
+
+  /* 前端角色拦截（2026-09-18 补，9-15 诊断🟠#14）：员工档案仅 admin 可维护，
+   * 此前猜 URL 即可打开编辑页（提交有 RLS is_admin() 兜底，但手机号/地址等会回显）。
+   * 非管理员直接弹回列表页；写操作侧 actions.ts 也有同样校验，双保险。 */
+  const { user } = await 验证用户已登录();
+  if (!user) {
+    redirect("/login");
+  }
+  const { data: 角色行 } = await supabase
+    .from("profile_roles")
+    .select("roles(name)")
+    .eq("profile_id", user.id);
+  const 是管理员 = ((角色行 || []) as unknown as { roles?: { name?: string } | null }[]).some(
+    (d) => d.roles?.name === "admin"
+  );
+  if (!是管理员) {
+    redirect("/employees");
+  }
 
   const [{ data: groups }, { data: roles }, { data: levels }] = await Promise.all([
     supabase.from("employee_groups").select("id, name").order("sort_order").limit(100),

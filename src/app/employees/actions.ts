@@ -7,6 +7,26 @@ import { revalidatePath } from "next/cache";
  * 编辑员工页的写库操作（解绑钉钉 / 保存档案）从客户端直写收口到服务端，
  * 避免客户端 session 异常导致 401/RLS 拦截。 */
 
+/* 员工档案属人事管理：仅 admin 可写。
+ * 口径与数据库 RLS 策略 profiles_update = is_admin()（migrations_20260802_finance_role_rls.sql）
+ * 及 API 路由版（/api/employees/[id]）一致——此前 action 只验登录，前后端口径不一（9-15 诊断🟠#14） */
+async function 校验员工管理权限(): Promise<{ success: false; error: string } | null> {
+  const { user, error } = await 验证用户已登录();
+  if (!user) return { success: false, error: error || "未登录或登录已过期，请重新登录" };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("profile_roles")
+    .select("roles(name)")
+    .eq("profile_id", user.id);
+  const 是管理员 = ((data || []) as unknown as { roles?: { name?: string } | null }[]).some(
+    (d) => d.roles?.name === "admin"
+  );
+  if (!是管理员) {
+    return { success: false, error: "只有管理员能维护员工档案" };
+  }
+  return null;
+}
+
 /* 联系人参数（id 为空表示新增联系人） */
 interface 联系人参数 {
   id?: string;
@@ -18,10 +38,8 @@ interface 联系人参数 {
 
 /* ─── 解除钉钉绑定（解绑后该员工不再参与考勤同步） ─── */
 export async function 解绑钉钉账号(employeeId: string): Promise<{ success: boolean; error?: string }> {
-  const { user, error: 登录错误 } = await 验证用户已登录();
-  if (!user) {
-    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
-  }
+  const 拒绝 = await 校验员工管理权限();
+  if (拒绝) return 拒绝;
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -58,10 +76,8 @@ export async function 保存员工档案(参数: {
   contacts: 联系人参数[];
   originalContactIds: string[];
 }): Promise<{ success: boolean; error?: string }> {
-  const { user, error: 登录错误 } = await 验证用户已登录();
-  if (!user) {
-    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
-  }
+  const 拒绝 = await 校验员工管理权限();
+  if (拒绝) return 拒绝;
 
   const {
     employeeId,

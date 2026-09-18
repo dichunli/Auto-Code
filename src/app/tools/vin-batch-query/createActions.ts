@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, 验证用户已登录 } from "@/lib/supabase/server";
 import { syncOeFromVin } from "@/app/parts/actions";
 import { 标准化VIN } from "@/lib/vinValidator";
 import { 配件系统码前缀, 生成完整系统码, 提取系统码序号 } from "@/lib/systemCode";
@@ -30,6 +30,12 @@ export interface CreatePartResult {
 export async function batchCreatePartsFromVin(
   rows: CreatePartRow[]
 ): Promise<{ success: boolean; data?: CreatePartResult[]; error?: string }> {
+  /* 登录守卫（2026-09-18 补：57 个 actions 文件唯独本文件漏了，此前仅靠 RLS 兜底） */
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
   const supabase = await createClient();
   const results: CreatePartResult[] = [];
 
@@ -196,6 +202,12 @@ export async function autoCreateFiltersByVin(
   vinList: string[],
   brand: string
 ): Promise<{ success: boolean; data?: CreatePartResult[]; error?: string }> {
+  /* 登录守卫（同 batchCreatePartsFromVin，2026-09-18 补） */
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
   const supabase = await createClient();
   const results: CreatePartResult[] = [];
 
