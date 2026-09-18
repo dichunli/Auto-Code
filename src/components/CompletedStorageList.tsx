@@ -79,9 +79,12 @@ function BatchReturnModal({
     set表单((prev) => prev.map((r) => (r.itemId === itemId ? { ...r, ...patch } : r)));
   }
 
-  /* 该行可退数 = 实际入库数 − 已退数 */
+  /* 该行可退数 = min(实际入库数 − 已退数, 当前库存数)
+     （2026-09-18：库存可能已被领用、或走老"库存退货"流程退掉——那条只扣库存不写退货记录，
+     不看库存会显示可退但实际无货可退，XYO-7701 踩坑） */
   function 可退数(it: PurchaseOrderItem): number {
-    return (it.received_qty ?? it.quantity) - (已退Map.get(it.id) ?? 0);
+    const 账面可退 = (it.received_qty ?? it.quantity) - (已退Map.get(it.id) ?? 0);
+    return Math.min(账面可退, it.parts?.quantity ?? 0);
   }
 
   async function 提交() {
@@ -100,7 +103,7 @@ function BatchReturnModal({
         return;
       }
       if (qty > 可退) {
-        showToast(`「${it.name}」最多还能退 ${可退} 件（已入库数扣掉已退数）`, "warning");
+        showToast(`「${it.name}」最多还能退 ${可退} 件（已入库数扣掉已退数，且不超过当前库存）`, "warning");
         return;
       }
       if (批次 && qty > 批次.remaining) {
@@ -161,6 +164,7 @@ function BatchReturnModal({
                   <th className="py-2 pr-3 font-medium">商品</th>
                   <th className="py-2 pr-3 font-medium">编码</th>
                   <th className="py-2 pr-3 font-medium text-right w-20">可退</th>
+                  <th className="py-2 pr-3 font-medium text-right w-16">已退</th>
                   <th className="py-2 pr-3 font-medium">退自批次（按剩余量）</th>
                   <th className="py-2 font-medium text-right w-24">退货数量</th>
                 </tr>
@@ -174,10 +178,13 @@ function BatchReturnModal({
                     <tr key={it.id}>
                       <td className="py-2.5 pr-3 text-gray-900">{it.name}</td>
                       <td className="py-2.5 pr-3 text-gray-600">{it.part_number || "-"}</td>
+                      <td className="py-2.5 pr-3 text-right text-gray-900">{可退}</td>
+                      {/* 已退单独成列（2026-09-18 用户拍板），不再用小字挤在可退下面 */}
                       <td className="py-2.5 pr-3 text-right">
-                        <span className="text-gray-900">{可退}</span>
-                        {(已退Map.get(it.id) ?? 0) > 0 && (
-                          <div className="text-[10px] text-orange-600">已退 {已退Map.get(it.id)}</div>
+                        {(已退Map.get(it.id) ?? 0) > 0 ? (
+                          <span className="text-orange-600">{已退Map.get(it.id)}</span>
+                        ) : (
+                          <span className="text-gray-300">-</span>
                         )}
                       </td>
                       <td className="py-2.5 pr-3">
@@ -337,9 +344,12 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
     setLoading(false);
   }, [supabase]);
 
-  /* 该行可退数 = 实际入库数 − 已退数 */
+  /* 该行可退数 = min(实际入库数 − 已退数, 当前库存数)
+     （2026-09-18：库存可能已被领用、或走老"库存退货"流程退掉——那条只扣库存不写退货记录，
+     不看库存会显示可退但实际无货可退，XYO-7701 踩坑） */
   function 行可退数(it: PurchaseOrderItem): number {
-    return (it.received_qty ?? it.quantity) - (已退Map.get(it.id) ?? 0);
+    const 账面可退 = (it.received_qty ?? it.quantity) - (已退Map.get(it.id) ?? 0);
+    return Math.min(账面可退, it.parts?.quantity ?? 0);
   }
 
   function 切换退货勾选(itemId: string, 勾选: boolean) {
@@ -696,7 +706,8 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
                             )}
                           </td>
                           {/* 退货（2026-09-16）：打开退货弹窗（与批量退货同一弹窗）；
-                              退完的行显示"已退完"防重复退；未关联配件档案的行不能从这里退 */}
+                              可退为 0 时分两种：账面退完=已退完；账面还有但库存没了=无库存可退
+                              （被领用或走老库存退货退掉了）；未关联配件档案的行不能从这里退 */}
                           <td className="px-3 py-2 text-center">
                             {item.part_id ? (
                               行可退数(item) > 0 ? (
@@ -707,8 +718,10 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
                                 >
                                   退货
                                 </button>
-                              ) : (
+                              ) : (item.received_qty ?? item.quantity) - (已退Map.get(item.id) ?? 0) <= 0 ? (
                                 <span className="text-xs text-gray-400" title="已全部退完">已退完</span>
+                              ) : (
+                                <span className="text-xs text-gray-400" title="库存已出库（被领用或已从库存退货），无货可退">无库存可退</span>
                               )
                             ) : (
                               <span className="text-xs text-gray-300" title="未关联配件档案，不能退货">-</span>
