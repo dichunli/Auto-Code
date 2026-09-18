@@ -88,8 +88,8 @@ export interface PurchaseOrderItem {
   /* 到货确认单/收货批次关联（待入库排除用，黄卡流程不走按单入库） */
   arrival_item_id?: string | null;
   receiving_batch_id?: string | null;
-  /* 库存配件快照（已入库列表显示条码） */
-  parts?: { barcode: string | null } | null;
+  /* 库存配件快照（已入库列表显示条码 + 当前库存数，quantity 为 NULL 表示故意留空） */
+  parts?: { barcode: string | null; quantity: number | null } | null;
 }
 
 /* 采购单（原 6 份，核心各份一致，扩展可选并集） */

@@ -298,7 +298,7 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
         purchase_order_items(
           id, name, brand, specification, quantity, unit_cost, received_qty,
           part_id, work_order_item_part_id, part_number, supplier_part_name,
-          unit, category, license_plate, photos, notes, parts(barcode)
+          unit, category, license_plate, photos, notes, parts(barcode, quantity)
         ),
         inbound_orders(id, inbound_no, total_quantity, total_amount, created_at)
       `
@@ -638,6 +638,8 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
                         <th className="px-3 py-2 text-left font-medium text-gray-500">分类</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500">车牌</th>
                         <th className="px-3 py-2 text-center font-medium text-gray-500 w-32">到货数量</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-500 w-16">库存</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-500 w-20">已退</th>
                         <th className="px-3 py-2 text-center font-medium text-gray-500 w-20">退货</th>
                       </tr>
                     </thead>
@@ -676,11 +678,21 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
                             <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">
                               {item.received_qty || 0} / {item.quantity}
                             </span>
-                            {/* 退货标识（2026-09-16）：退过货的行显示"已退 X"，含退库后退给供应商的 */}
-                            {(已退Map.get(item.id) ?? 0) > 0 && (
-                              <div className="text-[10px] text-orange-600 font-medium mt-0.5">
+                          </td>
+                          {/* 库存（2026-09-18 新增列）：配件档案当前库存数；
+                              未关联配件档案或数量留空（NULL 是故意设计）都显示 "-" */}
+                          <td className="px-3 py-2 text-center text-gray-700">
+                            {item.part_id && item.parts?.quantity != null ? item.parts.quantity : "-"}
+                          </td>
+                          {/* 已退（2026-09-18 从到货数量里拆出单列）：退过货的行显示"已退 X 件"，
+                              含退库后退给供应商的；退货记录撤销即删除，不会虚占 */}
+                          <td className="px-3 py-2 text-center">
+                            {(已退Map.get(item.id) ?? 0) > 0 ? (
+                              <span className="text-xs text-orange-600 font-medium">
                                 已退 {已退Map.get(item.id)} 件
-                              </div>
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-300">-</span>
                             )}
                           </td>
                           {/* 退货（2026-09-16）：打开退货弹窗（与批量退货同一弹窗）；
