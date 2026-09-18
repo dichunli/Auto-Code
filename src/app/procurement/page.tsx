@@ -474,7 +474,8 @@ export default async function ProcurementPage({
         purchase_order_items(
           id, name, brand, specification, quantity, unit_cost, received_qty,
           part_id, work_order_item_part_id, part_number, supplier_part_name,
-          unit, category, license_plate, photos, notes, parts(barcode)
+          unit, category, license_plate, photos, notes, parts(barcode, quantity),
+          receiving_batch_id, receiving_batches(batch_no), inbound_order_items(batch_no)
         ),
         inbound_orders(id, inbound_no, total_quantity, total_amount, created_at)
       `)
@@ -505,7 +506,7 @@ export default async function ProcurementPage({
     const { data } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, source, purchase_order_item_id, supplier_id, part_id, part_number, part_name, brand, specification, unit, unit_cost, batch_id, notes, work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, status, created_at, source, purchase_order_item_id, supplier_id, part_id, part_number, part_name, brand, specification, unit, unit_cost, batch_id, notes, purchase_order_items(license_plate), work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
       )
       .eq("status", "pending")
       .order("created_at", { ascending: false });
@@ -519,7 +520,7 @@ export default async function ProcurementPage({
     const { data } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, work_order_item_parts(id, name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, handover_photos, status, created_at, purchase_order_items(license_plate), work_order_item_parts(id, name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no, return_shipping_fee, shipping_fee_payer)"
       )
       .eq("status", "completed")
       .order("created_at", { ascending: false });

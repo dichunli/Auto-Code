@@ -19,6 +19,9 @@ const returnReasonMap: Record<string, string> = {
 interface ReturnOrderInfo {
   id: string;
   return_no: string;
+  /* 退货运费（2026-09-18：已退货列表展示运费承担方/金额用） */
+  return_shipping_fee: number | null;
+  shipping_fee_payer: string | null;
 }
 
 /* 记录类型导出给采购看板 page.tsx：服务端首屏查询结果作为 props 传入用（待办清单第9项） */
@@ -30,6 +33,12 @@ export interface ReturnRecord {
   logistics_company: string | null;
   tracking_no: string | null;
   photos: string[] | null;
+  /* 外包装照片（2026-09-18：photos 列=货物照片） */
+  package_photos: string[] | null;
+  /* 交接照片（货物交给物流公司/供应商时拍） */
+  handover_photos: string[] | null;
+  /* 车牌（2026-09-18 用户拍板：有车牌信息的退货记录要显示，经采购明细快照取） */
+  purchase_order_items: { license_plate: string | null } | null;
   status: string;
   created_at: string;
   work_order_item_parts: { id: string; name: string; part_number: string | null; document_name: string | null } | null;
@@ -56,7 +65,7 @@ export function CompletedReturnList(props: CompletedReturnListProps) {
     const { data, error } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, work_order_item_parts(id, name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, handover_photos, status, created_at, purchase_order_items(license_plate), work_order_item_parts(id, name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no, return_shipping_fee, shipping_fee_payer)"
       )
       .eq("status", "completed")
       .order("created_at", { ascending: false });
@@ -152,6 +161,10 @@ export function CompletedReturnList(props: CompletedReturnListProps) {
                   {r.work_order_item_parts?.part_number && (
                     <div className="text-xs text-gray-400">{r.work_order_item_parts.part_number}</div>
                   )}
+                  {/* 车牌（2026-09-18 用户拍板）：有车牌信息的退货记录要显示 */}
+                  {r.purchase_order_items?.license_plate && (
+                    <div className="text-xs text-blue-600">车牌 {r.purchase_order_items.license_plate}</div>
+                  )}
                 </td>
                 <td className="px-6 py-4 text-gray-700 whitespace-nowrap">
                   {r.work_order_item_parts && (
@@ -179,20 +192,42 @@ export function CompletedReturnList(props: CompletedReturnListProps) {
                       <div>{r.logistics_company}</div>
                       <div className="text-gray-400">{r.tracking_no}</div>
                     </div>
+                  ) : r.logistics_company ? (
+                    <div>{r.logistics_company}</div>
                   ) : (
                     "-"
                   )}
+                  {/* 退货运费（2026-09-18）：采退单上的承担方/金额 */}
+                  {r.purchase_return_orders?.shipping_fee_payer && (
+                    <div className="text-gray-400 mt-0.5">
+                      运费: {r.purchase_return_orders.shipping_fee_payer === "self"
+                        ? `我方付 ¥${(r.purchase_return_orders.return_shipping_fee || 0).toFixed(2)}`
+                        : "对方付"}
+                    </div>
+                  )}
                 </td>
                 <td className="px-6 py-4">
-                  {r.photos && r.photos.length > 0 ? (
-                    <div className="flex gap-1">
-                      {r.photos.slice(0, 3).map((url, i) => (
-                        <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                          <img src={url} alt="" loading="lazy" className="w-8 h-8 object-cover rounded border border-gray-200 hover:opacity-80" />
-                        </a>
-                      ))}
-                      {r.photos.length > 3 && (
-                        <span className="text-xs text-gray-400 self-center">+{r.photos.length - 3}</span>
+                  {/* 照片分三类（2026-09-18）：photos=货物照，package_photos=外包装照，handover_photos=交接照 */}
+                  {(r.photos && r.photos.length > 0) || (r.package_photos && r.package_photos.length > 0) || (r.handover_photos && r.handover_photos.length > 0) ? (
+                    <div className="space-y-1">
+                      {([
+                        ["货物", r.photos],
+                        ["包装", r.package_photos],
+                        ["交接", r.handover_photos],
+                      ] as [string, string[] | null][]).map(([label, urls]) =>
+                        urls && urls.length > 0 ? (
+                          <div key={label} className="flex gap-1 items-center">
+                            <span className="text-[10px] text-gray-400">{label}</span>
+                            {urls.slice(0, 3).map((url, i) => (
+                              <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                                <img src={url} alt="" loading="lazy" className="w-8 h-8 object-cover rounded border border-gray-200 hover:opacity-80" />
+                              </a>
+                            ))}
+                            {urls.length > 3 && (
+                              <span className="text-xs text-gray-400 self-center">+{urls.length - 3}</span>
+                            )}
+                          </div>
+                        ) : null
                       )}
                     </div>
                   ) : (

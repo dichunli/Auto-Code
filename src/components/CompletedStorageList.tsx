@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { 退回已入库, 已入库退货 } from "@/app/procurement/actions";
@@ -8,6 +8,7 @@ import { PriceValue } from "@/components/PriceVisibilityContext";
 import { useConfirm } from "./ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { DocumentNameInput } from "./DocumentNameInput";
+import { ImageUploader } from "./ImageUploader";
 import { useDebounce } from "@/lib/useDebounce";
 import { toast } from "@/lib/globalToast";
 import type { PurchaseOrder, PurchaseOrderItem } from "@/types/domain";
@@ -31,12 +32,26 @@ function 取入库时间(o: PurchaseOrder): string {
   return 入库时间们.length > 0 ? 入库时间们.reduce((a, b) => (a > b ? a : b)) : o.created_at;
 }
 
+/* 入库日期默认范围（2026-09-18 用户拍板）：当天往前 3 个月，可修改 */
+function 默认日期范围(): { from: string; to: string } {
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const to = new Date();
+  const from = new Date();
+  from.setMonth(from.getMonth() - 3);
+  return { from: fmt(from), to: fmt(to) };
+}
+
 /* 库存批次（批量退货弹窗用）：只看还有剩余的批次 */
 interface 库存批次 {
   id: string;
   part_id: string;
   batch_no: string | null;
   remaining: number;
+  /* 入库来源（多态）：黄卡批次流程指向 receiving_batches.id，按单/到货流程指向入库单或到货单 */
+  reference_id?: string | null;
+  /* 收货批次号（黄卡流程 part_batches.batch_no 常为空，批次号在收货批次表上，展示用） */
+  来源批次号?: string | null;
 }
 
 /* 退货弹窗（2026-09-16 接入正规退货流程，单独/批量共用）：
@@ -51,6 +66,7 @@ function BatchReturnModal({
   行们,
   批次Map,
   已退Map,
+  默认批次Map,
   onClose,
   on完成,
 }: {
@@ -58,49 +74,82 @@ function BatchReturnModal({
   行们: PurchaseOrderItem[];
   批次Map: Map<string, 库存批次[]> | null;
   已退Map: Map<string, number>;
+  /* 本次入库批次（2026-09-18 用户拍板）：采购明细行 id → 默认批次 id，打开弹窗自动选中 */
+  默认批次Map: Map<string, string>;
   onClose: () => void;
   on完成: () => void;
 }) {
   const { showToast } = useToast();
   /* 每行表单：批次id + 数量（字符串存储，提交转 number，遵守表单规范）；
-     默认数量 = 该行的可退数（已入 − 已退） */
+     批次默认带出本次入库的批次；数量默认不填（2026-09-18 用户拍板：
+     默认带数量容易手滑全退，必须手动填、空着红框提醒） */
   const [表单, set表单] = useState(() =>
     行们.map((it) => ({
       itemId: it.id,
-      batch_id: "",
-      qty: String((it.received_qty ?? it.quantity) - (已退Map.get(it.id) ?? 0)),
+      batch_id: 默认批次Map.get(it.id) ?? "",
+      qty: "",
     }))
   );
-  const [原因, set原因] = useState("quality");
+  /* 默认批次异步回填（2026-09-18 踩坑）：弹窗先挂载、批次数据后查到，
+     useState 初始化只在挂载时跑一次，必须在数据到达后回填未手动选过的行 */
+  const 已回填默认批次 = useRef(false);
+  useEffect(() => {
+    if (已回填默认批次.current || 批次Map === null) return;
+    已回填默认批次.current = true;
+    set表单((prev) =>
+      prev.map((r) =>
+        r.batch_id === "" && 默认批次Map.get(r.itemId)
+          ? { ...r, batch_id: 默认批次Map.get(r.itemId)! }
+          : r
+      )
+    );
+  }, [批次Map, 默认批次Map]);
+  const [原因, set原因] = useState("");
   const [备注, set备注] = useState("");
   const [提交中, set提交中] = useState(false);
+  /* 退货照片（2026-09-18 用户拍板）：退货时可选拍，确认退货给供应商时才必填；
+     货物照片 → 记录 photos 列，外包装照片 → package_photos 列 */
+  const [货物照片, set货物照片] = useState<string[]>([]);
+  const [外包装照片, set外包装照片] = useState<string[]>([]);
 
   function 改行(itemId: string, patch: Partial<{ batch_id: string; qty: string }>) {
     set表单((prev) => prev.map((r) => (r.itemId === itemId ? { ...r, ...patch } : r)));
   }
 
-  /* 该行可退数 = 实际入库数 − 已退数 */
+  /* 该行可退数 = min(实际入库数 − 已退数, 当前库存数)
+     （2026-09-18：库存可能已被领用、或走老"库存退货"流程退掉——那条只扣库存不写退货记录，
+     不看库存会显示可退但实际无货可退，XYO-7701 踩坑） */
   function 可退数(it: PurchaseOrderItem): number {
-    return (it.received_qty ?? it.quantity) - (已退Map.get(it.id) ?? 0);
+    const 账面可退 = (it.received_qty ?? it.quantity) - (已退Map.get(it.id) ?? 0);
+    return Math.min(账面可退, it.parts?.quantity ?? 0);
   }
 
   async function 提交() {
+    /* 退货原因必选（2026-09-18 用户拍板：默认不选，防手滑选错） */
+    if (!原因) {
+      showToast("请选择退货原因", "warning");
+      return;
+    }
     /* 前端先校验：批次必选、数量 1..min(批次剩余, 可退) */
     for (const r of 表单) {
       const it = 行们.find((x) => x.id === r.itemId)!;
-      const qty = parseInt(r.qty, 10);
       const 可退 = 可退数(it);
       if (!r.batch_id) {
         showToast(`「${it.name}」还没选批次`, "warning");
         return;
       }
       const 批次 = (批次Map?.get(it.part_id || "") || []).find((b) => b.id === r.batch_id);
+      if (r.qty.trim() === "") {
+        showToast(`「${it.name}」请填写退货数量`, "warning");
+        return;
+      }
+      const qty = parseInt(r.qty, 10);
       if (!Number.isInteger(qty) || qty <= 0) {
         showToast(`「${it.name}」退货数量必须大于 0`, "warning");
         return;
       }
       if (qty > 可退) {
-        showToast(`「${it.name}」最多还能退 ${可退} 件（已入库数扣掉已退数）`, "warning");
+        showToast(`「${it.name}」最多还能退 ${可退} 件（已入库数扣掉已退数，且不超过当前库存）`, "warning");
         return;
       }
       if (批次 && qty > 批次.remaining) {
@@ -119,6 +168,8 @@ function BatchReturnModal({
           quantity: parseInt(r.qty, 10),
           return_reason: 原因,
           notes: 备注.trim() || null,
+          photos: 货物照片.length > 0 ? 货物照片 : undefined,
+          package_photos: 外包装照片.length > 0 ? 外包装照片 : undefined,
         }))
       );
       if (!res.success) {
@@ -161,6 +212,7 @@ function BatchReturnModal({
                   <th className="py-2 pr-3 font-medium">商品</th>
                   <th className="py-2 pr-3 font-medium">编码</th>
                   <th className="py-2 pr-3 font-medium text-right w-20">可退</th>
+                  <th className="py-2 pr-3 font-medium text-right w-16">已退</th>
                   <th className="py-2 pr-3 font-medium">退自批次（按剩余量）</th>
                   <th className="py-2 font-medium text-right w-24">退货数量</th>
                 </tr>
@@ -174,10 +226,13 @@ function BatchReturnModal({
                     <tr key={it.id}>
                       <td className="py-2.5 pr-3 text-gray-900">{it.name}</td>
                       <td className="py-2.5 pr-3 text-gray-600">{it.part_number || "-"}</td>
+                      <td className="py-2.5 pr-3 text-right text-gray-900">{可退}</td>
+                      {/* 已退单独成列（2026-09-18 用户拍板），不再用小字挤在可退下面 */}
                       <td className="py-2.5 pr-3 text-right">
-                        <span className="text-gray-900">{可退}</span>
-                        {(已退Map.get(it.id) ?? 0) > 0 && (
-                          <div className="text-[10px] text-orange-600">已退 {已退Map.get(it.id)}</div>
+                        {(已退Map.get(it.id) ?? 0) > 0 ? (
+                          <span className="text-orange-600">{已退Map.get(it.id)}</span>
+                        ) : (
+                          <span className="text-gray-300">-</span>
                         )}
                       </td>
                       <td className="py-2.5 pr-3">
@@ -192,7 +247,7 @@ function BatchReturnModal({
                             <option value="">选择批次</option>
                             {可选批次.map((b) => (
                               <option key={b.id} value={b.id}>
-                                {b.batch_no || "未命名批次"}（剩 {b.remaining}）
+                                {b.batch_no || b.来源批次号 || "未命名批次"}（剩 {b.remaining}）
                               </option>
                             ))}
                           </select>
@@ -205,7 +260,10 @@ function BatchReturnModal({
                           max={可退}
                           value={行.qty}
                           onChange={(e) => 改行(it.id, { qty: e.target.value })}
-                          className="w-20 px-2 py-1.5 text-sm text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                          placeholder="必填"
+                          className={`w-20 px-2 py-1.5 text-sm text-right rounded border focus:outline-none focus:border-blue-400 ${
+                            行.qty.trim() === "" ? "border-red-400 bg-red-50" : "border-gray-200"
+                          }`}
                         />
                       </td>
                     </tr>
@@ -216,15 +274,24 @@ function BatchReturnModal({
           )}
           <div className="mt-4 grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">退货原因</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                退货原因 <span className="text-red-500">*</span>
+              </label>
               <select
                 value={原因}
                 onChange={(e) => set原因(e.target.value)}
-                className="w-full px-2 py-2 text-sm rounded border border-gray-300 bg-white focus:outline-none focus:border-blue-400"
+                className={`w-full px-2 py-2 text-sm rounded border bg-white focus:outline-none focus:border-blue-400 ${
+                  原因 === "" ? "border-red-400 bg-red-50" : "border-gray-300"
+                }`}
               >
-                <option value="quality">质量问题</option>
+                {/* 2026-09-18 用户拍板：默认不选+6 种原因，顺序即用户给定顺序 */}
+                <option value="">请选择退货原因</option>
+                <option value="excess">多发</option>
+                <option value="damaged">破损</option>
+                <option value="wrong_ship">发错</option>
+                <option value="quality">质量原因</option>
                 <option value="cancel">客户悔单</option>
-                <option value="other">其他</option>
+                <option value="other">其它</option>
               </select>
             </div>
             <div className="col-span-2">
@@ -235,6 +302,31 @@ function BatchReturnModal({
                 onChange={(e) => set备注(e.target.value)}
                 placeholder="如：规格不对，供应商答应换货"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+          {/* 退货照片（2026-09-18）：此处可选拍；到「待退货」确认退货给供应商时必填 */}
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                货物照片 <span className="text-xs font-normal text-gray-400">（可选，确认退货时必填）</span>
+              </label>
+              <ImageUploader
+                onUpload={set货物照片}
+                existingImages={货物照片}
+                maxImages={5}
+                folder="return-goods"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                外包装照片 <span className="text-xs font-normal text-gray-400">（可选，确认退货时必填）</span>
+              </label>
+              <ImageUploader
+                onUpload={set外包装照片}
+                existingImages={外包装照片}
+                maxImages={5}
+                folder="return-package"
               />
             </div>
           </div>
@@ -272,14 +364,16 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
   const [商品搜索, set商品搜索] = useState("");
   const 防抖商品搜索 = useDebounce(商品搜索, 300).trim().toLowerCase();
   const [供应商筛选, set供应商筛选] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => 默认日期范围().from);
+  const [dateTo, setDateTo] = useState(() => 默认日期范围().to);
   /* 退货（2026-09-16 接入正规流程）：弹窗单 + 弹窗行 ids（单独退货=只带一行的同一弹窗） */
   const [退货弹窗, set退货弹窗] = useState<{ order: PurchaseOrder; itemIds: string[] } | null>(null);
   /* 批量退货勾选：勾选键 = purchase_order_items.id */
   const [退货勾选, set退货勾选] = useState<Set<string>>(new Set());
   /* 退货弹窗的可选批次（null=加载中）：打开弹窗时一次性查好 */
   const [退货批次Map, set退货批次Map] = useState<Map<string, 库存批次[]> | null>(null);
+  /* 退货弹窗的默认批次（2026-09-18 用户拍板）：采购明细行 id → 本次入库批次 id */
+  const [默认批次Map, set默认批次Map] = useState<Map<string, string>>(new Map());
   /* 已退数量标识（2026-09-16）：采购明细行 id → 已退件数（退货记录撤销即删除，不会虚占） */
   const [已退Map, set已退Map] = useState<Map<string, number>>(
     () => new Map(Object.entries(props.initial已退 ?? {}))
@@ -298,7 +392,8 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
         purchase_order_items(
           id, name, brand, specification, quantity, unit_cost, received_qty,
           part_id, work_order_item_part_id, part_number, supplier_part_name,
-          unit, category, license_plate, photos, notes, parts(barcode)
+          unit, category, license_plate, photos, notes, parts(barcode, quantity),
+          receiving_batch_id, receiving_batches(batch_no), inbound_order_items(batch_no)
         ),
         inbound_orders(id, inbound_no, total_quantity, total_amount, created_at)
       `
@@ -337,9 +432,12 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
     setLoading(false);
   }, [supabase]);
 
-  /* 该行可退数 = 实际入库数 − 已退数 */
+  /* 该行可退数 = min(实际入库数 − 已退数, 当前库存数)
+     （2026-09-18：库存可能已被领用、或走老"库存退货"流程退掉——那条只扣库存不写退货记录，
+     不看库存会显示可退但实际无货可退，XYO-7701 踩坑） */
   function 行可退数(it: PurchaseOrderItem): number {
-    return (it.received_qty ?? it.quantity) - (已退Map.get(it.id) ?? 0);
+    const 账面可退 = (it.received_qty ?? it.quantity) - (已退Map.get(it.id) ?? 0);
+    return Math.min(账面可退, it.parts?.quantity ?? 0);
   }
 
   function 切换退货勾选(itemId: string, 勾选: boolean) {
@@ -352,7 +450,10 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
   }
 
   /* 打开退货弹窗（2026-09-16：单独退货和批量退货同一入口，批量=勾选的行，单独=该行）：
-     先查出所有选中配件的可退批次（有剩余的），再交给弹窗 */
+     先查出所有选中配件的可退批次（有剩余的），再交给弹窗；
+     同时解析"本次入库批次"作为默认选中（2026-09-18 用户拍板）：
+     黄卡流程 明细.receiving_batch_id = 批次.reference_id；
+     蓝卡按单流程 经入库单明细反查 inbound_order_id = 批次.reference_id */
   async function 打开退货弹窗(order: PurchaseOrder, itemIds: string[]) {
     const 选中行 = order.purchase_order_items.filter((it) => itemIds.includes(it.id) && !!it.part_id);
     if (选中行.length === 0) {
@@ -361,20 +462,62 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
     }
     set退货弹窗({ order, itemIds: 选中行.map((it) => it.id) });
     set退货批次Map(null);
+    set默认批次Map(new Map());
     const partIds = [...new Set(选中行.map((it) => it.part_id as string))];
     const { data } = await supabase
       .from("part_batches")
-      .select("id, part_id, batch_no, remaining")
+      .select("id, part_id, batch_no, remaining, reference_id")
       .in("part_id", partIds)
       .gt("remaining", 0)
       .order("created_at", { ascending: true });
+    const 批次们 = (data || []) as 库存批次[];
+
+    /* 批次号展示补全：黄卡流程 part_batches.batch_no 常为空，真正的批次号在收货批次表上 */
+    const 引用ids = [...new Set(批次们.map((b) => b.reference_id).filter((x): x is string => !!x))];
+    if (引用ids.length > 0) {
+      const { data: 收货批次们 } = await supabase
+        .from("receiving_batches")
+        .select("id, batch_no")
+        .in("id", 引用ids);
+      const 收货批次号Map = new Map(
+        ((收货批次们 || []) as { id: string; batch_no: string }[]).map((rb) => [rb.id, rb.batch_no])
+      );
+      for (const b of 批次们) {
+        b.来源批次号 = (b.reference_id && 收货批次号Map.get(b.reference_id)) || null;
+      }
+    }
+
     const map = new Map<string, 库存批次[]>();
-    for (const b of (data || []) as 库存批次[]) {
+    for (const b of 批次们) {
       const list = map.get(b.part_id) || [];
       list.push(b);
       map.set(b.part_id, list);
     }
     set退货批次Map(map);
+
+    /* 蓝卡按单流程：明细没有 receiving_batch_id，经入库单明细反查入库单 id */
+    const 蓝卡行 = 选中行.filter((it) => !it.receiving_batch_id);
+    const 明细到入库单 = new Map<string, string>();
+    if (蓝卡行.length > 0) {
+      const { data: 入库明细 } = await supabase
+        .from("inbound_order_items")
+        .select("purchase_order_item_id, inbound_order_id")
+        .in("purchase_order_item_id", 蓝卡行.map((it) => it.id))
+        .order("created_at", { ascending: false });
+      for (const r of (入库明细 || []) as { purchase_order_item_id: string; inbound_order_id: string }[]) {
+        if (!明细到入库单.has(r.purchase_order_item_id)) 明细到入库单.set(r.purchase_order_item_id, r.inbound_order_id);
+      }
+    }
+
+    /* 默认批次 = 本次入库来源对应的批次（只在还有剩余的可选批次里找，找不到就不默认） */
+    const 默认Map = new Map<string, string>();
+    for (const it of 选中行) {
+      const 来源id = it.receiving_batch_id ?? 明细到入库单.get(it.id);
+      if (!来源id) continue;
+      const 批次 = (map.get(it.part_id as string) || []).find((b) => b.reference_id === 来源id);
+      if (批次) 默认Map.set(it.id, 批次.id);
+    }
+    set默认批次Map(默认Map);
   }
 
   useEffect(() => {
@@ -637,7 +780,10 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
                         <th className="px-3 py-2 text-left font-medium text-gray-500 w-12">单位</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500">分类</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500">车牌</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500">批次号</th>
                         <th className="px-3 py-2 text-center font-medium text-gray-500 w-32">到货数量</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-500 w-16">库存</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-500 w-20">已退</th>
                         <th className="px-3 py-2 text-center font-medium text-gray-500 w-20">退货</th>
                       </tr>
                     </thead>
@@ -672,19 +818,35 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
                           <td className="px-3 py-2 text-gray-500">{item.unit || "-"}</td>
                           <td className="px-3 py-2 text-gray-500">{item.category || "-"}</td>
                           <td className="px-3 py-2 text-gray-500">{item.license_plate || "-"}</td>
+                          {/* 批次号（2026-09-18 用户拍板）：黄卡流程显示收货批次号（SH-...），
+                              蓝卡按单流程兜底显示入库时手填的批次号 */}
+                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                            {item.receiving_batches?.batch_no || item.inbound_order_items?.[0]?.batch_no || "-"}
+                          </td>
                           <td className="px-3 py-2 text-center">
                             <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">
                               {item.received_qty || 0} / {item.quantity}
                             </span>
-                            {/* 退货标识（2026-09-16）：退过货的行显示"已退 X"，含退库后退给供应商的 */}
-                            {(已退Map.get(item.id) ?? 0) > 0 && (
-                              <div className="text-[10px] text-orange-600 font-medium mt-0.5">
+                          </td>
+                          {/* 库存（2026-09-18 新增列）：配件档案当前库存数；
+                              未关联配件档案或数量留空（NULL 是故意设计）都显示 "-" */}
+                          <td className="px-3 py-2 text-center text-gray-700">
+                            {item.part_id && item.parts?.quantity != null ? item.parts.quantity : "-"}
+                          </td>
+                          {/* 已退（2026-09-18 从到货数量里拆出单列）：退过货的行显示"已退 X 件"，
+                              含退库后退给供应商的；退货记录撤销即删除，不会虚占 */}
+                          <td className="px-3 py-2 text-center">
+                            {(已退Map.get(item.id) ?? 0) > 0 ? (
+                              <span className="text-xs text-orange-600 font-medium">
                                 已退 {已退Map.get(item.id)} 件
-                              </div>
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-300">-</span>
                             )}
                           </td>
                           {/* 退货（2026-09-16）：打开退货弹窗（与批量退货同一弹窗）；
-                              退完的行显示"已退完"防重复退；未关联配件档案的行不能从这里退 */}
+                              可退为 0 时分两种：账面退完=已退完；账面还有但库存没了=无库存可退
+                              （被领用或走老库存退货退掉了）；未关联配件档案的行不能从这里退 */}
                           <td className="px-3 py-2 text-center">
                             {item.part_id ? (
                               行可退数(item) > 0 ? (
@@ -695,8 +857,10 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
                                 >
                                   退货
                                 </button>
-                              ) : (
+                              ) : (item.received_qty ?? item.quantity) - (已退Map.get(item.id) ?? 0) <= 0 ? (
                                 <span className="text-xs text-gray-400" title="已全部退完">已退完</span>
+                              ) : (
+                                <span className="text-xs text-gray-400" title="库存已出库（被领用或已从库存退货），无货可退">无库存可退</span>
                               )
                             ) : (
                               <span className="text-xs text-gray-300" title="未关联配件档案，不能退货">-</span>
@@ -740,6 +904,7 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
           行们={退货弹窗.order.purchase_order_items.filter((it) => 退货弹窗.itemIds.includes(it.id))}
           批次Map={退货批次Map}
           已退Map={已退Map}
+          默认批次Map={默认批次Map}
           onClose={() => set退货弹窗(null)}
           on完成={() => {
             set退货勾选(new Set());

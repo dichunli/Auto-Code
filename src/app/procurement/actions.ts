@@ -682,6 +682,9 @@ export interface 已入库退货明细 {
   quantity: number;
   return_reason: string;
   notes?: string | null;
+  /* 退货照片（2026-09-18 用户拍板）：退货时可选拍，确认退货（生成采退单）时才必填 */
+  photos?: string[];
+  package_photos?: string[];
 }
 
 export async function 已入库退货(明细: 已入库退货明细[]): Promise<操作结果> {
@@ -769,6 +772,42 @@ export async function 批量撤销退货(记录ids: string[]): Promise<操作结
   return { success: true };
 }
 
+/* ─── 待退货记录修改照片/备注(2026-09-18 用户拍板) ───
+ * 确认退货前允许补拍/改拍货物照、外包装照和备注；
+ * 只允许改 pending 状态的记录（已进采退单的改动意义不大且会破坏单据一致性）。
+ * 角色门禁由表 RLS 兜底（仅 管理员/老板/仓管 可 UPDATE）。 */
+export async function 更新退货记录照片(
+  记录id: string,
+  货物照片: string[],
+  外包装照片: string[],
+  备注: string
+): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!记录id) {
+    return { success: false, error: "缺少退货记录信息" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("supplier_return_records")
+    .update({
+      photos: 货物照片.length > 0 ? 货物照片 : null,
+      package_photos: 外包装照片.length > 0 ? 外包装照片 : null,
+      notes: 备注.trim() || null,
+    })
+    .eq("id", 记录id)
+    .eq("status", "pending");
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
+
 /* ─── 撤销已退货(2026-08-16 批次2):删采退单+应收冲减+记录回 pending,一个事务 ───
  * 替代原 CompletedReturnList 客户端 5 步连环删(无事务,中途失败留半成品)。
  * 注意:撤销的是整张采退单(同单全部退货记录回 pending),不是只撤一条。 */
@@ -807,6 +846,11 @@ export interface 采退单分组输入 {
   return_shipping_fee?: number;
   shipping_fee_payer?: string | null;
   notes?: string | null;
+  /* 退货照片（2026-09-18 用户拍板）：确认退货时货物照+外包装照+交接照均必填
+     （交接照=货物交给物流公司/供应商时拍，本地无物流的供应商也必填） */
+  goods_photos?: string[];
+  package_photos?: string[];
+  handover_photos?: string[];
   records: {
     record_id: string;
     part_id?: string | null;
@@ -834,6 +878,23 @@ export async function 生成采退单(
   for (const g of 分组) {
     if (!g.records || g.records.length === 0) {
       return { success: false, error: "采退单明细不能为空" };
+    }
+    /* 确认退货必填校验（2026-09-18 用户拍板，服务端兜底，前端同样校验）：
+       货物照片+外包装照片必填、物流公司必选、我方付必须填运费金额 */
+    if (!g.goods_photos || g.goods_photos.length === 0) {
+      return { success: false, error: `供应商「${g.supplier_name}」缺少货物照片，确认退货前必须拍照上传` };
+    }
+    if (!g.package_photos || g.package_photos.length === 0) {
+      return { success: false, error: `供应商「${g.supplier_name}」缺少外包装照片，确认退货前必须拍照上传` };
+    }
+    if (!g.handover_photos || g.handover_photos.length === 0) {
+      return { success: false, error: `供应商「${g.supplier_name}」缺少交接照片，交货给物流公司/供应商时必须拍照上传` };
+    }
+    if (!g.logistics_company || !g.logistics_company.trim()) {
+      return { success: false, error: `供应商「${g.supplier_name}」未选物流公司，确认退货时物流公司必选` };
+    }
+    if (g.shipping_fee_payer === "self" && !(g.return_shipping_fee && g.return_shipping_fee > 0)) {
+      return { success: false, error: `供应商「${g.supplier_name}」退货运费为我方付，必须填写运费金额` };
     }
   }
 

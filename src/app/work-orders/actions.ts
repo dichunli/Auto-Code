@@ -2180,6 +2180,36 @@ export async function 解析工单配件价格(参数: {
   return { success: true, price: 结果.price ?? undefined, source: 结果.source };
 }
 
+/* ═══ 工单其它成本（2026-09-18：退货运费分摊等明细） ═══ */
+
+/* 删除误记的其它成本明细（RPC delete_work_order_other_cost 带角色门禁） */
+export async function 删除工单其它成本(
+  成本id: string,
+  工单id: string
+): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!成本id) {
+    return { success: false, error: "缺少成本记录信息" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("delete_work_order_other_cost", { p_id: 成本id });
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  const 结果 = data as unknown as { success: boolean; error?: string };
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "删除失败" };
+  }
+
+  clearWorkOrderDataCache(工单id);
+  revalidatePath(`/work-orders/${工单id}`);
+  return { success: true };
+}
+
 /* ═══ 工单状态流转（收编客户端直调 RPC，2026-09-18） ═══
  * 原来 WorkOrderActions / StageOrderCard / WorkOrderFloatingSidebar 三处组件
  * 直接 supabase.rpc("transition_work_order")，无服务端 session 兜底。
