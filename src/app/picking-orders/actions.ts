@@ -110,34 +110,74 @@ function 分支ids去重(ids: string[]): string[] {
 /**
  * 实领（含直领）后自动核销申领：按分支"剩余实领额度 = 累计实领 - 已核销申领"，
  * 从最早开始逐条覆盖，能盖住就标记 done（退库导致的倒挂不在此处理）
+ *
+ * 2026-09-18 性能修复（9-15 诊断🟠#13）：原来是每分支 2 次查询的循环 N+1
+ * （50 行领料单 = 100 次数据库往返），改为循环外 .in() 一次查全 + 内存分组，
+ * 核销更新也从逐分支一次合并为最后一次。
  */
 async function 核销申领(
   supabase: Awaited<ReturnType<typeof createClient>>,
   分支ids: string[],
   操作人id: string
 ) {
+  if (分支ids.length === 0) return;
+
+  /* 一次查出所有分支的实领/申领记录（申领按创建时间升序，分组后组内仍有序） */
+  const [{ data: 全部实领记录 }, { data: 全部申领记录 }] = await Promise.all([
+    supabase
+      .from("part_picking_records")
+      .select("work_order_item_part_id, quantity")
+      .in("work_order_item_part_id", 分支ids),
+    supabase
+      .from("part_pick_requests")
+      .select("id, work_order_item_part_id, quantity, status")
+      .in("work_order_item_part_id", 分支ids)
+      .order("created_at", { ascending: true }),
+  ]);
+
+  interface 申领行 {
+    id: string;
+    work_order_item_part_id: string;
+    quantity: number;
+    status: string;
+  }
+
+  /* 内存分组 */
+  const 实领总数按分支 = new Map<string, number>();
+  for (const r of (全部实领记录 || []) as { work_order_item_part_id: string; quantity: number | null }[]) {
+    实领总数按分支.set(
+      r.work_order_item_part_id,
+      (实领总数按分支.get(r.work_order_item_part_id) || 0) + (r.quantity || 0)
+    );
+  }
+  const 申领按分支 = new Map<string, 申领行[]>();
+  for (const r of (全部申领记录 || []) as 申领行[]) {
+    const list = 申领按分支.get(r.work_order_item_part_id) || [];
+    list.push(r);
+    申领按分支.set(r.work_order_item_part_id, list);
+  }
+
+  /* 逐分支算核销（口径与原循环版一致），核销 id 全部收集后一次 update */
+  const 核销ids: string[] = [];
   for (const 分支id of 分支ids) {
-    const [{ data: 实领记录 }, { data: 全部申领 }] = await Promise.all([
-      supabase.from("part_picking_records").select("quantity").eq("work_order_item_part_id", 分支id),
-      supabase.from("part_pick_requests").select("id, quantity, status").eq("work_order_item_part_id", 分支id).order("created_at", { ascending: true }),
-    ]);
-    const 待核销 = (全部申领 || []).filter((r) => r.status === "pending");
+    const 申领列表 = 申领按分支.get(分支id) || [];
+    const 待核销 = 申领列表.filter((r) => r.status === "pending");
     if (待核销.length === 0) continue;
-    const 实领总数 = (实领记录 || []).reduce((s, r) => s + (r.quantity || 0), 0);
-    let 剩余额度 = 实领总数 - (全部申领 || []).filter((r) => r.status === "done").reduce((s, r) => s + (r.quantity || 0), 0);
-    const 核销ids: string[] = [];
+    const 实领总数 = 实领总数按分支.get(分支id) || 0;
+    let 剩余额度 = 实领总数 - 申领列表.filter((r) => r.status === "done").reduce((s, r) => s + (r.quantity || 0), 0);
     for (const r of 待核销) {
       if (剩余额度 >= r.quantity) {
         核销ids.push(r.id);
         剩余额度 -= r.quantity;
       }
     }
-    if (核销ids.length > 0) {
-      await supabase
-        .from("part_pick_requests")
-        .update({ status: "done", done_at: new Date().toISOString(), done_by: 操作人id })
-        .in("id", 核销ids);
-    }
+  }
+
+  if (核销ids.length > 0) {
+    await supabase
+      .from("part_pick_requests")
+      .update({ status: "done", done_at: new Date().toISOString(), done_by: 操作人id })
+      .in("id", 核销ids);
   }
 }
 
