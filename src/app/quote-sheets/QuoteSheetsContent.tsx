@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { 作废询价单, 采用询价单, type 询价单列表项 } from "../quote/actions";
 import { copyText } from "@/lib/copyText";
 import { 是内网地址 } from "@/lib/isInternalHost";
@@ -27,11 +28,12 @@ function 格式化时间(iso: string) {
   });
 }
 
-export default function QuoteSheetsContent({ 初始列表, 当前时间戳 }: { 初始列表: 询价单列表项[]; 当前时间戳: number }) {
+export default function QuoteSheetsContent({ 初始列表, 当前时间戳, 总数, 当前页, 每页数 }: { 初始列表: 询价单列表项[]; 当前时间戳: number; 总数: number; 当前页: number; 每页数: number }) {
   const router = useRouter();
   const [操作中, set操作中] = useState<string | null>(null);
   const [复制的id, set复制的id] = useState<string | null>(null);
   const { 请求确认, 确认弹窗 } = useConfirm();
+  const 总页数 = Math.max(1, Math.ceil(总数 / 每页数));
 
   function 已过期(s: 询价单列表项) {
     /* 当前时间由服务端传入：渲染期不调 Date.now()（react-hooks 纯度规则） */
@@ -177,6 +179,32 @@ export default function QuoteSheetsContent({ 初始列表, 当前时间戳 }: { 
           })}
         </tbody>
       </table>
+
+      {/* 分页 */}
+      {总页数 > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-2 pb-2">
+          <div className="text-sm text-gray-500">
+            共 {总数} 条，第 {当前页}/{总页数} 页
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/quote-sheets?page=${Math.max(1, 当前页 - 1)}`}
+              className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${当前页 <= 1 ? "pointer-events-none opacity-50" : ""}`}
+            >
+              上一页
+            </Link>
+            <span className="text-sm text-gray-600 px-2">
+              {当前页} / {总页数}
+            </span>
+            <Link
+              href={`/quote-sheets?page=${Math.min(总页数, 当前页 + 1)}`}
+              className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${当前页 >= 总页数 ? "pointer-events-none opacity-50" : ""}`}
+            >
+              下一页
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

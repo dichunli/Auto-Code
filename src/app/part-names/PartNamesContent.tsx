@@ -119,10 +119,12 @@ function CommissionField({
   );
 }
 
-export default function PartNamesContent({ initialPartNames, initialCategories }: { initialPartNames: unknown[]; initialCategories: unknown[] }) {
+export default function PartNamesContent({ initialPartNames, initialCategories, initialTotal, 每页数 }: { initialPartNames: unknown[]; initialCategories: unknown[]; initialTotal: number; 每页数: number }) {
   const supabase = useMemo(() => createClient(), []);
   const [query, setQuery] = useState("");
   const [names, setNames] = useState<PartName[]>(initialPartNames as PartName[]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(initialTotal);
   const [, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -165,31 +167,36 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
   const debouncedQuery = useDebounce(query, 300);
 
   const loadNames = useCallback(
-    async (search?: string) => {
+    async (search: string | undefined, 目标页: number) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       setSearching(!!search);
       let q = supabase
         .from("part_names")
         .select(
-          "*, part_categories(name), part_name_brands(part_brands(id, name)), part_name_specifications(part_specifications(id, name))"
+          "*, part_categories(name), part_name_brands(part_brands(id, name)), part_name_specifications(part_specifications(id, name))",
+          { count: "exact" }
         )
         .order("created_at", { ascending: false });
       if (search?.trim()) {
         const s = 清理搜索词(search);
         if (s) q = q.or(`name.ilike.%${s}%,search_keywords.ilike.%${s}%`);
       }
-      const { data } = await q;
+      const from = (目标页 - 1) * 每页数;
+      const { data, count } = await q.range(from, from + 每页数 - 1);
       setNames((data as PartName[]) || []);
+      if (count !== null) setTotal(count);
+      setPage(目标页);
       setLoading(false);
       setSearching(false);
     },
-    [supabase]
+    [supabase, 每页数]
   );
 
   useEffect(() => {
     if (跳过首次查询.current) { 跳过首次查询.current = false; return; }
-    loadNames(debouncedQuery);
+    /* 搜索词变化回到第一页 */
+    loadNames(debouncedQuery, 1);
   }, [debouncedQuery, loadNames]);
 
   /* 品牌/规格联想查询（查询条件与原防抖块一致，仅换成 SearchDropdown 的 searchFn） */
@@ -385,7 +392,7 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
       const otherErrors = errors.length - duplicateInFile;
       if (otherErrors > 0) msg += `，${otherErrors} 条有错误`;
       setImportMsg(msg);
-      loadNames(query);
+      loadNames(query, page);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       setImportMsg("导入出错: " + message);
@@ -501,7 +508,7 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
     setLinkedSpecs([]);
     setBrandQuery("");
     setSpecQuery("");
-    loadNames("");
+    loadNames("", 1);
     setSaving(false);
   }
 
@@ -666,6 +673,36 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
             </tbody>
           </table>
         </div>
+
+        {/* 分页 */}
+        {total > 每页数 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-gray-100">
+            <div className="text-sm text-gray-500">
+              共 {total} 条，第 {page}/{Math.ceil(total / 每页数)} 页
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => loadNames(query, page - 1)}
+                disabled={page <= 1 || searching}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                上一页
+              </button>
+              <span className="text-sm text-gray-600 px-2">
+                {page} / {Math.ceil(total / 每页数)}
+              </span>
+              <button
+                type="button"
+                onClick={() => loadNames(query, page + 1)}
+                disabled={page >= Math.ceil(total / 每页数) || searching}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <BatchLinkDialog
@@ -673,14 +710,14 @@ export default function PartNamesContent({ initialPartNames, initialCategories }
         type={batchType || "brand"}
         selectedIds={Array.from(selectedIds)}
         onClose={() => setBatchType(null)}
-        onSuccess={() => { setSelectedIds(new Set()); loadNames(); }}
+        onSuccess={() => { setSelectedIds(new Set()); loadNames(query, page); }}
       />
 
       <BatchMergeDialog
         open={showBatchMerge}
         selectedNames={names.filter((n) => selectedIds.has(n.id)).map((n) => ({ id: n.id, name: n.name }))}
         onClose={() => setShowBatchMerge(false)}
-        onSuccess={() => { setSelectedIds(new Set()); setShowBatchMerge(false); loadNames(); }}
+        onSuccess={() => { setSelectedIds(new Set()); setShowBatchMerge(false); loadNames(query, page); }}
       />
 
       {showForm && (

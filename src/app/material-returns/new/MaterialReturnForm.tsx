@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 创建退料单, type 退料明细输入 } from "@/app/material-returns/actions";
 import { 退料类型选项 } from "@/lib/returnTypes";
+import { useRetreatToSupplier } from "@/components/useRetreatToSupplier";
 import type { 可退记录, 领料单概要 } from "./page";
 import { toast } from "@/lib/globalToast";
 
@@ -16,6 +17,8 @@ interface Props {
 /* 按领料单开退料单:填每条记录的退料数量,一次开单 */
 export default function MaterialReturnForm({ 领料单, 记录列表 }: Props) {
   const router = useRouter();
+  /* 退库后连续退货（2026-09-16）：带车牌的工单件退库成功时弹"是否退给供应商" */
+  const { 提示并连续退货, 连续退货弹窗 } = useRetreatToSupplier();
   const [数量, 设数量] = useState<Record<string, number>>({});
   const [退料类型, 设退料类型] = useState("excess");
   const [原因, 设原因] = useState("");
@@ -65,6 +68,17 @@ export default function MaterialReturnForm({ 领料单, 记录列表 }: Props) {
         toast("开单失败: " + (结果.error || "未知错误"), "error");
         return;
       }
+      /* 连续退货提示（带车牌的工单件才弹）：先弹完再跳详情页，否则页面跳走弹窗消失 */
+      await 提示并连续退货(
+        明细.map((m) => ({
+          work_order_item_part_id: m.work_order_item_part_id,
+          quantity: m.quantity,
+          name: m.name,
+          return_type: m.return_type,
+          batch_id: m.batch_id,
+        })),
+        `退料单 ${结果.data?.no}`
+      );
       router.push(`/material-returns/${结果.data!.id}`);
     } catch (err: unknown) {
       toast("开单失败: " + (err instanceof Error ? err.message : "未知错误"), "error");
@@ -194,6 +208,7 @@ export default function MaterialReturnForm({ 领料单, 记录列表 }: Props) {
           </div>
         </div>
       )}
+      {连续退货弹窗}
     </div>
   );
 }

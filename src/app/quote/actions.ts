@@ -183,20 +183,25 @@ export interface 询价单列表项 {
 
 /* 询价单列表（管理页签用）。服务器时间戳在 Action 里取：
  * 组件渲染期禁调 Date.now()（react-hooks/purity 规则），过期判断要用当前时间 */
-export async function 获取询价单列表(): Promise<{
+export async function 获取询价单列表(page = 1): Promise<{
   success: boolean;
   error?: string;
-  data?: { 列表: 询价单列表项[]; 服务器时间戳: number };
+  data?: { 列表: 询价单列表项[]; 服务器时间戳: number; 总数: number; 每页数: number };
 }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) return { success: false, error: 登录错误 || "未登录" };
 
+  /* 分页：原来 limit(100) 硬截断，超过 100 条静默丢数据 */
+  const 每页数 = 20;
+  const 当前页 = Math.max(1, page);
+  const from = (当前页 - 1) * 每页数;
+
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("supplier_quote_sheets")
-    .select("id, token, supplier_name, status, expires_at, created_at, submitted_at, supplier_quote_items(id, quoted_price)")
+    .select("id, token, supplier_name, status, expires_at, created_at, submitted_at, supplier_quote_items(id, quoted_price)", { count: "exact" })
     .order("created_at", { ascending: false })
-    .limit(100);
+    .range(from, from + 每页数 - 1);
 
   if (error) return { success: false, error: error.message };
 
@@ -215,6 +220,8 @@ export async function 获取询价单列表(): Promise<{
     success: true,
     data: {
       服务器时间戳: Date.now(),
+      总数: count || 0,
+      每页数,
       列表: ((data || []) as unknown as 单行[]).map((s) => ({
         id: s.id,
         token: s.token,

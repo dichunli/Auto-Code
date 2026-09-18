@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 创建退料单, type 退料明细输入 } from "@/app/material-returns/actions";
 import { 退料类型选项 as RETURN_TYPES } from "@/lib/returnTypes";
+import { useRetreatToSupplier } from "./useRetreatToSupplier";
 import { toast } from "@/lib/globalToast";
 
 interface PickingRecord {
@@ -35,6 +36,8 @@ interface Props {
 
 export function PartReturnModal({ open, partName, workOrderItemPartId, onClose, onSuccess }: Props) {
   const supabase = createClient();
+  /* 退库后连续退货（2026-09-16）：带车牌的配件退库成功时弹"是否退给供应商" */
+  const { 提示并连续退货, 连续退货弹窗 } = useRetreatToSupplier();
   const [records, setRecords] = useState<PickingRecord[]>([]);
   const [已退Map, 设已退Map] = useState<Record<string, number>>({});
   const [快照, 设快照] = useState<分支快照 | null>(null);
@@ -129,6 +132,17 @@ export function PartReturnModal({ open, partName, workOrderItemPartId, onClose, 
       }
 
       toast(`退库成功，已生成退料单 ${结果.data?.no}`, "success");
+      /* 连续退货提示（带车牌的工单件才弹）：选"退给供应商"立即扣库存+建待退货记录 */
+      await 提示并连续退货(
+        明细.map((m) => ({
+          work_order_item_part_id: m.work_order_item_part_id,
+          quantity: m.quantity,
+          name: m.name ?? partName,
+          return_type: m.return_type,
+          batch_id: m.batch_id,
+        })),
+        `退料单 ${结果.data?.no}`
+      );
       onSuccess();
       onClose();
     } catch (err: unknown) {
@@ -252,6 +266,7 @@ export function PartReturnModal({ open, partName, workOrderItemPartId, onClose, 
           </div>
         </form>
       </div>
+      {连续退货弹窗}
     </dialog>
   );
 }

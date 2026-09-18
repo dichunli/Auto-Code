@@ -10,9 +10,13 @@ export default async function CompaniesPage(props: { searchParams?: Promise<Reco
   const searchParams = (await Promise.resolve(props.searchParams || {})) as Record<string, string | undefined>;
   const supabase = await createClient();
 
+  const pageSize = 20;
+  const page = Math.max(1, parseInt(searchParams.page || "1", 10));
+  const from = (page - 1) * pageSize;
+
   let query = supabase
     .from("companies")
-    .select("id, name, contact, phone, address, credit_limit, payment_terms, notes, created_at")
+    .select("id, name, contact, phone, address, credit_limit, payment_terms, notes, created_at", { count: "exact" })
     .order("created_at", { ascending: false });
 
   if (searchParams.name) query = query.ilike("name", `%${searchParams.name}%`);
@@ -20,7 +24,22 @@ export default async function CompaniesPage(props: { searchParams?: Promise<Reco
   if (searchParams.phone) query = query.ilike("phone", `%${searchParams.phone}%`);
   if (searchParams.address) query = query.ilike("address", `%${searchParams.address}%`);
 
-  const { data: companies } = await query;
+  query = query.range(from, from + pageSize - 1);
+
+  const { data: companies, count } = await query;
+  const total = count || 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  /* 翻页/跳页链接保留搜索条件 */
+  function 分页链接(目标页: number) {
+    const params = new URLSearchParams();
+    if (searchParams.name) params.set("name", searchParams.name);
+    if (searchParams.contact) params.set("contact", searchParams.contact);
+    if (searchParams.phone) params.set("phone", searchParams.phone);
+    if (searchParams.address) params.set("address", searchParams.address);
+    params.set("page", String(目标页));
+    return `/companies?${params.toString()}`;
+  }
 
   interface CompanyRow {
     id: string;
@@ -155,6 +174,32 @@ export default async function CompaniesPage(props: { searchParams?: Promise<Reco
           </table>
         </div>
       </div>
+
+      {/* 分页 */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-gray-500">
+            共 {total} 条，第 {page}/{totalPages} 页
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              href={分页链接(Math.max(1, page - 1))}
+              className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page <= 1 ? "pointer-events-none opacity-50" : ""}`}
+            >
+              上一页
+            </Link>
+            <span className="text-sm text-gray-600 px-2">
+              {page} / {totalPages}
+            </span>
+            <Link
+              href={分页链接(Math.min(totalPages, page + 1))}
+              className={`px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 ${page >= totalPages ? "pointer-events-none opacity-50" : ""}`}
+            >
+              下一页
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
