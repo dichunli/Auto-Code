@@ -269,13 +269,13 @@ describe("已入库退货 RPC - 数据库集成测试", () => {
     const { partId, batchId, itemId } = await 造已入库({ 库存: 10, 入库数: 10 });
     /* 先正常退 4 件 */
     const r1 = await withAuth(TEST_USER_ID, () =>
-      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 4 }])
+      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 4, return_reason: "quality" }])
     );
     expect(r1.success).toBe(true);
 
     /* 再退 7 件：可退只剩 6，应被拦截 */
     const r2 = await withAuth(TEST_USER_ID, () =>
-      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 7 }])
+      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 7, return_reason: "quality" }])
     );
     expect(r2.success).toBe(false);
     expect(r2.error).toContain("最多还能退 6 件");
@@ -293,7 +293,7 @@ describe("已入库退货 RPC - 数据库集成测试", () => {
     await query(`UPDATE part_batches SET remaining = 2 WHERE id = $1`, [batchId]);
 
     const r = await withAuth(TEST_USER_ID, () =>
-      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 5 }])
+      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 5, return_reason: "quality" }])
     );
     expect(r.success).toBe(false);
     expect(r.error).toContain("剩余仅 2 件");
@@ -305,7 +305,7 @@ describe("已入库退货 RPC - 数据库集成测试", () => {
   it("采购单未入库（pending_storage）→ 拦截", async () => {
     const { itemId, batchId } = await 造已入库({ 采购单状态: "pending_storage" });
     const r = await withAuth(TEST_USER_ID, () =>
-      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 1 }])
+      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 1, return_reason: "quality" }])
     );
     expect(r.success).toBe(false);
     expect(r.error).toContain("仅「已入库」的采购单可以退货");
@@ -315,7 +315,7 @@ describe("已入库退货 RPC - 数据库集成测试", () => {
   it("退货原因不在白名单 → 拦截", async () => {
     const { itemId, batchId } = await 造已入库();
     const r = await withAuth(TEST_USER_ID, () =>
-      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 1, return_reason: "wrong_ship" }])
+      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 1, return_reason: "not_a_reason" }])
     );
     expect(r.success).toBe(false);
     expect(r.error).toContain("非法的退货原因");
@@ -325,7 +325,7 @@ describe("已入库退货 RPC - 数据库集成测试", () => {
   it("撤销已入库退货：库存加回、记录删除", async () => {
     const { partId, batchId, itemId } = await 造已入库({ 库存: 10, 入库数: 10 });
     const r1 = await withAuth(TEST_USER_ID, () =>
-      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 3 }])
+      退货([{ purchase_order_item_id: itemId, batch_id: batchId, quantity: 3, return_reason: "quality" }])
     );
     expect(r1.success).toBe(true);
     const 记录id = r1.record_ids![0];
