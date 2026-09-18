@@ -810,9 +810,11 @@ export interface 采退单分组输入 {
   return_shipping_fee?: number;
   shipping_fee_payer?: string | null;
   notes?: string | null;
-  /* 退货照片（2026-09-18 用户拍板）：确认退货时货物照+外包装照均必填 */
+  /* 退货照片（2026-09-18 用户拍板）：确认退货时货物照+外包装照+交接照均必填
+     （交接照=货物交给物流公司/供应商时拍，本地无物流的供应商也必填） */
   goods_photos?: string[];
   package_photos?: string[];
+  handover_photos?: string[];
   records: {
     record_id: string;
     part_id?: string | null;
@@ -848,6 +850,9 @@ export async function 生成采退单(
     }
     if (!g.package_photos || g.package_photos.length === 0) {
       return { success: false, error: `供应商「${g.supplier_name}」缺少外包装照片，确认退货前必须拍照上传` };
+    }
+    if (!g.handover_photos || g.handover_photos.length === 0) {
+      return { success: false, error: `供应商「${g.supplier_name}」缺少交接照片，交货给物流公司/供应商时必须拍照上传` };
     }
     if (!g.logistics_company || !g.logistics_company.trim()) {
       return { success: false, error: `供应商「${g.supplier_name}」未选物流公司，确认退货时物流公司必选` };

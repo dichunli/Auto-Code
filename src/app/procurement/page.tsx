@@ -520,7 +520,7 @@ export default async function ProcurementPage({
     const { data } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, status, created_at, work_order_item_parts(id, name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no, return_shipping_fee, shipping_fee_payer)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, handover_photos, status, created_at, work_order_item_parts(id, name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no, return_shipping_fee, shipping_fee_payer)"
       )
       .eq("status", "completed")
       .order("created_at", { ascending: false });

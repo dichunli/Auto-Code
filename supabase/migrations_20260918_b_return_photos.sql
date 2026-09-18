@@ -1,24 +1,32 @@
 /* ============================================================
  * 退货照片与运费信息（2026-09-18 用户拍板）
- * 背景：已入库退货 / 确认退货给供应商都要留证据照片（货物照 + 外包装照）。
- *   已入库退货时可选拍；待退货生成采退单时必填（前端 + Server Action 双重校验）。
+ * 背景：已入库退货 / 确认退货给供应商都要留证据照片。
+ *   三类照片：货物照 + 外包装照 + 交接照（货物交给物流公司时拍；
+ *   本地供应商无物流公司的，交货给供应商时也要拍交接照）。
+ *   已入库退货时货物/外包装可选拍；确认退货（生成采退单）时三类均必填
+ *   （前端 + Server Action + RPC 三层校验）。
  *   退货运费分对方付 / 我方付，我方付必填金额（采退单运费字段此前已有）。
  * 改动：
- *   1. supplier_return_records 加 package_photos（原 photos 列继续当货物照片用）
- *   2. purchase_return_orders 加 goods_photos / package_photos
+ *   1. supplier_return_records 加 package_photos / handover_photos
+ *      （原 photos 列继续当货物照片用）
+ *   2. purchase_return_orders 加 goods_photos / package_photos / handover_photos
  *   3. create_inbound_return：明细 JSON 支持 photos / package_photos 写入退货记录
- *   4. create_purchase_return_orders：分组 JSON 支持 goods_photos / package_photos
- *      写入采退单，并回写同单退货记录（已退货列表按记录查照片）
+ *   4. create_purchase_return_orders：分组 JSON 支持三类照片写入采退单，
+ *      并回写同单退货记录（已退货列表按记录查照片）
  * 幂等：ADD COLUMN IF NOT EXISTS + CREATE OR REPLACE（参数列表未变），可重跑。
  * ============================================================ */
 
 ALTER TABLE public.supplier_return_records ADD COLUMN IF NOT EXISTS package_photos TEXT[];
+ALTER TABLE public.supplier_return_records ADD COLUMN IF NOT EXISTS handover_photos TEXT[];
 ALTER TABLE public.purchase_return_orders ADD COLUMN IF NOT EXISTS goods_photos TEXT[];
 ALTER TABLE public.purchase_return_orders ADD COLUMN IF NOT EXISTS package_photos TEXT[];
+ALTER TABLE public.purchase_return_orders ADD COLUMN IF NOT EXISTS handover_photos TEXT[];
 
 COMMENT ON COLUMN public.supplier_return_records.package_photos IS '外包装照片（photos 列为货物照片）';
 COMMENT ON COLUMN public.purchase_return_orders.goods_photos IS '退货物照片（确认退货时必填）';
 COMMENT ON COLUMN public.purchase_return_orders.package_photos IS '退货外包装照片（确认退货时必填）';
+COMMENT ON COLUMN public.supplier_return_records.handover_photos IS '交接照片（货物交给物流公司/供应商时拍）';
+COMMENT ON COLUMN public.purchase_return_orders.handover_photos IS '交接照片：货物交给物流公司/供应商时拍（确认退货时必填，本地无物流也必填）';
 
 /* ─── 二、create_inbound_return：退货记录支持照片（参数列表未变） ─── */
 CREATE OR REPLACE FUNCTION create_inbound_return(
@@ -189,6 +197,7 @@ DECLARE
   v_record_ids UUID[];
   v_goods_photos TEXT[];
   v_package_photos TEXT[];
+  v_handover_photos TEXT[];
   v_result JSONB := '[]'::JSONB;
 BEGIN
   IF auth.uid() IS NULL THEN
@@ -208,7 +217,7 @@ BEGIN
       RAISE EXCEPTION '采退单明细不能为空';
     END IF;
 
-    /* 2026-09-18：确认退货必填校验（货物照片/外包装照片/物流公司；我方付必填运费金额） */
+    /* 2026-09-18：确认退货必填校验（货物/外包装/交接三类照片 + 物流公司；我方付必填运费金额） */
     IF jsonb_typeof(v_group->'goods_photos') <> 'array'
        OR jsonb_array_length(v_group->'goods_photos') = 0 THEN
       RAISE EXCEPTION '供应商「%」缺少货物照片，确认退货前必须拍照上传', COALESCE(v_group->>'supplier_name', '');
@@ -216,6 +225,10 @@ BEGIN
     IF jsonb_typeof(v_group->'package_photos') <> 'array'
        OR jsonb_array_length(v_group->'package_photos') = 0 THEN
       RAISE EXCEPTION '供应商「%」缺少外包装照片，确认退货前必须拍照上传', COALESCE(v_group->>'supplier_name', '');
+    END IF;
+    IF jsonb_typeof(v_group->'handover_photos') <> 'array'
+       OR jsonb_array_length(v_group->'handover_photos') = 0 THEN
+      RAISE EXCEPTION '供应商「%」缺少交接照片，交货给物流公司/供应商时必须拍照上传', COALESCE(v_group->>'supplier_name', '');
     END IF;
     IF NULLIF(TRIM(COALESCE(v_group->>'logistics_company', '')), '') IS NULL THEN
       RAISE EXCEPTION '供应商「%」未选物流公司，确认退货时物流公司必选', COALESCE(v_group->>'supplier_name', '');
@@ -227,15 +240,16 @@ BEGIN
 
     v_goods_photos := (SELECT ARRAY(SELECT jsonb_array_elements_text(v_group->'goods_photos')));
     v_package_photos := (SELECT ARRAY(SELECT jsonb_array_elements_text(v_group->'package_photos')));
+    v_handover_photos := (SELECT ARRAY(SELECT jsonb_array_elements_text(v_group->'handover_photos')));
 
     SELECT COALESCE(SUM(COALESCE((r->>'quantity')::INTEGER, 0)), 0) INTO v_total_qty
     FROM jsonb_array_elements(v_group->'records') r;
 
-    /* 建采退单(单号触发器生成)，2026-09-18 起带货物/外包装照片 */
+    /* 建采退单(单号触发器生成)，2026-09-18 起带货物/外包装/交接三类照片 */
     INSERT INTO purchase_return_orders (
       supplier_id, supplier_name, total_quantity, status,
       logistics_company, tracking_no, return_shipping_fee, shipping_fee_payer,
-      notes, operator_id, goods_photos, package_photos
+      notes, operator_id, goods_photos, package_photos, handover_photos
     ) VALUES (
       NULLIF(v_group->>'supplier_id', '')::UUID,
       v_group->>'supplier_name',
@@ -248,7 +262,8 @@ BEGIN
       v_group->>'notes',
       p_operator_id,
       v_goods_photos,
-      v_package_photos
+      v_package_photos,
+      v_handover_photos
     )
     RETURNING id, return_no INTO v_return_id, v_return_no;
 
@@ -281,6 +296,7 @@ BEGIN
     SET status = 'completed', return_order_id = v_return_id,
         photos = v_goods_photos,
         package_photos = v_package_photos,
+        handover_photos = v_handover_photos,
         logistics_company = NULLIF(TRIM(COALESCE(v_group->>'logistics_company', '')), ''),
         tracking_no = NULLIF(TRIM(COALESCE(v_group->>'tracking_no', '')), '')
     WHERE id = ANY(v_record_ids);

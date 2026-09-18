@@ -113,9 +113,14 @@ export function PendingReturnList(props: PendingReturnListProps) {
     shippingFeePayer: string;
     shippingFee: string;
     /* 退货照片（2026-09-18 用户拍板）：确认退货时必填；
-       初始值 = 各记录在退货时已拍的照片合集，可继续补拍 */
+       货物/外包装初始值 = 各记录在退货时已拍的照片合集，可继续补拍；
+       交接照 = 交货给物流公司/供应商时拍，只能这里拍 */
     goodsPhotos: string[];
     packagePhotos: string[];
+    handoverPhotos: string[];
+    /* 本地交接（2026-09-18 用户拍板）：本地供应商没有物流公司，
+       勾选后物流公司/运单号免填（写库时物流公司记"本地交接"），照片仍必填 */
+    本地交接: boolean;
   }
 
   const [returnModalOpen, setReturnModalOpen] = useState(false);
@@ -298,6 +303,8 @@ export function PendingReturnList(props: PendingReturnListProps) {
         /* 照片预填：退货时已拍的照片合集（去重），确认时可继续补拍 */
         goodsPhotos: [...new Set(list.flatMap((r) => r.photos ?? []))],
         packagePhotos: [...new Set(list.flatMap((r) => r.package_photos ?? []))],
+        handoverPhotos: [] as string[],
+        本地交接: false,
       }));
     setReturnModalGroups(groups);
     setReturnModalOpen(true);
@@ -321,8 +328,12 @@ export function PendingReturnList(props: PendingReturnListProps) {
         toast(`供应商「${g.supplierName}」还没有外包装照片，确认退货前必须拍照上传`, "warning");
         return;
       }
-      if (!g.logisticsCompany.trim()) {
-        toast(`供应商「${g.supplierName}」还没选物流公司，物流公司必选`, "warning");
+      if (g.handoverPhotos.length === 0) {
+        toast(`供应商「${g.supplierName}」还没有交接照片，交货给物流公司/供应商时必须拍照上传`, "warning");
+        return;
+      }
+      if (!g.本地交接 && !g.logisticsCompany.trim()) {
+        toast(`供应商「${g.supplierName}」还没选物流公司，物流公司必选（本地供应商请勾选"本地交接"）`, "warning");
         return;
       }
       if (g.shippingFeePayer === "self" && !(parseFloat(g.shippingFee) > 0)) {
@@ -336,13 +347,15 @@ export function PendingReturnList(props: PendingReturnListProps) {
         returnModalGroups.map((g) => ({
           supplier_id: g.supplierId || null,
           supplier_name: g.supplierName,
-          logistics_company: g.logisticsCompany.trim() || null,
-          tracking_no: g.trackingNo || null,
-          return_shipping_fee: g.shippingFeePayer === "self" ? parseFloat(g.shippingFee) || 0 : 0,
-          shipping_fee_payer: g.shippingFeePayer || null,
+          /* 本地交接（2026-09-18）：无物流公司时写死"本地交接"，列表/详情直接可读 */
+          logistics_company: g.本地交接 ? "本地交接" : g.logisticsCompany.trim() || null,
+          tracking_no: g.本地交接 ? null : g.trackingNo || null,
+          return_shipping_fee: !g.本地交接 && g.shippingFeePayer === "self" ? parseFloat(g.shippingFee) || 0 : 0,
+          shipping_fee_payer: g.本地交接 ? null : g.shippingFeePayer || null,
           notes: g.notes || null,
           goods_photos: g.goodsPhotos,
           package_photos: g.packagePhotos,
+          handover_photos: g.handoverPhotos,
           records: g.records.map((r) => ({
             record_id: r.id,
             /* 快照列优先（2026-09-16），工单配件行兜底 */
@@ -799,32 +812,48 @@ export function PendingReturnList(props: PendingReturnListProps) {
                     <div className="grid grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">
-                          物流公司 <span className="text-red-500">*</span>
+                          物流公司 {!g.本地交接 && <span className="text-red-500">*</span>}
                         </label>
                         <input
                           type="text"
                           value={g.logisticsCompany}
+                          disabled={g.本地交接}
                           onChange={(e) => {
                             setReturnModalGroups((prev) =>
                               prev.map((p, i) => (i === gIdx ? { ...p, logisticsCompany: e.target.value } : p))
                             );
                           }}
-                          placeholder="物流公司（必选）"
-                          className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                          placeholder={g.本地交接 ? "本地交接无需物流" : "物流公司（必选）"}
+                          className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
                         />
+                        {/* 本地交接（2026-09-18）：本地供应商无物流公司时勾选，物流/运单号免填，照片仍必填 */}
+                        <label className="mt-1 flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={g.本地交接}
+                            onChange={(e) => {
+                              setReturnModalGroups((prev) =>
+                                prev.map((p, i) => (i === gIdx ? { ...p, 本地交接: e.target.checked } : p))
+                              );
+                            }}
+                            className="rounded"
+                          />
+                          本地交接（无物流公司）
+                        </label>
                       </div>
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">运单号</label>
                         <input
                           type="text"
                           value={g.trackingNo}
+                          disabled={g.本地交接}
                           onChange={(e) => {
                             setReturnModalGroups((prev) =>
                               prev.map((p, i) => (i === gIdx ? { ...p, trackingNo: e.target.value } : p))
                             );
                           }}
-                          placeholder="运单号"
-                          className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                          placeholder={g.本地交接 ? "本地交接无运单号" : "运单号"}
+                          className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
                         />
                       </div>
                       <div>
@@ -877,9 +906,10 @@ export function PendingReturnList(props: PendingReturnListProps) {
                         </div>
                       )}
                     </div>
-                    {/* 退货照片（2026-09-18 用户拍板）：确认退货时货物照+外包装照均必填；
-                        已带入退货时拍的照片，可继续补拍 */}
-                    <div className="grid grid-cols-2 gap-3">
+                    {/* 退货照片（2026-09-18 用户拍板）：确认退货时三类照片均必填；
+                        货物/外包装已带入退货时拍的照片，可继续补拍；
+                        交接照=交货给物流公司/供应商时拍（本地无物流也必填） */}
+                    <div className="grid grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">
                           货物照片 <span className="text-red-500">*</span>
@@ -908,6 +938,22 @@ export function PendingReturnList(props: PendingReturnListProps) {
                           existingImages={g.packagePhotos}
                           maxImages={9}
                           folder="return-package"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">
+                          交接照片 <span className="text-red-500">*</span>
+                          <span className="block font-normal text-gray-400">交货给物流/供应商时拍</span>
+                        </label>
+                        <ImageUploader
+                          onUpload={(paths) => {
+                            setReturnModalGroups((prev) =>
+                              prev.map((p, i) => (i === gIdx ? { ...p, handoverPhotos: paths } : p))
+                            );
+                          }}
+                          existingImages={g.handoverPhotos}
+                          maxImages={9}
+                          folder="return-handover"
                         />
                       </div>
                     </div>
