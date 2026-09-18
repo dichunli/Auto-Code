@@ -90,6 +90,10 @@ export interface PurchaseOrderItem {
   receiving_batch_id?: string | null;
   /* 库存配件快照（已入库列表显示条码 + 当前库存数，quantity 为 NULL 表示故意留空） */
   parts?: { barcode: string | null; quantity: number | null } | null;
+  /* 收货批次快照（黄卡流程；已入库列表显示批次号 + 退货默认批次用） */
+  receiving_batches?: { batch_no: string | null } | null;
+  /* 入库单明细快照（蓝卡按单入库流程的批次号兜底，一对多取第一张） */
+  inbound_order_items?: { batch_no: string | null }[] | null;
 }
 
 /* 采购单（原 6 份，核心各份一致，扩展可选并集） */

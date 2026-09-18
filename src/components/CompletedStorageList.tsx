@@ -37,6 +37,10 @@ interface 库存批次 {
   part_id: string;
   batch_no: string | null;
   remaining: number;
+  /* 入库来源（多态）：黄卡批次流程指向 receiving_batches.id，按单/到货流程指向入库单或到货单 */
+  reference_id?: string | null;
+  /* 收货批次号（黄卡流程 part_batches.batch_no 常为空，批次号在收货批次表上，展示用） */
+  来源批次号?: string | null;
 }
 
 /* 退货弹窗（2026-09-16 接入正规退货流程，单独/批量共用）：
@@ -51,6 +55,7 @@ function BatchReturnModal({
   行们,
   批次Map,
   已退Map,
+  默认批次Map,
   onClose,
   on完成,
 }: {
@@ -58,17 +63,19 @@ function BatchReturnModal({
   行们: PurchaseOrderItem[];
   批次Map: Map<string, 库存批次[]> | null;
   已退Map: Map<string, number>;
+  /* 本次入库批次（2026-09-18 用户拍板）：采购明细行 id → 默认批次 id，打开弹窗自动选中 */
+  默认批次Map: Map<string, string>;
   onClose: () => void;
   on完成: () => void;
 }) {
   const { showToast } = useToast();
   /* 每行表单：批次id + 数量（字符串存储，提交转 number，遵守表单规范）；
-     默认数量 = 该行的可退数（已入 − 已退） */
+     批次默认带出本次入库的批次；默认数量 = 该行的可退数（已入 − 已退，封顶库存） */
   const [表单, set表单] = useState(() =>
     行们.map((it) => ({
       itemId: it.id,
-      batch_id: "",
-      qty: String((it.received_qty ?? it.quantity) - (已退Map.get(it.id) ?? 0)),
+      batch_id: 默认批次Map.get(it.id) ?? "",
+      qty: String(可退数(it)),
     }))
   );
   const [原因, set原因] = useState("quality");
@@ -199,7 +206,7 @@ function BatchReturnModal({
                             <option value="">选择批次</option>
                             {可选批次.map((b) => (
                               <option key={b.id} value={b.id}>
-                                {b.batch_no || "未命名批次"}（剩 {b.remaining}）
+                                {b.batch_no || b.来源批次号 || "未命名批次"}（剩 {b.remaining}）
                               </option>
                             ))}
                           </select>
@@ -287,6 +294,8 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
   const [退货勾选, set退货勾选] = useState<Set<string>>(new Set());
   /* 退货弹窗的可选批次（null=加载中）：打开弹窗时一次性查好 */
   const [退货批次Map, set退货批次Map] = useState<Map<string, 库存批次[]> | null>(null);
+  /* 退货弹窗的默认批次（2026-09-18 用户拍板）：采购明细行 id → 本次入库批次 id */
+  const [默认批次Map, set默认批次Map] = useState<Map<string, string>>(new Map());
   /* 已退数量标识（2026-09-16）：采购明细行 id → 已退件数（退货记录撤销即删除，不会虚占） */
   const [已退Map, set已退Map] = useState<Map<string, number>>(
     () => new Map(Object.entries(props.initial已退 ?? {}))
@@ -305,7 +314,8 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
         purchase_order_items(
           id, name, brand, specification, quantity, unit_cost, received_qty,
           part_id, work_order_item_part_id, part_number, supplier_part_name,
-          unit, category, license_plate, photos, notes, parts(barcode, quantity)
+          unit, category, license_plate, photos, notes, parts(barcode, quantity),
+          receiving_batch_id, receiving_batches(batch_no), inbound_order_items(batch_no)
         ),
         inbound_orders(id, inbound_no, total_quantity, total_amount, created_at)
       `
@@ -362,7 +372,10 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
   }
 
   /* 打开退货弹窗（2026-09-16：单独退货和批量退货同一入口，批量=勾选的行，单独=该行）：
-     先查出所有选中配件的可退批次（有剩余的），再交给弹窗 */
+     先查出所有选中配件的可退批次（有剩余的），再交给弹窗；
+     同时解析"本次入库批次"作为默认选中（2026-09-18 用户拍板）：
+     黄卡流程 明细.receiving_batch_id = 批次.reference_id；
+     蓝卡按单流程 经入库单明细反查 inbound_order_id = 批次.reference_id */
   async function 打开退货弹窗(order: PurchaseOrder, itemIds: string[]) {
     const 选中行 = order.purchase_order_items.filter((it) => itemIds.includes(it.id) && !!it.part_id);
     if (选中行.length === 0) {
@@ -371,20 +384,62 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
     }
     set退货弹窗({ order, itemIds: 选中行.map((it) => it.id) });
     set退货批次Map(null);
+    set默认批次Map(new Map());
     const partIds = [...new Set(选中行.map((it) => it.part_id as string))];
     const { data } = await supabase
       .from("part_batches")
-      .select("id, part_id, batch_no, remaining")
+      .select("id, part_id, batch_no, remaining, reference_id")
       .in("part_id", partIds)
       .gt("remaining", 0)
       .order("created_at", { ascending: true });
+    const 批次们 = (data || []) as 库存批次[];
+
+    /* 批次号展示补全：黄卡流程 part_batches.batch_no 常为空，真正的批次号在收货批次表上 */
+    const 引用ids = [...new Set(批次们.map((b) => b.reference_id).filter((x): x is string => !!x))];
+    if (引用ids.length > 0) {
+      const { data: 收货批次们 } = await supabase
+        .from("receiving_batches")
+        .select("id, batch_no")
+        .in("id", 引用ids);
+      const 收货批次号Map = new Map(
+        ((收货批次们 || []) as { id: string; batch_no: string }[]).map((rb) => [rb.id, rb.batch_no])
+      );
+      for (const b of 批次们) {
+        b.来源批次号 = (b.reference_id && 收货批次号Map.get(b.reference_id)) || null;
+      }
+    }
+
     const map = new Map<string, 库存批次[]>();
-    for (const b of (data || []) as 库存批次[]) {
+    for (const b of 批次们) {
       const list = map.get(b.part_id) || [];
       list.push(b);
       map.set(b.part_id, list);
     }
     set退货批次Map(map);
+
+    /* 蓝卡按单流程：明细没有 receiving_batch_id，经入库单明细反查入库单 id */
+    const 蓝卡行 = 选中行.filter((it) => !it.receiving_batch_id);
+    const 明细到入库单 = new Map<string, string>();
+    if (蓝卡行.length > 0) {
+      const { data: 入库明细 } = await supabase
+        .from("inbound_order_items")
+        .select("purchase_order_item_id, inbound_order_id")
+        .in("purchase_order_item_id", 蓝卡行.map((it) => it.id))
+        .order("created_at", { ascending: false });
+      for (const r of (入库明细 || []) as { purchase_order_item_id: string; inbound_order_id: string }[]) {
+        if (!明细到入库单.has(r.purchase_order_item_id)) 明细到入库单.set(r.purchase_order_item_id, r.inbound_order_id);
+      }
+    }
+
+    /* 默认批次 = 本次入库来源对应的批次（只在还有剩余的可选批次里找，找不到就不默认） */
+    const 默认Map = new Map<string, string>();
+    for (const it of 选中行) {
+      const 来源id = it.receiving_batch_id ?? 明细到入库单.get(it.id);
+      if (!来源id) continue;
+      const 批次 = (map.get(it.part_id as string) || []).find((b) => b.reference_id === 来源id);
+      if (批次) 默认Map.set(it.id, 批次.id);
+    }
+    set默认批次Map(默认Map);
   }
 
   useEffect(() => {
@@ -647,6 +702,7 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
                         <th className="px-3 py-2 text-left font-medium text-gray-500 w-12">单位</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500">分类</th>
                         <th className="px-3 py-2 text-left font-medium text-gray-500">车牌</th>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500">批次号</th>
                         <th className="px-3 py-2 text-center font-medium text-gray-500 w-32">到货数量</th>
                         <th className="px-3 py-2 text-center font-medium text-gray-500 w-16">库存</th>
                         <th className="px-3 py-2 text-center font-medium text-gray-500 w-20">已退</th>
@@ -684,6 +740,11 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
                           <td className="px-3 py-2 text-gray-500">{item.unit || "-"}</td>
                           <td className="px-3 py-2 text-gray-500">{item.category || "-"}</td>
                           <td className="px-3 py-2 text-gray-500">{item.license_plate || "-"}</td>
+                          {/* 批次号（2026-09-18 用户拍板）：黄卡流程显示收货批次号（SH-...），
+                              蓝卡按单流程兜底显示入库时手填的批次号 */}
+                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                            {item.receiving_batches?.batch_no || item.inbound_order_items?.[0]?.batch_no || "-"}
+                          </td>
                           <td className="px-3 py-2 text-center">
                             <span className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">
                               {item.received_qty || 0} / {item.quantity}
@@ -765,6 +826,7 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
           行们={退货弹窗.order.purchase_order_items.filter((it) => 退货弹窗.itemIds.includes(it.id))}
           批次Map={退货批次Map}
           已退Map={已退Map}
+          默认批次Map={默认批次Map}
           onClose={() => set退货弹窗(null)}
           on完成={() => {
             set退货勾选(new Set());
