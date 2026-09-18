@@ -20,6 +20,11 @@ const DATABASE_URL =
   process.env.TEST_DATABASE_URL ||
   "postgresql://postgres:postgres@localhost:54322/postgres";
 
+/* 固定测试用户 id（造数专用，admin 角色） */
+const TEST_USER_ID = "cccccccc-dddd-4eee-8aaa-aaaaaaaaaaaa";
+/* 无角色的路人用户（测门禁） */
+const NOBODY_USER_ID = "cccccccc-dddd-4eee-8aaa-bbbbbbbbbbbb";
+
 let client: Client;
 
 // 测试数据句柄
@@ -31,6 +36,25 @@ async function query(sql: string, values?: unknown[]) {
   return res;
 }
 
+/* 在事务内注入登录身份后调用（函数返回 JSONB 不中断事务） */
+async function withAuth<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  await client.query("BEGIN");
+  await client.query(
+    `SELECT set_config('request.jwt.claims', $1, true)`,
+    [JSON.stringify({ sub: userId, role: "authenticated" })]
+  );
+  try {
+    const out = await fn();
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+}
+
+/* 调 settle_work_order：2026-09-19 起函数带登录+角色门禁，
+ * 所有用例默认以 admin 测试员身份调用（拒绝路径用例除外，见文末） */
 async function callSettleWorkOrder(
   orderId: string,
   discountAmount: number,
@@ -38,15 +62,17 @@ async function callSettleWorkOrder(
   accountId: string,
   notes?: string
 ) {
-  const res = await query(
-    `SELECT settle_work_order($1::UUID, $2::DECIMAL, $3::JSONB, $4::UUID, $5::TEXT) as result`,
-    [orderId, discountAmount, JSON.stringify(payments), accountId, notes || null]
-  );
-  return res.rows[0].result as {
-    success: boolean;
-    error?: string;
-    total_cost?: number;
-  };
+  return withAuth(TEST_USER_ID, async () => {
+    const res = await query(
+      `SELECT settle_work_order($1::UUID, $2::DECIMAL, $3::JSONB, $4::UUID, $5::TEXT) as result`,
+      [orderId, discountAmount, JSON.stringify(payments), accountId, notes || null]
+    );
+    return res.rows[0].result as {
+      success: boolean;
+      error?: string;
+      total_cost?: number;
+    };
+  });
 }
 
 async function createTestWorkOrder(opts: {
@@ -138,10 +164,31 @@ describe("settle_work_order RPC - 数据库集成测试", () => {
        VALUES ('维修收入', 'income', 1)
        ON CONFLICT DO NOTHING`
     );
+
+    /* 造测试用户：auth.users → profiles → profile_roles(admin)
+     *（2026-09-19 起 settle_work_order 有登录+角色门禁，无身份调用会被拒） */
+    for (const [uid, name] of [[TEST_USER_ID, "结算测试员"], [NOBODY_USER_ID, "路人甲"]] as const) {
+      await query(
+        `INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+         VALUES ('00000000-0000-0000-0000-000000000000', $1, 'authenticated', 'authenticated', $2, '', now(), now(), now())
+         ON CONFLICT (id) DO NOTHING`,
+        [uid, `settle-test-${uid.slice(-4)}@example.com`]
+      );
+      await query(`INSERT INTO profiles (id, full_name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [uid, name]);
+    }
+    await query(`INSERT INTO roles (name, label) VALUES ('admin', '管理员') ON CONFLICT (name) DO NOTHING`);
+    const roleRes = await query(`SELECT id FROM roles WHERE name = 'admin'`);
+    await query(
+      `INSERT INTO profile_roles (profile_id, role_id) VALUES ($1, $2) ON CONFLICT (profile_id, role_id) DO NOTHING`,
+      [TEST_USER_ID, roleRes.rows[0].id]
+    );
   });
 
   afterAll(async () => {
     await query(`DROP SEQUENCE IF EXISTS test_seq`);
+    await query(`DELETE FROM profile_roles WHERE profile_id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
+    await query(`DELETE FROM profiles WHERE id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
+    await query(`DELETE FROM auth.users WHERE id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
     await client.end();
   });
 
@@ -649,6 +696,11 @@ describe("settle_work_order RPC - 数据库集成测试", () => {
 
       const client2 = new Client({ connectionString: DATABASE_URL });
       await client2.connect();
+      /* 第二连接同样注入 admin 测试员身份（2026-09-19 起函数有登录门禁） */
+      await client2.query(
+        `SELECT set_config('request.jwt.claims', $1, true)`,
+        [JSON.stringify({ sub: TEST_USER_ID, role: "authenticated" })]
+      );
 
       // 两个并行请求同时结算同一工单
       const promise1 = callSettleWorkOrder(
@@ -679,6 +731,51 @@ describe("settle_work_order RPC - 数据库集成测试", () => {
       expect(parseInt(payRes.rows[0].cnt)).toBe(1);
 
       await client2.end();
+      await cleanupWorkOrder(workOrderId, customerId, vehicleId);
+    });
+  });
+
+  // ============================================================
+  // 权限拒绝路径（2026-09-19 补：结算管钱，必须有"被拦住"的断言）
+  // ============================================================
+  describe("权限拒绝路径", () => {
+    it("未登录调用 → 返回未登录错误，工单状态不动", async () => {
+      const { customerId, vehicleId, workOrderId } = await createTestWorkOrder();
+
+      /* 不注入任何 claims：auth.uid() 为 NULL，函数应立即拒绝 */
+      const res = await query(
+        `SELECT settle_work_order($1::UUID, $2::DECIMAL, $3::JSONB, $4::UUID, $5::TEXT) as result`,
+        [workOrderId, 0, JSON.stringify([{ method: "cash", amount: 300 }]), testAccountId, null]
+      );
+      const r = res.rows[0].result as { success: boolean; error?: string };
+      expect(r.success).toBe(false);
+      expect(r.error).toContain("未登录");
+
+      /* 工单仍为待结算，支付记录未产生 */
+      const wo = await query(`SELECT status FROM work_orders WHERE id = $1`, [workOrderId]);
+      expect(wo.rows[0].status).toBe("pending_settlement");
+      const payRes = await query(`SELECT COUNT(*) as cnt FROM payments WHERE work_order_id = $1`, [workOrderId]);
+      expect(parseInt(payRes.rows[0].cnt)).toBe(0);
+
+      await cleanupWorkOrder(workOrderId, customerId, vehicleId);
+    });
+
+    it("无角色路人调用 → 返回无权限，工单状态不动", async () => {
+      const { customerId, vehicleId, workOrderId } = await createTestWorkOrder();
+
+      const r = await withAuth(NOBODY_USER_ID, async () => {
+        const res = await query(
+          `SELECT settle_work_order($1::UUID, $2::DECIMAL, $3::JSONB, $4::UUID, $5::TEXT) as result`,
+          [workOrderId, 0, JSON.stringify([{ method: "cash", amount: 300 }]), testAccountId, null]
+        );
+        return res.rows[0].result as { success: boolean; error?: string };
+      });
+      expect(r.success).toBe(false);
+      expect(r.error).toContain("无权限");
+
+      const wo = await query(`SELECT status FROM work_orders WHERE id = $1`, [workOrderId]);
+      expect(wo.rows[0].status).toBe("pending_settlement");
+
       await cleanupWorkOrder(workOrderId, customerId, vehicleId);
     });
   });
