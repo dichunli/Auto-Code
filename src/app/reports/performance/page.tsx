@@ -2,137 +2,27 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 
-interface MechanicRow {
+interface MechanicStatRow {
   id: string;
-  full_name: string;
-  mechanic_levels: {
-    name: string;
-    share_coefficient: number;
-  } | null;
-}
-
-interface CommissionRow {
-  mechanic_id: string;
-  share_pct: number | null;
-  work_order_items: {
-    total_price: number | null;
-    status: string | null;
-  } | null;
-}
-
-interface WoItemRow {
-  id: string;
-  work_order_id: string;
-  mechanic_id: string | null;
-}
-
-interface MechanicWoRow {
-  mechanic_id: string;
-  work_order_item_id: {
-    work_order_id: string;
-  } | null;
-}
-
-interface ConstructionLogRow {
-  mechanic_id: string;
-  duration_seconds: number | null;
-  action: string;
+  name: string;
+  level: string;
+  level_coeff: number;
+  work_order_count: number;
+  item_count: number;
+  total_value: number;
+  total_hours: number;
 }
 
 export default async function PerformanceReportPage() {
   const supabase = await createClient();
 
-  const { data: mechanics } = await supabase
-    .from("profiles")
-    .select("id, full_name, mechanic_levels(name, share_coefficient)")
-    .eq("is_active", true);
-
-  // 从 work_order_item_mechanics 统计多人施工的分配业绩
-  const { data: mechanicCommissions } = await supabase
-    .from("work_order_item_mechanics")
-    .select("mechanic_id, share_pct, work_order_items(total_price, status)")
-    .eq("work_order_items.status", "completed");
-
-  // 施工工时统计（从 construction_logs）
-  const { data: constructionLogs } = await supabase
-    .from("work_order_item_construction_logs")
-    .select("mechanic_id, duration_seconds, action")
-    .eq("action", "complete");
-
-  const mechanicStats: Record<string, {
-    name: string;
-    level: string;
-    levelCoeff: number;
-    itemCount: number;
-    totalValue: number;
-    totalHours: number;
-    workOrderCount: number;
-    woSet: Set<string>;
-  }> = {};
-
-  /* supabase 关联查询推导类型与目标接口重叠不足，先转 unknown 再断言 */
-  (mechanics as unknown as MechanicRow[] | null)?.forEach((m) => {
-    mechanicStats[m.id] = {
-      name: m.full_name,
-      level: m.mechanic_levels?.name || "",
-      levelCoeff: m.mechanic_levels?.share_coefficient || 1,
-      itemCount: 0,
-      totalValue: 0,
-      totalHours: 0,
-      workOrderCount: 0,
-      woSet: new Set(),
-    };
-  });
-
-  // 按 share_pct 计算业绩
-  (mechanicCommissions as unknown as CommissionRow[] | null || []).forEach((row) => {
-    const stats = mechanicStats[row.mechanic_id];
-    if (stats && row.work_order_items) {
-      const price = row.work_order_items.total_price || 0;
-      const ratio = (row.share_pct || 100) / 100;
-      stats.itemCount += 1;
-      stats.totalValue += price * ratio;
-    }
-  });
-
-  // 统计参与过的工单数
-  const { data: woItems } = await supabase
-    .from("work_order_items")
-    .select("id, work_order_id, mechanic_id");
-
-  // 通过 work_order_item_mechanics 统计参与工单
-  const { data: mechanicWos } = await supabase
-    .from("work_order_item_mechanics")
-    .select("mechanic_id, work_order_item_id(work_order_id)");
-
-  (mechanicWos as unknown as MechanicWoRow[] | null || []).forEach((row) => {
-    const stats = mechanicStats[row.mechanic_id];
-    if (stats && row.work_order_item_id?.work_order_id) {
-      stats.woSet.add(row.work_order_item_id.work_order_id);
-    }
-  });
-
-  // 单人施工的工单（兼容旧数据）
-  (woItems as WoItemRow[] | null || []).forEach((item) => {
-    if (item.mechanic_id) {
-      const stats = mechanicStats[item.mechanic_id];
-      if (stats) {
-        stats.woSet.add(item.work_order_id);
-      }
-    }
-  });
-
-  // 工时统计
-  (constructionLogs as ConstructionLogRow[] | null || []).forEach((log) => {
-    const stats = mechanicStats[log.mechanic_id];
-    if (stats) {
-      stats.totalHours += (log.duration_seconds || 0) / 3600;
-    }
-  });
-
-  Object.values(mechanicStats).forEach((s) => {
-    s.workOrderCount = s.woSet.size;
-  });
+  /* 业绩汇总改数据库端聚合（2026-09-19，9-15 诊断🟠#11）：
+   * 原来 profiles/施工分配/施工日志/项目 4 张表全量拉到内存按人聚合，
+   * 数据量涨后必超时。口径不变（完成项目=项目completed、参与工单=多人表∪旧单人字段去重、
+   * 工时=complete日志秒转小时、只列在职员工、按分配业绩降序），逐行对照见迁移 0919_c。 */
+  const { data: 汇总 } = await supabase.rpc("report_performance_summary");
+  /* 未登录/异常时函数返回错误对象而非数组，防御为非数组即空 */
+  const 员工统计 = (Array.isArray(汇总) ? 汇总 : []) as unknown as MechanicStatRow[];
 
   return (
     <div className="space-y-6">
@@ -154,23 +44,21 @@ export default async function PerformanceReportPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {Object.entries(mechanicStats)
-                .sort((a, b) => b[1].totalValue - a[1].totalValue)
-                .map(([id, s]) => (
-                  <tr key={id} className="hover:bg-gray-50">
+              {员工统计.map((s) => (
+                  <tr key={s.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 font-medium text-gray-900">{s.name}</td>
                     <td className="px-6 py-4 text-gray-600">{s.level || "-"}</td>
-                    <td className="px-6 py-4 text-gray-600">{s.levelCoeff}</td>
-                    <td className="px-6 py-4 text-gray-600">{s.workOrderCount}</td>
-                    <td className="px-6 py-4 text-gray-600">{s.itemCount}</td>
-                    <td className="px-6 py-4 font-medium text-gray-900">{formatCurrency(s.totalValue)}</td>
-                    <td className="px-6 py-4 text-gray-600">{s.totalHours.toFixed(1)}h</td>
+                    <td className="px-6 py-4 text-gray-600">{s.level_coeff}</td>
+                    <td className="px-6 py-4 text-gray-600">{s.work_order_count}</td>
+                    <td className="px-6 py-4 text-gray-600">{s.item_count}</td>
+                    <td className="px-6 py-4 font-medium text-gray-900">{formatCurrency(Number(s.total_value || 0))}</td>
+                    <td className="px-6 py-4 text-gray-600">{Number(s.total_hours || 0).toFixed(1)}h</td>
                     <td className="px-6 py-4 text-gray-600">
-                      {s.itemCount > 0 ? (s.totalHours / s.itemCount).toFixed(1) : "0"}h
+                      {s.item_count > 0 ? (Number(s.total_hours || 0) / s.item_count).toFixed(1) : "0"}h
                     </td>
                   </tr>
                 ))}
-              {mechanics?.length === 0 && (
+              {员工统计.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
                     暂无员工数据

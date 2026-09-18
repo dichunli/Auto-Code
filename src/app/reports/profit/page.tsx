@@ -10,105 +10,23 @@ import { formatCurrency } from "@/lib/utils";
    - 毛利 = 营收 - 配件成本
    - 净利润 = 毛利 - 工时提成 - 工单其它成本 - 运营支出 + 其他收入 */
 
-interface 工单金额行 {
-  id: string;
-  parts_cost: number | null;
-  labor_cost: number | null;
-  other_cost: number | null;
-  total_cost: number | null;
-}
-
-interface 配件分支成本行 {
-  quantity: number | null;
-  cost_price: number | null;
-  unit_cost: number | null;
-}
-
-interface 提成行 {
-  commission_amount: number | null;
-}
-
-interface 收支行 {
-  amount: number | null;
-}
-
 export default async function ProfitReportPage() {
   const supabase = await createClient();
 
-  const { data: settledOrdersRaw } = await supabase
-    .from("work_orders")
-    .select("id, parts_cost, labor_cost, other_cost, total_cost")
-    .in("status", ["settled", "delivered"]);
-  const settledOrders = (settledOrdersRaw || []) as unknown as 工单金额行[];
-
-  /* 逐步查出这些工单的真实配件成本和技师提成 */
-  const orderIds = settledOrders.map((o) => o.id);
-  let totalPartsRealCost = 0;
-  let totalCommission = 0;
-  let totalOtherCosts = 0;
-  if (orderIds.length > 0) {
-    const { data: itemsRaw } = await supabase
-      .from("work_order_items")
-      .select("id")
-      .in("work_order_id", orderIds);
-    const itemIds = ((itemsRaw || []) as unknown as { id: string }[]).map((i) => i.id);
-
-    const [分支结果, 提成结果, 其它成本结果] = await Promise.all([
-      itemIds.length > 0
-        ? supabase
-            .from("work_order_item_parts")
-            .select("quantity, cost_price, unit_cost")
-            .in("work_order_item_id", itemIds)
-            .eq("is_selected", true)
-        : Promise.resolve({ data: [] }),
-      itemIds.length > 0
-        ? supabase
-            .from("work_order_item_mechanics")
-            .select("commission_amount")
-            .in("work_order_item_id", itemIds)
-        : Promise.resolve({ data: [] }),
-      /* 工单其它成本明细（退货运费分摊等，2026-09-18 起计入成本口径） */
-      supabase
-        .from("work_order_other_costs")
-        .select("amount")
-        .in("work_order_id", orderIds),
-    ]);
-
-    totalPartsRealCost = ((分支结果.data || []) as unknown as 配件分支成本行[]).reduce(
-      (sum, b) => sum + (b.quantity || 0) * (b.cost_price ?? b.unit_cost ?? 0),
-      0
-    );
-    totalCommission = ((提成结果.data || []) as unknown as 提成行[]).reduce(
-      (sum, m) => sum + (m.commission_amount || 0),
-      0
-    );
-    totalOtherCosts = ((其它成本结果.data || []) as unknown as 收支行[]).reduce(
-      (sum, c) => sum + (c.amount || 0),
-      0
-    );
-  }
-
-  const { data: expensesRaw } = await supabase
-    .from("finance_transactions")
-    .select("amount")
-    .eq("type", "expense");
-  const { data: incomesRaw } = await supabase
-    .from("finance_transactions")
-    .select("amount")
-    .eq("type", "income");
-
-  const totalRevenue = settledOrders.reduce((sum, o) => sum + (o.total_cost || 0), 0);
-  const totalPartsSales = settledOrders.reduce((sum, o) => sum + (o.parts_cost || 0), 0);
-  const totalLaborSales = settledOrders.reduce((sum, o) => sum + (o.labor_cost || 0), 0);
-  const totalOtherSales = settledOrders.reduce((sum, o) => sum + (o.other_cost || 0), 0);
-  const totalOperatingExpense = ((expensesRaw || []) as unknown as 收支行[]).reduce(
-    (sum, e) => sum + (e.amount || 0),
-    0
-  );
-  const totalOtherIncome = ((incomesRaw || []) as unknown as 收支行[]).reduce(
-    (sum, i) => sum + (i.amount || 0),
-    0
-  );
+  /* 汇总数字改数据库端聚合（2026-09-19，9-15 诊断🟠#11）：
+   * 原来 5 张表全量拉到内存加总（工单/配件分支/提成/其它成本/财务流水），
+   * 数据量涨后报表页必超时。口径不变，逐行对照见迁移 0919_c 注释。 */
+  const { data: 汇总 } = await supabase.rpc("report_profit_summary");
+  const s = (汇总 || {}) as Record<string, number>;
+  const totalRevenue = Number(s.total_revenue || 0);
+  const totalPartsSales = Number(s.parts_sales || 0);
+  const totalLaborSales = Number(s.labor_sales || 0);
+  const totalOtherSales = Number(s.other_sales || 0);
+  const totalPartsRealCost = Number(s.parts_real_cost || 0);
+  const totalCommission = Number(s.commission || 0);
+  const totalOtherCosts = Number(s.other_costs || 0);
+  const totalOperatingExpense = Number(s.operating_expense || 0);
+  const totalOtherIncome = Number(s.other_income || 0);
 
   const grossProfit = totalRevenue - totalPartsRealCost;
   const netProfit = grossProfit - totalCommission - totalOtherCosts - totalOperatingExpense + totalOtherIncome;
