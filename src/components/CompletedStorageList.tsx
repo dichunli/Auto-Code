@@ -8,6 +8,7 @@ import { PriceValue } from "@/components/PriceVisibilityContext";
 import { useConfirm } from "./ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { DocumentNameInput } from "./DocumentNameInput";
+import { ImageUploader } from "./ImageUploader";
 import { useDebounce } from "@/lib/useDebounce";
 import { toast } from "@/lib/globalToast";
 import type { PurchaseOrder, PurchaseOrderItem } from "@/types/domain";
@@ -81,6 +82,10 @@ function BatchReturnModal({
   const [原因, set原因] = useState("quality");
   const [备注, set备注] = useState("");
   const [提交中, set提交中] = useState(false);
+  /* 退货照片（2026-09-18 用户拍板）：退货时可选拍，确认退货给供应商时才必填；
+     货物照片 → 记录 photos 列，外包装照片 → package_photos 列 */
+  const [货物照片, set货物照片] = useState<string[]>([]);
+  const [外包装照片, set外包装照片] = useState<string[]>([]);
 
   function 改行(itemId: string, patch: Partial<{ batch_id: string; qty: string }>) {
     set表单((prev) => prev.map((r) => (r.itemId === itemId ? { ...r, ...patch } : r)));
@@ -129,6 +134,8 @@ function BatchReturnModal({
           quantity: parseInt(r.qty, 10),
           return_reason: 原因,
           notes: 备注.trim() || null,
+          photos: 货物照片.length > 0 ? 货物照片 : undefined,
+          package_photos: 外包装照片.length > 0 ? 外包装照片 : undefined,
         }))
       );
       if (!res.success) {
@@ -249,6 +256,31 @@ function BatchReturnModal({
                 onChange={(e) => set备注(e.target.value)}
                 placeholder="如：规格不对，供应商答应换货"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+          {/* 退货照片（2026-09-18）：此处可选拍；到「待退货」确认退货给供应商时必填 */}
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                货物照片 <span className="text-xs font-normal text-gray-400">（可选，确认退货时必填）</span>
+              </label>
+              <ImageUploader
+                onUpload={set货物照片}
+                existingImages={货物照片}
+                maxImages={5}
+                folder="return-goods"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                外包装照片 <span className="text-xs font-normal text-gray-400">（可选，确认退货时必填）</span>
+              </label>
+              <ImageUploader
+                onUpload={set外包装照片}
+                existingImages={外包装照片}
+                maxImages={5}
+                folder="return-package"
               />
             </div>
           </div>

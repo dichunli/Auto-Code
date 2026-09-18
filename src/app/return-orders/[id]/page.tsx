@@ -28,6 +28,9 @@ interface ReturnOrder {
   shipping_fee_payer: string | null;
   /* 2026-09-15 批次5：退货运费是否已记入物流应付 */
   freight_recorded: boolean | null;
+  /* 退货照片（2026-09-18 用户拍板：确认退货时必填，详情可查） */
+  goods_photos: string[] | null;
+  package_photos: string[] | null;
   notes: string | null;
   created_at: string;
   profiles: { full_name: string | null } | null;
@@ -52,7 +55,7 @@ export default async function ReturnOrderDetailPage({
   const { data: order } = await supabase
     .from("purchase_return_orders")
     .select(
-      "id, return_no, supplier_name, total_quantity, status, logistics_company, tracking_no, return_shipping_fee, shipping_fee_payer, freight_recorded, notes, created_at, profiles(full_name)"
+      "id, return_no, supplier_name, total_quantity, status, logistics_company, tracking_no, return_shipping_fee, shipping_fee_payer, freight_recorded, goods_photos, package_photos, notes, created_at, profiles(full_name)"
     )
     .eq("id", id)
     .single();
@@ -158,6 +161,36 @@ export default async function ReturnOrderDetailPage({
             <div className="col-span-2 md:col-span-4">
               <div className="text-xs text-gray-500">备注</div>
               <div className="font-medium text-gray-900">{returnOrder.notes}</div>
+            </div>
+          )}
+          {/* 退货照片（2026-09-18）：货物照 + 外包装照，确认退货时必填、详情可查 */}
+          {((returnOrder.goods_photos && returnOrder.goods_photos.length > 0) ||
+            (returnOrder.package_photos && returnOrder.package_photos.length > 0)) && (
+            <div className="col-span-2 md:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {returnOrder.goods_photos && returnOrder.goods_photos.length > 0 && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">货物照片</div>
+                  <div className="flex flex-wrap gap-2">
+                    {returnOrder.goods_photos.map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                        <img src={url} alt="货物照片" loading="lazy" className="w-20 h-20 object-cover rounded border border-gray-200 hover:opacity-80" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {returnOrder.package_photos && returnOrder.package_photos.length > 0 && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">外包装照片</div>
+                  <div className="flex flex-wrap gap-2">
+                    {returnOrder.package_photos.map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                        <img src={url} alt="外包装照片" loading="lazy" className="w-20 h-20 object-cover rounded border border-gray-200 hover:opacity-80" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

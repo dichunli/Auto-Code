@@ -9,6 +9,7 @@ import { RETURN_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 完成退货记录, 批量撤销退货, 生成采退单 } from "@/app/procurement/actions";
 import { DocumentNameInput } from "./DocumentNameInput";
+import { ImageUploader } from "./ImageUploader";
 import { toast } from "@/lib/globalToast";
 
 /* 退货原因中文化：保持原变量名，引用处零改动 */
@@ -55,6 +56,8 @@ export interface ReturnRecord {
   logistics_company: string | null;
   tracking_no: string | null;
   photos: string[] | null;
+  /* 外包装照片（2026-09-18：photos 列=货物照片） */
+  package_photos: string[] | null;
   status: string;
   created_at: string;
   /* 2026-09-16 已入库退货接入：来源 + 采购明细/供应商关联 + 配件快照列
@@ -109,6 +112,10 @@ export function PendingReturnList(props: PendingReturnListProps) {
     notes: string;
     shippingFeePayer: string;
     shippingFee: string;
+    /* 退货照片（2026-09-18 用户拍板）：确认退货时必填；
+       初始值 = 各记录在退货时已拍的照片合集，可继续补拍 */
+    goodsPhotos: string[];
+    packagePhotos: string[];
   }
 
   const [returnModalOpen, setReturnModalOpen] = useState(false);
@@ -135,7 +142,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
     const { data, error } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, status, created_at, source, purchase_order_item_id, supplier_id, part_id, part_number, part_name, brand, specification, unit, unit_cost, batch_id, notes, work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, status, created_at, source, purchase_order_item_id, supplier_id, part_id, part_number, part_name, brand, specification, unit, unit_cost, batch_id, notes, work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
       )
       .eq("status", "pending")
       .order("created_at", { ascending: false });
@@ -243,6 +250,25 @@ export function PendingReturnList(props: PendingReturnListProps) {
     }
   }
 
+  /* 单条撤销（2026-09-18 用户拍板：待退货状态可以撤销退货）：
+     与批量撤销同一个 RPC（revoke_supplier_returns 一个事务），确认文案按来源区分 */
+  async function handleRowRevoke(r: ReturnRecord) {
+    const 文案 = r.source === "inbound_return"
+      ? "确认撤销这条退货记录？撤销后库存将自动加回。"
+      : "确认撤销这条退货记录？撤销将回滚其收货处理（关联入库单可能整单撤销）。";
+    if (!(await 请求确认(文案))) return;
+    setSubmitting(`revoke-${r.id}`);
+    try {
+      const res = await 批量撤销退货([r.id]);
+      if (!res.success) throw new Error(res.error || "撤销失败");
+      loadData();
+    } catch (err: unknown) {
+      toast("撤销失败: " + (err instanceof Error ? err.message : String(err)), "error");
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
   /* 打开采退单确认弹窗 */
   function openReturnModal() {
     if (selectedIds.size === 0) {
@@ -269,6 +295,9 @@ export function PendingReturnList(props: PendingReturnListProps) {
         notes: "",
         shippingFeePayer: "supplier",
         shippingFee: "",
+        /* 照片预填：退货时已拍的照片合集（去重），确认时可继续补拍 */
+        goodsPhotos: [...new Set(list.flatMap((r) => r.photos ?? []))],
+        packagePhotos: [...new Set(list.flatMap((r) => r.package_photos ?? []))],
       }));
     setReturnModalGroups(groups);
     setReturnModalOpen(true);
@@ -280,19 +309,40 @@ export function PendingReturnList(props: PendingReturnListProps) {
   }
 
   /* 确认生成采退单(全部供应商的建单+明细+应收冲减已收编进
-     数据库事务函数 create_purchase_return_orders,任一失败整体回滚) */
+     数据库事务函数 create_purchase_return_orders,任一失败整体回滚)
+     2026-09-18 用户拍板必填项：货物照片+外包装照片+物流公司必选，我方付必填运费金额 */
   async function handleConfirmReturnOrders() {
+    for (const g of returnModalGroups) {
+      if (g.goodsPhotos.length === 0) {
+        toast(`供应商「${g.supplierName}」还没有货物照片，确认退货前必须拍照上传`, "warning");
+        return;
+      }
+      if (g.packagePhotos.length === 0) {
+        toast(`供应商「${g.supplierName}」还没有外包装照片，确认退货前必须拍照上传`, "warning");
+        return;
+      }
+      if (!g.logisticsCompany.trim()) {
+        toast(`供应商「${g.supplierName}」还没选物流公司，物流公司必选`, "warning");
+        return;
+      }
+      if (g.shippingFeePayer === "self" && !(parseFloat(g.shippingFee) > 0)) {
+        toast(`供应商「${g.supplierName}」退货运费为我方付，必须填写运费金额`, "warning");
+        return;
+      }
+    }
     setSubmitting("batch-complete");
     try {
       const res = await 生成采退单(
         returnModalGroups.map((g) => ({
           supplier_id: g.supplierId || null,
           supplier_name: g.supplierName,
-          logistics_company: g.logisticsCompany || null,
+          logistics_company: g.logisticsCompany.trim() || null,
           tracking_no: g.trackingNo || null,
           return_shipping_fee: g.shippingFeePayer === "self" ? parseFloat(g.shippingFee) || 0 : 0,
           shipping_fee_payer: g.shippingFeePayer || null,
           notes: g.notes || null,
+          goods_photos: g.goodsPhotos,
+          package_photos: g.packagePhotos,
           records: g.records.map((r) => ({
             record_id: r.id,
             /* 快照列优先（2026-09-16），工单配件行兜底 */
@@ -608,15 +658,34 @@ export function PendingReturnList(props: PendingReturnListProps) {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      {r.photos && r.photos.length > 0 ? (
-                        <div className="flex gap-1">
-                          {r.photos.slice(0, 3).map((url, i) => (
-                            <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                              <img src={url} alt="" loading="lazy" className="w-8 h-8 object-cover rounded border border-gray-200 hover:opacity-80" />
-                            </a>
-                          ))}
-                          {r.photos.length > 3 && (
-                            <span className="text-xs text-gray-400 self-center">+{r.photos.length - 3}</span>
+                      {/* 照片分两类（2026-09-18）：photos=货物照，package_photos=外包装照 */}
+                      {(r.photos && r.photos.length > 0) || (r.package_photos && r.package_photos.length > 0) ? (
+                        <div className="space-y-1">
+                          {r.photos && r.photos.length > 0 && (
+                            <div className="flex gap-1 items-center">
+                              <span className="text-[10px] text-gray-400">货物</span>
+                              {r.photos.slice(0, 3).map((url, i) => (
+                                <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                                  <img src={url} alt="" loading="lazy" className="w-8 h-8 object-cover rounded border border-gray-200 hover:opacity-80" />
+                                </a>
+                              ))}
+                              {r.photos.length > 3 && (
+                                <span className="text-xs text-gray-400 self-center">+{r.photos.length - 3}</span>
+                              )}
+                            </div>
+                          )}
+                          {r.package_photos && r.package_photos.length > 0 && (
+                            <div className="flex gap-1 items-center">
+                              <span className="text-[10px] text-gray-400">包装</span>
+                              {r.package_photos.slice(0, 3).map((url, i) => (
+                                <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                                  <img src={url} alt="" loading="lazy" className="w-8 h-8 object-cover rounded border border-gray-200 hover:opacity-80" />
+                                </a>
+                              ))}
+                              {r.package_photos.length > 3 && (
+                                <span className="text-xs text-gray-400 self-center">+{r.package_photos.length - 3}</span>
+                              )}
+                            </div>
                           )}
                         </div>
                       ) : (
@@ -643,6 +712,14 @@ export function PendingReturnList(props: PendingReturnListProps) {
                           className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
                         >
                           标记完成
+                        </button>
+                        {/* 单条撤销（2026-09-18）：待退货状态可撤销，撤销语义与批量撤销一致 */}
+                        <button
+                          onClick={() => handleRowRevoke(r)}
+                          disabled={submitting === `revoke-${r.id}`}
+                          className="text-xs text-orange-600 hover:text-orange-800 hover:underline disabled:opacity-50"
+                        >
+                          {submitting === `revoke-${r.id}` ? "处理中..." : "撤销"}
                         </button>
                       </div>
                     </td>
@@ -721,7 +798,9 @@ export function PendingReturnList(props: PendingReturnListProps) {
                     </div>
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">物流公司</label>
+                        <label className="block text-xs text-gray-500 mb-1">
+                          物流公司 <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="text"
                           value={g.logisticsCompany}
@@ -730,7 +809,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
                               prev.map((p, i) => (i === gIdx ? { ...p, logisticsCompany: e.target.value } : p))
                             );
                           }}
-                          placeholder="物流公司"
+                          placeholder="物流公司（必选）"
                           className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
                         />
                       </div>
@@ -779,7 +858,9 @@ export function PendingReturnList(props: PendingReturnListProps) {
                       </div>
                       {g.shippingFeePayer === "self" && (
                         <div>
-                          <label className="block text-xs text-gray-500 mb-1">退货运费金额(¥)</label>
+                          <label className="block text-xs text-gray-500 mb-1">
+                            退货运费金额(¥) <span className="text-red-500">*</span>
+                          </label>
                           <input
                             type="number"
                             min={0}
@@ -795,6 +876,40 @@ export function PendingReturnList(props: PendingReturnListProps) {
                           />
                         </div>
                       )}
+                    </div>
+                    {/* 退货照片（2026-09-18 用户拍板）：确认退货时货物照+外包装照均必填；
+                        已带入退货时拍的照片，可继续补拍 */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">
+                          货物照片 <span className="text-red-500">*</span>
+                        </label>
+                        <ImageUploader
+                          onUpload={(paths) => {
+                            setReturnModalGroups((prev) =>
+                              prev.map((p, i) => (i === gIdx ? { ...p, goodsPhotos: paths } : p))
+                            );
+                          }}
+                          existingImages={g.goodsPhotos}
+                          maxImages={9}
+                          folder="return-goods"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">
+                          外包装照片 <span className="text-red-500">*</span>
+                        </label>
+                        <ImageUploader
+                          onUpload={(paths) => {
+                            setReturnModalGroups((prev) =>
+                              prev.map((p, i) => (i === gIdx ? { ...p, packagePhotos: paths } : p))
+                            );
+                          }}
+                          existingImages={g.packagePhotos}
+                          maxImages={9}
+                          folder="return-package"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
