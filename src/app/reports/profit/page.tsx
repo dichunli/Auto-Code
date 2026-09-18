@@ -6,8 +6,9 @@ import { formatCurrency } from "@/lib/utils";
    - 营收 = 已结算/已交车工单的订单总额(配件+工时+其他收费)
    - 配件成本 = 工单选中配件分支的真实成本(优先含分摊运费的 cost_price,其次 unit_cost)
    - 工时成本 = 技师提成总额(work_order_item_mechanics.commission_amount)
+   - 工单其它成本 = work_order_other_costs 明细合计(退货运费分摊等，2026-09-18 起)
    - 毛利 = 营收 - 配件成本
-   - 净利润 = 毛利 - 工时提成 - 运营支出 + 其他收入 */
+   - 净利润 = 毛利 - 工时提成 - 工单其它成本 - 运营支出 + 其他收入 */
 
 interface 工单金额行 {
   id: string;
@@ -44,6 +45,7 @@ export default async function ProfitReportPage() {
   const orderIds = settledOrders.map((o) => o.id);
   let totalPartsRealCost = 0;
   let totalCommission = 0;
+  let totalOtherCosts = 0;
   if (orderIds.length > 0) {
     const { data: itemsRaw } = await supabase
       .from("work_order_items")
@@ -51,28 +53,39 @@ export default async function ProfitReportPage() {
       .in("work_order_id", orderIds);
     const itemIds = ((itemsRaw || []) as unknown as { id: string }[]).map((i) => i.id);
 
-    if (itemIds.length > 0) {
-      const [分支结果, 提成结果] = await Promise.all([
-        supabase
-          .from("work_order_item_parts")
-          .select("quantity, cost_price, unit_cost")
-          .in("work_order_item_id", itemIds)
-          .eq("is_selected", true),
-        supabase
-          .from("work_order_item_mechanics")
-          .select("commission_amount")
-          .in("work_order_item_id", itemIds),
-      ]);
+    const [分支结果, 提成结果, 其它成本结果] = await Promise.all([
+      itemIds.length > 0
+        ? supabase
+            .from("work_order_item_parts")
+            .select("quantity, cost_price, unit_cost")
+            .in("work_order_item_id", itemIds)
+            .eq("is_selected", true)
+        : Promise.resolve({ data: [] }),
+      itemIds.length > 0
+        ? supabase
+            .from("work_order_item_mechanics")
+            .select("commission_amount")
+            .in("work_order_item_id", itemIds)
+        : Promise.resolve({ data: [] }),
+      /* 工单其它成本明细（退货运费分摊等，2026-09-18 起计入成本口径） */
+      supabase
+        .from("work_order_other_costs")
+        .select("amount")
+        .in("work_order_id", orderIds),
+    ]);
 
-      totalPartsRealCost = ((分支结果.data || []) as unknown as 配件分支成本行[]).reduce(
-        (sum, b) => sum + (b.quantity || 0) * (b.cost_price ?? b.unit_cost ?? 0),
-        0
-      );
-      totalCommission = ((提成结果.data || []) as unknown as 提成行[]).reduce(
-        (sum, m) => sum + (m.commission_amount || 0),
-        0
-      );
-    }
+    totalPartsRealCost = ((分支结果.data || []) as unknown as 配件分支成本行[]).reduce(
+      (sum, b) => sum + (b.quantity || 0) * (b.cost_price ?? b.unit_cost ?? 0),
+      0
+    );
+    totalCommission = ((提成结果.data || []) as unknown as 提成行[]).reduce(
+      (sum, m) => sum + (m.commission_amount || 0),
+      0
+    );
+    totalOtherCosts = ((其它成本结果.data || []) as unknown as 收支行[]).reduce(
+      (sum, c) => sum + (c.amount || 0),
+      0
+    );
   }
 
   const { data: expensesRaw } = await supabase
@@ -98,7 +111,7 @@ export default async function ProfitReportPage() {
   );
 
   const grossProfit = totalRevenue - totalPartsRealCost;
-  const netProfit = grossProfit - totalCommission - totalOperatingExpense + totalOtherIncome;
+  const netProfit = grossProfit - totalCommission - totalOtherCosts - totalOperatingExpense + totalOtherIncome;
   const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
   const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
@@ -160,13 +173,17 @@ export default async function ProfitReportPage() {
               <span className="font-medium text-gray-900">{formatCurrency(totalCommission)}</span>
             </div>
             <div className="flex justify-between text-sm">
+              <span className="text-gray-600">工单其它成本（退货运费等）</span>
+              <span className="font-medium text-gray-900">{formatCurrency(totalOtherCosts)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
               <span className="text-gray-600">运营支出</span>
               <span className="font-medium text-gray-900">{formatCurrency(totalOperatingExpense)}</span>
             </div>
             <div className="border-t pt-2 flex justify-between text-sm">
               <span className="text-gray-900 font-medium">总成本</span>
               <span className="font-bold text-red-600">
-                {formatCurrency(totalPartsRealCost + totalCommission + totalOperatingExpense)}
+                {formatCurrency(totalPartsRealCost + totalCommission + totalOtherCosts + totalOperatingExpense)}
               </span>
             </div>
           </div>
@@ -190,6 +207,10 @@ export default async function ProfitReportPage() {
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">减：技师提成</span>
               <span className="font-medium text-red-600">-{formatCurrency(totalCommission)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">减：工单其它成本（退货运费等）</span>
+              <span className="font-medium text-red-600">-{formatCurrency(totalOtherCosts)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">减：运营支出</span>

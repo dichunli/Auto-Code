@@ -682,6 +682,9 @@ export interface 已入库退货明细 {
   quantity: number;
   return_reason: string;
   notes?: string | null;
+  /* 退货照片（2026-09-18 用户拍板）：退货时可选拍，确认退货（生成采退单）时才必填 */
+  photos?: string[];
+  package_photos?: string[];
 }
 
 export async function 已入库退货(明细: 已入库退货明细[]): Promise<操作结果> {
@@ -807,6 +810,11 @@ export interface 采退单分组输入 {
   return_shipping_fee?: number;
   shipping_fee_payer?: string | null;
   notes?: string | null;
+  /* 退货照片（2026-09-18 用户拍板）：确认退货时货物照+外包装照+交接照均必填
+     （交接照=货物交给物流公司/供应商时拍，本地无物流的供应商也必填） */
+  goods_photos?: string[];
+  package_photos?: string[];
+  handover_photos?: string[];
   records: {
     record_id: string;
     part_id?: string | null;
@@ -834,6 +842,23 @@ export async function 生成采退单(
   for (const g of 分组) {
     if (!g.records || g.records.length === 0) {
       return { success: false, error: "采退单明细不能为空" };
+    }
+    /* 确认退货必填校验（2026-09-18 用户拍板，服务端兜底，前端同样校验）：
+       货物照片+外包装照片必填、物流公司必选、我方付必须填运费金额 */
+    if (!g.goods_photos || g.goods_photos.length === 0) {
+      return { success: false, error: `供应商「${g.supplier_name}」缺少货物照片，确认退货前必须拍照上传` };
+    }
+    if (!g.package_photos || g.package_photos.length === 0) {
+      return { success: false, error: `供应商「${g.supplier_name}」缺少外包装照片，确认退货前必须拍照上传` };
+    }
+    if (!g.handover_photos || g.handover_photos.length === 0) {
+      return { success: false, error: `供应商「${g.supplier_name}」缺少交接照片，交货给物流公司/供应商时必须拍照上传` };
+    }
+    if (!g.logistics_company || !g.logistics_company.trim()) {
+      return { success: false, error: `供应商「${g.supplier_name}」未选物流公司，确认退货时物流公司必选` };
+    }
+    if (g.shipping_fee_payer === "self" && !(g.return_shipping_fee && g.return_shipping_fee > 0)) {
+      return { success: false, error: `供应商「${g.supplier_name}」退货运费为我方付，必须填写运费金额` };
     }
   }
 

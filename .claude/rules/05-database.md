@@ -11,6 +11,13 @@
 - **同日多文件命名**：一天内多个迁移文件加 `_a/_b/_c` 或时分后缀（如 `migrations_20260820_a_xxx.sql`），保证字母序=开发序（0820 一天 6 个文件顺序雷的教训）
 - 注释用 `/* */` 块注释，不用 `--` 行注释写中文长内容（Dashboard SQL Editor 会拆行报错）
 
+## 函数权限规范（2026-09-01 踩坑后新增）
+
+- **收回函数执行权限必须连 PUBLIC 一起收**：函数创建时默认带 PUBLIC 授权，PostgreSQL 里 PUBLIC 对所有角色生效，只写 `REVOKE ... FROM anon` 等于白收。正确写法：业务函数 `FROM PUBLIC, anon`；触发器/内部函数 `FROM PUBLIC, anon, authenticated`
+- **权限验证必须用 `has_function_privilege`**：收完权限后用 `has_function_privilege('anon', oid, 'EXECUTE')` 验证真实生效权限，禁止只看 `proacl` 文本里有没有 `anon=X`（那样会漏掉 PUBLIC 暗道，出现"收了但没真收到"）
+- **新建函数顺手收 PUBLIC**：迁移文件里 `CREATE FUNCTION` 后固定跟一句收回 PUBLIC 执行权，从根上不留默认开口
+- **重载函数按签名逐个收**：用 `oidvectortypes(proargtypes)` 自动展开每个重载签名，防止漏收（参考 `migrations_20260901_function_revoke_public.sql`）
+
 ## 数据唯一性约束（数据库层 + 前端校验需同时保证）
 
 - 客户表：`phone` 可为空，非空时全局唯一
