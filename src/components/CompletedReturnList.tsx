@@ -37,6 +37,8 @@ export interface ReturnRecord {
   package_photos: string[] | null;
   /* 交接照片（货物交给物流公司/供应商时拍） */
   handover_photos: string[] | null;
+  /* 车牌（2026-09-18 用户拍板：有车牌信息的退货记录要显示，经采购明细快照取） */
+  purchase_order_items: { license_plate: string | null } | null;
   status: string;
   created_at: string;
   work_order_item_parts: { id: string; name: string; part_number: string | null; document_name: string | null } | null;
@@ -63,7 +65,7 @@ export function CompletedReturnList(props: CompletedReturnListProps) {
     const { data, error } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, handover_photos, status, created_at, work_order_item_parts(id, name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no, return_shipping_fee, shipping_fee_payer)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, handover_photos, status, created_at, purchase_order_items(license_plate), work_order_item_parts(id, name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no, return_shipping_fee, shipping_fee_payer)"
       )
       .eq("status", "completed")
       .order("created_at", { ascending: false });
@@ -158,6 +160,10 @@ export function CompletedReturnList(props: CompletedReturnListProps) {
                   <div className="font-medium text-gray-900">{r.work_order_item_parts?.name || "-"}</div>
                   {r.work_order_item_parts?.part_number && (
                     <div className="text-xs text-gray-400">{r.work_order_item_parts.part_number}</div>
+                  )}
+                  {/* 车牌（2026-09-18 用户拍板）：有车牌信息的退货记录要显示 */}
+                  {r.purchase_order_items?.license_plate && (
+                    <div className="text-xs text-blue-600">车牌 {r.purchase_order_items.license_plate}</div>
                   )}
                 </td>
                 <td className="px-6 py-4 text-gray-700 whitespace-nowrap">

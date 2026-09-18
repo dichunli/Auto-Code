@@ -9,6 +9,7 @@ import { RETURN_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 批量撤销退货, 生成采退单 } from "@/app/procurement/actions";
 import { DocumentNameInput } from "./DocumentNameInput";
+import { EditReturnPhotosModal } from "./EditReturnPhotosModal";
 import { ImageUploader } from "./ImageUploader";
 import { toast } from "@/lib/globalToast";
 
@@ -74,6 +75,8 @@ export interface ReturnRecord {
   unit_cost: number | null;
   batch_id: string | null;
   notes: string | null;
+  /* 车牌（2026-09-18 用户拍板：有车牌信息的退货记录要显示，经采购明细快照取） */
+  purchase_order_items: { license_plate: string | null } | null;
   work_order_item_parts: WorkOrderItemPart | null;
   profiles: { full_name: string | null } | null;
 }
@@ -95,12 +98,19 @@ export function PendingReturnList(props: PendingReturnListProps) {
   /* 供应商过滤 */
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
 
+  /* 物流公司档案（2026-09-18 用户拍板：确认退货的物流公司改下拉选择，
+     选档案里的名字，自动入物流应付时按名匹配才落得准） */
+  const [物流公司列表, set物流公司列表] = useState<string[]>([]);
+
   /* 批量选择 */
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   /* 退货清单弹窗 */
   const [returnListOpen, setReturnListOpen] = useState(false);
   const [returnListItems, setReturnListItems] = useState<ReturnRecord[]>([]);
+
+  /* 修改退货照片弹窗（2026-09-18 用户拍板：待退货可修改退货照片） */
+  const [改照片记录, set改照片记录] = useState<ReturnRecord | null>(null);
 
   /* 采退单确认弹窗 */
   interface ReturnModalGroup {
@@ -147,7 +157,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
     const { data, error } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, status, created_at, source, purchase_order_item_id, supplier_id, part_id, part_number, part_name, brand, specification, unit, unit_cost, batch_id, notes, work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, status, created_at, source, purchase_order_item_id, supplier_id, part_id, part_number, part_name, brand, specification, unit, unit_cost, batch_id, notes, purchase_order_items(license_plate), work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
       )
       .eq("status", "pending")
       .order("created_at", { ascending: false });
@@ -160,6 +170,14 @@ export function PendingReturnList(props: PendingReturnListProps) {
 
     setRecords((data || []) as unknown as ReturnRecord[]);
     setLoading(false);
+  }, [supabase]);
+
+  /* 物流公司档案下拉选项（独立挂载即拉，不走 loadData——首屏由服务端注入时 loadData 会跳过） */
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("logistics_companies").select("name").order("name");
+      set物流公司列表(((data || []) as { name: string }[]).map((c) => c.name));
+    })();
   }, [supabase]);
 
   useEffect(() => {
@@ -634,6 +652,10 @@ export function PendingReturnList(props: PendingReturnListProps) {
                             {取品牌(r)} {取规格(r)} {取单位(r) ? `(${取单位(r)})` : ""}
                           </div>
                         )}
+                        {/* 车牌（2026-09-18 用户拍板）：有车牌信息的退货记录要显示 */}
+                        {r.purchase_order_items?.license_plate && (
+                          <div className="text-xs text-blue-600">车牌 {r.purchase_order_items.license_plate}</div>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-gray-700 whitespace-nowrap">
@@ -718,6 +740,13 @@ export function PendingReturnList(props: PendingReturnListProps) {
                         >
                           确认退货
                         </button>
+                        {/* 修改照片（2026-09-18）：待退货状态可改退货照片/备注 */}
+                        <button
+                          onClick={() => set改照片记录(r)}
+                          className="text-xs text-gray-500 hover:text-blue-600 hover:underline"
+                        >
+                          改照片
+                        </button>
                         {/* 单条撤销（2026-09-18）：待退货状态可撤销，撤销语义与批量撤销一致 */}
                         <button
                           onClick={() => handleRowRevoke(r)}
@@ -777,6 +806,10 @@ export function PendingReturnList(props: PendingReturnListProps) {
                               <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                               <td className="px-3 py-2 text-gray-900 font-medium">
                                 {取名称(r)}
+                                {/* 车牌（2026-09-18）：有车牌的退货件显示，便于核对工单归属 */}
+                                {r.purchase_order_items?.license_plate && (
+                                  <span className="ml-1 text-xs text-blue-600">车牌 {r.purchase_order_items.license_plate}</span>
+                                )}
                               </td>
                               <td className="px-3 py-2 text-gray-600">
                                 {取编码(r) || "-"}
@@ -806,8 +839,9 @@ export function PendingReturnList(props: PendingReturnListProps) {
                         <label className="block text-xs text-gray-500 mb-1">
                           物流公司 {!g.本地交接 && <span className="text-red-500">*</span>}
                         </label>
-                        <input
-                          type="text"
+                        {/* 物流公司改下拉选择（2026-09-18 用户拍板）：选项来自物流公司档案，
+                            与"自动入物流应付"按名匹配的口径一致；红框=未选 */}
+                        <select
                           value={g.logisticsCompany}
                           disabled={g.本地交接}
                           onChange={(e) => {
@@ -815,13 +849,17 @@ export function PendingReturnList(props: PendingReturnListProps) {
                               prev.map((p, i) => (i === gIdx ? { ...p, logisticsCompany: e.target.value } : p))
                             );
                           }}
-                          placeholder={g.本地交接 ? "本地交接无需物流" : "物流公司（必选）"}
-                          className={`w-full px-2 py-1 text-xs rounded border focus:outline-none focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400 ${
+                          className={`w-full px-2 py-1 text-xs rounded border bg-white focus:outline-none focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400 ${
                             !g.本地交接 && !g.logisticsCompany.trim()
                               ? "border-red-400 bg-red-50"
                               : "border-gray-200"
                           }`}
-                        />
+                        >
+                          <option value="">{g.本地交接 ? "本地交接无需物流" : "请选择物流公司（必选）"}</option>
+                          {物流公司列表.map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
                         {/* 本地交接（2026-09-18）：本地供应商无物流公司时勾选，物流/运单号免填，照片仍必填 */}
                         <label className="mt-1 flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
                           <input
@@ -934,7 +972,9 @@ export function PendingReturnList(props: PendingReturnListProps) {
                         交接照=交货给物流公司/供应商时拍（本地无物流也必填） */}
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">
+                        {/* 标签统一两行高（2026-09-18：交接照的说明文字多一行，
+                            导致三个上传框错位，固定 min-h 对齐） */}
+                        <label className="block text-xs text-gray-500 mb-1 min-h-8">
                           货物照片 <span className="text-red-500">*</span>
                         </label>
                         <div className={`rounded-lg ${g.goodsPhotos.length === 0 ? "ring-2 ring-red-400" : ""}`}>
@@ -951,7 +991,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">
+                        <label className="block text-xs text-gray-500 mb-1 min-h-8">
                           外包装照片 <span className="text-red-500">*</span>
                         </label>
                         <div className={`rounded-lg ${g.packagePhotos.length === 0 ? "ring-2 ring-red-400" : ""}`}>
@@ -968,7 +1008,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">
+                        <label className="block text-xs text-gray-500 mb-1 min-h-8">
                           交接照片 <span className="text-red-500">*</span>
                           <span className="block font-normal text-gray-400">交货给物流/供应商时拍</span>
                         </label>
@@ -1120,6 +1160,19 @@ export function PendingReturnList(props: PendingReturnListProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 修改退货照片弹窗（2026-09-18） */}
+      {改照片记录 && (
+        <EditReturnPhotosModal
+          记录id={改照片记录.id}
+          配件名={取名称(改照片记录)}
+          初始货物照片={改照片记录.photos ?? []}
+          初始外包装照片={改照片记录.package_photos ?? []}
+          初始备注={改照片记录.notes ?? ""}
+          onClose={() => set改照片记录(null)}
+          on保存后={loadData}
+        />
       )}
 
       {确认弹窗}
