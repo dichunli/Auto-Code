@@ -37,41 +37,6 @@ interface Props {
   currentTab: ProcurementTab;
 }
 
-interface PartRow {
-  id: string;
-  unit_cost: number | null;
-  unit_price: number | null;
-  customer_opinion: string | null;
-  is_purchased: boolean;
-  is_arrived: boolean;
-  part_id: string | null;
-  work_order_items: {
-    work_orders: {
-      settled_at: string | null;
-      order_type: string | null;
-    } | null;
-  } | null;
-  parts: {
-    quantity: number | null;
-  } | null;
-}
-
-interface PurchaseOrderItem {
-  quantity: number | null;
-  handle_action: string | null;
-}
-
-interface PurchaseOrderRow {
-  id: string;
-  status: string;
-  purchase_order_items: PurchaseOrderItem[] | null;
-}
-
-interface ReturnRecordRow {
-  id: string;
-  status: string;
-}
-
 export function ProcurementTabBar({ currentTab }: Props) {
   const supabase = createClient();
   const [counts, setCounts] = useState<Record<ProcurementTab, number>>({
@@ -89,122 +54,13 @@ export function ProcurementTabBar({ currentTab }: Props) {
     quote_sheets: 0,
   });
 
+  /* 角标计数：一次 RPC 全取（2026-09-19 收编，9-15 诊断🟠#12）。
+   * 原来拉 2000 行工单配件到浏览器数数，超 2000 行角标静默失真；
+   * 数据库端聚合后口径不变、无截断。失败静默：角标不打扰页面，下次 Realtime/切 Tab 再试。 */
   const loadCounts = useCallback(async () => {
-    const { data: parts } = await supabase
-      .from("work_order_item_parts")
-      .select(
-        `
-        id, unit_cost, unit_price, customer_opinion, is_purchased, is_arrived, part_id,
-        work_order_items(
-          work_orders(settled_at, order_type)
-        ),
-        parts(quantity)
-      `
-      )
-      .order("created_at", { ascending: false })
-      .limit(2000);
-
-    const rows = (parts || []) as unknown as PartRow[];
-
-    let pendingInquiry = 0;
-    let pendingQuote = 0;
-    let pendingConfirm = 0;
-    let pendingPurchase = 0;
-
-    for (const r of rows) {
-      const wo = r.work_order_items?.work_orders;
-      if (!wo) continue;
-      if (wo.settled_at) continue;
-      if (wo.order_type === "cancelled") continue;
-      /* 保养单不走采购流程，不计入各阶段角标 */
-      if (wo.order_type === "maintenance") continue;
-      if (r.is_purchased || r.is_arrived) continue;
-
-      const cost = Number(r.unit_cost || 0);
-      const price = Number(r.unit_price || 0);
-      const opinion = r.customer_opinion || "pending";
-
-      if (cost <= 0) {
-        pendingInquiry++;
-      } else if (cost > 0 && price <= 0) {
-        pendingQuote++;
-      } else if (cost > 0 && price > 0 && opinion === "pending") {
-        pendingConfirm++;
-      }
-
-      if (cost > 0 && price > 0 && opinion === "agree") {
-        const inventoryQty = Number(r.parts?.quantity || 0);
-        if (!r.part_id || inventoryQty <= 0) {
-          pendingPurchase++;
-        }
-      }
-    }
-
-    /* 自定义采购暂存（安全库存补货/自定义采购添加的）也计入待采购角标 */
-    const { data: stagingCount } = await supabase
-      .from("custom_purchase_staging")
-      .select("id");
-    pendingPurchase += stagingCount?.length || 0;
-
-    const { data: poData } = await supabase
-      .from("purchase_orders")
-      .select("id, status, purchase_order_items(quantity, handle_action)")
-      .in("status", ["submitted", "approved", "partial_received"]);
-
-    const pendingReceipt = (poData as PurchaseOrderRow[] | null || []).filter((o) => {
-      const items = o.purchase_order_items || [];
-      return items.some((it) => !it.handle_action);
-    }).length;
-
-    const { data: storageData } = await supabase
-      .from("purchase_orders")
-      .select("id")
-      .eq("status", "pending_storage");
-
-    const pendingStorage = storageData?.length || 0;
-
-    const { data: completedData } = await supabase
-      .from("purchase_orders")
-      .select("id")
-      .eq("status", "completed");
-
-    const completedStorage = completedData?.length || 0;
-
-    const { data: returnData } = await supabase
-      .from("supplier_return_records")
-      .select("id, status");
-
-    const pendingReturn = (returnData as ReturnRecordRow[] | null || []).filter((r) => r.status === "pending").length;
-    const completedReturn = (returnData as ReturnRecordRow[] | null || []).filter((r) => r.status === "completed").length;
-
-    /* 入库单角标（2026-09-08 两阶段入库）：只数正式单，待确认 draft 不计入 */
-    const { data: inboundData } = await supabase.from("inbound_orders").select("id").eq("status", "completed");
-    const inboundOrdersCount = inboundData?.length || 0;
-
-    const { data: returnOrderData } = await supabase.from("purchase_return_orders").select("id");
-    const returnOrdersCount = returnOrderData?.length || 0;
-
-    /* 询价单角标：供应商已报价、等采购员采用的单数 */
-    const { data: quoteSheetData } = await supabase
-      .from("supplier_quote_sheets")
-      .select("id")
-      .eq("status", "submitted");
-    const quoteSheetsCount = quoteSheetData?.length || 0;
-
-    setCounts({
-      pending_inquiry: pendingInquiry,
-      pending_quote: pendingQuote,
-      pending_confirm: pendingConfirm,
-      pending_purchase: pendingPurchase,
-      pending_receipt: pendingReceipt,
-      pending_storage: pendingStorage,
-      completed_storage: completedStorage,
-      pending_return: pendingReturn,
-      completed_return: completedReturn,
-      inbound_orders: inboundOrdersCount,
-      return_orders: returnOrdersCount,
-      quote_sheets: quoteSheetsCount,
-    });
+    const { data, error } = await supabase.rpc("procurement_tab_counts");
+    if (error || !data) return;
+    setCounts(data as unknown as Record<ProcurementTab, number>);
   }, [supabase]);
 
   useEffect(() => {
