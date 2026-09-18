@@ -816,7 +816,11 @@ export function PendingReturnList(props: PendingReturnListProps) {
                             );
                           }}
                           placeholder={g.本地交接 ? "本地交接无需物流" : "物流公司（必选）"}
-                          className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400"
+                          className={`w-full px-2 py-1 text-xs rounded border focus:outline-none focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-400 ${
+                            !g.本地交接 && !g.logisticsCompany.trim()
+                              ? "border-red-400 bg-red-50"
+                              : "border-gray-200"
+                          }`}
                         />
                         {/* 本地交接（2026-09-18）：本地供应商无物流公司时勾选，物流/运单号免填，照片仍必填 */}
                         <label className="mt-1 flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
@@ -864,20 +868,45 @@ export function PendingReturnList(props: PendingReturnListProps) {
                       </div>
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">退货运费承担方</label>
-                        <select
-                          value={g.shippingFeePayer}
-                          onChange={(e) => {
-                            setReturnModalGroups((prev) =>
-                              prev.map((p, i) => (i === gIdx ? { ...p, shippingFeePayer: e.target.value } : p))
-                            );
-                          }}
-                          className="w-full px-2 py-1 text-xs rounded border border-gray-200 focus:outline-none focus:border-blue-400"
-                        >
-                          <option value="supplier">供应商承担</option>
-                          <option value="self">我方承担</option>
-                        </select>
+                        {/* 单选按钮（2026-09-18 用户拍板）：供应商/我方，选我方才弹运费金额；
+                            本地交接没有物流运费概念，整组禁用 */}
+                        <div className="flex items-center gap-4 py-1">
+                          <label className={`flex items-center gap-1 text-xs ${g.本地交接 ? "text-gray-400" : "text-gray-700 cursor-pointer"}`}>
+                            <input
+                              type="radio"
+                              name={`payer-${gIdx}`}
+                              disabled={g.本地交接}
+                              checked={g.shippingFeePayer === "supplier"}
+                              onChange={() => {
+                                setReturnModalGroups((prev) =>
+                                  prev.map((p, i) => (i === gIdx ? { ...p, shippingFeePayer: "supplier", shippingFee: "" } : p))
+                                );
+                              }}
+                              className="accent-green-600"
+                            />
+                            供应商承担
+                          </label>
+                          <label className={`flex items-center gap-1 text-xs ${g.本地交接 ? "text-gray-400" : "text-gray-700 cursor-pointer"}`}>
+                            <input
+                              type="radio"
+                              name={`payer-${gIdx}`}
+                              disabled={g.本地交接}
+                              checked={g.shippingFeePayer === "self"}
+                              onChange={() => {
+                                setReturnModalGroups((prev) =>
+                                  prev.map((p, i) => (i === gIdx ? { ...p, shippingFeePayer: "self" } : p))
+                                );
+                              }}
+                              className="accent-orange-600"
+                            />
+                            我方承担
+                          </label>
+                        </div>
+                        {g.本地交接 && (
+                          <div className="text-[10px] text-gray-400">本地交接无运费</div>
+                        )}
                       </div>
-                      {g.shippingFeePayer === "self" && (
+                      {g.shippingFeePayer === "self" && !g.本地交接 && (
                         <div>
                           <label className="block text-xs text-gray-500 mb-1">
                             退货运费金额(¥) <span className="text-red-500">*</span>
@@ -892,8 +921,10 @@ export function PendingReturnList(props: PendingReturnListProps) {
                                 prev.map((p, i) => (i === gIdx ? { ...p, shippingFee: e.target.value } : p))
                               );
                             }}
-                            placeholder="0.00"
-                            className="w-full px-2 py-1 text-xs text-right rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                            placeholder="必填，计入物流应付"
+                            className={`w-full px-2 py-1 text-xs text-right rounded border focus:outline-none focus:border-blue-400 ${
+                              !(parseFloat(g.shippingFee) > 0) ? "border-red-400 bg-red-50" : "border-gray-200"
+                            }`}
                           />
                         </div>
                       )}
@@ -906,47 +937,53 @@ export function PendingReturnList(props: PendingReturnListProps) {
                         <label className="block text-xs text-gray-500 mb-1">
                           货物照片 <span className="text-red-500">*</span>
                         </label>
-                        <ImageUploader
-                          onUpload={(paths) => {
-                            setReturnModalGroups((prev) =>
-                              prev.map((p, i) => (i === gIdx ? { ...p, goodsPhotos: paths } : p))
-                            );
-                          }}
-                          existingImages={g.goodsPhotos}
-                          maxImages={9}
-                          folder="return-goods"
-                        />
+                        <div className={`rounded-lg ${g.goodsPhotos.length === 0 ? "ring-2 ring-red-400" : ""}`}>
+                          <ImageUploader
+                            onUpload={(paths) => {
+                              setReturnModalGroups((prev) =>
+                                prev.map((p, i) => (i === gIdx ? { ...p, goodsPhotos: paths } : p))
+                              );
+                            }}
+                            existingImages={g.goodsPhotos}
+                            maxImages={9}
+                            folder="return-goods"
+                          />
+                        </div>
                       </div>
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">
                           外包装照片 <span className="text-red-500">*</span>
                         </label>
-                        <ImageUploader
-                          onUpload={(paths) => {
-                            setReturnModalGroups((prev) =>
-                              prev.map((p, i) => (i === gIdx ? { ...p, packagePhotos: paths } : p))
-                            );
-                          }}
-                          existingImages={g.packagePhotos}
-                          maxImages={9}
-                          folder="return-package"
-                        />
+                        <div className={`rounded-lg ${g.packagePhotos.length === 0 ? "ring-2 ring-red-400" : ""}`}>
+                          <ImageUploader
+                            onUpload={(paths) => {
+                              setReturnModalGroups((prev) =>
+                                prev.map((p, i) => (i === gIdx ? { ...p, packagePhotos: paths } : p))
+                              );
+                            }}
+                            existingImages={g.packagePhotos}
+                            maxImages={9}
+                            folder="return-package"
+                          />
+                        </div>
                       </div>
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">
                           交接照片 <span className="text-red-500">*</span>
                           <span className="block font-normal text-gray-400">交货给物流/供应商时拍</span>
                         </label>
-                        <ImageUploader
-                          onUpload={(paths) => {
-                            setReturnModalGroups((prev) =>
-                              prev.map((p, i) => (i === gIdx ? { ...p, handoverPhotos: paths } : p))
-                            );
-                          }}
-                          existingImages={g.handoverPhotos}
-                          maxImages={9}
-                          folder="return-handover"
-                        />
+                        <div className={`rounded-lg ${g.handoverPhotos.length === 0 ? "ring-2 ring-red-400" : ""}`}>
+                          <ImageUploader
+                            onUpload={(paths) => {
+                              setReturnModalGroups((prev) =>
+                                prev.map((p, i) => (i === gIdx ? { ...p, handoverPhotos: paths } : p))
+                              );
+                            }}
+                            existingImages={g.handoverPhotos}
+                            maxImages={9}
+                            folder="return-handover"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
