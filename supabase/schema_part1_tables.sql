@@ -1235,6 +1235,16 @@ ALTER TABLE training_progress ENABLE ROW LEVEL SECURITY;
 ALTER TABLE behavior_checks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE behavior_tasks ENABLE ROW LEVEL SECURITY;
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * ⚠️⚠️⚠️ 警告：以下 73 条 auth_full_access 策略是 2026-06 建库时的历史快照 ⚠️⚠️⚠️
+ *
+ * 这些"登录即全权"策略【早已和生产库不一致】——生产库敏感表策略已在后续迁移中
+ * 逐批收紧（如 profiles UPDATE 仅 is_admin()，见 migrations_20260802 及之后各 rls 迁移）。
+ *
+ * 禁止用本文件重建数据库或给 CI 建库——否则权限"拒绝路径"测试会全部失效。
+ * 重建库唯一正确方式：按字母序重放 migrations_*.sql。
+ * 本文件保留仅为结构参考，RLS 部分以迁移文件为准。
+ * ════════════════════════════════════════════════════════════════════════════ */
 CREATE POLICY "auth_full_access" ON customers FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON vehicles FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "auth_full_access" ON profiles FOR ALL TO authenticated USING (true) WITH CHECK (true);

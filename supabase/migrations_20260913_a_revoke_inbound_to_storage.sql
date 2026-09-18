@@ -247,4 +247,4 @@ REVOKE EXECUTE ON FUNCTION revoke_completed_inbound(UUID, UUID) FROM anon, PUBLI
 GRANT EXECUTE ON FUNCTION revoke_completed_inbound(UUID, UUID) TO authenticated;
 
 /* 台账登记 */
-INSERT INTO migration_log (file_name) VALUES ('migrations_20260913_a_revoke_inbound_to_storage.sql');
+INSERT INTO migration_log (file_name) VALUES ('migrations_20260913_a_revoke_inbound_to_storage.sql') ON CONFLICT DO NOTHING;
