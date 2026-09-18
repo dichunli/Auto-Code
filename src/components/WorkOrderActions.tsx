@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { 流转工单状态 } from "@/app/work-orders/actions";
 
 interface WorkOrderActionsProps {
   orderId: string;
@@ -30,28 +30,24 @@ const statusFlow: Record<string, { label: string; next: string; color: string; h
 
 export function WorkOrderActions({ orderId, status, 待结单就绪 }: WorkOrderActionsProps) {
   const router = useRouter();
-  const supabase = createClient();
   const actions = statusFlow[status] || [];
 
   /* 快速通道/自动待结单：repairing 或 pending_quality_check 且已满足结单条件 */
   const 显示确认结单 = 待结单就绪 && (status === "repairing" || status === "pending_quality_check");
 
+  /* 状态流转走 Server Action：服务端验证登录，避免客户端 session 异常导致流转失败 */
   async function 流转(nextStatus: string): Promise<boolean> {
-    const { data: result, error: rpcErr } = await supabase.rpc("transition_work_order", {
-      p_order_id: orderId,
-      p_next_status: nextStatus,
-      p_notes: null,
-    });
-    if (rpcErr) {
-      toast("操作失败: " + rpcErr.message, "error");
+    try {
+      const 结果 = await 流转工单状态({ orderId, nextStatus });
+      if (!结果.success) {
+        toast("操作失败: " + (结果.error || "状态流转被拒绝"), "error");
+        return false;
+      }
+      return true;
+    } catch (err: unknown) {
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
       return false;
     }
-    const rpcResult = result as { success: boolean; error?: string };
-    if (!rpcResult?.success) {
-      toast("操作失败: " + (rpcResult?.error || "状态流转被拒绝"), "error");
-      return false;
-    }
-    return true;
   }
 
   async function handleAction(nextStatus: string) {

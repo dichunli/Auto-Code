@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/globalToast";
+import { 流转工单状态 } from "@/app/work-orders/actions";
 
 /* 状态操作图标：质检已下沉到项目级（项目行质检单），工单级不再有"质检/通过/返工"。
  * repairing/pending_quality_check 无图标——满足待结单条件时出现"结单"（快速通道）。 */
@@ -51,46 +51,44 @@ export default function WorkOrderFloatingSidebar({
   待结单就绪?: boolean;
 }) {
   const router = useRouter();
-  const supabase = createClient();
   const [expanded, setExpanded] = useState(false);
   const actions = statusIcons[status] || [];
 
   /* 快速通道：repairing/pending_quality_check 且已满足结单条件 → 显示"结单" */
   const 显示结单 = 待结单就绪 && (status === "repairing" || status === "pending_quality_check");
 
+  /* 状态流转走 Server Action：服务端验证登录兜底（2026-09-18 收编客户端直调 RPC） */
   async function handleAction(nextStatus: string, href?: string) {
     if (href) {
       router.push(`/work-orders/${orderId}/${href}`);
       return;
     }
-    const { data: result, error: rpcErr } = await supabase.rpc("transition_work_order", {
-      p_order_id: orderId,
-      p_next_status: nextStatus,
-      p_notes: null,
-    });
-    if (rpcErr) { toast("操作失败: " + rpcErr.message, "error"); return; }
-    const rpcResult = result as { success: boolean; error?: string };
-    if (!rpcResult?.success) { toast("操作失败: " + (rpcResult?.error || "状态流转被拒绝"), "error"); return; }
-    router.refresh();
+    try {
+      const 结果 = await 流转工单状态({ orderId, nextStatus });
+      if (!结果.success) { toast("操作失败: " + (结果.error || "状态流转被拒绝"), "error"); return; }
+      router.refresh();
+    } catch (err: unknown) {
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
+    }
   }
 
   /* 结单（快速通道）：串行两段流转 →待结单 →待结算 */
   async function handleConfirmClose() {
-    const r1 = await supabase.rpc("transition_work_order", {
-      p_order_id: orderId, p_next_status: "pending_close", p_notes: null,
-    });
-    if (r1.error || !(r1.data as { success: boolean } | null)?.success) {
-      toast("操作失败: " + (r1.error?.message || (r1.data as { error?: string } | null)?.error || "状态流转被拒绝"), "error");
-      return;
+    try {
+      const r1 = await 流转工单状态({ orderId, nextStatus: "pending_close" });
+      if (!r1.success) {
+        toast("操作失败: " + (r1.error || "状态流转被拒绝"), "error");
+        return;
+      }
+      const r2 = await 流转工单状态({ orderId, nextStatus: "pending_settlement" });
+      if (!r2.success) {
+        toast("操作失败: " + (r2.error || "状态流转被拒绝"), "error");
+        return;
+      }
+      router.refresh();
+    } catch (err: unknown) {
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
     }
-    const r2 = await supabase.rpc("transition_work_order", {
-      p_order_id: orderId, p_next_status: "pending_settlement", p_notes: null,
-    });
-    if (r2.error || !(r2.data as { success: boolean } | null)?.success) {
-      toast("操作失败: " + (r2.error?.message || (r2.data as { error?: string } | null)?.error || "状态流转被拒绝"), "error");
-      return;
-    }
-    router.refresh();
   }
 
   const totalPaid = payments?.reduce((s, p) => s + (p.amount || 0), 0) || 0;

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import RequirementActions from "./RequirementActions";
 import { CustomerOpinionToggle } from "./CustomerOpinionToggle";
 import { AssignMechanicModal } from "./AssignMechanicModal";
@@ -11,6 +10,7 @@ import LiveTimer from "./LiveTimer";
 import { formatCurrency } from "@/lib/utils";
 import type { Order } from "@/app/work-orders/page";
 import { toast } from "@/lib/globalToast";
+import { 添加工时日志, 流转工单状态 } from "@/app/work-orders/actions";
 import type { Profile } from "@/types/domain";
 
 /* 阶段卡片（可操作版）：
@@ -45,7 +45,6 @@ interface Props {
 }
 
 export default function StageOrderCard({ order, 当前阶段, profiles, mechanicGroups, on打开工单 }: Props) {
-  const supabase = createClient();
   const [操作中, set操作中] = useState<string | null>(null); // "itemId:action" 防连点
   const [派工项目, set派工项目] = useState<StageItem | null>(null);
   const [质检项目, set质检项目] = useState<StageItem | null>(null);
@@ -65,56 +64,48 @@ export default function StageOrderCard({ order, 当前阶段, profiles, mechanic
       .join("、");
   }
 
-  /* 计时操作（开始/中断/恢复/完工/取消）：走 add_construction_log RPC，
-   * 服务端校验（已派工+本人或管理角色+客户已同意），失败弹中文错误 */
+  /* 计时操作（开始/中断/恢复/完工/取消）：走 Server Action（服务端验证登录，
+   * 施工人取服务端身份），RPC 内部仍做派工/权限/客户同意校验，失败弹中文错误 */
   async function 计时(itemId: string, action: "start" | "pause" | "resume" | "complete" | "cancel") {
     const key = `${itemId}:${action}`;
     if (操作中) return;
     set操作中(key);
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
-    const { data, error } = await supabase.rpc("add_construction_log", {
-      p_work_order_item_id: itemId,
-      p_mechanic_id: userData.user?.id || null,
-      p_action: action,
-    });
-    set操作中(null);
-    const res = data as { success: boolean; error?: string } | null;
-    if (error) {
-      toast("操作失败: " + error.message, "error");
-      return;
+    try {
+      const 结果 = await 添加工时日志({ itemId, action });
+      if (!结果.success) {
+        toast(结果.error || "操作失败", "error");
+        return;
+      }
+      /* 不自动刷新：按钮置灰标记已操作（按项目+阶段），等用户点右下角"立即刷新"统一挪列 */
+      set已操作((prev) => new Set(prev).add(`${itemId}:${当前阶段}`));
+    } catch (err: unknown) {
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
+    } finally {
+      set操作中(null);
     }
-    if (!res?.success) {
-      toast(res?.error || "操作失败", "error");
-      return;
-    }
-    /* 不自动刷新：按钮置灰标记已操作（按项目+阶段），等用户点右下角"立即刷新"统一挪列 */
-    set已操作((prev) => new Set(prev).add(`${itemId}:${当前阶段}`));
   }
 
   /* 确认结单（快速通道）：串行两段流转 →待结单 →待结算 */
   async function 确认结单() {
     if (操作中) return;
     set操作中("close");
-    const r1 = await supabase.rpc("transition_work_order", {
-      p_order_id: order.id, p_next_status: "pending_close", p_notes: null,
-    });
-    const res1 = r1.data as { success: boolean; error?: string } | null;
-    if (r1.error || !res1?.success) {
+    try {
+      const r1 = await 流转工单状态({ orderId: order.id, nextStatus: "pending_close" });
+      if (!r1.success) {
+        toast("操作失败: " + (r1.error || "状态流转被拒绝"), "error");
+        return;
+      }
+      const r2 = await 流转工单状态({ orderId: order.id, nextStatus: "pending_settlement" });
+      if (!r2.success) {
+        toast("操作失败: " + (r2.error || "状态流转被拒绝"), "error");
+        return;
+      }
+      set已操作((prev) => new Set(prev).add("close"));
+    } catch (err: unknown) {
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
+    } finally {
       set操作中(null);
-      toast("操作失败: " + (r1.error?.message || res1?.error || "状态流转被拒绝"), "error");
-      return;
     }
-    const r2 = await supabase.rpc("transition_work_order", {
-      p_order_id: order.id, p_next_status: "pending_settlement", p_notes: null,
-    });
-    set操作中(null);
-    const res2 = r2.data as { success: boolean; error?: string } | null;
-    if (r2.error || !res2?.success) {
-      toast("操作失败: " + (r2.error?.message || res2?.error || "状态流转被拒绝"), "error");
-      return;
-    }
-    set已操作((prev) => new Set(prev).add("close"));
   }
 
   /* 操作按钮通用样式：保留原按钮文案，已操作的仅置灰禁用（防重复点），

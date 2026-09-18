@@ -6,6 +6,7 @@ import type { createClient } from "@/lib/supabase/client";
 import { calculateTotalSeconds, getConstructionStatus } from "./utils";
 import type { ConstructionLog } from "./types";
 import { toast } from "@/lib/globalToast";
+import { 添加工时日志 } from "@/app/work-orders/actions";
 
 type Supabase客户端 = ReturnType<typeof createClient>;
 
@@ -57,37 +58,29 @@ export function useItemTimer({ open, itemId, itemType, supabase, loading, setLoa
     };
   }, [logs]);
 
-  /* 计时操作：统一走 add_construction_log RPC（与桌面端同一入口），
-   * 由 RPC 做派工/权限校验（约束1）并联动工单状态，不再直写表绕过 */
+  /* 计时操作：统一走 添加工时日志 Server Action（内调 add_construction_log RPC，与桌面端同一入口），
+   * 由 RPC 做派工/权限校验（约束1）并联动工单状态，不再直写表绕过；
+   * 施工人身份由服务端取验证后的 user.id（2026-09-18 收编，不再客户端传入） */
   async function timerAction(action: "start" | "pause" | "resume" | "complete") {
     if (loading) return;
     setLoading(true);
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
-    const mechanicId = userData.user?.id || null;
+    try {
+      const 结果 = await 添加工时日志({ itemId, action });
+      if (!结果.success) {
+        toast(结果.error || "操作失败", "error");
+        return;
+      }
 
-    const { data: rpcData, error } = await supabase.rpc("add_construction_log", {
-      p_work_order_item_id: itemId,
-      p_mechanic_id: mechanicId,
-      p_action: action,
-    });
-
-    setLoading(false);
-    const res = rpcData as { success: boolean; error?: string } | null;
-    if (error) {
-      toast("操作失败: " + error.message, "error");
-      return;
+      await 重查计时日志();
+    } catch (err: unknown) {
+      toast("操作失败: " + (err instanceof Error ? err.message : String(err)), "error");
+    } finally {
+      setLoading(false);
     }
-    if (!res?.success) {
-      toast(res?.error || "操作失败", "error");
-      return;
-    }
-
-    await 重查计时日志();
   }
 
-  /* 取消计时：走 RPC cancel（取消施工/取消完工，与桌面端同语义） */
+  /* 取消计时：走 cancel（取消施工/取消完工，与桌面端同语义） */
   async function cancelTimer() {
     if (loading) return;
     if (logs.length === 0) return;
@@ -95,28 +88,20 @@ export function useItemTimer({ open, itemId, itemType, supabase, loading, setLoa
     if (lastLog.action !== "start" && lastLog.action !== "resume") return;
 
     setLoading(true);
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userData = { user: sessionData.session?.user ?? null }; /* getSession本地读不联网（2026-09-03） */
-    const mechanicId = userData.user?.id || null;
 
-    const { data: rpcData, error } = await supabase.rpc("add_construction_log", {
-      p_work_order_item_id: itemId,
-      p_mechanic_id: mechanicId,
-      p_action: "cancel",
-    });
+    try {
+      const 结果 = await 添加工时日志({ itemId, action: "cancel" });
+      if (!结果.success) {
+        toast(结果.error || "取消失败", "error");
+        return;
+      }
 
-    setLoading(false);
-    const res = rpcData as { success: boolean; error?: string } | null;
-    if (error) {
-      toast("取消失败: " + error.message, "error");
-      return;
+      await 重查计时日志();
+    } catch (err: unknown) {
+      toast("取消失败: " + (err instanceof Error ? err.message : String(err)), "error");
+    } finally {
+      setLoading(false);
     }
-    if (!res?.success) {
-      toast(res?.error || "取消失败", "error");
-      return;
-    }
-
-    await 重查计时日志();
   }
 
   /* 重查计时日志并刷新界面（计时/取消后共用） */
