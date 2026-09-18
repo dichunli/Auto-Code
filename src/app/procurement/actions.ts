@@ -772,6 +772,42 @@ export async function 批量撤销退货(记录ids: string[]): Promise<操作结
   return { success: true };
 }
 
+/* ─── 待退货记录修改照片/备注(2026-09-18 用户拍板) ───
+ * 确认退货前允许补拍/改拍货物照、外包装照和备注；
+ * 只允许改 pending 状态的记录（已进采退单的改动意义不大且会破坏单据一致性）。
+ * 角色门禁由表 RLS 兜底（仅 管理员/老板/仓管 可 UPDATE）。 */
+export async function 更新退货记录照片(
+  记录id: string,
+  货物照片: string[],
+  外包装照片: string[],
+  备注: string
+): Promise<操作结果> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!记录id) {
+    return { success: false, error: "缺少退货记录信息" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("supplier_return_records")
+    .update({
+      photos: 货物照片.length > 0 ? 货物照片 : null,
+      package_photos: 外包装照片.length > 0 ? 外包装照片 : null,
+      notes: 备注.trim() || null,
+    })
+    .eq("id", 记录id)
+    .eq("status", "pending");
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
+}
+
 /* ─── 撤销已退货(2026-08-16 批次2):删采退单+应收冲减+记录回 pending,一个事务 ───
  * 替代原 CompletedReturnList 客户端 5 步连环删(无事务,中途失败留半成品)。
  * 注意:撤销的是整张采退单(同单全部退货记录回 pending),不是只撤一条。 */

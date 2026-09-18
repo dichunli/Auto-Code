@@ -9,6 +9,7 @@ import { RETURN_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
 import { 批量撤销退货, 生成采退单 } from "@/app/procurement/actions";
 import { DocumentNameInput } from "./DocumentNameInput";
+import { EditReturnPhotosModal } from "./EditReturnPhotosModal";
 import { ImageUploader } from "./ImageUploader";
 import { toast } from "@/lib/globalToast";
 
@@ -107,6 +108,9 @@ export function PendingReturnList(props: PendingReturnListProps) {
   /* 退货清单弹窗 */
   const [returnListOpen, setReturnListOpen] = useState(false);
   const [returnListItems, setReturnListItems] = useState<ReturnRecord[]>([]);
+
+  /* 修改退货照片弹窗（2026-09-18 用户拍板：待退货可修改退货照片） */
+  const [改照片记录, set改照片记录] = useState<ReturnRecord | null>(null);
 
   /* 采退单确认弹窗 */
   interface ReturnModalGroup {
@@ -736,6 +740,13 @@ export function PendingReturnList(props: PendingReturnListProps) {
                         >
                           确认退货
                         </button>
+                        {/* 修改照片（2026-09-18）：待退货状态可改退货照片/备注 */}
+                        <button
+                          onClick={() => set改照片记录(r)}
+                          className="text-xs text-gray-500 hover:text-blue-600 hover:underline"
+                        >
+                          改照片
+                        </button>
                         {/* 单条撤销（2026-09-18）：待退货状态可撤销，撤销语义与批量撤销一致 */}
                         <button
                           onClick={() => handleRowRevoke(r)}
@@ -1149,6 +1160,19 @@ export function PendingReturnList(props: PendingReturnListProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 修改退货照片弹窗（2026-09-18） */}
+      {改照片记录 && (
+        <EditReturnPhotosModal
+          记录id={改照片记录.id}
+          配件名={取名称(改照片记录)}
+          初始货物照片={改照片记录.photos ?? []}
+          初始外包装照片={改照片记录.package_photos ?? []}
+          初始备注={改照片记录.notes ?? ""}
+          onClose={() => set改照片记录(null)}
+          on保存后={loadData}
+        />
       )}
 
       {确认弹窗}
