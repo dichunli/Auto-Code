@@ -7,7 +7,7 @@ import { useConfirm } from "./ConfirmDialog";
 import PartForm from "@/app/parts/new/PartForm";
 import { RETURN_REASON_LABELS } from "@/lib/purchaseFlowLabels";
 import { usePartLinking } from "./usePartLinking";
-import { 完成退货记录, 批量撤销退货, 生成采退单 } from "@/app/procurement/actions";
+import { 批量撤销退货, 生成采退单 } from "@/app/procurement/actions";
 import { DocumentNameInput } from "./DocumentNameInput";
 import { ImageUploader } from "./ImageUploader";
 import { toast } from "@/lib/globalToast";
@@ -169,19 +169,6 @@ export function PendingReturnList(props: PendingReturnListProps) {
 
   }, [loadData, props.initialRecords]);
 
-  async function handleComplete(id: string) {
-    if (!(await 请求确认("确认标记为已完成？（将按 数量×采购价 记一条退货冲减往来账）"))) return;
-    const res = await 完成退货记录(id);
-    if (!res.success) {
-      toast("更新失败: " + (res.error || "未知错误"), "error");
-      return;
-    }
-    if (res.accounted === false) {
-      toast("已标记完成，但未记往来账（未匹配到供应商或配件无采购价），请到「往来款项」手工补记", "warning");
-    }
-    loadData();
-  }
-
   /* 批量撤销(级联回滚已收编进数据库事务函数 revoke_supplier_returns:
      已入库的整单回滚入库,弃货类加回库存,任一失败整体回滚) */
   async function handleBatchRevoke() {
@@ -274,13 +261,16 @@ export function PendingReturnList(props: PendingReturnListProps) {
     }
   }
 
-  /* 打开采退单确认弹窗 */
-  function openReturnModal() {
-    if (selectedIds.size === 0) {
+  /* 打开采退单确认弹窗（2026-09-18：支持指定记录——行内"确认退货"只带本条；
+     不传则用批量勾选的记录）。照片/物流/运费必填校验全在弹窗确认时做，
+     不再保留"标记完成"捷径（那条不拍照不填物流，绕过了必填规则） */
+  function openReturnModal(指定ids?: string[]) {
+    const ids = 指定ids ?? Array.from(selectedIds);
+    if (ids.length === 0) {
       toast("请先选择要提交的记录", "warning");
       return;
     }
-    const items = records.filter((r) => selectedIds.has(r.id));
+    const items = records.filter((r) => ids.includes(r.id));
     const map = new Map<string, ReturnRecord[]>();
     for (const r of items) {
       const key = r.supplier_name || "未指定供应商";
@@ -502,7 +492,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
           </span>
           <button
             type="button"
-            onClick={openReturnModal}
+            onClick={() => openReturnModal()}
             disabled={selectedIds.size === 0 || submitting === "batch-complete"}
             className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
           >
@@ -720,11 +710,13 @@ export function PendingReturnList(props: PendingReturnListProps) {
                             编辑
                           </button>
                         )}
+                        {/* 确认退货（2026-09-18）：打开采退单确认弹窗（只带本条），
+                            拍照/物流/运费必填校验与批量一致；不再提供免拍照的"标记完成"捷径 */}
                         <button
-                          onClick={() => handleComplete(r.id)}
-                          className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                          onClick={() => openReturnModal([r.id])}
+                          className="text-xs text-green-600 hover:text-green-800 hover:underline"
                         >
-                          标记完成
+                          确认退货
                         </button>
                         {/* 单条撤销（2026-09-18）：待退货状态可撤销，撤销语义与批量撤销一致 */}
                         <button

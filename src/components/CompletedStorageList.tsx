@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { 退回已入库, 已入库退货 } from "@/app/procurement/actions";
@@ -79,7 +79,21 @@ function BatchReturnModal({
       qty: String(可退数(it)),
     }))
   );
-  const [原因, set原因] = useState("quality");
+  /* 默认批次异步回填（2026-09-18 踩坑）：弹窗先挂载、批次数据后查到，
+     useState 初始化只在挂载时跑一次，必须在数据到达后回填未手动选过的行 */
+  const 已回填默认批次 = useRef(false);
+  useEffect(() => {
+    if (已回填默认批次.current || 批次Map === null) return;
+    已回填默认批次.current = true;
+    set表单((prev) =>
+      prev.map((r) =>
+        r.batch_id === "" && 默认批次Map.get(r.itemId)
+          ? { ...r, batch_id: 默认批次Map.get(r.itemId)! }
+          : r
+      )
+    );
+  }, [批次Map, 默认批次Map]);
+  const [原因, set原因] = useState("");
   const [备注, set备注] = useState("");
   const [提交中, set提交中] = useState(false);
   /* 退货照片（2026-09-18 用户拍板）：退货时可选拍，确认退货给供应商时才必填；
@@ -100,6 +114,11 @@ function BatchReturnModal({
   }
 
   async function 提交() {
+    /* 退货原因必选（2026-09-18 用户拍板：默认不选，防手滑选错） */
+    if (!原因) {
+      showToast("请选择退货原因", "warning");
+      return;
+    }
     /* 前端先校验：批次必选、数量 1..min(批次剩余, 可退) */
     for (const r of 表单) {
       const it = 行们.find((x) => x.id === r.itemId)!;
@@ -237,15 +256,22 @@ function BatchReturnModal({
           )}
           <div className="mt-4 grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">退货原因</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                退货原因 <span className="text-red-500">*</span>
+              </label>
               <select
                 value={原因}
                 onChange={(e) => set原因(e.target.value)}
                 className="w-full px-2 py-2 text-sm rounded border border-gray-300 bg-white focus:outline-none focus:border-blue-400"
               >
-                <option value="quality">质量问题</option>
+                {/* 2026-09-18 用户拍板：默认不选+6 种原因，顺序即用户给定顺序 */}
+                <option value="">请选择退货原因</option>
+                <option value="excess">多发</option>
+                <option value="damaged">破损</option>
+                <option value="wrong_ship">发错</option>
+                <option value="quality">质量原因</option>
                 <option value="cancel">客户悔单</option>
-                <option value="other">其他</option>
+                <option value="other">其它</option>
               </select>
             </div>
             <div className="col-span-2">
