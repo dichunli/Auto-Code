@@ -2209,3 +2209,160 @@ export async function 删除工单其它成本(
   revalidatePath(`/work-orders/${工单id}`);
   return { success: true };
 }
+
+/* ═══ 工单状态流转（收编客户端直调 RPC，2026-09-18） ═══
+ * 原来 WorkOrderActions / StageOrderCard / WorkOrderFloatingSidebar 三处组件
+ * 直接 supabase.rpc("transition_work_order")，无服务端 session 兜底。
+ * 收编后统一走这里：先验证登录，再由 RPC 做状态机/权限校验。 */
+export async function 流转工单状态(参数: {
+  orderId: string;
+  nextStatus: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data: result, error: rpcError } = await supabase.rpc("transition_work_order", {
+    p_order_id: 参数.orderId,
+    p_next_status: 参数.nextStatus,
+    p_notes: null,
+  });
+
+  if (rpcError) return { success: false, error: rpcError.message };
+  const rpcResult = result as { success: boolean; error?: string };
+  if (!rpcResult?.success) {
+    return { success: false, error: rpcResult?.error || "状态流转被拒绝" };
+  }
+
+  clearWorkOrderDataCache(参数.orderId);
+  revalidatePath(`/work-orders/${参数.orderId}`);
+  return { success: true };
+}
+
+/* ═══ 项目施工计时日志（收编客户端直调 RPC） ═══
+ * 原来 ConstructionControls / useItemTimer / StageOrderCard 直接调
+ * add_construction_log 并把客户端读到的 user.id 作为 p_mechanic_id 传入。
+ * 收编后施工人一律取服务端验证身份（规范：身份字段不信客户端传入）。
+ * 派工/本人或管理角色/客户同意等校验仍在 RPC 内部兜底，不变。 */
+export async function 添加工时日志(参数: {
+  itemId: string;
+  action: "start" | "pause" | "resume" | "complete" | "cancel";
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data: result, error: rpcError } = await supabase.rpc("add_construction_log", {
+    p_work_order_item_id: 参数.itemId,
+    p_mechanic_id: user.id,
+    p_action: 参数.action,
+  });
+
+  if (rpcError) return { success: false, error: rpcError.message };
+  const rpcResult = result as { success: boolean; error?: string; item_status?: string };
+  if (!rpcResult?.success) {
+    return { success: false, error: rpcResult?.error || "操作失败" };
+  }
+
+  /* 工时日志会联动项目/工单状态，反查工单清缓存（按钮级频率，一次轻查询可接受） */
+  const { data: 项目行 } = await supabase
+    .from("work_order_items")
+    .select("work_order_id")
+    .eq("id", 参数.itemId)
+    .single();
+  if (项目行?.work_order_id) {
+    clearWorkOrderDataCache(项目行.work_order_id);
+    revalidatePath(`/work-orders/${项目行.work_order_id}`);
+  }
+  return { success: true };
+}
+
+/* ═══ 提交项目质检（收编客户端直调 RPC） ═══
+ * 原来 ItemQcActions 直接调 submit_item_qc。
+ * 质检人身份由 RPC 内部 auth.uid() 取，客户端只传业务参数。 */
+export async function 提交项目质检(参数: {
+  itemId: string;
+  result: string;
+  notes: string | null;
+  media: { media_type: string; storage_path: string }[];
+}): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+  const { data, error: rpcError } = await supabase.rpc("submit_item_qc", {
+    p_work_order_item_id: 参数.itemId,
+    p_result: 参数.result,
+    p_notes: 参数.notes,
+    p_media: 参数.media,
+  });
+
+  if (rpcError) return { success: false, error: rpcError.message };
+  const rpcResult = data as { success: boolean; error?: string } | null;
+  if (!rpcResult?.success) {
+    return { success: false, error: rpcResult?.error || "质检提交失败" };
+  }
+
+  const { data: 项目行 } = await supabase
+    .from("work_order_items")
+    .select("work_order_id")
+    .eq("id", 参数.itemId)
+    .single();
+  if (项目行?.work_order_id) {
+    clearWorkOrderDataCache(项目行.work_order_id);
+    revalidatePath(`/work-orders/${项目行.work_order_id}`);
+  }
+  return { success: true };
+}
+
+/* ═══ 删除配件分支（收编客户端直调 RPC） ═══
+ * 原来 PartBranchEditor 直接调 delete_part_branch。
+ * 删除前先反查所属工单（删完就查不到了），删后清该工单缓存。 */
+export async function 删除配件分支(参数: {
+  partId: string;
+}): Promise<{ success: boolean; error?: string; newSelectedId?: string | null }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  const supabase = await createClient();
+
+  /* 删前反查工单 id（两步走，避开嵌入歧义） */
+  const { data: 配件行 } = await supabase
+    .from("work_order_item_parts")
+    .select("work_order_item_id")
+    .eq("id", 参数.partId)
+    .single();
+  let 工单id: string | null = null;
+  if (配件行?.work_order_item_id) {
+    const { data: 项目行 } = await supabase
+      .from("work_order_items")
+      .select("work_order_id")
+      .eq("id", 配件行.work_order_item_id)
+      .single();
+    工单id = 项目行?.work_order_id ?? null;
+  }
+
+  const { data, error: rpcError } = await supabase.rpc("delete_part_branch", {
+    p_part_id: 参数.partId,
+  });
+
+  if (rpcError) return { success: false, error: rpcError.message };
+  const rpcResult = data as { success: boolean; error?: string; new_selected_id?: string | null } | null;
+  if (!rpcResult?.success) {
+    return { success: false, error: rpcResult?.error || "删除失败" };
+  }
+
+  if (工单id) {
+    clearWorkOrderDataCache(工单id);
+    revalidatePath(`/work-orders/${工单id}`);
+  }
+  return { success: true, newSelectedId: rpcResult.new_selected_id ?? null };
+}

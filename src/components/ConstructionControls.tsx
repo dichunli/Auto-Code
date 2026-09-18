@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "@/lib/globalToast";
+import { 添加工时日志 } from "@/app/work-orders/actions";
 
 interface Log {
   id: string;
@@ -185,23 +186,16 @@ export function ConstructionControls({
     return () => clearInterval(interval);
   }, [isRunning, logs]);
 
-  /* 计时操作：统一走 add_construction_log RPC。
+  /* 计时操作：统一走 添加工时日志 Server Action（内调 add_construction_log RPC）。
    * 工时统计（construction_stats）已搬进 RPC 自动维护（建行/结算/取消），
-   * 前端不再用定时器补写——根治"页面关了统计就丢"。 */
+   * 前端不再用定时器补写——根治"页面关了统计就丢"。
+   * 施工人身份由服务端取验证后的 user.id，不再客户端传入（2026-09-18 收编）。 */
   async function addLog(action: "start" | "pause" | "resume" | "complete" | "cancel") {
     setLoading(true);
     try {
-      const { data: result, error: rpcErr } = await supabase.rpc("add_construction_log", {
-        p_work_order_item_id: itemId,
-        p_mechanic_id: currentUserId || null,
-        p_action: action,
-      });
-
-      if (rpcErr) throw new Error(rpcErr.message);
-
-      const rpcResult = result as { success: boolean; error?: string; item_status?: string };
-      if (!rpcResult?.success) {
-        throw new Error(rpcResult?.error || "操作失败");
+      const 结果 = await 添加工时日志({ itemId, action });
+      if (!结果.success) {
+        throw new Error(结果.error || "操作失败");
       }
 
       await fetchLogs();

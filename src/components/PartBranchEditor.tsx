@@ -8,7 +8,7 @@ import { 标记本地编辑配件, 标记本地结构编辑 } from "@/lib/localE
 import PartForm, { PartFormDraft } from "@/app/parts/new/PartForm";
 import { useConfirm } from "./ConfirmDialog";
 import { 选中配件分支, 标记采购到货 } from "@/app/work-orders/parts-actions";
-import { 更新配件分支, 按组更新分支目录, 同步分支图片到配件, 配件分支更新 } from "@/app/work-orders/actions";
+import { 更新配件分支, 按组更新分支目录, 同步分支图片到配件, 配件分支更新, 删除配件分支 } from "@/app/work-orders/actions";
 import { useDebounce } from "@/lib/useDebounce";
 import { 计算供应商得分, 供应商匹配原因 } from "@/lib/procurementRules";
 import { toast } from "@/lib/globalToast";
@@ -880,35 +880,35 @@ export default function PartBranchEditor({
     标记本地编辑配件(part.id);
 
     // 原子删除：数据库一个事务完成"删分支 + 转移选中"，远程不稳也不会做一半（避免0选中）
-    const { data, error } = await supabase.rpc("delete_part_branch", { p_part_id: part.id });
-    setSaving(false);
+    // 走 Server Action：服务端验证登录兜底（2026-09-18 收编客户端直调 RPC）
+    try {
+      const 结果 = await 删除配件分支({ partId: part.id });
+      if (!结果.success) {
+        toast(结果.error || "删除失败", "error");
+        return;
+      }
 
-    if (error) {
-      toast("删除失败: " + error.message, "error");
-      return;
-    }
-    const result = data as { success: boolean; error?: string; new_selected_id?: string | null };
-    if (!result?.success) {
-      toast(result?.error || "删除失败", "error");
-      return;
-    }
-
-    // 立即隐藏本行（瞬间消失）
-    setDeleted(true);
-    // 广播"已删除"：小计/费用合计组件把这条从计算中彻底移除
-    window.dispatchEvent(
-      new CustomEvent("wo-part-update", {
-        detail: { itemId, partId: part.id, deleted: true },
-      })
-    );
-    // 若数据库转移了选中，广播让新选中分支点亮、小计按它重算
-    if (result.new_selected_id) {
-      标记本地编辑配件(result.new_selected_id);
+      // 立即隐藏本行（瞬间消失）
+      setDeleted(true);
+      // 广播"已删除"：小计/费用合计组件把这条从计算中彻底移除
       window.dispatchEvent(
         new CustomEvent("wo-part-update", {
-          detail: { itemId, partId: result.new_selected_id, is_selected: true, siblingResetIds: [] },
+          detail: { itemId, partId: part.id, deleted: true },
         })
       );
+      // 若数据库转移了选中，广播让新选中分支点亮、小计按它重算
+      if (结果.newSelectedId) {
+        标记本地编辑配件(结果.newSelectedId);
+        window.dispatchEvent(
+          new CustomEvent("wo-part-update", {
+            detail: { itemId, partId: 结果.newSelectedId, is_selected: true, siblingResetIds: [] },
+          })
+        );
+      }
+    } catch (err: unknown) {
+      toast("删除失败: " + (err instanceof Error ? err.message : String(err)), "error");
+    } finally {
+      setSaving(false);
     }
   }
 

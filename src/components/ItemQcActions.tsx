@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ImageUploader } from "./ImageUploader";
 import { VideoUploader } from "./VideoUploader";
 import { toast } from "@/lib/globalToast";
+import { 提交项目质检 } from "@/app/work-orders/actions";
 
 interface Props {
   itemId: string;
@@ -27,11 +28,6 @@ interface 项目行 {
   qc_status: string | null;
   require_qc: boolean | null;
   inspector_id: string | null;
-}
-
-interface Rpc结果 {
-  success: boolean;
-  error?: string;
 }
 
 /* 项目质检操作（质检单）：
@@ -111,25 +107,26 @@ export default function ItemQcActions({ itemId, itemName, requireQc, 实际锁�
       ...images.map((p) => ({ media_type: "image", storage_path: p })),
       ...videos.map((p) => ({ media_type: "video", storage_path: p })),
     ];
-    const { data, error } = await supabase.rpc("submit_item_qc", {
-      p_work_order_item_id: itemId,
-      p_result: result,
-      p_notes: notes.trim() || null,
-      p_media: media,
-    });
-    setSaving(false);
-    const res = data as Rpc结果 | null;
-    if (error) {
-      toast("质检提交失败: " + error.message, "error");
-      return;
+    /* 写库走 Server Action：服务端验证登录兜底（2026-09-18 收编客户端直调 RPC） */
+    try {
+      const 结果 = await 提交项目质检({
+        itemId,
+        result,
+        notes: notes.trim() || null,
+        media,
+      });
+      if (!结果.success) {
+        toast(结果.error || "质检提交失败", "error");
+        return;
+      }
+      setOpen(false);
+      /* 广播：状态徽章/质检按钮立即刷新 */
+      window.dispatchEvent(new CustomEvent("wo-item-update", { detail: { itemId } }));
+    } catch (err: unknown) {
+      toast("质检提交失败: " + (err instanceof Error ? err.message : String(err)), "error");
+    } finally {
+      setSaving(false);
     }
-    if (!res?.success) {
-      toast(res?.error || "质检提交失败", "error");
-      return;
-    }
-    setOpen(false);
-    /* 广播：状态徽章/质检按钮立即刷新 */
-    window.dispatchEvent(new CustomEvent("wo-item-update", { detail: { itemId } }));
   }
 
   /* 不须质检 / 已锁定 / 非待质检 / 非质检人本人 → 不渲染（待质检徽章由 ItemStageBadge 显示） */

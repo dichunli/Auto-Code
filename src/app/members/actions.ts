@@ -105,3 +105,43 @@ export async function 更新会员(参数: {
   revalidatePath(`/members/${参数.id}`);
   return { success: true };
 }
+
+/* ─── 会员充值（涉钱，收编客户端直调 RPC，2026-09-18） ───
+ * 原来 MemberDetailContent 直接 supabase.rpc("recharge_member")，
+ * 客户端 session 异常时会 401/被 RLS 拦截。收编后先验证登录再调 RPC，
+ * 金额/原子性仍由 recharge_member 事务函数兜底。 */
+export async function 充值会员(参数: {
+  memberId: string;
+  amount: number;
+  paymentMethod: string;
+  notes: string;
+}): Promise<{ success: boolean; newBalance?: number; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+
+  if (!参数.amount || 参数.amount <= 0) {
+    return { success: false, error: "请输入有效金额" };
+  }
+
+  const supabase = await createClient();
+  const { data: result, error: rpcErr } = await supabase.rpc("recharge_member", {
+    p_member_id: 参数.memberId,
+    p_amount: 参数.amount,
+    p_payment_method: 参数.paymentMethod,
+    p_notes: 参数.notes.trim() || null,
+  });
+
+  if (rpcErr) {
+    return { success: false, error: rpcErr.message };
+  }
+  const rpcResult = result as { success: boolean; error?: string; new_balance?: number };
+  if (!rpcResult?.success) {
+    return { success: false, error: rpcResult?.error || "充值失败" };
+  }
+
+  revalidatePath("/members");
+  revalidatePath(`/members/${参数.memberId}`);
+  return { success: true, newBalance: rpcResult.new_balance };
+}

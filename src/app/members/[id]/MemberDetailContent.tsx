@@ -4,7 +4,7 @@ import {useState, useCallback, useMemo} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { 更新会员 } from "../actions";
+import { 更新会员, 充值会员 } from "../actions";
 import Link from "next/link";
 import { toast } from "@/lib/globalToast";
 
@@ -100,18 +100,15 @@ export default function MemberDetailContent({
     setRechargeLoading(true);
 
     try {
-      const { data: result, error: rpcErr } = await supabase.rpc("recharge_member", {
-        p_member_id: memberId,
-        p_amount: amount,
-        p_payment_method: rechargeMethod,
-        p_notes: rechargeNotes || null,
+      /* 涉钱写操作走 Server Action：服务端验证登录，避免客户端 session 异常导致 401/RLS 拦截 */
+      const 结果 = await 充值会员({
+        memberId,
+        amount,
+        paymentMethod: rechargeMethod,
+        notes: rechargeNotes,
       });
-
-      if (rpcErr) throw new Error(rpcErr.message);
-
-      const rpcResult = result as { success: boolean; error?: string; new_balance?: number };
-      if (!rpcResult?.success) {
-        throw new Error(rpcResult?.error || "充值失败");
+      if (!结果.success) {
+        throw new Error(结果.error || "充值失败");
       }
 
       setRechargeOpen(false);
