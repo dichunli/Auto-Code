@@ -1,7 +1,6 @@
 "use client";
 
 import {useState, useRef} from "react";
-import * as XLSX from "xlsx";
 import { 导入客户, 客户导入行 } from "./actions";
 
 interface Customer {
@@ -40,7 +39,9 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
   const [importMsg, setImportMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function handleExport() {
+  async function handleExport() {
+    /* xlsx 约 400KB，改为点导出时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const headers = exportHeaders.map((h) => h.label);
     const rows = customers.map((c) =>
       exportHeaders.map((h) => {
@@ -54,7 +55,9 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
     XLSX.writeFile(wb, `客户列表_${new Date().toISOString().split("T")[0]}.xlsx`);
   }
 
-  function handleDownloadTemplate() {
+  async function handleDownloadTemplate() {
+    /* xlsx 约 400KB，改为点下载模板时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const headers = exportHeaders.map((h) => h.label);
     const example = ["张三", "13800138000", "男", "某某公司", "北京市朝阳区", "110101199001011234", "5", "VIP客户"];
     const ws = XLSX.utils.aoa_to_sheet([headers, example]);
@@ -64,6 +67,8 @@ export default function CustomerImportExport({ customers }: CustomerImportExport
   }
 
   async function handleImportFile(file: File) {
+    /* xlsx 约 400KB，改为选了导入文件时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     setImporting(true);
     setImportMsg("正在读取文件...");
     try {

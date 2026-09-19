@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 import { PrintButton } from "@/components/PrintButton";
 import { formatCurrency } from "@/lib/utils";
-import * as XLSX from "xlsx";
 
 /* 供应商对账单（2026-09-15 批次2）
  * 期初欠款 + 本期逐笔流水（带跑动余额）+ 期末欠款，可打印/导出 Excel */
@@ -114,7 +113,9 @@ export default function StatementContent({
     };
   }, [rows, 期初起点, 期末止点]);
 
-  function 导出Excel() {
+  async function 导出Excel() {
+    /* xlsx 约 400KB，改为点导出时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
     const 表头 = [
       { 项目: `供应商：${supplier.name}`, 说明: `对账月份：${month}` },

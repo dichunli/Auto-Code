@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { 导入车型, 车型导入行 } from "./actions";
-import * as XLSX from "xlsx";
 
 interface VehicleModel {
   id: number;
@@ -216,7 +215,9 @@ export default function VehicleModelsContent({ models, total, page, keyword, col
   const hasActiveFilters = search.trim() || Object.values(localFilters).some((v) => v.trim());
 
   /* 导出 Excel */
-  function handleExport() {
+  async function handleExport() {
+    /* xlsx 约 400KB，改为点导出时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const headers = detailFields.map((f) => f.label);
     const rows = models.map((m) => detailFields.map((f) => m[f.key] ?? ""));
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
@@ -226,7 +227,9 @@ export default function VehicleModelsContent({ models, total, page, keyword, col
   }
 
   /* 下载导入模板 */
-  function handleDownloadTemplate() {
+  async function handleDownloadTemplate() {
+    /* xlsx 约 400KB，改为点下载模板时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const headers = detailFields.map((f) => f.label);
     const example = [
       9999, "一汽奥迪", "合资", "乘用车", "audi_vw", 2024, "奥迪", "https://example.com/audi.jpg", "奥迪(一汽奥迪)",
@@ -244,6 +247,8 @@ export default function VehicleModelsContent({ models, total, page, keyword, col
 
   /* 导入 Excel */
   async function handleImportFile(file: File) {
+    /* xlsx 约 400KB，改为选了导入文件时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     setImporting(true);
     setImportMsg("正在读取文件...");
     try {

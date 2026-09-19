@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 import { PrintButton } from "@/components/PrintButton";
 import { formatCurrency } from "@/lib/utils";
-import * as XLSX from "xlsx";
 
 /* 物流公司对账单客户端（2026-09-15 批次4）
  * 月份内签收运单明细 + 运费/代收/已结未结合计，可打印/导出 Excel */
@@ -61,7 +60,9 @@ export default function LogisticsStatementContent({
     };
   }, [rows]);
 
-  function 导出Excel() {
+  async function 导出Excel() {
+    /* xlsx 约 400KB，改为点导出时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
     const 表头 = [
       { 项目: `物流公司：${company.name}`, 说明: `对账月份：${month}` },

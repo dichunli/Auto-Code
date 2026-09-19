@@ -2,8 +2,6 @@
 
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
-import JsBarcode from "jsbarcode";
-import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { 批量导入配件 } from "./actions";
 import { 转义HTML } from "@/lib/escapeHtml";
@@ -249,7 +247,9 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
     });
   }
 
-  function handleDownloadTemplate() {
+  async function handleDownloadTemplate() {
+    /* xlsx 约 400KB，改为点下载模板时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const headers = importFields.map((f) => f.key);
     const example = [
       "机油滤芯",
@@ -274,6 +274,8 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
   }
 
   async function handleImportFile(file: File) {
+    /* xlsx 约 400KB，改为选了导入文件时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     setImporting(true);
     setImportMsg("正在读取文件...");
     try {
@@ -483,9 +485,11 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function printSingle(part: InventoryItem) {
+  async function printSingle(part: InventoryItem) {
     const code = part.barcode || part.part_number || part.id;
     if (!canvasRef.current) return;
+    /* jsbarcode 只在点打印时用，改动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const JsBarcode = (await import("jsbarcode")).default;
     try {
       JsBarcode(canvasRef.current, code, {
         format: "CODE128",
@@ -517,12 +521,14 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
     printWindow.print();
   }
 
-  function printBatch() {
+  async function printBatch() {
     const selected = items.filter((i) => selectedIds.has(i.id));
     if (selected.length === 0) {
       toast("请先选择要打印的配件", "warning");
       return;
     }
+    /* jsbarcode 只在点打印时用，改动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const JsBarcode = (await import("jsbarcode")).default;
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
       toast("请允许弹出窗口以打印条形码", "warning");

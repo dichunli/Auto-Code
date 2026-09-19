@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef } from "react";
-import * as XLSX from "xlsx";
 import { batchQueryVinFilters, batchSyncMissingModels, VinQueryResult, type 补录结果项 } from "./actions";
 import { batchCreatePartsFromVin, autoCreateFiltersByVin, CreatePartResult } from "./createActions";
 import { PageHeader } from "@/components/PageHeader";
@@ -57,7 +56,9 @@ function QueryTab() {
   const [syncResults, setSyncResults] = useState<补录结果项[] | null>(null);
   const [syncSummary, setSyncSummary] = useState<{ totalSkipped: number; totalSynced: number; totalFailed: number } | null>(null);
 
-  function parseExcel(file: File): Promise<string[]> {
+  /* xlsx 约 400KB，改为选了文件时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+  async function parseExcel(file: File): Promise<string[]> {
+    const XLSX = await import("xlsx");
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -136,8 +137,10 @@ function QueryTab() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function exportResults() {
+  async function exportResults() {
     if (results.length === 0) return;
+    /* xlsx 约 400KB，改为点导出时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const rows = results.map((r) => ({
       VIN: r.vin,
       机油滤OE号: r.oil?.oeNumber || "",
@@ -452,7 +455,9 @@ function CreateTab() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* 解析完整模式Excel（需包含编码、名称、品牌、成本价、VIN） */
-  function parseCreateExcel(file: File): Promise<Array<{ partNumber: string; name: string; brand: string; unitCost: string; vin: string }>> {
+  /* xlsx 约 400KB，改为选了文件时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+  async function parseCreateExcel(file: File): Promise<Array<{ partNumber: string; name: string; brand: string; unitCost: string; vin: string }>> {
+    const XLSX = await import("xlsx");
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -502,7 +507,9 @@ function CreateTab() {
   }
 
   /* 解析仅VIN模式Excel（只需VIN列） */
-  function parseVinOnlyExcel(file: File): Promise<string[]> {
+  /* xlsx 约 400KB，改为选了文件时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+  async function parseVinOnlyExcel(file: File): Promise<string[]> {
+    const XLSX = await import("xlsx");
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -624,8 +631,10 @@ function CreateTab() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function exportCreateResults() {
+  async function exportCreateResults() {
     if (results.length === 0) return;
+    /* xlsx 约 400KB，改为点导出时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const rows = results.map((r) => ({
       零件编码: r.partNumber,
       零件名称: r.name,

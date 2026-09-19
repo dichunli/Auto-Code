@@ -7,7 +7,6 @@ import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
-import * as XLSX from "xlsx";
 import { 批量更新维修项目, 批量导入维修项目 } from "./actions";
 import ServiceItemMergeDialog from "@/components/ServiceItemMergeDialog";
 import { toast } from "@/lib/globalToast";
@@ -187,7 +186,9 @@ export default function ServiceItemsContent({ items, categories }: Props) {
     router.refresh();
   }
 
-  function handleDownloadTemplate() {
+  async function handleDownloadTemplate() {
+    /* xlsx 约 400KB，改为点下载模板时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const headers = importFields.map((f) => f.key);
     const example = [
       "更换机油",
@@ -205,6 +206,8 @@ export default function ServiceItemsContent({ items, categories }: Props) {
   }
 
   async function handleImportFile(file: File) {
+    /* xlsx 约 400KB，改为选了导入文件时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     setImporting(true);
     setImportMsg("正在读取文件...");
     try {
