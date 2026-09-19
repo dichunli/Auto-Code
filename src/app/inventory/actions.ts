@@ -632,3 +632,47 @@ export async function 报废出库(输入: 报废输入): Promise<{ success: boo
   revalidatePath("/inventory/scrap");
   return { success: true };
 }
+
+/* ═══ 仓位调拨 Server Action（2026-09-19 用户拍板：全部出入库都记仓位） ═══
+ * 源仓位扣减 + 目标仓位加回，一个事务，总库存不变（transfer_stock_location RPC）。 */
+export interface 调拨输入 {
+  part_id: string;
+  from_warehouse_id: string;
+  from_location: string;
+  to_warehouse_id: string;
+  to_location: string;
+  quantity: number;
+  notes: string;
+}
+
+export async function 仓位调拨(输入: 调拨输入): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!输入.part_id || !输入.from_warehouse_id || !输入.to_warehouse_id) {
+    return { success: false, error: "配件、源仓位、目标仓库都是必选" };
+  }
+  if (!Number.isInteger(输入.quantity) || 输入.quantity <= 0) {
+    return { success: false, error: "调拨数量必须大于 0" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("transfer_stock_location", {
+    p_part_id: 输入.part_id,
+    p_from_warehouse_id: 输入.from_warehouse_id,
+    p_from_location: 输入.from_location,
+    p_to_warehouse_id: 输入.to_warehouse_id,
+    p_to_location: 输入.to_location,
+    p_quantity: 输入.quantity,
+    p_notes: 输入.notes,
+    p_operator_id: user.id,
+  });
+  if (error) return { success: false, error: error.message };
+  const 结果 = data as unknown as { success: boolean; error?: string };
+  if (!结果?.success) return { success: false, error: 结果?.error || "调拨失败" };
+
+  revalidatePath("/inventory");
+  revalidatePath("/inventory/transfer");
+  return { success: true };
+}
