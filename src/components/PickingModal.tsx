@@ -6,6 +6,7 @@ import { 创建领料单, type 领料明细输入 } from "@/app/picking-orders/a
 import PickingScanCheckModal, { type 待核配件 } from "@/components/PickingScanCheckModal";
 import { toast } from "@/lib/globalToast";
 import { 全局提示 } from "@/components/GlobalDialogs";
+import { ScanLocationButton } from "@/components/ScanLocationButton";
 
 interface Batch {
   id: string;
@@ -13,6 +14,14 @@ interface Batch {
   remaining: number;
   unit_cost: number;
   inbound_at: string;
+}
+
+/* 取自仓位选项（2026-09-19 用户拍板：领料扣仓位数量，方便随时盘点） */
+interface 仓位选项 {
+  warehouse_id: string;
+  warehouse_name: string;
+  location: string;
+  quantity: number;
 }
 
 /* 工单配件分支快照（生成领料单明细时冗余保存） */
@@ -60,11 +69,14 @@ export function PickingModal({
   const [fetching, setFetching] = useState(false);
   const [管控, 设管控] = useState<管控信息 | null>(null);
   const [扫码窗开, 设扫码窗开] = useState(false);
+  /* 取自仓位（2026-09-19 用户拍板）：该配件有库存的仓位里选，唯一仓位自动带出，必选 */
+  const [仓位选项们, 设仓位选项们] = useState<仓位选项[]>([]);
+  const [取自仓位, 设取自仓位] = useState("");
 
   useEffect(() => {
     if (!open || !partId) return;
     setFetching(true);
-    /* 并行查可用批次、配件分支快照、配件出库管控（名称+分类三级） */
+    /* 并行查可用批次、配件分支快照、配件出库管控（名称+分类三级）、有库存的仓位 */
     Promise.all([
       supabase
         .from("part_batches")
@@ -82,10 +94,26 @@ export function PickingModal({
         .select("barcode, part_number, require_scan_check, require_confirm, category_id, part_names(require_scan_check, require_confirm, category_id)")
         .eq("id", partId)
         .single(),
-    ]).then(async ([批次结果, 快照结果, 管控结果]) => {
+      supabase
+        .from("part_stock_locations")
+        .select("warehouse_id, location, quantity, warehouses(name)")
+        .eq("part_id", partId)
+        .gt("quantity", 0),
+    ]).then(async ([批次结果, 快照结果, 管控结果, 仓位结果]) => {
       if (批次结果.error) console.error(批次结果.error);
       setBatches(批次结果.data || []);
       if (快照结果.data) 设快照(快照结果.data as 分支快照);
+      /* 取自仓位选项（唯一仓位自动带出） */
+      const 仓位们 = ((仓位结果.data || []) as unknown as { warehouse_id: string; location: string | null; quantity: number; warehouses: { name: string } | { name: string }[] | null }[]).map((w) => ({
+        warehouse_id: w.warehouse_id,
+        warehouse_name: Array.isArray(w.warehouses) ? w.warehouses[0]?.name || "" : w.warehouses?.name || "",
+        location: w.location || "",
+        quantity: w.quantity,
+      }));
+      设仓位选项们(仓位们);
+      if (仓位们.length === 1) {
+        设取自仓位(`${仓位们[0].warehouse_id}|${仓位们[0].location}`);
+      }
       /* 三级 OR：配件/名称/分类任一级勾了即生效 */
       interface 管控查询行 {
         barcode: string | null;
@@ -146,6 +174,11 @@ export function PickingModal({
       toast(`领料数量必须在 1-${quantityNeeded} 之间`, "warning");
       return;
     }
+    /* 取自仓位必选（2026-09-19 用户拍板：领料同步扣仓位数量） */
+    if (!取自仓位) {
+      toast("还没选取自仓位", "warning");
+      return;
+    }
     if (管控?.需扫码) {
       设扫码窗开(true);
       return;
@@ -157,7 +190,8 @@ export function PickingModal({
     setLoading(true);
 
     try {
-      /* 每个选中批次生成一条领料明细 */
+      /* 每个选中批次生成一条领料明细（整单同一取自仓位） */
+      const [wid, loc] = 取自仓位.split("|");
       const 明细: 领料明细输入[] = Object.entries(selected)
         .filter(([, qty]) => qty > 0)
         .map(([batchId, qty]) => {
@@ -174,6 +208,8 @@ export function PickingModal({
             unit: 快照?.unit || null,
             batch_no: batch?.batch_no || null,
             unit_cost: batch?.unit_cost ?? null,
+            warehouse_id: wid || null,
+            location: loc || null,
           };
         });
 
@@ -265,6 +301,43 @@ export function PickingModal({
 
           <div className="text-sm text-gray-600">
             已选数量: <span className="font-medium">{totalSelected}</span> / {quantityNeeded}
+          </div>
+
+          {/* 取自仓位（2026-09-19 用户拍板：领料同步扣仓位数量，必选；
+              多仓位可下拉选择或扫仓位码确认） */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                取自仓位 <span className="text-red-500">*</span>
+              </label>
+              <ScanLocationButton
+                on命中={(w) => {
+                  const 选项 = 仓位选项们.find(
+                    (o) => o.warehouse_id === w.warehouse_id && o.location === w.location
+                  );
+                  if (!选项) {
+                    toast(`该配件在「${w.warehouse_name}${w.location ? ` · ${w.location}` : ""}」没有库存`, "warning");
+                    return;
+                  }
+                  设取自仓位(`${w.warehouse_id}|${w.location}`);
+                  toast(`已选仓位：${w.warehouse_name}${w.location ? ` · ${w.location}` : ""}`, "success");
+                }}
+              />
+            </div>
+            <select
+              value={取自仓位}
+              onChange={(e) => 设取自仓位(e.target.value)}
+              className={`w-full px-3 py-2 text-sm rounded border bg-white focus:outline-none focus:border-blue-400 ${
+                !取自仓位 ? "border-red-400 bg-red-50" : "border-gray-300"
+              }`}
+            >
+              <option value="">请选择取自仓位</option>
+              {仓位选项们.map((w) => (
+                <option key={`${w.warehouse_id}|${w.location}`} value={`${w.warehouse_id}|${w.location}`}>
+                  {w.warehouse_name}{w.location ? ` · ${w.location}` : ""}（存 {w.quantity}）
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex gap-3 justify-end pt-2">

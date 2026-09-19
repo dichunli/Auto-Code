@@ -76,6 +76,8 @@ export default function InventoryInForm() {
 
   // 物流运单
   const [logisticsCompanies, setLogisticsCompanies] = useState<LogisticsCompany[]>([]);
+  /* 仓库列表（入库仓位选择用，2026-09-19） */
+  const [warehouses, setWarehouses] = useState<{ id: string; name: string }[]>([]);
   const [pendingWaybills, setPendingWaybills] = useState<PendingWaybill[]>([]);
   const [waybillMode, setWaybillMode] = useState<"none" | "existing" | "new">("none");
   const [selectedWaybillId, setSelectedWaybillId] = useState("");
@@ -99,6 +101,9 @@ export default function InventoryInForm() {
     supplier: "",
     batch_no: "",
     notes: "",
+    /* 入库仓位（2026-09-19 用户拍板：全部出入库都记仓位；选填） */
+    warehouse_id: "",
+    location: "",
   });
 
   useEffect(() => {
@@ -107,6 +112,7 @@ export default function InventoryInForm() {
     supabase.from("part_brands").select("*").order("name").limit(100).then(({ data }) => setBrands(data || []));
     supabase.from("part_specifications").select("*").order("name").limit(100).then(({ data }) => setSpecifications(data || []));
     supabase.from("logistics_companies").select("*").order("name").limit(100).then(({ data }) => setLogisticsCompanies(data || []));
+    supabase.from("warehouses").select("id, name").order("name").then(({ data }) => setWarehouses((data || []) as { id: string; name: string }[]));
     supabase.from("logistics_waybills").select("*, logistics_companies(name)").eq("status", "pending").order("created_at", { ascending: false }).limit(100).then(({ data }) => setPendingWaybills(data || []));
   }, [supabase]);
 
@@ -493,6 +499,32 @@ export default function InventoryInForm() {
               value={form.batch_no}
               onChange={(e) => setForm({ ...form, batch_no: e.target.value })}
             />
+          </div>
+
+          {/* 入库仓位（2026-09-19 用户拍板：全部出入库都记仓位，方便随时盘点；选填） */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">入库仓库</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
+                value={form.warehouse_id}
+                onChange={(e) => setForm({ ...form, warehouse_id: e.target.value })}
+              >
+                <option value="">不记仓位（可选）</option>
+                {warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">入库仓位</label>
+              <input
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                placeholder="如：A-01（选填）"
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+              />
+            </div>
           </div>
 
           {/* 物流运单 */}

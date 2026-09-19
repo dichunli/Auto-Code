@@ -12,10 +12,12 @@ import { toast } from "@/lib/globalToast";
 interface Props {
   领料单: (领料单概要 & { 工单id: string | null }) | null;
   记录列表: 可退记录[];
+  /* 全部仓库（退回仓位改选用，2026-09-19 用户拍板：退料加回仓位数量） */
+  仓库列表: { id: string; name: string }[];
 }
 
 /* 按领料单开退料单:填每条记录的退料数量,一次开单 */
-export default function MaterialReturnForm({ 领料单, 记录列表 }: Props) {
+export default function MaterialReturnForm({ 领料单, 记录列表, 仓库列表 }: Props) {
   const router = useRouter();
   /* 退库后连续退货（2026-09-16）：带车牌的工单件退库成功时弹"是否退给供应商" */
   const { 提示并连续退货, 连续退货弹窗 } = useRetreatToSupplier();
@@ -23,6 +25,10 @@ export default function MaterialReturnForm({ 领料单, 记录列表 }: Props) {
   const [退料类型, 设退料类型] = useState("excess");
   const [原因, 设原因] = useState("");
   const [备注, 设备注] = useState("");
+  /* 退回仓位覆盖（2026-09-19）：默认空=各随领料取自仓位（RPC 兜底）；
+     选了仓库则整单统一退回该仓库（仓位手填） */
+  const [退回仓库id, 设退回仓库id] = useState("");
+  const [退回仓位文本, 设退回仓位文本] = useState("");
   const [提交中, 设提交中] = useState(false);
 
   function 设记录数量(记录id: string, 值: number, 可退: number) {
@@ -61,6 +67,9 @@ export default function MaterialReturnForm({ 领料单, 记录列表 }: Props) {
           unit: r.unit,
           batch_no: r.batch_no,
           unit_cost: r.unit_cost,
+          /* 退回仓位：选了覆盖仓库才带；不带则 RPC 默认=该记录的领料取自仓位 */
+          warehouse_id: 退回仓库id || null,
+          location: 退回仓库id ? 退回仓位文本.trim() || null : null,
         }));
 
       const 结果 = await 创建退料单(领料单.工单id, 领料单.id, 明细, 退料类型, 原因, 备注);
@@ -131,6 +140,8 @@ export default function MaterialReturnForm({ 领料单, 记录列表 }: Props) {
                     </span>
                     <div className="text-xs text-gray-400 mt-0.5">
                       已领 {r.已领} · 可退 {r.可退}
+                      {/* 领料取自仓位（退回默认落这里） */}
+                      {r.领料仓位 && <span className="ml-1 text-blue-500">· 取自 {r.领料仓位}</span>}
                     </div>
                   </div>
                   <input
@@ -167,6 +178,28 @@ export default function MaterialReturnForm({ 领料单, 记录列表 }: Props) {
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-600 w-20">退回仓位</label>
+              <select
+                value={退回仓库id}
+                onChange={(e) => 设退回仓库id(e.target.value)}
+                className="px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+              >
+                <option value="">各随领料仓位（默认）</option>
+                {仓库列表.map((w) => (
+                  <option key={w.id} value={w.id}>统一退回：{w.name}</option>
+                ))}
+              </select>
+              {退回仓库id && (
+                <input
+                  type="text"
+                  value={退回仓位文本}
+                  onChange={(e) => 设退回仓位文本(e.target.value)}
+                  placeholder="仓位（选填）"
+                  className="w-28 px-2 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              )}
             </div>
             <div className="flex items-center gap-3">
               <label className="text-sm text-gray-600 w-20">退料原因</label>

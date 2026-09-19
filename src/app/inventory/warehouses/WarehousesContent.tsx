@@ -13,6 +13,7 @@ import {
   批量新增仓位,
   删除仓位,
   更新仓位,
+  切换退料区,
 } from "./actions";
 import { toast } from "@/lib/globalToast";
 
@@ -27,6 +28,8 @@ interface 仓位 {
   id: string;
   name: string;
   warehouse_id: string;
+  /* 退料区标记（2026-09-19：单独存放待退供应商货物的仓位） */
+  is_return_zone?: boolean;
 }
 
 interface WarehousesContentProps {
@@ -451,7 +454,13 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
                         autoFocus
                       />
                     ) : (
-                      <span className="text-sm text-gray-700">{loc.name}</span>
+                      <span className="text-sm text-gray-700">
+                        {loc.name}
+                        {/* 退料区标记（2026-09-19）：单独存放待退供应商货物的仓位 */}
+                        {loc.is_return_zone && (
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600">退料区</span>
+                        )}
+                      </span>
                     )}
                     <div className="flex items-center gap-3">
                       {editingLoc === loc.id ? (
@@ -471,6 +480,20 @@ export default function WarehousesContent({ 初始数据 }: WarehousesContentPro
                         </>
                       ) : (
                         <>
+                          <button
+                            onClick={async () => {
+                              const res = await 切换退料区({ id: loc.id, is_return_zone: !loc.is_return_zone });
+                              if (!res.success) {
+                                toast(res.error || "保存失败", "error");
+                                return;
+                              }
+                              if (locationModal) await fetchLocations(locationModal.warehouseId);
+                            }}
+                            className={`text-xs ${loc.is_return_zone ? "text-orange-600 hover:text-orange-700" : "text-gray-400 hover:text-orange-600"}`}
+                            title="单独存放待退供应商货物的仓位，退货弹窗优先带出"
+                          >
+                            {loc.is_return_zone ? "取消退料区" : "设为退料区"}
+                          </button>
                           <button
                             onClick={() => startEditLoc(loc)}
                             className="text-xs text-gray-500 hover:text-gray-700"

@@ -11,7 +11,9 @@ interface 盘点明细行 {
   actual_qty: number | null;
   diff_qty: number | null;
   notes: string | null;
+  location: string | null;
   parts: { part_number: string | null; name: string | null } | null;
+  warehouses: { name: string } | null;
 }
 
 export default async function InventoryCheckDetailPage({
@@ -43,7 +45,7 @@ export default async function InventoryCheckDetailPage({
 
   const { data: 明细原始 } = await supabase
     .from("inventory_check_items")
-    .select("id, system_qty, actual_qty, diff_qty, notes, parts(part_number, name)")
+    .select("id, system_qty, actual_qty, diff_qty, notes, location, parts(part_number, name), warehouses(name)")
     .eq("check_id", id)
     .order("created_at");
   const 明细 = (明细原始 || []) as unknown as 盘点明细行[];
@@ -90,6 +92,8 @@ export default async function InventoryCheckDetailPage({
               <tr>
                 <th className="px-4 py-2 text-left font-medium text-gray-500">配件编号</th>
                 <th className="px-4 py-2 text-left font-medium text-gray-500">名称</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-500">仓库</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-500">仓位</th>
                 <th className="px-4 py-2 text-right font-medium text-gray-500">系统库存</th>
                 <th className="px-4 py-2 text-right font-medium text-gray-500">实盘库存</th>
                 <th className="px-4 py-2 text-right font-medium text-gray-500">差异</th>
@@ -101,6 +105,8 @@ export default async function InventoryCheckDetailPage({
                 <tr key={行.id} className="hover:bg-gray-50">
                   <td className="px-4 py-2 text-gray-600">{行.parts?.part_number || "-"}</td>
                   <td className="px-4 py-2 font-medium text-gray-900">{行.parts?.name || "-"}</td>
+                  <td className="px-4 py-2 text-gray-600">{行.warehouses?.name || "未分配仓位"}</td>
+                  <td className="px-4 py-2 text-gray-600">{行.location || "-"}</td>
                   <td className="px-4 py-2 text-right text-gray-600">{行.system_qty ?? "-"}</td>
                   <td className="px-4 py-2 text-right text-gray-600">{行.actual_qty ?? "未盘"}</td>
                   <td className="px-4 py-2 text-right">
@@ -114,7 +120,7 @@ export default async function InventoryCheckDetailPage({
               ))}
               {明细.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
                     暂无盘点明细
                   </td>
                 </tr>

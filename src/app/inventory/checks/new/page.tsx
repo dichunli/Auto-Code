@@ -11,12 +11,17 @@ interface 盘点项 {
   part_id: string;
   part_number: string;
   name: string;
+  warehouse_id: string | null;
+  warehouse_name: string;
+  location: string;
   system_qty: number;
   actual_qty: string;
   diff_qty?: number;
   notes: string;
 }
 
+/* 按仓位盘点（2026-09-19 用户拍板）：明细 = 每个"配件×仓位"一行（仓位库存表），
+   没有任何仓位记录的配件单独一行算"未分配仓位"（系统库存=配件总库存） */
 export default function NewInventoryCheckPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -31,22 +36,60 @@ export default function NewInventoryCheckPage() {
   });
 
   useEffect(() => {
-    supabase
-      .from("parts")
-      .select("id, part_number, name, quantity, location")
-      .order("name")
-      .then(({ data }) => {
-        setCheckItems(
-          (data || []).map((p) => ({
-            part_id: p.id,
-            part_number: p.part_number,
-            name: p.name,
-            system_qty: p.quantity,
-            actual_qty: "",
-            notes: "",
-          }))
-        );
-      });
+    (async () => {
+      const [{ data: 仓位行 }, { data: 配件们 }] = await Promise.all([
+        supabase
+          .from("part_stock_locations")
+          .select("part_id, warehouse_id, location, quantity, warehouses(name)"),
+        supabase.from("parts").select("id, part_number, name, quantity").order("name"),
+      ]);
+      interface 仓位查询行 {
+        part_id: string;
+        warehouse_id: string;
+        location: string | null;
+        quantity: number;
+        warehouses: { name: string } | { name: string }[] | null;
+      }
+      const 仓位们 = (仓位行 || []) as unknown as 仓位查询行[];
+      const 配件列表 = (配件们 || []) as { id: string; part_number: string | null; name: string | null; quantity: number | null }[];
+      const 配件Map = new Map(配件列表.map((p) => [p.id, p]));
+      const 有仓位配件 = new Set(仓位们.map((w) => w.part_id));
+
+      const 行们: 盘点项[] = [];
+      /* 1. 仓位行：每个配件×仓位一行 */
+      for (const w of 仓位们) {
+        const p = 配件Map.get(w.part_id);
+        if (!p) continue;
+        const 仓名 = Array.isArray(w.warehouses) ? w.warehouses[0]?.name : w.warehouses?.name;
+        行们.push({
+          part_id: w.part_id,
+          part_number: p.part_number || "",
+          name: p.name || "",
+          warehouse_id: w.warehouse_id,
+          warehouse_name: 仓名 || "",
+          location: w.location || "",
+          system_qty: w.quantity,
+          actual_qty: "",
+          notes: "",
+        });
+      }
+      /* 2. 未分配仓位：没有任何仓位记录的配件 */
+      for (const p of 配件列表) {
+        if (有仓位配件.has(p.id)) continue;
+        行们.push({
+          part_id: p.id,
+          part_number: p.part_number || "",
+          name: p.name || "",
+          warehouse_id: null,
+          warehouse_name: "未分配仓位",
+          location: "",
+          system_qty: p.quantity || 0,
+          actual_qty: "",
+          notes: "",
+        });
+      }
+      setCheckItems(行们);
+    })();
   }, [supabase]);
 
   function updateActualQty(index: number, value: string) {
@@ -72,6 +115,8 @@ export default function NewInventoryCheckPage() {
           system_qty: item.system_qty,
           actual_qty: item.actual_qty,
           notes: item.notes,
+          warehouse_id: item.warehouse_id,
+          location: item.location || null,
         })),
       });
       if (!result.success) {
@@ -129,6 +174,8 @@ export default function NewInventoryCheckPage() {
                 <tr>
                   <th className="px-4 py-2 text-left font-medium text-gray-500">配件编号</th>
                   <th className="px-4 py-2 text-left font-medium text-gray-500">名称</th>
+                  <th className="px-4 py-2 text-left font-medium text-gray-500">仓库</th>
+                  <th className="px-4 py-2 text-left font-medium text-gray-500">仓位</th>
                   <th className="px-4 py-2 text-right font-medium text-gray-500">系统库存</th>
                   <th className="px-4 py-2 text-right font-medium text-gray-500">实际库存</th>
                   <th className="px-4 py-2 text-right font-medium text-gray-500">差异</th>
@@ -137,9 +184,11 @@ export default function NewInventoryCheckPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {checkItems.map((item, i) => (
-                  <tr key={item.part_id} className="hover:bg-gray-50">
+                  <tr key={`${item.part_id}-${item.warehouse_id || "none"}-${item.location}`} className="hover:bg-gray-50">
                     <td className="px-4 py-2 text-gray-600">{item.part_number}</td>
                     <td className="px-4 py-2 font-medium text-gray-900">{item.name}</td>
+                    <td className="px-4 py-2 text-gray-600">{item.warehouse_name}</td>
+                    <td className="px-4 py-2 text-gray-600">{item.location || "-"}</td>
                     <td className="px-4 py-2 text-right text-gray-600">{item.system_qty}</td>
                     <td className="px-4 py-2 text-right">
                       <input

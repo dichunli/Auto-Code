@@ -18,6 +18,9 @@ export interface 退料明细输入 {
   unit?: string | null;
   batch_no?: string | null;
   unit_cost?: number | null;
+  /* 退回仓位（2026-09-19 用户拍板：退料加回仓位数量；不传则 RPC 默认=领料取自仓位） */
+  warehouse_id?: string | null;
+  location?: string | null;
 }
 
 interface 开单结果 {

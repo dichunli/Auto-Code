@@ -39,6 +39,10 @@ export interface ReturnRecord {
   handover_photos: string[] | null;
   /* 车牌（2026-09-18 用户拍板：有车牌信息的退货记录要显示，经采购明细快照取） */
   purchase_order_items: { license_plate: string | null } | null;
+  /* 退自仓位（2026-09-18 用户拍板：已退货显示仓位） */
+  warehouse_id: string | null;
+  location: string | null;
+  warehouses: { name: string } | null;
   status: string;
   created_at: string;
   work_order_item_parts: { id: string; name: string; part_number: string | null; document_name: string | null } | null;
@@ -65,7 +69,7 @@ export function CompletedReturnList(props: CompletedReturnListProps) {
     const { data, error } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, handover_photos, status, created_at, purchase_order_items(license_plate), work_order_item_parts(id, name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no, return_shipping_fee, shipping_fee_payer)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, handover_photos, status, created_at, warehouse_id, location, warehouses(name), purchase_order_items(license_plate), work_order_item_parts(id, name, part_number, document_name), profiles(full_name), purchase_return_orders(id, return_no, return_shipping_fee, shipping_fee_payer)"
       )
       .eq("status", "completed")
       .order("created_at", { ascending: false });
@@ -146,6 +150,7 @@ export function CompletedReturnList(props: CompletedReturnListProps) {
               <th className="px-6 py-3 text-left font-medium text-gray-500">采退单号</th>
               <th className="px-6 py-3 text-left font-medium text-gray-500">退货原因</th>
               <th className="px-6 py-3 text-left font-medium text-gray-500">数量</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">退自仓位</th>
               <th className="px-6 py-3 text-left font-medium text-gray-500">供应商</th>
               <th className="px-6 py-3 text-left font-medium text-gray-500">物流信息</th>
               <th className="px-6 py-3 text-left font-medium text-gray-500">退货照片</th>
@@ -185,6 +190,17 @@ export function CompletedReturnList(props: CompletedReturnListProps) {
                 </td>
                 <td className="px-6 py-4 text-gray-600">{returnReasonMap[r.return_reason] || r.return_reason}</td>
                 <td className="px-6 py-4 text-gray-600">{r.quantity}</td>
+                {/* 退自仓位（2026-09-18 用户拍板）：仓库名 · 仓位 */}
+                <td className="px-6 py-4 text-gray-500 text-xs">
+                  {r.warehouses?.name ? (
+                    <div>
+                      <div>{r.warehouses.name}</div>
+                      {r.location && <div className="text-gray-400">{r.location}</div>}
+                    </div>
+                  ) : (
+                    "-"
+                  )}
+                </td>
                 <td className="px-6 py-4 text-gray-600">{r.supplier_name || "-"}</td>
                 <td className="px-6 py-4 text-gray-500 text-xs">
                   {r.logistics_company && r.tracking_no ? (

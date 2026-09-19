@@ -43,6 +43,9 @@ export async function 配件入库(参数: {
     supplier: string;
     batch_no: string;
     notes: string;
+    /* 入库仓位（2026-09-19 用户拍板：全部出入库都记仓位；选填，填了就写仓位账） */
+    warehouse_id?: string;
+    location?: string;
   };
 }): Promise<入库结果> {
   const { user, error: 登录错误 } = await 验证用户已登录();
@@ -204,6 +207,8 @@ export async function 配件入库(参数: {
       p_batch_no: form.batch_no || null,
       p_waybill_id: waybillId,
       p_log_notes: logNotes,
+      p_warehouse_id: form.warehouse_id || null,
+      p_location: form.location || null,
     });
     if (rpc错误) return { success: false, error: rpc错误.message };
     const 入库事务结果 = rpc结果 as { success: boolean; error?: string } | null;
@@ -512,6 +517,9 @@ export async function 新建盘点单(参数: {
     system_qty: number;
     actual_qty: string;
     notes: string;
+    /* 按仓位盘点（2026-09-19）：仓位维度，NULL=未分配仓位的库存 */
+    warehouse_id?: string | null;
+    location?: string | null;
   }[];
 }): Promise<{ success: boolean; error?: string }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
@@ -537,20 +545,21 @@ export async function 新建盘点单(参数: {
     return { success: false, error: checkError?.message || "创建盘点单失败" };
   }
 
-  /* 插入盘点明细（只插填写了实际库存的行） */
-  const itemsToInsert = 参数.items
-    .filter((item) => item.actual_qty !== "")
-    .map((item) => {
-      const actual = parseInt(item.actual_qty) || 0;
-      return {
-        check_id: check.id,
-        part_id: item.part_id,
-        system_qty: item.system_qty,
-        actual_qty: actual,
-        diff_qty: actual - item.system_qty,
-        notes: item.notes.trim() || null,
-      };
-    });
+  /* 插入盘点明细（2026-09-19 按仓位盘点：全部行都插，没填实盘的 actual 留 NULL——
+     完成盘点时"该配件全部行都填了才校准总库存"依赖完整行数，不能只插填了的） */
+  const itemsToInsert = 参数.items.map((item) => {
+    const actual = item.actual_qty === "" ? null : parseInt(item.actual_qty) || 0;
+    return {
+      check_id: check.id,
+      part_id: item.part_id,
+      warehouse_id: item.warehouse_id || null,
+      location: item.location || null,
+      system_qty: item.system_qty,
+      actual_qty: actual,
+      diff_qty: actual === null ? null : actual - item.system_qty,
+      notes: item.notes.trim() || null,
+    };
+  });
 
   if (itemsToInsert.length > 0) {
     const { error: itemsError } = await supabase
@@ -587,4 +596,92 @@ export async function 完成盘点(盘点单id: string): Promise<{ success: bool
   revalidatePath("/inventory");
   revalidatePath("/inventory/checks");
   return { success: true, 调整条数: 事务结果.adjusted ?? 0 };
+}
+
+/* ═══ 报废出库 Server Action（2026-09-19 用户拍板：全部出入库都记仓位） ═══
+ * 一个事务扣批次/总库存/仓位 + 报废记录 + 流水，全在 scrap_part_stock RPC 里。 */
+export interface 报废输入 {
+  part_id: string;
+  batch_id: string;
+  warehouse_id: string;
+  location: string;
+  quantity: number;
+  reason: string;
+  notes: string;
+}
+
+export async function 报废出库(输入: 报废输入): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!输入.part_id || !输入.batch_id || !输入.warehouse_id) {
+    return { success: false, error: "配件、批次、仓位都是必选" };
+  }
+  if (!Number.isInteger(输入.quantity) || 输入.quantity <= 0) {
+    return { success: false, error: "报废数量必须大于 0" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("scrap_part_stock", {
+    p_part_id: 输入.part_id,
+    p_batch_id: 输入.batch_id,
+    p_warehouse_id: 输入.warehouse_id,
+    p_location: 输入.location,
+    p_quantity: 输入.quantity,
+    p_reason: 输入.reason,
+    p_notes: 输入.notes,
+    p_operator_id: user.id,
+  });
+  if (error) return { success: false, error: error.message };
+  const 结果 = data as unknown as { success: boolean; error?: string };
+  if (!结果?.success) return { success: false, error: 结果?.error || "报废失败" };
+
+  revalidatePath("/inventory");
+  revalidatePath("/inventory/scrap");
+  return { success: true };
+}
+
+/* ═══ 仓位调拨 Server Action（2026-09-19 用户拍板：全部出入库都记仓位） ═══
+ * 源仓位扣减 + 目标仓位加回，一个事务，总库存不变（transfer_stock_location RPC）。 */
+export interface 调拨输入 {
+  part_id: string;
+  from_warehouse_id: string;
+  from_location: string;
+  to_warehouse_id: string;
+  to_location: string;
+  quantity: number;
+  notes: string;
+}
+
+export async function 仓位调拨(输入: 调拨输入): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!输入.part_id || !输入.from_warehouse_id || !输入.to_warehouse_id) {
+    return { success: false, error: "配件、源仓位、目标仓库都是必选" };
+  }
+  if (!Number.isInteger(输入.quantity) || 输入.quantity <= 0) {
+    return { success: false, error: "调拨数量必须大于 0" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("transfer_stock_location", {
+    p_part_id: 输入.part_id,
+    p_from_warehouse_id: 输入.from_warehouse_id,
+    p_from_location: 输入.from_location,
+    p_to_warehouse_id: 输入.to_warehouse_id,
+    p_to_location: 输入.to_location,
+    p_quantity: 输入.quantity,
+    p_notes: 输入.notes,
+    p_operator_id: user.id,
+  });
+  if (error) return { success: false, error: error.message };
+  const 结果 = data as unknown as { success: boolean; error?: string };
+  if (!结果?.success) return { success: false, error: 结果?.error || "调拨失败" };
+
+  revalidatePath("/inventory");
+  revalidatePath("/inventory/transfer");
+  return { success: true };
 }

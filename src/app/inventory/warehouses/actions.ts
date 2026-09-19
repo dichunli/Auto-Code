@@ -14,6 +14,8 @@ interface 仓位 {
   id: string;
   name: string;
   warehouse_id: string;
+  /* 退料区标记（2026-09-19：单独存放待退供应商货物的仓位） */
+  is_return_zone?: boolean;
 }
 
 /* 获取仓库列表 */
@@ -218,4 +220,26 @@ export async function 更新仓位(参数: {
 
     return { success: true };
   }) as Promise<{ success: boolean; error?: string }>;
+}
+
+/* 切换仓位"退料区"标记（2026-09-19 用户拍板：有些仓位单独存放退料，
+   退货弹窗退自仓位优先带出退料区） */
+export async function 切换退料区(参数: {
+  id: string;
+  is_return_zone: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  return 包装ServerAction错误(async () => {
+    const supabase = await createClient();
+    const { user, error: 登录错误 } = await 验证用户已登录();
+    if (!user) return { success: false, error: 登录错误 || "未登录" };
+    const { error } = await supabase
+      .from("warehouse_locations")
+      .update({ is_return_zone: 参数.is_return_zone })
+      .eq("id", 参数.id);
+
+    if (error) {
+      return { success: false, error: "保存失败：" + error.message };
+    }
+    return { success: true };
+  });
 }
