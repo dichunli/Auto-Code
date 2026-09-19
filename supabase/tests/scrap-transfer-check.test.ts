@@ -31,6 +31,7 @@ const PFX = "TESTST-";
 let client: Client;
 let warehouseA: string;
 let warehouseB: string;
+let categoryId: string;
 
 interface RPC结果 {
   success: boolean;
@@ -68,7 +69,7 @@ async function 造配件(opts: { 批次数量?: number; 总库存?: number; 仓�
   const location = opts.location ?? "A-01";
   const 随机 = Math.random().toString().slice(2, 10);
 
-  const pn = await query(`INSERT INTO part_names (name) VALUES ($1) RETURNING id`, [`${PFX}配件名${随机}`]);
+  const pn = await query(`INSERT INTO part_names (category_id, name) VALUES ($1, $2) RETURNING id`, [categoryId, `${PFX}配件名${随机}`]);
   const part = await query(
     `INSERT INTO parts (part_number, part_name_id, name, quantity) VALUES ($1, $2, $3, $4) RETURNING id`,
     [`${PFX}PN${随机}`, pn.rows[0].id, `${PFX}测试配件${随机}`, 总库存]
@@ -125,6 +126,7 @@ describe("报废/调拨/按仓位盘点 - 数据库集成测试", () => {
     await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM warehouses WHERE name LIKE $1`, [`${PFX}%`]);
+    await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
 
     /* 造测试用户：admin + 路人 */
     for (const [uid, name] of [[TEST_USER_ID, "仓管测试员"], [NOBODY_USER_ID, "路人戊"]] as const) {
@@ -143,11 +145,13 @@ describe("报废/调拨/按仓位盘点 - 数据库集成测试", () => {
       [TEST_USER_ID, roleRes.rows[0].id]
     );
 
-    /* 两个仓库 */
+    /* 两个仓库 + 配件分类（part_names.category_id 为 NOT NULL FK） */
     const wa = await query(`INSERT INTO warehouses (name) VALUES ($1) RETURNING id`, [`${PFX}仓库A`]);
     warehouseA = wa.rows[0].id;
     const wb = await query(`INSERT INTO warehouses (name) VALUES ($1) RETURNING id`, [`${PFX}仓库B`]);
     warehouseB = wb.rows[0].id;
+    const cat = await query(`INSERT INTO part_categories (name) VALUES ($1) RETURNING id`, [`${PFX}分类`]);
+    categoryId = cat.rows[0].id;
   });
 
   afterAll(async () => {
@@ -161,6 +165,7 @@ describe("报废/调拨/按仓位盘点 - 数据库集成测试", () => {
     await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM warehouses WHERE name LIKE $1`, [`${PFX}%`]);
+    await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM profile_roles WHERE profile_id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
     await query(`DELETE FROM profiles WHERE id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
     await query(`DELETE FROM auth.users WHERE id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);

@@ -145,6 +145,7 @@ async function cleanupAll() {
   await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM part_specifications WHERE name LIKE $1`, [`${PFX}%`]);
+  await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM warehouses WHERE name LIKE $1`, [`${PFX}%`]);
 }
 
@@ -172,7 +173,14 @@ describe("配件表单一个事务 save_part_form - 数据库集成测试", () =
       [TEST_USER_ID]
     );
 
-    const pn = await query(`INSERT INTO part_names (name) VALUES ($1) RETURNING id`, [`${PFX}配件名`]);
+    /* part_names.category_id 为 NOT NULL FK，先建分类 */
+    await query(`INSERT INTO part_categories (name) VALUES ($1) ON CONFLICT DO NOTHING`, [`${PFX}分类`]);
+    const pn = await query(
+      `INSERT INTO part_names (category_id, name)
+       SELECT c.id, $1 FROM part_categories c WHERE c.name = $2
+       LIMIT 1 RETURNING id`,
+      [`${PFX}配件名`, `${PFX}分类`]
+    );
     partNameId = pn.rows[0].id;
     const sp = await query(`INSERT INTO part_specifications (name) VALUES ($1) RETURNING id`, [`${PFX}规格`]);
     specId = sp.rows[0].id;

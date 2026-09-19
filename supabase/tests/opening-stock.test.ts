@@ -28,6 +28,7 @@ const PFX = "TESTOS-";
 
 let client: Client;
 let warehouseId: string;
+let categoryId: string;
 
 interface RPC结果 {
   success: boolean;
@@ -61,7 +62,7 @@ async function withAuth<T>(userId: string, fn: () => Promise<T>): Promise<T> {
 
 async function 造配件(初始: number = 0): Promise<string> {
   const 随机 = Math.random().toString().slice(2, 10);
-  const pn = await query(`INSERT INTO part_names (name) VALUES ($1) RETURNING id`, [`${PFX}配件名${随机}`]);
+  const pn = await query(`INSERT INTO part_names (category_id, name) VALUES ($1, $2) RETURNING id`, [categoryId, `${PFX}配件名${随机}`]);
   const p = await query(
     `INSERT INTO parts (part_number, part_name_id, name, quantity) VALUES ($1, $2, $3, $4) RETURNING id`,
     [`${PFX}PN${随机}`, pn.rows[0].id, `${PFX}测试配件${随机}`, 初始]
@@ -86,6 +87,7 @@ describe("期初建账入库 RPC - 数据库集成测试", () => {
     await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM warehouses WHERE name LIKE $1`, [`${PFX}%`]);
+    await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
 
     /* 仓管 + 路人 */
     for (const [uid, name] of [[TEST_USER_ID, "期初测试仓管"], [NOBODY_USER_ID, "路人己"]] as const) {
@@ -107,6 +109,8 @@ describe("期初建账入库 RPC - 数据库集成测试", () => {
 
     const w = await query(`INSERT INTO warehouses (name) VALUES ($1) RETURNING id`, [`${PFX}主仓`]);
     warehouseId = w.rows[0].id;
+    const cat = await query(`INSERT INTO part_categories (name) VALUES ($1) RETURNING id`, [`${PFX}分类`]);
+    categoryId = cat.rows[0].id;
   });
 
   afterAll(async () => {
@@ -116,6 +120,7 @@ describe("期初建账入库 RPC - 数据库集成测试", () => {
     await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM warehouses WHERE name LIKE $1`, [`${PFX}%`]);
+    await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM profile_roles WHERE profile_id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
     await query(`DELETE FROM profiles WHERE id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
     await query(`DELETE FROM auth.users WHERE id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);

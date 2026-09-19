@@ -42,9 +42,12 @@ describe("负库存 CHECK 约束 - 数据库集成测试", () => {
     await query(`DELETE FROM part_batches WHERE part_id IN (SELECT id FROM parts WHERE part_number LIKE $1)`, [`${PFX}%`]);
     await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
+    await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM warehouses WHERE name LIKE $1`, [`${PFX}%`]);
 
-    const pn = await query(`INSERT INTO part_names (name) VALUES ($1) RETURNING id`, [`${PFX}配件名`]);
+    /* part_names.category_id 为 NOT NULL FK，先建分类 */
+    const cat = await query(`INSERT INTO part_categories (name) VALUES ($1) RETURNING id`, [`${PFX}分类`]);
+    const pn = await query(`INSERT INTO part_names (category_id, name) VALUES ($1, $2) RETURNING id`, [cat.rows[0].id, `${PFX}配件名`]);
     const p = await query(
       `INSERT INTO parts (part_number, part_name_id, name, quantity) VALUES ($1, $2, $3, 10) RETURNING id`,
       [`${PFX}PN001`, pn.rows[0].id, `${PFX}测试配件`]
@@ -67,6 +70,7 @@ describe("负库存 CHECK 约束 - 数据库集成测试", () => {
     await query(`DELETE FROM part_batches WHERE part_id = $1`, [partId]);
     await query(`DELETE FROM parts WHERE id = $1`, [partId]);
     await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
+    await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM warehouses WHERE name LIKE $1`, [`${PFX}%`]);
     await client.end();
   });

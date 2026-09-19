@@ -25,6 +25,7 @@ const TEST_USER_ID = "e5e5e5e5-e5e5-4e5e-8e5e-e5e5e5e5e5e5";
 const PFX = "TESTRR-";
 
 let client: Client;
+let categoryId: string;
 
 interface 对账行 {
   part_id: string;
@@ -59,7 +60,7 @@ async function withAuth<T>(userId: string, fn: () => Promise<T>): Promise<T> {
 }
 
 async function 造配件(后缀: string, opts: { 总: number; 批次: number | null; 仓位: number | null }) {
-  const pn = await query(`INSERT INTO part_names (name) VALUES ($1) RETURNING id`, [`${PFX}名${后缀}`]);
+  const pn = await query(`INSERT INTO part_names (category_id, name) VALUES ($1, $2) RETURNING id`, [categoryId, `${PFX}名${后缀}`]);
   const p = await query(
     `INSERT INTO parts (part_number, part_name_id, name, quantity) VALUES ($1, $2, $3, $4) RETURNING id`,
     [`${PFX}PN${后缀}`, pn.rows[0].id, `${PFX}配件${后缀}`, opts.总]
@@ -85,6 +86,7 @@ async function cleanupAll() {
   await query(`DELETE FROM part_batches WHERE part_id IN (SELECT id FROM parts WHERE part_number LIKE $1)`, [`${PFX}%`]);
   await query(`DELETE FROM parts WHERE part_number LIKE $1`, [`${PFX}%`]);
   await query(`DELETE FROM part_names WHERE name LIKE $1`, [`${PFX}%`]);
+  await query(`DELETE FROM part_categories WHERE name LIKE $1`, [`${PFX}%`]);
 }
 
 describe("库存三方对账巡检 - 数据库集成测试", () => {
@@ -100,6 +102,8 @@ describe("库存三方对账巡检 - 数据库集成测试", () => {
       [TEST_USER_ID, `${PFX.toLowerCase()}admin@example.com`]
     );
     await query(`INSERT INTO profiles (id, full_name) VALUES ($1, '对账测试员') ON CONFLICT (id) DO NOTHING`, [TEST_USER_ID]);
+    const cat = await query(`INSERT INTO part_categories (name) VALUES ($1) RETURNING id`, [`${PFX}分类`]);
+    categoryId = cat.rows[0].id;
   });
 
   afterAll(async () => {
