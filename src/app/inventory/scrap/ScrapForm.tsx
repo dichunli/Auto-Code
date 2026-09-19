@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PartSearchDropdown } from "@/components/PartSearchDropdown";
+import { ScanLocationButton } from "@/components/ScanLocationButton";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { toast } from "@/lib/globalToast";
 import { 报废出库 } from "@/app/inventory/actions";
@@ -169,9 +170,24 @@ export default function ScrapForm({ 最近记录 }: { 最近记录: 报废记录
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  报废仓位 <span className="text-red-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    报废仓位 <span className="text-red-500">*</span>
+                  </label>
+                  {/* 扫仓位码确认（2026-09-19 用户拍板） */}
+                  <ScanLocationButton
+                    on命中={(w) => {
+                      const 选项 = 仓位选项们.find(
+                        (o) => o.warehouse_id === w.warehouse_id && o.location === w.location
+                      );
+                      if (!选项) {
+                        toast(`该配件在「${w.warehouse_name}${w.location ? ` · ${w.location}` : ""}」没有库存`, "warning");
+                        return;
+                      }
+                      设仓位值(`${w.warehouse_id}|${w.location}`);
+                    }}
+                  />
+                </div>
                 <select
                   value={仓位值}
                   onChange={(e) => 设仓位值(e.target.value)}

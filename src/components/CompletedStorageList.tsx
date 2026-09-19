@@ -9,6 +9,7 @@ import { useConfirm } from "./ConfirmDialog";
 import { useToast } from "@/components/Toast";
 import { DocumentNameInput } from "./DocumentNameInput";
 import { ImageUploader } from "./ImageUploader";
+import { ScanLocationButton } from "./ScanLocationButton";
 import { useDebounce } from "@/lib/useDebounce";
 import { toast } from "@/lib/globalToast";
 import type { PurchaseOrder, PurchaseOrderItem } from "@/types/domain";
@@ -60,6 +61,8 @@ interface 仓位选项 {
   warehouse_name: string;
   location: string;
   quantity: number;
+  /* 退料区（2026-09-19 用户拍板：单独存放退料的仓位，预填优先带出） */
+  退料区: boolean;
 }
 
 /* 退货弹窗（2026-09-16 接入正规退货流程，单独/批量共用）：
@@ -94,20 +97,25 @@ function BatchReturnModal({
   on完成: () => void;
 }) {
   const { showToast } = useToast();
+  /* 退自仓位预填规则（2026-09-19 用户拍板）：退料区（单独存放退料的仓位）有库存优先带出；
+     否则只有一个有库存的仓位才自动带出，多仓位人工选/扫码 */
+  function 默认仓位(仓位们: 仓位选项[]): 仓位选项 | null {
+    const 退料区仓位 = 仓位们.find((w) => w.退料区);
+    if (退料区仓位) return 退料区仓位;
+    return 仓位们.length === 1 ? 仓位们[0] : null;
+  }
   /* 每行表单：批次id + 数量（字符串存储，提交转 number，遵守表单规范）；
      批次默认带出本次入库的批次；数量默认不填（2026-09-18 用户拍板：
      默认带数量容易手滑全退，必须手动填、空着红框提醒） */
   const [表单, set表单] = useState(() =>
     行们.map((it) => {
-      /* 退自仓位预填：该配件只有一个有库存的仓位时直接带出 */
-      const 仓位们 = 仓位Map.get(it.part_id || "") || [];
-      const 唯一仓位 = 仓位们.length === 1 ? 仓位们[0] : null;
+      const 预填 = 默认仓位(仓位Map.get(it.part_id || "") || []);
       return {
         itemId: it.id,
         batch_id: 默认批次Map.get(it.id) ?? "",
         qty: "",
-        warehouse_id: 唯一仓位?.warehouse_id ?? "",
-        location: 唯一仓位?.location ?? "",
+        warehouse_id: 预填?.warehouse_id ?? "",
+        location: 预填?.location ?? "",
       };
     })
   );
@@ -120,16 +128,17 @@ function BatchReturnModal({
     set表单((prev) =>
       prev.map((r) => {
         const it = 行们.find((x) => x.id === r.itemId)!;
-        const 仓位们 = 仓位Map.get(it.part_id || "") || [];
-        const 唯一仓位 = 仓位们.length === 1 ? 仓位们[0] : null;
+        const 预填 = 默认仓位(仓位Map.get(it.part_id || "") || []);
         return {
           ...r,
           batch_id: r.batch_id === "" ? 默认批次Map.get(r.itemId) ?? r.batch_id : r.batch_id,
-          warehouse_id: r.warehouse_id === "" ? 唯一仓位?.warehouse_id ?? r.warehouse_id : r.warehouse_id,
-          location: r.location === "" ? 唯一仓位?.location ?? r.location : r.location,
+          warehouse_id: r.warehouse_id === "" ? 预填?.warehouse_id ?? r.warehouse_id : r.warehouse_id,
+          location: r.location === "" ? 预填?.location ?? r.location : r.location,
         };
       })
     );
+    /* 默认仓位 故意不进依赖：它只依赖 props，且只在批次数据到达时跑一次 */
+     
   }, [批次Map, 默认批次Map, 仓位Map, 行们]);
   const [原因, set原因] = useState("");
   const [备注, set备注] = useState("");
@@ -289,26 +298,43 @@ function BatchReturnModal({
                         )}
                       </td>
                       {/* 退自仓位（2026-09-18 用户拍板）：优先从该配件有库存的仓位里选；
-                          配件没有仓位记录时手动选仓库、填仓位。红框=未选仓库 */}
+                          配件没有仓位记录时手动选仓库、填仓位。红框=未选仓库；
+                          多仓位可扫仓位码确认（2026-09-19） */}
                       <td className="py-2.5 pr-3">
                         {(仓位Map.get(it.part_id || "") || []).length > 0 ? (
-                          <select
-                            value={行.warehouse_id ? `${行.warehouse_id}|${行.location}` : ""}
-                            onChange={(e) => {
-                              const [wid, loc] = e.target.value ? e.target.value.split("|") : ["", ""];
-                              改行(it.id, { warehouse_id: wid, location: loc });
-                            }}
-                            className={`w-full max-w-[220px] px-2 py-1.5 text-sm rounded border bg-white focus:outline-none focus:border-blue-400 ${
-                              !行.warehouse_id ? "border-red-400 bg-red-50" : "border-gray-200"
-                            }`}
-                          >
-                            <option value="">选择仓位</option>
-                            {(仓位Map.get(it.part_id || "") || []).map((w) => (
-                              <option key={`${w.warehouse_id}|${w.location}`} value={`${w.warehouse_id}|${w.location}`}>
-                                {w.warehouse_name}{w.location ? ` · ${w.location}` : ""}（存 {w.quantity}）
-                              </option>
-                            ))}
-                          </select>
+                          <div className="space-y-1">
+                            <select
+                              value={行.warehouse_id ? `${行.warehouse_id}|${行.location}` : ""}
+                              onChange={(e) => {
+                                const [wid, loc] = e.target.value ? e.target.value.split("|") : ["", ""];
+                                改行(it.id, { warehouse_id: wid, location: loc });
+                              }}
+                              className={`w-full max-w-[220px] px-2 py-1.5 text-sm rounded border bg-white focus:outline-none focus:border-blue-400 ${
+                                !行.warehouse_id ? "border-red-400 bg-red-50" : "border-gray-200"
+                              }`}
+                            >
+                              <option value="">选择仓位</option>
+                              {(仓位Map.get(it.part_id || "") || []).map((w) => (
+                                <option key={`${w.warehouse_id}|${w.location}`} value={`${w.warehouse_id}|${w.location}`}>
+                                  {w.warehouse_name}{w.location ? ` · ${w.location}` : ""}（存 {w.quantity}）{w.退料区 ? "【退料区】" : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <div>
+                              <ScanLocationButton
+                                on命中={(w) => {
+                                  const 选项 = (仓位Map.get(it.part_id || "") || []).find(
+                                    (o) => o.warehouse_id === w.warehouse_id && o.location === w.location
+                                  );
+                                  if (!选项) {
+                                    toast(`「${it.name}」在「${w.warehouse_name}${w.location ? ` · ${w.location}` : ""}」没有库存`, "warning");
+                                    return;
+                                  }
+                                  改行(it.id, { warehouse_id: w.warehouse_id, location: w.location });
+                                }}
+                              />
+                            </div>
+                          </div>
                         ) : (
                           <div className="flex gap-1">
                             <select
@@ -603,15 +629,19 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
     set默认批次Map(默认Map);
 
     /* 仓位选项（2026-09-18 用户拍板）：该配件当前有库存的仓位；
-       顺带拉全部仓库，配件没有仓位记录时手动选 */
-    const [{ data: 仓位行 }, { data: 仓库们 }] = await Promise.all([
+       顺带拉全部仓库（无仓位记录时手选）和退料区标记（预填优先带出退料区） */
+    const [{ data: 仓位行 }, { data: 仓库们 }, { data: 退料区们 }] = await Promise.all([
       supabase
         .from("part_stock_locations")
         .select("part_id, warehouse_id, location, quantity, warehouses(name)")
         .in("part_id", partIds)
         .gt("quantity", 0),
       supabase.from("warehouses").select("id, name").order("name"),
+      supabase.from("warehouse_locations").select("warehouse_id, name").eq("is_return_zone", true),
     ]);
+    const 退料区Set = new Set(
+      ((退料区们 || []) as { warehouse_id: string; name: string }[]).map((z) => `${z.warehouse_id}|${z.name}`)
+    );
     const 仓位Map = new Map<string, 仓位选项[]>();
     for (const w of (仓位行 || []) as unknown as { part_id: string; warehouse_id: string; location: string | null; quantity: number; warehouses: { name: string } | { name: string }[] | null }[]) {
       const 仓库名 = Array.isArray(w.warehouses) ? w.warehouses[0]?.name : w.warehouses?.name;
@@ -621,6 +651,7 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
         warehouse_name: 仓库名 || "",
         location: w.location || "",
         quantity: w.quantity,
+        退料区: 退料区Set.has(`${w.warehouse_id}|${w.location || ""}`),
       });
       仓位Map.set(w.part_id, list);
     }

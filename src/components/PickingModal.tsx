@@ -6,6 +6,7 @@ import { 创建领料单, type 领料明细输入 } from "@/app/picking-orders/a
 import PickingScanCheckModal, { type 待核配件 } from "@/components/PickingScanCheckModal";
 import { toast } from "@/lib/globalToast";
 import { 全局提示 } from "@/components/GlobalDialogs";
+import { ScanLocationButton } from "@/components/ScanLocationButton";
 
 interface Batch {
   id: string;
@@ -302,11 +303,27 @@ export function PickingModal({
             已选数量: <span className="font-medium">{totalSelected}</span> / {quantityNeeded}
           </div>
 
-          {/* 取自仓位（2026-09-19 用户拍板：领料同步扣仓位数量，必选） */}
+          {/* 取自仓位（2026-09-19 用户拍板：领料同步扣仓位数量，必选；
+              多仓位可下拉选择或扫仓位码确认） */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              取自仓位 <span className="text-red-500">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                取自仓位 <span className="text-red-500">*</span>
+              </label>
+              <ScanLocationButton
+                on命中={(w) => {
+                  const 选项 = 仓位选项们.find(
+                    (o) => o.warehouse_id === w.warehouse_id && o.location === w.location
+                  );
+                  if (!选项) {
+                    toast(`该配件在「${w.warehouse_name}${w.location ? ` · ${w.location}` : ""}」没有库存`, "warning");
+                    return;
+                  }
+                  设取自仓位(`${w.warehouse_id}|${w.location}`);
+                  toast(`已选仓位：${w.warehouse_name}${w.location ? ` · ${w.location}` : ""}`, "success");
+                }}
+              />
+            </div>
             <select
               value={取自仓位}
               onChange={(e) => 设取自仓位(e.target.value)}

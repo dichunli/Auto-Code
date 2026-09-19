@@ -8,6 +8,7 @@ import PickingScanCheckModal, { type 待核配件 } from "@/components/PickingSc
 import type { 待领料分支, 可用批次, 工单概要, 仓位选项 } from "./page";
 import { toast } from "@/lib/globalToast";
 import { 全局提示 } from "@/components/GlobalDialogs";
+import { ScanLocationButton } from "@/components/ScanLocationButton";
 
 interface Props {
   工单: 工单概要 | null;
@@ -289,6 +290,19 @@ export default function PickingOrderForm({ 工单, 分支列表, 批次列表, �
                               </option>
                             ))}
                         </select>
+                        {/* 扫仓位码确认（2026-09-19 用户拍板） */}
+                        <ScanLocationButton
+                          on命中={(w) => {
+                            const 选项 = 仓位列表.find(
+                              (o) => o.part_id === b.part_id && o.warehouse_id === w.warehouse_id && o.location === w.location
+                            );
+                            if (!选项) {
+                              toast(`「${b.name}」在「${w.warehouse_name}${w.location ? ` · ${w.location}` : ""}」没有库存`, "warning");
+                              return;
+                            }
+                            设取自仓位((prev) => ({ ...prev, [b.part_id]: `${w.warehouse_id}|${w.location}` }));
+                          }}
+                        />
                       </div>
                     )}
                     {批次.length === 0 ? (
