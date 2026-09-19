@@ -29,6 +29,15 @@ export interface 可用批次 {
   inbound_at: string | null;
 }
 
+/* 取自仓位选项（2026-09-19 用户拍板：领料同步扣仓位数量，方便随时盘点） */
+export interface 仓位选项 {
+  part_id: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  location: string;
+  quantity: number;
+}
+
 export interface 工单概要 {
   id: string;
   order_no: string;
@@ -170,14 +179,36 @@ export default async function NewPickingOrderPage({
 
   const 配件ids = Array.from(new Set(本单分支.map((b) => b.part_id)));
   let 批次: 可用批次[] = [];
+  let 仓位列表: 仓位选项[] = [];
   if (配件ids.length > 0) {
-    const { data: 批次数据 } = await supabase
-      .from("part_batches")
-      .select("id, part_id, batch_no, remaining, unit_cost, inbound_at")
-      .in("part_id", 配件ids)
-      .gt("remaining", 0)
-      .order("inbound_at", { ascending: true });
-    批次 = (批次数据 || []) as unknown as 可用批次[];
+    const [批次结果, 仓位结果] = await Promise.all([
+      supabase
+        .from("part_batches")
+        .select("id, part_id, batch_no, remaining, unit_cost, inbound_at")
+        .in("part_id", 配件ids)
+        .gt("remaining", 0)
+        .order("inbound_at", { ascending: true }),
+      /* 各配件有库存的仓位（取自仓位下拉用，2026-09-19） */
+      supabase
+        .from("part_stock_locations")
+        .select("part_id, warehouse_id, location, quantity, warehouses(name)")
+        .in("part_id", 配件ids)
+        .gt("quantity", 0),
+    ]);
+    批次 = (批次结果.data || []) as unknown as 可用批次[];
+    仓位列表 = ((仓位结果.data || []) as unknown as {
+      part_id: string;
+      warehouse_id: string;
+      location: string | null;
+      quantity: number;
+      warehouses: { name: string } | { name: string }[] | null;
+    }[]).map((w) => ({
+      part_id: w.part_id,
+      warehouse_id: w.warehouse_id,
+      warehouse_name: Array.isArray(w.warehouses) ? w.warehouses[0]?.name || "" : w.warehouses?.name || "",
+      location: w.location || "",
+      quantity: w.quantity,
+    }));
   }
 
   /* 出库管控（2026-09-11）：三级 OR（配件/名称/分类任一级勾了即生效）+ 扫码比对用条码 */
@@ -238,5 +269,5 @@ export default async function NewPickingOrderPage({
     档案编码: 管控Map[b.part_id]?.档案编码 || null,
   }));
 
-  return <PickingOrderForm 工单={工单} 分支列表={分支列表} 批次列表={批次} />;
+  return <PickingOrderForm 工单={工单} 分支列表={分支列表} 批次列表={批次} 仓位列表={仓位列表} />;
 }

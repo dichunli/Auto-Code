@@ -16,6 +16,9 @@ export interface 领料明细输入 {
   unit?: string | null;
   batch_no?: string | null;
   unit_cost?: number | null;
+  /* 取自仓位（2026-09-19 用户拍板：领料同步扣仓位数量，方便随时盘点） */
+  warehouse_id?: string | null;
+  location?: string | null;
 }
 
 /* 直领明细输入（急件直领只需分支和数量，采购行分摊由 RPC 自动做） */

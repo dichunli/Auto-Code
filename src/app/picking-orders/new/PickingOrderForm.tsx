@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 创建领料单, type 领料明细输入 } from "@/app/picking-orders/actions";
 import PickingScanCheckModal, { type 待核配件 } from "@/components/PickingScanCheckModal";
-import type { 待领料分支, 可用批次, 工单概要 } from "./page";
+import type { 待领料分支, 可用批次, 工单概要, 仓位选项 } from "./page";
 import { toast } from "@/lib/globalToast";
 import { 全局提示 } from "@/components/GlobalDialogs";
 
@@ -13,13 +13,26 @@ interface Props {
   工单: 工单概要 | null;
   分支列表: 待领料分支[];
   批次列表: 可用批次[];
+  /* 各配件有库存的仓位（取自仓位下拉用，2026-09-19 用户拍板：领料同步扣仓位数量） */
+  仓位列表: 仓位选项[];
 }
 
 /* 批量开领料单表单:勾选配件 → 分配批次 → 一次开单 */
-export default function PickingOrderForm({ 工单, 分支列表, 批次列表 }: Props) {
+export default function PickingOrderForm({ 工单, 分支列表, 批次列表, 仓位列表 }: Props) {
   const router = useRouter();
   const [勾选, 设勾选] = useState<Set<string>>(() => new Set(分支列表.map((b) => b.id)));
   const [分配, 设分配] = useState<Record<string, Record<string, number>>>({});
+  /* 每个配件的取自仓位（"仓库id|仓位"），唯一仓位自动带出 */
+  const [取自仓位, 设取自仓位] = useState<Record<string, string>>(() => {
+    const 初始: Record<string, string> = {};
+    for (const b of 分支列表) {
+      const 仓位们 = 仓位列表.filter((w) => w.part_id === b.part_id);
+      if (仓位们.length === 1) {
+        初始[b.part_id] = `${仓位们[0].warehouse_id}|${仓位们[0].location}`;
+      }
+    }
+    return 初始;
+  });
   const [领料人, 设领料人] = useState("");
   const [备注, 设备注] = useState("");
   const [提交中, 设提交中] = useState(false);
@@ -79,13 +92,13 @@ export default function PickingOrderForm({ 工单, 分支列表, 批次列表 }:
     });
   }
 
-  /* 校验:每个勾选分支的分配数量必须在 1 ~ 剩余需领 之间 */
+  /* 校验:每个勾选分支的分配数量必须在 1 ~ 剩余需领 之间，且已选取自仓位 */
   const 勾选分支 = 分支列表.filter((b) => 勾选.has(b.id));
   const 可提交 =
     勾选分支.length > 0 &&
     勾选分支.every((b) => {
       const 已配 = 分支已配数量(b.id);
-      return 已配 > 0 && 已配 <= b.剩余需领;
+      return 已配 > 0 && 已配 <= b.剩余需领 && !!取自仓位[b.part_id];
     });
 
   /* 勾选分支里的需扫码配件（按配件去重合并数量，扫码窗清单）。数据量小，直接普通计算不用 useMemo */
@@ -130,6 +143,7 @@ export default function PickingOrderForm({ 工单, 分支列表, 批次列表 }:
       const 明细: 领料明细输入[] = [];
       for (const b of 勾选分支) {
         const 分支批次 = 批次按配件[b.part_id] || [];
+        const [wid, loc] = (取自仓位[b.part_id] || "|").split("|");
         for (const [批次id, 数量] of Object.entries(分配[b.id] || {})) {
           if (数量 <= 0) continue;
           const 批次 = 分支批次.find((x) => x.id === 批次id);
@@ -145,6 +159,8 @@ export default function PickingOrderForm({ 工单, 分支列表, 批次列表 }:
             unit: b.unit,
             batch_no: 批次?.batch_no || null,
             unit_cost: 批次?.unit_cost ?? null,
+            warehouse_id: wid || null,
+            location: loc || null,
           });
         }
       }
@@ -244,7 +260,37 @@ export default function PickingOrderForm({ 工单, 分支列表, 批次列表 }:
                 </div>
 
                 {勾选.has(b.id) && (
-                  <div className="px-5 py-3">
+                  <div className="px-5 py-3 space-y-3">
+                    {/* 取自仓位（2026-09-19 用户拍板：领料同步扣仓位数量，必选） */}
+                    {批次.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          取自仓位 <span className="text-red-500">*</span>
+                        </span>
+                        <select
+                          value={取自仓位[b.part_id] || ""}
+                          onChange={(e) =>
+                            设取自仓位((prev) => ({ ...prev, [b.part_id]: e.target.value }))
+                          }
+                          className={`flex-1 max-w-xs px-2 py-1.5 text-sm rounded border bg-white focus:outline-none focus:border-blue-400 ${
+                            !取自仓位[b.part_id] ? "border-red-400 bg-red-50" : "border-gray-300"
+                          }`}
+                        >
+                          <option value="">请选择取自仓位</option>
+                          {仓位列表
+                            .filter((w) => w.part_id === b.part_id)
+                            .map((w) => (
+                              <option
+                                key={`${w.warehouse_id}|${w.location}`}
+                                value={`${w.warehouse_id}|${w.location}`}
+                              >
+                                {w.warehouse_name}
+                                {w.location ? ` · ${w.location}` : ""}（存 {w.quantity}）
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
                     {批次.length === 0 ? (
                       <div className="text-sm text-red-500">该配件没有可用库存批次,请先入库</div>
                     ) : (
