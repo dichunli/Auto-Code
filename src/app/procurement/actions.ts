@@ -685,6 +685,9 @@ export interface 已入库退货明细 {
   /* 退货照片（2026-09-18 用户拍板）：退货时可选拍，确认退货（生成采退单）时才必填 */
   photos?: string[];
   package_photos?: string[];
+  /* 退自仓位（2026-09-18 用户拍板）：退货时选，待退货/已退货列表显示 */
+  warehouse_id?: string | null;
+  location?: string | null;
 }
 
 export async function 已入库退货(明细: 已入库退货明细[]): Promise<操作结果> {

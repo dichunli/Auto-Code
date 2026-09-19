@@ -75,6 +75,10 @@ export interface ReturnRecord {
   unit_cost: number | null;
   batch_id: string | null;
   notes: string | null;
+  /* 退自仓位（2026-09-18 用户拍板：待退货显示仓位） */
+  warehouse_id: string | null;
+  location: string | null;
+  warehouses: { name: string } | null;
   /* 车牌（2026-09-18 用户拍板：有车牌信息的退货记录要显示，经采购明细快照取） */
   purchase_order_items: { license_plate: string | null } | null;
   work_order_item_parts: WorkOrderItemPart | null;
@@ -157,7 +161,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
     const { data, error } = await supabase
       .from("supplier_return_records")
       .select(
-        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, status, created_at, source, purchase_order_item_id, supplier_id, part_id, part_number, part_name, brand, specification, unit, unit_cost, batch_id, notes, purchase_order_items(license_plate), work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
+        "id, supplier_name, return_reason, quantity, logistics_company, tracking_no, photos, package_photos, status, created_at, source, purchase_order_item_id, supplier_id, part_id, part_number, part_name, brand, specification, unit, unit_cost, batch_id, notes, warehouse_id, location, warehouses(name), purchase_order_items(license_plate), work_order_item_parts(id, name, part_number, part_id, brand, specification, unit, unit_cost, notes, document_name), profiles(full_name)"
       )
       .eq("status", "pending")
       .order("created_at", { ascending: false });
@@ -606,6 +610,7 @@ export function PendingReturnList(props: PendingReturnListProps) {
                   <th className="px-6 py-3 text-left font-medium text-gray-500">单据名称</th>
                   <th className="px-6 py-3 text-left font-medium text-gray-500">退货原因</th>
                   <th className="px-6 py-3 text-left font-medium text-gray-500">数量</th>
+                  <th className="px-6 py-3 text-left font-medium text-gray-500">退自仓位</th>
                   <th className="px-6 py-3 text-left font-medium text-gray-500">物流信息</th>
                   <th className="px-6 py-3 text-left font-medium text-gray-500">退货照片</th>
                   <th className="px-6 py-3 text-left font-medium text-gray-500">时间</th>
@@ -672,6 +677,17 @@ export function PendingReturnList(props: PendingReturnListProps) {
                       {r.notes && <div className="text-xs text-gray-400 mt-0.5">{r.notes}</div>}
                     </td>
                     <td className="px-6 py-4 text-gray-600">{r.quantity}</td>
+                    {/* 退自仓位（2026-09-18 用户拍板）：仓库名 · 仓位 */}
+                    <td className="px-6 py-4 text-gray-500 text-xs">
+                      {r.warehouses?.name ? (
+                        <div>
+                          <div>{r.warehouses.name}</div>
+                          {r.location && <div className="text-gray-400">{r.location}</div>}
+                        </div>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-gray-500 text-xs">
                       {r.logistics_company && r.tracking_no ? (
                         <div>

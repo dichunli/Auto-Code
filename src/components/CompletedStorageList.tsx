@@ -54,6 +54,14 @@ interface 库存批次 {
   来源批次号?: string | null;
 }
 
+/* 仓位选项（退货弹窗"退自仓位"用）：配件当前有库存的仓位 */
+interface 仓位选项 {
+  warehouse_id: string;
+  warehouse_name: string;
+  location: string;
+  quantity: number;
+}
+
 /* 退货弹窗（2026-09-16 接入正规退货流程，单独/批量共用）：
    每行选批次、填数量，数量上限 = 已入库数 − 已退数（防重复退货）；
    原因下拉（质量问题/客户悔单/其他）+ 备注全单共用。
@@ -67,6 +75,8 @@ function BatchReturnModal({
   批次Map,
   已退Map,
   默认批次Map,
+  仓位Map,
+  仓库列表,
   onClose,
   on完成,
 }: {
@@ -76,6 +86,10 @@ function BatchReturnModal({
   已退Map: Map<string, number>;
   /* 本次入库批次（2026-09-18 用户拍板）：采购明细行 id → 默认批次 id，打开弹窗自动选中 */
   默认批次Map: Map<string, string>;
+  /* 退自仓位选项（2026-09-18 用户拍板）：part_id → 该配件有库存的仓位列表 */
+  仓位Map: Map<string, 仓位选项[]>;
+  /* 全部仓库（配件无仓位记录时手选用） */
+  仓库列表: { id: string; name: string }[];
   onClose: () => void;
   on完成: () => void;
 }) {
@@ -84,26 +98,39 @@ function BatchReturnModal({
      批次默认带出本次入库的批次；数量默认不填（2026-09-18 用户拍板：
      默认带数量容易手滑全退，必须手动填、空着红框提醒） */
   const [表单, set表单] = useState(() =>
-    行们.map((it) => ({
-      itemId: it.id,
-      batch_id: 默认批次Map.get(it.id) ?? "",
-      qty: "",
-    }))
+    行们.map((it) => {
+      /* 退自仓位预填：该配件只有一个有库存的仓位时直接带出 */
+      const 仓位们 = 仓位Map.get(it.part_id || "") || [];
+      const 唯一仓位 = 仓位们.length === 1 ? 仓位们[0] : null;
+      return {
+        itemId: it.id,
+        batch_id: 默认批次Map.get(it.id) ?? "",
+        qty: "",
+        warehouse_id: 唯一仓位?.warehouse_id ?? "",
+        location: 唯一仓位?.location ?? "",
+      };
+    })
   );
-  /* 默认批次异步回填（2026-09-18 踩坑）：弹窗先挂载、批次数据后查到，
+  /* 默认批次/仓位异步回填（2026-09-18 踩坑）：弹窗先挂载、数据后查到，
      useState 初始化只在挂载时跑一次，必须在数据到达后回填未手动选过的行 */
-  const 已回填默认批次 = useRef(false);
+  const 已回填默认 = useRef(false);
   useEffect(() => {
-    if (已回填默认批次.current || 批次Map === null) return;
-    已回填默认批次.current = true;
+    if (已回填默认.current || 批次Map === null) return;
+    已回填默认.current = true;
     set表单((prev) =>
-      prev.map((r) =>
-        r.batch_id === "" && 默认批次Map.get(r.itemId)
-          ? { ...r, batch_id: 默认批次Map.get(r.itemId)! }
-          : r
-      )
+      prev.map((r) => {
+        const it = 行们.find((x) => x.id === r.itemId)!;
+        const 仓位们 = 仓位Map.get(it.part_id || "") || [];
+        const 唯一仓位 = 仓位们.length === 1 ? 仓位们[0] : null;
+        return {
+          ...r,
+          batch_id: r.batch_id === "" ? 默认批次Map.get(r.itemId) ?? r.batch_id : r.batch_id,
+          warehouse_id: r.warehouse_id === "" ? 唯一仓位?.warehouse_id ?? r.warehouse_id : r.warehouse_id,
+          location: r.location === "" ? 唯一仓位?.location ?? r.location : r.location,
+        };
+      })
     );
-  }, [批次Map, 默认批次Map]);
+  }, [批次Map, 默认批次Map, 仓位Map, 行们]);
   const [原因, set原因] = useState("");
   const [备注, set备注] = useState("");
   const [提交中, set提交中] = useState(false);
@@ -112,7 +139,7 @@ function BatchReturnModal({
   const [货物照片, set货物照片] = useState<string[]>([]);
   const [外包装照片, set外包装照片] = useState<string[]>([]);
 
-  function 改行(itemId: string, patch: Partial<{ batch_id: string; qty: string }>) {
+  function 改行(itemId: string, patch: Partial<{ batch_id: string; qty: string; warehouse_id: string; location: string }>) {
     set表单((prev) => prev.map((r) => (r.itemId === itemId ? { ...r, ...patch } : r)));
   }
 
@@ -136,6 +163,11 @@ function BatchReturnModal({
       const 可退 = 可退数(it);
       if (!r.batch_id) {
         showToast(`「${it.name}」还没选批次`, "warning");
+        return;
+      }
+      /* 退自仓位必选（2026-09-18 用户拍板） */
+      if (!r.warehouse_id) {
+        showToast(`「${it.name}」还没选退自仓位（仓库）`, "warning");
         return;
       }
       const 批次 = (批次Map?.get(it.part_id || "") || []).find((b) => b.id === r.batch_id);
@@ -168,6 +200,8 @@ function BatchReturnModal({
           quantity: parseInt(r.qty, 10),
           return_reason: 原因,
           notes: 备注.trim() || null,
+          warehouse_id: r.warehouse_id || null,
+          location: r.location.trim() || null,
           photos: 货物照片.length > 0 ? 货物照片 : undefined,
           package_photos: 外包装照片.length > 0 ? 外包装照片 : undefined,
         }))
@@ -214,6 +248,7 @@ function BatchReturnModal({
                   <th className="py-2 pr-3 font-medium text-right w-20">可退</th>
                   <th className="py-2 pr-3 font-medium text-right w-16">已退</th>
                   <th className="py-2 pr-3 font-medium">退自批次（按剩余量）</th>
+                  <th className="py-2 pr-3 font-medium">退自仓位 <span className="text-red-500">*</span></th>
                   <th className="py-2 font-medium text-right w-24">退货数量</th>
                 </tr>
               </thead>
@@ -251,6 +286,51 @@ function BatchReturnModal({
                               </option>
                             ))}
                           </select>
+                        )}
+                      </td>
+                      {/* 退自仓位（2026-09-18 用户拍板）：优先从该配件有库存的仓位里选；
+                          配件没有仓位记录时手动选仓库、填仓位。红框=未选仓库 */}
+                      <td className="py-2.5 pr-3">
+                        {(仓位Map.get(it.part_id || "") || []).length > 0 ? (
+                          <select
+                            value={行.warehouse_id ? `${行.warehouse_id}|${行.location}` : ""}
+                            onChange={(e) => {
+                              const [wid, loc] = e.target.value ? e.target.value.split("|") : ["", ""];
+                              改行(it.id, { warehouse_id: wid, location: loc });
+                            }}
+                            className={`w-full max-w-[220px] px-2 py-1.5 text-sm rounded border bg-white focus:outline-none focus:border-blue-400 ${
+                              !行.warehouse_id ? "border-red-400 bg-red-50" : "border-gray-200"
+                            }`}
+                          >
+                            <option value="">选择仓位</option>
+                            {(仓位Map.get(it.part_id || "") || []).map((w) => (
+                              <option key={`${w.warehouse_id}|${w.location}`} value={`${w.warehouse_id}|${w.location}`}>
+                                {w.warehouse_name}{w.location ? ` · ${w.location}` : ""}（存 {w.quantity}）
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="flex gap-1">
+                            <select
+                              value={行.warehouse_id}
+                              onChange={(e) => 改行(it.id, { warehouse_id: e.target.value })}
+                              className={`w-24 px-2 py-1.5 text-sm rounded border bg-white focus:outline-none focus:border-blue-400 ${
+                                !行.warehouse_id ? "border-red-400 bg-red-50" : "border-gray-200"
+                              }`}
+                            >
+                              <option value="">选仓库</option>
+                              {仓库列表.map((w) => (
+                                <option key={w.id} value={w.id}>{w.name}</option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              value={行.location}
+                              onChange={(e) => 改行(it.id, { location: e.target.value })}
+                              placeholder="仓位"
+                              className="w-20 px-2 py-1.5 text-sm rounded border border-gray-200 focus:outline-none focus:border-blue-400"
+                            />
+                          </div>
                         )}
                       </td>
                       <td className="py-2.5 text-right">
@@ -374,6 +454,9 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
   const [退货批次Map, set退货批次Map] = useState<Map<string, 库存批次[]> | null>(null);
   /* 退货弹窗的默认批次（2026-09-18 用户拍板）：采购明细行 id → 本次入库批次 id */
   const [默认批次Map, set默认批次Map] = useState<Map<string, string>>(new Map());
+  /* 退货弹窗的仓位选项（part_id → 有库存的仓位）+ 全部仓库（无仓位记录时手选） */
+  const [退货仓位Map, set退货仓位Map] = useState<Map<string, 仓位选项[]>>(new Map());
+  const [仓库列表, set仓库列表] = useState<{ id: string; name: string }[]>([]);
   /* 已退数量标识（2026-09-16）：采购明细行 id → 已退件数（退货记录撤销即删除，不会虚占） */
   const [已退Map, set已退Map] = useState<Map<string, number>>(
     () => new Map(Object.entries(props.initial已退 ?? {}))
@@ -518,6 +601,31 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
       if (批次) 默认Map.set(it.id, 批次.id);
     }
     set默认批次Map(默认Map);
+
+    /* 仓位选项（2026-09-18 用户拍板）：该配件当前有库存的仓位；
+       顺带拉全部仓库，配件没有仓位记录时手动选 */
+    const [{ data: 仓位行 }, { data: 仓库们 }] = await Promise.all([
+      supabase
+        .from("part_stock_locations")
+        .select("part_id, warehouse_id, location, quantity, warehouses(name)")
+        .in("part_id", partIds)
+        .gt("quantity", 0),
+      supabase.from("warehouses").select("id, name").order("name"),
+    ]);
+    const 仓位Map = new Map<string, 仓位选项[]>();
+    for (const w of (仓位行 || []) as unknown as { part_id: string; warehouse_id: string; location: string | null; quantity: number; warehouses: { name: string } | { name: string }[] | null }[]) {
+      const 仓库名 = Array.isArray(w.warehouses) ? w.warehouses[0]?.name : w.warehouses?.name;
+      const list = 仓位Map.get(w.part_id) || [];
+      list.push({
+        warehouse_id: w.warehouse_id,
+        warehouse_name: 仓库名 || "",
+        location: w.location || "",
+        quantity: w.quantity,
+      });
+      仓位Map.set(w.part_id, list);
+    }
+    set退货仓位Map(仓位Map);
+    set仓库列表((仓库们 || []) as { id: string; name: string }[]);
   }
 
   useEffect(() => {
@@ -905,6 +1013,8 @@ export function CompletedStorageList(props: CompletedStorageListProps) {
           批次Map={退货批次Map}
           已退Map={已退Map}
           默认批次Map={默认批次Map}
+          仓位Map={退货仓位Map}
+          仓库列表={仓库列表}
           onClose={() => set退货弹窗(null)}
           on完成={() => {
             set退货勾选(new Set());
