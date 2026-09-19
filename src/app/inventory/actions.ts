@@ -588,3 +588,47 @@ export async function 完成盘点(盘点单id: string): Promise<{ success: bool
   revalidatePath("/inventory/checks");
   return { success: true, 调整条数: 事务结果.adjusted ?? 0 };
 }
+
+/* ═══ 报废出库 Server Action（2026-09-19 用户拍板：全部出入库都记仓位） ═══
+ * 一个事务扣批次/总库存/仓位 + 报废记录 + 流水，全在 scrap_part_stock RPC 里。 */
+export interface 报废输入 {
+  part_id: string;
+  batch_id: string;
+  warehouse_id: string;
+  location: string;
+  quantity: number;
+  reason: string;
+  notes: string;
+}
+
+export async function 报废出库(输入: 报废输入): Promise<{ success: boolean; error?: string }> {
+  const { user, error: 登录错误 } = await 验证用户已登录();
+  if (!user) {
+    return { success: false, error: 登录错误 || "未登录或登录已过期，请重新登录" };
+  }
+  if (!输入.part_id || !输入.batch_id || !输入.warehouse_id) {
+    return { success: false, error: "配件、批次、仓位都是必选" };
+  }
+  if (!Number.isInteger(输入.quantity) || 输入.quantity <= 0) {
+    return { success: false, error: "报废数量必须大于 0" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("scrap_part_stock", {
+    p_part_id: 输入.part_id,
+    p_batch_id: 输入.batch_id,
+    p_warehouse_id: 输入.warehouse_id,
+    p_location: 输入.location,
+    p_quantity: 输入.quantity,
+    p_reason: 输入.reason,
+    p_notes: 输入.notes,
+    p_operator_id: user.id,
+  });
+  if (error) return { success: false, error: error.message };
+  const 结果 = data as unknown as { success: boolean; error?: string };
+  if (!结果?.success) return { success: false, error: 结果?.error || "报废失败" };
+
+  revalidatePath("/inventory");
+  revalidatePath("/inventory/scrap");
+  return { success: true };
+}
