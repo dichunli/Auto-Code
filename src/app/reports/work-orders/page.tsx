@@ -5,18 +5,25 @@ import { formatCurrency } from "@/lib/utils";
 export default async function WorkOrderReportPage() {
   const supabase = await createClient();
 
-  const { data: allOrders } = await supabase
-    .from("work_orders")
-    .select("status, total_cost");
+  /* 状态分布改数据库端 GROUP BY（2026-09-19，9-15 诊断🟠#11）：
+   * 原来拉全表工单到内存分组，工单量涨后首屏必慢。口径不变。 */
+  const { data: 分组数据 } = await supabase.rpc("report_work_order_stats");
 
   const statusCounts: Record<string, number> = {};
   const statusAmounts: Record<string, number> = {};
   let totalAmount = 0;
+  let totalCount = 0;
 
-  allOrders?.forEach((o) => {
-    statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
-    statusAmounts[o.status] = (statusAmounts[o.status] || 0) + (o.total_cost || 0);
-    totalAmount += o.total_cost || 0;
+  const 分组行 = (Array.isArray(分组数据) ? 分组数据 : []) as unknown as {
+    status: string;
+    cnt: number;
+    amount: number;
+  }[];
+  分组行.forEach((r) => {
+    statusCounts[r.status] = Number(r.cnt) || 0;
+    statusAmounts[r.status] = Number(r.amount) || 0;
+    totalCount += Number(r.cnt) || 0;
+    totalAmount += Number(r.amount) || 0;
   });
 
   const statusList = [
@@ -31,7 +38,6 @@ export default async function WorkOrderReportPage() {
     { key: "delivered", label: "已交车" },
   ];
 
-  const totalCount = allOrders?.length || 0;
   const completedCount = (statusCounts["settled"] || 0) + (statusCounts["delivered"] || 0);
   const inProgressCount = totalCount - completedCount;
 

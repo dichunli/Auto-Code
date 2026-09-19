@@ -1,8 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import { ConstructionStatsFilter } from "./ConstructionStatsFilter";
+import { StatsPagination } from "./StatsPagination";
 import Link from "next/link";
 
+/* 明细行（分页渲染，字段与 work_order_item_construction_stats 列一致） */
 interface ConstructionStat {
   id: string;
   item_name: string;
@@ -23,6 +26,7 @@ interface ConstructionStat {
   status: string;
 }
 
+/* 分组聚合行（RPC report_construction_stats 返回，2026-09-19 起数据库端聚合） */
 interface GroupedStat {
   item_name: string;
   vehicle_brand: string | null;
@@ -30,7 +34,7 @@ interface GroupedStat {
   vehicle_model_name: string | null;
   vehicle_displacement: string | null;
   mechanic_name: string;
-  count: number;
+  cnt: number;
   total_construction_seconds: number;
   total_pause_seconds: number;
   total_total_seconds: number;
@@ -38,6 +42,16 @@ interface GroupedStat {
   avg_construction_seconds: number;
   avg_pause_seconds: number;
   avg_total_seconds: number;
+}
+
+interface 统计RPC返回 {
+  groups?: GroupedStat[];
+  mechanics?: string[];
+  total_rows?: number;
+  sum_construction_seconds?: number;
+  sum_pause_seconds?: number;
+  success?: boolean;
+  error?: string;
 }
 
 function formatDuration(totalSeconds: number) {
@@ -52,79 +66,54 @@ function formatDuration(totalSeconds: number) {
   return parts.join("");
 }
 
+const 每页条数 = 20;
+
 export default async function ConstructionStatsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mechanic?: string; search?: string }>;
+  searchParams: Promise<{ mechanic?: string; search?: string; page?: string }>;
 }) {
-  const { mechanic, search } = await searchParams;
+  const { mechanic, search, page: pageParam } = await searchParams;
   const supabase = await createClient();
+  const 当前页 = Math.max(1, parseInt(pageParam || "1", 10) || 1);
 
-  let query = supabase
+  /* 聚合数据（分组+卡片+技师筛选项）改数据库端 RPC（2026-09-19，9-15 诊断🟠#11）：
+   * 原来全表拉到内存分组；搜索词原拼 .or() 未清洗，下推后参数绑定无注入面。
+   * 口径不变（NULL 归空串组/count 降序/avg=round(合计/次数)），对照见迁移 0919_e。 */
+  const { data: 汇总 } = await supabase.rpc("report_construction_stats", {
+    p_mechanic: mechanic || null,
+    p_search: search?.trim() || null,
+  });
+  const 统计 = (汇总 || {}) as unknown as 统计RPC返回;
+  const groupedStats = 统计.groups || [];
+  const allMechanics = 统计.mechanics || [];
+  const 记录总数 = Number(统计.total_rows || 0);
+  const 总施工秒 = Number(统计.sum_construction_seconds || 0);
+  const 总中断秒 = Number(统计.sum_pause_seconds || 0);
+
+  /* 明细记录：服务端分页（超 50 条全量渲染违反性能规范，顺带补齐） */
+  let 明细查询 = supabase
     .from("work_order_item_construction_stats")
-    .select("*")
+    .select("*", { count: "exact" })
     .eq("status", "completed")
     .order("created_at", { ascending: false });
 
   if (mechanic) {
-    query = query.eq("mechanic_name", mechanic);
+    明细查询 = 明细查询.eq("mechanic_name", mechanic);
   }
-  if (search) {
-    query = query.or(
-      `item_name.ilike.%${search}%,vehicle_brand.ilike.%${search}%,vehicle_series.ilike.%${search}%,vehicle_model_name.ilike.%${search}%`
-    );
-  }
-
-  const { data: stats } = await query;
-
-  const { data: mechanicList } = await supabase
-    .from("work_order_item_construction_stats")
-    .select("mechanic_name")
-    .eq("status", "completed");
-
-  const allMechanics = Array.from(
-    new Set((mechanicList || []).map((s: { mechanic_name: string | null }) => s.mechanic_name).filter((n): n is string => !!n))
-  ).sort();
-
-  // 按维修项目+车型+施工人分组聚合
-  /* 聚合中间态：工单ID用 Set 去重，平均值最后统一算 */
-  type 聚集中 = Omit<GroupedStat, "work_order_ids" | "avg_construction_seconds" | "avg_pause_seconds" | "avg_total_seconds"> & { work_order_ids: Set<string> };
-  const groupedMap = new Map<string, 聚集中>();
-  for (const s of (stats || []) as ConstructionStat[]) {
-    const key = [s.item_name, s.vehicle_brand || "", s.vehicle_series || "", s.vehicle_model_name || "", s.mechanic_name].join("|");
-    let g = groupedMap.get(key);
-    if (!g) {
-      g = {
-        item_name: s.item_name,
-        vehicle_brand: s.vehicle_brand,
-        vehicle_series: s.vehicle_series,
-        vehicle_model_name: s.vehicle_model_name,
-        vehicle_displacement: s.vehicle_displacement,
-        mechanic_name: s.mechanic_name,
-        count: 0,
-        total_construction_seconds: 0,
-        total_pause_seconds: 0,
-        total_total_seconds: 0,
-        work_order_ids: new Set<string>(),
-      };
-      groupedMap.set(key, g);
+  if (search?.trim()) {
+    /* 明细查询拼 .or() 过滤器字符串，用户输入必须清洗（防 PostgREST 过滤器结构注入）；
+     * 清洗后为空（全是特殊字符）时不加过滤，按无搜索处理 */
+    const s = 清理搜索词(search);
+    if (s) {
+      明细查询 = 明细查询.or(
+        `item_name.ilike.%${s}%,vehicle_brand.ilike.%${s}%,vehicle_series.ilike.%${s}%,vehicle_model_name.ilike.%${s}%`
+      );
     }
-    g.count++;
-    g.total_construction_seconds += s.construction_seconds || 0;
-    g.total_pause_seconds += s.pause_seconds || 0;
-    g.total_total_seconds += s.total_seconds || 0;
-    g.work_order_ids.add(s.work_order_id);
   }
+  明细查询 = 明细查询.range((当前页 - 1) * 每页条数, 当前页 * 每页条数 - 1);
 
-  const groupedStats = Array.from(groupedMap.values())
-    .map((g) => ({
-      ...g,
-      work_order_ids: Array.from(g.work_order_ids),
-      avg_construction_seconds: g.count > 0 ? Math.round(g.total_construction_seconds / g.count) : 0,
-      avg_pause_seconds: g.count > 0 ? Math.round(g.total_pause_seconds / g.count) : 0,
-      avg_total_seconds: g.count > 0 ? Math.round(g.total_total_seconds / g.count) : 0,
-    }))
-    .sort((a: GroupedStat, b: GroupedStat) => b.count - a.count);
+  const { data: stats, count: 明细总数 } = await 明细查询;
 
   return (
     <div className="space-y-6">
@@ -137,18 +126,18 @@ export default async function ConstructionStatsPage({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="text-sm text-gray-500">统计记录数</div>
-          <div className="text-2xl font-bold text-gray-900 mt-1">{stats?.length || 0}</div>
+          <div className="text-2xl font-bold text-gray-900 mt-1">{记录总数}</div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="text-sm text-gray-500">总施工时长</div>
           <div className="text-2xl font-bold text-gray-900 mt-1">
-            {formatDuration(stats?.reduce((sum: number, s: ConstructionStat) => sum + (s.construction_seconds || 0), 0) || 0)}
+            {formatDuration(总施工秒)}
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="text-sm text-gray-500">总中断时长</div>
           <div className="text-2xl font-bold text-gray-900 mt-1">
-            {formatDuration(stats?.reduce((sum: number, s: ConstructionStat) => sum + (s.pause_seconds || 0), 0) || 0)}
+            {formatDuration(总中断秒)}
           </div>
         </div>
       </div>
@@ -184,16 +173,16 @@ export default async function ConstructionStatsPage({
                       {g.vehicle_displacement && <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{g.vehicle_displacement}</span>}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-900 font-medium">{g.count}</td>
-                  <td className="px-4 py-3 text-gray-600">{formatDuration(g.avg_construction_seconds)}</td>
-                  <td className="px-4 py-3 text-gray-600">{formatDuration(g.avg_pause_seconds)}</td>
-                  <td className="px-4 py-3 font-medium text-gray-900">{formatDuration(g.avg_total_seconds)}</td>
+                  <td className="px-4 py-3 text-gray-900 font-medium">{g.cnt}</td>
+                  <td className="px-4 py-3 text-gray-600">{formatDuration(Number(g.avg_construction_seconds))}</td>
+                  <td className="px-4 py-3 text-gray-600">{formatDuration(Number(g.avg_pause_seconds))}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900">{formatDuration(Number(g.avg_total_seconds))}</td>
                   <td className="px-4 py-3 text-gray-600">
                     <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">{g.mechanic_name}</span>
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     <div className="flex flex-wrap gap-1">
-                      {g.work_order_ids.slice(0, 3).map((id: string) => (
+                      {(g.work_order_ids || []).slice(0, 3).map((id: string) => (
                         <Link
                           key={id}
                           href={`/work-orders/${id}`}
@@ -202,7 +191,7 @@ export default async function ConstructionStatsPage({
                           {id.slice(0, 8)}
                         </Link>
                       ))}
-                      {g.work_order_ids.length > 3 && (
+                      {(g.work_order_ids || []).length > 3 && (
                         <span className="text-xs text-gray-400">等{g.work_order_ids.length}个</span>
                       )}
                     </div>
@@ -221,7 +210,7 @@ export default async function ConstructionStatsPage({
         </div>
       </div>
 
-      {/* 明细记录 */}
+      {/* 明细记录（分页） */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
           <h2 className="text-sm font-semibold text-gray-700">明细记录</h2>
@@ -240,7 +229,7 @@ export default async function ConstructionStatsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {stats?.map((s: ConstructionStat) => (
+              {((stats || []) as unknown as ConstructionStat[]).map((s) => (
                 <tr key={s.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">{s.item_name}</td>
                   <td className="px-4 py-3 text-gray-600">
@@ -273,6 +262,7 @@ export default async function ConstructionStatsPage({
             </tbody>
           </table>
         </div>
+        <StatsPagination page={当前页} totalCount={明细总数 || 0} pageSize={每页条数} />
       </div>
     </div>
   );
