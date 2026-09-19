@@ -246,6 +246,7 @@ export default function WorkOrdersContent({
                         workOrderId={order.id}
                         orderNo={order.order_no}
                         currentType={order.order_type}
+                        currentStatus={order.status}
                         onSuccess={() => window.location.reload()}
                       />
                       {type === "cancelled" && (

@@ -185,6 +185,7 @@ export default async function WorkOrderDetailPage({
             <WorkOrderActionButtons
               workOrderId={id}
               orderNo={order.order_no ?? ""}
+              currentStatus={order.status}
             />
           </div>
         </details>
@@ -218,6 +219,7 @@ export default async function WorkOrderDetailPage({
             workOrderId={id}
             orderNo={order.order_no ?? ""}
             currentType={order.order_type || "normal"}
+            currentStatus={order.status}
           />
           <div className="hidden md:block">
             <PrintDropdown orderId={id} />

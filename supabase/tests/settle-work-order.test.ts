@@ -160,11 +160,12 @@ describe("settle_work_order RPC - 数据库集成测试", () => {
     );
     testMemberId = memberRes.rows[0].id;
 
-    // 确保财务分类存在
+    // 确保财务分类存在（name 无唯一约束，ON CONFLICT DO NOTHING 挡不住重复插；
+    // 重复行的 counts_in_profit 默认值会与迁移回填口径打架，必须 WHERE NOT EXISTS）
     await query(
       `INSERT INTO finance_categories (name, type, sort_order)
-       VALUES ('维修收入', 'income', 1)
-       ON CONFLICT DO NOTHING`
+       SELECT '维修收入', 'income', 1
+       WHERE NOT EXISTS (SELECT 1 FROM finance_categories WHERE type = 'income' AND name = '维修收入')`
     );
 
     /* 造测试用户：auth.users → profiles → profile_roles(admin)
