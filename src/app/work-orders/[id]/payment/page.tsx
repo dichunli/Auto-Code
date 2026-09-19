@@ -430,9 +430,9 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
           )}
         </div>
 
-        {/* 收款账户 */}
+        {/* 收款账户（兜底）：现金/微信/支付宝/银行转账会自动进对应账户，这里选的是其它方式的入账账户 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">收款账户 *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">默认入账账户 *</label>
           <select
             value={selectedAccountId}
             onChange={(e) => setSelectedAccountId(e.target.value)}
@@ -440,13 +440,16 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
             required
           >
-            <option value="">请选择收款账户</option>
+            <option value="">请选择入账账户</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
               </option>
             ))}
           </select>
+          <p className="text-xs text-gray-400 mt-1">
+            现金/微信/支付宝/银行转账会自动计入对应账户；储值卡和挂账不动账户余额
+          </p>
         </div>
 
         {/* 支付方式 */}
