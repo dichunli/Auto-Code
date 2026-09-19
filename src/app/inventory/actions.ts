@@ -106,6 +106,9 @@ export async function 配件入库(参数: {
       return { success: false, error: "请选择配件名称" };
     }
 
+    /* 配件档案先建（库存从 0 起），初始库存走 opening_stock_inbound 事务：
+       批次（必建，期初可领）+ 总库存 + 仓位 + 流水 一个事务完成，
+       不再客户端三步散写（中途失败留半账、无批次领不出） */
     const { data: part, error: partError } = await supabase
       .from("parts")
       .insert({
@@ -115,7 +118,7 @@ export async function 配件入库(参数: {
         brand_id: form.brand_id || null,
         specification_id: form.specification_id || null,
         specification_text: form.specification_text || null,
-        quantity: qty,
+        quantity: 0,
         unit_cost: parseFloat(form.unit_cost) || 0,
       })
       .select("id")
@@ -125,25 +128,20 @@ export async function 配件入库(参数: {
       return { success: false, error: partError?.message || "新增配件失败" };
     }
 
-    if (form.batch_no) {
-      await supabase.from("part_batches").insert({
-        part_id: part.id,
-        batch_no: form.batch_no,
-        quantity: qty,
-        remaining: qty,
-        unit_cost: parseFloat(form.unit_cost) || 0,
-      });
-    }
-
-    await supabase.from("inventory_logs").insert({
-      part_id: part.id,
-      type: "inbound",
-      change_qty: qty,
-      before_qty: 0,
-      after_qty: qty,
-      waybill_id: waybillId,
-      notes: logNotes,
+    const { data: 期初结果, error: 期初错误 } = await supabase.rpc("opening_stock_inbound", {
+      p_part_id: part.id,
+      p_qty: qty,
+      p_unit_cost: parseFloat(form.unit_cost) || 0,
+      p_batch_no: form.batch_no || null,
+      p_warehouse_id: form.warehouse_id || null,
+      p_location: form.location || null,
+      p_notes: logNotes,
     });
+    if (期初错误) return { success: false, error: 期初错误.message };
+    const 期初事务结果 = 期初结果 as { success: boolean; error?: string } | null;
+    if (!期初事务结果?.success) {
+      return { success: false, error: 期初事务结果?.error || "期初入库失败" };
+    }
 
     if (branchId) {
       await supabase.from("work_order_item_parts").update({ part_id: part.id }).eq("id", branchId);
@@ -251,23 +249,40 @@ export async function 新增配件(参数: {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("parts").insert({
+  /* 库存从 0 起建；初始库存走 opening_stock_inbound 事务（批次必建+流水），
+     不再直接写 quantity（无批次领不出、无流水可查） */
+  const { data: 新配件, error } = await supabase.from("parts").insert({
     part_number: form.part_number,
     barcode: form.barcode || null,
     part_name_id: form.part_name_id,
     brand_id: form.brand_id || null,
     specification_id: form.specification_id || null,
     specification_text: form.specification_text || null,
-    quantity: parseInt(form.quantity) || 0,
+    quantity: 0,
     min_stock: parseInt(form.min_stock) || 10,
     unit_cost: parseFloat(form.unit_cost) || 0,
     unit_price: parseFloat(form.unit_price) || 0,
     location: form.location || null,
     notes: form.notes || null,
-  });
+  }).select("id").single();
 
-  if (error) {
-    return { success: false, error: error.message };
+  if (error || !新配件) {
+    return { success: false, error: error?.message || "新增配件失败" };
+  }
+
+  const 期初数量 = parseInt(form.quantity) || 0;
+  if (期初数量 > 0) {
+    const { data: 期初结果, error: 期初错误 } = await supabase.rpc("opening_stock_inbound", {
+      p_part_id: 新配件.id,
+      p_qty: 期初数量,
+      p_unit_cost: parseFloat(form.unit_cost) || 0,
+      p_notes: "新建配件期初库存",
+    });
+    if (期初错误) return { success: false, error: 期初错误.message };
+    const 期初事务结果 = 期初结果 as { success: boolean; error?: string } | null;
+    if (!期初事务结果?.success) {
+      return { success: false, error: 期初事务结果?.error || "期初入库失败" };
+    }
   }
 
   revalidatePath("/inventory");
@@ -456,7 +471,8 @@ export async function 批量导入配件(参数: {
         : partNameMap.get(r.part_name_id as string),
       category_id: r.category_id,
       unit: r.unit,
-      quantity: r.quantity,
+      /* 库存从 0 起建；期初库存统一走 opening_stock_inbound 事务（批次必建+流水） */
+      quantity: 0,
       min_stock: r.min_stock,
       unit_cost: r.unit_cost,
       unit_price: r.unit_price,
@@ -486,6 +502,27 @@ export async function 批量导入配件(参数: {
     }
     (insertedParts || []).forEach((p: { id: string }) => insertedPartIds.push(p.id));
     inserted += batch.length;
+  }
+
+  /* 期初库存：逐行走 opening_stock_inbound 事务（批次必建+流水）。
+     与配件建档同事务不可行（建档是分批 insert），这里每个配件一个事务，
+     中途失败已入的保持原样并在报错里指明行号，重导时按编码去重即可 */
+  for (let idx = 0; idx < 参数.records.length; idx++) {
+    const r = 参数.records[idx];
+    if (!r.quantity || r.quantity <= 0 || !insertedPartIds[idx]) continue;
+    const { data: 期初结果, error: 期初错误 } = await supabase.rpc("opening_stock_inbound", {
+      p_part_id: insertedPartIds[idx],
+      p_qty: r.quantity,
+      p_unit_cost: r.unit_cost ?? 0,
+      p_notes: "批量导入期初库存",
+    });
+    if (期初错误) {
+      return { success: false, error: `第 ${idx + 1} 行（${r.part_number}）期初入库失败: ${期初错误.message}` };
+    }
+    const 期初事务结果 = 期初结果 as { success: boolean; error?: string } | null;
+    if (!期初事务结果?.success) {
+      return { success: false, error: `第 ${idx + 1} 行（${r.part_number}）期初入库失败: ${期初事务结果?.error || "未知错误"}` };
+    }
   }
 
   /* 创建规格关联 */
