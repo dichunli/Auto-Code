@@ -1754,6 +1754,26 @@ export async function 转换工单类型(参数: {
   }
 
   const supabase = await createClient();
+
+  /* 作废门禁：已结算/已交车的工单已有收款、财务流水、应收等资金痕迹，
+     直接作废会让报表漏掉这笔钱而实际已收。必须先走解锁/退款流程冲销资金后才能作废 */
+  if (参数.type === "cancelled") {
+    const { data: 当前工单, error: 查询错误 } = await supabase
+      .from("work_orders")
+      .select("status")
+      .eq("id", 参数.workOrderId)
+      .single();
+    if (查询错误) {
+      return { success: false, error: 查询错误.message };
+    }
+    if (当前工单.status === "settled" || 当前工单.status === "delivered") {
+      return {
+        success: false,
+        error: "该工单已结算收款，不能直接作废。如需撤销，请先联系管理员走解锁退款流程",
+      };
+    }
+  }
+
   const { error } = await supabase.from("work_orders").update(updates).eq("id", 参数.workOrderId);
   if (error) {
     return { success: false, error: error.message };

@@ -10,10 +10,12 @@ interface Props {
   workOrderId: string;
   orderNo: string;
   currentType?: string;
+  /* 工单状态：已结算/已交车的工单已有资金痕迹，不提供"转作废单"入口（服务端同样有门禁） */
+  currentStatus?: string;
   onSuccess?: () => void;
 }
 
-export default function WorkOrderActionButtons({ workOrderId, orderNo, currentType, onSuccess }: Props) {
+export default function WorkOrderActionButtons({ workOrderId, orderNo, currentType, currentStatus, onSuccess }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -49,11 +51,13 @@ export default function WorkOrderActionButtons({ workOrderId, orderNo, currentTy
     };
   }, [open]);
 
+  const 已收款 = currentStatus === "settled" || currentStatus === "delivered";
   const actions = [
     { key: "normal", label: "转回正常工单", desc: "将工单恢复为正常维修状态" },
     { key: "appointment", label: "转预约单", desc: "将工单转为预约状态，等待客户到店" },
     { key: "quote", label: "转历史报价单", desc: "将工单保存为历史报价记录" },
-    { key: "cancelled", label: "转作废单", desc: "工单作废，不再继续处理" },
+    /* 已收款工单不显示作废入口：钱已收，直接作废会让报表漏记，须走解锁退款流程 */
+    ...(已收款 ? [] : [{ key: "cancelled", label: "转作废单", desc: "工单作废，不再继续处理" } as const]),
     { key: "maintenance", label: "建保养单", desc: "将工单标记为保养类型" },
   ] as const;
 
