@@ -137,8 +137,11 @@ describe("外包应付付款 RPC - 数据库集成测试", () => {
       [`${PFX}现金`]
     );
     accountId = acc.rows[0].id;
+    /* name 无唯一约束，用 WHERE NOT EXISTS 防重复科目 */
     await query(
-      `INSERT INTO finance_categories (name, type, sort_order) VALUES ('其他支出', 'expense', 5) ON CONFLICT DO NOTHING`
+      `INSERT INTO finance_categories (name, type, sort_order)
+       SELECT '其他支出', 'expense', 5
+       WHERE NOT EXISTS (SELECT 1 FROM finance_categories WHERE type = 'expense' AND name = '其他支出')`
     );
   });
 
