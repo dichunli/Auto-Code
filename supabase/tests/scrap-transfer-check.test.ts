@@ -191,9 +191,10 @@ describe("报废/调拨/按仓位盘点 - 数据库集成测试", () => {
     expect(Number(rec.rows[0].quantity)).toBe(3);
     expect(rec.rows[0].created_by).toBe(TEST_USER_ID);
 
-    /* 库存流水：outbound -3，before 10 after 7 */
+    /* 库存流水：outbound -3，before 10 after 7，补仓位/批次/成本列（0919_v 起） */
     const log = await query(
-      `SELECT type, change_qty, before_qty, after_qty, reference_type, reference_id, operator_id
+      `SELECT type, change_qty, before_qty, after_qty, reference_type, reference_id, operator_id,
+              warehouse_id, location, batch_id, unit_cost
        FROM inventory_logs WHERE part_id = $1`,
       [t.partId]
     );
@@ -204,6 +205,10 @@ describe("报废/调拨/按仓位盘点 - 数据库集成测试", () => {
     expect(Number(log.rows[0].after_qty)).toBe(7);
     expect(log.rows[0].reference_type).toBe("scrap_record");
     expect(log.rows[0].reference_id).toBe(r.record_id);
+    expect(log.rows[0].warehouse_id).toBe(warehouseA);
+    expect(log.rows[0].location).toBe("A-01");
+    expect(log.rows[0].batch_id).toBe(t.batchId);
+    expect(Number(log.rows[0].unit_cost)).toBe(50);
 
     await 清理配件(t.partId);
     await query(`DELETE FROM part_names WHERE id = $1`, [t.partNameId]);
@@ -298,6 +303,24 @@ describe("报废/调拨/按仓位盘点 - 数据库集成测试", () => {
     expect(rec.rows[0].from_warehouse_id).toBe(warehouseA);
     expect(rec.rows[0].to_warehouse_id).toBe(warehouseB);
     expect(Number(rec.rows[0].quantity)).toBe(4);
+
+    /* 调拨流水（0919_v 起）：源仓 -4 / 目标仓 +4 两行，before/after 记仓位数量 */
+    const logs = await query(
+      `SELECT type, change_qty, before_qty, after_qty, warehouse_id, location
+       FROM inventory_logs WHERE part_id = $1 ORDER BY change_qty`,
+      [t.partId]
+    );
+    expect(logs.rows.length).toBe(2);
+    expect(logs.rows[0].type).toBe("adjust");
+    expect(Number(logs.rows[0].change_qty)).toBe(-4);
+    expect(Number(logs.rows[0].before_qty)).toBe(10);
+    expect(Number(logs.rows[0].after_qty)).toBe(6);
+    expect(logs.rows[0].warehouse_id).toBe(warehouseA);
+    expect(logs.rows[1].type).toBe("adjust");
+    expect(Number(logs.rows[1].change_qty)).toBe(4);
+    expect(Number(logs.rows[1].before_qty)).toBe(0);
+    expect(Number(logs.rows[1].after_qty)).toBe(4);
+    expect(logs.rows[1].warehouse_id).toBe(warehouseB);
 
     await 清理配件(t.partId);
     await query(`DELETE FROM part_names WHERE id = $1`, [t.partNameId]);

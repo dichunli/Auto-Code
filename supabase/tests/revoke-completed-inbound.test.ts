@@ -295,10 +295,30 @@ describe("revoke_completed_inbound / revoke_supplier_returns - 数据库集成�
     expect(await 库存(partA)).toBe(10);
     expect(await 库存(partB)).toBe(20);
 
-    /* 入库单/明细/批次/流水/应付款全删 */
+    /* 入库单/明细/批次/应付款全删 */
     expect((await query(`SELECT COUNT(*) c FROM inbound_orders WHERE purchase_order_id = $1`, [h.purchaseOrderId])).rows[0].c).toBe("0");
     expect((await query(`SELECT COUNT(*) c FROM part_batches WHERE reference_id = $1 AND inbound_type = 'purchase'`, [h.purchaseOrderId])).rows[0].c).toBe("0");
     expect((await query(`SELECT COUNT(*) c FROM supplier_transactions WHERE reference_id = $1`, [inb.inbound_order_id])).rows[0].c).toBe("0");
+
+    /* 2026-09-19 审计链升级（migrations_20260919_w）：流水不再物理删除——
+       原入库流水保留 + 追加净额回滚反向流水（A: -5，B: 净 0 不写） */
+    const 原流水 = await query(
+      `SELECT COUNT(*) c FROM inventory_logs WHERE reference_type = 'inbound_order' AND reference_id = $1`,
+      [inb.inbound_order_id]
+    );
+    expect(Number(原流水.rows[0].c)).toBeGreaterThan(0);
+    const 反向流水 = await query(
+      `SELECT part_id, type, change_qty, before_qty, after_qty, reference_type, reference_id
+       FROM inventory_logs
+       WHERE reference_type = 'revoke_inbound' AND reference_id = $1`,
+      [h.purchaseOrderId]
+    );
+    expect(反向流水.rows).toHaveLength(1); /* 只有 A 净额非 0 */
+    expect(反向流水.rows[0].part_id).toBe(partA);
+    expect(反向流水.rows[0].type).toBe("adjust");
+    expect(Number(反向流水.rows[0].change_qty)).toBe(-5);
+    expect(Number(反向流水.rows[0].before_qty)).toBe(15);
+    expect(Number(反向流水.rows[0].after_qty)).toBe(10);
 
     /* 2026-09-13 新语义（migrations_20260913_a_revoke_inbound_to_storage）：撤销入库只倒退一步到「待入库」，
        收货结果全部保留——待退货记录保留、handle_action/received_qty 不清、采购单回 pending_storage、到货标记保留 */
