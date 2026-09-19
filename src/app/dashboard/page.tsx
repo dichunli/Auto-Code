@@ -2,10 +2,6 @@ import { getPartWorkflowStatus } from "@/lib/partWorkflow";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
-interface WorkOrderStatusRow {
-  status: string;
-}
-
 interface WorkOrderItemPart {
   id: string;
   unit_cost: number | null;
@@ -57,16 +53,15 @@ async function getDashboardStats() {
 
   const supabase = await createClient();
 
-  // 1. 工单状态统计
-  const { data: allOrderStatus } = await supabase
-    .from("work_orders")
-    .select("status");
+  // 1. 工单状态统计：数据库端 GROUP BY（2026-09-19，复用 report_work_order_stats RPC），
+  //    不再拉全表 status 列到内存数；过滤已结算/已交车口径不变
+  const { data: 状态分组 } = await supabase.rpc("report_work_order_stats");
 
   const orderCounts: Record<string, number> = {};
-  (allOrderStatus || [])
-    .filter((o: WorkOrderStatusRow) => o.status !== "settled" && o.status !== "delivered")
-    .forEach((o: WorkOrderStatusRow) => {
-      orderCounts[o.status] = (orderCounts[o.status] || 0) + 1;
+  ((Array.isArray(状态分组) ? 状态分组 : []) as unknown as { status: string; cnt: number }[])
+    .filter((o) => o.status !== "settled" && o.status !== "delivered")
+    .forEach((o) => {
+      orderCounts[o.status] = Number(o.cnt) || 0;
     });
 
   // 2. 配件状态统计

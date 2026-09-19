@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import VehicleModelsContent from "./VehicleModelsContent";
 
 /* ═════════════════════════════════════════════════════════════════
@@ -14,7 +15,7 @@ export default async function VehicleModelsPage({
   searchParams?: Promise<Record<string, string | undefined>>;
 }) {
   const sp = (await Promise.resolve(searchParams || {})) as Record<string, string | undefined>;
-  const keyword = (sp.keyword || "").trim();
+  const keyword = 清理搜索词(sp.keyword || "");
   const page = Math.max(1, parseInt(sp.page || "1", 10));
   const pageSize = 50;
 
