@@ -154,6 +154,8 @@ describe("供应商收款单 RPC - 数据库集成测试", () => {
 
   afterAll(async () => {
     await cleanupAll();
+    /* 2026-09-19 起收款单会写 finance_transactions（created_by 外键），先清流水再删用户 */
+    await query(`DELETE FROM finance_transactions WHERE created_by IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
     await query(`DELETE FROM profile_roles WHERE profile_id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
     await query(`DELETE FROM profiles WHERE id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
     await query(`DELETE FROM auth.users WHERE id IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);

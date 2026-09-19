@@ -165,8 +165,12 @@ describe("客户收款单 RPC - 数据库集成测试", () => {
       [`${PFX}现金`]
     );
     accountId = acc.rows[0].id;
+    /* name 无唯一约束，ON CONFLICT DO NOTHING 挡不住重复插；
+       用 WHERE NOT EXISTS 防止造出 counts_in_profit 标记不一致的重复科目（2026-09-19 起该标记决定利润口径） */
     await query(
-      `INSERT INTO finance_categories (name, type, sort_order) VALUES ('维修收入', 'income', 1) ON CONFLICT DO NOTHING`
+      `INSERT INTO finance_categories (name, type, sort_order)
+       SELECT '维修收入', 'income', 1
+       WHERE NOT EXISTS (SELECT 1 FROM finance_categories WHERE type = 'income' AND name = '维修收入')`
     );
   });
 

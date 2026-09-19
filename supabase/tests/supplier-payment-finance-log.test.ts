@@ -131,6 +131,8 @@ describe("供应商付款/退款 财务流水补记 - 数据库集成测试", ()
 
   afterAll(async () => {
     await query(`DELETE FROM finance_transactions WHERE related_type IN ('supplier_payment','supplier_receipt') AND related_id IN (SELECT id FROM supplier_payments WHERE supplier_id = $1 UNION SELECT id FROM supplier_receipts WHERE supplier_id = $1)`, [supplierId]);
+    /* 经办人兜底清（防漏网流水 created_by 外键卡删用户） */
+    await query(`DELETE FROM finance_transactions WHERE created_by = $1`, [TEST_USER_ID]);
     await query(`DELETE FROM supplier_payment_allocations WHERE payment_id IN (SELECT id FROM supplier_payments WHERE supplier_id = $1)`, [supplierId]);
     await query(`DELETE FROM supplier_transactions WHERE supplier_id = $1`, [supplierId]);
     await query(`DELETE FROM supplier_payments WHERE supplier_id = $1`, [supplierId]);
@@ -222,12 +224,21 @@ describe("供应商付款/退款 财务流水补记 - 数据库集成测试", ()
 
   /* 4. 供应商退款（收款单）→ income/采购退款 流水 + 余额增加；作废对称删除 */
   it("供应商退款 → 补记 income/采购退款 流水；作废收款单 → 流水删除", async () => {
+    /* 用独立供应商：前面用例作废付款单后应付都挂回主供应商头上，
+       余额恒为正，收款单（要求负余额）永远建不了 */
+    const sup2 = await query(`INSERT INTO suppliers (name) VALUES ($1) RETURNING id`, [`${PFX}供应商乙`]);
+    const supplier2Id = sup2.rows[0].id;
+
     /* 造负余额：应付 100，预付 300（不勾单）→ 余额 -200，可收 150 */
-    await 造应付(100, "退款场景应付款");
+    await query(
+      `INSERT INTO supplier_transactions (supplier_id, transaction_type, amount, description, created_by)
+       VALUES ($1, 'debit', 100, $2, $3)`,
+      [supplier2Id, `${PFX}退款场景应付款`, TEST_USER_ID]
+    );
     const prepay = await withAuth(TEST_USER_ID, async () => {
       const res = await query(
         `SELECT create_supplier_payment($1::UUID, 300, 'cash', NULL, $2, '[]'::JSONB, 0) AS result`,
-        [supplierId, `${PFX}预付`]
+        [supplier2Id, `${PFX}预付`]
       );
       return res.rows[0].result as RPC结果;
     });
@@ -237,7 +248,7 @@ describe("供应商付款/退款 财务流水补记 - 数据库集成测试", ()
     const r = await withAuth(TEST_USER_ID, async () => {
       const res = await query(
         `SELECT create_supplier_receipt($1::UUID, 150, 'cash', NULL, $2) AS result`,
-        [supplierId, `${PFX}退预付`]
+        [supplier2Id, `${PFX}退预付`]
       );
       return res.rows[0].result as RPC结果;
     });
@@ -260,9 +271,16 @@ describe("供应商付款/退款 财务流水补记 - 数据库集成测试", ()
     expect((await 财务流水("supplier_receipt", r.receipt_id!)).length).toBe(0);
     expect(await 账户余额()).toBe(余额前);
 
-    /* 收尾：作废预付单，让供应商账回到只剩应付 100 的干净状态 */
+    /* 收尾：作废预付单，让供应商乙账回到只剩应付 100 的干净状态 */
     await withAuth(TEST_USER_ID, () =>
       query(`SELECT void_supplier_payment($1::UUID) AS result`, [prepay.payment_id])
     );
+
+    /* 清理供应商乙（流水按 created_by 由 afterAll 统一兜底） */
+    await query(`DELETE FROM finance_transactions WHERE related_type IN ('supplier_payment','supplier_receipt') AND related_id IN (SELECT id FROM supplier_payments WHERE supplier_id = $1 UNION SELECT id FROM supplier_receipts WHERE supplier_id = $1)`, [supplier2Id]);
+    await query(`DELETE FROM supplier_transactions WHERE supplier_id = $1`, [supplier2Id]);
+    await query(`DELETE FROM supplier_payments WHERE supplier_id = $1`, [supplier2Id]);
+    await query(`DELETE FROM supplier_receipts WHERE supplier_id = $1`, [supplier2Id]);
+    await query(`DELETE FROM suppliers WHERE id = $1`, [supplier2Id]);
   });
 });

@@ -18,11 +18,9 @@
  *   4. 三个 RPC 补记流水（同一事务内，失败整体回滚）：
  *      register_advance_payment → income/预收款
  *      refund_advance_payment   → expense/预收退款
- *      recharge_member          → income/会员充值
- *      其中 recharge_member 由 INVOKER 改 SECURITY DEFINER（否则被财务表
- *      RLS 卡住），并补齐 auth.uid() + 角色门禁（admin/boss/receptionist/
- *      accountant，与 members/member_transactions 现有 RLS 口径完全一致，
- *      不扩大也不缩小可操作人群）。
+ *      recharge_member          → income/会员充值（最终版在 CLI 平行目录
+ *      20260919000003，原因见本文第六节；DEFINER 化并补齐登录+角色门禁，
+ *      角色口径与 members/member_transactions RLS 一致，不扩不缩）
  *
  * 历史存量：迁移前的预收款/充值没有流水，属阶段五存量清洗范围，本迁移不追溯。
  * 幂等：CREATE OR REPLACE + WHERE NOT EXISTS，重跑无害；recharge_member
@@ -248,92 +246,20 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$ LANGUAGE plpgsql;
 
-/* ─── 六、会员充值：改 SECURITY DEFINER 并补记 income/会员充值 流水 ───
-   角色门禁 admin/boss/receptionist/accountant 与 members/member_transactions
-   现有 RLS 口径一致（2026-08-02 加固版），权限不扩不缩 */
-CREATE OR REPLACE FUNCTION recharge_member(
-  p_member_id UUID,
-  p_amount DECIMAL(10,2),
-  p_payment_method TEXT,
-  p_notes TEXT
-)
-RETURNS JSONB
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_member RECORD;
-  v_new_balance DECIMAL(10,2);
-  v_now TIMESTAMPTZ := NOW();
-  v_tx_id UUID;
-  v_account_id UUID;
-  v_category_id UUID;
-BEGIN
-  IF auth.uid() IS NULL THEN
-    RETURN jsonb_build_object('success', false, 'error', '未登录或登录已过期');
-  END IF;
-  IF NOT public.has_role('admin', 'boss', 'receptionist', 'accountant') THEN
-    RETURN jsonb_build_object('success', false, 'error', '无权限:仅管理员、老板、接待、会计可充值');
-  END IF;
-  IF p_amount IS NULL OR p_amount <= 0 THEN
-    RETURN jsonb_build_object('success', false, 'error', '充值金额必须大于 0');
-  END IF;
+/* ─── 六、会员充值的最终版本在 CLI 平行目录 ───
+   原因：recharge_member 的原始定义在 supabase/migrations/20260501000003_p0_security_fixes.sql，
+   CI 建库先灌主序列再灌 CLI 目录——新定义若放这里会被旧版覆盖失效
+   （与 settle_work_order 2026-09-19 CI 实锤过的坑同款）。
+   最终版见 supabase/migrations/20260919000003_recharge_member_finance_log.sql。
+   Dashboard 部署时两个文件都要执行。 */
 
-  v_account_id := public.fn_finance_account_for_method(p_payment_method);
-  IF v_account_id IS NULL THEN
-    RETURN jsonb_build_object('success', false, 'error', '未找到可用资金账户，请先在财务管理中建立账户');
-  END IF;
-
-  /* 锁定会员（原子更新余额） */
-  SELECT * INTO v_member FROM members WHERE id = p_member_id FOR UPDATE;
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('success', false, 'error', '会员不存在');
-  END IF;
-
-  /* 原子增加余额 */
-  v_new_balance := COALESCE(v_member.balance, 0) + p_amount;
-
-  UPDATE members
-  SET balance = v_new_balance, updated_at = v_now
-  WHERE id = p_member_id;
-
-  /* 插入交易记录 */
-  INSERT INTO member_transactions (member_id, type, amount, balance_after, payment_method, notes, created_at)
-  VALUES (p_member_id, 'recharge', p_amount, v_new_balance, p_payment_method, p_notes, v_now)
-  RETURNING id INTO v_tx_id;
-
-  /* 补记财务流水（income/会员充值；触发器自动加账户余额）。
-     科目 counts_in_profit=FALSE：储值是负债不是营收，结算扣卡时工单总额才计营收 */
-  SELECT id INTO v_category_id FROM finance_categories
-  WHERE type = 'income' AND name = '会员充值'
-  ORDER BY created_at LIMIT 1;
-
-  INSERT INTO finance_transactions (
-    account_id, category_id, type, amount,
-    related_type, related_id, description, transaction_date, created_by
-  ) VALUES (
-    v_account_id, v_category_id, 'income', p_amount,
-    'member_recharge', v_tx_id,
-    '会员充值（' || COALESCE(v_member.name, '') || '）',
-    CURRENT_DATE,
-    auth.uid()
-  );
-
-  RETURN jsonb_build_object('success', true, 'new_balance', v_new_balance);
-EXCEPTION WHEN OTHERS THEN
-  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
-END;
-$$ LANGUAGE plpgsql;
-
-/* 权限：三个业务函数收回匿名/PUBLIC，显式放行登录用户（角色在函数内门禁）。
-   注意：这三个函数历史上从未显式 GRANT，一直靠 PUBLIC 默认授权，
+/* 权限：两个业务函数收回匿名/PUBLIC，显式放行登录用户（角色在函数内门禁）。
+   注意：这两个函数历史上从未显式 GRANT，一直靠 PUBLIC 默认授权，
    收回 PUBLIC 后必须补 GRANT authenticated，否则正常用户也被锁死 */
 REVOKE EXECUTE ON FUNCTION public.register_advance_payment(UUID, DECIMAL, TEXT, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.register_advance_payment(UUID, DECIMAL, TEXT, TEXT) TO authenticated;
 REVOKE EXECUTE ON FUNCTION public.refund_advance_payment(UUID, DECIMAL, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.refund_advance_payment(UUID, DECIMAL, TEXT) TO authenticated;
-REVOKE EXECUTE ON FUNCTION public.recharge_member(UUID, DECIMAL, TEXT, TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.recharge_member(UUID, DECIMAL, TEXT, TEXT) TO authenticated;
 
 /* 台账登记 */
 INSERT INTO migration_log (file_name) VALUES ('migrations_20260919_q_advance_recharge_finance_log.sql') ON CONFLICT DO NOTHING;

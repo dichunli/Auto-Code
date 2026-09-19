@@ -31,6 +31,7 @@ const PFX = "TESTSA-";
 let client: Client;
 let cashAccountId: string;
 let wechatAccountId: string;
+let bankAccountId: string;
 let fallbackAccountId: string;
 
 interface RPC结果 {
@@ -131,14 +132,15 @@ describe("结算分账户记账 - 数据库集成测试", () => {
       [TEST_USER_ID, roleRes.rows[0].id]
     );
 
-    /* 三个账户：现金、微信、兜底（other 类型）。解析落点以辅助函数实际结果为准 */
+    /* 四个账户：现金、微信、银行、兜底（other 类型）。解析落点以辅助函数实际结果为准 */
     await query(
       `INSERT INTO finance_accounts (name, account_type, balance, is_active) VALUES
-       ($1, 'cash', 0, true), ($2, 'wechat', 0, true), ($3, 'other', 0, true)`,
-      [`${PFX}现金`, `${PFX}微信`, `${PFX}兜底`]
+       ($1, 'cash', 0, true), ($2, 'wechat', 0, true), ($3, 'bank', 0, true), ($4, 'other', 0, true)`,
+      [`${PFX}现金`, `${PFX}微信`, `${PFX}银行`, `${PFX}兜底`]
     );
     cashAccountId = (await query(`SELECT public.fn_finance_account_for_method('cash') AS id`)).rows[0].id;
     wechatAccountId = (await query(`SELECT public.fn_finance_account_for_method('wechat') AS id`)).rows[0].id;
+    bankAccountId = (await query(`SELECT public.fn_finance_account_for_method('bank_transfer') AS id`)).rows[0].id;
     /* 兜底账户用一个不会被任何方式映射抢走的：直接拿我们建的 other 账户 */
     fallbackAccountId = (await query(`SELECT id FROM finance_accounts WHERE name = $1`, [`${PFX}兜底`])).rows[0].id;
   });
@@ -183,13 +185,14 @@ describe("结算分账户记账 - 数据库集成测试", () => {
     await 清理工单(t);
   });
 
-  /* 2. 自定义支付方式无匹配账户 → 兜底用户指定账户 */
-  it("自定义方式（pos机）无同类型账户 → 流水进用户指定的兜底账户", async () => {
+  /* 2. 银行转账 → 进银行账户（payments.method 有 CHECK，只允许字典内编码，
+        自定义编码走不进结算，兜底账户逻辑由辅助函数单测覆盖） */
+  it("银行转账收款 → 流水进银行账户", async () => {
     const t = await 造工单();
-    const 兜底前 = await 余额(fallbackAccountId);
+    const 银行前 = await 余额(bankAccountId);
 
     const r = await withAuth(TEST_USER_ID, () =>
-      结算(t.workOrderId, [{ method: "pos_machine", amount: 300 }], fallbackAccountId)
+      结算(t.workOrderId, [{ method: "bank_transfer", amount: 300 }], fallbackAccountId)
     );
     expect(r.success).toBe(true);
 
@@ -199,9 +202,9 @@ describe("结算分账户记账 - 数据库集成测试", () => {
       [t.workOrderId]
     );
     expect(ft.rows.length).toBe(1);
-    expect(ft.rows[0].account_id).toBe(fallbackAccountId);
+    expect(ft.rows[0].account_id).toBe(bankAccountId);
     expect(Number(ft.rows[0].amount)).toBe(300);
-    expect(await 余额(fallbackAccountId)).toBe(兜底前 + 300);
+    expect(await 余额(bankAccountId)).toBe(银行前 + 300);
 
     await 清理工单(t);
   });

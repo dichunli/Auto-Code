@@ -164,6 +164,9 @@ describe("利润分析汇总 RPC - 双计收入回归测试", () => {
 
   /* 2. 核心回归：维修收入/配件采购不重复计入利润 */
   it("维修收入与配件采购不计入其他收入/运营支出，经营性科目正常计入", async () => {
+    /* 基线必须在造单【之前】读，否则差值恒为 0 */
+    const 前 = await withAuth(TEST_USER_ID, () => 读利润汇总());
+
     /* 造一张已结算工单：配件100 + 工时150 + 其他50 = 营收300 */
     const custRes = await query(`INSERT INTO customers (name) VALUES ($1) RETURNING id`, [`${PFX}客户`]);
     const customerId = custRes.rows[0].id;
@@ -180,9 +183,6 @@ describe("利润分析汇总 RPC - 双计收入回归测试", () => {
       [`${PFX}WO001`, vehicleId, customerId]
     );
     const workOrderId = woRes.rows[0].id;
-
-    /* 基线 */
-    const 前 = await withAuth(TEST_USER_ID, () => 读利润汇总());
 
     /* 造四笔流水 + 一笔无分类流水：
        维修收入300（结算产生，应排除）、配件采购200（资产化，应排除）、

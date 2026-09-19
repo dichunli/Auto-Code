@@ -93,6 +93,7 @@ describe("预收款/会员充值 财务流水补记 - 数据库集成测试", ()
 
     /* 清历史残留 */
     await query(`DELETE FROM finance_transactions WHERE description LIKE $1`, [`${PFX}%`]);
+    await query(`DELETE FROM finance_transactions WHERE created_by IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
     await query(`DELETE FROM finance_accounts WHERE name LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM member_transactions WHERE notes LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM members WHERE card_no LIKE $1`, [`${PFX}%`]);
@@ -127,6 +128,8 @@ describe("预收款/会员充值 财务流水补记 - 数据库集成测试", ()
 
   afterAll(async () => {
     await query(`DELETE FROM finance_transactions WHERE description LIKE $1`, [`${PFX}%`]);
+    /* 新流水描述不带前缀（'工单预收款 …'等），按经办人兜底清，防 created_by 外键卡删用户 */
+    await query(`DELETE FROM finance_transactions WHERE created_by IN ($1, $2)`, [TEST_USER_ID, NOBODY_USER_ID]);
     await query(`DELETE FROM finance_accounts WHERE name LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM member_transactions WHERE notes LIKE $1`, [`${PFX}%`]);
     await query(`DELETE FROM members WHERE card_no LIKE $1`, [`${PFX}%`]);
