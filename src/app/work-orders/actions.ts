@@ -677,7 +677,10 @@ export async function 新建维修项目(参数: {
   return { success: true, item: data as Record<string, unknown> };
 }
 
-/* ═══ 工单需求页：返工解锁原工单（settled → pending_settlement）═══ */
+/* ═══ 工单需求页：返工解锁原工单（settled → pending_settlement）═══
+ * 涉钱操作：必须走 unlock_work_order_settlement RPC 一个事务回滚全部资金痕迹
+ * （删支付记录/财务流水、退会员扣款、删未核销应收），否则重复结算会重复入账。
+ * 应收已有收款核销的工单会被 RPC 拒绝（须先作废收款单）。 */
 export async function 解锁工单(工单id: string): Promise<{ success: boolean; error?: string }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
   if (!user) {
@@ -685,13 +688,16 @@ export async function 解锁工单(工单id: string): Promise<{ success: boolean
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("work_orders")
-    .update({ status: "pending_settlement" })
-    .eq("id", 工单id);
+  const { data: result, error: rpcError } = await supabase.rpc("unlock_work_order_settlement", {
+    p_order_id: 工单id,
+  });
 
-  if (error) {
-    return { success: false, error: error.message };
+  if (rpcError) {
+    return { success: false, error: rpcError.message };
+  }
+  const 结果 = result as { success: boolean; error?: string };
+  if (!结果?.success) {
+    return { success: false, error: 结果?.error || "解锁失败" };
   }
 
   clearWorkOrderDataCache(工单id);

@@ -1471,9 +1471,12 @@ export default function NewRequirementContent({ params }: { params: Promise<{ id
             const next = [...items];
             next[reworkModalIndex].rework_source_item_id = (sourceItem as 返工来源项目).id;
             if (unlockOrder) {
-              // 解锁原工单：将其状态从 settled 改回 pending_settlement（走 Server Action）
-              解锁工单((sourceItem as 返工来源项目).work_order_id).then(() => {
-                // 静默更新即可
+              /* 解锁原工单：走 RPC 一个事务回滚结算资金痕迹；
+                 可能失败（角色不足/欠款已核销），失败必须提示，不能静默 */
+              解锁工单((sourceItem as 返工来源项目).work_order_id).then((解锁结果) => {
+                if (!解锁结果.success) {
+                  toast("原工单解锁失败: " + (解锁结果.error || "未知错误"), "error");
+                }
               });
             }
             setItems(next);
