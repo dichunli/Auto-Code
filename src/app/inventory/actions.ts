@@ -43,6 +43,9 @@ export async function 配件入库(参数: {
     supplier: string;
     batch_no: string;
     notes: string;
+    /* 入库仓位（2026-09-19 用户拍板：全部出入库都记仓位；选填，填了就写仓位账） */
+    warehouse_id?: string;
+    location?: string;
   };
 }): Promise<入库结果> {
   const { user, error: 登录错误 } = await 验证用户已登录();
@@ -204,6 +207,8 @@ export async function 配件入库(参数: {
       p_batch_no: form.batch_no || null,
       p_waybill_id: waybillId,
       p_log_notes: logNotes,
+      p_warehouse_id: form.warehouse_id || null,
+      p_location: form.location || null,
     });
     if (rpc错误) return { success: false, error: rpc错误.message };
     const 入库事务结果 = rpc结果 as { success: boolean; error?: string } | null;
@@ -512,6 +517,9 @@ export async function 新建盘点单(参数: {
     system_qty: number;
     actual_qty: string;
     notes: string;
+    /* 按仓位盘点（2026-09-19）：仓位维度，NULL=未分配仓位的库存 */
+    warehouse_id?: string | null;
+    location?: string | null;
   }[];
 }): Promise<{ success: boolean; error?: string }> {
   const { user, error: 登录错误 } = await 验证用户已登录();
@@ -537,20 +545,21 @@ export async function 新建盘点单(参数: {
     return { success: false, error: checkError?.message || "创建盘点单失败" };
   }
 
-  /* 插入盘点明细（只插填写了实际库存的行） */
-  const itemsToInsert = 参数.items
-    .filter((item) => item.actual_qty !== "")
-    .map((item) => {
-      const actual = parseInt(item.actual_qty) || 0;
-      return {
-        check_id: check.id,
-        part_id: item.part_id,
-        system_qty: item.system_qty,
-        actual_qty: actual,
-        diff_qty: actual - item.system_qty,
-        notes: item.notes.trim() || null,
-      };
-    });
+  /* 插入盘点明细（2026-09-19 按仓位盘点：全部行都插，没填实盘的 actual 留 NULL——
+     完成盘点时"该配件全部行都填了才校准总库存"依赖完整行数，不能只插填了的） */
+  const itemsToInsert = 参数.items.map((item) => {
+    const actual = item.actual_qty === "" ? null : parseInt(item.actual_qty) || 0;
+    return {
+      check_id: check.id,
+      part_id: item.part_id,
+      warehouse_id: item.warehouse_id || null,
+      location: item.location || null,
+      system_qty: item.system_qty,
+      actual_qty: actual,
+      diff_qty: actual === null ? null : actual - item.system_qty,
+      notes: item.notes.trim() || null,
+    };
+  });
 
   if (itemsToInsert.length > 0) {
     const { error: itemsError } = await supabase
