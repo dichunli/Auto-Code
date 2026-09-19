@@ -16,6 +16,8 @@ export interface 可退记录 {
   unit_cost: number | null;
   已领: number;
   可退: number;
+  /* 领料取自仓位（2026-09-19：退回仓位默认=取自仓位，展示用） */
+  领料仓位: string | null;
 }
 
 export interface 领料单概要 {
@@ -72,17 +74,30 @@ export default async function NewMaterialReturnPage({
   }
   const 所有明细 = ((明细数据 || []) as unknown as 明细行[]).filter((d) => d.picking_record_id);
 
-  /* 统计每条领料记录已退数量 */
+  /* 统计每条领料记录已退数量 + 取领料记录的取自仓位（退回仓位默认展示） */
   const 记录ids = 所有明细.map((d) => d.picking_record_id);
   const 已退Map: Record<string, number> = {};
+  const 领料仓位Map: Record<string, string> = {};
   if (记录ids.length > 0) {
-    const { data: 退料记录 } = await supabase
-      .from("part_return_records")
-      .select("picking_record_id, quantity")
-      .in("picking_record_id", 记录ids);
-    for (const r of 退料记录 || []) {
+    const [退料结果, 领料仓位结果] = await Promise.all([
+      supabase
+        .from("part_return_records")
+        .select("picking_record_id, quantity")
+        .in("picking_record_id", 记录ids),
+      supabase
+        .from("part_picking_records")
+        .select("id, location, warehouses(name)")
+        .in("id", 记录ids),
+    ]);
+    for (const r of 退料结果.data || []) {
       if (r.picking_record_id) {
         已退Map[r.picking_record_id] = (已退Map[r.picking_record_id] || 0) + r.quantity;
+      }
+    }
+    for (const r of (领料仓位结果.data || []) as unknown as { id: string; location: string | null; warehouses: { name: string } | { name: string }[] | null }[]) {
+      const 仓名 = Array.isArray(r.warehouses) ? r.warehouses[0]?.name : r.warehouses?.name;
+      if (仓名) {
+        领料仓位Map[r.id] = 仓名 + (r.location ? ` · ${r.location}` : "");
       }
     }
   }
@@ -158,7 +173,17 @@ export default async function NewMaterialReturnPage({
     unit_cost: d.unit_cost,
     已领: d.quantity,
     可退: d.可退,
+    领料仓位: 领料仓位Map[d.picking_record_id] || null,
   }));
 
-  return <MaterialReturnForm 领料单={领料单概要结果} 记录列表={记录列表} />;
+  /* 全部仓库（退回仓位改选用，2026-09-19） */
+  const { data: 仓库们 } = await supabase.from("warehouses").select("id, name").order("name");
+
+  return (
+    <MaterialReturnForm
+      领料单={领料单概要结果}
+      记录列表={记录列表}
+      仓库列表={(仓库们 || []) as { id: string; name: string }[]}
+    />
+  );
 }
