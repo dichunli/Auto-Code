@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
-import * as XLSX from "xlsx";
 
 export interface InboundOrder {
   id: string;
@@ -163,7 +162,9 @@ export default function ProcurementReportContent({
   );
   const returnRate = totalInboundQty > 0 ? (totalReturnQty / totalInboundQty) * 100 : 0;
 
-  function handleExport() {
+  async function handleExport() {
+    /* xlsx 约 400KB，改为点导出时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
 
     const supplierSheet = XLSX.utils.json_to_sheet(

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from "react";
 import Link from "next/link";
-import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { useDebounce } from "@/lib/useDebounce";
 import { PageHeader } from "@/components/PageHeader";
@@ -896,7 +895,9 @@ export default function SupplierPaymentsContent({
     [对账行们, 只看对不上]
   );
 
-  function 导出汇总Excel() {
+  async function 导出汇总Excel() {
+    /* xlsx 约 400KB，改为点导出时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
     const 明细 = filteredSummary.map((r) => ({
       供应商: r.supplier_name,

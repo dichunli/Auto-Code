@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { 清理搜索词 } from "@/lib/sanitizeQuery";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
-import * as XLSX from "xlsx";
 import { DeleteButton } from "@/components/DeleteButton";
 import { 批量导入维修项目名称, 删除维修项目名称 } from "./actions";
 
@@ -77,7 +76,9 @@ export default function ServiceNamesContent({ initialData }: { initialData: Serv
   const safePage = Math.min(currentPage, totalPages);
   const paginatedItems = items.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  function handleDownloadTemplate() {
+  async function handleDownloadTemplate() {
+    /* xlsx 约 400KB，改为点下载模板时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const headers = importFields.map((f) => f.key);
     const example = ["更换机油", "常规保养", "机油 保养 小保养"];
     const ws = XLSX.utils.aoa_to_sheet([headers, example]);
@@ -86,7 +87,9 @@ export default function ServiceNamesContent({ initialData }: { initialData: Serv
     XLSX.writeFile(wb, "维修项目名称导入模板.xlsx");
   }
 
-  function handleExport() {
+  async function handleExport() {
+    /* xlsx 约 400KB，改为点导出时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     const headers = ["项目名称", "所属分类", "搜索关键词", "关联配件数"];
     const rows = items.map((n) => [
       n.name,
@@ -101,6 +104,8 @@ export default function ServiceNamesContent({ initialData }: { initialData: Serv
   }
 
   async function handleImportFile(file: File) {
+    /* xlsx 约 400KB，改为选了导入文件时才动态加载（2026-09-19，9-15 诊断🟡#20） */
+    const XLSX = await import("xlsx");
     setImporting(true);
     setImportMsg("正在读取文件...");
     try {
