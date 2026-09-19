@@ -66,6 +66,12 @@ export interface SubmitPartResult {
   error?: string;
 }
 
+/* ═══ 保存配件（新建/编辑）═══
+ * 全部写库收敛为 save_part_form 一次 RPC 调用（一个事务，失败整体回滚）：
+ * - 不再客户端"更新→删5表→逐表插"多步散写（中途失败留半账）
+ * - 编辑不再用"表单仓位行之和"覆盖 parts.quantity（并发领料曾被静默抹掉），
+ *   改由 RPC 按差额调整并逐笔记 adjust 流水
+ * - 新建的初始库存由 RPC 建期初批次（批次必建，期初可领） */
 export default async function submitPart(params: SubmitPartParams): Promise<SubmitPartResult> {
   const {
     supabase,
@@ -94,218 +100,88 @@ export default async function submitPart(params: SubmitPartParams): Promise<Subm
 
   const categoryId = (Array.isArray(partCategories) ? partCategories[0]?.id : partCategories?.id) || null;
 
-  let partId = editId;
-  let finalSystemCode = systemCode;
+  /* 仓位行过滤：至少一项有值才提交（与原 validLocations 口径一致） */
+  const validLocations = stockLocations.filter(
+    (row) => row.warehouseName.trim() || row.location.trim() || parseInt(row.quantity) > 0
+  );
 
-  const basePayload = {
-    part_number: partNumber.trim().toUpperCase(),
-    barcode: barcode.trim() || null,
-    interchange_code: interchangeCode.trim().toUpperCase() || null,
-    oe_number: oeNumber.trim().toUpperCase() || null,
-    vin17_group_id: vin17GroupId.trim() || null,
-    document_name: documentName,
-    part_name_id: partNameId,
-    name: partName.trim(),
-    brand_id: brandId,
-    category_id: categoryId,
-    unit: form.unit || "件",
-    quantity: stockLocations.reduce((sum, row) => sum + (parseInt(row.quantity) || 0), 0),
-    min_stock: parseInt(form.min_stock) || 10,
-    purchase_price: form.purchase_price ? parseFloat(form.purchase_price) : null,
-    reference_purchase_price: form.reference_purchase_price ? parseFloat(form.reference_purchase_price) : null,
-    unit_price: form.unit_price ? parseFloat(form.unit_price) : null,
-    standard_price: form.standard_price ? parseFloat(form.standard_price) : null,
-    vip_price: form.vip_price ? parseFloat(form.vip_price) : null,
-    wholesale_price: form.wholesale_price ? parseFloat(form.wholesale_price) : null,
-    supplier_id: supplierId,
-    notes: form.notes || null,
-    auto_link_vehicle_model: form.auto_link_vehicle_model,
-    auto_match_17vin_models: form.auto_match_17vin_models,
-    is_consumable: form.is_consumable,
-    require_scan_check: form.require_scan_check,
-    require_location_check: form.require_location_check,
-    require_confirm: form.require_confirm,
-    sales_commission_type: form.sales_type || null,
-    sales_commission_value: form.sales_value ? parseFloat(form.sales_value) : null,
-    diagnosis_commission_type: form.diagnosis_type || null,
-    diagnosis_commission_value: form.diagnosis_value ? parseFloat(form.diagnosis_value) : null,
-    repair_commission_type: form.repair_type || null,
-    repair_commission_value: form.repair_value ? parseFloat(form.repair_value) : null,
-    qc_commission_type: form.qc_type || null,
-    qc_commission_value: form.qc_value ? parseFloat(form.qc_value) : null,
-    picking_commission_type: form.picking_type || null,
-    picking_commission_value: form.picking_value ? parseFloat(form.picking_value) : null,
-  };
+  const { data: rpc结果, error: rpc错误 } = await supabase.rpc("save_part_form", {
+    p_part_id: isEditMode && editId ? editId : null,
+    p_part: {
+      system_code: systemCode,
+      part_number: partNumber,
+      barcode,
+      interchange_code: interchangeCode,
+      oe_number: oeNumber,
+      vin17_group_id: vin17GroupId,
+      document_name: documentName,
+      part_name_id: partNameId,
+      name: partName,
+      brand_id: brandId,
+      category_id: categoryId,
+      unit: form.unit || "件",
+      min_stock: form.min_stock,
+      purchase_price: form.purchase_price,
+      reference_purchase_price: form.reference_purchase_price,
+      unit_price: form.unit_price,
+      standard_price: form.standard_price,
+      vip_price: form.vip_price,
+      wholesale_price: form.wholesale_price,
+      supplier_id: supplierId,
+      notes: form.notes,
+      auto_link_vehicle_model: form.auto_link_vehicle_model,
+      auto_match_17vin_models: form.auto_match_17vin_models,
+      is_consumable: form.is_consumable,
+      require_scan_check: form.require_scan_check,
+      require_location_check: form.require_location_check,
+      require_confirm: form.require_confirm,
+      sales_commission_type: form.sales_type,
+      sales_commission_value: form.sales_value,
+      diagnosis_commission_type: form.diagnosis_type,
+      diagnosis_commission_value: form.diagnosis_value,
+      repair_commission_type: form.repair_type,
+      repair_commission_value: form.repair_value,
+      qc_commission_type: form.qc_type,
+      qc_commission_value: form.qc_value,
+      picking_commission_type: form.picking_type,
+      picking_commission_value: form.picking_value,
+    },
+    p_specs: selectedSpecs.map((s) => s.id),
+    p_vehicle_models: selectedVehicleModels.map((v) => ({
+      vehicle_model_id: Number(v.id),
+      notes: v.notes || null,
+      fitment_position: v.fitment_position || null,
+      source: v.source || "manual",
+    })),
+    p_images: partImages,
+    p_stock_locations: validLocations.map((row) => ({
+      warehouse_name: row.warehouseName.trim(),
+      location: row.location.trim(),
+      quantity: parseInt(row.quantity) || 0,
+      min_stock: parseInt(row.min_stock) || 0,
+      max_stock: row.max_stock ? parseInt(row.max_stock) : null,
+    })),
+    p_special_prices: specialPrices.map((p) => ({
+      company_id: p.company_id || null,
+      customer_id: p.customer_id || null,
+      vehicle_id: p.vehicle_id || null,
+      price: parseFloat(p.price),
+    })),
+    p_vehicle_prices: vehicleModelPrices.map((p) => ({
+      vehicle_model_id: Number(p.vehicle_model_id),
+      sales_price: p.sales_price ? parseFloat(p.sales_price) : null,
+      vip_price: p.vip_price ? parseFloat(p.vip_price) : null,
+      standard_price: p.standard_price ? parseFloat(p.standard_price) : null,
+    })),
+  });
 
-  if (isEditMode && editId) {
-    const { error: updateError } = await supabase
-      .from("parts")
-      .update(basePayload)
-      .eq("id", editId);
-
-    if (updateError) {
-      return { success: false, error: "保存失败: " + updateError.message };
-    }
-
-    await supabase.from("parts_specifications").delete().eq("part_id", editId);
-    await supabase.from("part_vehicle_models").delete().eq("part_id", editId);
-    await supabase.from("part_images").delete().eq("part_id", editId);
-    await supabase.from("part_stock_locations").delete().eq("part_id", editId);
-    await supabase.from("part_special_prices").delete().eq("part_id", editId);
-    await supabase.from("part_vehicle_prices").delete().eq("part_id", editId);
-  } else {
-    if (!finalSystemCode) {
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const prefix = `PJ${dateStr}`;
-      const { data: existing } = await supabase
-        .from("parts")
-        .select("system_code")
-        .ilike("system_code", `${prefix}%`)
-        .order("system_code", { ascending: false })
-        .limit(1);
-      let seq = 1;
-      if (existing && existing.length > 0 && existing[0].system_code) {
-        const suffix = existing[0].system_code.slice(prefix.length);
-        const num = parseInt(suffix, 10);
-        if (!isNaN(num)) seq = num + 1;
-      }
-      finalSystemCode = `${prefix}${String(seq).padStart(3, "0")}`;
-    } else {
-      const { data: dup } = await supabase
-        .from("parts")
-        .select("id")
-        .eq("system_code", finalSystemCode)
-        .single();
-      if (dup) {
-        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-        const prefix = `PJ${dateStr}`;
-        const { data: existing } = await supabase
-          .from("parts")
-          .select("system_code")
-          .ilike("system_code", `${prefix}%`)
-          .order("system_code", { ascending: false })
-          .limit(1);
-        let seq = 1;
-        if (existing && existing.length > 0 && existing[0].system_code) {
-          const suffix = existing[0].system_code.slice(prefix.length);
-          const num = parseInt(suffix, 10);
-          if (!isNaN(num)) seq = num + 1;
-        }
-        finalSystemCode = `${prefix}${String(seq).padStart(3, "0")}`;
-      }
-    }
-
-    const { data: inserted, error } = await supabase
-      .from("parts")
-      .insert({ system_code: finalSystemCode, ...basePayload })
-      .select("id")
-      .single();
-
-    if (error || !inserted) {
-      return { success: false, error: "保存失败: " + (error?.message || "未知错误") };
-    }
-
-    partId = inserted.id;
+  if (rpc错误) {
+    return { success: false, error: "保存失败: " + rpc错误.message };
+  }
+  const 结果 = rpc结果 as { success: boolean; part_id?: string; system_code?: string; error?: string } | null;
+  if (!结果?.success) {
+    return { success: false, error: "保存失败: " + (结果?.error || "未知错误") };
   }
 
-  if (!partId) {
-    return { success: false, error: "保存失败: 未获取到配件ID" };
-  }
-
-  // Insert specifications
-  if (selectedSpecs.length > 0) {
-    await supabase
-      .from("parts_specifications")
-      .insert(selectedSpecs.map((s) => ({ part_id: partId, specification_id: s.id })));
-  }
-
-  // Insert vehicle models
-  if (selectedVehicleModels.length > 0) {
-    const { error: vmError } = await supabase
-      .from("part_vehicle_models")
-      .insert(selectedVehicleModels.map((v) => ({
-        part_id: partId,
-        vehicle_model_id: Number(v.id),
-        notes: v.notes || null,
-        fitment_position: v.fitment_position || null,
-        source: v.source || "manual",
-      })));
-    if (vmError) {
-      return { success: false, error: "适用车型保存失败: " + vmError.message };
-    }
-  }
-
-  // Insert part images
-  if (partImages.length > 0) {
-    await supabase.from("part_images").insert(
-      partImages.map((url, i) => ({
-        part_id: partId,
-        storage_path: url,
-        sort_order: i,
-      }))
-    );
-  }
-
-  // Insert stock locations (create warehouses if needed)
-  const validLocations = stockLocations.filter((row) => row.warehouseName.trim() || row.location.trim() || parseInt(row.quantity) > 0);
-  if (validLocations.length > 0) {
-    const warehouseMap = new Map<string, string>();
-    for (const row of validLocations) {
-      const wName = row.warehouseName.trim();
-      if (!wName) continue;
-      if (warehouseMap.has(wName)) continue;
-      const { data: existing } = await supabase.from("warehouses").select("id").eq("name", wName).single();
-      if (existing) {
-        warehouseMap.set(wName, existing.id);
-      } else {
-        const { data: created } = await supabase.from("warehouses").insert({ name: wName }).select("id").single();
-        if (created) warehouseMap.set(wName, created.id);
-      }
-    }
-
-    const stockInserts = validLocations
-      .filter((row) => warehouseMap.has(row.warehouseName.trim()))
-      .map((row) => ({
-        part_id: partId,
-        warehouse_id: warehouseMap.get(row.warehouseName.trim()),
-        location: row.location.trim() || null,
-        quantity: parseInt(row.quantity) || 0,
-        min_stock: parseInt(row.min_stock) || 0,
-        max_stock: row.max_stock ? parseInt(row.max_stock) : null,
-      }));
-
-    if (stockInserts.length > 0) {
-      await supabase.from("part_stock_locations").insert(stockInserts);
-    }
-  }
-
-  // Save special prices
-  if (specialPrices.length > 0) {
-    const { error: spError } = await supabase.from("part_special_prices").insert(
-      specialPrices.map((p) => ({
-        part_id: partId,
-        company_id: p.company_id || null,
-        customer_id: p.customer_id || null,
-        vehicle_id: p.vehicle_id || null,
-        price: parseFloat(p.price),
-      }))
-    );
-    if (spError) console.error("part_special_prices insert error:", spError);
-  }
-
-  // Save vehicle model prices
-  if (vehicleModelPrices.length > 0) {
-    const { error: vpError } = await supabase.from("part_vehicle_prices").insert(
-      vehicleModelPrices.map((p) => ({
-        part_id: partId,
-        vehicle_model_id: Number(p.vehicle_model_id),
-        sales_price: p.sales_price ? parseFloat(p.sales_price) : null,
-        vip_price: p.vip_price ? parseFloat(p.vip_price) : null,
-        standard_price: p.standard_price ? parseFloat(p.standard_price) : null,
-      }))
-    );
-    if (vpError) console.error("part_vehicle_prices insert error:", vpError);
-  }
-
-  return { success: true, partId, finalSystemCode };
+  return { success: true, partId: 结果.part_id, finalSystemCode: 结果.system_code };
 }
